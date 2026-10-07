@@ -17,6 +17,7 @@ import { SectionIcon } from "./SectionDialog";
 import { statusLabel, statusTitle, useFoldedDefaults } from "./Sidebar";
 import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji } from "./UserPopover";
+import { AttendancePill } from "./AttendancePill";
 import { t } from "../i18n";
 
 export interface HomeViewProps {
@@ -203,12 +204,12 @@ export function HomeView(props: HomeViewProps) {
 
 const ROW = "flex min-h-11 w-full items-center gap-3 px-4 py-1.5 text-left text-[15px] leading-5 transition-colors hover:bg-panel active:bg-panel";
 
-function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewChannel, onDirectory, onCreateTimes, hasMyTimes, onReadAll, onNewSection }: HomeViewProps & { hasMyTimes: boolean; onReadAll: () => void; onNewSection: () => void }) {
+function HomeHeader({ controller, gatherUnread, onGatherUnread, onAttendance, onBrowse, onNewChannel, onDirectory, onCreateTimes, hasMyTimes, onReadAll, onNewSection }: HomeViewProps & { hasMyTimes: boolean; onReadAll: () => void; onNewSection: () => void }) {
   const name = controller.workspaceName;
   const status = controller.engine?.status ?? "idle";
   const switchable = controller.multiWorkspace && controller.workspaces.length >= 2;
   const entry = controller.activeEntry;
-  const title = <strong className="min-w-0 truncate text-[17px]">{name}</strong>;
+  const title = <strong data-title-name className="min-w-0 truncate text-[17px]">{name}</strong>;
   return (
     <header className="flex h-[52px] shrink-0 items-center gap-2 pl-4 pr-2">
       {switchable ? (
@@ -237,13 +238,15 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
       ) : (
         title
       )}
+      {/* 在室状況's quick switch (docs/PRESENCE.md §7.1), next to the name. */}
+      <AttendancePill controller={controller} placement="inline" onOpenBoard={onAttendance} />
       {status !== "online" && status !== "idle" && (
         <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted" title={statusTitle(status)}>
           <span className={cn("h-2 w-2 rounded-full", status === "connecting" ? "animate-pulse bg-warning" : "bg-warning")} />
           {statusLabel(status)}
         </span>
       )}
-      <span className="flex-1" />
+      <span data-flex-spacer className="flex-1" />
       <Menu>
         <MenuTrigger asChild>
           <button type="button" aria-label={t("home.menu")} title={t("home.menu")} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink transition-colors hover:bg-panel">

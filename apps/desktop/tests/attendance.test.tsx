@@ -3,6 +3,8 @@
 // the engine's events and the admin tab.
 process.env.TZ = "Asia/Tokyo";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +12,10 @@ import type { AttendanceAdminSettingsOut, AttendanceBoardOut, AttendanceStateOut
 import type { AppController } from "../src/state/app";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { boardGroups, inRoomCount, myChoices, sinceLabel } from "../src/ui/attendance";
+import { type MessageKey, tIn, type UiLocale, UI_LOCALES } from "../src/i18n";
+import { boardGroups, inRoomCount, myChoices, sinceLabel, stateText } from "../src/ui/attendance";
+import { ATTENDANCE_ICONS, StateBadge } from "../src/ui/attendanceIcons";
+import { AttendancePill, pillMode } from "../src/ui/AttendancePill";
 import { AttendanceAdminTab } from "../src/ui/AttendanceAdminTab";
 import { AttendanceChip } from "../src/ui/AttendanceChip";
 import { AttendanceView } from "../src/ui/AttendanceView";
@@ -34,7 +39,7 @@ const people: UserPublic[] = [
 ];
 
 function state(id: string, label: string, kind: AttendanceStateOut["kind"], over: Partial<AttendanceStateOut> = {}): AttendanceStateOut {
-  return { id, owner_id: null, label, emoji: null, color: "gray", kind, position: 0, archived: false, ...over };
+  return { id, owner_id: null, label, icon: null, emoji: null, color: "gray", kind, position: 0, archived: false, ...over };
 }
 
 const IN = state("s-in", "在室", "in_room", { emoji: "🟢", color: "green", position: 0 });
@@ -162,10 +167,15 @@ describe("the page", () => {
     fireEvent.click(within(own).getByRole("button", { name: /自分用の状態を追加/ }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "名前" }), { target: { value: "会議" } });
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "色" }), { target: { value: "red" } });
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "分類" }), { target: { value: "on_site" } });
+    // All eight colours are offered as swatches.
+    expect(within(within(dialog).getByRole("radiogroup", { name: "色" })).getAllByRole("radio")).toHaveLength(8);
+    fireEvent.click(within(dialog).getByRole("radio", { name: "赤" }));
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "分類" }), { target: { value: "off_site" } });
+    // A new state's icon follows its kind until one is picked.
+    expect((within(dialog).getByRole("radio", { name: "外出" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(within(dialog).getByRole("radio", { name: "会議" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "追加" }));
-    await waitFor(() => expect(createMyAttendanceState).toHaveBeenCalledWith({ label: "会議", emoji: null, color: "red", kind: "on_site" }));
+    await waitFor(() => expect(createMyAttendanceState).toHaveBeenCalledWith({ label: "会議", icon: "meeting", emoji: null, color: "red", kind: "off_site" }));
     unmount();
     render(<AttendanceView controller={controllerFor(storeWith(board({ can_personalize: false })), {})} />);
     expect(screen.queryByRole("region", { name: "自分用の状態" })).toBeNull();
@@ -278,5 +288,148 @@ describe("the engine", () => {
     await engine.idle();
     await waitFor(() => expect(store.attendance).toBeNull(), { timeout: 2000 });
     engine.stop();
+  });
+});
+
+// --- icons (apps/shared/attendance-icons.json) and the quick switch (docs/PRESENCE.md §7.1) ---------------------------
+
+interface IconCatalogue {
+  icons: Array<{ key: string; lucide: string; sf: string; material: string; label: Record<UiLocale, string> }>;
+  defaults: Record<string, string>;
+}
+const iconCatalogue = JSON.parse(readFileSync(join(process.cwd(), "..", "shared", "attendance-icons.json"), "utf8")) as IconCatalogue;
+
+describe("the icons", () => {
+  it("this copy is the shared catalogue, and the picker's names are its labels", () => {
+    expect(ATTENDANCE_ICONS.map(({ key, lucide }) => ({ key, lucide }))).toEqual(iconCatalogue.icons.map(({ key, lucide }) => ({ key, lucide })));
+    for (const icon of iconCatalogue.icons) {
+      for (const locale of UI_LOCALES) expect(tIn(locale, `attendance.icon.${icon.key}` as MessageKey)).toBe(icon.label[locale]);
+    }
+  });
+
+  it("a state draws its icon, else its emoji (an unknown key too), else nothing", () => {
+    const { container } = render(
+      <>
+        <StateBadge state={{ ...OUT, icon: "off_site", emoji: "🚶" }} />
+        <StateBadge state={{ ...MEETING, icon: "rocket-from-the-future", emoji: "🗣️" }} />
+        <StateBadge state={CAMPUS} />
+      </>,
+    );
+    const badges = [...container.querySelectorAll("[data-attendance-badge]")];
+    expect(badges[0]!.querySelector("svg[data-attendance-icon='off_site']")).toBeTruthy();
+    expect(badges[0]!.textContent).toBe("学外");
+    expect(badges[1]!.querySelector("svg")).toBeNull();
+    expect(badges[1]!.querySelector("[data-attendance-emoji]")!.textContent).toBe("🗣️");
+    expect(badges[2]!.querySelector("svg, [data-attendance-emoji]")).toBeNull();
+    // As text: the emoji only stands in when no icon is drawn.
+    expect(stateText({ ...IN, icon: "in_room" })).toBe("在室");
+    expect(stateText(IN)).toBe("🟢 在室");
+  });
+
+  it("the page's buttons and the chip use the icon", () => {
+    const withIcons = board({ states: board().states.map((s) => (s.id === IN.id ? { ...s, icon: "in_room" } : s.id === MEETING.id ? { ...s, icon: "meeting" } : s)) });
+    const controller = controllerFor(storeWith(withIcons), {});
+    render(<AttendanceView controller={controller} />);
+    const button = screen.getByRole("button", { name: "在室" });
+    expect(button.querySelector("svg[data-attendance-icon='in_room']")).toBeTruthy();
+    cleanup();
+    const { container } = render(<AttendanceChip controller={controller} userId={ALICE} />);
+    expect(container.querySelector("[data-attendance-chip] svg[data-attendance-icon='meeting']")).toBeTruthy();
+  });
+});
+
+describe("the quick switch", () => {
+  const withIcons = () => board({ states: board().states.map((s) => (s.id === OUT.id ? { ...s, icon: "off_site", color: "purple" as const } : s)) });
+  const mineIn = (b: AttendanceBoardOut, stateId: string, note: string | null = null): AttendanceBoardOut => ({
+    ...b,
+    entries: [...b.entries, { user_id: ME, state_id: stateId, since: "2026-10-07T00:00:00Z", note, source: "app" }],
+  });
+
+  it("shows my state (icon, colour, name), or 「在室状況」 with an outline", () => {
+    const { container, unmount } = render(<AttendancePill controller={controllerFor(storeWith(mineIn(withIcons(), OUT.id)), {})} placement="sidebar" />);
+    const pill = container.querySelector("[data-attendance-pill]") as HTMLElement;
+    expect(pill.getAttribute("data-attendance-pill")).toBe("off_site");
+    expect(pill.textContent).toBe("学外");
+    expect(pill.querySelector("svg[data-attendance-icon='off_site']")).toBeTruthy();
+    expect(pill.getAttribute("aria-label")).toBe("在室状況：学外");
+    expect(pill.className).toContain("text-emoji");
+    unmount();
+    render(<AttendancePill controller={controllerFor(storeWith(withIcons()), {})} placement="sidebar" />);
+    const none = screen.getByRole("button", { name: "在室状況を変える" });
+    expect(none.textContent).toBe("在室状況");
+    expect(none.getAttribute("data-attendance-pill")).toBe("none");
+  });
+
+  it("is not there while the board is off, nor for guests", () => {
+    const { container } = render(<AttendancePill controller={controllerFor(storeWith(null), {})} placement="sidebar" />);
+    expect(container.querySelector("[data-attendance-pill]")).toBeNull();
+    const guest = { ...controllerFor(storeWith(withIcons()), {}), isGuest: true } as unknown as AppController;
+    render(<AttendancePill controller={guest} placement="sidebar" />);
+    expect(document.querySelector("[data-attendance-pill]")).toBeNull();
+  });
+
+  it("collapses to its icon, the name in the tooltip", () => {
+    render(<AttendancePill controller={controllerFor(storeWith(mineIn(withIcons(), OUT.id)), {})} placement="sidebar" collapsed />);
+    const pill = screen.getByRole("button", { name: "在室状況：学外" });
+    expect(pill.getAttribute("data-collapsed")).toBe("true");
+    expect(pill.textContent).toBe("");
+    expect(pill.getAttribute("title")).toBe("在室状況：学外");
+    expect(pill.querySelector("svg[data-attendance-icon='off_site']")).toBeTruthy();
+  });
+
+  it("fits the row: the whole name first, then the icon, the name cut to its minimum, then nothing", () => {
+    expect(pillMode({ room: 240, nameNatural: 100, nameMin: 60, full: 80 })).toBe("full");
+    expect(pillMode({ room: 160, nameNatural: 100, nameMin: 60, full: 80 })).toBe("icon");
+    expect(pillMode({ room: 110, nameNatural: 100, nameMin: 60, full: 80 })).toBe("icon");
+    expect(pillMode({ room: 80, nameNatural: 100, nameMin: 60, full: 80 })).toBe("hidden");
+    // A short name is never cut: its whole width is its minimum.
+    expect(pillMode({ room: 80, nameNatural: 40, nameMin: 40, full: 80 })).toBe("icon");
+  });
+
+  it("the menu switches with one press and keeps the note only for the same state", async () => {
+    const store = storeWith(mineIn(withIcons(), IN.id, "3 号室"));
+    const setMyAttendance = vi.fn(async (stateId: string, note: string | null) => ({ user_id: ME, state_id: stateId, since: "2026-10-07T01:00:00Z", note, source: "app" as const }));
+    const onOpenBoard = vi.fn();
+    render(<AttendancePill controller={controllerFor(store, { setMyAttendance })} placement="sidebar" onOpenBoard={onOpenBoard} />);
+    fireEvent.click(screen.getByRole("button", { name: "在室状況：在室" }));
+    const menu = await screen.findByRole("menu", { name: "状態を選ぶ" });
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items.map((i) => i.textContent)).toEqual(["🟢在室", "学内", "学外", "帰宅", "出張（自分用）"]);
+    expect(items[0]!.getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
+    fireEvent.click(items[2]!);
+    await waitFor(() => expect(setMyAttendance).toHaveBeenCalledWith(OUT.id, null));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.getByRole("button", { name: "在室状況：学外" })).toBeTruthy();
+
+    // The note, and 「在室状況を開く」.
+    fireEvent.click(screen.getByRole("button", { name: "在室状況：学外" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "メモ" }), { target: { value: "15 時に戻ります" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(setMyAttendance).toHaveBeenLastCalledWith(OUT.id, "15 時に戻ります"));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "在室状況：学外" }));
+    fireEvent.click(await screen.findByRole("button", { name: "在室状況を開く" }));
+    expect(onOpenBoard).toHaveBeenCalled();
+  });
+
+  it("works from the keyboard: ↓ opens, arrows move, Esc closes, ⌘⇧Y opens from anywhere", async () => {
+    render(<AttendancePill controller={controllerFor(storeWith(withIcons()), {})} placement="sidebar" shortcut />);
+    const pill = screen.getByRole("button", { name: "在室状況を変える" });
+    pill.focus();
+    fireEvent.keyDown(pill, { key: "ArrowDown" });
+    const menu = await screen.findByRole("menu");
+    const items = within(menu).getAllByRole("menuitemradio");
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
+    fireEvent.keyDown(items[0]!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1]!, { key: "End" });
+    expect(document.activeElement).toBe(items.at(-1));
+    fireEvent.keyDown(items.at(-1)!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.keyDown(window, { key: "y", metaKey: true, shiftKey: true });
+    expect(await screen.findByRole("menu")).toBeTruthy();
   });
 });
