@@ -94,7 +94,7 @@ class DmClosesTest {
     @Test fun closingIsOptimistic() = runBlocking {
         val store = storeWithUnreadPinnedDm()
         var calls = 0
-        val closed = DmCloses.close(store, "a") {
+        val closed = DmCloses.close(store, "a", readState = { fail("asked only after a refusal"); throw IllegalStateException() }) {
             calls++
             // Before the answer: hidden, unpinned and read.
             assertTrue(store.isDmClosed("a"))
@@ -113,7 +113,8 @@ class DmClosesTest {
     @Test fun aRefusedCloseIsRolledBack() = runBlocking {
         val store = storeWithUnreadPinnedDm()
         try {
-            DmCloses.close(store, "a") { throw ApiException.Api(409, "dm_close_not_dm", "no") }
+            // The read state cannot be asked either (as unreachable as the close): nothing changed it, so the snapshot.
+            DmCloses.close(store, "a", readState = { throw ApiException.Network(java.io.IOException("offline")) }) { throw ApiException.Api(409, "dm_close_not_dm", "no") }
             fail("the refusal is passed on")
         } catch (e: ApiException.Api) {
             assertEquals("dm_close_not_dm", e.code)

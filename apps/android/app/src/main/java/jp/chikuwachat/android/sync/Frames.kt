@@ -79,4 +79,5 @@ const val CLOSE_AUTH_FAILED = 4001
 const val CLOSE_SESSION_REVOKED = 4003
 
 internal fun JsonObject.str(key: String): String? = this[key]?.let { if (it is JsonPrimitive) it.contentOrNull else null }
+internal fun JsonObject.int(key: String): Int? = this[key]?.let { if (it is JsonPrimitive) it.intOrNull else null }
 internal fun JsonObject.bool(key: String): Boolean? = this[key]?.let { if (it is JsonPrimitive) it.booleanOrNull else null }

@@ -952,7 +952,10 @@ class SyncEngine(
             }
             "dm_close.updated" -> {  // M141 (§7.9)
                 val id = frame.data.str("channel_id") ?: return
-                store.setDmClosed(id, frame.data.bool("closed") ?: false)
+                val closed = frame.data.bool("closed") ?: false
+                // Review v0.1.43 #6: a close older than a timeline message held here is not taken (it reopened it).
+                val held = store.channel(id)?.channel?.lastMessage?.seq
+                if (DmCloses.takesEvent(closed, frame.data.int("closed_seq"), held)) store.setDmClosed(id, closed)
             }
             "thread.updated" -> {
                 // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
