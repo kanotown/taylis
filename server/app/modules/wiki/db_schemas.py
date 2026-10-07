@@ -114,9 +114,9 @@ class PropertyOut(BaseModel):
     name: str
     type: PropType
     # select / multi_select: in display order (also the sort order).
-    options: list[SelectOption] = Field(default_factory=list)
-    number_format: NumberFormat | None = None
-    relation: RelationOut | None = None
+    options: list[SelectOption]
+    number_format: NumberFormat | None
+    relation: RelationOut | None
 
 
 class ViewColumn(BaseModel):

@@ -4365,6 +4365,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wiki/databases/{database_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Database
+         * @description The schema (properties in order) and the saved views, my level and the row count. A
+         *     relation to a database I cannot read has no database id or title.
+         */
+        get: operations["get_database_api_v1_wiki_databases__database_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/databases/{database_id}/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Csv
+         * @description The view's rows and columns as CSV (WIKI.md §5.6).
+         */
+        get: operations["export_csv_api_v1_wiki_databases__database_id__export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/databases/{database_id}/properties/{prop_id}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Relation Candidates
+         * @description Rows a relation cell may link to: rows of the related database I can read.
+         */
+        get: operations["relation_candidates_api_v1_wiki_databases__database_id__properties__prop_id__candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/databases/{database_id}/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Rows
+         * @description The rows (without bodies) sorted and filtered by the server: a saved view's, or the
+         *     given sort / filter; `range` for a calendar month. Cursor pages of `limit`.
+         */
+        post: operations["query_rows_api_v1_wiki_databases__database_id__query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/databases/{database_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Row
+         * @description A new row at the end (edit access). 409 wiki_too_many_rows past 5,000.
+         */
+        post: operations["create_row_api_v1_wiki_databases__database_id__rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/databases/{database_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Schema
+         * @description Add, rename, retype (the values are converted), reorder or delete properties (full
+         *     access). 409 wiki_schema_conflict when written on an older schema_version.
+         */
+        patch: operations["change_schema_api_v1_wiki_databases__database_id__schema_patch"];
+        trace?: never;
+    };
+    "/api/v1/wiki/databases/{database_id}/views/{view_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put View
+         * @description Save a view under the client's id (create or replace; full access).
+         */
+        put: operations["put_view_api_v1_wiki_databases__database_id__views__view_id__put"];
+        post?: never;
+        /**
+         * Delete View
+         * @description Delete a view (full access; the last one stays: 409 wiki_last_view).
+         */
+        delete: operations["delete_view_api_v1_wiki_databases__database_id__views__view_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wiki/pages": {
         parameters: {
             query?: never;
@@ -4635,6 +4782,48 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/rows/{row_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Row
+         * @description A row's cells with its database's schema, and the rows I can read that link here
+         *     one-way (the body: GET /wiki/pages/{id}).
+         */
+        get: operations["get_row_api_v1_wiki_rows__row_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/rows/{row_id}/props": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Row Props
+         * @description Set cells (edit access); the last write wins per cell. `client_op_id` makes a retry
+         *     harmless.
+         */
+        patch: operations["update_row_props_api_v1_wiki_rows__row_id__props_patch"];
         trace?: never;
     };
     "/api/v1/wiki/trash": {
@@ -5042,6 +5231,31 @@ export interface components {
             read_at: string;
             /** Unread Count */
             unread_count: number;
+        };
+        /** AddProperty */
+        AddProperty: {
+            /** After Id */
+            after_id?: string | null;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Number Format */
+            number_format?: ("number" | "integer" | "percent" | "yen") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "add";
+            /** Options */
+            options?: components["schemas"]["OptionIn"][];
+            relation?: components["schemas"]["RelationIn"] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "text" | "number" | "select" | "multi_select" | "date" | "person" | "checkbox" | "url" | "relation" | "created_time" | "updated_time" | "created_by" | "updated_by";
         };
         /** AdminEffective */
         AdminEffective: {
@@ -6884,6 +7098,70 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** DatabaseLimits */
+        DatabaseLimits: {
+            /** Options */
+            options: number;
+            /** Properties */
+            properties: number;
+            /** Rows */
+            rows: number;
+            /** Views */
+            views: number;
+        };
+        /**
+         * DatabaseOut
+         * @description GET /wiki/databases/{id}. `properties` in display order; the title property first.
+         */
+        DatabaseOut: {
+            limits: components["schemas"]["DatabaseLimits"];
+            /**
+             * My Level
+             * @enum {string}
+             */
+            my_level: "view" | "edit" | "full";
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Properties */
+            properties: components["schemas"]["PropertyOut"][];
+            /** Row Count */
+            row_count: number;
+            /** Schema Version */
+            schema_version: number;
+            /** Views */
+            views: components["schemas"]["ViewOut"][];
+        };
+        /**
+         * DateRange
+         * @description The calendar's window: rows whose date (or date range) on `prop_id` touches [start, end].
+         */
+        DateRange: {
+            /** End */
+            end: string;
+            /** Prop Id */
+            prop_id: string;
+            /** Start */
+            start: string;
+        };
+        /**
+         * DateValue
+         * @description A date property's value. time false: "YYYY-MM-DD"; time true: ISO 8601 with its offset
+         *     ("2026-10-07T09:30:00+09:00"). end: a range (not before start), else null.
+         */
+        DateValue: {
+            /** End */
+            end?: string | null;
+            /** Start */
+            start: string;
+            /**
+             * Time
+             * @default false
+             */
+            time: boolean;
+        };
         /**
          * DayOut
          * @description One day of the period in the requested time zone.
@@ -6944,6 +7222,16 @@ export interface components {
             memberships: number;
             /** Users */
             users: number;
+        };
+        /** DeleteProperty */
+        DeleteProperty: {
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "delete";
         };
         /** DeltaOut */
         DeltaOut: {
@@ -7356,6 +7644,34 @@ export interface components {
             items: components["schemas"]["FileItem"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /**
+         * FilterCondition
+         * @description One condition. value: text (contains…), a number (gt…), an option id (select), a user
+         *     id or "me" (person), a row id (relation), true / false (checkbox), "YYYY-MM-DD" (date), or
+         *     {"start", "end"} dates (between). is_empty / is_not_empty take none.
+         */
+        FilterCondition: {
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "contains" | "not_contains" | "equals" | "not_equals" | "starts_with" | "is_empty" | "is_not_empty" | "gt" | "gte" | "lt" | "lte" | "before" | "after" | "on_or_before" | "on_or_after" | "between";
+            /** Prop Id */
+            prop_id: string;
+            /** Value */
+            value?: unknown;
+        };
+        /** FilterGroup */
+        FilterGroup: {
+            /**
+             * Combinator
+             * @default and
+             * @enum {string}
+             */
+            combinator: "and" | "or";
+            /** Conditions */
+            conditions?: components["schemas"]["FilterCondition"][];
         };
         /**
          * GeneralReportAck
@@ -8244,6 +8560,22 @@ export interface components {
             /** Muted Until */
             muted_until: string | null;
         };
+        /**
+         * OptionIn
+         * @description An option in a schema change: a new one has no id (the server gives one).
+         */
+        OptionIn: {
+            /**
+             * Color
+             * @default gray
+             * @enum {string}
+             */
+            color: "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red";
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+        };
         /** PageConflictDetails */
         PageConflictDetails: {
             /** Conflicts */
@@ -8401,9 +8733,9 @@ export interface components {
             /**
              * Kind
              * @default page
-             * @constant
+             * @enum {string}
              */
-            kind: "page";
+            kind: "page" | "database";
             /** Parent Id */
             parent_id?: string | null;
             /** Template Key */
@@ -9178,6 +9510,23 @@ export interface components {
              */
             user_id: string;
         };
+        /** PropertyOut */
+        PropertyOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Number Format */
+            number_format: ("number" | "integer" | "percent" | "yen") | null;
+            /** Options */
+            options: components["schemas"]["SelectOption"][];
+            relation: components["schemas"]["RelationOut"] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "title" | "text" | "number" | "select" | "multi_select" | "date" | "person" | "checkbox" | "url" | "relation" | "created_time" | "updated_time" | "created_by" | "updated_by";
+        };
         /** ProviderMethod */
         ProviderMethod: {
             /** Domains */
@@ -9346,10 +9695,62 @@ export interface components {
              */
             message_id: string;
         };
+        /**
+         * ReferencedBy
+         * @description Rows I can read that link here through a one-way relation (two-way ones are columns).
+         */
+        ReferencedBy: {
+            /**
+             * Database Id
+             * Format: uuid
+             */
+            database_id: string;
+            /** Database Title */
+            database_title: string;
+            /** Prop Id */
+            prop_id: string;
+            /** Prop Name */
+            prop_name: string;
+            /** Rows */
+            rows: components["schemas"]["RowRef"][];
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
             refresh_token?: string | null;
+        };
+        /** RelationIn */
+        RelationIn: {
+            /**
+             * Database Id
+             * Format: uuid
+             */
+            database_id: string;
+            /**
+             * Pair Name
+             * @default
+             */
+            pair_name: string;
+            /**
+             * Two Way
+             * @default false
+             */
+            two_way: boolean;
+        };
+        /**
+         * RelationOut
+         * @description Where a relation points. A database I cannot read (or one that is gone) has no id or
+         *     title here: its rows show as 「アクセスできないページ」 (WIKI.md §5.7).
+         */
+        RelationOut: {
+            /** Database Id */
+            database_id: string | null;
+            /** Database Title */
+            database_title: string | null;
+            /** Pair Id */
+            pair_id: string | null;
+            /** Primary */
+            primary: boolean;
         };
         /** ReminderCreate */
         ReminderCreate: {
@@ -9405,6 +9806,16 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "fired" | "done" | "cancelled";
+        };
+        /** ReorderProperties */
+        ReorderProperties: {
+            /** Ids */
+            ids: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "reorder";
         };
         /**
          * ReportAck
@@ -9530,6 +9941,28 @@ export interface components {
         ResolveIn: {
             /** Ids */
             ids: string[];
+        };
+        /**
+         * RetypeProperty
+         * @description Change the type; the server converts every row's value (WIKI.md §5.2: values it cannot
+         *     convert are kept for 30 days and come back if the type is changed back).
+         */
+        RetypeProperty: {
+            /** Id */
+            id: string;
+            /** Number Format */
+            number_format?: ("number" | "integer" | "percent" | "yen") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "retype";
+            relation?: components["schemas"]["RelationIn"] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "text" | "number" | "select" | "multi_select" | "date" | "person" | "checkbox" | "url" | "relation" | "created_time" | "updated_time" | "created_by" | "updated_by";
         };
         /** RevisionMeta */
         RevisionMeta: {
@@ -9737,6 +10170,177 @@ export interface components {
             /** Items */
             items: components["schemas"]["RolloverPreviewItem"][];
         };
+        /** RowCreate */
+        RowCreate: {
+            /** Body */
+            body?: string | null;
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /** Icon */
+            icon?: string | null;
+            /** Props */
+            props?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * RowDetailOut
+         * @description GET /wiki/rows/{id}: the row's cells with its database's schema (the row page shows them
+         *     above the body).
+         */
+        RowDetailOut: {
+            database: components["schemas"]["DatabaseOut"];
+            /** Database Title */
+            database_title: string;
+            /** Referenced By */
+            referenced_by: components["schemas"]["ReferencedBy"][];
+            /** Refs */
+            refs: components["schemas"]["RowRef"][];
+            row: components["schemas"]["RowOut"];
+        };
+        /**
+         * RowOut
+         * @description A row without its body (GET /wiki/pages/{id} has the body).
+         */
+        RowOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Database Id
+             * Format: uuid
+             */
+            database_id: string;
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /** Hidden Relations */
+            hidden_relations: string[];
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: string;
+            /** Props */
+            props: {
+                [key: string]: string | number | boolean | string[] | components["schemas"]["DateValue"];
+            };
+            /** Relations */
+            relations: {
+                [key: string]: string[];
+            };
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * RowPropsUpdate
+         * @description PATCH /wiki/rows/{id}/props: each cell given is replaced (the last write wins per cell,
+         *     WIKI.md §5.3); null clears it. `title` sets the title. A retry with the same client_op_id
+         *     changes nothing again.
+         */
+        RowPropsUpdate: {
+            /**
+             * Client Op Id
+             * Format: uuid
+             */
+            client_op_id: string;
+            /** Set */
+            set: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * RowQuery
+         * @description POST /wiki/databases/{id}/query. A saved view's sort and filter, unless `sort` / `filter`
+         *     are given (a sort or filter not saved: WIKI.md §5.4).
+         */
+        RowQuery: {
+            /** Cursor */
+            cursor?: string | null;
+            filter?: components["schemas"]["FilterGroup"] | null;
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+            range?: components["schemas"]["DateRange"] | null;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][] | null;
+            /** View Id */
+            view_id?: string | null;
+        };
+        /** RowQueryOut */
+        RowQueryOut: {
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Refs */
+            refs: components["schemas"]["RowRef"][];
+            /** Rows */
+            rows: components["schemas"]["RowOut"][];
+            /** Schema Version */
+            schema_version: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * RowRef
+         * @description A linked row I can read.
+         */
+        RowRef: {
+            /**
+             * Database Id
+             * Format: uuid
+             */
+            database_id: string;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** RowWithRefs */
+        RowWithRefs: {
+            /** Refs */
+            refs: components["schemas"]["RowRef"][];
+            row: components["schemas"]["RowOut"];
+        };
         /** SaveOut */
         SaveOut: {
             canvas: components["schemas"]["CanvasOut"];
@@ -9838,6 +10442,17 @@ export interface components {
             status: "pending" | "sent" | "failed" | "cancelled";
         };
         /**
+         * SchemaChange
+         * @description PATCH /wiki/databases/{id}/schema (full access). 409 wiki_schema_conflict when the
+         *     schema changed since `base_schema_version`: read it again and redo the change.
+         */
+        SchemaChange: {
+            /** Base Schema Version */
+            base_schema_version: number;
+            /** Ops */
+            ops: (components["schemas"]["AddProperty"] | components["schemas"]["UpdateProperty"] | components["schemas"]["RetypeProperty"] | components["schemas"]["DeleteProperty"] | components["schemas"]["ReorderProperties"])[];
+        };
+        /**
          * SearchFilters
          * @description What the server understood from the query: the free text and the resolved modifiers.
          */
@@ -9927,6 +10542,19 @@ export interface components {
             position?: number | null;
             /** Sort */
             sort?: ("name" | "recent" | "manual") | null;
+        };
+        /** SelectOption */
+        SelectOption: {
+            /**
+             * Color
+             * @default gray
+             * @enum {string}
+             */
+            color: "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red";
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** ServerInfoOut */
         ServerInfoOut: {
@@ -10076,6 +10704,17 @@ export interface components {
              * @default 0
              */
             yes_count: number;
+        };
+        /** SortKey */
+        SortKey: {
+            /**
+             * Direction
+             * @default asc
+             * @enum {string}
+             */
+            direction: "asc" | "desc";
+            /** Prop Id */
+            prop_id: string;
         };
         /** SsoExchange */
         SsoExchange: {
@@ -10726,6 +11365,26 @@ export interface components {
             /** Has Unread */
             has_unread: boolean;
         };
+        /**
+         * UpdateProperty
+         * @description Rename, change the options (a removed option is cleared from the rows) or the number
+         *     format. Left-out fields stay.
+         */
+        UpdateProperty: {
+            /** Id */
+            id: string;
+            /** Name */
+            name?: string | null;
+            /** Number Format */
+            number_format?: ("number" | "integer" | "percent" | "yen") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "update";
+            /** Options */
+            options?: components["schemas"]["OptionIn"][] | null;
+        };
         /** UserMe */
         UserMe: {
             /** Avatar Updated At */
@@ -10901,6 +11560,66 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** ViewColumn */
+        ViewColumn: {
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
+            /** Prop Id */
+            prop_id: string;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * ViewIn
+         * @description PUT /wiki/databases/{id}/views/{view_id}: a saved view (shared by everyone who reads the
+         *     database). Board views come later: `type` grows a value, the rest stays.
+         */
+        ViewIn: {
+            /** Columns */
+            columns?: components["schemas"]["ViewColumn"][];
+            /** Date Prop Id */
+            date_prop_id?: string | null;
+            filter?: components["schemas"]["FilterGroup"] | null;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /**
+             * Type
+             * @default table
+             * @enum {string}
+             */
+            type: "table" | "calendar";
+        };
+        /** ViewOut */
+        ViewOut: {
+            /** Columns */
+            columns?: components["schemas"]["ViewColumn"][];
+            /** Date Prop Id */
+            date_prop_id?: string | null;
+            filter?: components["schemas"]["FilterGroup"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /**
+             * Type
+             * @default table
+             * @enum {string}
+             */
+            type: "table" | "calendar";
         };
         /** WebhookCreate */
         WebhookCreate: {
@@ -19818,6 +20537,287 @@ export interface operations {
             };
         };
     };
+    get_database_api_v1_wiki_databases__database_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_csv_api_v1_wiki_databases__database_id__export_csv_get: {
+        parameters: {
+            query?: {
+                view_id?: string | null;
+            };
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description UTF-8 with a BOM */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relation_candidates_api_v1_wiki_databases__database_id__properties__prop_id__candidates_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                database_id: string;
+                prop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowRef"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_rows_api_v1_wiki_databases__database_id__query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowQueryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_row_api_v1_wiki_databases__database_id__rows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowCreate"];
+            };
+        };
+        responses: {
+            /** @description A retry: the row made before */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowWithRefs"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowWithRefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_schema_api_v1_wiki_databases__database_id__schema_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_view_api_v1_wiki_databases__database_id__views__view_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ViewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_view_api_v1_wiki_databases__database_id__views__view_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_page_api_v1_wiki_pages_post: {
         parameters: {
             query?: never;
@@ -20428,6 +21428,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_row_api_v1_wiki_rows__row_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_row_props_api_v1_wiki_rows__row_id__props_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowPropsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowWithRefs"];
                 };
             };
             /** @description Validation Error */

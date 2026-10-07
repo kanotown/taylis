@@ -402,6 +402,35 @@ export type PageSearchHit = components["schemas"]["PageSearchHit"];
 export type PageSearchOut = components["schemas"]["PageSearchOut"];
 export type AdminPageOut = components["schemas"]["AdminPageOut"];
 export type ActivityPage = components["schemas"]["ActivityPage"];
+// M123: wiki databases (WIKI.md §5).
+export type DatabaseOut = components["schemas"]["DatabaseOut"];
+
+export type DbProperty = components["schemas"]["PropertyOut"];
+export type DbPropType = DbProperty["type"];
+export type DbOption = components["schemas"]["SelectOption"];
+export type DbView = components["schemas"]["ViewOut"];
+export type DbViewIn = components["schemas"]["ViewIn"];
+export type DbViewColumn = components["schemas"]["ViewColumn"];
+export type DbSortKey = components["schemas"]["SortKey"];
+export type DbFilterGroup = components["schemas"]["FilterGroup"];
+export type DbFilterCondition = components["schemas"]["FilterCondition"];
+export type DbFilterOp = DbFilterCondition["op"];
+export type DbDateValue = components["schemas"]["DateValue"];
+export type DbRow = components["schemas"]["RowOut"];
+export type DbRowRef = components["schemas"]["RowRef"];
+export type DbRowQuery = components["schemas"]["RowQuery"];
+export type DbRowQueryOut = components["schemas"]["RowQueryOut"];
+export type DbRowWithRefs = components["schemas"]["RowWithRefs"];
+export type DbRowDetail = components["schemas"]["RowDetailOut"];
+export type DbSchemaChange = components["schemas"]["SchemaChange"];
+export type DbSchemaOp = DbSchemaChange["ops"][number];
+export type DbRowCreate = components["schemas"]["RowCreate"];
+/** wiki.rows.changed (who can read the database): its rows, values, schema or views changed. */
+export interface WikiRowsChanged {
+  database_id: string;
+  seq: number;
+  schema_version: number;
+}
 /** wiki.changed (everyone): the tree's change feed moved; read GET /wiki/changes?since= (the data differs per person). */
 export interface WikiChanged {
   seq: number;
