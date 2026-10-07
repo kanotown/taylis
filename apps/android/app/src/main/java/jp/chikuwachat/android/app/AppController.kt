@@ -94,6 +94,7 @@ import jp.chikuwachat.android.platform.fetchFcmToken
 import jp.chikuwachat.android.platform.RoomPersistence
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.platform.SecretStore
+import jp.chikuwachat.android.sync.DmCloses
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.OkHttpWsTransport
@@ -226,6 +227,8 @@ class AppController(private val app: Application) {
     suspend fun askHistory(): List<jp.chikuwachat.android.api.AiRunOut>? = engine?.ai?.askHistory()
     /** Channel to open once the store knows it (from a tapped notification). */
     var pendingChannelId by mutableStateOf<String?>(null)
+    /** M141: the conversation I just closed here (the screen leaves it and offers 「元に戻す」); null after, or when refused. */
+    var dmClosed by mutableStateOf<DmClosedNow?>(null)
     /**
      * M28c: with [pendingChannelId], the reply a tapped notification was about and its thread's parent (message id to
      * parent id): the thread opens at the reply, as a permalink does. Null for a top-level post (the channel opens).
@@ -1424,6 +1427,7 @@ class AppController(private val app: Application) {
 
     suspend fun openChannel(channelId: String) {
         openChannelId = channelId
+        reopenDm(channelId)
         try { engine?.openChannel(channelId) } catch (e: Exception) { report(e) }
     }
 
@@ -2148,6 +2152,44 @@ class AppController(private val app: Application) {
         } catch (e: Exception) {
             store.restoreDmPins(before)
             report(e)
+        }
+    }
+
+    /**
+     * M141 「会話を閉じる」 (SYNC_PROTOCOL.md §7.9): hidden, unpinned and read at once; a refusal puts them back and says
+     * so. [dmClosed] then asks the screen to leave the conversation if it is open and to offer 「元に戻す」.
+     */
+    fun closeDm(channelId: String) {
+        val api = api ?: return
+        val token = DmClosedNow(channelId, wasPinned = store.isDmPinned(channelId))
+        dmClosed = token
+        // The controller's scope: the row (or dialog) that asked leaves the screen as the conversation hides.
+        scope.launch {
+            try {
+                DmCloses.close(store, channelId) { api.closeDm(channelId) }
+            } catch (e: Exception) {
+                if (dmClosed === token) dmClosed = null
+                report(e)
+            }
+        }
+    }
+
+    /** 「元に戻す」 after closing: open again (DELETE) and pin again if it was pinned (last among the pins). */
+    fun undoCloseDm(closed: DmClosedNow) {
+        scope.launch {
+            reopenDm(closed.channelId)
+            if (closed.wasPinned && !store.isDmPinned(closed.channelId)) toggleDmPin(closed.channelId)
+        }
+    }
+
+    /** §7.9 an explicit open of a closed conversation: shown again at once; a failed DELETE is only logged (bootstrap corrects). */
+    private suspend fun reopenDm(channelId: String) {
+        val api = api ?: return
+        try {
+            DmCloses.reopen(store, channelId) { api.reopenDm(channelId) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.i("AppController", "reopening a closed DM failed: $e")
         }
     }
 
@@ -3092,3 +3134,6 @@ class AppController(private val app: Application) {
         const val DEFAULT_SERVER = "http://10.0.2.2:8000"
     }
 }
+
+/** M141: one close made on this device (a new instance each time, so closing the same DM again is a new event). */
+class DmClosedNow(val channelId: String, val wasPinned: Boolean)

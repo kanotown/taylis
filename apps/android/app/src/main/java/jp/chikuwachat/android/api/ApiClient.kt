@@ -548,6 +548,9 @@ class ApiClient(
     /** M118: a DM or group DM at the top of the DM list (201 new, 200 already: it keeps its place); DELETE always 200. */
     suspend fun pinDm(channelId: String): DmPinStateOut = request("PUT", "/api/v1/channels/$channelId/dm-pin")
     suspend fun unpinDm(channelId: String): DmPinStateOut = request("DELETE", "/api/v1/channels/$channelId/dm-pin")
+    /** M141 「会話を閉じる」 / opened again (SYNC_PROTOCOL.md §7.9). */
+    suspend fun closeDm(channelId: String): DmCloseStateOut = request("PUT", "/api/v1/channels/$channelId/close")
+    suspend fun reopenDm(channelId: String): DmCloseStateOut = request("DELETE", "/api/v1/channels/$channelId/close")
     override suspend fun readAll(scope: String?): List<ChannelReadStateOut> =
         request("POST", "/api/v1/channels/read-all", buildJsonObject { scope?.let { put("scope", it) } })
 

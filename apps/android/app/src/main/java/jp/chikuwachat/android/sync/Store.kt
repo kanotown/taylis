@@ -411,6 +411,11 @@ class Store(private val persistence: Persistence? = null) {
     /** M118: the server keeps pins (it sent `dm_pins`); a server before M118 does not, and no pin action is offered. */
     var dmPinsKnown = false
         private set
+    /** M141 (SYNC_PROTOCOL.md §7.9): the DMs I closed, hidden from the DM lists; from bootstrap, dm_close.updated and message.created. */
+    val closedDms = LinkedHashSet<String>()
+    /** M141: the server closes DMs (it sent `closed_dms`); a server before M141 does not, and no close action is offered. */
+    var closedDmsKnown = false
+        private set
     /** M104 (MODERATION.md §4): the people I blocked; from bootstrap and block.updated, not persisted. */
     val blockedUsers = HashSet<String>()
     /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
@@ -1383,6 +1388,37 @@ class Store(private val persistence: Persistence? = null) {
         dmPins.clear()
         dmPins.addAll(ids.orEmpty())
         emit()
+    }
+
+    // --- closed DMs (M141, SYNC_PROTOCOL.md §7.9) ---------------------------------------------------
+
+    fun isDmClosed(channelId: String): Boolean = channelId in closedDms
+
+    fun setDmClosed(channelId: String, closed: Boolean) {
+        val changed = if (closed) closedDms.add(channelId) else closedDms.remove(channelId)
+        if (changed) emit()
+    }
+
+    /** Bootstrap's `closed_dms`; null (a server before M141) = none, and closing unknown. */
+    fun replaceClosedDms(ids: List<String>?) {
+        closedDmsKnown = ids != null
+        closedDms.clear()
+        closedDms.addAll(ids.orEmpty())
+        emit()
+    }
+
+    /** M141: closing reads a conversation to its end (the server does the same, and read.updated confirms). */
+    fun markReadToEnd(channelId: String) {
+        updateChannel(channelId) {
+            it.copy(lastReadSeq = maxOf(it.lastReadSeq, it.lastSeq), unreadCount = 0, mentionCount = 0, firstUnreadAt = null)
+        }
+    }
+
+    /** The read position and counts as they were (a refused close put back). */
+    fun restoreRead(before: ChannelState) {
+        updateChannel(before.id) {
+            it.copy(lastReadSeq = before.lastReadSeq, unreadCount = before.unreadCount, mentionCount = before.mentionCount, firstUnreadAt = before.firstUnreadAt)
+        }
     }
 
     // --- blocks (M104) ------------------------------------------------------------------------

@@ -147,7 +147,7 @@ fun HomeScreen(
     val isGuest = controller.isGuest
     val sections = remember(version, groupUnread, meId) {
         Channels.sections(store.channels.values, groupUnread = groupUnread, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId,
-            defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins)
+            defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins, closedDms = store.closedDms)
     }
     val dmsFolded = FoldedSections.DMS in folded && editing != "dms"
     val dmSection = remember(sections, meId, editing) {

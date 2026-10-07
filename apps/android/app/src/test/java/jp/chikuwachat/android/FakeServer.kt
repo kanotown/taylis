@@ -605,6 +605,16 @@ class FakeServer {
 
     /** "user" → starred channel ids (M12a). */
     val favorites = HashMap<String, MutableList<String>>()
+    /** M141: "user" → the DMs they closed (bootstrap's `closed_dms`); null = a server before M141. */
+    var closedDms: HashMap<String, MutableList<String>>? = null
+
+    /** M141: `PUT` / `DELETE /channels/{id}/close` on a device of `userId`: dm_close.updated to their devices. */
+    fun emitDmClose(userId: String, channelId: String, closed: Boolean) {
+        val list = closedDms!!.getOrPut(userId) { ArrayList() }
+        list.remove(channelId)
+        if (closed) list.add(channelId)
+        emit(setOf(userId), event("dm_close.updated", null, null, buildJsonObject { put("channel_id", channelId); put("closed", closed); put("at", now()) }))
+    }
     /** M15f: each conversation's link bar; setLinks announces it like the server does. */
     val links = HashMap<String, List<ChannelLinkOut>>()
 
@@ -1161,6 +1171,7 @@ class FakeServer {
             now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it) ) },
             bookmarks[userId]?.toList() ?: emptyList(),
             favorites = (favorites[userId] ?: emptyList()).filter { id -> channels[id]?.members?.contains(userId) == true },
+            closedDms = closedDms?.let { all -> (all[userId] ?: emptyList()).filter { id -> channels[id]?.members?.contains(userId) == true } },
             customEmoji = customEmoji.values.toList(),
             roster = roster.values.toList(),
             drafts = draftsOf(userId),

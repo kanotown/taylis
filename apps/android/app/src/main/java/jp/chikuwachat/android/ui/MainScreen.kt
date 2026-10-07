@@ -58,6 +58,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -89,6 +90,7 @@ import kotlin.reflect.KProperty
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.platform.NotificationPermission
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.DmCloses
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.Store
@@ -292,6 +294,15 @@ fun MainScreen(controller: AppController) {
         val message = controller.notice ?: return@LaunchedEffect
         snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
         if (controller.notice == message) controller.notice = null
+    }
+    // M141 (SYNC_PROTOCOL.md §7.9): a conversation I closed here closes on every tab (the phone goes back to its list),
+    // and 「会話を閉じました」 offers 「元に戻す」. A refused close clears it, which dismisses the offer.
+    LaunchedEffect(controller.dmClosed) {
+        val closed = controller.dmClosed ?: return@LaunchedEffect
+        tabs = MainTabs.channelGone(tabs, closed.channelId)
+        val result = snackbar.showSnackbar(L10n.str(R.string.dm_close_done), actionLabel = L10n.str(R.string.dm_close_undo), duration = SnackbarDuration.Short)
+        if (controller.dmClosed === closed) controller.dmClosed = null
+        if (result == SnackbarResult.ActionPerformed) controller.undoCloseDm(closed)
     }
     // A tapped notification (or /dm, /join, a profile's DM button) opens its channel once the store knows it. M28c: a
     // reply's notification opens its thread at the reply, as a permalink does (the reveal fetches its context first).
@@ -765,6 +776,7 @@ fun MainScreen(controller: AppController) {
                         summaries = controller.aiSummaryAvailable,
                         // M69: 「カレンダーを購読 (iCal)」 on the calendar's own page.
                         calendar = pane == Route.Calendar && !searching && controller.calendar?.available == true,
+                        closeDm = DmCloses.canClose(store, selectedChannel),
                     )
                     val barButtons = top != Route.You && top !is Route.Settings
                     // THREADS.md §5: follow / unfollow the open thread.
@@ -900,6 +912,12 @@ fun MainScreen(controller: AppController) {
                                     text = { Text(stringResource(R.string.common_subscribe_to_the_calendar_ical)) }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
                                     onClick = { menuOpen = false; controller.openCalendarFeeds() },
                                 )
+                                BarMenuItem.CLOSE_DM -> selectedChannel?.let { open ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.dm_close)) }, leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                                        onClick = { menuOpen = false; controller.closeDm(open.id) },
+                                    )
+                                }
                                 BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
                                     text = { Text(stringResource(R.string.common_add_members)) }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
                                     onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },
@@ -1349,7 +1367,7 @@ fun MainScreen(controller: AppController) {
             shownIds = {
                 val store = controller.store
                 Channels.sections(store.channels.values, favorites = store.favorites, sidebar = store.sidebarSections, meId = store.me?.id,
-                    defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins)
+                    defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins, closedDms = store.closedDms)
                     .custom.firstOrNull { it.first.id == section.id }?.second?.map { it.id }.orEmpty()
             },
             onEditOrder = { sectionMenuFor = null; editingSection = "custom:" + section.id },

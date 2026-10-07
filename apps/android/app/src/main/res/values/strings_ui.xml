@@ -1737,6 +1737,9 @@
     <string name="dm_pin_pin">上に固定</string>
     <string name="dm_pin_unpin">固定を外す</string>
     <string name="dm_pin_pinned">固定済み</string>
+    <string name="dm_close">会話を閉じる</string>
+    <string name="dm_close_done">会話を閉じました</string>
+    <string name="dm_close_undo">元に戻す</string>
     <plurals name="composer_message_max_length">
         <item quantity="other">本文は%1$,d文字までです</item>
     </plurals>

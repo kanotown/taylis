@@ -6,6 +6,7 @@ import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.DmCloses
 import jp.chikuwachat.android.sync.NotificationLevels
 import java.time.Instant
 import jp.chikuwachat.android.R
@@ -84,7 +85,10 @@ object Channels {
         title: (ChannelState) -> String = { it.channel.name ?: "" },
         /** M118: my pinned DMs, oldest pin first: the first rows of every section they are in. */
         dmPins: List<String> = emptyList(),
+        /** M141 (SYNC_PROTOCOL.md §7.9): the DMs I closed: hidden from every section (favourites and mine too). */
+        closedDms: Set<String> = emptySet(),
     ): Sections {
+        val all = DmCloses.visible(all, closedDms)
         fun sortOf(key: String) = defaults.firstOrNull { it.key == key } ?: SidebarDefaultOut(key, SidebarOrder.defaultSorts[key] ?: "name")
         fun ordered(rows: List<ChannelState>, key: String) = DmPins.first(rows, dmPins) { rest -> sortOf(key).let { SidebarOrder.section(rest, it.sort, it.manualOrder, title) } }
         val manualDms = sortOf("dms").sort == "manual"
