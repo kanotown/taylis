@@ -8,6 +8,10 @@
 # preset emoji art (docs/EMOJI.md §8): copied to the server, never committed
 infra/emoji-presets/
 
+# Slack / Mattermost / Notion exports and emoji packs dropped at the root for an import: members' messages and
+# files, never committed (the repository is public)
+/*.zip
+
 # python
 __pycache__/
 *.pyc
