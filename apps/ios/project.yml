@@ -41,7 +41,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "107"
+        CFBundleVersion: "108"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
@@ -85,7 +85,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "107"
+        CFBundleVersion: "108"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
