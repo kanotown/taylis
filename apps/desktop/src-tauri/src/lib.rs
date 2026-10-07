@@ -6,11 +6,14 @@
 //! tauri-plugin-process (relaunch after installing); the page drives both (src/state/updates.ts).
 //! Notifications: tauri-plugin-notification, except in the macOS app bundle, where `native_notification_*` show them
 //! through UNUserNotificationCenter so that they appear while Taylis is frontmost too (mac_notify.rs).
+//! Closing the window keeps the app running (the Dock on macOS, the notification area on Windows) unless the reader
+//! turned that off; quitting is ⌘Q / the tray's 「終了」 (background.rs).
 
 use keyring::{Entry, Error as KeyringError};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 
+mod background;
 #[cfg(target_os = "macos")]
 mod mac_notify;
 
@@ -104,8 +107,14 @@ async fn computer_name() -> Option<String> {
     name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty())
 }
 
-/// The browser handed a link back (or the app was launched again): the main window comes to the front.
+/// The browser handed a link back, the app was launched again, the Dock icon / tray icon / a notification was clicked:
+/// the main window comes to the front (it may have been hidden by closing it, background.rs).
 pub(crate) fn show_main_window(app: &AppHandle) {
+    // A full-screen window's close hides the whole app (background.rs): unhide it first.
+    #[cfg(target_os = "macos")]
+    if let Err(err) = app.show() {
+        eprintln!("could not unhide the app: {err}");
+    }
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -132,7 +141,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .on_window_event(background::on_window_event)
         .setup(|app| {
+            background::setup(app)?;
             // Installers register the scheme (tauri.conf.json plugins.deep-link); a development build registers
             // itself so the link can be tried without installing (Windows / Linux; macOS needs the app bundle).
             #[cfg(all(debug_assertions, any(windows, target_os = "linux")))]
@@ -151,8 +162,19 @@ pub fn run() {
             native_notification_request,
             native_notification_send,
             native_notification_clear,
-            computer_name
+            computer_name,
+            background::background_get,
+            background::background_set,
+            background::shell_labels_set
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // Exit requests (⌘Q, the tray's 「終了」, the updater's restart) are left alone: only a window's close is held
+        // back (background.rs), so quitting always quits.
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                background::on_reopen(_app);
+            }
+        });
 }
