@@ -220,19 +220,7 @@ struct ChannelView: View {
     @ViewBuilder
     private func jumpButton(_ proxy: ScrollViewProxy) -> some View {
         if !atBottom && focus == nil && !veiled {
-            Button { withAnimation { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) } } label: {
-                if unseenBelow > 0 {
-                    Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
-                        .font(.footnote.bold())
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color.accentColor, in: Capsule())
-                        .foregroundStyle(.white)
-                } else {
-                    Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
-                }
-            }
-            .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
-            .padding(12)
+            JumpToNewestButton(unseen: unseenBelow, latestLabel: "最新のメッセージへ") { UpsideDown.jumpToNewest($keptRowId, proxy) }
         }
     }
 
@@ -255,22 +243,23 @@ struct ChannelView: View {
     /// What makes the placement look again: rows coming in, the window reaching the newest row.
     private var placementKey: String { "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)" }
 
-    /// A new newest row (mine sent from here, or anyone's arriving). At the newest row the list shows it by itself: the
-    /// flipped list keeps its origin, and the rows moving up for it are animated (UpsideDownList.swift). My own post from
-    /// further up brings the list down to it; someone else's leaves the reader where they are.
+    /// A new newest row (mine sent from here, or anyone's arriving). At the newest row the list shows it, the rows moving
+    /// up for it animated (UpsideDownList.swift); my own post from further up jumps to it; someone else's leaves the reader
+    /// where they are (UpsideDown.arrival).
     private func newestRowChanged(_ proxy: ScrollViewProxy) {
         guard positioned, focus == nil else { return }
         let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
-        if mine {
-            if anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
-            showNewest(proxy)
-        }
+        if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+        showNewest(UpsideDown.arrival(atNewest: atBottom, mine: mine), proxy)
         if atBottom || mine { markSeen() }
     }
 
-    private func showNewest(_ proxy: ScrollViewProxy) {
-        guard !atBottom else { return }
-        withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) }
+    private func showNewest(_ arrival: UpsideDown.Arrival, _ proxy: ScrollViewProxy) {
+        switch arrival {
+        case .follow: keptRowId = UpsideDown.newest
+        case .jump: UpsideDown.jumpToNewest($keptRowId, proxy)
+        case .stay: break
+        }
     }
 
     /// Lands on `landing` in a task of its own, replacing the one under way (a new landing, or the same one again after the
@@ -517,7 +506,7 @@ struct ChannelView: View {
                             // came first, its response or its event (§10.1 11.).
                             guard let id, positioned, focus == nil, messages.contains(where: { $0.id == id }) else { return }
                             if anchor.landing != nil { anchor.landed() }
-                            showNewest(proxy)
+                            showNewest(UpsideDown.arrival(atNewest: atBottom, mine: true), proxy)
                             markSeen()
                         }
                         .onChange(of: messages.last?.rowKey) { _, _ in newestRowChanged(proxy) }

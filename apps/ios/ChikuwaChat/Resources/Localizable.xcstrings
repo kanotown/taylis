@@ -22522,6 +22522,22 @@
         }
       }
     },
+    "最新の返信へ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to the latest reply"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往最新回复"
+          }
+        }
+      }
+    },
     "最新へ" : {
       "localizations" : {
         "en" : {
