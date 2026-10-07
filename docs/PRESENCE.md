@@ -30,14 +30,16 @@
   - **個人の状態**：許された人が自分用に足す（「会議」「出張」など）。本人のボタンにだけ出て、ボードではその人の行に出る。
 - **状態の分類 `kind`** は固定の 4 つ。グループ分けと「在室 n 人」の数に使う。名前・絵文字・色はワークスペースのデータ。
 
-  | kind | 意味 | 既定の状態（有効にした管理者の言語で作る） | 色 |
-  | --- | --- | --- | --- |
-  | `in_room` | その部屋にいる（数える対象） | 在室 / In the room / 在室 | green |
-  | `on_site` | 部屋にはいないが敷地内（学内・社内） | 学内 / On site / 校内 | blue |
-  | `off_site` | 外出・外で仕事中 | 学外 / Off site / 校外 | orange |
-  | `gone` | 今日は終わり・不在 | 帰宅 / Gone home / 已回家 | gray |
+  | kind | 意味 | 既定の状態（有効にした管理者の言語で作る） | アイコン | 絵文字 | 色 |
+  | --- | --- | --- | --- | --- | --- |
+  | `in_room` | その部屋にいる（数える対象） | 在室 / In the room / 在室 | `in_room` | 🟢 | green |
+  | `on_site` | 部屋にはいないが敷地内（学内・社内） | 学内 / On site / 校内 | `on_site` | 🏫 | blue |
+  | `off_site` | 外出・外で仕事中 | 学外 / Off site / 校外 | `off_site` | 🚶 | purple |
+  | `gone` | 今日は終わり・不在 | 帰宅 / Gone home / 已回家 | `gone` | 🏠 | red |
 
-  既定の 4 つは、最初に有効にしたとき状態が 1 つも無ければ作る。そのあとの名前は管理者が自由に変えられる（翻訳は既定の作成のときだけ）。
+  既定の 4 つは、最初に有効にしたとき状態が 1 つも無ければ作る。そのあとの名前・アイコン・色は管理者が自由に変えられる（翻訳は既定の
+  作成のときだけ）。色は 2026-10-07 に学外 orange → purple、帰宅 gray → red に変えた（4 つの色をはっきり分けるため）。**すでに有効に
+  したワークスペースの色は変えない**（管理の「在室状況」タブの色の見本で変えられる）。
 - **見られる人**：ゲストでない有効なアカウント（ボットを除く）。ゲスト（MEMBERSHIP.md）には見せない（ボードの API は `403 guest_restricted`、
   イベントも届かず、bootstrap は null）。ゲストは自分の在室状況も持たない。ボードに載るのもゲストでない有効な人だけ。
 - **変えられる人**：アプリからは本人だけ。管理者は他人のを変えられる（監査 `attendance.set_by_admin`）。外のシステムからは連携の
@@ -61,7 +63,8 @@ CREATE TABLE attendance_states (
   id          uuid PRIMARY KEY,
   owner_id    uuid REFERENCES users(id) ON DELETE CASCADE,  -- NULL = ワークスペースの状態
   label       varchar(40) NOT NULL,
-  emoji       varchar(32),          -- Unicode の絵文字か :custom: の名前。無くてもよい
+  icon        varchar(32),          -- §2.1 のアイコンの鍵（移行 0101）。無くてもよい
+  emoji       varchar(32),          -- Unicode の絵文字か :custom: の名前。無くてもよい（アイコンを出せない端末の代わり）
   color       text NOT NULL,        -- apps/shared/text-emoji.json の色の鍵（gray red orange yellow green blue purple pink）
   kind        text NOT NULL,        -- in_room | on_site | off_site | gone
   position    integer NOT NULL,     -- 並び（ワークスペース・人ごと）
@@ -108,6 +111,39 @@ CREATE TABLE attendance_deliveries (    -- 送信 Webhook の 1 回の配送（o
 
 人数は数十人なので、ボードは表を丸ごと読む（1 人 1 行）。
 
+### 2.1 アイコン（2026-10-07、移行 0101）
+
+絵文字は端末で見た目が違い、粗く見えるので、状態には **アイコン** を付ける。`icon` は意味の鍵で、各端末が自分の標準のアイコンで描く。
+一覧は **apps/shared/attendance-icons.json**（鍵の順 = 選ぶ画面の並び。サーバの `ICON_KEYS` と各端末の写しはテストで突き合わせる）：
+
+| 鍵 | 意味（ja） | Desktop / Web（lucide-react） | iOS（SF Symbols） | Android（`Icons.Outlined.*`） |
+| --- | --- | --- | --- | --- |
+| `in_room` | 在室 | DoorOpen | door.left.hand.open | MeetingRoom |
+| `on_site` | 建物内 | Building2 | building.2 | Business |
+| `off_site` | 外出 | MapPin | mappin.and.ellipse | Place |
+| `gone` | 帰宅 | House | house | Home |
+| `meeting` | 会議 | Users | person.2 | Groups |
+| `class` | 授業・発表 | Presentation | rectangle.inset.filled.and.person.filled | CoPresent |
+| `remote` | リモート | Laptop | laptopcomputer | Laptop |
+| `lunch` | 食事 | Utensils | fork.knife | Restaurant |
+| `trip` | 出張・移動 | Plane | airplane | Flight |
+| `away` | 少し離席 | Clock | clock | Schedule |
+| `busy` | 取り込み中 | CircleMinus | minus.circle | RemoveCircleOutline |
+| `sick` | 体調不良 | Thermometer | thermometer.medium | Thermostat |
+| `vacation` | 休暇 | TreePalm | beach.umbrella | BeachAccess |
+| `lab` | 実験 | FlaskConical | flask | Science |
+| `library` | 図書館 | Library | books.vertical | LocalLibrary |
+| `other` | その他 | Circle | circle | Circle |
+
+- API では enum ではなく文字列（後から鍵を足しても古い端末のデコードが壊れない）。サーバは一覧の鍵だけを受け付ける（ほかは 422）。
+- 端末は、知らない鍵・`icon` が null のときは絵文字を、それも無ければ名前だけを出す。テキストだけの場所（選択肢・記録の行）は、
+  アイコンを描ける状態なら名前だけ、描けなければ「絵文字 名前」。
+- 見た目は **色つきの角丸のバッジ**：背景は text-emoji の色の淡い色、アイコンと名前は同じ色の濃い色（ライト / ダーク）。
+- 新しく状態を作る画面では、アイコンは選ぶまで分類（kind）の既定のアイコンに従う。
+- **移行 0101 の補い**：ワークスペースの状態（`owner_id` NULL）で、まだ分類の既定の絵文字のまま（🟢 in_room・🏫 on_site・🚶 off_site・
+  🏠 gone）のものに既定のアイコンを付ける。名前ではなく分類と絵文字で見る（名前を変えた既定・ほかの言語で作った既定も見つかり、
+  管理者が絵文字を変えた・消した状態はそのまま）。個人の状態と色は変えない。
+
 ## 3. API（すべて `/api/v1`）
 
 ### 3.1 ボード（ゲストでない人）
@@ -117,7 +153,7 @@ CREATE TABLE attendance_deliveries (    -- 送信 Webhook の 1 回の配送（o
   ```json
   {
     "enabled": true,
-    "states": [ { "id", "owner_id": null, "label": "在室", "emoji": "🟢", "color": "green", "kind": "in_room", "position": 0, "archived": false } ],
+    "states": [ { "id", "owner_id": null, "label": "在室", "icon": "in_room", "emoji": "🟢", "color": "green", "kind": "in_room", "position": 0, "archived": false } ],
     "entries": [ { "user_id", "state_id", "since", "note", "source" } ],
     "can_personalize": true
   }
@@ -134,16 +170,16 @@ CREATE TABLE attendance_deliveries (    -- 送信 Webhook の 1 回の配送（o
 
 ### 3.2 個人の状態（`can_personalize` の人）
 
-- `POST /attendance/my-states {label, emoji?, color?, kind}` → `AttendanceStateOut`（201）。1 人 10 個まで（`409 attendance_state_limit`）。
+- `POST /attendance/my-states {label, icon?, emoji?, color?, kind}` → `AttendanceStateOut`（201）。1 人 10 個まで（`409 attendance_state_limit`）。
   許されていなければ `403 attendance_personal_not_allowed`。名前の重なりは `409 attendance_label_taken`。
-- `PATCH /attendance/my-states/{id}`、`DELETE /attendance/my-states/{id}`（消すと `archived`。今その状態の人（本人）はそのまま）。
+- `PATCH /attendance/my-states/{id}`（送った項目だけ変わる。`icon: null`・`emoji: null` で外す）、`DELETE /attendance/my-states/{id}`（消すと `archived`。今その状態の人（本人）はそのまま）。
 - 許されなくなった人の個人の状態は残る（表示は続く）が、新しく選べず、足せない。
 
 ### 3.3 管理（管理者）
 
 - `GET /admin/attendance/settings` / `PATCH {enabled?, personal_rule?, personal_group_ids?, log_retention_days?}` →
   `AttendanceAdminSettingsOut`（設定 + ワークスペースの状態）。初めて有効にしたとき状態が無ければ §1 の 4 つを作る。
-- `POST /admin/attendance/states`、`PATCH /admin/attendance/states/{id}`、`DELETE /admin/attendance/states/{id}`（archived）、
+- `POST /admin/attendance/states {label, icon?, emoji?, color?, kind}`、`PATCH /admin/attendance/states/{id}`（個人の状態と同じ）、`DELETE /admin/attendance/states/{id}`（archived）、
   `PUT /admin/attendance/states/order {ids}`。ワークスペースの状態は 20 個まで。最後の 1 つは消せない（`409 attendance_last_state`）。
 - `PUT /admin/attendance/users/{user_id} {state_id, note?}`：ほかの人の状態を変える（監査 `attendance.set_by_admin`、source `admin`）。
 - 連携：`GET /admin/attendance/integrations`、`POST`（作成。受信を使うなら `inbound: true` で作るとトークンを 1 回だけ返す）、
@@ -254,17 +290,35 @@ compose は `infra/secrets/attendance/` を読み取り専用でマウント）�
 ## 7. 画面（Desktop / Web）
 
 - **ナビの「在室状況」**（有効なときだけ）：
-  - 上に自分のボタン（ワークスペースの状態、続けて自分の個人の状態）。押すとすぐ変わる（今の状態は押された見た目）。
+  - 上に自分のボタン（ワークスペースの状態、続けて自分の個人の状態。アイコンと名前）。押すとすぐ変わる（今の状態は色つきで押された見た目）。
     メモの欄（Enter で保存）。
-  - ボード：kind の順（`in_room` → `on_site` → `off_site` → `gone` → 未設定）に状態ごとの見出し（絵文字・名前・人数）と、
+  - ボード：kind の順（`in_room` → `on_site` → `off_site` → `gone` → 未設定）に状態ごとの見出し（状態のバッジ・人数）と、
     アバター・名前・メモ・「9:15 から」。見出しの上に「在室 n 人」。
-  - 個人の状態の編集（`can_personalize` のとき）：名前・絵文字・色・分類、足す・直す・消す。
+  - 個人の状態の編集（`can_personalize` のとき）：名前・見た目のプレビュー・色（8 色の見本）・アイコン（§2.1 の 16 個と「なし」の
+    見本。名前はツールチップと読み上げ）・絵文字（代わり）・分類、足す・直す・消す。管理のタブも同じ画面。
   - キーボード：ボタンは Tab で選び Enter / Space。ボードの人は Enter でプロフィールカード。
-- **小さなチップ**：プロフィールカードとチャンネルのメンバー一覧の名前の横に、状態の絵文字と名前（色は控えめ）。オフなら出さない。
+- **小さなチップ**：プロフィールカードとチャンネルのメンバー一覧の名前の横に、状態の小さなバッジ（アイコンと名前）。オフなら出さない。
 - **管理 →「在室状況」タブ**：有効・無効、ワークスペースの状態（名前・絵文字・色・分類・並び・消す）、個人の状態の規則（誰も /
   全員 / 管理者 / グループ）、記録の保持日数、他人の状態を変える（ユーザーを選んで状態）、連携（作成・URL・鍵の名前・有効・トークンの
   作り直し・テスト送信・配送の記録）、最近の記録。
 - 文言は ja / en / zh-Hans。
+
+### 7.1 素早い切り替え（ピル、2026-10-07）
+
+- **置き場所**：広い画面では、サイドバーの上のワークスペース名の行の右端（その行は名前の右が空いていることが多い）。スマホ幅の Web では
+  ホームの見出しのワークスペース名のすぐ右と、「自分」タブの見出しの右。**有効でゲストでないときだけ**。
+- **見た目**：今の状態のバッジの形の丸いピル（アイコン・色・名前、名前は 8 文字ほどで切る）。状態が無いときは点線の丸と「在室状況」の
+  枠線だけのピル。
+- **狭いとき**：折り返さず、ワークスペース名を押し出さない。行の幅で決める（`pillMode`）：名前を全部出してピル全体が入れば全体、
+  入らなければアイコンだけ（ツールチップに「在室状況：学外」）。それでも入らなければ名前の後ろを削って（**最低 4 文字ぶん**は残す）
+  アイコンを出し、それも無理ならピルを隠す（サイドバーを最小の 200 px にしたときなど。ナビの「在室状況」と ⌘⇧Y は使える）。
+  4 文字にしたのは、研究室・会社の名前は頭の 4 文字で見分けられることが多く、最小幅でもアイコンが入るため。
+- **メニュー**：押すと小さなポップオーバー。「在室状況を変える」の見出し、自分の状態（ワークスペースの状態、続けて自分用）を
+  1 行ずつ（色つきの四角にアイコン、名前、自分用の印、今の状態にチェック）。押すとすぐ変わって閉じる（同じ状態ならメモは残し、別の
+  状態ならメモは空）。下にメモの欄（Enter か「保存」で保存して閉じる。状態があるときだけ）、区切り、「在室状況を開く」。
+- **キーボード**：Tab で選び Enter / Space（か ↓）で開く。開くと今の状態（無ければ先頭）にフォーカス。↑ / ↓ / Home / End で移り、
+  Enter で選ぶ、Tab でメモへ、Esc で閉じる。**⌘⇧Y / Ctrl+Shift+Y** でどこからでも開く（Slack の「ステータスを設定」と同じキー。
+  アプリ内のほかのショートカットと重ならない。ダイアログが開いている間は効かない）。ショートカット一覧（⌘/）にも載せる。
 
 ## 8. セキュリティのまとめ（SECURITY.md §16 にも）
 
@@ -310,6 +364,24 @@ compose は `infra/secrets/attendance/` を読み取り専用でマウント）�
   アバター・名前・メモ・「9:15 から」、押すとプロフィールカード）。タブレットなど広い画面では人を複数の列に並べる。
 - チップ：プロフィールカード（状態のチップ・メモ・時刻）と、チャンネルの詳細のメンバー一覧の名前の横。
 - 文言は ja / en / zh-Hans（`strings_attendance.xml`）。管理の画面は作らない。
+
+### 9.1 アイコン・新しい既定の色・素早い切り替え（2026-10-07、iOS / Android はこれから）
+
+Web（§2.1・§7.1）と同じ規則で作る：
+
+- **アイコン**：`AttendanceStateOut.icon`（文字列、null 可）を読む。apps/shared/attendance-icons.json の写しを持ち（iOS は `sf`、Android は
+  `material` を `Icons.Outlined.<name>` で。テストで JSON と突き合わせる）、知らない鍵・null は絵文字、それも無ければ名前だけ。
+  バッジ（淡い色の角丸に濃い色のアイコンと名前）をボタン・ボードの見出し・チップで使う。チップは小さなアイコンと名前。
+- **自分用の状態の編集**：アイコンの選択（16 個と「なし」の格子。各見本に意味の名前を VoiceOver / TalkBack で）と色の 8 色の見本を
+  足す。新しい状態のアイコンは選ぶまで分類の既定に従う。`icon` を作成・変更で送る（`null` で外す）。絵文字の欄は「代わり」として残す。
+- **ピル**：
+  - **ホーム**：見出しのワークスペース名のすぐ右に状態のチップ（アイコン・色・短い名前。無いときは枠線の「在室状況」）。名前が長く
+    幅が足りないときはアイコンだけにし、名前は最低 4 文字残す（Web と同じ）。
+  - **「自分」タブ**：一番上（見出しの右）に同じチップ。
+  - 押すと **ボトムシート**：状態のボタン（高さ 48 pt / dp 以上、今の状態に印、読み上げは「選択中」）、メモの欄（状態があるとき）、
+    「在室状況を開く」。状態を押すとすぐ変わってシートを閉じる（メモの規則は Web と同じ）。
+  - 有効でゲストでないときだけ。オフになったら消える。
+- 既定の色（学外 purple・帰宅 red）はサーバが作るので端末の変更は要らない。
 
 ## 10. やらないこと（今は）
 
