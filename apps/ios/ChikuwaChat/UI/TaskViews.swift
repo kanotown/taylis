@@ -134,7 +134,8 @@ private struct TightLabelStyle: LabelStyle {
     }
 }
 
-/// 「＋ 追加」: a title field; Return adds and keeps it open for the next one, an empty field closes it when left.
+/// 「＋ 追加」: a title field; Return adds and keeps it open, empty and focused for the next one (TASKS.md §6); an empty
+/// field closes it when left.
 struct TaskInlineAdd: View {
     var label = tr("追加")
     let onAdd: (String) async -> Bool
@@ -146,11 +147,17 @@ struct TaskInlineAdd: View {
     var body: some View {
         if open {
             HStack(spacing: 8) {
+                // Never disabled while an add is in flight: that dropped the focus (and the keyboard). Typing goes on;
+                // a second Return waits for the first add.
                 TextField("題名を入力して改行", text: $title)
                     .focused($focused)
-                    .submitLabel(.done)
-                    .disabled(busy)
-                    .onSubmit { Task { await submit() } }
+                    .submitLabel(.return)
+                    .onSubmit {
+                        // SwiftUI ends the editing on Return; keep the field and the keyboard for the next title. The
+                        // Return that confirms a Japanese conversion never gets here (the marked text takes it).
+                        focused = true
+                        Task { await submit() }
+                    }
                     .onChange(of: focused) { _, now in if !now && TaskRules.cleanTitle(title).isEmpty && !busy { close() } }
                     .accessibilityLabel("新しいタスクの題名")
                 Button("閉じる") { close() }.font(.subheadline)
@@ -176,14 +183,16 @@ struct TaskInlineAdd: View {
         focused = false
     }
 
+    /// The focus is left as it is after the add: kept by Return, or moved by the user meanwhile (not taken back).
+    /// A failed add keeps the text.
     private func submit() async {
-        let text = TaskRules.cleanTitle(title)
+        let sent = title
+        let text = TaskRules.cleanTitle(sent)
         guard !text.isEmpty, !busy else { return }
         busy = true
         let ok = await onAdd(String(text.prefix(TaskRules.maxTitle)))
         busy = false
-        if ok { title = "" }
-        focused = true // the next one
+        if ok { title = TaskRules.quickAddRest(title, sent: sent) }
     }
 }
 

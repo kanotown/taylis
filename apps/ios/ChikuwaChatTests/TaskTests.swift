@@ -212,6 +212,15 @@ final class TaskRulesTests: XCTestCase {
         XCTAssertEqual(ids(TaskRules.column([a, b, c, d], .done)), [d.id])
     }
 
+    /// 「＋ 追加」 after an add (TASKS.md §6): the field empties, keeps what was typed on during the add, and leaves a text
+    /// changed meanwhile alone.
+    func testQuickAddEmptiesTheFieldAndKeepsWhatWasTypedOn() {
+        XCTAssertEqual(TaskRules.quickAddRest("買い物", sent: "買い物"), "")
+        XCTAssertEqual(TaskRules.quickAddRest("買い物次の", sent: "買い物"), "次の")
+        XCTAssertEqual(TaskRules.quickAddRest("別の題名", sent: "買い物"), "別の題名")
+        XCTAssertEqual(TaskRules.quickAddRest("", sent: "買い物"), "")
+    }
+
     func testWhereAMovedCardLands() {
         let column = [F.task("1"), F.task("2"), F.task("3")]
         let (one, two, three) = (column[0], column[1], column[2])

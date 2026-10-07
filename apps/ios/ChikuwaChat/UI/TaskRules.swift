@@ -402,6 +402,12 @@ enum TaskRules {
         title.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
     }
 
+    /// 「＋ 追加」 after an add went through: what the field keeps of `current` once `sent` (the text Return added) is
+    /// taken away. Typed on while the add was in flight: what follows it stays; changed meanwhile: left as it is.
+    static func quickAddRest(_ current: String, sent: String) -> String {
+        current.hasPrefix(sent) ? String(current.dropFirst(sent.count)) : current
+    }
+
     /// What the source says of the message a task came from (§8 1.).
     enum SourceState: Equatable {
         case none, deleted
