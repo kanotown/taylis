@@ -19,6 +19,8 @@ import { ChannelDetails } from "./ChannelDetails";
 import { FeedsDialog } from "./ChannelFeeds";
 import { ReservationsView } from "./Reservations";
 import { AttendanceView } from "./AttendanceView";
+import { pressable } from "./actions";
+import { ActionsView } from "./ActionsView";
 import { inRoomCount } from "./attendance";
 import { DocsView } from "./DocsView";
 import { reservationTodoCount } from "./reservationPools";
@@ -90,7 +92,7 @@ import { canManageChannelByRight } from "./roles";
 // "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
 // "docs" (M121): 「ドキュメント」, the Docs tree and a page (WIKI.md §9.1).
 // "attendance" (M140): 「在室状況」, the workspace's board (docs/PRESENCE.md §7).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance";
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions";
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -730,7 +732,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -1146,6 +1148,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onAttendance={store.attendance ? () => openView("attendance") : undefined}
       attendanceActive={view === "attendance"}
       attendanceCount={store.attendance ? inRoomCount(store.attendance, store.users.values()) : 0}
+      onActions={pressable(store.actions).length ? () => openView("actions") : undefined}
+      actionsActive={view === "actions"}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -1281,6 +1285,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <ReservationsView controller={controller} />
       ) : view === "attendance" ? (
         <AttendanceView controller={controller} />
+      ) : view === "actions" ? (
+        <ActionsView controller={controller} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -1691,6 +1697,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onDeadlines={() => openView("deadlines")}
           onReservations={store.reservationPools ? () => openView("reservations") : undefined}
           onAttendance={store.attendance ? () => openView("attendance") : undefined}
+          onActions={pressable(store.actions).length ? () => openView("actions") : undefined}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}

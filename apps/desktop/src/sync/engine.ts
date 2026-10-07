@@ -15,7 +15,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
-import type { AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
+import type { ActionListOut, AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
@@ -74,6 +74,8 @@ export interface SyncApi {
   reservationPools?(): Promise<PoolOut[]>;
   /** M140: the 在室状況 board (docs/PRESENCE.md §3.1). Optional (older fakes). */
   attendance?(): Promise<AttendanceBoardOut>;
+  /** M143: the 操作ボタン I may press (docs/ACTIONS.md §7.1). Optional (older fakes). */
+  actions?(): Promise<ActionListOut>;
   /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
   listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
   getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
@@ -269,6 +271,8 @@ export class SyncEngine {
   private reservationReload: ReturnType<typeof setTimeout> | null = null;
   /** M140: attendance.config_updated comes in bursts (a reorder, several edits): one read for them. */
   private attendanceReload: ReturnType<typeof setTimeout> | null = null;
+  /** M143: actions.updated comes in bursts too (a reorder, several edits): one read for them. */
+  private actionsReload: ReturnType<typeof setTimeout> | null = null;
   /** Review v0.1.37 #6: the newest reservation read started, and the one whose answer is shown. */
   private reservationReadSeq = 0;
   private reservationShownSeq = 0;
@@ -793,6 +797,7 @@ export class SyncEngine {
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
     store.setAttendance(bootstrap.attendance ?? null); // M140: null for guests, while off, before M140
+    store.setActions(bootstrap.actions ?? null); // M143: null for guests, while off, before M143
     this.wiki.applyBootstrap(bootstrap.wiki); // M121: the Docs tree (read, or caught up from its feed)
     void this.loadScheduled();
     void this.loadReminders();
@@ -995,6 +1000,10 @@ export class SyncEngine {
         if (!store.applyAttendanceEntry(data)) this.scheduleAttendanceReload();
         return;
       }
+      case "actions.updated":
+        // M143: the switch or a button changed; what I may press differs per person, so the event is empty.
+        this.scheduleActionsReload();
+        return;
       case "attendance.config_updated":
         // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
         this.scheduleAttendanceReload();
@@ -1382,6 +1391,24 @@ export class SyncEngine {
     } catch (err) {
       console.warn("could not load the attendance board", err);
     }
+  }
+
+  /** M143 (docs/ACTIONS.md §8): GET /actions; `enabled: false` (turned off) clears the buttons. */
+  async loadActions(): Promise<void> {
+    if (!this.deps.api.actions) return;
+    try {
+      this.deps.store.setActions(await this.deps.api.actions());
+    } catch (err) {
+      console.warn("could not load the action buttons", err);
+    }
+  }
+
+  private scheduleActionsReload(): void {
+    if (this.actionsReload !== null) return;
+    this.actionsReload = setTimeout(() => {
+      this.actionsReload = null;
+      if (this.status === "online") void this.loadActions();
+    }, 300);
   }
 
   private scheduleAttendanceReload(): void {

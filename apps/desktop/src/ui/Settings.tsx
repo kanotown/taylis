@@ -16,6 +16,7 @@ import { OVERALL_LEVEL_LABELS, overallLevel, overallLevelNote } from "./channels
 import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18n";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
+import { pressable } from "./actions";
 import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
@@ -760,8 +761,8 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
   const [dragging, setDragging] = useState<string | null>(null);
   if (!me || me.nav_items === undefined) return null;
   const full = fullNavItems(me.nav_items);
-  // M140: 「在室状況」 only while the workspace has the board on.
-  const implemented = desktopNavKeys(!!controller.store.attendance);
+  // M140: 「在室状況」 only while the workspace has the board on; M143: 「操作」 only while I may press a button.
+  const implemented = desktopNavKeys(!!controller.store.attendance, pressable(controller.store.actions).length > 0);
   const shown = shownNavItems(full, "desktop", implemented);
   const save = (list: typeof full | null) => void controller.setNavItems(list);
   const drop = (target: string) => {

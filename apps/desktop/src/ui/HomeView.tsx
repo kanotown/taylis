@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, BookOpen, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, DoorOpen, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Ticket, Timer } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, BookOpen, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, DoorOpen, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Ticket, Timer, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -51,6 +51,8 @@ export interface HomeViewProps {
   onReservations?: () => void;
   /** M140: 「在室状況」, while the workspace has the board on. */
   onAttendance?: () => void;
+  /** M143: 「操作」 (only while the buttons are on and I may press one). */
+  onActions?: () => void;
   onBrowse: () => void;
   onNewChannel: () => void;
   onDirectory: () => void;
@@ -272,7 +274,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onAttendance, on
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onDocs, onCalendar, onTasks, onDeadlines, onReservations, onAttendance }: HomeViewProps) {
+function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onDocs, onCalendar, onTasks, onDeadlines, onReservations, onAttendance, onActions }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -289,6 +291,8 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
     // M112: 「予約」 — the count is the to-dos due in the pools I operate (apps/shared/nav-items.json key "reservations").
     // M140: 「在室状況」 — the count is who is in the room (not an alert).
     ...(onAttendance && store.attendance ? [{ key: "attendance", label: t("nav.attendance"), icon: <DoorOpen size={20} />, count: inRoomCount(store.attendance, store.users.values()) || null, danger: false, onClick: onAttendance }] : []),
+    // M143: 「操作」 — the 操作ボタン I may press (no count).
+    ...(onActions ? [{ key: "actions", label: t("nav.actions"), icon: <Zap size={20} />, count: null, danger: false, onClick: onActions }] : []),
     ...(onReservations ? [{ key: "reservations", label: t("nav.reservations"), icon: <Ticket size={20} />, count: store.reservationPools?.some((p) => p.can_operate) ? reservationTodoCount(store.reservationPools) : null, danger: true, onClick: onReservations }] : []),
     { key: "files", label: t("nav.files"), icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
     ...(onCanvases ? [{ key: "canvases", label: t("nav.canvases"), icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),

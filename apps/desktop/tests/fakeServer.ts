@@ -5,7 +5,7 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
-import type { AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
+import type { ActionListOut, AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
@@ -988,6 +988,14 @@ export class FakeServer {
     this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event, ts: now(), channel_id: null, seq: null, data });
   }
 
+  /** M143: the 操作ボタン (bootstrap `actions`, GET /actions); null = off. */
+  actions: ActionListOut | null = null;
+
+  /** M143: actions.updated to everyone. */
+  emitActionsUpdated(): void {
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "actions.updated", ts: now(), channel_id: null, seq: null, data: {} });
+  }
+
   /** M23: the lab roster by user id (bootstrap `roster`, roster.updated). */
   readonly roster = new Map<string, LabProfileOut>();
 
@@ -1650,6 +1658,7 @@ export class FakeServer {
           workspace_settings: this.workspaceSettings,
           ...(this.activityEnabled ? { activity: this.activitySummary(userId) } : {}),
           ...(this.attendance ? { attendance: this.attendance } : {}),
+          ...(this.actions ? { actions: this.actions } : {}),
         };
       },
       ...(this.activityEnabled
@@ -1802,6 +1811,7 @@ export class FakeServer {
         this.canvasTemplates.splice(index, 1);
       },
       attendance: async () => this.attendance ?? { enabled: false, states: [], entries: [], can_personalize: false },
+      actions: async () => this.actions ?? { enabled: false, show_on_attendance: false, actions: [] },
       reservationPools: async () => {
         maybeFail();
         this.poolReads += 1;

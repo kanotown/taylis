@@ -1,6 +1,6 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
+import type { ActionListOut, ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
@@ -175,6 +175,15 @@ export class Store {
   attendance: AttendanceBoardOut | null = null;
   setAttendance(board: AttendanceBoardOut | null): void {
     this.attendance = board && board.enabled ? board : null;
+    this.emit();
+  }
+  /**
+   * M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press (not persisted); null for guests, while the feature is off, and
+   * on a server before M143. From the bootstrap and GET /actions (actions.updated).
+   */
+  actions: ActionListOut | null = null;
+  setActions(list: ActionListOut | null): void {
+    this.actions = list && list.enabled ? list : null;
     this.emit();
   }
   /** One person's row (attendance.updated, or my own change). False when the state is not known here (read again). */

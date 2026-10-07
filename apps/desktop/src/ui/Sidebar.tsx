@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
@@ -9,6 +9,7 @@ import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuie
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
+import { pressable } from "./actions";
 import { desktopNavKeys, sidebarNavKeys } from "./navItems";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
@@ -77,6 +78,9 @@ interface Props {
   onAttendance?: () => void;
   attendanceActive?: boolean;
   attendanceCount?: number;
+  /** M143: 「操作」 (only while the buttons are on and I may press one). */
+  onActions?: () => void;
+  actionsActive?: boolean;
   /** M12a: every channel read to its end. */
   onReadAll?: () => void;
   /** M12e: reminders; listed while any is open. */
@@ -85,7 +89,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -144,7 +148,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   };
   // M111: the menu items I chose to show, in my order (UserMe.nav_items; null = all, the default order).
   // M140: 「在室状況」 while the workspace has the board on.
-  const navKeys = sidebarNavKeys(me?.nav_items, desktopNavKeys(!!store.attendance));
+  const navKeys = sidebarNavKeys(me?.nav_items, desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0));
 
   const item = (channel: ChannelState, folded = false, order?: Reorder) => {
     const muted = isMutedChannel(channel);
@@ -495,6 +499,26 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     <DoorOpen size={15} className="shrink-0 opacity-70" />
                     <span className="flex-1 truncate">{t("nav.attendance")}</span>
                     {attendanceCount > 0 && <span className="text-xs opacity-70">{attendanceCount}</span>}
+                  </button>
+                </li>
+                ) : null;
+              case "actions":
+                // M143 (docs/ACTIONS.md §9.1): 「操作」, while the buttons are on and I may press at least one.
+                return onActions ? (
+                <li key="actions">
+                  <button
+                    type="button"
+                    onClick={onActions}
+                    data-nav-item="actions"
+                    aria-current={actionsActive ? "page" : undefined}
+                    title={t("sidebar.actionsTitle")}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      actionsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <Zap size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">{t("nav.actions")}</span>
                   </button>
                 </li>
                 ) : null;
