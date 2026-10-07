@@ -81,6 +81,7 @@ import { SettingsDialog, type SettingsSection } from "./Settings";
 import { TimesFeedView } from "./TimesFeedView";
 import { YouView } from "./YouView";
 import { t } from "../i18n";
+import { canManageChannelByRight } from "./roles";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
@@ -1084,7 +1085,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (calendar && upcomingChannelId && engine?.status === "online") void calendar.loadUpcoming(upcomingChannelId);
   }, [calendar, upcomingChannelId, engine?.status]);
   const upcomingCount = upcomingChannelId ? (calendar?.upcomingOf(upcomingChannelId)?.length ?? 0) : 0;
-  const canManage = !!current && (controller.isAdmin || current.membership?.role === "owner");
+  // M142: owners, and channels.manage (administrators and managers; docs/ROLES.md §2).
+  const canManage = !!current && (current.membership?.role === "owner" || canManageChannelByRight(current, (capability) => controller.can(capability)));
   const [busyAction, setBusyAction] = useState(false);
 
   const dmOther = current && isDmChannel(current) ? (current.dm_user_ids ?? []).filter((id) => id !== store.me?.id) : [];

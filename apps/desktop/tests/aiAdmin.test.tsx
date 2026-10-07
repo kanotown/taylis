@@ -34,7 +34,7 @@ async function setup(options: { aiMissing?: boolean } = {}) {
   const api = new Proxy(inner, { get: (t, key: string) => t[key] ?? (async () => []) });
   const loadStatus = vi.fn(async () => {});
   const setError = vi.fn();
-  const controller = { store, api, engine: { ai: { loadStatus } }, isAdmin: true, version: 0, subscribe: () => () => {}, setError, setNotice: vi.fn() } as unknown as AppController;
+  const controller = { store, api, engine: { ai: { loadStatus } }, isAdmin: true, can: () => true, version: 0, subscribe: () => () => {}, setError, setNotice: vi.fn() } as unknown as AppController;
   render(<AdminBody controller={controller} />);
   await settle();
   return { server, agent, bob, store, loadStatus, setError };

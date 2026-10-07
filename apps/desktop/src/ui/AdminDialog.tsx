@@ -18,9 +18,10 @@ import { WebhooksTab } from "./WebhooksTab";
 import { WorkflowManager } from "./WorkflowViews";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
 import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
+import { type AdminTab, adminTabAllowed, canManageChannelByRight } from "./roles";
 import { t } from "../i18n";
 
-type Tab = "users" | "analytics" |"reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates" | "docs" | "attendance";
+type Tab = AdminTab;
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -37,34 +38,38 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
  * wide settings dialog's section), every item as it was.
  */
 export function AdminBody({ controller, className }: { controller: AppController; className?: string }) {
-  const [tab, setTab] = useState<Tab>("users");
+  const can = (capability: Parameters<AppController["can"]>[0]) => controller.can(capability);
+  // M142 (docs/ROLES.md §7): only the tabs my capabilities open (a manager sees the day-to-day ones).
+  const allowed = (value: Tab) => adminTabAllowed(value, can);
   // M65: 「AI」 only on a server that has the AI routes (GET /ai/status answered; docs/AI.md §5).
-  const ai = controller.store.aiStatus !== null;
+  const ai = controller.store.aiStatus !== null && allowed("ai");
   // M121: 「ドキュメント」 only on a server with Docs (bootstrap's `wiki`).
-  const docs = !!controller.engine?.wiki?.available;
-  const shown: Tab = (tab === "ai" && !ai) || (tab === "docs" && !docs) ? "users" : tab;
+  const docs = !!controller.engine?.wiki?.available && allowed("docs");
+  const tabs = (
+    [
+      ["users", t("admin.tab.users")],
+      ["analytics", t("admin.tab.analytics")],
+      ["reports", t("admin.tab.reports")],
+      ["roster", t("admin.tab.roster")],
+      ["groups", t("admin.tab.groups")],
+      ["invites", t("admin.tab.invites")],
+      ["webhooks", "Webhook"],
+      ["attendance", t("nav.attendance")],
+      ["workflows", t("admin.tab.workflows")],
+      ...(ai ? [["ai", "AI"]] : []),
+      ["workspace", t("admin.tab.workspace")],
+      ["channels", t("admin.tab.channels")],
+      ["emoji", t("admin.tab.emoji")],
+      ["canvas-templates", t("admin.tab.canvasTemplates")],
+      ...(docs ? [["docs", t("nav.docs")]] : []),
+    ] as Array<[Tab, string]>
+  ).filter(([value]) => allowed(value));
+  const [tab, setTab] = useState<Tab>(tabs[0]?.[0] ?? "users");
+  const shown: Tab = tabs.some(([value]) => value === tab) ? tab : (tabs[0]?.[0] ?? "users");
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       <UnderlineTabRow role="tablist" aria-label={t("settings.section.admin")} className="gap-1">
-        {(
-          [
-            ["users", t("admin.tab.users")],
-            ["analytics", t("admin.tab.analytics")],
-            ["reports", t("admin.tab.reports")],
-            ["roster", t("admin.tab.roster")],
-            ["groups", t("admin.tab.groups")],
-            ["invites", t("admin.tab.invites")],
-            ["webhooks", "Webhook"],
-            ["attendance", t("nav.attendance")],
-            ["workflows", t("admin.tab.workflows")],
-            ...(ai ? [["ai", "AI"]] : []),
-            ["workspace", t("admin.tab.workspace")],
-            ["channels", t("admin.tab.channels")],
-            ["emoji", t("admin.tab.emoji")],
-            ["canvas-templates", t("admin.tab.canvasTemplates")],
-            ...(docs ? [["docs", t("nav.docs")]] : []),
-          ] as Array<[Tab, string]>
-        ).map(([value, label]) => (
+        {tabs.map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -78,7 +83,7 @@ export function AdminBody({ controller, className }: { controller: AppController
         ))}
       </UnderlineTabRow>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {shown === "attendance" ? <AttendanceAdminTab controller={controller} /> : shown === "ai" ? <AiTab controller={controller} /> : shown === "analytics" ? <AnalyticsTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : shown === "docs" ? <AdminDocsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+        {tabs.length === 0 ? null : shown === "attendance" ? <AttendanceAdminTab controller={controller} /> : shown === "ai" ? <AiTab controller={controller} /> : shown === "analytics" ? <AnalyticsTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : shown === "docs" ? <AdminDocsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
     </div>
   );
@@ -86,7 +91,8 @@ export function AdminBody({ controller, className }: { controller: AppController
 
 function ChannelsTab({ controller }: { controller: AppController }) {
   const store = controller.store;
-  const channels = [...store.channels.values()].filter((c) => c.type === "public" || c.type === "private").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ja"));
+  // M142: the channels my capabilities reach (a manager: public ones and private ones they are in).
+  const channels = [...store.channels.values()].filter((c) => canManageChannelByRight(c, (capability) => controller.can(capability))).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ja"));
   const [renaming, setRenaming] = useState<ChannelState | null>(null);
   const [name, setName] = useState("");
   const [archiving, setArchiving] = useState<ChannelState | null>(null);

@@ -30,6 +30,7 @@ function world(isAdmin: boolean) {
   const controller = {
     store,
     isAdmin,
+    can: () => isAdmin,
     setError: vi.fn(),
     createTemplate: vi.fn(async () => template({ id: "new", name: "x" })),
     updateTemplate: vi.fn(async () => template({ id: "u1", name: "x" })),

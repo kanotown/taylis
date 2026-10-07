@@ -26,7 +26,7 @@ export function kindLabel(kind: AttendanceKind): string {
 
 /** Who can be on the board: active people, not guests, not bots (the server's rule). */
 export function onBoard(user: UserPublic): boolean {
-  return !user.deactivated_at && (user.role === "admin" || user.role === "member");
+  return !user.deactivated_at && (user.role === "admin" || user.role === "manager" || user.role === "member");
 }
 
 /** The buttons for me: the workspace's states, then mine (archived ones are not offered). */

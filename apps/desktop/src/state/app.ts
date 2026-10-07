@@ -43,6 +43,7 @@ import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { type ComposerMode, composerModeOf, readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
 import type { NavItem } from "../ui/navItems";
+import { type Capability, canAdminister as canAdministerWith, hasCapability } from "../ui/roles";
 import { setLocalePreference, type UiLocale, t } from "../i18n";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
@@ -590,6 +591,19 @@ export class AppController {
   /** The role as of the last bootstrap (store.me), which also follows changes made while signed in. */
   get isAdmin(): boolean {
     return (this.store.me ?? this.me)?.role === "admin";
+  }
+
+  /**
+   * M142 (docs/ROLES.md §2.1): whether my role lets me do this, from `me.capabilities` (bootstrap, and /users/me again
+   * when user.updated says my account changed). Administration screens use this, not the role name.
+   */
+  can(capability: Capability): boolean {
+    return hasCapability(this.store.me ?? this.me, capability);
+  }
+
+  /** Whether 「管理」 shows at all (any of its tabs is mine): administrators and managers. */
+  get canAdminister(): boolean {
+    return canAdministerWith((capability) => this.can(capability));
   }
 
   /** M13e: confined to the channels they were added to; the sidebar hides browsing and creation. */

@@ -275,7 +275,7 @@ export function EditEmojiDialog({ controller, emoji, onClose }: { controller: Ap
   const [keywords, setKeywords] = useState((emoji.keywords ?? []).join(" "));
   const [packId, setPackId] = useState(emoji.pack_id ?? "");
   const [busy, setBusy] = useState(false);
-  const admin = controller.store.me?.role === "admin";
+  const admin = controller.can("emoji.manage"); // M142: administrators and managers
   const packs = controller.store.sortedEmojiPacks();
   const text = emoji.kind === "text";
   const labelLength = [...label.trim()].length;

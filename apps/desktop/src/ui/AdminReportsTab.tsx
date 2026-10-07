@@ -71,7 +71,7 @@ export function ReportsTab({ controller }: { controller: AppController }) {
     }
   };
   const name = (id: string | null) => (id ? store.users.get(id)?.display_name : undefined) ?? t("common.unknownUser");
-  const where = (report: AdminReportOut) => (report.channel_name ? `#${report.channel_name}` : report.channel_type === "group_dm" ? t("common.groupDm") : "DM");
+  const where = (report: AdminReportOut) => (report.channel_name ? `#${report.channel_name}` : report.channel_type === "group_dm" ? t("common.groupDm") : report.channel_type === "private" ? "🔒" : "DM"); // 🔒: a private channel whose name is withheld (M142)
   const shown = reports?.filter((report) => kindFilter === "all" || kindOf(report) === kindFilter) ?? null;
   const chips = <T extends string>(items: ReadonlyArray<[T, string]>, value: T, onChange: (next: T) => void, label: string, className?: string) => (
     <div className={cn("flex flex-wrap gap-1", className)} role="radiogroup" aria-label={label}>
@@ -120,7 +120,8 @@ export function ReportsTab({ controller }: { controller: AppController }) {
                 {kind === "message" ? (
                   <>
                     <blockquote className="whitespace-pre-wrap break-words rounded-lg bg-panel px-3 py-2 text-[13px]">
-                      {report.body_snapshot || t("drafts.noText")}
+                      {/* M142 (docs/ROLES.md §4.3): withheld from a manager who cannot read that conversation. */}
+                      {report.snapshot_hidden ? <span className="text-muted" data-testid="snapshot-hidden">{t("admin.reports.snapshotHidden")}</span> : report.body_snapshot || t("drafts.noText")}
                       {report.message_deleted && <span className="mt-1 block text-xs text-muted">{t("reports.deletedSince")}</span>}
                     </blockquote>
                     {report.note && <p className="text-xs text-muted">{t("reports.note", { note: report.note })}</p>}

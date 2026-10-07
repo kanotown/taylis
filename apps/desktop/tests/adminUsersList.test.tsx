@@ -55,7 +55,7 @@ describe("the list's rules", () => {
   it("counts every chip; 仮パスワード is only for active people", () => {
     const list = people();
     list.push(user("u-off", "off", "Off", { deactivated_at: "2026-09-02T00:00:00Z", must_change_password: true }));
-    expect(userFilterCounts(list)).toEqual({ all: 8, active: 6, deactivated: 2, admin: 1, member: 5, guest: 1, bot: 1, temporary: 1 });
+    expect(userFilterCounts(list)).toEqual({ all: 8, active: 6, deactivated: 2, admin: 1, manager: 0, member: 5, guest: 1, bot: 1, temporary: 1 });
   });
 
   it("sorts by name, username, created date both ways and role", () => {
@@ -102,7 +102,7 @@ async function setup() {
   store.users.set("u-bob", { ...list[1], title: "研究室長" } as unknown as UserPublic);
   store.roster.set("u-bob", { user_id: "u-bob", affiliation: "student", grade: "M2" } as LabProfileOut);
   const proxy = new Proxy(api as Record<string, unknown>, { get: (t, key: string) => t[key] ?? (async () => []) });
-  const controller = { store, api: proxy, engine: { ai: { loadStatus: async () => {} } }, isAdmin: true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
+  const controller = { store, api: proxy, engine: { ai: { loadStatus: async () => {} } }, isAdmin: true, can: () => true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
   const view = render(<AdminBody controller={controller} />);
   await settle();
   return { calls, controller, view };
@@ -171,7 +171,7 @@ describe("管理 →「ユーザー」", () => {
   it("the ⋯ menu of an active person: role, rename, password, sessions, 2FA, deactivate — the same API as before", async () => {
     const { calls } = await setup();
     const labels = itemLabels(openMenu("bob"));
-    expect(labels).toEqual(["メンバー", "管理者", "ゲスト", "ユーザー名を変更", "パスワード再設定（仮パスワードを発行）", "セッション失効（全端末からログアウト）", "2FA を解除", "無効化（ログイン不可、表示は残る）", "削除（匿名化）…"]);
+    expect(labels).toEqual(["メンバー", "運営", "管理者", "ゲスト", "表示名・肩書きを変更…", "ユーザー名を変更", "パスワード再設定（仮パスワードを発行）", "セッション失効（全端末からログアウト）", "2FA を解除", "無効化（ログイン不可、表示は残る）", "削除（匿名化）…"]);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await settle();
     await choose("bob", "管理者", "menuitemradio");
@@ -192,7 +192,7 @@ describe("管理 →「ユーザー」", () => {
 
   it("a deactivated person: 再有効化, rename, 匿名化 after its confirmation; bots have no role; me only a rename", async () => {
     const { calls } = await setup();
-    expect(within(openMenu("eve")).getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(["再有効化", "ユーザー名を変更", "削除（匿名化）…"]);
+    expect(within(openMenu("eve")).getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(["再有効化", "表示名・肩書きを変更…", "ユーザー名を変更", "削除（匿名化）…"]);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await settle();
     await choose("eve", "再有効化");

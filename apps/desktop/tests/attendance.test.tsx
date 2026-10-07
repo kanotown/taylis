@@ -113,6 +113,7 @@ function controllerFor(store: Store, api: Record<string, unknown>, admin = false
     store,
     api,
     isAdmin: admin,
+    can: () => admin,
     isGuest: false,
     error: null,
     version: 0,

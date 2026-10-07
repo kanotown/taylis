@@ -36,7 +36,8 @@ export function RosterTab({ controller }: { controller: AppController }) {
     }
   };
 
-  const switcher = (
+  // M142: the yearly rollover changes roles: administrators only (lab.rollover); a manager sees the roster alone.
+  const switcher = !controller.can("lab.rollover") ? null : (
     <div className="flex gap-1" role="group" aria-label={t("roster.view")}>
       {([["roster", t("admin.tab.roster")], ["rollover", t("roster.rollover")]] as const).map(([value, label]) => (
         <Button key={value} size="sm" variant={view === value ? "primary" : "secondary"} aria-pressed={view === value} onClick={() => setView(value)}>

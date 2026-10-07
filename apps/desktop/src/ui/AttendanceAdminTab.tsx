@@ -65,6 +65,10 @@ export function AttendanceAdminTab({ controller }: { controller: AppController }
     void run(() => api.adminReorderAttendanceStates(ids));
   };
   const groups = [...controller.store.groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  // M142 (docs/ROLES.md §2): managers edit the states and set someone's state; the switch, the rules, the retention and
+  // everyone's log are attendance.configure, the integrations integrations.manage (administrators).
+  const configure = controller.can("attendance.configure");
+  const integrations = controller.can("integrations.manage");
 
   return (
     <div className="mt-4 space-y-6" data-attendance-admin>
@@ -75,7 +79,7 @@ export function AttendanceAdminTab({ controller }: { controller: AppController }
             role="switch"
             className="h-4 w-4 accent-[var(--accent)]"
             checked={settings.enabled}
-            disabled={busy}
+            disabled={busy || !configure}
             onChange={(e) => void run(() => api.adminUpdateAttendanceSettings({ enabled: e.target.checked }))}
           />
           {t("attendanceAdmin.enabled")}
@@ -114,6 +118,7 @@ export function AttendanceAdminTab({ controller }: { controller: AppController }
             </ul>
           </section>
 
+          {configure && (
           <section className="space-y-2" aria-label={t("attendanceAdmin.personal")}>
             <h3 className="text-sm font-semibold">{t("attendanceAdmin.personal")}</h3>
             <select
@@ -146,14 +151,15 @@ export function AttendanceAdminTab({ controller }: { controller: AppController }
               </div>
             )}
           </section>
+          )}
 
-          <RetentionField key={settings.log_retention_days} days={settings.log_retention_days} busy={busy} onSave={(days) => void run(() => api.adminUpdateAttendanceSettings({ log_retention_days: days }))} />
+          {configure && <RetentionField key={settings.log_retention_days} days={settings.log_retention_days} busy={busy} onSave={(days) => void run(() => api.adminUpdateAttendanceSettings({ log_retention_days: days }))} />}
 
           <SetForSomeone controller={controller} />
 
-          <Integrations controller={controller} />
+          {integrations && <Integrations controller={controller} />}
 
-          <RecentLog controller={controller} />
+          {configure && <RecentLog controller={controller} />}
         </>
       )}
 

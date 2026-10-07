@@ -5,7 +5,7 @@
 import type { AdminUserOut } from "../api/types";
 import { labelled } from "../i18n";
 
-export type UserFilter = "all" | "active" | "deactivated" | "admin" | "member" | "guest" | "bot" | "temporary";
+export type UserFilter = "all" | "active" | "deactivated" | "admin" | "manager" | "member" | "guest" | "bot" | "temporary";
 export type UserSort = "name" | "username" | "newest" | "oldest" | "role";
 
 export const USER_FILTERS: ReadonlyArray<[UserFilter, string]> = [
@@ -13,6 +13,7 @@ export const USER_FILTERS: ReadonlyArray<[UserFilter, string]> = [
   labelled("active", "admin.users.filter.active"),
   labelled("deactivated", "admin.users.filter.deactivated"),
   labelled("admin", "admin.users.role.admin"),
+  labelled("manager", "admin.users.role.manager"),
   labelled("member", "admin.users.role.member"),
   labelled("guest", "dialogs.guest"),
   labelled("bot", "admin.users.filter.bot"),
@@ -27,7 +28,7 @@ export const USER_SORTS: ReadonlyArray<[UserSort, string]> = [
   labelled("role", "admin.users.sort.role"),
 ];
 
-const ROLE_ORDER = ["admin", "member", "guest", "bot"];
+const ROLE_ORDER = ["admin", "manager", "member", "guest", "bot"];
 
 function fold(text: string): string {
   return text.normalize("NFKC").toLowerCase();

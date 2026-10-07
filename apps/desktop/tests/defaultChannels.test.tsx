@@ -41,7 +41,7 @@ function setup(row: AdminWorkspaceSettingsOut, extra: Record<string, unknown> = 
     ...extra,
   };
   const setError = vi.fn();
-  const controller = { api, store: new Store(), setError } as unknown as AppController;
+  const controller = { api, store: new Store(), setError, can: () => true } as unknown as AppController;
   render(<WorkspaceSettingsTab controller={controller} />);
   return { api, setError };
 }
