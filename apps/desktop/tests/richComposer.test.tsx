@@ -175,6 +175,43 @@ describe("rich composer", () => {
     expect(w.draft()).toBe("**a** b _c_");
   });
 
+  it("holds the input's height while the other mode's input takes its place (the list above keeps its bottom)", async () => {
+    // jsdom lays nothing out: the boxes' heights are given here (the text area's before it has measured itself).
+    const heights = { editor: 136, area: 64 };
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.querySelector(".rich-editor") ? heights.editor : this.querySelector("textarea") ? heights.area : 0;
+    });
+    const w = await world({ draft: "a" });
+    w.type("bc"); // the editor's box is measured once it is in
+    const box = w.dom()!.parentElement!.parentElement!;
+    const observer = new MutationObserver(() => {});
+    observer.observe(box, { attributes: true, attributeFilter: ["style"], attributeOldValue: true });
+    // To Markdown: the box stays as tall as the editor was until the text area has its height, never the 64 px that
+    // a text area of two rows has at first (the timeline above would grow and lose its bottom).
+    act(() => void fireEvent.click(screen.getByRole("button", { name: "Markdown" })));
+    const styles = [...observer.takeRecords().map((r) => r.oldValue ?? ""), box.getAttribute("style") ?? ""];
+    expect(styles).toContain("min-height: 136px;");
+    expect(styles.join()).not.toContain("64px");
+    expect(box.style.minHeight).toBe("");
+    observer.disconnect();
+
+    // Back to rich: the editor's box is as tall as the text area was while the editor is built into it.
+    heights.area = 112;
+    fireEvent.change(screen.getByRole("textbox", { name: "メッセージ" }), { target: { value: "abc\n\nd\n\ne" } });
+    const atBuild: string[][] = [];
+    const append = Node.prototype.appendChild;
+    vi.spyOn(Node.prototype, "appendChild").mockImplementation(function <T extends Node>(this: Node, node: T): T {
+      if (this instanceof HTMLElement && this.parentElement === box) atBuild.push([this.style.minHeight, box.style.minHeight]);
+      return append.call(this, node) as T;
+    });
+    act(() => void fireEvent.click(screen.getByRole("button", { name: "リッチテキスト" })));
+    await waitFor(() => expect(w.dom()).not.toBeNull());
+    expect(atBuild.length).toBeGreaterThan(0);
+    for (const [host, outer] of atBuild) expect([host, outer]).toEqual(["112px", "112px"]);
+    expect(w.dom()!.parentElement!.style.minHeight).toBe("");
+    expect(box.style.minHeight).toBe("");
+  });
+
   it("pastes HTML as the supported formats, plain text literally, files as attachments", async () => {
     const w = await world();
     act(() => void w.editor().commands.focus());

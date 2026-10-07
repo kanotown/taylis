@@ -31,7 +31,7 @@ import { Text } from "@tiptap/extension-text";
 import { Placeholder } from "@tiptap/extensions/placeholder";
 import { UndoRedo } from "@tiptap/extensions/undo-redo";
 import { Fragment, Slice } from "@tiptap/pm/model";
-import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { docToMarkdown, markdownToDoc, plainTextToNodes, type RichNode } from "./richMarkdown";
 import type { RichEditorApi, RichFormat, RichFormatState } from "./richEditorApi";
@@ -167,6 +167,12 @@ export interface RichEditorProps {
   className?: string;
   /** How tall it grows before it scrolls (the composer's cap follows a phone's keyboard). */
   maxHeight?: number;
+  /**
+   * How tall the input it replaces was (the composer's text area, also while this editor was loading): the editor is
+   * that tall at least until it is built. Empty for a moment, its box would let the list above grow and lose its
+   * bottom to the browser's clamping (Composer.tsx, inputHeight).
+   */
+  holdHeight?: () => number;
   apiRef: RefObject<RichEditorApi | null>;
   /** A key before the editor handles it (never during an IME composition); true when the owner took it. */
   onKeyDown?: (event: KeyboardEvent) => boolean;
@@ -179,18 +185,23 @@ export interface RichEditorProps {
   onFocus?: () => void;
 }
 
-export default function RichEditor({ value, onChange, placeholder = "", ariaLabel, autoFocus = false, className, maxHeight, apiRef, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus }: RichEditorProps) {
+export default function RichEditor({ value, onChange, placeholder = "", ariaLabel, autoFocus = false, className, maxHeight, holdHeight, apiRef, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus }: RichEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const emitted = useRef(value);
+  // Part of the first render, so it is there before anything lays the page out (another composer building its editor).
+  const [held] = useState(() => holdHeight?.() ?? 0);
   // The latest callbacks, read by the editor's handlers (created once).
   const props = useRef({ onChange, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus, placeholder });
   props.current = { onChange, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus, placeholder };
 
   useLayoutEffect(() => {
-    if (!host.current) return;
+    const element = host.current;
+    if (!element) return;
+    // Again when the effect runs a second time (React's strict mode); let go of below, once the editor is in.
+    if (held > 0) element.style.minHeight = `${held}px`;
     const editor = new Editor({
-      element: host.current,
+      element,
       extensions: extensions(() => props.current.placeholder),
       content: markdownToDoc(value) as JSONContent,
       autofocus: autoFocus ? "end" : false,
@@ -226,6 +237,7 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
       onTransaction: ({ editor }) => report(editor),
       onFocus: () => props.current.onFocus?.(),
     });
+    element.style.minHeight = "";
     editorRef.current = editor;
     apiRef.current = apiFor(editor, (markdown) => (emitted.current = markdown));
     report(editor);
@@ -266,7 +278,7 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
     }
   }
 
-  return <div ref={host} className={className} style={maxHeight ? { maxHeight } : undefined} />;
+  return <div ref={host} className={className} style={{ maxHeight, minHeight: held > 0 ? held : undefined }} />;
 }
 
 function formatState(editor: Editor): RichFormatState {
