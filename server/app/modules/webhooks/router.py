@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.core.db import Db
 from app.core.errors import AppError, rate_limited
 from app.core.ratelimit import RateLimiter
-from app.modules.auth.deps import CurrentAdmin
+from app.modules.auth.deps import IntegrationsManager
 from app.modules.webhooks import service
 from app.modules.webhooks.schemas import (
     WebhookCreate,
@@ -23,26 +23,26 @@ router = APIRouter(tags=["webhooks"])
 
 
 @router.post("/admin/webhooks", response_model=WebhookCreated, status_code=201)
-async def create_webhook(actor: CurrentAdmin, body: WebhookCreate, db: Db) -> WebhookCreated:
+async def create_webhook(actor: IntegrationsManager, body: WebhookCreate, db: Db) -> WebhookCreated:
     """Issue an incoming webhook (M13a). The token appears only in this response."""
     webhook, token = await service.create(db, actor, body)
     return WebhookCreated(webhook=webhook, token=token)
 
 
 @router.get("/admin/webhooks", response_model=list[WebhookOut])
-async def list_webhooks(_: CurrentAdmin, db: Db) -> list[WebhookOut]:
+async def list_webhooks(_: IntegrationsManager, db: Db) -> list[WebhookOut]:
     return await service.list_all(db)
 
 
 @router.patch("/admin/webhooks/{webhook_id}", response_model=WebhookOut)
 async def update_webhook(
-    webhook_id: UUID, actor: CurrentAdmin, body: WebhookUpdate, db: Db
+    webhook_id: UUID, actor: IntegrationsManager, body: WebhookUpdate, db: Db
 ) -> WebhookOut:
     return await service.update(db, actor, webhook_id, body)
 
 
 @router.delete("/admin/webhooks/{webhook_id}", status_code=204)
-async def delete_webhook(webhook_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+async def delete_webhook(webhook_id: UUID, actor: IntegrationsManager, db: Db) -> None:
     await service.delete(db, actor, webhook_id)
 
 

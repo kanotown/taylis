@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import ASSIGNABLE_ROLES, has_capability
 from app.core.security import hash_password, hash_token
 from app.core.settings import Settings
 from app.core.time import utcnow
@@ -64,6 +65,9 @@ async def _invite_channels(db: AsyncSession, actor: User, ids: list[uuid.UUID]) 
 
 
 async def create(db: AsyncSession, actor: User, data: InviteCreate) -> tuple[InviteOut, str]:
+    if data.role in ("admin", "manager") and not has_capability(actor, "users.manage"):
+        # M142 (docs/ROLES.md §2): giving a role above member is a role change.
+        raise forbidden("admin_required", "Only an administrator invites admins and managers")
     selected = await _invite_channels(db, actor, data.channel_ids)
     if data.lab is not None:
         if data.lab.times and data.role == "guest":
@@ -208,11 +212,7 @@ async def accept(
             AdminUserCreate(
                 username=data.username,
                 display_name=data.display_name,
-                role="admin"
-                if invite.role == "admin"
-                else "guest"
-                if invite.role == "guest"
-                else "member",
+                role=invite.role if invite.role in ASSIGNABLE_ROLES else "member",  # type: ignore[arg-type]
             ),
             password_hash=password_hash,
             must_change_password=False,

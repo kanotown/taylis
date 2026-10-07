@@ -36,6 +36,7 @@ from app.core.doctext import revisions as doc_revisions
 from app.core.doctext import save as doc_save
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
+from app.core.roles import ensure_capability, has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.activity import canvas_mentions
@@ -249,7 +250,7 @@ async def _merge(base: str, ours: str, theirs: str, resolve: merge.Resolve) -> m
 
 
 def _is_manager(actor: User, membership: ChannelMember) -> bool:
-    return actor.is_admin or membership.role == "owner"
+    return has_capability(actor, "channels.moderate") or membership.role == "owner"
 
 
 def _require_creator_rights(actor: User, channel: Channel, membership: ChannelMember) -> None:
@@ -1181,8 +1182,19 @@ async def housekeeping(db: AsyncSession, *, now: datetime, trash_days: int) -> t
 
 
 def _require_admin(actor: User) -> None:
-    if not actor.is_admin:
-        raise forbidden("admin_required", "Only an administrator manages canvas templates")
+    """M142 (docs/ROLES.md §2): administrators and managers (templates.manage)."""
+    ensure_capability(actor, "templates.manage")
+
+
+async def _audit_template(db: AsyncSession, actor: User, action: str, row: CanvasTemplate) -> None:
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action=f"canvas_template.{action}",
+        target_type="canvas_template",
+        target_id=row.id,
+        details={"key": row.key, "name": row.name},
+    )
 
 
 async def list_templates(
@@ -1251,6 +1263,7 @@ async def create_template(
         await db.rollback()
         raise conflict("template_key_taken", "A template with this key already exists") from exc
     out = to_template_out(row)
+    await _audit_template(db, actor, "created", row)
     await db.commit()
     return out
 
@@ -1275,6 +1288,7 @@ async def update_template(
     row.updated_at = utcnow()
     await db.flush()
     out = to_template_out(row)
+    await _audit_template(db, actor, "updated", row)
     await db.commit()
     return out
 
@@ -1284,5 +1298,6 @@ async def delete_template(db: AsyncSession, actor: User, template_id: uuid.UUID)
     row = await _require_template(db, template_id)
     if row.builtin:
         raise conflict("template_builtin", "A built-in template can be hidden but not deleted")
+    await _audit_template(db, actor, "deleted", row)
     await db.delete(row)
     await db.commit()

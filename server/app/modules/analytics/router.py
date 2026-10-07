@@ -14,7 +14,7 @@ from app.modules.analytics.schemas import (
     MemberSort,
     MemberStatus,
 )
-from app.modules.auth.deps import CurrentAdmin
+from app.modules.auth.deps import AnalyticsViewer
 
 router = APIRouter(prefix="/admin/analytics", tags=["admin"])
 
@@ -23,7 +23,7 @@ Order = Literal["asc", "desc"]
 
 @router.get("/overview", response_model=AnalyticsOverviewOut)
 async def overview(
-    admin: CurrentAdmin,
+    admin: AnalyticsViewer,
     db: Db,
     days: Annotated[int, Query(ge=1, le=90)] = 30,
     tz: Annotated[str, Query(max_length=64)] = "UTC",
@@ -56,7 +56,7 @@ async def _selected(
 
 @router.get("/members", response_model=AnalyticsMembersOut)
 async def members(
-    _: CurrentAdmin,
+    _: AnalyticsViewer,
     db: Db,
     sort: MemberSort = "name",
     order: Order = "asc",
@@ -79,7 +79,7 @@ async def members(
     responses={200: {"content": {"text/csv": {}}, "description": "The members table as CSV"}},
 )
 async def members_csv(
-    _: CurrentAdmin,
+    _: AnalyticsViewer,
     db: Db,
     sort: MemberSort = "name",
     order: Order = "asc",

@@ -28,6 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
+from app.core.roles import has_capability
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -266,9 +267,9 @@ async def update_emoji(
 ) -> CustomEmojiOut:
     row = await require(db, emoji_id)
     sent = body.model_fields_set
-    if row.created_by != actor.id and actor.role != "admin":
+    if row.created_by != actor.id and not has_capability(actor, "emoji.manage"):
         raise forbidden("emoji_forbidden", "Only the creator or an admin can change an emoji")
-    if ("pack_id" in sent or "position" in sent) and actor.role != "admin":
+    if ("pack_id" in sent or "position" in sent) and not has_capability(actor, "emoji.manage"):
         raise forbidden("emoji_forbidden", "Only an admin can move an emoji between packs")
     if "label" in sent:
         if row.kind == "text":
@@ -290,9 +291,23 @@ async def update_emoji(
         row.position = body.position
     row.updated_at = utcnow()
     await db.flush()
+    if row.created_by != actor.id:
+        await _audit_other(db, actor, "emoji.updated", row, sorted(sent))
     await _emit(db, row, deleted=False)
     await db.commit()
     return to_emoji_out(row)
+
+
+async def _audit_other(
+    db: AsyncSession, actor: User, action: str, row: CustomEmoji, fields: list[str] | None = None
+) -> None:
+    """M142 (docs/ROLES.md §6): someone else's emoji changed by right (emoji.manage)."""
+    details: dict[str, object] = {"name": row.name, "created_by": str(row.created_by)}
+    if fields is not None:
+        details["fields"] = fields
+    await audit.record_in_tx(
+        db, actor_id=actor.id, action=action, target_type="emoji", target_id=row.id, details=details
+    )
 
 
 async def _emit(db: AsyncSession, row: CustomEmoji, *, deleted: bool) -> None:
@@ -340,8 +355,10 @@ async def require_image(db: AsyncSession, emoji_id: uuid.UUID) -> CustomEmoji:
 
 async def delete(db: AsyncSession, actor: User, emoji_id: uuid.UUID, blobs: BlobStore) -> None:
     row = await require(db, emoji_id)
-    if row.created_by != actor.id and actor.role != "admin":
+    if row.created_by != actor.id and not has_capability(actor, "emoji.manage"):
         raise forbidden("emoji_forbidden", "Only the creator or an admin can remove an emoji")
+    if row.created_by != actor.id:
+        await _audit_other(db, actor, "emoji.deleted", row)
     await _emit(db, row, deleted=True)
     if row.preset_key:
         await remember_preset_removal(db, row.preset_key, row.name, actor.id)

@@ -20,6 +20,8 @@ class AuditLog(Base):
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+    # M142 (docs/ROLES.md §6, migration 0103): the actor's role when the row was written.
+    actor_role: Mapped[str | None] = mapped_column(String(16))
     action: Mapped[str] = mapped_column(String(64))
     target_type: Mapped[str] = mapped_column(String(32))
     target_id: Mapped[str | None] = mapped_column(String(64))

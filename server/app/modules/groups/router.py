@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from app.core.db import Db
-from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.auth.deps import CurrentUser, GroupsManager
 from app.modules.channels import service as channels  # M13e guest visibility
 from app.modules.groups import service
 from app.modules.groups.schemas import GroupCreate, GroupOut, GroupUpdate
@@ -19,15 +19,15 @@ async def list_groups(user: CurrentUser, db: Db) -> list[GroupOut]:
 
 
 @router.post("/admin/groups", response_model=GroupOut, status_code=201)
-async def create_group(actor: CurrentAdmin, body: GroupCreate, db: Db) -> GroupOut:
+async def create_group(actor: GroupsManager, body: GroupCreate, db: Db) -> GroupOut:
     return await service.create(db, actor, body)
 
 
 @router.patch("/admin/groups/{group_id}", response_model=GroupOut)
-async def update_group(group_id: UUID, actor: CurrentAdmin, body: GroupUpdate, db: Db) -> GroupOut:
+async def update_group(group_id: UUID, actor: GroupsManager, body: GroupUpdate, db: Db) -> GroupOut:
     return await service.update(db, actor, group_id, body)
 
 
 @router.delete("/admin/groups/{group_id}", status_code=204)
-async def delete_group(group_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+async def delete_group(group_id: UUID, actor: GroupsManager, db: Db) -> None:
     await service.delete(db, actor, group_id)

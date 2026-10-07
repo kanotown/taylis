@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import i18n
 from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.security import hash_token
 from app.core.time import utcnow
 from app.events.envelope import Audience
@@ -256,7 +257,11 @@ def _can_edit(actor: User, seen: _Seen) -> bool:
         return seen.event.owner_id == actor.id
     if seen.channel.is_archived:
         return False
-    return seen.event.owner_id == actor.id or seen.role == "owner" or actor.is_admin
+    return (
+        seen.event.owner_id == actor.id
+        or seen.role == "owner"
+        or has_capability(actor, "channels.moderate")
+    )
 
 
 def notice_text(
@@ -489,7 +494,11 @@ async def _target_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
     if channel.is_dm:
         raise bad_request("calendar_channel_unsupported", "Direct messages have no shared calendar")
     channels.require_writable(channel)
-    if channel.posting_policy == "owners" and not actor.is_admin and membership.role != "owner":
+    if (
+        channel.posting_policy == "owners"
+        and not has_capability(actor, "channels.moderate")
+        and membership.role != "owner"
+    ):
         raise forbidden("posting_restricted", "Only owners and administrators can add events here")
     return channel
 

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
@@ -130,7 +131,7 @@ async def remind_unacknowledged(
     acknowledged, through a reminder only each of them sees (their list, push and badge), at
     most once an hour per message. Someone whose earlier nudge is still open is not nudged again."""
     message = await messages.require_ack_message(db, actor, message_id)
-    if message.sender_id != actor.id and not actor.is_admin:
+    if message.sender_id != actor.id and not has_capability(actor, "channels.moderate"):
         raise forbidden("ack_remind_forbidden", "Only the author or an administrator can remind")
     now = utcnow()
     last = await repo.last_created(db, message.id, "ack")

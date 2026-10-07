@@ -19,7 +19,7 @@ from app.modules.ai.schemas import (
     AiSummaryTargetOut,
     AiUsageOut,
 )
-from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.auth.deps import AiManager, CurrentUser
 from app.modules.search.schemas import MAX_QUERY_LENGTH
 
 router = APIRouter(tags=["ai"])
@@ -33,27 +33,25 @@ def _runtime(request: Request) -> AiRuntime:
 
 
 @router.get("/admin/ai/agents", response_model=list[AiAgentOut])
-async def list_agents(_: CurrentAdmin, db: Db) -> list[AiAgentOut]:
+async def list_agents(_: AiManager, db: Db) -> list[AiAgentOut]:
     """The AI bots (deleted ones are not listed), oldest first."""
     return await service.list_agents(db)
 
 
 @router.post("/admin/ai/agents", response_model=AiAgentOut, status_code=201)
-async def create_agent(actor: CurrentAdmin, body: AiAgentCreate, db: Db) -> AiAgentOut:
+async def create_agent(actor: AiManager, body: AiAgentCreate, db: Db) -> AiAgentOut:
     """A new AI bot with its own bot user (409 username_taken)."""
     return await service.create_agent(db, actor, body)
 
 
 @router.patch("/admin/ai/agents/{agent_id}", response_model=AiAgentOut)
-async def update_agent(
-    agent_id: UUID, actor: CurrentAdmin, body: AiAgentUpdate, db: Db
-) -> AiAgentOut:
+async def update_agent(agent_id: UUID, actor: AiManager, body: AiAgentUpdate, db: Db) -> AiAgentOut:
     """Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96)."""
     return await service.update_agent(db, actor, agent_id, body)
 
 
 @router.delete("/admin/ai/agents/{agent_id}", status_code=204)
-async def delete_agent(agent_id: UUID, actor: CurrentAdmin, db: Db) -> Response:
+async def delete_agent(agent_id: UUID, actor: AiManager, db: Db) -> Response:
     """The bot leaves every conversation and is deactivated; its posts stay."""
     await service.delete_agent(db, actor, agent_id)
     return Response(status_code=204)
@@ -61,7 +59,7 @@ async def delete_agent(agent_id: UUID, actor: CurrentAdmin, db: Db) -> Response:
 
 @router.get("/admin/ai/usage", response_model=AiUsageOut)
 async def get_usage(
-    _: CurrentAdmin,
+    _: AiManager,
     db: Db,
     request: Request,
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
@@ -71,7 +69,7 @@ async def get_usage(
 
 
 @router.get("/admin/ai/providers", response_model=list[AiProviderOut])
-async def list_providers(_: CurrentAdmin, request: Request) -> list[AiProviderOut]:
+async def list_providers(_: AiManager, request: Request) -> list[AiProviderOut]:
     """The model providers (anthropic, openai): whether the server has each one's API key, and
     the models it serves (docs/AI.md §12)."""
     return service.providers(_runtime(request))

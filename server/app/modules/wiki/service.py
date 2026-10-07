@@ -27,6 +27,7 @@ from app.core.doctext import revisions as doc_revisions
 from app.core.doctext import save as doc_save
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
+from app.core.roles import PERSON_ROLES, ensure_capability
 from app.core.time import utcnow
 from app.modules.activity import canvas_mentions as mention_text
 from app.modules.activity.models import item_read
@@ -1001,7 +1002,7 @@ async def _access_out(db: AsyncSession, actor: User, page: WikiPage, rank: int) 
 async def _active_members(db: AsyncSession) -> set[uuid.UUID]:
     """Active people who can manage a page through an entry: admins and members."""
     rows = await db.execute(
-        select(User.id).where(User.deactivated_at.is_(None), User.role.in_(("admin", "member")))
+        select(User.id).where(User.deactivated_at.is_(None), User.role.in_(PERSON_ROLES))
     )
     return set(rows.scalars().all())
 
@@ -1016,7 +1017,7 @@ async def _groups_with_members(db: AsyncSession, group_ids: Iterable[uuid.UUID])
         .where(
             UserGroupMember.group_id.in_(ids),
             User.deactivated_at.is_(None),
-            User.role.in_(("admin", "member")),
+            User.role.in_(PERSON_ROLES),
         )
         .distinct()
     )
@@ -1551,8 +1552,9 @@ async def export(
 
 
 def _require_admin(actor: User) -> None:
-    if not actor.is_admin:
-        raise forbidden("admin_required", "Administrators only")
+    """The Docs administration (titles of every page, takeover, purge): docs.admin, which only
+    administrators have (docs/ROLES.md §4.4)."""
+    ensure_capability(actor, "docs.admin")
 
 
 async def admin_list(db: AsyncSession, actor: User) -> list[AdminPageOut]:

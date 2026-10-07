@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.core.db import Db
 from app.core.errors import AppError, bad_request, forbidden, rate_limited
 from app.modules.attachments import service as attachments
-from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.auth.deps import CurrentUser, EmojiManager
 from app.modules.emoji import service
 from app.modules.emoji.schemas import (
     CustomEmojiOut,
@@ -121,7 +121,7 @@ async def list_packs(user: CurrentUser, db: Db) -> list[EmojiPackOut]:
 
 
 @router.post("/emoji/packs", response_model=EmojiPackOut, status_code=201)
-async def create_pack(body: EmojiPackCreate, admin: CurrentAdmin, db: Db) -> EmojiPackOut:
+async def create_pack(body: EmojiPackCreate, admin: EmojiManager, db: Db) -> EmojiPackOut:
     """An empty pack; emoji join it with PATCH /emoji/{id} `pack_id` (admin)."""
     return await service.create_pack(db, admin, body.name)
 
@@ -129,7 +129,7 @@ async def create_pack(body: EmojiPackCreate, admin: CurrentAdmin, db: Db) -> Emo
 @router.post("/emoji/packs/import", response_model=EmojiPackImportOut)
 async def import_pack(
     request: Request,
-    admin: CurrentAdmin,
+    admin: EmojiManager,
     db: Db,
     archive: UploadFile | None = File(None),
     files: list[UploadFile] = File([]),
@@ -182,14 +182,14 @@ async def import_pack(
 
 @router.patch("/emoji/packs/{pack_id}", response_model=EmojiPackOut)
 async def update_pack(
-    pack_id: UUID, body: EmojiPackUpdate, admin: CurrentAdmin, db: Db
+    pack_id: UUID, body: EmojiPackUpdate, admin: EmojiManager, db: Db
 ) -> EmojiPackOut:
     """Rename or reorder (lower `position` first)."""
     return await service.update_pack(db, admin, pack_id, body.name, body.position)
 
 
 @router.delete("/emoji/packs/{pack_id}", status_code=204)
-async def delete_pack(pack_id: UUID, request: Request, admin: CurrentAdmin, db: Db) -> Response:
+async def delete_pack(pack_id: UUID, request: Request, admin: EmojiManager, db: Db) -> Response:
     """The pack goes; its emoji stay, ungrouped."""
     await service.delete_pack(db, admin, pack_id, request.app.state.blobs)
     return Response(status_code=204)

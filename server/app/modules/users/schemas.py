@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
+from app.core.roles import capabilities_of
 from app.core.time import utcnow
 from app.modules.users.models import User
 
@@ -144,6 +145,10 @@ class UserMe(UserPublic):
     locale: Literal["ja", "en", "zh-Hans"] | None = None
     # The desktop / Web composer's mode; null = never chosen, the clients' default ("rich").
     composer_mode: Literal["rich", "markdown"] | None = None
+    # M142 (docs/ROLES.md §2.1): what my role lets me do (app/core/roles.py), sorted. Clients
+    # gate administration screens by these, not by `role`; the server checks every call anyway.
+    # Clients ignore names they do not know.
+    capabilities: list[str] = []
 
 
 class UserUpdate(BaseModel):
@@ -279,6 +284,7 @@ def to_user_me(user: User) -> UserMe:
         composer_mode=(
             user.composer_mode if user.composer_mode in ("rich", "markdown") else None  # type: ignore[arg-type]
         ),
+        capabilities=sorted(capabilities_of(user.role)),
     )
 
 

@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, not_found
+from app.core.roles import has_capability
 from app.core.security import verify_password
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -406,11 +407,29 @@ async def submit_report(
     return ack, True
 
 
-async def _admin_out(db: AsyncSession, rows: list[MessageReport]) -> list[AdminReportOut]:
+async def _readable_by(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> bool:
+    try:
+        await channels.require_readable(db, actor, channel_id)
+    except AppError:
+        return False
+    return True
+
+
+async def _admin_out(
+    db: AsyncSession, actor: User, rows: list[MessageReport]
+) -> list[AdminReportOut]:
+    """M142 (docs/ROLES.md §4.3): without reports.read_private (a manager), a message report
+    from a conversation the actor cannot read now has no snapshot and no channel name."""
+    read_all = has_capability(actor, "reports.read_private")
     out: list[AdminReportOut] = []
     for row in rows:
         channel = (
             await channels.find_channel(db, row.channel_id) if row.channel_id is not None else None
+        )
+        hidden = (
+            not read_all
+            and row.channel_id is not None
+            and (channel is None or not await _readable_by(db, actor, row.channel_id))
         )
         deleted = (
             row.message_id is not None and await messages.find_message(db, row.message_id) is None
@@ -426,12 +445,13 @@ async def _admin_out(db: AsyncSession, rows: list[MessageReport]) -> list[AdminR
                 message_id=row.message_id,
                 channel_id=row.channel_id,
                 channel_type=channel_type,
-                channel_name=channel.name if channel else None,
+                channel_name=channel.name if channel and not hidden else None,
                 reporter_id=row.reporter_id,
                 reported_user_id=row.reported_user_id,
                 reason=row.reason,  # type: ignore[arg-type]
                 note=row.note,
-                body_snapshot=row.body_snapshot,
+                body_snapshot="" if hidden else row.body_snapshot,
+                snapshot_hidden=hidden,
                 message_deleted=deleted,
                 status=row.status,  # type: ignore[arg-type]
                 created_at=row.created_at,
@@ -443,13 +463,13 @@ async def _admin_out(db: AsyncSession, rows: list[MessageReport]) -> list[AdminR
 
 
 async def list_reports(
-    db: AsyncSession, status: ReportStatus | None, limit: int = 200
+    db: AsyncSession, actor: User, status: ReportStatus | None, limit: int = 200
 ) -> list[AdminReportOut]:
-    """For administrators: newest first (open ones by default)."""
+    """For administrators and managers (reports.manage): newest first (open ones by default)."""
     stmt = select(MessageReport).order_by(MessageReport.created_at.desc()).limit(limit)
     if status is not None:
         stmt = stmt.where(MessageReport.status == status)
-    return await _admin_out(db, list((await db.execute(stmt)).scalars().all()))
+    return await _admin_out(db, actor, list((await db.execute(stmt)).scalars().all()))
 
 
 async def open_report_count(db: AsyncSession) -> int:
@@ -475,7 +495,7 @@ async def set_report_status(
             target_id=report.id,
         )
         await db.commit()
-    return (await _admin_out(db, [report]))[0]
+    return (await _admin_out(db, actor, [report]))[0]
 
 
 # --- deleting one's own account ------------------------------------------------------------------

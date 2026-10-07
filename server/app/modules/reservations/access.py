@@ -12,12 +12,15 @@ import uuid
 from sqlalchemy import ColumnElement, and_, any_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.roles import has_capability, roles_with
 from app.modules.reservations.models import ReservationNotice, ReservationPool
 from app.modules.users.models import User
 
 
 def can_manage(user: User, pool: ReservationPool) -> bool:
-    return user.is_admin or (user.id == pool.created_by and not user.is_guest)
+    return has_capability(user, "reservations.manage") or (
+        user.id == pool.created_by and not user.is_guest
+    )
 
 
 def can_operate(user: User, pool: ReservationPool) -> bool:
@@ -56,7 +59,7 @@ def readable_clause() -> ColumnElement[bool]:
         and_(
             User.deactivated_at.is_(None),
             or_(
-                User.role == "admin",
+                User.role.in_(roles_with("reservations.manage")),
                 and_(
                     User.role.not_in(("guest", "bot")),
                     or_(

@@ -212,6 +212,11 @@ refresh(token):
 
 - ワークスペース: `admin` / `member`。admin はユーザー管理・任意チャンネルのアーカイブ・
   任意メッセージの削除ができる。
+- `manager`（「運営」、M142、docs/ROLES.md）: admin と member の間。日々の運用（招待・member と guest の表示名と肩書き・名簿・
+  公開チャンネルと自分がメンバーの非公開チャンネルの管理・既定のチャンネル・絵文字・テンプレート・在室状況の状態・予約枠・報告）
+  だけができる。ロールの変更・アカウント・設定・連携・AI・分析・ドキュメントの管理・会話の中身のモデレーションは admin だけ。
+  メンバーでない非公開チャンネル・DM・共有されていないドキュメントは読めない（報告の写しも、読めない会話のものは出さない）。
+  権限は `app/core/roles.py` の 1 つの表で決め、API は権限の名前で確かめる（`require_capability`）。
 - `guest` (M13e): 参加させられたチャンネルの中だけで動ける外部の人。公開チャンネルの一覧・参加、チャンネル作成、
   メンバー追加、カスタム絵文字の追加はできない (`403 guest_restricted`)。ユーザー一覧 (bootstrap の `users` と
   `GET /users`) は同じチャンネルにいる人だけ、DM もその人たちとだけ。公開チャンネル作成の `channel.created`
@@ -560,7 +565,8 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - アクセスログのパスは、URL に秘密が入るもの (`/api/v1/hooks/{token}`、`/invite/{token}`、`/api/v1/invites/{token}/…`、
   `/api/v1/calendar/ical/{token}.ics`) を `***` に置き換えて記録する (§7: トークンをログに残さない)。
 - 管理者操作 (ユーザー作成、パスワードリセット、ロール変更、無効化、セッション失効、他人のメッセージ削除) は
-  `audit_logs` に記録する (M10)。ユーザー名の変更は本人のものも `user.username_changed` (`from`・`to`・`by`、times の
+  `audit_logs` に記録する (M10)。M142: 記録には操作した人のその時のロール (`actor_role`) が付き、運営に開いた操作は
+  すべて記録に残る (docs/ROLES.md §6)。ユーザー名の変更は本人のものも `user.username_changed` (`from`・`to`・`by`、times の
   改名があれば `times_channel {from, to}`) に残る (M96、§2.9)。
 - キャンバスの削除・復元・編集の制限の変更・版の本文の消去も `audit_logs` に記録する (`canvas.delete` / `canvas.restore` /
   `canvas.edit_policy` / `canvas.revision_erased`、M41)。ゴミ箱からの完全削除は周期ジョブが `canvas.purge` (actor なし、

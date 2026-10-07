@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.modules.admin import service as admin
 from app.modules.audit import service as audit
@@ -75,7 +76,7 @@ async def _managed_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID)
         raise bad_request(
             "recurring_channel_unsupported", "Recurring posts are for channels, not DMs"
         )
-    if membership.role != "owner" and not actor.is_admin:
+    if membership.role != "owner" and not has_capability(actor, "channels.moderate"):
         raise forbidden(
             "recurring_manage_restricted",
             "Only the channel's owners and administrators manage recurring posts",

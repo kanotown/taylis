@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.models import AuditLog
+from app.modules.users.models import User
 
 
 async def record_in_tx(
@@ -18,9 +19,13 @@ async def record_in_tx(
     target_id: uuid.UUID | str | None,
     details: dict[str, Any] | None = None,
 ) -> AuditLog:
-    """Never log secrets (passwords, tokens); details are identifiers and before/after values."""
+    """Never log secrets (passwords, tokens); details are identifiers and before/after values.
+    The actor's role is written too (docs/ROLES.md §6): a manager's use of a right that used to be
+    the administrators' is told apart from an administrator's."""
+    actor = await db.get(User, actor_id) if actor_id is not None else None
     row = AuditLog(
         actor_id=actor_id,
+        actor_role=actor.role if actor is not None else None,
         action=action,
         target_type=target_type,
         target_id=None if target_id is None else str(target_id),

@@ -28,7 +28,7 @@ users / auth の API、認証依存、admin から呼ぶセッション失効を
 
 | 場所 | 契約 |
 | --- | --- |
-| `app.modules.auth.deps` | `get_current_user`、`get_current_admin`、`CurrentUser`、`CurrentAdmin` |
+| `app.modules.auth.deps` | `get_current_user`、`CurrentUser`、`require_capability` と権限ごとの別名（`UsersManager`・`ChannelsManager` など。docs/ROLES.md §2） |
 | `app.modules.auth.service` | `revoke_all_sessions(db, user_id, reason, now) -> int` (admin の無効化・パスワードリセット・セッション失効から呼ぶ。対象セッションの端末も `enabled=false`。同一トランザクション内で更新し、commit は呼び出し元が行う) |
 | `app.state.limiters` | ログイン用レートリミッタ。`core/ratelimit.RateLimiter` を `settings.login_rate_limit_per_ip` / `_per_account` で作り `create_app()` で載せる |
 

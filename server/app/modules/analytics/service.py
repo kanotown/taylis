@@ -269,7 +269,7 @@ async def members(db: AsyncSession, *, now: datetime) -> list[AnalyticsMemberOut
 
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
-_ROLE_ORDER = {"admin": 0, "member": 1, "guest": 2}
+_ROLE_ORDER = {"admin": 0, "manager": 1, "member": 2, "guest": 3}
 
 
 def _sort_key(sort: MemberSort, m: AnalyticsMemberOut) -> tuple[Any, ...]:
