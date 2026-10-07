@@ -882,6 +882,351 @@
         "type": "object"
       }
     },
+    "call.ended": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CallOut": {
+            "description": "An in-app call (M130, docs/CALLS.md §5.2).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "ended_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ended At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Message Id"
+              },
+              "participant_count": {
+                "default": 0,
+                "title": "Participant Count",
+                "type": "integer"
+              },
+              "participants": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/CallParticipantOut"
+                },
+                "title": "Participants",
+                "type": "array"
+              },
+              "peak_participants": {
+                "default": 0,
+                "title": "Peak Participants",
+                "type": "integer"
+              },
+              "started_at": {
+                "format": "date-time",
+                "title": "Started At",
+                "type": "string"
+              },
+              "started_by": {
+                "format": "uuid",
+                "title": "Started By",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "message_id",
+              "started_by",
+              "started_at",
+              "ended_at"
+            ],
+            "title": "CallOut",
+            "type": "object"
+          },
+          "CallParticipantOut": {
+            "properties": {
+              "joined_at": {
+                "format": "date-time",
+                "title": "Joined At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "joined_at"
+            ],
+            "title": "CallParticipantOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "call": {
+            "$ref": "#/$defs/CallOut"
+          }
+        },
+        "required": [
+          "call"
+        ],
+        "title": "CallEventData",
+        "type": "object"
+      }
+    },
+    "call.started": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CallOut": {
+            "description": "An in-app call (M130, docs/CALLS.md §5.2).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "ended_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ended At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Message Id"
+              },
+              "participant_count": {
+                "default": 0,
+                "title": "Participant Count",
+                "type": "integer"
+              },
+              "participants": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/CallParticipantOut"
+                },
+                "title": "Participants",
+                "type": "array"
+              },
+              "peak_participants": {
+                "default": 0,
+                "title": "Peak Participants",
+                "type": "integer"
+              },
+              "started_at": {
+                "format": "date-time",
+                "title": "Started At",
+                "type": "string"
+              },
+              "started_by": {
+                "format": "uuid",
+                "title": "Started By",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "message_id",
+              "started_by",
+              "started_at",
+              "ended_at"
+            ],
+            "title": "CallOut",
+            "type": "object"
+          },
+          "CallParticipantOut": {
+            "properties": {
+              "joined_at": {
+                "format": "date-time",
+                "title": "Joined At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "joined_at"
+            ],
+            "title": "CallParticipantOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "call": {
+            "$ref": "#/$defs/CallOut"
+          }
+        },
+        "required": [
+          "call"
+        ],
+        "title": "CallEventData",
+        "type": "object"
+      }
+    },
+    "call.updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CallOut": {
+            "description": "An in-app call (M130, docs/CALLS.md §5.2).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "ended_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ended At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Message Id"
+              },
+              "participant_count": {
+                "default": 0,
+                "title": "Participant Count",
+                "type": "integer"
+              },
+              "participants": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/CallParticipantOut"
+                },
+                "title": "Participants",
+                "type": "array"
+              },
+              "peak_participants": {
+                "default": 0,
+                "title": "Peak Participants",
+                "type": "integer"
+              },
+              "started_at": {
+                "format": "date-time",
+                "title": "Started At",
+                "type": "string"
+              },
+              "started_by": {
+                "format": "uuid",
+                "title": "Started By",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "message_id",
+              "started_by",
+              "started_at",
+              "ended_at"
+            ],
+            "title": "CallOut",
+            "type": "object"
+          },
+          "CallParticipantOut": {
+            "properties": {
+              "joined_at": {
+                "format": "date-time",
+                "title": "Joined At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "joined_at"
+            ],
+            "title": "CallParticipantOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "call": {
+            "$ref": "#/$defs/CallOut"
+          }
+        },
+        "required": [
+          "call"
+        ],
+        "title": "CallEventData",
+        "type": "object"
+      }
+    },
     "canvas.created": {
       "audience": "channel",
       "consumes_seq": false,
@@ -2820,8 +3165,80 @@
             "type": "object"
           },
           "MessageCallOut": {
-            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
+            "description": "This message announces a call (docs/CALLS.md §5.4). M117's shape `{url, started_by}` is\nkept (the released M117 clients read only those two and show a card whose 「参加する」 opens\n`url`), and widened:\n\n- `kind = \"livekit\"` (M130): an in-app call. `url` is its page `<PUBLIC_BASE_URL>/call/<id>`\n  (the path `/call/<id>` on a server without PUBLIC_BASE_URL; never null, an M117 Android\n  client cannot read a null `url`). The other fields describe the call; `ended_at`,\n  `duration_seconds` are null while it is on.\n- `kind = \"link\"`: an M117 meeting link (history); only `url` and `started_by`.",
             "properties": {
+              "call_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Call Id"
+              },
+              "duration_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Duration Seconds"
+              },
+              "ended_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ended At"
+              },
+              "kind": {
+                "default": "link",
+                "enum": [
+                  "livekit",
+                  "link"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "participant_count": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Participant Count"
+              },
+              "started_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Started At"
+              },
               "started_by": {
                 "format": "uuid",
                 "title": "Started By",
@@ -3923,8 +4340,80 @@
             "type": "object"
           },
           "MessageCallOut": {
-            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
+            "description": "This message announces a call (docs/CALLS.md §5.4). M117's shape `{url, started_by}` is\nkept (the released M117 clients read only those two and show a card whose 「参加する」 opens\n`url`), and widened:\n\n- `kind = \"livekit\"` (M130): an in-app call. `url` is its page `<PUBLIC_BASE_URL>/call/<id>`\n  (the path `/call/<id>` on a server without PUBLIC_BASE_URL; never null, an M117 Android\n  client cannot read a null `url`). The other fields describe the call; `ended_at`,\n  `duration_seconds` are null while it is on.\n- `kind = \"link\"`: an M117 meeting link (history); only `url` and `started_by`.",
             "properties": {
+              "call_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Call Id"
+              },
+              "duration_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Duration Seconds"
+              },
+              "ended_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ended At"
+              },
+              "kind": {
+                "default": "link",
+                "enum": [
+                  "livekit",
+                  "link"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "participant_count": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Participant Count"
+              },
+              "started_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Started At"
+              },
               "started_by": {
                 "format": "uuid",
                 "title": "Started By",
@@ -5027,8 +5516,80 @@
             "type": "object"
           },
           "MessageCallOut": {
-            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
+            "description": "This message announces a call (docs/CALLS.md §5.4). M117's shape `{url, started_by}` is\nkept (the released M117 clients read only those two and show a card whose 「参加する」 opens\n`url`), and widened:\n\n- `kind = \"livekit\"` (M130): an in-app call. `url` is its page `<PUBLIC_BASE_URL>/call/<id>`\n  (the path `/call/<id>` on a server without PUBLIC_BASE_URL; never null, an M117 Android\n  client cannot read a null `url`). The other fields describe the call; `ended_at`,\n  `duration_seconds` are null while it is on.\n- `kind = \"link\"`: an M117 meeting link (history); only `url` and `started_by`.",
             "properties": {
+              "call_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Call Id"
+              },
+              "duration_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Duration Seconds"
+              },
+              "ended_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ended At"
+              },
+              "kind": {
+                "default": "link",
+                "enum": [
+                  "livekit",
+                  "link"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "participant_count": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Participant Count"
+              },
+              "started_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Started At"
+              },
               "started_by": {
                 "format": "uuid",
                 "title": "Started By",
@@ -5832,7 +6393,8 @@
               "ack",
               "collection",
               "tasks",
-              "attachments"
+              "attachments",
+              "call"
             ],
             "title": "Change",
             "type": "string"
@@ -8488,11 +9050,33 @@
       "consumes_seq": false,
       "data": {
         "$defs": {
+          "InAppCallsOut": {
+            "description": "M130 (docs/CALLS.md §5.1). `enabled`: the administrator's switch is on and this server has\nLiveKit configured. `video` / `screen_share` follow `enabled` in v1 (kept apart so that an\nadministrator can turn them off later).",
+            "properties": {
+              "enabled": {
+                "default": false,
+                "title": "Enabled",
+                "type": "boolean"
+              },
+              "screen_share": {
+                "default": false,
+                "title": "Screen Share",
+                "type": "boolean"
+              },
+              "video": {
+                "default": false,
+                "title": "Video",
+                "type": "boolean"
+              }
+            },
+            "title": "InAppCallsOut",
+            "type": "object"
+          },
           "WorkspaceSettingsOut": {
             "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
             "properties": {
               "calls_enabled": {
-                "default": true,
+                "default": false,
                 "title": "Calls Enabled",
                 "type": "boolean"
               },
@@ -8508,6 +9092,14 @@
                 "default": null,
                 "title": "Icon Version"
               },
+              "in_app_calls": {
+                "$ref": "#/$defs/InAppCallsOut",
+                "default": {
+                  "enabled": false,
+                  "screen_share": false,
+                  "video": false
+                }
+              },
               "meeting_base_url": {
                 "anyOf": [
                   {
@@ -8517,7 +9109,7 @@
                     "type": "null"
                   }
                 ],
-                "default": "https://meet.jit.si/",
+                "default": null,
                 "title": "Meeting Base Url"
               },
               "preview_before_join": {

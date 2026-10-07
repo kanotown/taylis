@@ -10,6 +10,7 @@ from app.core.time import utcnow
 from app.modules.activity import service as activity
 from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
 from app.modules.bookmarks import service as bookmarks
+from app.modules.calls import service as calls
 from app.modules.canvases import service as canvases
 from app.modules.channels import service as channels
 from app.modules.dm_pins import service as dm_pins
@@ -95,6 +96,7 @@ async def bootstrap(
         workspace_settings=await workspace.settings(db),
         blocked_user_ids=await blocks.blocked_ids_of(db, actor.id),
         wiki=await wiki.bootstrap(db),
+        active_calls=await calls.active_calls(db, actor),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

@@ -4,7 +4,6 @@ workspace-wide settings an administrator changes (M88, docs/MEMBERSHIP.md §3)."
 import uuid
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import urlsplit
 
 import filetype
 from fastapi import UploadFile
@@ -13,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.core.errors import AppError, bad_request, not_found
+from app.core.errors import AppError, bad_request, conflict, not_found
 from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
@@ -26,9 +25,9 @@ from app.modules.channels.models import Channel
 from app.modules.workspace.events import WORKSPACE_SETTINGS_UPDATED, WorkspaceSettingsUpdatedData
 from app.modules.workspace.models import WorkspaceIdentity, WorkspaceSettings
 from app.modules.workspace.schemas import (
-    MAX_MEETING_BASE_URL,
     AdminWorkspaceSettingsOut,
     DefaultChannelOut,
+    InAppCallsOut,
     WorkspaceSettingsOut,
     WorkspaceSettingsUpdate,
 )
@@ -55,7 +54,7 @@ async def ensure(db: AsyncSession) -> uuid.UUID:
 
 # --- settings (M88) -----------------------------------------------------------------------------
 
-SETTING_FIELDS = ("show_membership_messages", "preview_before_join")
+SETTING_FIELDS = ("show_membership_messages", "preview_before_join", "in_app_calls_enabled")
 
 
 async def _row(db: AsyncSession, *, for_update: bool = False) -> WorkspaceSettings | None:
@@ -65,61 +64,37 @@ async def _row(db: AsyncSession, *, for_update: bool = False) -> WorkspaceSettin
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+# M130 (docs/CALLS.md §3.4): whether this server has LiveKit configured (set by app.main from the
+# environment). In-app calls work only when it has and the administrator's switch is on.
+_in_app_calls_available = False
+
+
+def set_in_app_calls_available(available: bool) -> None:
+    global _in_app_calls_available
+    _in_app_calls_available = available
+
+
+def in_app_calls_of(row: WorkspaceSettings | None) -> InAppCallsOut:
+    on = _in_app_calls_available and (row is None or row.in_app_calls_enabled)
+    return InAppCallsOut(enabled=on, video=on, screen_share=on)
+
+
 async def settings(db: AsyncSession) -> WorkspaceSettingsOut:
     """The settings every client sees (bootstrap); the defaults when the row is missing."""
     row = await _row(db)
     if row is None:
-        return WorkspaceSettingsOut()
+        return WorkspaceSettingsOut(in_app_calls=in_app_calls_of(None))
     return WorkspaceSettingsOut(
         show_membership_messages=row.show_membership_messages,
         preview_before_join=row.preview_before_join,
         icon_version=icon_version_of(row.icon_key),
-        calls_enabled=row.meeting_base_url is not None,
-        meeting_base_url=row.meeting_base_url,
+        in_app_calls=in_app_calls_of(row),
     )
 
 
-async def meeting_base_url(db: AsyncSession) -> str | None:
-    """M117 (docs/CALLS.md): where a call's room is made; None = calls are off."""
-    return (await settings(db)).meeting_base_url
-
-
-_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
-
-
-def clean_meeting_base_url(value: str | None, *, debug: bool) -> str | None:
-    """M117: an administrator's meeting service URL as stored, or None ("" / null: calls off).
-    https only (http for localhost on a DEBUG server, a self-hosted Jitsi under test); a host, no
-    credentials, query or fragment (the room name is appended to it); it ends with "/"."""
-    text = (value or "").strip()
-    if not text:
-        return None
-
-    def invalid(reason: str) -> AppError:
-        return AppError(
-            422, "meeting_url_invalid", "Invalid meeting service URL", details={"reason": reason}
-        )
-
-    if any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):
-        raise invalid("characters")
-    try:
-        parts = urlsplit(text)
-        host = parts.hostname
-        parts.port  # noqa: B018 - raises on a malformed port
-    except ValueError as exc:
-        raise invalid("malformed") from exc
-    if not host:
-        raise invalid("host")
-    if parts.scheme != "https" and not (parts.scheme == "http" and debug and host in _LOCAL_HOSTS):
-        raise invalid("scheme")
-    if parts.username is not None or parts.password is not None:
-        raise invalid("credentials")
-    if parts.query or parts.fragment or text.endswith(("?", "#")):
-        raise invalid("query")
-    cleaned = text if text.endswith("/") else text + "/"
-    if len(cleaned) > MAX_MEETING_BASE_URL:
-        raise invalid("length")
-    return cleaned
+async def in_app_calls(db: AsyncSession) -> InAppCallsOut:
+    """M130: whether new calls can start (docs/CALLS.md §5.1)."""
+    return in_app_calls_of(await _row(db))
 
 
 def usable_default(channel: Channel | None) -> bool:
@@ -179,15 +154,19 @@ async def admin_settings(
     """``legacy_default_channels``: SSO_DEFAULT_CHANNELS, shown while the list was never set."""
     row = await _row(db)
     if row is None:
-        return AdminWorkspaceSettingsOut(legacy_sso_default_channels=list(legacy_default_channels))
+        return AdminWorkspaceSettingsOut(
+            in_app_calls=in_app_calls_of(None),
+            in_app_calls_enabled=True,
+            legacy_sso_default_channels=list(legacy_default_channels),
+        )
     usable = await usable_default_channels(db, row.default_channel_ids)
     is_set = row.default_channel_ids is not None
     return AdminWorkspaceSettingsOut(
         show_membership_messages=row.show_membership_messages,
         preview_before_join=row.preview_before_join,
         icon_version=icon_version_of(row.icon_key),
-        calls_enabled=row.meeting_base_url is not None,
-        meeting_base_url=row.meeting_base_url,
+        in_app_calls=in_app_calls_of(row),
+        in_app_calls_enabled=row.in_app_calls_enabled,
         updated_at=row.updated_at,
         updated_by=row.updated_by,
         default_channel_ids=[c.id for c in usable],
@@ -250,21 +229,16 @@ async def update_settings(
     actor_id: uuid.UUID,
     data: WorkspaceSettingsUpdate,
     legacy_default_channels: Sequence[str] = (),
-    *,
-    debug: bool = False,
 ) -> AdminWorkspaceSettingsOut:
     """PATCH /admin/workspace-settings: the fields sent; a change is audited
-    (`workspace.settings_updated`, before / after) and announced to every device. `debug`: the
-    server's DEBUG (an http://localhost meeting service is allowed)."""
+    (`workspace.settings_updated`, before / after) and announced to every device."""
+    if "meeting_base_url" in data.model_fields_set:
+        # M130 (docs/CALLS.md §11.1): M117's meeting links are gone; an old admin screen is told.
+        raise conflict("meeting_links_retired", "Calls by meeting link were replaced")
     wanted_defaults = (
         await _validate_defaults(db, data.default_channel_ids)
         if data.default_channel_ids is not None
         else None
-    )
-    # M117: sent as a URL, "" or null (calls off); left out = unchanged.
-    meeting_sent = "meeting_base_url" in data.model_fields_set
-    wanted_meeting = (
-        clean_meeting_base_url(data.meeting_base_url, debug=debug) if meeting_sent else None
     )
     await db.execute(
         insert(WorkspaceSettings)
@@ -285,9 +259,6 @@ async def update_settings(
             "to": _ids_json(wanted_defaults),
         }
         row.default_channel_ids = wanted_defaults
-    if meeting_sent and wanted_meeting != row.meeting_base_url:
-        changes["meeting_base_url"] = {"from": row.meeting_base_url, "to": wanted_meeting}
-        row.meeting_base_url = wanted_meeting
     if changes:
         row.updated_at = utcnow()
         row.updated_by = actor_id

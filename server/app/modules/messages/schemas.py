@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.attachments.schemas import AttachmentOut
+from app.modules.calls.models import Call
 from app.modules.messages.models import Message, MessageAck, PollComment, PollVote, Reaction
 from app.modules.messages.schedule import (
     MAX_SLOT,
@@ -348,13 +349,27 @@ class MessageWorkflowOut(BaseModel):
 
 
 class MessageCallOut(BaseModel):
-    """M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button
-    that opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what
-    clients before M117 show."""
+    """This message announces a call (docs/CALLS.md §5.4). M117's shape `{url, started_by}` is
+    kept (the released M117 clients read only those two and show a card whose 「参加する」 opens
+    `url`), and widened:
 
+    - `kind = "livekit"` (M130): an in-app call. `url` is its page `<PUBLIC_BASE_URL>/call/<id>`
+      (the path `/call/<id>` on a server without PUBLIC_BASE_URL; never null, an M117 Android
+      client cannot read a null `url`). The other fields describe the call; `ended_at`,
+      `duration_seconds` are null while it is on.
+    - `kind = "link"`: an M117 meeting link (history); only `url` and `started_by`.
+    """
+
+    kind: Literal["livekit", "link"] = "link"
     url: str
     # Who started it (the sender).
     started_by: UUID
+    call_id: UUID | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    duration_seconds: int | None = None
+    # People who were in the call (distinct).
+    participant_count: int | None = None
 
 
 class MessageOut(BaseModel):
@@ -398,8 +413,8 @@ class MessageOut(BaseModel):
     system_event: SystemEventOut | None = None
     # M94: posted through a workflow's form; null on other posts.
     workflow: MessageWorkflowOut | None = None
-    # M117: on a message that started a call (POST /channels/{id}/calls); null otherwise and once
-    # deleted.
+    # On a message that started a call (M130: POST /channels/{id}/huddle; M117's links are
+    # `kind: "link"`); null otherwise and once deleted.
     call: MessageCallOut | None = None
 
 
@@ -528,8 +543,10 @@ def to_message_out(
     comments: Sequence[PollComment] = (),
     collection: CollectionOut | None = None,
     tasks: Sequence[MessageTaskOut] = (),
+    call: Call | None = None,
 ) -> MessageOut:
-    """`viewer`: the user a response is for (their own poll votes, M27); None for events."""
+    """`viewer`: the user a response is for (their own poll votes, M27); None for events. `call`:
+    the row of the call the message announces (M130), when it does."""
     deleted = message.is_deleted
     return MessageOut(
         id=message.id,
@@ -566,9 +583,29 @@ def to_message_out(
         workflow=None
         if deleted or message.workflow_id is None
         else MessageWorkflowOut(id=message.workflow_id, name=message.workflow_name or ""),
-        call=None
-        if deleted or not message.call_url
-        else MessageCallOut(url=message.call_url, started_by=message.sender_id),
+        call=None if deleted else call_out(message, call),
+    )
+
+
+def call_out(message: Message, call: Call | None) -> MessageCallOut | None:
+    """MessageOut.call (docs/CALLS.md §5.4)."""
+    if not message.call_url:
+        return None
+    if message.call_id is None:
+        return MessageCallOut(kind="link", url=message.call_url, started_by=message.sender_id)
+    ended_at = call.ended_at if call is not None else None
+    started_at = call.started_at if call is not None else message.created_at
+    return MessageCallOut(
+        kind="livekit",
+        url=message.call_url,
+        started_by=message.sender_id,
+        call_id=message.call_id,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_seconds=None
+        if ended_at is None
+        else max(0, int((ended_at - started_at).total_seconds())),
+        participant_count=call.participant_count if call is not None else 0,
     )
 
 

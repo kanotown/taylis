@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.modules.calls.models import Call  # read-only (M130)
 from app.modules.channels.models import Channel, ChannelMember
 from app.modules.messages.models import (
     REPLY_USERS_MAX,
@@ -586,3 +587,11 @@ async def has_live_reply(
     if excluding is not None:
         stmt = stmt.where(Message.id != excluding)
     return (await db.execute(stmt.limit(1))).first() is not None
+
+
+async def calls_for(db: AsyncSession, call_ids: list[uuid.UUID]) -> dict[uuid.UUID, Call]:
+    """M130: the calls some messages announce (MessageOut.call)."""
+    if not call_ids:
+        return {}
+    rows = (await db.execute(select(Call).where(Call.id.in_(call_ids)))).scalars().all()
+    return {c.id: c for c in rows}

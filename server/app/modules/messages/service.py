@@ -17,6 +17,7 @@ from app.modules.attachments import service as attachments
 from app.modules.attachments.schemas import to_attachment_out
 from app.modules.calendar import service as calendar
 from app.modules.calendar.schemas import CalendarEventCreate
+from app.modules.calls.models import Call
 from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
 from app.modules.channels.schemas import LastMessageOut
@@ -127,6 +128,7 @@ async def create_message(
     mentions: bool = True,
     workflow: tuple[uuid.UUID, str] | None = None,
     call_url: str | None = None,
+    call: Call | None = None,
 ) -> tuple[Message, bool]:
     """Returns (message, created). Retrying with the same client_msg_id returns the same message.
 
@@ -137,7 +139,8 @@ async def create_message(
     group, @channel or @here mention is taken from the body, whatever text it carries.
     `workflow` = (id, name) marks a post made through a workflow's form (M94,
     docs/WORKFLOWS.md); everything else is an ordinary post by the actor. `call_url` marks the
-    post that starts a call (M117, docs/CALLS.md; the calls module checks the setting).
+    post that starts a call, and `call` the call it announces (M130, docs/CALLS.md §5.4; the
+    calls module checks who may start one).
     """
     # A retry of a message that is already stored gets that message back, whatever happened to
     # the channel since (archived, restricted, left): otherwise the client would mark a delivered
@@ -202,6 +205,7 @@ async def create_message(
                 workflow_id=workflow[0] if workflow else None,
                 workflow_name=workflow[1] if workflow else None,
                 call_url=call_url,
+                call_id=call.id if call is not None else None,
             )
             db.add(message)
             await db.flush()
@@ -227,7 +231,7 @@ async def create_message(
                 channel_id=channel_id,
                 seq=seq,
                 payload=MessageCreatedData(
-                    message=to_message_out(message, attachments=attachments_out),
+                    message=to_message_out(message, attachments=attachments_out, call=call),
                     parent_thread=parent_thread,
                 ).model_dump(mode="json"),
             )
@@ -343,6 +347,9 @@ async def messages_out(
     )
     repliers = await repo.repliers_for(db, list(collections))
     tasks = await repo.tasks_for(db, [m for m in rows if not m.is_deleted])
+    calls = await repo.calls_for(
+        db, [m.call_id for m in rows if m.call_id is not None and not m.is_deleted]
+    )
     if tasks and viewer is not None:
         # A shared task is for its conversation's members (SECURITY.md §3.2): someone reading a
         # public channel they have not joined (preview, search) does not see its chips. Events
@@ -372,6 +379,7 @@ async def messages_out(
                 )
                 for t, people in tasks.get(m.id, [])
             ],
+            calls.get(m.call_id) if m.call_id is not None else None,
         )
         for m in rows
     ]

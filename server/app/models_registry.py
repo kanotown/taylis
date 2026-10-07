@@ -7,6 +7,7 @@ from app.modules.ai import models as _ai_models
 from app.modules.analytics import models as _analytics_models
 from app.modules.auth import models as _auth_models
 from app.modules.calendar import models as _calendar_models
+from app.modules.calls import models as _call_models
 from app.modules.canvases import models as _canvas_models
 from app.modules.channel_links import models as _channel_link_models
 from app.modules.channels import models as _channel_models
@@ -39,6 +40,7 @@ __all__ = [
     "_analytics_models",
     "_auth_models",
     "_calendar_models",
+    "_call_models",
     "_canvas_models",
     "_channel_link_models",
     "_channel_models",

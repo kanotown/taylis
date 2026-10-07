@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.modules.activity.schemas import ActivitySummaryOut
+from app.modules.calls.schemas import CallOut
 from app.modules.channels.schemas import ChannelOut
 from app.modules.drafts.schemas import DraftOut
 from app.modules.emoji.schemas import CustomEmojiOut, EmojiPackOut
@@ -74,6 +75,9 @@ class BootstrapOut(BaseModel):
     # M120 (docs/WIKI.md §10): the wiki's change feed position (the tree is GET /wiki/tree);
     # absent from a server without the wiki.
     wiki: WikiBootstrap | None = None
+    # M130 (docs/CALLS.md §5.3): the calls in progress in my conversations; changes arrive as
+    # call.started / call.updated / call.ended (no seq: GET /calls?active=true after a reconnect).
+    active_calls: list[CallOut] = []
 
 
 class UnreadSummaryOut(BaseModel):

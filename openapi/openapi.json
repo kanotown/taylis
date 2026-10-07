@@ -1089,7 +1089,7 @@
         "description": "GET / PATCH /admin/workspace-settings: the settings and who changed them last.",
         "properties": {
           "calls_enabled": {
-            "default": true,
+            "default": false,
             "title": "Calls Enabled",
             "type": "boolean"
           },
@@ -1126,6 +1126,19 @@
             ],
             "title": "Icon Version"
           },
+          "in_app_calls": {
+            "$ref": "#/components/schemas/InAppCallsOut",
+            "default": {
+              "enabled": false,
+              "screen_share": false,
+              "video": false
+            }
+          },
+          "in_app_calls_enabled": {
+            "default": true,
+            "title": "In App Calls Enabled",
+            "type": "boolean"
+          },
           "legacy_sso_default_channels": {
             "default": [],
             "items": {
@@ -1143,7 +1156,6 @@
                 "type": "null"
               }
             ],
-            "default": "https://meet.jit.si/",
             "title": "Meeting Base Url"
           },
           "preview_before_join": {
@@ -2709,6 +2721,14 @@
       },
       "BootstrapOut": {
         "properties": {
+          "active_calls": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CallOut"
+            },
+            "title": "Active Calls",
+            "type": "array"
+          },
           "activity": {
             "anyOf": [
               {
@@ -2872,8 +2892,12 @@
           "workspace_settings": {
             "$ref": "#/components/schemas/WorkspaceSettingsOut",
             "default": {
-              "calls_enabled": true,
-              "meeting_base_url": "https://meet.jit.si/",
+              "calls_enabled": false,
+              "in_app_calls": {
+                "enabled": false,
+                "screen_share": false,
+                "video": false
+              },
               "preview_before_join": true,
               "show_membership_messages": true
             }
@@ -3648,26 +3672,17 @@
         "title": "CalendarOccurrenceUpdate",
         "type": "object"
       },
-      "CallCreate": {
-        "additionalProperties": false,
-        "description": "POST /channels/{id}/calls. `client_msg_id` is the message's idempotency key, as for any\npost: a retry gets the same call back.",
+      "CallJoinOut": {
+        "description": "What a client connects to LiveKit with (docs/CALLS.md §7.1): `url` is LIVEKIT_URL, `token`\nan access token for this call's room only, good until `expires_at` (10 minutes; needed only to\nconnect). Never logged, never cached.",
         "properties": {
-          "client_msg_id": {
-            "format": "uuid",
-            "title": "Client Msg Id",
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
             "type": "string"
-          }
-        },
-        "required": [
-          "client_msg_id"
-        ],
-        "title": "CallCreate",
-        "type": "object"
-      },
-      "CallOut": {
-        "properties": {
-          "message": {
-            "$ref": "#/components/schemas/MessageOut"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
           },
           "url": {
             "title": "Url",
@@ -3676,9 +3691,151 @@
         },
         "required": [
           "url",
-          "message"
+          "token",
+          "expires_at"
+        ],
+        "title": "CallJoinOut",
+        "type": "object"
+      },
+      "CallJoinedOut": {
+        "properties": {
+          "call": {
+            "$ref": "#/components/schemas/CallOut"
+          },
+          "join": {
+            "$ref": "#/components/schemas/CallJoinOut"
+          }
+        },
+        "required": [
+          "call",
+          "join"
+        ],
+        "title": "CallJoinedOut",
+        "type": "object"
+      },
+      "CallListOut": {
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/CallOut"
+            },
+            "title": "Calls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calls"
+        ],
+        "title": "CallListOut",
+        "type": "object"
+      },
+      "CallOut": {
+        "description": "An in-app call (M130, docs/CALLS.md §5.2).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "participant_count": {
+            "default": 0,
+            "title": "Participant Count",
+            "type": "integer"
+          },
+          "participants": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CallParticipantOut"
+            },
+            "title": "Participants",
+            "type": "array"
+          },
+          "peak_participants": {
+            "default": 0,
+            "title": "Peak Participants",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "started_by": {
+            "format": "uuid",
+            "title": "Started By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "message_id",
+          "started_by",
+          "started_at",
+          "ended_at"
         ],
         "title": "CallOut",
+        "type": "object"
+      },
+      "CallParticipantOut": {
+        "properties": {
+          "joined_at": {
+            "format": "date-time",
+            "title": "Joined At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "joined_at"
+        ],
+        "title": "CallParticipantOut",
+        "type": "object"
+      },
+      "CallStateOut": {
+        "properties": {
+          "call": {
+            "$ref": "#/components/schemas/CallOut"
+          }
+        },
+        "required": [
+          "call"
+        ],
+        "title": "CallStateOut",
         "type": "object"
       },
       "CanvasConflictDetails": {
@@ -6976,6 +7133,64 @@
         "title": "HistoryOut",
         "type": "object"
       },
+      "HuddleCreate": {
+        "additionalProperties": false,
+        "description": "POST /channels/{id}/huddle. `client_msg_id` is the call message's idempotency key: a retry\ngets the same call and message back (with a fresh token).",
+        "properties": {
+          "client_msg_id": {
+            "format": "uuid",
+            "title": "Client Msg Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_msg_id"
+        ],
+        "title": "HuddleCreate",
+        "type": "object"
+      },
+      "HuddleOut": {
+        "properties": {
+          "call": {
+            "$ref": "#/components/schemas/CallOut"
+          },
+          "join": {
+            "$ref": "#/components/schemas/CallJoinOut"
+          },
+          "message": {
+            "$ref": "#/components/schemas/MessageOut"
+          }
+        },
+        "required": [
+          "call",
+          "message",
+          "join"
+        ],
+        "title": "HuddleOut",
+        "type": "object"
+      },
+      "InAppCallsOut": {
+        "description": "M130 (docs/CALLS.md §5.1). `enabled`: the administrator's switch is on and this server has\nLiveKit configured. `video` / `screen_share` follow `enabled` in v1 (kept apart so that an\nadministrator can turn them off later).",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "screen_share": {
+            "default": false,
+            "title": "Screen Share",
+            "type": "boolean"
+          },
+          "video": {
+            "default": false,
+            "title": "Video",
+            "type": "boolean"
+          }
+        },
+        "title": "InAppCallsOut",
+        "type": "object"
+      },
       "InviteAccept": {
         "additionalProperties": false,
         "properties": {
@@ -8048,8 +8263,75 @@
         "type": "object"
       },
       "MessageCallOut": {
-        "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
+        "description": "This message announces a call (docs/CALLS.md §5.4). M117's shape `{url, started_by}` is\nkept (the released M117 clients read only those two and show a card whose 「参加する」 opens\n`url`), and widened:\n\n- `kind = \"livekit\"` (M130): an in-app call. `url` is its page `<PUBLIC_BASE_URL>/call/<id>`\n  (the path `/call/<id>` on a server without PUBLIC_BASE_URL; never null, an M117 Android\n  client cannot read a null `url`). The other fields describe the call; `ended_at`,\n  `duration_seconds` are null while it is on.\n- `kind = \"link\"`: an M117 meeting link (history); only `url` and `started_by`.",
         "properties": {
+          "call_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "kind": {
+            "default": "link",
+            "enum": [
+              "livekit",
+              "link"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "participant_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Count"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
           "started_by": {
             "format": "uuid",
             "title": "Started By",
@@ -16505,7 +16787,7 @@
         "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
         "properties": {
           "calls_enabled": {
-            "default": true,
+            "default": false,
             "title": "Calls Enabled",
             "type": "boolean"
           },
@@ -16520,6 +16802,14 @@
             ],
             "title": "Icon Version"
           },
+          "in_app_calls": {
+            "$ref": "#/components/schemas/InAppCallsOut",
+            "default": {
+              "enabled": false,
+              "screen_share": false,
+              "video": false
+            }
+          },
           "meeting_base_url": {
             "anyOf": [
               {
@@ -16529,7 +16819,6 @@
                 "type": "null"
               }
             ],
-            "default": "https://meet.jit.si/",
             "title": "Meeting Base Url"
           },
           "preview_before_join": {
@@ -16566,10 +16855,20 @@
             ],
             "title": "Default Channel Ids"
           },
+          "in_app_calls_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In App Calls Enabled"
+          },
           "meeting_base_url": {
             "anyOf": [
               {
-                "maxLength": 200,
                 "type": "string"
               },
               {
@@ -18661,7 +18960,7 @@
         ]
       },
       "patch": {
-        "description": "M117 (docs/CALLS.md): also the meeting service for calls (`meeting_base_url`).",
+        "description": "M130 (docs/CALLS.md §5.1): also 「アプリ内通話」 (`in_app_calls_enabled`). M117's\n`meeting_base_url` is refused with 409 meeting_links_retired.",
         "operationId": "update_workspace_settings_api_v1_admin_workspace_settings_patch",
         "requestBody": {
           "content": {
@@ -20839,6 +21138,197 @@
         ]
       }
     },
+    "/api/v1/calls": {
+      "get": {
+        "description": "The calls in progress in my conversations (what a client reads after reconnecting: the\ncall.* events have no seq).",
+        "operationId": "list_calls_api_v1_calls_get",
+        "parameters": [
+          {
+            "description": "Only true is supported",
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Only true is supported",
+              "title": "Active",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Calls",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/api/v1/calls/{call_id}": {
+      "get": {
+        "description": "A call and who is in it. Members of its conversation only (403 not_a_member).",
+        "operationId": "get_call_api_v1_calls__call_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Call",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/api/v1/calls/{call_id}/join": {
+      "post": {
+        "description": "A token to join or reconnect (after the 10 minutes of the last one). 404 call_not_found,\n403 not_a_member / dm_unavailable / forbidden, 409 call_ended / call_full / channel_archived\n/ calls_disabled (no LiveKit on this server), 429 rate_limited (30 a minute).",
+        "operationId": "join_call_api_v1_calls__call_id__join_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallJoinedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Join Call",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/api/v1/calls/{call_id}/leave": {
+      "post": {
+        "description": "Hung up: LiveKit drops this person's connection (in case the client could not) and the\ncall shows them gone (call.updated). Idempotent; an ended call is fine.",
+        "operationId": "leave_call_api_v1_calls__call_id__leave_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Leave Call",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
     "/api/v1/canvas-templates": {
       "get": {
         "description": "Templates to start a canvas from (hidden ones left out).",
@@ -21912,8 +22402,9 @@
     },
     "/api/v1/channels/{channel_id}/calls": {
       "post": {
-        "description": "M117 (docs/CALLS.md): start a call — a message 「📞 通話を始めました」 with a new meeting\nroom's link (`message.call`). 201 when created, 200 for a retry with the same `client_msg_id`.\n403 not_a_member / posting_restricted / dm_unavailable, 409 channel_archived /\ncalls_disabled / idempotency_conflict.",
-        "operationId": "start_call_api_v1_channels__channel_id__calls_post",
+        "deprecated": true,
+        "description": "M117's calls by meeting link, retired by M130 (docs/CALLS.md §11): always 409\ncalls_disabled, so that the released M117 clients hide their 📞.",
+        "operationId": "legacy_start_call_api_v1_channels__channel_id__calls_post",
         "parameters": [
           {
             "in": "path",
@@ -21926,23 +22417,11 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CallCreate"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
-          "200": {
+          "409": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CallOut"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -21963,7 +22442,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Start Call",
+        "summary": "Legacy Start Call",
         "tags": [
           "calls"
         ]
@@ -22505,6 +22984,65 @@
         "summary": "Create Feed",
         "tags": [
           "feeds"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/huddle": {
+      "post": {
+        "description": "Start the conversation's call, or join the one in progress (docs/CALLS.md §5.2). 201 when\na call was started (its message is posted: message.created, push, call.started); 200 for a\nretry with the same `client_msg_id` or when a call was already in progress (no new message,\n`message` is that call's). `join` = the LiveKit URL and a 10-minute token for this call only.\n403 not_a_member / posting_restricted (an announcement channel: owners and administrators\nstart, everyone joins) / dm_unavailable (a 1:1 DM with a block either way) / forbidden\n(bots), 409 channel_archived / calls_disabled / call_full / call_ended (a retry of an ended\ncall) / idempotency_conflict, 503 calls_unavailable (LiveKit cannot be reached: nothing is\nposted), 429 rate_limited (10 starts a minute).",
+        "operationId": "start_or_join_api_v1_channels__channel_id__huddle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HuddleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuddleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Or Join",
+        "tags": [
+          "calls"
         ]
       }
     },

@@ -4,8 +4,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.workspace.models import DEFAULT_MEETING_BASE_URL
-
 
 class ServerInfoOut(BaseModel):
     # Always "chikuwachat": the add-workspace dialog tells our server from any other site.
@@ -20,6 +18,16 @@ class ServerInfoOut(BaseModel):
     icon_version: str | None = None
 
 
+class InAppCallsOut(BaseModel):
+    """M130 (docs/CALLS.md §5.1). `enabled`: the administrator's switch is on and this server has
+    LiveKit configured. `video` / `screen_share` follow `enabled` in v1 (kept apart so that an
+    administrator can turn them off later)."""
+
+    enabled: bool = False
+    video: bool = False
+    screen_share: bool = False
+
+
 class WorkspaceSettingsOut(BaseModel):
     """M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event
     workspace.settings_updated)."""
@@ -32,14 +40,13 @@ class WorkspaceSettingsOut(BaseModel):
     # M93 (WORKSPACES.md §3.4): the workspace icon's version (null: none); a change reaches the
     # signed-in devices through workspace.settings_updated, so the rail follows at once.
     icon_version: str | None = None
-    # M117 (docs/CALLS.md): whether the 📞 button is shown (POST /channels/{id}/calls works), and
-    # the meeting service a call's room is made on (null when calls are off).
-    calls_enabled: bool = True
-    meeting_base_url: str | None = DEFAULT_MEETING_BASE_URL
+    # M130 (docs/CALLS.md §5.1): in-app calls (LiveKit). New clients show 🎧 when `enabled`.
+    in_app_calls: InAppCallsOut = InAppCallsOut()
+    # M117's meeting links, retired by M130 (docs/CALLS.md §11): always false and null, so that
+    # the released M117 clients hide their 📞. New clients do not read them.
+    calls_enabled: bool = False
+    meeting_base_url: str | None = None
 
-
-# M117: the longest meeting service URL an administrator can set.
-MAX_MEETING_BASE_URL = 200
 
 # M90: at most this many default channels (a long list would bury a newcomer's sidebar).
 MAX_DEFAULT_CHANNELS = 20
@@ -55,6 +62,9 @@ class AdminWorkspaceSettingsOut(WorkspaceSettingsOut):
 
     updated_at: datetime | None = None
     updated_by: UUID | None = None
+    # M130: the administrator's 「アプリ内通話」 switch as saved (in_app_calls.enabled also needs
+    # LiveKit on the server).
+    in_app_calls_enabled: bool = True
     # M90 「既定のチャンネル」 (docs/MEMBERSHIP.md §6): the public channels every new non-guest
     # account joins, in order. Only channels that are still public and not archived are listed.
     default_channel_ids: list[UUID] = []
@@ -76,10 +86,12 @@ class WorkspaceSettingsUpdate(BaseModel):
     # (422 default_channel_not_found / default_channel_not_public / default_channel_archived);
     # repeats are dropped.
     default_channel_ids: list[UUID] | None = Field(default=None, max_length=MAX_DEFAULT_CHANNELS)
-    # M117 (docs/CALLS.md): the meeting service's base URL (https; http only for localhost on a
-    # DEBUG server; no query, fragment or credentials; a missing final "/" is added). "" or an
-    # explicit null turns calls off (422 meeting_url_invalid otherwise).
-    meeting_base_url: str | None = Field(default=None, max_length=MAX_MEETING_BASE_URL)
+    # M130 (docs/CALLS.md §5.1): 「アプリ内通話」. Turning it off ends no call in progress; it
+    # only stops new ones.
+    in_app_calls_enabled: bool | None = None
+    # M117's meeting service, retired (docs/CALLS.md §11): sending it at all (an M117 desktop's
+    # admin screen) is refused with 409 meeting_links_retired rather than silently dropped.
+    meeting_base_url: str | None = None
 
 
 class DefaultChannelsApply(BaseModel):

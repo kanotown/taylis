@@ -9,6 +9,7 @@ from app.modules.ai import events as ai_events
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
 from app.modules.calendar import events as calendar_events
+from app.modules.calls import events as call_events
 from app.modules.canvases import events as canvas_events
 from app.modules.channel_links import events as channel_link_events
 from app.modules.channels import events as channel_events
@@ -45,6 +46,10 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     message_events.MESSAGE_CREATED: (message_events.MessageCreatedData, "channel", True),
     message_events.MESSAGE_UPDATED: (message_events.MessageUpdatedData, "channel", True),
     message_events.MESSAGE_DELETED: (message_events.MessageDeletedData, "channel", True),
+    # M130 (docs/CALLS.md §5.3): a call's state, without a seq.
+    call_events.CALL_STARTED: (call_events.CallEventData, "channel", False),
+    call_events.CALL_UPDATED: (call_events.CallEventData, "channel", False),
+    call_events.CALL_ENDED: (call_events.CallEventData, "channel", False),
     channel_events.CHANNEL_CREATED: (
         channel_events.ChannelEventData,
         "channel (public: all)",

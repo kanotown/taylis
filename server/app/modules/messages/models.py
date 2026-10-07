@@ -99,6 +99,9 @@ class Message(Base):
     # M117 (docs/CALLS.md): the meeting room of a message that started a call (POST
     # /channels/{id}/calls); NULL on other posts. The body carries the same link for old clients.
     call_url: Mapped[str | None] = mapped_column(Text)
+    # M130 (docs/CALLS.md §5.4): the in-app call this message announces (call_url is then its
+    # /call/<id> page).
+    call_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("calls.id", ondelete="SET NULL"))
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),
