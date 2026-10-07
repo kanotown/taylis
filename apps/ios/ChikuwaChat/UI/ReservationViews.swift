@@ -324,7 +324,14 @@ struct PoolSection: View {
         let active = ReservationRules.active(pool, me: controller.store.me?.id)
         Section {
             HStack(spacing: 8) {
-                Button { booking = true } label: { Label("予約する", systemImage: "calendar.badge.plus") }
+                // Not a Label: in a List row its icon takes the row's tint, the filled button's own colour, and vanished
+                // (2026-10-07). Image + Text both take the button's label colour (white, or the disabled grey).
+                Button { booking = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar.badge.plus")
+                        Text("予約する")
+                    }
+                }
                     .buttonStyle(.borderedProminent)
                     .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
                 if mine.walkin == nil {

@@ -65,6 +65,10 @@ enum AttendanceIcons {
     }
 
     static func glyph(_ state: AttendanceStateOut) -> Glyph { glyph(icon: state.icon, emoji: state.emoji) }
+
+    /// The width of a symbol's box at `size`: the same for every symbol (wide enough for the widest, a little wider
+    /// than tall), so switching between states never changes a badge's or the pill's width by its icon.
+    static func boxWidth(_ size: CGFloat) -> CGFloat { (size * 1.2).rounded(.up) }
 }
 
 /// A state's picture (its icon, else its emoji — a custom one as its image —, else nothing). Decorative: the name is
@@ -92,9 +96,11 @@ struct AttendanceGlyph: View {
     var body: some View {
         switch AttendanceIcons.glyph(icon: icon, emoji: emoji) {
         case .symbol(let name):
+            // A fixed box: the symbols differ in width, and a state switch with a name of the same length must not move
+            // anything (the home header's pill, 2026-10-07).
             Image(systemName: name)
                 .font(.system(size: size * 0.9, weight: .semibold))
-                .frame(minWidth: size, minHeight: size)
+                .frame(width: AttendanceIcons.boxWidth(size), height: size)
                 .accessibilityHidden(true)
         case .emoji(let emoji):
             StatusGlyph(controller: controller, emoji: emoji, size: size)
@@ -141,7 +147,7 @@ struct AttendancePillFace: View {
         HStack(spacing: 5) {
             if let state {
                 if AttendanceIcons.glyph(state) == .none {
-                    Circle().fill(AttendancePalette.foreground(state.color)).frame(width: 8, height: 8)
+                    Circle().fill(AttendancePalette.onSolid).frame(width: 8, height: 8)
                 } else {
                     AttendanceGlyph(controller: controller, state: state, size: 14)
                 }
@@ -152,20 +158,23 @@ struct AttendancePillFace: View {
                 Text(state.map { AttendanceRules.pillText($0.label) } ?? tr("在室状況"))
                     .font(.footnote.weight(.semibold))
                     .lineLimit(1)
+                    .contentTransition(.identity)
             }
         }
         .padding(.horizontal, iconOnly ? 0 : 10)
         .frame(minWidth: 28, minHeight: 28)
-        .foregroundStyle(state.map { AttendancePalette.foreground($0.color) } ?? Color.secondary)
+        .foregroundStyle(state == nil ? Color.secondary : AttendancePalette.onSolid)
         .background {
             if let state {
-                Capsule().fill(AttendancePalette.chipBackground(state.color))
+                Capsule().fill(AttendancePalette.solid(state.color))
             } else {
                 Capsule().strokeBorder(Color(.separator), lineWidth: 1)
             }
         }
         .contentShape(Capsule())
         .fixedSize()
+        // A switch redraws in place: no cross-fade nor size animation (it read as a jiggle in the header).
+        .transaction { $0.animation = nil }
     }
 }
 
@@ -240,9 +249,9 @@ struct AttendanceQuickSheet: View {
         return Button { choose(state) } label: {
             HStack(spacing: 12) {
                 AttendanceGlyph(controller: controller, state: state, size: 17)
-                    .foregroundStyle(AttendancePalette.foreground(state.color))
+                    .foregroundStyle(AttendancePalette.onSolid)
                     .frame(width: 32, height: 32)
-                    .background(AttendancePalette.chipBackground(state.color), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(AttendancePalette.solid(state.color), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text(state.label).fontWeight(current ? .semibold : .regular).lineLimit(1)
                 if state.ownerId != nil { Text("自分用").font(.caption).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
@@ -370,11 +379,9 @@ struct AttendanceIconPicker: View {
                 Text(label).font(.caption2).lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity, minHeight: 56)
-            .foregroundStyle(selected ? AttendancePalette.foreground(color) : Color.primary)
-            .background(selected ? AttendancePalette.chipBackground(color) : Color(.tertiarySystemFill),
+            .foregroundStyle(selected ? AttendancePalette.onSolid : Color.primary)
+            .background(selected ? AttendancePalette.solid(color) : Color(.tertiarySystemFill),
                         in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(selected ? AttendancePalette.foreground(color) : Color.clear, lineWidth: 1.5))
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -392,13 +399,16 @@ struct AttendanceColorSwatches: View {
             ForEach(SectionLetterIcon.colors, id: \.key) { option in
                 let selected = selection == option.key
                 Button { selection = option.key } label: {
+                    // The solid shade the badge will have; the chosen one has a ring around it and a white check.
                     Circle()
-                        .fill(AttendancePalette.chipBackground(option.key))
-                        .overlay(Circle().strokeBorder(AttendancePalette.foreground(option.key), lineWidth: selected ? 2.5 : 1))
+                        .fill(AttendancePalette.solid(option.key))
+                        .frame(width: 26, height: 26)
                         .overlay {
-                            if selected { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(AttendancePalette.foreground(option.key)) }
+                            if selected { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(AttendancePalette.onSolid) }
                         }
-                        .frame(width: 30, height: 30)
+                        .padding(3)
+                        .overlay(Circle().strokeBorder(selected ? AttendancePalette.solid(option.key) : Color.clear, lineWidth: 2))
+                        .frame(width: 34, height: 34)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .contentShape(Rectangle())
                 }
