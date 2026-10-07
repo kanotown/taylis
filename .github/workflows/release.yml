@@ -136,6 +136,7 @@ jobs:
           # shellcheck disable=SC2029 # the tag is meant to expand here; the server checks it again
           tar -czf - -C infra docker-compose.yml docker-compose.prod.yml docker-compose.release.yml \
               docker-compose.behind-proxy.yml Caddyfile backup.sh restore.sh deploy.sh \
+              docker-compose.livekit.yml livekit.yaml \
             | ssh -F "$RUNNER_TEMP/deploy-ssh/config" production upload "$TAG"
       - name: Deploy (backup, pull, restart, /readyz, roll back on failure)
         if: steps.ssh.outputs.skip != 'true'

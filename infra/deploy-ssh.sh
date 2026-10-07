@@ -13,6 +13,9 @@ INFRA="${CHIKUWA_INFRA:-/srv/chikuwachat/infra}"
 TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
 FILES=(docker-compose.yml docker-compose.prod.yml docker-compose.release.yml docker-compose.behind-proxy.yml Caddyfile
        backup.sh restore.sh deploy.sh)
+# In-app calls (docs/CALLS.md §8.6, M131): taken when the archive has them. Releases before M131 do not, and servers
+# with an older copy of this script ignore them, so the workflow and the servers need not change at the same time.
+OPTIONAL_FILES=(docker-compose.livekit.yml livekit.yaml)
 
 read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
 if [ "${#argv[@]}" -ne 2 ] || ! [[ "${argv[1]}" =~ $TAG_RE ]]; then
@@ -25,10 +28,17 @@ case "${argv[0]}" in
   upload)
     stage="$(mktemp -d)"
     trap 'rm -rf "$stage"' EXIT
+    archive="$stage/release.tar.gz"
+    cat > "$archive"
     # Only these member names are extracted: nothing else in the archive can land anywhere.
-    tar -xzf - -C "$stage" --no-same-owner --no-same-permissions "${FILES[@]}"
+    names=("${FILES[@]}")
+    listed="$(tar -tzf "$archive")"
+    for name in "${OPTIONAL_FILES[@]}"; do
+      if grep -qxF "$name" <<< "$listed"; then names+=("$name"); fi
+    done
+    tar -xzf "$archive" -C "$stage" --no-same-owner --no-same-permissions "${names[@]}"
     mkdir -p "$INFRA/releases/$tag"
-    for name in "${FILES[@]}"; do
+    for name in "${names[@]}"; do
       mode=644
       [[ "$name" == *.sh ]] && mode=755
       install -m "$mode" "$stage/$name" "$INFRA/releases/$tag/$name"

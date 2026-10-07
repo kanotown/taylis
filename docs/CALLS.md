@@ -471,7 +471,9 @@ LiveKit は SFU で、映像を変換しない。各人は自分の 1 本（simu
 
 M131（taylis の VPS、162.43.29.120）で行う。DNS（1）は済んでいる（`livekit.kano-lab.com` → 162.43.29.120、利用者 2026-10-07）。
 ほかの手順は M131 の作業者が利用者と一緒に行う（共用のサーバの変更は利用者の了承済み、§12）。`<domain>` は `kano-lab.com`、
-`/srv/taylis` は infra の置き場所に読み替える。
+`/srv/taylis` は infra の置き場所に読み替える（taylis の VPS では `/srv/chikuwachat`）。
+
+0. **配布の仕組み**（M131 で足した）：リリースは `docker-compose.livekit.yml` と `livekit.yaml` も送る。受け取る側の `/usr/local/bin/chikuwa-deploy`（`infra/deploy-ssh.sh`）は、この 2 つを「あれば受け取る」ので、M131 より前の版のままのサーバ（本番）はそのままでよい。LiveKit を置くサーバでは `sudo install -m 755 infra/deploy-ssh.sh /usr/local/bin/chikuwa-deploy` で入れ替える。
 
 1. **DNS**：`dig +short livekit.kano-lab.com` が `162.43.29.120` を返すこと。
 2. **ポートが空いているか**：`sudo ss -lntupH | grep -E ':(7880|7881|7882|3478|5349)\b'` が何も出さないこと（出たら、その
