@@ -1148,7 +1148,7 @@ private fun ResultRow(
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Description, contentDescription = null, tint = muted, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text(highlighted(attachment.filename, keywords), style = MaterialTheme.typography.labelMedium, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        FileNameText(attachment.filename, text = highlighted(attachment.filename, keywords), style = MaterialTheme.typography.labelMedium, color = muted)
                     }
                 }
                 if (message.attachments.size > 3) Text(stringResource(R.string.search_pane_more_files, message.attachments.size - 3), style = MaterialTheme.typography.labelSmall, color = muted)

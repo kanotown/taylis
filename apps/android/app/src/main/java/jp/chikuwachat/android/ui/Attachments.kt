@@ -47,8 +47,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -251,7 +249,7 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
             else if (item.hasPreviewPicture && !posterFailed) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp)) {
                 Icon(if (video) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(item.filename, fontSize = 9.sp, lineHeight = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FileNameTwoLines(item.filename, fontSize = 9.sp, lineHeight = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         // M28c: the × keeps its 22 dp look but takes touches from 48 dp around it (over the tile's corner, being on top).
