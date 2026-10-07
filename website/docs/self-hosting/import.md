@@ -1,11 +1,11 @@
 ---
-title: Slack / Mattermost からの移行
-description: Slack のエクスポートや Mattermost のチームを、会話ごと Taylis に読み込む
+title: Slack / Mattermost / Notion からの移行
+description: Slack のエクスポートや Mattermost のチームを会話ごと、Notion の書き出しをドキュメントとして Taylis に読み込む
 ---
 
-# Slack / Mattermost からの移行
+# Slack / Mattermost / Notion からの移行
 
-どちらも、サーバーでコマンドを実行して読み込みます。両方に共通する点は次のとおりです。
+どれも、サーバーでコマンドを実行して読み込みます。共通する点は次のとおりです。
 
 - **試し読み**（`--dry-run`）：すべてを検査して、何も書き込まずに、人の対応付け・件数・警告を表示します。
   本番の前に必ず実行してください。
@@ -91,6 +91,54 @@ Mattermost のチーム 1 つを読み込みます。2 段に分かれます。
 
 コマンドの例は [infra/README.md の「Mattermost からの移行」](https://github.com/kanotown/taylis/blob/main/infra/README.md)
 をご覧ください。
+
+## Notion から
+
+Notion の書き出し（「Markdown & CSV」）を「ドキュメント」に読み込みます。
+
+**読み込むもの**：ページとサブページの木、データベース（列はプロパティになり、型は値から推測します：チェック・数・日付・URL・
+人・マルチセレクト・セレクト・関係・テキスト。日付のあるデータベースにはカレンダーのビューを作ります）、行の本文、画像と
+ファイル、ページ間のリンク、コールアウト（引用になります）・トグル（箇条書きになります）・数式・コード・表。
+
+**読み込まないもの**：共有設定、コメント、ページの履歴、ビューの設定、アイコンとカバー、作成者と日時（書き出しに入って
+いません。作成者は実行した管理者になります）。
+
+### 書き出しを作る（Notion 側）
+
+取り込みたいページの「…」→「エクスポート」で、形式「Markdown & CSV」、「サブページを含める」と「サブページ用のフォルダを作成する」を
+オンにします。できた ZIP をそのまま使います（大きいと ZIP の中に ZIP が入っていますが、そのままで読めます）。
+
+### 実行の例
+
+```sh
+cd /srv/chikuwachat/infra
+install -d -m 700 /srv/chikuwachat/import
+# (手元から) scp 'Export.zip' root@<サーバー>:/srv/chikuwachat/import/notion-export.zip
+
+# 1. 試し読み (何も書き込みません)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  run --rm --no-deps --user root -e RUN_MIGRATIONS=false \
+  -v /srv/chikuwachat/import:/import app \
+  python -m app.cli import-notion /import/notion-export.zip --actor admin \
+  --access private --dry-run
+
+# 2. 本番: 1. から --dry-run を外して実行
+
+# 3. 片付け
+rm -rf /srv/chikuwachat/import
+```
+
+| オプション | 内容 |
+| --- | --- |
+| `--actor admin` | 実行する管理者（監査ログに残り、取り込んだページの作成者になります） |
+| `--access workspace-edit` / `workspace-view` / `private` | 取り込んだいちばん上のページの共有（既定は全員が編集）。全員に見えてはいけないページがあるときは `private` で取り込み、確かめてから共有を広げてください |
+| `--parent <ページの id>` | そのページの下に取り込む（共有は親から受け継ぎます） |
+| `--user "Notion の名前=ユーザー名"`、`--user-map FILE` | 人の列と `@名前` の対応付け（表示名かユーザー名が一致すれば指定しなくても対応します） |
+| `--column-types FILE` | 推測した型の指定し直し（`列名 = 型` か `データベース名 / 列名 = 型` の行） |
+
+もう一度実行すると、Notion で増えたページを足し、Taylis で変えていないページは新しい書き出しで上書きします。Taylis で
+変えたページはそのまま残し、結果に一覧を出します。詳しくは
+[infra/README.md の「Notion からの移行」](https://github.com/kanotown/taylis/blob/main/infra/README.md) をご覧ください。
 
 ## 移行の後で
 

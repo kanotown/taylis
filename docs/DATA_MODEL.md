@@ -2233,11 +2233,11 @@ CREATE TABLE workspace_settings (
 として出す (`enabled` = この値 かつ サーバに LiveKit の設定がある)。M117 の `calls_enabled` はいつも false、
 `meeting_base_url` はいつも null で出す (公開済みの M117 のクライアントのため。docs/CALLS.md §11)。
 
-### import_refs (移行元の対応、M18・M87)
+### import_refs (移行元の対応、M18・M87・M125)
 
 ```sql
 CREATE TABLE import_refs (
-  source      varchar(32) NOT NULL,   -- 'mattermost' | 'slack'
+  source      varchar(32) NOT NULL,   -- 'mattermost' | 'slack' | 'notion'
   kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji' | 'bot_as_person'
   source_id   varchar(64) NOT NULL,   -- 移行元の id (Mattermost の 26 文字の id、Slack は下記)
   target_id   uuid NOT NULL,          -- 作った行 (users / channels / messages / attachments / custom_emoji) の id
@@ -2284,6 +2284,15 @@ Slack のメッセージには全体で一意の id が無いので、`source_id
 `created_at` は `ts` (秒.マイクロ秒) をそのまま使い、並びも `ts` 順。`thread_broadcast` は `also_in_channel = true` の
 返信、ピン留めの `pinned_by` は channels.json の `pins` にある人 (無ければ投稿者)。リアクションの時刻は Slack の
 書き出しに無いので、メッセージの時刻。
+
+Notion（M125、`app.cli import-notion`、docs/WIKI.md §6・§21）も同じ表で `source = 'notion'`。作るのはドキュメントの
+ページ（`wiki_pages`、版は `kind = 'import'`、作者は実行した管理者）と添付（`attachments.page_id`）。
+
+| kind | source_id | target_id |
+| --- | --- | --- |
+| page | ページ・データベース・行の Notion の id（32 桁の 16 進）。長い本文の続きのページは `<id>:cont:<n>` | wiki_pages |
+| row | ページの無い CSV の行：`<データベースの id>:csv:<題名のハッシュ>:<同じ題名の何番目か>` | wiki_pages |
+| file | `<ページの source_id>:<ファイルのパスのハッシュ>` （埋め込み画像は `…:data:<中身のハッシュ>`。同じファイルを 2 つのページがリンクすると別の添付） | attachments |
 
 ## 4. 代表的なクエリ
 

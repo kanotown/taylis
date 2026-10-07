@@ -135,7 +135,7 @@ nav:
       - 文書のプレビュー: self-hosting/previews.md
       - バックアップと復元: self-hosting/backup.md
       - 更新と自動デプロイ: self-hosting/updates.md
-      - Slack / Mattermost からの移行: self-hosting/import.md
+      - Slack / Mattermost / Notion からの移行: self-hosting/import.md
       - 困ったとき: self-hosting/troubleshooting.md
   - 仕組み:
       - how-it-works/index.md
