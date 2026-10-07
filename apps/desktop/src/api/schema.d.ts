@@ -2098,6 +2098,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Close Dm
+         * @description Close a DM or group DM I belong to (M141, 「会話を閉じる」): hidden from my DM lists until a
+         *     new message arrives in it or I open it again. It is marked read and unpinned. Idempotent
+         *     (closing again moves the closing point to now). 403 not_a_member, 409 dm_close_not_dm for a
+         *     channel.
+         */
+        put: operations["close_dm_api_v1_channels__channel_id__close_put"];
+        post?: never;
+        /**
+         * Reopen Dm
+         * @description Open it again (clients call this when I open a closed conversation). Idempotent: 200
+         *     whether or not it was closed.
+         */
+        delete: operations["reopen_dm_api_v1_channels__channel_id__close_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/dm-pin": {
         parameters: {
             query?: never;
@@ -6782,6 +6810,11 @@ export interface components {
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
             /**
+             * Closed Dms
+             * @default []
+             */
+            closed_dms: string[];
+            /**
              * Custom Emoji
              * @default []
              */
@@ -8004,6 +8037,18 @@ export interface components {
             push_provider?: ("apns" | "fcm" | "none") | null;
             /** Push Token */
             push_token?: string | null;
+        };
+        /** DmCloseStateOut */
+        DmCloseStateOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Closed */
+            closed: boolean;
+            /** Closed At */
+            closed_at?: string | null;
         };
         /** DmCreate */
         DmCreate: {
@@ -16738,6 +16783,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_dm_api_v1_channels__channel_id__close_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmCloseStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_dm_api_v1_channels__channel_id__close_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmCloseStateOut"];
                 };
             };
             /** @description Validation Error */

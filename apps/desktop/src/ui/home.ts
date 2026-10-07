@@ -140,10 +140,12 @@ export function homeSections(
     title?: (channel: ChannelState) => string;
     /** M118: my pinned DMs, oldest pin first. */
     dmPins?: readonly string[] | null;
+    /** M141: the DMs I closed (hidden). */
+    closedDms?: ReadonlySet<string> | null;
   } = {},
 ): HomeSections {
   const meId = options.meId ?? null;
-  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, defaults: options.defaults, meId, now: options.now, title: options.title, dmPins: options.dmPins });
+  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, defaults: options.defaults, meId, now: options.now, title: options.title, dmPins: options.dmPins, closedDms: options.closedDms });
   const unread: ChannelState[] = [];
   const pick = (list: ChannelState[]) => {
     if (!options.gatherUnread) return list;

@@ -25,6 +25,8 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
   // M118: DMs and group DMs (my own DM too) pin to the top; not offered by a server before M118 (no dm_pins).
   const pinnable = isDmChannel(channel) && channel.isMember && store.dmPins !== null;
   const pinned = store.isDmPinned(channel.id);
+  // M141 「会話を閉じる」: DMs and group DMs too; not offered by a server before M141 (no closed_dms).
+  const closable = isDmChannel(channel) && channel.isMember && store.closedDms !== null;
   return (
     <>
       <ContextMenu.Root>
@@ -34,6 +36,11 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
             {pinnable && (
               <ContextMenu.Item className={ITEM} onSelect={() => void controller.toggleDmPin(channel.id)}>
                 {pinned ? t("dmPin.unpin") : t("dmPin.pin")}
+              </ContextMenu.Item>
+            )}
+            {closable && (
+              <ContextMenu.Item className={ITEM} onSelect={() => void controller.closeDm(channel.id)}>
+                {t("dmClose.close")}
               </ContextMenu.Item>
             )}
             <ContextMenu.Item className={ITEM} onSelect={() => void controller.toggleFavorite(channel.id)}>

@@ -312,6 +312,7 @@ export function pinnedFirst<T extends { id: string }>(rows: readonly T[], pins: 
 /**
  * The sidebar order: each section in its sort (DMs: my own DM first unless by hand), joinable public channels by name.
  * M118: pinned DMs come first in every section that holds them, even by hand; then my own DM (when not pinned).
+ * M141: a closed DM is in none of them (favorites and my sections too), so Alt+↑/↓ skips it as well.
  */
 export function sectionChannels(
   all: ChannelState[],
@@ -326,8 +327,12 @@ export function sectionChannels(
     title?: (channel: ChannelState) => string;
     /** M118: my pinned DMs, oldest pin first. */
     dmPins?: readonly string[] | null;
+    /** M141: the DMs I closed, left out of every section (SYNC_PROTOCOL.md §7.9). */
+    closedDms?: ReadonlySet<string> | null;
   } = {},
 ): ChannelSections {
+  const closed = options.closedDms;
+  if (closed?.size) all = all.filter((c) => !closed.has(c.id));
   const meId = options.meId ?? null;
   const title = options.title;
   const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, meId, options.now);

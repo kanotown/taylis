@@ -42,8 +42,10 @@ export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallS
  * M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered); M130: one before it no
  * `active_calls`.
  */
-export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "workspace_settings" | "active_calls"> & {
+export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "closed_dms" | "workspace_settings" | "active_calls"> & {
   dm_pins?: string[];
+  /** M141: a server before it sends none (nothing closed, and the close action is not offered). */
+  closed_dms?: string[];
   workspace_settings?: WorkspaceSettingsOut | null;
   active_calls?: CallOut[];
 };
@@ -131,6 +133,8 @@ export type FileListOut = components["schemas"]["FileListOut"];
 export type FavoriteStateOut = components["schemas"]["FavoriteStateOut"];
 /** M118: PUT / DELETE /channels/{id}/dm-pin. */
 export type DmPinStateOut = components["schemas"]["DmPinStateOut"];
+/** M141: PUT / DELETE /channels/{id}/close (「会話を閉じる」). */
+export type DmCloseStateOut = components["schemas"]["DmCloseStateOut"];
 export type ChannelReadStateOut = components["schemas"]["ChannelReadStateOut"];
 
 /** Moderation (M104, docs/MODERATION.md): blocks, message reports, account deletion. */

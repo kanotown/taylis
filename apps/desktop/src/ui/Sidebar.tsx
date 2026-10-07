@@ -93,7 +93,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M39: the same badge as the phone's activity tab (none before M39: the entry is the mentions list then).
   const activity = activityBadge(channels, store.threadSummary, store.activity);
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: me?.id ?? null, title: (c) => channelTitle(c, controller), dmPins: store.dmPins });
+  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: me?.id ?? null, title: (c) => channelTitle(c, controller), dmPins: store.dmPins, closedDms: store.closedDms });
   // DATA_MODEL.md sidebar_sections 「並べ替え」: each section's sort from its ⋯ menu; in 「手動」 a row dragged onto another row of
   // the same section lands before or after it (not while only unread conversations are listed: the hidden ones would
   // lose their place).
