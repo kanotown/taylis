@@ -60,7 +60,8 @@ class Probe:
         return f"{self.method} {self.path}{extra}"
 
 
-M, A = "manager", "admin"
+M: Level = "manager"
+A: Level = "admin"
 PROBES: list[Probe] = [
     # --- users (admin module) ---
     Probe("GET", "/admin/users", M),
