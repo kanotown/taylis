@@ -1,0 +1,22 @@
+{
+  "_comment": "在室状況 (M140, docs/PRESENCE.md §2.1): the icons a state may have (attendance_states.icon). Each key is a meaning, drawn with each platform's own icon set: `lucide` = the lucide-react component (Desktop / Web), `sf` = the SF Symbols name (iOS 17+), `material` = the androidx.compose.material.icons name, drawn as Icons.Outlined.<name> (Android; core or extended). The server accepts exactly these keys (server/app/modules/attendance/schemas.py ICON_KEYS; tests/test_attendance.py compares). Order = the picker's order. `label` names the meaning in the picker (tooltip / screen reader). A client that does not know a key (an older app, a key added later) shows the state's emoji instead, or nothing. `defaults` = the icon of each kind's default state (made when the board is first enabled).",
+  "icons": [
+    { "key": "in_room", "lucide": "DoorOpen", "sf": "door.left.hand.open", "material": "MeetingRoom", "label": { "ja": "在室", "en": "In the room", "zh-Hans": "在室" } },
+    { "key": "on_site", "lucide": "Building2", "sf": "building.2", "material": "Business", "label": { "ja": "建物内", "en": "On site", "zh-Hans": "楼内" } },
+    { "key": "off_site", "lucide": "MapPin", "sf": "mappin.and.ellipse", "material": "Place", "label": { "ja": "外出", "en": "Out", "zh-Hans": "外出" } },
+    { "key": "gone", "lucide": "House", "sf": "house", "material": "Home", "label": { "ja": "帰宅", "en": "Gone home", "zh-Hans": "回家" } },
+    { "key": "meeting", "lucide": "Users", "sf": "person.2", "material": "Groups", "label": { "ja": "会議", "en": "Meeting", "zh-Hans": "会议" } },
+    { "key": "class", "lucide": "Presentation", "sf": "rectangle.inset.filled.and.person.filled", "material": "CoPresent", "label": { "ja": "授業・発表", "en": "Class / talk", "zh-Hans": "上课・报告" } },
+    { "key": "remote", "lucide": "Laptop", "sf": "laptopcomputer", "material": "Laptop", "label": { "ja": "リモート", "en": "Remote", "zh-Hans": "远程" } },
+    { "key": "lunch", "lucide": "Utensils", "sf": "fork.knife", "material": "Restaurant", "label": { "ja": "食事", "en": "Lunch", "zh-Hans": "用餐" } },
+    { "key": "trip", "lucide": "Plane", "sf": "airplane", "material": "Flight", "label": { "ja": "出張・移動", "en": "Trip", "zh-Hans": "出差" } },
+    { "key": "away", "lucide": "Clock", "sf": "clock", "material": "Schedule", "label": { "ja": "少し離席", "en": "Away", "zh-Hans": "暂离" } },
+    { "key": "busy", "lucide": "CircleMinus", "sf": "minus.circle", "material": "RemoveCircleOutline", "label": { "ja": "取り込み中", "en": "Busy", "zh-Hans": "忙碌" } },
+    { "key": "sick", "lucide": "Thermometer", "sf": "thermometer.medium", "material": "Thermostat", "label": { "ja": "体調不良", "en": "Sick", "zh-Hans": "生病" } },
+    { "key": "vacation", "lucide": "TreePalm", "sf": "beach.umbrella", "material": "BeachAccess", "label": { "ja": "休暇", "en": "Vacation", "zh-Hans": "休假" } },
+    { "key": "lab", "lucide": "FlaskConical", "sf": "flask", "material": "Science", "label": { "ja": "実験", "en": "Lab work", "zh-Hans": "实验" } },
+    { "key": "library", "lucide": "Library", "sf": "books.vertical", "material": "LocalLibrary", "label": { "ja": "図書館", "en": "Library", "zh-Hans": "图书馆" } },
+    { "key": "other", "lucide": "Circle", "sf": "circle", "material": "Circle", "label": { "ja": "その他", "en": "Other", "zh-Hans": "其他" } }
+  ],
+  "defaults": { "in_room": "in_room", "on_site": "on_site", "off_site": "off_site", "gone": "gone" }
+}

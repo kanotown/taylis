@@ -23,6 +23,27 @@ PersonalRule = Literal["nobody", "everyone", "admins", "groups"]
 
 LABEL_MAX = 40
 NOTE_MAX = 100
+# The icon catalogue (apps/shared/attendance-icons.json; tests/test_attendance.py compares): a
+# meaning each client draws with its own icon set. A plain string in the API (not an enum) so that
+# a key added later does not break an older client's decoder; the server accepts only these.
+ICON_KEYS: tuple[str, ...] = (
+    "in_room",
+    "on_site",
+    "off_site",
+    "gone",
+    "meeting",
+    "class",
+    "remote",
+    "lunch",
+    "trip",
+    "away",
+    "busy",
+    "sick",
+    "vacation",
+    "lab",
+    "library",
+    "other",
+)
 
 
 def _clean_label(value: str) -> str:
@@ -41,6 +62,14 @@ def _clean_emoji(value: str | None) -> str | None:
     return cleaned or None
 
 
+def _clean_icon(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if value not in ICON_KEYS:
+        raise ValueError("Unknown icon (apps/shared/attendance-icons.json)")
+    return value
+
+
 # --- states ---------------------------------------------------------------------------------
 
 
@@ -49,6 +78,9 @@ class AttendanceStateOut(BaseModel):
     # null = the workspace's state; else the person whose own state it is.
     owner_id: UUID | None
     label: str
+    # A key of apps/shared/attendance-icons.json (null = none: the client shows the emoji, if
+    # any). A client that does not know the key shows the emoji too.
+    icon: str | None
     emoji: str | None
     color: Color
     kind: Kind
@@ -61,6 +93,7 @@ def to_state_out(row: AttendanceState) -> AttendanceStateOut:
         id=row.id,
         owner_id=row.owner_id,
         label=row.label,
+        icon=row.icon,
         emoji=row.emoji,
         color=row.color,  # type: ignore[arg-type]
         kind=row.kind,  # type: ignore[arg-type]
@@ -73,9 +106,15 @@ class AttendanceStateCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(max_length=200)
+    icon: str | None = Field(default=None, max_length=32)
     emoji: str | None = Field(default=None, max_length=32)
     color: Color = "gray"
     kind: Kind
+
+    @field_validator("icon")
+    @classmethod
+    def icon_known(cls, value: str | None) -> str | None:
+        return _clean_icon(value)
 
     @field_validator("label")
     @classmethod
@@ -89,11 +128,12 @@ class AttendanceStateCreate(BaseModel):
 
 
 class AttendanceStateUpdate(BaseModel):
-    """Only what is sent changes; `emoji: null` removes the emoji."""
+    """Only what is sent changes; `emoji: null` / `icon: null` removes the emoji / icon."""
 
     model_config = ConfigDict(extra="forbid")
 
     label: str | None = Field(default=None, max_length=200)
+    icon: str | None = Field(default=None, max_length=32)
     emoji: str | None = Field(default=None, max_length=32)
     color: Color | None = None
     kind: Kind | None = None
@@ -107,6 +147,11 @@ class AttendanceStateUpdate(BaseModel):
     @classmethod
     def emoji_clean(cls, value: str | None) -> str | None:
         return _clean_emoji(value)
+
+    @field_validator("icon")
+    @classmethod
+    def icon_known(cls, value: str | None) -> str | None:
+        return _clean_icon(value)
 
 
 class AttendanceStateOrder(BaseModel):

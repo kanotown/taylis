@@ -3,6 +3,7 @@
 
 import hashlib
 import hmac
+import importlib.util
 import json
 import uuid
 from collections.abc import Callable
@@ -20,7 +21,8 @@ from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.models import OutboxEvent
 from app.modules.attendance import service, webhooks
-from app.modules.attendance.models import AttendanceDelivery, AttendanceLog
+from app.modules.attendance.models import AttendanceDelivery, AttendanceLog, AttendanceState
+from app.modules.attendance.schemas import ICON_KEYS
 from app.modules.channels.service import resolve_event_audience
 from app.modules.users.models import User
 from tests.helpers import make_user
@@ -99,11 +101,11 @@ async def test_off_by_default_then_enabled_with_default_states(
     as_user(root)
     settings = await _enable(client)
     assert settings["enabled"] is True
-    assert [(s["label"], s["kind"], s["color"]) for s in settings["states"]] == [
-        ("在室", "in_room", "green"),
-        ("学内", "on_site", "blue"),
-        ("学外", "off_site", "orange"),
-        ("帰宅", "gone", "gray"),
+    assert [(s["label"], s["kind"], s["color"], s["icon"]) for s in settings["states"]] == [
+        ("在室", "in_room", "green", "in_room"),
+        ("学内", "on_site", "blue", "on_site"),
+        ("学外", "off_site", "purple", "off_site"),
+        ("帰宅", "gone", "red", "gone"),
     ]
     # Turning it off and on again does not make a second set.
     await client.patch("/api/v1/admin/attendance/settings", json={"enabled": False})
@@ -125,12 +127,117 @@ async def test_english_admin_gets_english_defaults(
     await db.commit()
     as_user(root)
     settings = await _enable(client)
-    assert [s["label"] for s in settings["states"]] == [
-        "In the room",
-        "On site",
-        "Off site",
-        "Gone home",
+    assert [(s["label"], s["color"], s["icon"]) for s in settings["states"]] == [
+        ("In the room", "green", "in_room"),
+        ("On site", "blue", "on_site"),
+        ("Off site", "purple", "off_site"),
+        ("Gone home", "red", "gone"),
     ]
+
+
+SHARED = Path(__file__).resolve().parents[2] / "apps" / "shared"
+MIGRATION_0101 = (
+    Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0101_attendance_icons.py"
+)
+
+
+def test_icon_keys_match_the_shared_catalogue() -> None:
+    """apps/shared/attendance-icons.json: the server takes exactly its keys; the defaults agree."""
+    catalogue = json.loads((SHARED / "attendance-icons.json").read_text())
+    assert tuple(icon["key"] for icon in catalogue["icons"]) == ICON_KEYS
+    for icon in catalogue["icons"]:
+        assert icon["lucide"] and icon["sf"] and icon["material"]
+        assert set(icon["label"]) == {"ja", "en", "zh-Hans"}
+    assert catalogue["defaults"] == {kind: icon for kind, icon, _e, _c in service.DEFAULT_STATES}
+
+
+async def test_state_icons_are_validated_and_cleared(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    root = await make_user(db, "root", role="admin")
+    alice = await make_user(db, "alice")
+    as_user(root)
+    await _enable(client, personal_rule="everyone")
+
+    unknown = await client.post(
+        "/api/v1/admin/attendance/states",
+        json={"label": "会議", "icon": "rocket", "kind": "on_site"},
+    )
+    assert unknown.status_code == 422
+    made = await client.post(
+        "/api/v1/admin/attendance/states",
+        json={"label": "会議", "icon": "meeting", "emoji": "🗣️", "kind": "on_site"},
+    )
+    assert made.status_code == 201 and made.json()["icon"] == "meeting"
+    path = f"/api/v1/admin/attendance/states/{made.json()['id']}"
+    # Leaving icon out keeps it; null clears it (the emoji stays as the fallback).
+    kept = await client.patch(path, json={"label": "会議中"})
+    assert kept.json()["icon"] == "meeting"
+    cleared = await client.patch(path, json={"icon": None})
+    assert cleared.json()["icon"] is None and cleared.json()["emoji"] == "🗣️"
+    assert (await client.patch(path, json={"icon": "Meeting"})).status_code == 422
+
+    as_user(alice)
+    mine = await client.post(
+        "/api/v1/attendance/my-states", json={"label": "出張", "icon": "trip", "kind": "off_site"}
+    )
+    assert mine.status_code == 201 and mine.json()["icon"] == "trip"
+    changed = await client.patch(
+        f"/api/v1/attendance/my-states/{mine.json()['id']}", json={"icon": "vacation"}
+    )
+    assert changed.json()["icon"] == "vacation"
+    empty = await client.post(
+        "/api/v1/attendance/my-states", json={"label": "x", "icon": "", "kind": "gone"}
+    )
+    assert empty.status_code == 422
+    board = (await client.get("/api/v1/attendance")).json()
+    assert {s["label"]: s["icon"] for s in board["states"]}["出張"] == "vacation"
+
+
+async def test_migration_backfills_only_untouched_default_states(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """0101: a workspace state still with its kind's default emoji gets the default icon (renamed
+    or not); one whose emoji changed, and personal states, are left alone; colours never change."""
+    spec = importlib.util.spec_from_file_location("migration_0101", MIGRATION_0101)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    root = await make_user(db, "root", role="admin")
+    alice = await make_user(db, "alice")
+    as_user(root)
+    settings = await _enable(client, personal_rule="everyone")
+    ids = {s["kind"]: s["id"] for s in settings["states"]}
+    admin_path = "/api/v1/admin/attendance/states"
+    await client.patch(f"{admin_path}/{ids['in_room']}", json={"label": "部屋"})
+    await client.patch(f"{admin_path}/{ids['off_site']}", json={"emoji": "🚗"})
+    as_user(alice)
+    own = await client.post(
+        "/api/v1/attendance/my-states", json={"label": "家", "emoji": "🏠", "kind": "gone"}
+    )
+    assert own.status_code == 201, own.text
+    # As before 0101: no icons anywhere, and an old colour.
+    await db.execute(update(AttendanceState).values(icon=None))
+    await db.execute(
+        update(AttendanceState)
+        .where(AttendanceState.id == uuid.UUID(ids["gone"]))
+        .values(color="gray")
+    )
+    await db.commit()
+
+    await db.execute(migration.BACKFILL)
+    await db.commit()
+    db.expire_all()
+    rows = {
+        str(row.id): (row.icon, row.color)
+        for row in (await db.execute(select(AttendanceState))).scalars().all()
+    }
+    assert rows[ids["in_room"]] == ("in_room", "green")
+    assert rows[ids["on_site"]] == ("on_site", "blue")
+    assert rows[ids["off_site"]] == (None, "purple")
+    assert rows[ids["gone"]] == ("gone", "gray")
+    assert rows[str(own.json()["id"])][0] is None
 
 
 async def test_set_my_state_log_events_and_since(

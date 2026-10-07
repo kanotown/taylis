@@ -71,6 +71,8 @@ class AttendanceState(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     label: Mapped[str] = mapped_column(String(40))
+    # A key of apps/shared/attendance-icons.json (migration 0101); NULL = none (the emoji, if any).
+    icon: Mapped[str | None] = mapped_column(String(32))
     emoji: Mapped[str | None] = mapped_column(String(32))
     color: Mapped[str] = mapped_column(Text)
     kind: Mapped[str] = mapped_column(Text)  # in_room | on_site | off_site | gone
