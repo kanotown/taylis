@@ -70,6 +70,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.DmCloses
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
@@ -183,7 +184,7 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
     val store = controller.store
     val meId = store.me?.id
     var query by rememberSaveable { mutableStateOf("") }
-    val rows = remember(version, meId, query) { MainTabs.dmList(store.channels.values, { channelTitle(it, store) }, meId, query, store.dmPins) }
+    val rows = remember(version, meId, query) { MainTabs.dmList(store.channels.values, { channelTitle(it, store) }, meId, query, store.dmPins, store.closedDms) }
     val myName = remember(version, meId) { myDisplayName(store) }
     val placeholder = remember(version, meId, query) { MainTabs.showsSelfNotesPlaceholder(store.channels.values, meId, myName, query) }
     val scope = rememberCoroutineScope()
@@ -284,7 +285,7 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
     }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 72.dp).selectedRow(selected)
-            .combinedClickable(onClick = onClick, onLongClick = if (store.dmPinsKnown) ({ menuOpen = true }) else null, onLongClickLabel = stringResource(R.string.common_menu))
+            .combinedClickable(onClick = onClick, onLongClick = if (store.dmPinsKnown || store.closedDmsKnown) ({ menuOpen = true }) else null, onLongClickLabel = stringResource(R.string.common_menu))
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
@@ -341,10 +342,16 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
                 }
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
+                if (store.dmPinsKnown) DropdownMenuItem(
                     text = { Text(stringResource(if (pinned) R.string.dm_pin_unpin else R.string.dm_pin_pin)) },
                     leadingIcon = { Icon(if (pinned) Icons.Outlined.PushPin else Icons.Filled.PushPin, contentDescription = null) },
                     onClick = { menuOpen = false; scope.launch { controller.toggleDmPin(channel.id) } },
+                )
+                // M141 (§7.9): 「会話を閉じる」, while the server closes DMs.
+                if (DmCloses.canClose(store, channel)) DropdownMenuItem(
+                    text = { Text(stringResource(R.string.dm_close)) },
+                    leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                    onClick = { menuOpen = false; controller.closeDm(channel.id) },
                 )
             }
         }

@@ -9,6 +9,8 @@ enum class BarMenuItem {
     SUMMARIZE, SUMMARIZE_THREAD,
     /** M69 (CALENDAR.md §10.9): the calendar's 「カレンダーを購読 (iCal)」. */
     CALENDAR_FEEDS,
+    /** M141 (SYNC_PROTOCOL.md §7.9): 「会話を閉じる」 in a DM or group DM, while the server closes them. */
+    CLOSE_DM,
 }
 
 /**
@@ -29,7 +31,7 @@ object BarMenu {
      */
     fun items(
         conversation: Boolean, channel: Boolean, archived: Boolean, activityFeed: Boolean, timesFeed: Boolean = false, myTimes: Boolean = false,
-        thread: Boolean = false, summaries: Boolean = false, calendar: Boolean = false,
+        thread: Boolean = false, summaries: Boolean = false, calendar: Boolean = false, closeDm: Boolean = false,
     ): List<BarMenuItem> = when {
         calendar -> listOf(BarMenuItem.CALENDAR_FEEDS)
         conversation -> buildList {
@@ -38,6 +40,7 @@ object BarMenu {
             add(BarMenuItem.DETAILS)
             if (summaries) add(BarMenuItem.SUMMARIZE)
             if (channel && !archived) add(BarMenuItem.ADD_MEMBER)
+            if (!channel && closeDm) add(BarMenuItem.CLOSE_DM)
         }
         thread -> listOfNotNull(BarMenuItem.SUMMARIZE_THREAD.takeIf { summaries })
         activityFeed -> emptyList() // 2026-10-07 (MOBILE_UI.md §6.4): 「すべて既読にする」 is the feed's own header button now

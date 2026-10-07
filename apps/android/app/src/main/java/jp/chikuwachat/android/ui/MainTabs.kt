@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.DmCloses
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZonedDateTime
@@ -280,9 +281,11 @@ object MainTabs {
         channels: Collection<ChannelState>, title: (ChannelState) -> String, meId: String?, query: String = "",
         /** M118: my pinned DMs, oldest pin first: before everything, my own DM included (DmPins). */
         dmPins: List<String> = emptyList(),
+        /** M141: the DMs I closed are not listed (§7.9). */
+        closedDms: Set<String> = emptySet(),
     ): List<ChannelState> {
         val needle = query.trim().lowercase()
-        val rows = channels.filter { it.isMember && it.channel.isDm && (needle.isEmpty() || title(it).lowercase().contains(needle)) }
+        val rows = DmCloses.visible(channels, closedDms).filter { it.isMember && it.channel.isDm && (needle.isEmpty() || title(it).lowercase().contains(needle)) }
         return DmPins.first(rows, dmPins) { rest -> rest.sortedWith(compareByDescending<ChannelState> { isSelfNotes(it, meId) }.thenByDescending { recency(it) }) }
     }
 

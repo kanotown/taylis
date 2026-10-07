@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.DmCloses
 import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
@@ -83,6 +84,8 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, version: 
                 }
                 // M118: a DM or group DM (my own too) at the top of the DM lists, while the server keeps pins.
                 if (channel.channel.isDm && store.dmPinsKnown) DmPinButton(pinned) { scope.launch { controller.toggleDmPin(channelId); onDismiss() } }
+                // M141 (§7.9): 「会話を閉じる」 for a DM or group DM, while the server closes them.
+                if (DmCloses.canClose(store, channel)) TextButton(onClick = { controller.closeDm(channelId); onDismiss() }) { Text(stringResource(R.string.dm_close)) }
                 HorizontalDivider()
                 Text(stringResource(R.string.sidebar_dialogs_move_to_section), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 store.sidebarSections.forEach { section ->

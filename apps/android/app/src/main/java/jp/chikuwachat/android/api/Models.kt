@@ -595,6 +595,12 @@ data class BootstrapOut(
      * dm_pin.updated. Null from a server before M118: no pins, and no pin actions.
      */
     val dmPins: List<String>? = null,
+    /**
+     * M141 (DATA_MODEL.md conversation_closes, SYNC_PROTOCOL.md §7.9): the DMs and group DMs I closed (「会話を閉じる」) with no
+     * new message since, oldest close first; changes arrive as dm_close.updated and message.created. Null from a server
+     * before M141: none closed, and no close action.
+     */
+    val closedDms: List<String>? = null,
     /** Custom emoji (M12f): the whole table; changes arrive as emoji.updated. */
     val customEmoji: List<CustomEmojiOut> = emptyList(),
     /** M100: emoji packs in tab order; changes arrive as emoji_pack.updated. */
@@ -760,6 +766,10 @@ data class GeneralReportAck(val id: String, val category: String, val userId: St
 /** PUT / DELETE /channels/{id}/dm-pin (M118). */
 @Serializable
 data class DmPinStateOut(val channelId: String, val pinned: Boolean)
+
+/** PUT / DELETE /channels/{id}/close (M141, 「会話を閉じる」). */
+@Serializable
+data class DmCloseStateOut(val channelId: String, val closed: Boolean, val closedAt: String? = null)
 
 /** PUT / DELETE /channels/{id}/favorite (M12a). */
 @Serializable

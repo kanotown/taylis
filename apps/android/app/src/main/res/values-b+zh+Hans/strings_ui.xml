@@ -1737,6 +1737,9 @@
     <string name="dm_pin_pin">置顶</string>
     <string name="dm_pin_unpin">取消置顶</string>
     <string name="dm_pin_pinned">已置顶</string>
+    <string name="dm_close">关闭对话</string>
+    <string name="dm_close_done">已关闭对话</string>
+    <string name="dm_close_undo">撤销</string>
     <plurals name="composer_message_max_length">
         <item quantity="other">正文最多 %1$,d 个字符</item>
     </plurals>

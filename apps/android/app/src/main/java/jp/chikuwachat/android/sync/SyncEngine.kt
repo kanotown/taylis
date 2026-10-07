@@ -723,6 +723,7 @@ class SyncEngine(
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
         store.replaceDmPins(bootstrap.dmPins)
+        store.replaceClosedDms(bootstrap.closedDms)
         store.replaceBlocked(bootstrap.blockedUserIds)
         store.replaceCustomEmoji(bootstrap.customEmoji)
         store.replaceEmojiPacks(bootstrap.emojiPacks)
@@ -949,6 +950,10 @@ class SyncEngine(
                 val id = frame.data.str("channel_id") ?: return
                 store.setDmPin(id, frame.data.bool("pinned") ?: false)
             }
+            "dm_close.updated" -> {  // M141 (§7.9)
+                val id = frame.data.str("channel_id") ?: return
+                store.setDmClosed(id, frame.data.bool("closed") ?: false)
+            }
             "thread.updated" -> {
                 // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
                 // refreshed from the server shortly after, which also covers threads we do not hold.
@@ -1082,6 +1087,8 @@ class SyncEngine(
         val message = Codec.snake.decodeFromJsonElement(MessageOut.serializer(), frame.data["message"]?.jsonObject ?: return)
         val thread = (frame.data["parent_thread"] as? JsonObject)?.let { Codec.snake.decodeFromJsonElement(ParentThread.serializer(), it) }
         val isNew = frame.event == "message.created"
+        // M141 (§7.9): a new timeline row opens a closed conversation again (the server counts it open without a write).
+        if (isNew && (message.parentId == null || message.alsoInChannel)) store.setDmClosed(channelId, false)
         emitTimeline(channelId, TimelineEvent(frame.event, message, thread))
         val synced = channel.syncedSeq
         // M39: a mention of me or a reply in a thread I follow is an activity item (not an event applied already).
