@@ -48,7 +48,7 @@ WHERE parent_id = $parent AND seq > $last_read_seq AND sender_id <> $me;
 
 | 操作 | エンドポイント | 備考 |
 | --- | --- | --- |
-| 一覧 | `GET /threads?filter=all|unread&limit&cursor` | `following=true` で返信が 1 件以上ある親を `last_reply_at` の新しい順に。各行は `{ parent: MessageOut, state: ThreadState }`。応答の `next_cursor` (最後の行の `last_reply_at`) をそのまま `cursor` に渡すと次ページ。`summary` (下記) も同梱 |
+| 一覧 | `GET /threads?filter=all|unread&limit&cursor` | `following=true` で返信が 1 件以上ある親を `last_reply_at` の新しい順に。各行は `{ parent: MessageOut, state: ThreadState, latest_replies: [MessageOut] }`（`latest_replies` は最新の返信のプレビュー、§5。2026-10-07）。応答の `next_cursor` (最後の行の `last_reply_at`) をそのまま `cursor` に渡すと次ページ。`summary` (下記) も同梱 |
 | 状態 | `GET /messages/{id}/thread` | 自分の `ThreadState` 1 件。スレッドパネルのフォロー表示と「新しい返信」の区切りに使う。行が無ければ `following=false, last_read_seq=0` |
 | 既読 | `PUT /messages/{id}/thread/read {last_read_seq}` | 単調、最新の返信の `seq` で clamp。スレッドを開いて表示できた返信の最大 `seq` を 1 秒デバウンスで送る。`id` は返信の id でもよい (親に解決する) |
 | フォロー | `PUT /messages/{id}/thread/follow {following}` | false で一覧と通知から外れる (チャンネルの通知レベルが「すべて」でも返信は通知しない)。手動で外したものは自動フォローで戻さない。既読 API はフォローを作らない |
@@ -116,6 +116,31 @@ ThreadState
   - Android：`controller.revealMessage` のあと `MainNav.openConversationFromThreadList`（上のスレッドは閉じ、戻るで一覧へ）。
     親を取れなかった（オフラインなど）ときも会話はいつもの位置で開く。
   - アクティビティのタブの「スレッド」（段階 A）の一覧も同じ。
+- 最新の返信のプレビュー（2026-10-07、3 端末。Slack のスレッド一覧と同じ）：カードの親の下に、そのスレッドの新しい
+  返信を最大 2 件（古い順）並べる。各行はアバター・名前・時刻・本文（ふつうのメッセージの描画で、約 4 行で切る）。
+  本文が無い返信は添付の説明（「画像」など）。返信が表示より多いときは、その上に「他 n 件の返信」（n =
+  `reply_count` − 表示した件数）。
+  - サーバ：`GET /threads` の各行に `latest_replies: [MessageOut]`（スレッドの画面と同じ形。リアクション・添付・
+    メンション入り）。削除済みは除く。自分がブロックした人の返信も除く（アクティビティの一覧と同じ扱い。スレッドの
+    画面は折りたたみの 1 行で出すが、プレビューに折りたたみの行を並べても意味がないため）。`reply_count` は今までどおり
+    すべての返信を数える。ページ全体で 1 回の問い合わせ（親の id の配列を `unnest` し、`LATERAL` で各親の返信を
+    `messages_parent_idx (parent_id, seq)` から新しい順に 2 件）。親とまとめて 1 回の `messages_out` に通すので、
+    ページの問い合わせ数はスレッドの数で増えない（`tests/test_thread_list_previews.py`）。件数は
+    `threads.service.LATEST_REPLIES`。
+  - 未読の印：自分以外の返信で `seq` が `state.last_read_seq` より大きいものは名前を太字にし、点を付ける（スレッドの
+    画面の「新しい返信」と同じ基準）。
+  - 押すと：返信の行はスレッドを開いてその返信に着地する（`messageFocus`。Desktop / Web は開いてからフォーカスが届くと
+    スクロールする。iOS / Android はスレッドが 1 回だけ位置を決めるので、フォーカスを取ってから開く。取れなければ
+    いつもの位置で開く）。「他 n 件の返信」とカードのほかの部分はスレッドを開く。チャンネル名のリンクは今までどおり。
+  - 即時の更新：`message.created` / `message.updated` / `message.deleted`（自分の送信の応答も）がプレビューを持つ
+    スレッドの返信なら、一覧を取り直さずにその行のプレビューを差し替える（新しい 2 件を保つ）。表示中の返信が
+    消えたら、端末が持っているそのスレッドの返信から埋める（無ければ次の一覧の取得で埋まる）。ブロックした人の返信は
+    入れず、一覧を取った後にブロックした人の返信は表示のときに外す。
+  - 古いサーバ（`latest_replies` が無い）：行は親だけの今までのカードのまま。`thread.updated` だけから作った行も
+    同じ（次の一覧の取得でプレビューが付く）。
+  - 実装：Desktop / Web `ui/ThreadsView.tsx`・`ui/threadCard.ts`・`sync/store.ts`（`applyThreadPreview`）、
+    iOS `UI/ThreadsListView.swift`（`ThreadCardRules`）・`Sync/Store.swift`、Android `ui/ThreadsPane.kt`
+    （`ThreadCardRules`）・`sync/Store.kt`。
 - 既読: チャンネルと同じく「表示できた返信の `seq`」で送る。開いただけでは既読にしない。
 - Store はスレッド状態を `thread_follows` の形で保持し、`thread.updated` で置き換える。
   ローカル永続化はチャンネルと同じ JSON 行。
