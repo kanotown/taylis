@@ -337,6 +337,8 @@ enum class HomeTile(private val labelRes: Int?) {
     CANVASES(R.string.home_tile_canvases),
     /** M122 (docs/WIKI.md §9.2): 「ドキュメント」, the tree of pages, after キャンバス; no number. */
     DOCS(R.string.docs_title),
+    /** M140 (docs/PRESENCE.md §9): 「在室状況」, only while the workspace has the board on (and never for a guest); no number. */
+    ATTENDANCE(R.string.common_attendance),
     ;
 
     /** The tile's name; 「Times」 is the same in every language. */
@@ -359,16 +361,18 @@ object HomeTiles {
     /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?, reservations: ReservationTile? = null,
+        attendance: Boolean = false,
     ): List<TileState> {
-        val byKey = tiles(threads, drafts, saved, firedReminders, reservations).associateBy { it.tile.navKey }
-        return NavItems.tileKeys(navItems).mapNotNull { byKey[it] }
+        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance).associateBy { it.tile.navKey }
+        return NavItems.tileKeys(navItems, NavItems.implemented(attendance)).mapNotNull { byKey[it] }
     }
 
     /** M112: 予約 once the server answered the pools: the to-dos due (shown only for an operator, red when any). */
     data class ReservationTile(val todos: Int, val operates: Boolean)
 
-    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null): List<TileState> {
+    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null, attendance: Boolean = false): List<TileState> {
         val row = base(threads, drafts, saved, firedReminders).toMutableList()
+        if (attendance) row.add(TileState(HomeTile.ATTENDANCE, null)) // M140
         if (reservations != null) {
             val at = row.indexOfFirst { it.tile == HomeTile.DEADLINES }
             row.add(at + 1, TileState(HomeTile.RESERVATIONS, if (reservations.operates) reservations.todos else null, alert = reservations.todos > 0))

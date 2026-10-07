@@ -13,6 +13,7 @@ import jp.chikuwachat.android.sync.WikiApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.ReservationsApi
+import jp.chikuwachat.android.sync.AttendanceApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncApi
@@ -70,7 +71,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
+) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
@@ -700,6 +701,35 @@ class ApiClient(
 
     /** The pools I see, with today's and the coming bookings, the queue, the holders and (operators) the to-do. */
     override suspend fun reservationPools(): List<PoolOut> = request("GET", "/api/v1/reservation-pools")
+
+    // --- 在室状況 (M140, docs/PRESENCE.md §3) ------------------------------------------------------------
+
+    override suspend fun attendance(): AttendanceBoardOut = request("GET", "/api/v1/attendance")
+
+    /** My state (a workspace state or one of mine) and note (null = none); 422 attendance_state_invalid. */
+    suspend fun setMyAttendance(stateId: String, note: String?): AttendanceEntryOut =
+        request("PUT", "/api/v1/attendance/me", buildJsonObject {
+            put("state_id", stateId)
+            put("note", note?.let { JsonPrimitive(it) } ?: JsonNull)
+        })
+
+    /** One of my own states (403 attendance_personal_not_allowed, 409 attendance_label_taken / attendance_state_limit). */
+    suspend fun createMyAttendanceState(label: String, emoji: String?, color: String, kind: String): AttendanceStateOut =
+        request("POST", "/api/v1/attendance/my-states", attendanceStateBody(label, emoji, color, kind))
+
+    suspend fun updateMyAttendanceState(id: String, label: String, emoji: String?, color: String, kind: String): AttendanceStateOut =
+        request("PATCH", "/api/v1/attendance/my-states/$id", attendanceStateBody(label, emoji, color, kind))
+
+    /** Archives it (204); whoever has it keeps it. */
+    suspend fun deleteMyAttendanceState(id: String) { requestRaw("DELETE", "/api/v1/attendance/my-states/$id", null, auth = true, retry401 = true) }
+
+    /** `emoji: null` removes the emoji on a PATCH. */
+    private fun attendanceStateBody(label: String, emoji: String?, color: String, kind: String) = buildJsonObject {
+        put("label", label)
+        put("emoji", emoji?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("color", color)
+        put("kind", kind)
+    }
 
     /** A booking: on the hour, 1 h to the pool's max_hours, up to 14 days ahead (409 reservation_slot_full …). */
     suspend fun bookReservation(poolId: String, startAt: String, hours: Int): PoolOut =

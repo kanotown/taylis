@@ -622,6 +622,8 @@ data class BootstrapOut(
     val blockedUserIds: List<String> = emptyList(),
     /** M122 (docs/WIKI.md §10): the 「ドキュメント」 change feed's position; null from a server without it. */
     val wiki: WikiBootstrap? = null,
+    /** M140 (docs/PRESENCE.md §4): the 在室状況 board; null for guests, while it is off, and from a server before M140. */
+    val attendance: AttendanceBoardOut? = null,
 )
 
 /**

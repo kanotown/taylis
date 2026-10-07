@@ -90,6 +90,10 @@ sealed interface Route {
     @Serializable @SerialName("reservations")
     data object Reservations : Pane { override val keptUnderConversation get() = true }
 
+    /** M140 (docs/PRESENCE.md §9): 「在室状況」, from the home's tile (while the board is on); a person opens the profile card. */
+    @Serializable @SerialName("attendance")
+    data object Attendance : Pane { override val keptUnderConversation get() = true }
+
     /** A draft row closes the list itself before opening its conversation ([MainNav.openDraft]). */
     @Serializable @SerialName("drafts")
     data object Drafts : Pane { override val keptUnderConversation get() = true }

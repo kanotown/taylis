@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M140 (docs/PRESENCE.md §9): 在室状況. values/ is Japanese (the default). -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="ja">
+    <string name="attendance_kind_in_room">在室（部屋にいる）</string>
+    <string name="attendance_kind_on_site">敷地内（学内・社内）</string>
+    <string name="attendance_kind_off_site">外出（学外・社外）</string>
+    <string name="attendance_kind_gone">不在（帰宅など）</string>
+    <string name="attendance_since">%1$s から</string>
+    <string name="attendance_off">在室状況はオフになっています（管理者が有効にできます）</string>
+    <string name="attendance_mine">自分の状態</string>
+    <string name="attendance_personal">（自分用）</string>
+    <string name="attendance_note">メモ</string>
+    <string name="attendance_note_placeholder">メモ（例：〇〇室、15 時に戻ります）</string>
+    <string name="attendance_not_set_yet">まだ状態を選んでいません。上のボタンで選べます</string>
+    <string name="attendance_own_states">自分用の状態</string>
+    <string name="attendance_add_own">自分用の状態を追加</string>
+    <string name="attendance_own_none">自分用の状態はまだありません（例：会議、出張）</string>
+    <string name="attendance_edit_own">「%1$s」を編集</string>
+    <string name="attendance_delete_own">「%1$s」を削除</string>
+    <string name="attendance_delete_own_body">ボタンから消えます。今この状態にしている場合はそのまま残ります。</string>
+    <string name="attendance_board">ボード</string>
+    <string name="attendance_unset">未設定</string>
+    <string name="attendance_in_room">在室 %1$d 人</string>
+    <plurals name="attendance_people">
+        <item quantity="other">%1$d 人</item>
+    </plurals>
+    <string name="attendance_me">（自分）</string>
+    <string name="attendance_form_label">名前</string>
+    <string name="attendance_form_label_placeholder">例：会議</string>
+    <string name="attendance_form_emoji">絵文字（なくても可）</string>
+    <string name="attendance_form_color">色</string>
+    <string name="attendance_form_kind">分類</string>
+    <string name="attendance_form_kind_hint">ボードの並びと「在室 n 人」の数え方に使います</string>
+</resources>

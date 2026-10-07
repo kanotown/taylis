@@ -2782,6 +2782,24 @@ class AppController(private val app: Application) {
     suspend fun swapReservations(poolId: String, removeId: String, assignId: String): PoolOut? =
         withPool { it.swapReservations(poolId, removeId, assignId) }
 
+    // --- 在室状況 (M140, docs/PRESENCE.md §9) ----------------------------------------------------------
+
+    /** My state and note; the answer is my row at once (the event follows for my other devices). */
+    suspend fun setMyAttendance(stateId: String, note: String?): Boolean = attempt {
+        store.applyAttendanceEntry(api!!.setMyAttendance(stateId, note)); true
+    }.getOrElse { error = describe(it); false }
+
+    /** Adds (`id` null) or changes one of my own states; the board is read again (the states list). */
+    suspend fun saveMyAttendanceState(id: String?, label: String, emoji: String?, color: String, kind: String): Boolean = attempt {
+        if (id == null) api!!.createMyAttendanceState(label, emoji, color, kind) else api!!.updateMyAttendanceState(id, label, emoji, color, kind)
+        engine?.loadAttendance(); true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun deleteMyAttendanceState(id: String): Boolean = attempt {
+        api!!.deleteMyAttendanceState(id)
+        engine?.loadAttendance(); true
+    }.getOrElse { error = describe(it); false }
+
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 
     suspend fun toggleAck(message: MessageState) {

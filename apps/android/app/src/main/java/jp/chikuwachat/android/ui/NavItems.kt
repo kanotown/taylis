@@ -29,7 +29,7 @@ object NavItems {
         Entry("tasks", L10n.str(R.string.common_tasks), visible = true, platforms = BOTH),
         Entry("deadlines", L10n.str(R.string.common_deadlines), visible = true, platforms = BOTH),
         Entry("reservations", L10n.str(R.string.common_reservations), visible = true, platforms = BOTH),
-        // M140 (docs/PRESENCE.md): only while the workspace has the board on (not drawn by this app yet).
+        // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and I am not a guest).
         Entry("attendance", L10n.str(R.string.common_attendance), visible = true, platforms = BOTH),
     )
 
@@ -40,9 +40,12 @@ object NavItems {
 
     /**
      * The tiles this app has (「予約」 joins when its page exists). アクティビティ is the bottom tab (and the tablet rail's),
-     * never a tile, so it cannot be hidden here.
+     * never a tile, so it cannot be hidden here. M140: 「在室状況」 counts only while the board is on ([implemented]).
      */
-    val implemented: List<String> get() = HomeTile.entries.map { it.navKey }
+    val implemented: List<String> get() = implemented(attendance = false)
+
+    fun implemented(attendance: Boolean): List<String> =
+        HomeTile.entries.filter { attendance || it != HomeTile.ATTENDANCE }.map { it.navKey }
 
     private val byKey = catalogue.associateBy { it.key }
 
@@ -79,16 +82,17 @@ object NavItems {
         full.map { if (it.key == key) it.copy(visible = visible) else it }
 
     /** Moves one shown item [by] places (−1 up, +1 down) among the shown ones. */
-    fun move(full: List<NavItem>, key: String, by: Int): List<NavItem> {
-        val keys = shown(full).map { it.key }.toMutableList()
+    fun move(full: List<NavItem>, key: String, by: Int, implemented: List<String> = this.implemented): List<NavItem> {
+        val keys = shown(full, implemented = implemented).map { it.key }.toMutableList()
         val from = keys.indexOf(key)
         val to = from + by
         if (from < 0 || to !in keys.indices) return full
         keys.removeAt(from)
         keys.add(to, key)
-        return reorder(full, keys)
+        return reorder(full, keys, implemented = implemented)
     }
 
     /** The tiles to draw, in my order. */
-    fun tileKeys(stored: List<NavItem>?): List<String> = shown(full(stored)).filter { it.visible }.map { it.key }
+    fun tileKeys(stored: List<NavItem>?, implemented: List<String> = this.implemented): List<String> =
+        shown(full(stored), implemented = implemented).filter { it.visible }.map { it.key }
 }

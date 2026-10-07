@@ -287,6 +287,40 @@ class SyncEngine(
         }
     }
 
+    /**
+     * M140 (docs/PRESENCE.md §4): GET /attendance (the page opening, attendance.config_updated, a row of an unknown
+     * state); `enabled: false` (turned off) clears the board. Guests have none (403): not asked. An answer that started
+     * before one already kept is dropped, as for the pools.
+     */
+    suspend fun loadAttendance() {
+        val boardApi = api as? AttendanceApi ?: return
+        if (store.me?.role == "guest") return
+        val read = ++attendanceReads
+        runCatching { boardApi.attendance() }.onSuccess {
+            if (read < attendanceKept) return@onSuccess
+            attendanceKept = read
+            store.setAttendance(it)
+        }.onFailure { Log.w("SyncEngine", "could not read the attendance board", it) }
+    }
+
+    private var attendanceReads = 0
+    private var attendanceKept = 0
+    private var attendanceReload: Job? = null
+    private var attendanceDirty = false
+
+    /** attendance.config_updated comes in bursts (a reorder, several edits): one read 300 ms after the last of them starts. */
+    private fun scheduleAttendanceReload() {
+        attendanceDirty = true
+        if (attendanceReload?.isActive == true) return
+        attendanceReload = scope.launch {
+            while (attendanceDirty) {
+                kotlinx.coroutines.delay(300)
+                attendanceDirty = false
+                loadAttendance()
+            }
+        }
+    }
+
     /** M112: reservation.notice while the app is open (the server pushes to phones not on screen). */
     var onReservationNotice: ((jp.chikuwachat.android.api.ReservationNotice) -> Unit)? = null
 
@@ -698,6 +732,7 @@ class SyncEngine(
         store.replaceSidebar(bootstrap.sidebarSections)
         store.replaceSidebarDefaults(bootstrap.sidebarDefaults)
         applyWorkspaceSettings(bootstrap.workspaceSettings, live = false) // the reconnect's openChannel loads a preview again
+        store.setAttendance(bootstrap.attendance) // M140: null for guests, while off, before M140
         drafts.applyBootstrap(bootstrap.drafts)
         wiki.applyBootstrap(bootstrap.wiki) // M122: the tree read, or caught up from the feed
         scope.launch { loadScheduled() }
@@ -824,6 +859,13 @@ class SyncEngine(
                 if (frame.data.bool("deleted") == true && poolId != null) store.dropReservationPool(poolId)
                 scheduleReservationReload()
             }
+            "attendance.updated" -> {
+                // M140: one person's row; a state not known here yet (someone's new own state): read the board.
+                val entry = runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.AttendanceEntryOut.serializer(), frame.data) }.getOrNull()
+                if (entry == null || !store.applyAttendanceEntry(entry)) scheduleAttendanceReload()
+            }
+            // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
+            "attendance.config_updated" -> scheduleAttendanceReload()
             "reservation.notice" -> {
                 // M112: an activity item for me (an operator's to-do, or news of my own reservation).
                 scheduleActivityRefresh()

@@ -106,7 +106,8 @@ class HomeTest {
     fun theTilesCountLikeTheRowsTheyReplaced() {
         val tiles = HomeTiles.tiles(ThreadSummary(unreadCount = 3, mentionCount = 1), drafts = 2, saved = 0, firedReminders = 1)
         // M112: 予約 only once the server answered the pools (ReservationsTest).
-        assertEquals(HomeTile.entries.toList() - HomeTile.RESERVATIONS, tiles.map { it.tile })
+        // M140: 在室状況 only while the board is on (AttendanceTest).
+        assertEquals(HomeTile.entries.toList() - HomeTile.RESERVATIONS - HomeTile.ATTENDANCE, tiles.map { it.tile })
         assertEquals(TileState(HomeTile.THREADS, 3, alert = true), tiles[0])
         // L8 (TIMES_FEED.md §7): 「Times」 after スレッド, without a number.
         assertEquals(TileState(HomeTile.TIMES, null), tiles[1])

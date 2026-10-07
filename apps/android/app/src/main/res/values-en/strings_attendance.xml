@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M140 (docs/PRESENCE.md §9): attendance board, English. -->
+<resources>
+    <string name="attendance_kind_in_room">In the room</string>
+    <string name="attendance_kind_on_site">On site</string>
+    <string name="attendance_kind_off_site">Off site</string>
+    <string name="attendance_kind_gone">Gone (home etc.)</string>
+    <string name="attendance_since">since %1$s</string>
+    <string name="attendance_off">The attendance board is turned off (an admin can turn it on).</string>
+    <string name="attendance_mine">My status</string>
+    <string name="attendance_personal">(my own)</string>
+    <string name="attendance_note">Note</string>
+    <string name="attendance_note_placeholder">Note (e.g. Room 3, back at 3 pm)</string>
+    <string name="attendance_not_set_yet">You haven\'t chosen a status yet. Pick one above.</string>
+    <string name="attendance_own_states">My own statuses</string>
+    <string name="attendance_add_own">Add my own status</string>
+    <string name="attendance_own_none">No statuses of your own yet (e.g. Meeting, Business trip).</string>
+    <string name="attendance_edit_own">Edit “%1$s”</string>
+    <string name="attendance_delete_own">Delete “%1$s”</string>
+    <string name="attendance_delete_own_body">It leaves your buttons. If it is your status now, it stays until you change it.</string>
+    <string name="attendance_board">Board</string>
+    <string name="attendance_unset">Not set</string>
+    <string name="attendance_in_room">%1$d in the room</string>
+    <plurals name="attendance_people">
+        <item quantity="one">%1$d person</item>
+        <item quantity="other">%1$d people</item>
+    </plurals>
+    <string name="attendance_me">(you)</string>
+    <string name="attendance_form_label">Name</string>
+    <string name="attendance_form_label_placeholder">e.g. Meeting</string>
+    <string name="attendance_form_emoji">Emoji (optional)</string>
+    <string name="attendance_form_color">Colour</string>
+    <string name="attendance_form_kind">Kind</string>
+    <string name="attendance_form_kind_hint">Used for the board\'s order and the “in the room” count.</string>
+</resources>
