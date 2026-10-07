@@ -639,6 +639,7 @@
     <string name="common_report">举报</string>
     <string name="common_request_review">请求评审</string>
     <string name="common_reservations">预约</string>
+    <string name="common_attendance">在室状况</string>
     <string name="common_resume">恢复</string>
     <string name="common_retry">重试</string>
     <string name="common_review_request">评审请求</string>

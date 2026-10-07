@@ -639,6 +639,7 @@
     <string name="common_report">報告する</string>
     <string name="common_request_review">レビューを依頼</string>
     <string name="common_reservations">予約</string>
+    <string name="common_attendance">在室状況</string>
     <string name="common_resume">再開</string>
     <string name="common_retry">再試行</string>
     <string name="common_review_request">レビュー依頼</string>

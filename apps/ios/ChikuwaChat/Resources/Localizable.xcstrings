@@ -15400,6 +15400,22 @@
         }
       }
     },
+    "在室状況" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendance"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在室状况"
+          }
+        }
+      }
+    },
     "予約する" : {
       "localizations" : {
         "en" : {
