@@ -1257,6 +1257,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return WorkflowValuesInvalid(fields: fields)
     }
 
+    /// M124: the database calls (Sync/WikiDatabases.swift) go through the same transport.
+    func requestJSON<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil) async throws -> T {
+        try await request(method, path, body: body)
+    }
+
     // MARK: wiki (M122, docs/WIKI.md §14.2)
 
     /// Every page I can read and the change feed's cursor; nil when `etag` is still the answer (304).

@@ -226,6 +226,14 @@ final class WikiHub {
     private(set) var unreadable: Set<String> = []
     /// The tree list's open rows (kept while the app runs).
     var expanded: Set<String> = []
+    /// M124: bumped by `wiki.rows.changed` per database (an open database page reads again), with the schema version
+    /// the event named.
+    private(set) var rowsSignal: [String: Int] = [:]
+    private(set) var rowsSchema: [String: Int] = [:]
+    /// M124: bumped by `wiki.page.updated` with change "props" per row (an open row page reads its cells again).
+    private(set) var propsSignal: [String: Int] = [:]
+    /// M124: bumped on every reconnect (open databases and rows read again: events may have been missed).
+    private(set) var reconnects = 0
 
     @ObservationIgnored private let api: WikiApi?
     @ObservationIgnored private let store: Store
@@ -375,10 +383,22 @@ final class WikiHub {
         case "wiki.page.updated":
             struct Payload: Decodable { let page: WikiPageItem; let change: String? }
             guard let payload = try? data.decode(Payload.self) else { return }
+            if payload.change == "props" { propsSignal[payload.page.id, default: 0] += 1 }
             pageUpdated(payload.page)
+        case "wiki.rows.changed":
+            struct Payload: Decodable { let databaseId: String; let schemaVersion: Int? }
+            guard let payload = try? data.decode(Payload.self) else { return }
+            rowsChanged(databaseId: payload.databaseId, schemaVersion: payload.schemaVersion)
         default:
             break
         }
+    }
+
+    /// M124: wiki.rows.changed — the open database pages of `databaseId` read again (debounced there).
+    func rowsChanged(databaseId: String, schemaVersion: Int?) {
+        let id = databaseId.lowercased()
+        if let schemaVersion { rowsSchema[id] = max(rowsSchema[id] ?? 0, schemaVersion) }
+        rowsSignal[id, default: 0] += 1
     }
 
     /// wiki.page.updated: the tree's row takes the new title / icon; an open page reads again (one being edited merges
@@ -593,6 +613,7 @@ final class WikiHub {
     /// After (re)connecting: failed saves go out, open pages are read again, edits kept from before a relaunch resume.
     func online() {
         guard api != nil, !stopped else { return }
+        reconnects += 1
         for saver in savers.values { saver.online() }
         for key in store.wikiKeys(prefix: Self.pendingPrefix) {
             let id = String(key.dropFirst(Self.pendingPrefix.count))

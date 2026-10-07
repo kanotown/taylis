@@ -745,7 +745,7 @@ final class SyncEngine {
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
             canvases.applyEvent(frame.event, frame.data)
-        case "wiki.changed", "wiki.page.updated":  // M122 (docs/WIKI.md §14.3)
+        case "wiki.changed", "wiki.page.updated", "wiki.rows.changed":  // M122 (docs/WIKI.md §14.3), M124 (§18.1)
             wiki.applyEvent(frame.event, frame.data)
         case "wiki.mentioned", "wiki.shared":  // M122: an activity item for me; the push's words while the app is open
             scheduleActivityRefresh()

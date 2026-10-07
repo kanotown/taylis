@@ -157,6 +157,7 @@
 		8BF7B083F5758F11D1414F33 /* InviteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB071937EF97C9E53923BC8 /* InviteTests.swift */; };
 		8E5768DD60AD781C559EC640 /* CanvasesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE37DCC9FD7E1E12869EB81 /* CanvasesView.swift */; };
 		47E3277A131A91300D1ACFCC /* WikiViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66C409EA15EFC67B046EFC9B /* WikiViews.swift */; };
+		ABE7E605D7202A2C8D6E51B1 /* WikiDatabaseViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601E81D4E8DB9F0CD524E499 /* WikiDatabaseViews.swift */; };
 		8F6A01DF751DCCA4CB03E753 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8952935F7E755BB8B341C5 /* SearchView.swift */; };
 		90F6A6D17DBE28C9A8F6B9A9 /* ThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8EAE5A6ED788AD8AC1252 /* ThreadView.swift */; };
 		93FB71EAB53C52777F284767 /* JumpMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62FE985820768A158A80CBAC /* JumpMatch.swift */; };
@@ -173,8 +174,10 @@
 		9FBA5F10614875FDAE440DCC /* ScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */; };
 		9FBDEF1808F26E2BC1702A0A /* CanvasModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9445FDFBAD2DC117144EAB /* CanvasModels.swift */; };
 		4ABF2900CFFB9C08729F3737 /* WikiModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 397FB2FFAFABD2C44BB580CA /* WikiModels.swift */; };
+		C56A7E14EC98870748992211 /* WikiDbModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EBE519E1082F0EF9599FE5 /* WikiDbModels.swift */; };
 		9FE00E5EE37687842E6BA362 /* CanvasHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88EF402B1E9AB04B9002ACC7 /* CanvasHub.swift */; };
 		A7D16FD29E714C391D7AFDE6 /* WikiHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82711397CD6CE6F6D1157871 /* WikiHub.swift */; };
+		E343C9D24D93586506D58DDB /* WikiDatabases.swift in Sources */ = {isa = PBXBuildFile; fileRef = C88DB9F5748E73FC9FEADCEA /* WikiDatabases.swift */; };
 		A00D3D2574285DE0FEA21A2A /* ActivityFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8DAAC489596E1988D437875 /* ActivityFeedView.swift */; };
 		A03EA59917F14D6087656DE5 /* DND.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0979C692C57AD564B5051EAC /* DND.swift */; };
 		A08D418A6147AFDDCBB082B3 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */; };
@@ -255,6 +258,7 @@
 		F078BBB3BB92B5F179638714 /* ScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */; };
 		F0D4015861480BEFF75F8B6A /* CanvasesListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2514359D7FCDBE0E8916EF8 /* CanvasesListTests.swift */; };
 		A8D1E50FF049ECF144F6890A /* WikiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F581A1AED9D88CE342FA0CA0 /* WikiTests.swift */; };
+		1E4C7A54680FCF5141807369 /* WikiDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747C2BC6D5CA08979BECA9E5 /* WikiDatabaseTests.swift */; };
 		F1DF4502E645742E45499BC4 /* MessageCodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4A789666614090C341ED42 /* MessageCodingTests.swift */; };
 		F2230137BE87493D9D0FDC74 /* Emoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342A0B1BCD9379AB86C4B521 /* Emoji.swift */; };
 		F3CEE1B5F37D4646C4F23442 /* Templates.swift in Sources */ = {isa = PBXBuildFile; fileRef = B747AFDE44257CFE5ACB9705 /* Templates.swift */; };
@@ -411,6 +415,7 @@
 		5D7C4221F1AA22131FC80112 /* AvatarCropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCropTests.swift; sourceTree = "<group>"; };
 		5DE37DCC9FD7E1E12869EB81 /* CanvasesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasesView.swift; sourceTree = "<group>"; };
 		66C409EA15EFC67B046EFC9B /* WikiViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiViews.swift; sourceTree = "<group>"; };
+		601E81D4E8DB9F0CD524E499 /* WikiDatabaseViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiDatabaseViews.swift; sourceTree = "<group>"; };
 		5E2F59D2D7208CD22462EB0C /* JSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON.swift; sourceTree = "<group>"; };
 		5E45FA0FD3CD7DF4CB0ED02F /* CalendarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViews.swift; sourceTree = "<group>"; };
 		5E67B45469B6C5625C8D9A6A /* Workspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspaces.swift; sourceTree = "<group>"; };
@@ -434,6 +439,7 @@
 		6D6ACD361FF6151716ED35A5 /* CommandsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsTests.swift; sourceTree = "<group>"; };
 		6D9445FDFBAD2DC117144EAB /* CanvasModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasModels.swift; sourceTree = "<group>"; };
 		397FB2FFAFABD2C44BB580CA /* WikiModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiModels.swift; sourceTree = "<group>"; };
+		10EBE519E1082F0EF9599FE5 /* WikiDbModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiDbModels.swift; sourceTree = "<group>"; };
 		6DA8EAE5A6ED788AD8AC1252 /* ThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadView.swift; sourceTree = "<group>"; };
 		6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
@@ -456,6 +462,7 @@
 		888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLinksTests.swift; sourceTree = "<group>"; };
 		88EF402B1E9AB04B9002ACC7 /* CanvasHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasHub.swift; sourceTree = "<group>"; };
 		82711397CD6CE6F6D1157871 /* WikiHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiHub.swift; sourceTree = "<group>"; };
+		C88DB9F5748E73FC9FEADCEA /* WikiDatabases.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiDatabases.swift; sourceTree = "<group>"; };
 		898C6A9DAE763E84AC1644F1 /* WhoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhoTests.swift; sourceTree = "<group>"; };
 		89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionFormView.swift; sourceTree = "<group>"; };
 		8C3DF23AD647D291798D8EFE /* AiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiTests.swift; sourceTree = "<group>"; };
@@ -559,6 +566,7 @@
 		F1AA01730F6E993B9EFB406B /* AvatarCrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCrop.swift; sourceTree = "<group>"; };
 		F2514359D7FCDBE0E8916EF8 /* CanvasesListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasesListTests.swift; sourceTree = "<group>"; };
 		F581A1AED9D88CE342FA0CA0 /* WikiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiTests.swift; sourceTree = "<group>"; };
+		747C2BC6D5CA08979BECA9E5 /* WikiDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiDatabaseTests.swift; sourceTree = "<group>"; };
 		F4B2BB586E878AEEC2A31668 /* Share.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Share.swift; sourceTree = "<group>"; };
 		F6C06F2A75D6F2989EA46716 /* UpsideDownList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsideDownList.swift; sourceTree = "<group>"; };
 		F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasCatchUpTests.swift; sourceTree = "<group>"; };
@@ -598,6 +606,7 @@
 				4B482E71B92FB96FC40EB7B8 /* CalendarHub.swift */,
 				88EF402B1E9AB04B9002ACC7 /* CanvasHub.swift */,
 				82711397CD6CE6F6D1157871 /* WikiHub.swift */,
+				C88DB9F5748E73FC9FEADCEA /* WikiDatabases.swift */,
 				22E0FD560319E4983B3A57B4 /* CanvasPresence.swift */,
 				C9393E38B1CAB5781D5AF359 /* CanvasSave.swift */,
 				A980BB847A9CA5813A391341 /* DraftSync.swift */,
@@ -618,6 +627,7 @@
 				1E9F6CFFF4963E4FED7A024B /* CalendarModels.swift */,
 				6D9445FDFBAD2DC117144EAB /* CanvasModels.swift */,
 				397FB2FFAFABD2C44BB580CA /* WikiModels.swift */,
+				10EBE519E1082F0EF9599FE5 /* WikiDbModels.swift */,
 				4BFA1430D19A954CF0F61BF9 /* ErrorMessages.swift */,
 				5E2F59D2D7208CD22462EB0C /* JSON.swift */,
 				A676948BB8E2458464753586 /* Models.swift */,
@@ -709,6 +719,7 @@
 				F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */,
 				F2514359D7FCDBE0E8916EF8 /* CanvasesListTests.swift */,
 				F581A1AED9D88CE342FA0CA0 /* WikiTests.swift */,
+				747C2BC6D5CA08979BECA9E5 /* WikiDatabaseTests.swift */,
 				14E8109D6DDCA09126C31D19 /* CanvasMarkersTests.swift */,
 				C7803AED0EFDDC5E8FD472D2 /* CanvasOfflineTests.swift */,
 				41095FD838912D8AAB1FD7F3 /* CanvasPhase2Tests.swift */,
@@ -819,6 +830,7 @@
 				01E6DB8D06A8D7946BFF70FC /* CanvasEditor.swift */,
 				5DE37DCC9FD7E1E12869EB81 /* CanvasesView.swift */,
 				66C409EA15EFC67B046EFC9B /* WikiViews.swift */,
+				601E81D4E8DB9F0CD524E499 /* WikiDatabaseViews.swift */,
 				920EA708723289523AFAA527 /* CanvasHistory.swift */,
 				C373A58809B41546A72A6AFD /* CanvasMarkers.swift */,
 				2613FD78FD9732ED70949EE1 /* CanvasSearch.swift */,
@@ -1125,6 +1137,7 @@
 				37B851B524C60ED03CED733D /* CanvasTests.swift in Sources */,
 				F0D4015861480BEFF75F8B6A /* CanvasesListTests.swift in Sources */,
 				A8D1E50FF049ECF144F6890A /* WikiTests.swift in Sources */,
+				1E4C7A54680FCF5141807369 /* WikiDatabaseTests.swift in Sources */,
 				26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */,
 				34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */,
 				8613449A516B8C7EA5D701A8 /* CommandsTests.swift in Sources */,
@@ -1248,9 +1261,11 @@
 				12F298467859EDDBBE06C67C /* CanvasHistory.swift in Sources */,
 				9FE00E5EE37687842E6BA362 /* CanvasHub.swift in Sources */,
 				A7D16FD29E714C391D7AFDE6 /* WikiHub.swift in Sources */,
+				E343C9D24D93586506D58DDB /* WikiDatabases.swift in Sources */,
 				C4FD01F2499C1DE9C3D4F392 /* CanvasMarkers.swift in Sources */,
 				9FBDEF1808F26E2BC1702A0A /* CanvasModels.swift in Sources */,
 				4ABF2900CFFB9C08729F3737 /* WikiModels.swift in Sources */,
+				C56A7E14EC98870748992211 /* WikiDbModels.swift in Sources */,
 				F962A43BBF43E92873A6CFE8 /* CanvasPresence.swift in Sources */,
 				EDDA7B56DBA5B948E7557B5B /* CanvasSave.swift in Sources */,
 				85A3F97DF7831B3EBC32DA93 /* CanvasSearch.swift in Sources */,
@@ -1261,6 +1276,7 @@
 				BF5668333C24E3B30F2B1285 /* CanvasViews.swift in Sources */,
 				8E5768DD60AD781C559EC640 /* CanvasesView.swift in Sources */,
 				47E3277A131A91300D1ACFCC /* WikiViews.swift in Sources */,
+				ABE7E605D7202A2C8D6E51B1 /* WikiDatabaseViews.swift in Sources */,
 				8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */,
 				146F95B96F756A3F63D664AB /* ChannelBrowserView.swift in Sources */,
 				B60B25516F421B2D785D44C4 /* ChannelIntroView.swift in Sources */,
