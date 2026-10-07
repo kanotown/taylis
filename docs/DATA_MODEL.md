@@ -2244,6 +2244,22 @@ CREATE TABLE workspace_settings (
 として出す (`enabled` = この値 かつ サーバに LiveKit の設定がある)。M117 の `calls_enabled` はいつも false、
 `meeting_base_url` はいつも null で出す (公開済みの M117 のクライアントのため。docs/CALLS.md §11)。
 
+### attendance_*（在室状況、M140、docs/PRESENCE.md §2）
+
+移行 0100。`attendance_settings`（1 行。`enabled` 既定 false、`personal_rule` nobody / everyone / admins / groups と
+`personal_group_ids`、`log_retention_days` 既定 365・0 = 消さない）、`attendance_states`（`owner_id` NULL = ワークスペースの
+状態、ほかはその人の状態。`label` 40 文字、`emoji`、`color` は text-emoji.json の色の鍵、`kind` in_room / on_site / off_site /
+gone、`position`、消すと `archived_at`）、`attendance_current`（1 人 1 行：`state_id`・`since`・`note`・`source` app / admin /
+integration / auto・`actor_id`・`integration_id`）、`attendance_log`（追記だけ。保持日数を過ぎたら毎日の整理で消す）、
+`attendance_integrations`（`url`・`secret_name`（鍵のファイル名。秘密そのものは DB に入れない）・`token_hash`（受信トークンの
+SHA-256）・`enabled`）、`attendance_deliveries`（送信 Webhook の配送。id = `delivery_id`、`(outbox_event_id, integration_id)`
+が一意、`status` pending / delivered / failed / superseded、30 日で消す）。
+
+- 変更は `attendance_current` の更新・`attendance_log` の追記・outbox の `attendance.updated` を 1 トランザクションで書く。
+  同じ人の変更は `pg_advisory_xact_lock` で順に並べる。状態もメモも同じなら何も書かない。
+- 状態の名前は、消していない同じ範囲で大文字小文字を区別せず一意（個人の名前はワークスペースの名前とも重ならない）。
+- 匿名化（`admin.anonymize`）でその人の今の値・記録・個人の状態・配送を消す（`attendance.forget_in_tx`）。無効化だけなら行は残り、ボードから外れる。
+
 ### import_refs (移行元の対応、M18・M87・M125)
 
 ```sql

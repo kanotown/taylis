@@ -678,6 +678,26 @@ async def reorder_states(
     return await admin_settings(db)
 
 
+async def forget_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """For the admin module: anonymizing a person drops their row, log, own states and webhook
+    deliveries (their bodies hold the email address)."""
+    removed = await db.execute(
+        delete(AttendanceCurrent)
+        .where(AttendanceCurrent.user_id == user_id)
+        .returning(AttendanceCurrent.user_id)
+    )
+    had_row = bool(removed.all())
+    await db.execute(delete(AttendanceLog).where(AttendanceLog.user_id == user_id))
+    await db.execute(delete(AttendanceDelivery).where(AttendanceDelivery.user_id == user_id))
+    states = await db.execute(
+        delete(AttendanceState)
+        .where(AttendanceState.owner_id == user_id)
+        .returning(AttendanceState.id)
+    )
+    if had_row or states.all():
+        await _config_changed(db)
+
+
 # --- retention -----------------------------------------------------------------------------
 
 
