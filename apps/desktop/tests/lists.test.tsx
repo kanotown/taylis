@@ -15,6 +15,7 @@ import { type Block, parseBlocks, type Token } from "../src/ui/markdown";
 
 interface Vectors {
   cases: Array<{ name: string; body: string; blocks: string[]; lists: Array<Array<[number, string, string]>> }>;
+  quoted: Array<{ name: string; body: string; blocks: string[]; quotes: unknown[][] }>;
 }
 
 const shared = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "shared");
@@ -68,6 +69,32 @@ describe("lists (apps/shared/lists.json)", () => {
     expect(groups[0]!.entries[2]!.children[0]).toMatchObject({ ordered: true, level: 1, start: 1 });
     const { container } = render(<BlockView block={block} users={new Map()} />);
     expect([...container.querySelectorAll("ol")].map((ol) => ol.start)).toEqual([1, 1]);
+  });
+});
+
+describe("lists in quotes (apps/shared/lists.json quoted)", () => {
+  const quotedText = (lines: Token[][]) => lines.map(text);
+  it.each(vectors.quoted)("$name", ({ body, blocks, quotes }) => {
+    const parsed = parseBlocks(body);
+    expect(parsed.map((b) => b.kind)).toEqual(blocks);
+    const got = parsed
+      .filter((b): b is Extract<Block, { kind: "quote" }> => b.kind === "quote")
+      .map((q) => q.blocks.map((inner) => (inner.kind === "list" ? ["list", inner.items.map((item) => [item.level, item.marker, text(item.tokens)])] : ["paragraph", quotedText(inner.lines)])));
+    expect(got).toEqual(quotes);
+  });
+
+  it("has the cases", () => {
+    expect(vectors.quoted.length).toBeGreaterThan(10);
+  });
+
+  it("draws a quoted list as a list with drawn bullets, no literal marker", () => {
+    const [block] = parseBlocks("> 手順：\n> - a\n>   - b\n>     - c\n> 1. d");
+    const { container } = render(<BlockView block={block!} users={new Map()} />);
+    const quote = container.querySelector("blockquote")!;
+    expect([...quote.querySelectorAll("ul.md-ul")].map((ul) => (ul as HTMLElement).dataset.marker)).toEqual(["disc", "circle", "square"]);
+    expect([...quote.querySelectorAll("li")].map((li) => li.firstChild?.textContent)).toEqual(["a", "b", "c", "d"]);
+    expect(quote.querySelector("ol")?.start).toBe(1);
+    expect(quote.textContent).not.toContain("- ");
   });
 });
 

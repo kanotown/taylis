@@ -6,7 +6,7 @@
  * Inline: **bold** / *bold*, _italic_ (never inside a word, M107), ~~strike~~, `code`, [label](url), bare https?:// links,
  * e-mail addresses (text, never read for emphasis), \_ \* \~ \` \$ escapes, $TeX$ math (apps/shared/math.json),
  * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
- * "> " quotes, "- " / "* " bullets, "1. " numbered items (nested by indenting 2–4 spaces or a tab, three levels;
+ * "> " quotes (of paragraphs and lists), "- " / "* " bullets, "1. " numbered items (nested by indenting 2–4 spaces or a tab, three levels;
  * numbering and markers in `listItems`, apps/shared/lists.json), "$$" display math, and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
  *
  * The canvas dialect (CANVAS.md §4.2, `{ canvas: true }`) adds tasks ("- [ ] item" / "- [x] item", "*" too, two leading
@@ -36,7 +36,8 @@ export type Token =
 export type Block =
   | { kind: "heading"; level: 1 | 2 | 3; tokens: Token[]; /** canvas: its line in the body */ line?: number }
   | { kind: "paragraph"; lines: Token[][] }
-  | { kind: "quote"; lines: Token[][] }
+  /** Quoted lines ("> " / ">" stripped) as paragraphs and lists (apps/shared/lists.json `quoted`). */
+  | { kind: "quote"; blocks: QuoteBlock[] }
   /** `ordered` / `start`: the first item's (a top-level item of the other kind starts a new list). */
   | { kind: "list"; ordered: boolean; start: number; items: ListItem[] }
   | { kind: "codeblock"; text: string; lang: string | null }
@@ -47,6 +48,9 @@ export type Block =
   | { kind: "task"; items: TaskItem[] }
   | { kind: "image"; alt: string; attachmentId: string; line: number }
   | { kind: "hr" };
+
+/** What a quote holds: its lines as paragraphs, and lists drawn as lists (2026-10-08: "> - item" showed the "-"). */
+export type QuoteBlock = Extract<Block, { kind: "paragraph" } | { kind: "list" }>;
 
 /** One list item (apps/shared/lists.json): its level (0–2), its kind, its number (0 for a bullet) and the marker drawn. */
 export interface ListItem {
@@ -340,14 +344,14 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
     }
     const quote = QUOTE.exec(line);
     if (quote) {
-      const quoted: Token[][] = [];
+      const quoted: string[] = [];
       while (i < lines.length) {
         const q = QUOTE.exec(lines[i] ?? "");
-        if (!q) break;
-        quoted.push(inl(q[1] ?? ""));
+        if (!q) break; // a line without ">" ends the quote (no lazy continuation: a reply often follows a quote)
+        quoted.push(q[1] ?? "");
         i++;
       }
-      push({ kind: "quote", lines: quoted });
+      push({ kind: "quote", blocks: quoteBlocks(quoted, canvas) });
       continue;
     }
     if (opensTable(i)) {
@@ -371,15 +375,9 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
         rows.push(row);
         i++;
       }
-      // A top-level item of the other kind starts a new list (as in CommonMark).
-      const items = listItems(rows, canvas);
-      let from = 0;
-      for (let k = 1; k <= items.length; k++) {
-        if (k < items.length && !(items[k]!.level === 0 && items[k]!.ordered !== items[from]!.ordered)) continue;
-        const run = items.slice(from, k);
-        blocks.push({ kind: "list", ordered: run[0]!.ordered, start: run[0]!.ordered ? run[0]!.number : 1, items: run });
-        ranges.push({ from: start + from, to: start + k }); // one item per line
-        from = k;
+      for (const run of listBlocks(rows, canvas)) {
+        blocks.push(run.block);
+        ranges.push({ from: start + run.from, to: start + run.to }); // one item per line
       }
       continue;
     }
@@ -394,6 +392,50 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
     push({ kind: "paragraph", lines: paragraph });
   }
   return { blocks, lines: ranges };
+}
+
+type ListBlock = Extract<Block, { kind: "list" }>;
+
+/** List lines as list blocks (`from` / `to`: their rows): a top-level item of the other kind starts a new list (as in CommonMark). */
+function listBlocks(rows: readonly ListLine[], canvas: boolean): Array<{ block: ListBlock; from: number; to: number }> {
+  const items = listItems(rows, canvas);
+  const out: Array<{ block: ListBlock; from: number; to: number }> = [];
+  let from = 0;
+  for (let k = 1; k <= items.length; k++) {
+    if (k < items.length && !(items[k]!.level === 0 && items[k]!.ordered !== items[from]!.ordered)) continue;
+    const run = items.slice(from, k);
+    out.push({ block: { kind: "list", ordered: run[0]!.ordered, start: run[0]!.ordered ? run[0]!.number : 1, items: run }, from, to: k });
+    from = k;
+  }
+  return out;
+}
+
+/**
+ * A quote's lines (its ">" and one space stripped) as paragraphs and lists, read as at the top level: a run of list
+ * lines is a list (nested by indent, numbered, the other kind a new list); any other line, a blank one too, is a
+ * paragraph line (apps/shared/lists.json `quoted`, the same in the three clients).
+ */
+function quoteBlocks(quoted: readonly string[], canvas: boolean): QuoteBlock[] {
+  const out: QuoteBlock[] = [];
+  let i = 0;
+  while (i < quoted.length) {
+    const rows: ListLine[] = [];
+    for (let row = listLine(quoted[i] ?? ""); row && i < quoted.length; row = listLine(quoted[i] ?? "")) {
+      rows.push(row);
+      i++;
+    }
+    if (rows.length > 0) {
+      out.push(...listBlocks(rows, canvas).map((run) => run.block));
+      continue;
+    }
+    const paragraph: Token[][] = [];
+    while (i < quoted.length && (paragraph.length === 0 || !listLine(quoted[i] ?? ""))) {
+      paragraph.push(tokenizeInline(quoted[i] ?? "", canvas));
+      i++;
+    }
+    out.push({ kind: "paragraph", lines: paragraph });
+  }
+  return out;
 }
 
 /** A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text. */

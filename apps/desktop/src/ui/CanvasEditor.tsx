@@ -9,7 +9,7 @@
  */
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
-import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
 import type { PageRef } from "../api/types";
@@ -24,7 +24,8 @@ import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserv
 import { continueStructure, type EditState, indentListLine, insertLink, linkFromPaste, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
 import { aiBotIds, decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
-import { cn, IconButton, modKey } from "./primitives";
+import { cn, modKey } from "./primitives";
+import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
 import { t } from "../i18n";
 
 /** M80: what a cut in a canvas editor keeps besides the plain text — the lines with their task markers. */
@@ -360,22 +361,20 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     setSelected(0);
   };
 
-  const tools: Array<{ icon: ReactNode; label: string; run: () => void } | "gap"> = [
+  // Groups as the dividers show them; what does not fit the pane goes into 「…」 (OverflowToolbar).
+  const tools: ToolbarTool[] = [
     { icon: <Heading1 size={16} />, label: t("canvasEditor.heading", { n: 1 }), run: () => edit((s) => setHeading(s, 1)) },
     { icon: <Heading2 size={16} />, label: t("canvasEditor.heading", { n: 2 }), run: () => edit((s) => setHeading(s, 2)) },
     { icon: <Heading3 size={16} />, label: t("canvasEditor.heading", { n: 3 }), run: () => edit((s) => setHeading(s, 3)) },
-    "gap",
-    { icon: <Bold size={16} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: () => edit((s) => toggleWrap(s, "**")) },
+    { group: true, icon: <Bold size={16} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: () => edit((s) => toggleWrap(s, "**")) },
     { icon: <Italic size={16} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: () => edit((s) => toggleWrap(s, "_")) },
     { icon: <Strikethrough size={16} />, label: t("composer.syntax.strike"), run: () => edit((s) => toggleWrap(s, "~~")) },
-    "gap",
-    { icon: <List size={16} />, label: t("composer.format.bullets"), run: () => edit((s) => toggleLinePrefix(s, "- ")) },
+    { group: true, icon: <List size={16} />, label: t("composer.format.bullets"), run: () => edit((s) => toggleLinePrefix(s, "- ")) },
     { icon: <ListOrdered size={16} />, label: t("composer.format.numbered"), run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
     { icon: <ListChecks size={16} />, label: t("canvasEditor.checklist"), run: () => edit(toggleTasks) },
     { icon: <TextQuote size={16} />, label: t("composer.format.quote"), run: () => edit((s) => toggleLinePrefix(s, "> ")) },
     { icon: <Code size={16} />, label: t("canvasEditor.code"), run: () => edit((s) => toggleWrap(s, "`")) },
-    "gap",
-    { icon: <LinkIcon size={16} />, label: t("composer.syntax.link"), run: () => edit((s) => insertLink(s)) },
+    { group: true, icon: <LinkIcon size={16} />, label: t("composer.syntax.link"), run: () => edit((s) => insertLink(s)) },
     { icon: <AtSign size={16} />, label: t("nav.mentions"), run: () => edit((s) => {
       const lead = s.start > 0 && !/\s/.test(s.text[s.start - 1] ?? "") ? " @" : "@";
       return { text: s.text.slice(0, s.start) + lead + s.text.slice(s.end), start: s.start + lead.length, end: s.start + lead.length };
@@ -470,17 +469,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
 
   return (
     <div className={cn("relative flex min-h-0 flex-col", className)} style={style}>
-      <div role="toolbar" aria-label={t("composer.formatting")} className="flex shrink-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden border-b border-line px-2 py-1 [scrollbar-width:none]">
-        {tools.map((tool, index) =>
-          tool === "gap" ? (
-            <span key={index} aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />
-          ) : (
-            <IconButton key={index} label={tool.label} className="h-7 w-7 shrink-0 text-muted hover:text-ink" onMouseDown={(event) => event.preventDefault()} onClick={tool.run}>
-              {tool.icon}
-            </IconButton>
-          ),
-        )}
-      </div>
+      <OverflowToolbar tools={tools} label={t("composer.formatting")} className="shrink-0 border-b border-line px-2 py-1" buttonClassName="h-7 w-7 shrink-0 text-muted hover:text-ink" />
       <textarea
         ref={area}
         aria-label={t("canvasEditor.body")}
