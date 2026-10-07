@@ -1,0 +1,44 @@
+{
+  "_comment": "SYNC_PROTOCOL.md §7.9 (M141 「会話を閉じる」, Review v0.1.43 #6 #7): rules every client applies the same way. close_event: whether a dm_close.updated is taken. An open (closed false) always is; a close is ignored (the DM stays open) when the client already holds a timeline message (its last_message, §7.8) with a seq above the event's closed_seq: that message reopened it on the server too. No closed_seq (an older server) or no last message: taken. restore_pin: a refused close puts back only its own pin: the channel goes back to its place before the close (clamped to the list as it is now), the other pins stay as events left them; a channel that was not pinned is only taken out. read_fallback: a refused close asks the server for the read state (PUT /channels/{id}/read {last_read_seq: 0}, a no-op answering the state) and takes it as it is; only when that fails too is the snapshot from before the close written back, and only if nothing changed the read state since the close set it (last_seq, last_read_seq, unread_count, mention_count as the close left them), otherwise it is kept for the next bootstrap. Hand-written; Desktop / Web, iOS and Android test against it.",
+  "close_event": [
+    { "name": "an open is always taken", "closed": false, "closed_seq": null, "last_message_seq": 9, "apply": true },
+    { "name": "an older server sends no closed_seq", "closed": true, "closed_seq": null, "last_message_seq": 9, "apply": true },
+    { "name": "no last message held", "closed": true, "closed_seq": 0, "last_message_seq": null, "apply": true },
+    { "name": "closed at the newest message", "closed": true, "closed_seq": 7, "last_message_seq": 7, "apply": true },
+    { "name": "closed after the newest message (edits, reactions, thread replies consumed seqs)", "closed": true, "closed_seq": 9, "last_message_seq": 7, "apply": true },
+    { "name": "a newer message already here: it reopened the DM", "closed": true, "closed_seq": 7, "last_message_seq": 8, "apply": false }
+  ],
+  "restore_pin": [
+    { "name": "not pinned before: only taken out", "pins_before": ["b"], "pins_now": ["b", "c"], "channel": "a", "expect": ["b", "c"] },
+    { "name": "back in its place", "pins_before": ["b", "a", "c"], "pins_now": ["b", "c"], "channel": "a", "expect": ["b", "a", "c"] },
+    { "name": "a pin added meanwhile stays", "pins_before": ["a", "b"], "pins_now": ["b", "d"], "channel": "a", "expect": ["a", "b", "d"] },
+    { "name": "a pin removed meanwhile stays removed", "pins_before": ["b", "c", "a"], "pins_now": ["c"], "channel": "a", "expect": ["c", "a"] },
+    { "name": "already back (dm_pin.updated): one place", "pins_before": ["a", "b"], "pins_now": ["b", "a"], "channel": "a", "expect": ["a", "b"] }
+  ],
+  "read_fallback": [
+    {
+      "name": "nothing came meanwhile: the snapshot",
+      "optimistic": { "last_seq": 5, "last_read_seq": 5, "unread_count": 0, "mention_count": 0 },
+      "now": { "last_seq": 5, "last_read_seq": 5, "unread_count": 0, "mention_count": 0 },
+      "expect": "snapshot"
+    },
+    {
+      "name": "a new message came: kept",
+      "optimistic": { "last_seq": 5, "last_read_seq": 5, "unread_count": 0, "mention_count": 0 },
+      "now": { "last_seq": 6, "last_read_seq": 5, "unread_count": 1, "mention_count": 0 },
+      "expect": "keep"
+    },
+    {
+      "name": "an edit or a reaction moved last_seq: kept",
+      "optimistic": { "last_seq": 5, "last_read_seq": 5, "unread_count": 0, "mention_count": 0 },
+      "now": { "last_seq": 6, "last_read_seq": 5, "unread_count": 0, "mention_count": 0 },
+      "expect": "keep"
+    },
+    {
+      "name": "another device read further: kept",
+      "optimistic": { "last_seq": 5, "last_read_seq": 5, "unread_count": 0, "mention_count": 0 },
+      "now": { "last_seq": 7, "last_read_seq": 7, "unread_count": 0, "mention_count": 0 },
+      "expect": "keep"
+    }
+  ]
+}
