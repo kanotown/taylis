@@ -55,6 +55,34 @@ class ListsTest {
         }
     }
 
+    /** 2026-10-08: lists inside quotes (apps/shared/lists.json `quoted`). */
+    @Test
+    fun theSharedQuotedLists() {
+        val file = File("../../shared/lists.json")
+        val cases = Codec.plain.parseToJsonElement(file.readText()).jsonObject["quoted"]!!.jsonArray
+        assertTrue(cases.size > 10)
+        for (case in cases) {
+            val c = case.jsonObject
+            val name = c["name"]!!.jsonPrimitive.content
+            val blocks = parseBlocks(c["body"]!!.jsonPrimitive.content)
+            assertEquals(name, c["blocks"], JsonArray(blocks.map { JsonPrimitive(kind(it)) }))
+            val quotes = JsonArray(
+                blocks.filterIsInstance<BodyBlock.Quote>().map { quote ->
+                    JsonArray(
+                        quote.blocks.map { inner ->
+                            when (inner) {
+                                is BodyBlock.ListBlock -> JsonArray(listOf(JsonPrimitive("list"), JsonArray(inner.items.map { JsonArray(listOf(JsonPrimitive(it.level), JsonPrimitive(it.marker), JsonPrimitive(visibleText(it.tokens)))) })))
+                                is BodyBlock.Paragraph -> JsonArray(listOf(JsonPrimitive("paragraph"), JsonArray(inner.lines.map { JsonPrimitive(visibleText(it)) })))
+                                else -> JsonPrimitive(kind(inner))
+                            }
+                        },
+                    )
+                },
+            )
+            assertEquals(name, c["quotes"], quotes)
+        }
+    }
+
     @Test
     fun theSharedCodeBlocks() {
         val file = File("../../shared/inline-format.json")
