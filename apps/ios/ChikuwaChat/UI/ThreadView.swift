@@ -82,7 +82,7 @@ struct ThreadView: View {
                     // the keyboard comes and goes, and a new one pushes the others up by itself.
                     ScrollView {
                         // The channel's 8 pt: under the newest reply the same gap as under a channel's newest message.
-                        rowStack()
+                        rowStack(viewport.size.height)
                         .padding(.vertical, 8) // the side margin is each row's (margin)
                         // MOBILE_POLISH.md C7: a thread shorter than the screen starts at the top (the parent under the
                         // bar, the replies after it; Slack), not at the bottom under a gap. At least a screen tall, with
@@ -90,7 +90,9 @@ struct ThreadView: View {
                         // is unchanged, and the newest reply stays at the origin (the keyboard, arrivals).
                         .frame(minHeight: viewport.size.height, alignment: .bottom)
                         .frame(width: viewport.size.width) // never wider than the list (ChannelView)
-                        .animation(positioned || provisional ? .easeOut(duration: 0.25) : nil, value: replies.last?.rowKey)
+                        // At the newest edge a new reply moves in with the others, animated; not while older replies are
+                        // read, where the row being read stays (UpsideDown.arrivalAnimation).
+                        .animation(UpsideDown.arrivalAnimation(atNewest: atBottom, placed: positioned || provisional), value: replies.last?.rowKey)
                         .background(StatusBarTapStays())
                     }
                     .scrollPosition(id: $keptRowId, anchor: .top)
@@ -223,19 +225,34 @@ struct ThreadView: View {
     /// The list's side margin, inside each row: a message's highlight reaches the sheet's edges (ChannelView).
     private static let margin: CGFloat = 16
 
-    /// Lazy like a channel's rows: only a lazy stack keeps the row being read when a reply arrives below
-    /// (`scrollPosition(id:)`; a plain VStack left the list at its offset and every row moved up by the new one, iOS 26.5,
-    /// 2026-10-07). The newest edge's marker is one of the scroll targets, as in a channel, so at the newest edge it can
-    /// be the kept row (UpsideDown.arrival). The stack has no spacing (it would put 12 pt between the marker and the
-    /// newest reply): each row brings the gap above it.
-    /// (A plain VStack was used from build 13, when a lazy one went into an endless layout pass after landing on the first
-    /// unread reply in the top-down list of the time; the flipped list lands the way a channel does.)
-    private func rowStack() -> some View {
-        LazyVStack(alignment: .leading, spacing: 0) {
-            NewestEdgeMarker { atBottom = $0 }
-            rows()
+    /// The thread's rows, laid out all at once up to `lazyFrom` replies (as from build 13; build 106 made them lazy). In a
+    /// LazyVStack the rows' estimated heights (replies of 1 to 12 lines, the parent at the far end) were replaced by
+    /// measured ones as rows came on screen, and `scrollPosition(id:)` re-anchored the list on each: the content height
+    /// swung by 2,200 pt within a frame. The thread jumped as it opened (339 pt just after landing on the first unread
+    /// reply), and the keyboard shown while reading older replies threw the rows 618 pt one way and 652 pt back, and hiding
+    /// it left the list at the newest edge, the reading position lost (iOS 26, 2026-10-07). With every height known, the
+    /// keyboard moves the rows by its own height only and the landing is exact; the row being read stays on an arrival as
+    /// long as the insertion is not animated (body). A very long thread stays lazy.
+    /// The newest edge's marker is one of the scroll targets, as in a channel, so at the newest edge it can be the kept row
+    /// (UpsideDown.arrival); a VStack makes it once, so on iOS 17 it reports from where it is (NewestEdgeMarker.placed).
+    /// The stack has no spacing (it would put 12 pt between the marker and the newest reply): each row brings the gap above it.
+    private static let lazyFrom = 200
+
+    @ViewBuilder
+    private func rowStack(_ viewportHeight: CGFloat) -> some View {
+        if replies.count > Self.lazyFrom {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                NewestEdgeMarker { atBottom = $0 }
+                rows()
+            }
+            .scrollTargetLayout()
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                NewestEdgeMarker(placed: ("threadViewport", viewportHeight)) { atBottom = $0 }
+                rows()
+            }
+            .scrollTargetLayout()
         }
-        .scrollTargetLayout()
     }
 
     /// The gap above a reply (between it and the one before it, or the reply count); none above a grouped reply, which
