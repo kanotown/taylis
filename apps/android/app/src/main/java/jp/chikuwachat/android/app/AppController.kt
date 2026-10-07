@@ -2166,7 +2166,8 @@ class AppController(private val app: Application) {
         // The controller's scope: the row (or dialog) that asked leaves the screen as the conversation hides.
         scope.launch {
             try {
-                DmCloses.close(store, channelId) { api.closeDm(channelId) }
+                // A refusal asks for the read state again (PUT read with 0 moves nothing), Review v0.1.43 #7.
+                DmCloses.close(store, channelId, readState = { api.markRead(channelId, 0) }) { api.closeDm(channelId) }
             } catch (e: Exception) {
                 if (dmClosed === token) dmClosed = null
                 report(e)

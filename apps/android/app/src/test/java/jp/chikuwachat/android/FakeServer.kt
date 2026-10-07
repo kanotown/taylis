@@ -609,11 +609,21 @@ class FakeServer {
     var closedDms: HashMap<String, MutableList<String>>? = null
 
     /** M141: `PUT` / `DELETE /channels/{id}/close` on a device of `userId`: dm_close.updated to their devices. */
-    fun emitDmClose(userId: String, channelId: String, closed: Boolean) {
+    fun emitDmClose(userId: String, channelId: String, closed: Boolean, closedSeq: Int? = if (closed) channels[channelId]?.channel?.lastSeq else null) {
         val list = closedDms!!.getOrPut(userId) { ArrayList() }
         list.remove(channelId)
         if (closed) list.add(channelId)
-        emit(setOf(userId), event("dm_close.updated", null, null, buildJsonObject { put("channel_id", channelId); put("closed", closed); put("at", now()) }))
+        emitDmCloseEvent(userId, channelId, closed, closedSeq)
+    }
+
+    /**
+     * dm_close.updated as sent (closed_seq: where it was closed, Review v0.1.43 #6). Alone, it replays the race the review
+     * found: a close that read the seq before a new message, delivered after that message.created.
+     */
+    fun emitDmCloseEvent(userId: String, channelId: String, closed: Boolean, closedSeq: Int?) {
+        emit(setOf(userId), event("dm_close.updated", null, null, buildJsonObject {
+            put("channel_id", channelId); put("closed", closed); put("at", now()); put("closed_seq", closedSeq)
+        }))
     }
     /** M15f: each conversation's link bar; setLinks announces it like the server does. */
     val links = HashMap<String, List<ChannelLinkOut>>()

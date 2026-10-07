@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.Limits
+import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.SystemEventOut
 import jp.chikuwachat.android.api.MessageCallOut
 import jp.chikuwachat.android.api.MessageWorkflowOut
@@ -1382,6 +1383,15 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
 
+    /** Review v0.1.43 #7: a refused close puts back its own pin only (its place before, or out); the others stay. */
+    fun restoreDmPin(channelId: String, place: Int?) {
+        val next = DmCloses.restoredPins(dmPins, channelId, place)
+        if (dmPins == next) return
+        dmPins.clear()
+        dmPins.addAll(next)
+        emit()
+    }
+
     /** Bootstrap's `dm_pins`; null (a server before M118) = none, and pins unknown. */
     fun replaceDmPins(ids: List<String>?) {
         dmPinsKnown = ids != null
@@ -1414,7 +1424,14 @@ class Store(private val persistence: Persistence? = null) {
         }
     }
 
-    /** The read position and counts as they were (a refused close put back). */
+    /** Review v0.1.43 #7: the server's read state, asked again after a refused close, taken as it is (downwards too). */
+    fun setReadState(channelId: String, state: ReadStateOut) {
+        updateChannel(channelId) {
+            it.copy(lastReadSeq = state.lastReadSeq, unreadCount = state.unreadCount, mentionCount = state.mentionCount, firstUnreadAt = state.firstUnreadAt)
+        }
+    }
+
+    /** The read position and counts as they were (a refused close put back, nothing having changed them since). */
     fun restoreRead(before: ChannelState) {
         updateChannel(before.id) {
             it.copy(lastReadSeq = before.lastReadSeq, unreadCount = before.unreadCount, mentionCount = before.mentionCount, firstUnreadAt = before.firstUnreadAt)
