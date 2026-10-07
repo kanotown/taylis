@@ -16,6 +16,7 @@ import jp.chikuwachat.android.ui.SearchParams
 import jp.chikuwachat.android.ui.DetailsButton
 import jp.chikuwachat.android.ui.EmojiData
 import jp.chikuwachat.android.ui.EmojiPicker
+import jp.chikuwachat.android.ui.EmojiSection
 import jp.chikuwachat.android.ui.QuickReactions
 import jp.chikuwachat.android.ui.Timeline
 import org.junit.Assert.assertEquals
@@ -149,9 +150,10 @@ class PolishCTest {
         assertEquals(EmojiPicker.FREQUENT, sections.first().key)
         assertEquals("よく使う", sections.first().label)
         assertEquals(listOf("🎉", "👍", ":hanpen:"), sections.first().cells)
-        assertEquals(EmojiData.categories.map { it.first }, sections.drop(1).dropLast(1).map { it.key })
-        assertEquals(EmojiPicker.CUSTOM, sections.last().key)
-        assertEquals(listOf(":hanpen:"), sections.last().cells)
+        // As in Slack: recent, then the custom emoji, then the standard categories.
+        assertEquals(EmojiPicker.CUSTOM, sections[1].key)
+        assertEquals(listOf(":hanpen:"), sections[1].cells)
+        assertEquals(EmojiData.categories.map { it.first }, sections.drop(2).map { it.key })
     }
 
     @Test
@@ -176,5 +178,31 @@ class PolishCTest {
         assertTrue(":hanpen:" !in hits)
         assertEquals(emptyList<String>(), EmojiPicker.search("  ", listOf("hanpen")))
         assertEquals("😀", EmojiPicker.tabGlyph("smileys")) // Unicode's order (gen_emoji.py --update)
+    }
+
+    @Test
+    fun theGridIndexOfEachHeadingAndTheSectionOfAnyItem() {
+        val sections = listOf(
+            EmojiSection("a", "A", listOf("1", "2")),
+            EmojiSection("b", "B", emptyList()),
+            EmojiSection("c", "C", listOf("3")),
+        )
+        val headers = EmojiPicker.headerIndices(sections)
+        assertEquals(listOf(0, 3, 4), headers.toList())
+        // Heading a, its 2 cells, heading b (empty), heading c, its cell.
+        assertEquals(listOf(0, 0, 0, 1, 2, 2), (0..5).map { EmojiPicker.sectionAt(headers, it) })
+        assertEquals(2, EmojiPicker.sectionAt(headers, 99))
+        assertEquals(-1, EmojiPicker.sectionAt(IntArray(0), 0))
+    }
+
+    @Test
+    fun everyTabJumpsToItsOwnHeadingInTheRealList() {
+        val sections = EmojiPicker.sections(listOf("👍"), customNames = listOf("hanpen"))
+        val headers = EmojiPicker.headerIndices(sections)
+        sections.indices.forEach { i ->
+            assertEquals(i, EmojiPicker.sectionAt(headers, headers[i]))
+            assertEquals(i, EmojiPicker.sectionAt(headers, headers[i] + sections[i].cells.size))
+        }
+        assertEquals(sections.size + sections.sumOf { it.cells.size }, headers.last() + 1 + sections.last().cells.size)
     }
 }

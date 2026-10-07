@@ -3,11 +3,10 @@ package jp.chikuwachat.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +18,10 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -77,7 +81,7 @@ object EmojiPicker {
     const val FREQUENT_MAX = 16
     private val CUSTOM_GLYPH = Regex("^:([^:\\s]+):$")
 
-    fun customName(glyph: String): String? = CUSTOM_GLYPH.find(glyph)?.groupValues?.get(1)
+    fun customName(glyph: String): String? = if (!glyph.startsWith(':')) null else CUSTOM_GLYPH.find(glyph)?.groupValues?.get(1)
 
     /**
      * 「よく使う」: this device's recently used emoji (QuickReactions' list, most recent first: reactions and emoji put in
@@ -87,17 +91,33 @@ object EmojiPicker {
         recent.filter { it.isNotEmpty() && (customName(it)?.let { name -> name in customNames } ?: true) }.distinct().take(max)
 
     /**
-     * Browsing (no search words): 「よく使う」 first when there is any, then the categories, then 「カスタム」 (M100: the
-     * ungrouped custom emoji), then a section per pack ([packSections]).
+     * Browsing (no search words), one list as in Slack: 「よく使う」 first when there is any, then 「カスタム」 (M100: the
+     * ungrouped custom emoji), then a section per pack ([customAndPacks]), then the standard categories.
      */
     fun sections(recent: List<String>, customNames: List<String>, packs: List<EmojiSection> = emptyList()): List<EmojiSection> {
         val frequent = frequent(recent, customNames.toSet() + packs.flatMap { p -> p.cells.mapNotNull { customName(it) } })
         return buildList {
             if (frequent.isNotEmpty()) add(EmojiSection(FREQUENT, L10n.str(R.string.emoji_picker_sheet_frequently_used), frequent))
-            EmojiData.categories.forEach { (key, label) -> add(EmojiSection(key, label, EmojiData.all.filter { it.category == key }.map { it.glyph })) }
             if (customNames.isNotEmpty()) add(EmojiSection(CUSTOM, L10n.str(R.string.common_custom), customNames.map { ":$it:" }))
             addAll(packs)
+            EmojiData.categories.forEach { (key, label) -> add(EmojiSection(key, label, standardCells[key].orEmpty())) }
         }
+    }
+
+    /** The standard emoji by category, worked out once (the sheet rebuilds its sections on every open). */
+    private val standardCells: Map<String, List<String>> by lazy { EmojiData.all.groupBy({ it.category }, { it.glyph }) }
+
+    /** Where each section's heading sits in the browsing grid, which lists a heading and then its cells. */
+    fun headerIndices(sections: List<EmojiSection>): IntArray {
+        var at = 0
+        return IntArray(sections.size) { i -> at.also { at += 1 + sections[i].cells.size } }
+    }
+
+    /** The section (its position in the list) that grid item [index] belongs to: the last heading at or above it. */
+    fun sectionAt(headers: IntArray, index: Int): Int {
+        if (headers.isEmpty()) return -1
+        val i = headers.binarySearch(index)
+        return if (i >= 0) i else (-i - 2).coerceAtLeast(0)
     }
 
     const val PACK_PREFIX = "pack:"
@@ -128,21 +148,17 @@ object EmojiPicker {
     }
 
     /** The glyph a category's tab shows (its first emoji). */
-    fun tabGlyph(key: String): String? = EmojiData.all.firstOrNull { it.category == key }?.glyph
-}
-
-private sealed interface PickerItem {
-    val key: String
-    data class Header(val section: EmojiSection) : PickerItem { override val key get() = "h:" + section.key }
-    data class Cell(val section: String, val glyph: String) : PickerItem { override val key get() = "c:$section:$glyph" }
+    fun tabGlyph(key: String): String? = standardCells[key]?.firstOrNull()
 }
 
 /**
  * The emoji picker (M11f), a sheet from the bottom as on iOS and Slack (C9; it was a centred dialog with three rows of
- * category chips): a search box, one scrolling row of category tabs, and every category in one list under its heading,
- * 「よく使う」 first (C10). A tab scrolls to its category; the tab follows the list. Search by shortcode / keyword (en + ja).
+ * category chips): a search box, one scrolling row of tabs, and every section in one continuous grid under its heading,
+ * which sticks to the top while its section scrolls by (as in Slack): 「よく使う」, 「カスタム」 and the packs, then the
+ * standard categories. A tab jumps to its section's heading; the selected tab follows the first visible section. Search
+ * by shortcode / keyword (en + ja) lists the hits as one flat grid. Each opening starts at the top.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun EmojiPickerSheet(
     onDismiss: () -> Unit,
@@ -171,29 +187,43 @@ fun EmojiPickerSheet(
     // M100: a section (and tab) per pack after 「カスタム」, which keeps the ungrouped ones.
     val packs = remember(version, plainOnly) { if (plainOnly) emptyList() else store.sortedEmojiPacks() }
     val split = remember(custom, packs) { EmojiPicker.customAndPacks(custom, packs) }
-    val customNames = split.first
-    val sections = remember(recent, split) { EmojiPicker.sections(recent, customNames, split.second) }
+    val sections = remember(recent, split) { EmojiPicker.sections(recent, split.first, split.second) }
+    val headers = remember(sections) { EmojiPicker.headerIndices(sections) }
     val packById = remember(packs) { packs.associateBy { it.id } }
     val searching = query.isNotBlank()
-    val items: List<PickerItem> = remember(sections, query, custom) {
-        if (query.isNotBlank()) EmojiPicker.search(query, custom).distinct().map { PickerItem.Cell("search", it) }
-        else sections.flatMap { section -> listOf(PickerItem.Header(section)) + section.cells.map { PickerItem.Cell(section.key, it) } }
-    }
-    val headerIndex = remember(items) { items.withIndex().filter { it.value is PickerItem.Header }.associate { (it.value as PickerItem.Header).section.key to it.index } }
+    val results = remember(query, custom) { if (query.isBlank()) emptyList() else EmojiPicker.search(query, custom).distinct() }
     val grid = rememberLazyGridState()
+    // New search words (or none) start the grid at the top again.
+    LaunchedEffect(query.trim()) { grid.scrollToItem(0) }
     // The tab last tapped stays selected until the list is dragged: near the end the list cannot bring its heading to
-    // the top, and the first visible row would name the category before it.
-    var chosen by remember { mutableStateOf<String?>(null) }
+    // the top, and the first visible row would name the section before it.
+    var chosen by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(grid) { grid.interactionSource.interactions.collect { if (it is DragInteraction.Start) chosen = null } }
-    val current by remember(items) {
-        derivedStateOf {
-            val first = grid.firstVisibleItemIndex
-            chosen ?: headerIndex.entries.filter { it.value <= first }.maxByOrNull { it.value }?.key ?: sections.firstOrNull()?.key
+    val current by remember(headers) { derivedStateOf { chosen ?: EmojiPicker.sectionAt(headers, grid.firstVisibleItemIndex) } }
+    val tabs = rememberLazyListState()
+    // The tab row keeps the selected tab in view as the list scrolls through many sections.
+    LaunchedEffect(current, searching) {
+        if (searching || current < 0) return@LaunchedEffect
+        val info = tabs.layoutInfo
+        val tab = info.visibleItemsInfo.firstOrNull { it.index == current }
+        if (tab == null || tab.offset < info.viewportStartOffset || tab.offset + tab.size > info.viewportEndOffset) {
+            tabs.animateScrollToItem((current - 2).coerceAtLeast(0))
         }
     }
     fun pick(glyph: String) {
         scope.launch { sheet.hide() }.invokeOnCompletion { onPick(glyph) }
     }
+    /** M100: a pack's illustrations take two cells; a text emoji as many as its pill needs; the rest one. */
+    fun span(section: String, glyph: String, maxLineSpan: Int): GridItemSpan {
+        val emoji = EmojiPicker.customName(glyph)?.let { customByName[it] } ?: return GridItemSpan(1)
+        return when {
+            emoji.isText -> GridItemSpan(kotlin.math.ceil((28 * CustomEmoji.aspect(emoji) + 12) / 44f).toInt().coerceIn(1, maxLineSpan))
+            section.startsWith(EmojiPicker.PACK_PREFIX) -> GridItemSpan(2.coerceAtMost(maxLineSpan))
+            else -> GridItemSpan(1)
+        }
+    }
+    val chooseLabel = stringResource(R.string.emoji_picker_sheet_choose)
+    val headerBackground = BottomSheetDefaults.ContainerColor
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().fillMaxHeight().imePadding()) {
@@ -207,16 +237,18 @@ fun EmojiPickerSheet(
             )
             if (!searching) {
                 // One row of icon tabs (it wrapped to three rows of chips).
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp),
+                LazyRow(
+                    state = tabs,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    sections.forEach { section ->
-                        val selected = current == section.key
+                    itemsIndexed(sections, key = { _, section -> section.key }) { index, section ->
+                        val selected = current == index
                         Box(
                             Modifier.size(44.dp).clip(CircleShape)
                                 .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                                .clickable { headerIndex[section.key]?.let { index -> chosen = section.key; scope.launch { grid.scrollToItem(index) } } }
+                                .clickable { chosen = index; scope.launch { grid.scrollToItem(headers[index]) } }
                                 .semantics { contentDescription = section.label; role = Role.Tab; this.selected = selected },
                             contentAlignment = Alignment.Center,
                         ) {
@@ -245,61 +277,57 @@ fun EmojiPickerSheet(
             } else {
                 Box(Modifier.height(8.dp))
             }
+            @Composable
+            fun Cell(section: String, glyph: String) {
+                val emoji = EmojiPicker.customName(glyph)?.let { customByName[it] }
+                val big = emoji != null && !emoji.isText && section.startsWith(EmojiPicker.PACK_PREFIX)
+                Box(
+                    Modifier.height(if (big) 80.dp else 44.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = chooseLabel) { pick(glyph) }
+                        .semantics { contentDescription = emoji?.label ?: glyph },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (emoji != null) {
+                        // Custom images load only when their cell comes into view.
+                        val image = version.let { images[emoji.id] }
+                        if (image == null) onNeedImage?.invoke(emoji)
+                        val box = when {
+                            big -> Modifier.size(64.dp)
+                            emoji.isText -> Modifier.height(28.dp).width((28 * CustomEmoji.aspect(emoji)).dp)
+                            else -> Modifier.size(28.dp)
+                        }
+                        if (image != null) EmojiImage(image, animations[emoji.id], contentDescription = null, modifier = box)
+                        else Text(glyph, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    } else {
+                        Text(glyph, fontSize = 26.sp, textAlign = TextAlign.Center)
+                    }
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(8), state = grid,
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp),
             ) {
-                items(items, key = { it.key }, span = { item ->
-                    when (item) {
-                        is PickerItem.Header -> GridItemSpan(maxLineSpan)
-                        is PickerItem.Cell -> {
-                            // M100: a pack's illustrations take two cells; a text emoji as many as its pill needs.
-                            val emoji = EmojiPicker.customName(item.glyph)?.let { customByName[it] }
-                            when {
-                                emoji == null -> GridItemSpan(1)
-                                emoji.isText -> GridItemSpan(kotlin.math.ceil((28 * CustomEmoji.aspect(emoji) + 12) / 44f).toInt().coerceIn(1, maxLineSpan))
-                                item.section.startsWith(EmojiPicker.PACK_PREFIX) -> GridItemSpan(2.coerceAtMost(maxLineSpan))
-                                else -> GridItemSpan(1)
-                            }
+                if (searching) {
+                    items(results, key = { "s:$it" }, contentType = { if (it.startsWith(':')) "custom" else "emoji" }, span = { span("search", it, maxLineSpan) }) { Cell("search", it) }
+                    if (results.isEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(
+                                stringResource(R.string.common_nothing_found), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center,
+                            )
                         }
                     }
-                }) { item ->
-                    when (item) {
-                        is PickerItem.Header -> Text(
-                            item.section.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
-                        )
-                        is PickerItem.Cell -> {
-                            val emoji = EmojiPicker.customName(item.glyph)?.let { customByName[it] }
-                            val big = emoji != null && !emoji.isText && item.section.startsWith(EmojiPicker.PACK_PREFIX)
-                            Box(
-                                Modifier.height(if (big) 80.dp else 44.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = stringResource(R.string.emoji_picker_sheet_choose)) { pick(item.glyph) }
-                                    .semantics { contentDescription = emoji?.label ?: item.glyph },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (emoji != null) {
-                                    val image = version.let { images[emoji.id] }
-                                    if (image == null) onNeedImage?.invoke(emoji)
-                                    val box = when {
-                                        big -> Modifier.size(64.dp)
-                                        emoji.isText -> Modifier.height(28.dp).width((28 * CustomEmoji.aspect(emoji)).dp)
-                                        else -> Modifier.size(28.dp)
-                                    }
-                                    if (image != null) EmojiImage(image, animations[emoji.id], contentDescription = null, modifier = box)
-                                    else Text(item.glyph, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                                } else {
-                                    Text(item.glyph, fontSize = 26.sp, textAlign = TextAlign.Center)
-                                }
-                            }
+                } else {
+                    sections.forEach { section ->
+                        // The heading sticks to the top while its section scrolls by; opaque so the cells pass under it.
+                        stickyHeader(key = "h:" + section.key, contentType = "header") {
+                            Text(
+                                section.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth().background(headerBackground).padding(start = 8.dp, top = 10.dp, bottom = 4.dp)
+                                    .semantics { heading() },
+                            )
                         }
-                    }
-                }
-                if (searching && items.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(
-                            stringResource(R.string.common_nothing_found), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center,
-                        )
+                        val key = section.key
+                        items(section.cells, key = { "c:$key:$it" }, contentType = { if (it.startsWith(':')) "custom" else "emoji" }, span = { span(key, it, maxLineSpan) }) { Cell(key, it) }
                     }
                 }
             }

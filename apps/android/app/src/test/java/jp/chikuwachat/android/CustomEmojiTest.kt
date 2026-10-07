@@ -124,7 +124,7 @@ class CustomEmojiTest {
         assertEquals(listOf("lost", "parrot"), ungrouped)
         assertEquals(listOf(":hpd-plain:", ":hpd-bow:"), packs.single().cells)
         val sections = EmojiPicker.sections(emptyList(), ungrouped, packs)
-        assertEquals(listOf(EmojiPicker.CUSTOM, "pack:p1"), sections.takeLast(2).map { it.key })
+        assertEquals(listOf(EmojiPicker.CUSTOM, "pack:p1"), sections.take(2).map { it.key }) // before the standard categories
     }
 
     /** A drawn image stand-in (a JVM test has no Bitmap). */
