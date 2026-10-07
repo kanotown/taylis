@@ -288,3 +288,143 @@ final class ActionsTests: XCTestCase {
         engine.stop()
     }
 }
+
+/// M143 §12 (docs/ACTIONS.md §12.4): the state of what the buttons operate — decoding, the group keys, the texts, the
+/// store (older answers ignored, cleared when the buttons go off), the event and the page's reads.
+@MainActor
+final class ActionStatusTests: XCTestCase {
+    private func status(_ actionId: String = "a-unlock", group: String? = "研究室の鍵", ok: Bool = true, text: String = "施錠中・ドア閉",
+                        tone: String = "ok", error: String? = nil, message: String? = nil,
+                        at: String = "2026-10-08T09:15:00Z") -> ActionStatusOut {
+        ActionStatusOut(actionId: actionId, groupLabel: group, ok: ok,
+                        status: ok ? ActionStatusValue(text: text, tone: tone, state: "locked", details: [ActionStatusDetail(label: "電池", value: "85%")]) : nil,
+                        error: error, message: message, fetchedAt: at)
+    }
+
+    private var buttons: ActionListOut {
+        ActionListOut(enabled: true, actions: [
+            ActionOut(id: "a-unlock", name: "開ける", groupLabel: "研究室の鍵", providesStatus: true),
+            ActionOut(id: "a-light", name: "照明", providesStatus: true),
+        ])
+    }
+
+    func testDecodesTheStatesAndProvidesStatus() throws {
+        let json = """
+        {"enabled": true, "statuses": [
+          {"action_id": "a1", "group_label": "研究室の鍵", "ok": true,
+           "status": {"text": "施錠中・ドア閉", "tone": "ok", "state": "locked", "details": [{"label": "電池", "value": "85%"}]},
+           "error": null, "message": null, "fetched_at": "2026-10-08T09:15:00.123456Z"},
+          {"action_id": "a2", "group_label": null, "ok": false, "status": null, "error": "timeout", "message": null,
+           "fetched_at": "2026-10-08T09:15:00Z"}]}
+        """
+        let list = try JSON.snakeDecoder.decode(ActionStatusListOut.self, from: Data(json.utf8))
+        XCTAssertEqual(list.statuses.count, 2)
+        XCTAssertEqual(list.statuses[0].status?.details?.first?.value, "85%")
+        XCTAssertNil(list.statuses[1].groupLabel)
+        XCTAssertEqual(list.statuses[1].error, "timeout")
+        let button = try JSON.snakeDecoder.decode(ActionOut.self, from: Data("""
+        {"id": "a1", "name": "開ける", "group_label": null, "icon": null, "emoji": null, "confirm": true, "confirm_text": null,
+         "position": 0, "provides_status": true}
+        """.utf8))
+        XCTAssertEqual(button.providesStatus, true)
+    }
+
+    func testKeysAndTexts() {
+        XCTAssertEqual(ActionRules.statusKey("研究室の鍵", "a1"), "g:研究室の鍵")
+        XCTAssertEqual(ActionRules.statusKey(" ", "a1"), "a:a1")
+        XCTAssertEqual(ActionRules.statusKey(nil, "a1"), "a:a1")
+        XCTAssertTrue(ActionRules.isNewer("2026-10-08T09:15:01Z", than: "2026-10-08T09:15:00.999Z"))
+        XCTAssertFalse(ActionRules.isNewer("2026-10-08T09:15:00Z", than: "2026-10-08T09:15:00.5Z"))
+        XCTAssertEqual(ActionRules.statusDetails(status()), "電池 85%")
+        XCTAssertEqual(ActionRules.statusFailureText(status(ok: false, error: "timeout")), "状態を取得できませんでした：中継から応答がありませんでした")
+        XCTAssertEqual(ActionRules.statusFailureText(status(ok: false, error: "network")), "状態を取得できませんでした：中継に接続できませんでした")
+        XCTAssertEqual(ActionRules.statusFailureText(status(ok: false, error: "relay_error", message: "電池が切れています")),
+                       "状態を取得できませんでした：電池が切れています")
+        XCTAssertEqual(ActionRules.statusFailureText(status(ok: false, error: "invalid_answer")), "状態を取得できませんでした：中継の答えを読めませんでした")
+        XCTAssertEqual(ActionRules.statusFailureText(status(ok: false, error: "secret_missing")),
+                       "状態を取得できませんでした：ボタンの設定に問題があります。管理者に連絡してください")
+        XCTAssertEqual(ActionRules.statusReadFailure(ApiError.api(status: 429, code: "rate_limited", message: "x")), "少し待ってからもう一度押してください")
+        XCTAssertEqual(ActionRules.toneColor("warn"), .orange)
+        XCTAssertEqual(ActionRules.toneColor("whatever"), .gray)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let now = ISO8601DateFormatter().date(from: "2026-10-08T03:00:00Z")!  // 12:00 in Tokyo
+        XCTAssertEqual(ActionRules.checkedLabel("2026-10-08T02:59:30Z", now: now, calendar: calendar), "たった今確認")
+        XCTAssertEqual(ActionRules.checkedLabel("2026-10-08T02:57:00Z", now: now, calendar: calendar), "3 分前に確認")
+        XCTAssertEqual(ActionRules.checkedLabel("2026-10-08T01:23:00Z", now: now, calendar: calendar), "10:23 に確認")
+        XCTAssertEqual(ActionRules.checkedLabel("2026-10-07T01:23:00Z", now: now, calendar: calendar), "10/7 10:23 に確認")
+    }
+
+    func testTheLineUnderAHeading() {
+        XCTAssertEqual(ActionRules.statusLine(status(), expected: true, loading: true, readError: nil), .state(status()))
+        XCTAssertEqual(ActionRules.statusLine(nil, expected: true, loading: true, readError: nil), .loading)
+        XCTAssertNil(ActionRules.statusLine(nil, expected: true, loading: false, readError: nil))
+        XCTAssertNil(ActionRules.statusLine(nil, expected: false, loading: true, readError: nil))  // no state for this group
+        XCTAssertEqual(ActionRules.statusLine(nil, expected: true, loading: false, readError: "少し待ってからもう一度押してください"),
+                       .failed("状態を取得できませんでした：少し待ってからもう一度押してください"))
+        XCTAssertEqual(ActionRules.statusLine(status(ok: false, error: "timeout"), expected: false, loading: false, readError: nil),
+                       .failed("状態を取得できませんでした：中継から応答がありませんでした"))
+    }
+
+    func testTheStoreIgnoresOlderAnswersAndForgetsWhenOff() {
+        let store = Store()
+        store.setActions(buttons)
+        store.setActionStatuses(ActionStatusListOut(enabled: true, statuses: [status(at: "2026-10-08T09:15:00Z"), status("a-light", group: nil, text: "消灯")]))
+        XCTAssertEqual(Set(store.actionStatuses.keys), ["g:研究室の鍵", "a:a-light"])
+        store.applyActionStatus(status(text: "解錠中", tone: "warn", at: "2026-10-08T09:14:00Z"))  // older: ignored
+        XCTAssertEqual(store.actionStatuses["g:研究室の鍵"]?.status?.text, "施錠中・ドア閉")
+        store.applyActionStatus(status(text: "解錠中", tone: "warn", at: "2026-10-08T09:16:00Z"))
+        XCTAssertEqual(store.actionStatuses["g:研究室の鍵"]?.status?.tone, "warn")
+        // A whole answer drops the groups no longer in it; turned off forgets everything.
+        store.setActionStatuses(ActionStatusListOut(enabled: true, statuses: [status("a-light", group: nil, text: "点灯")]))
+        XCTAssertEqual(Array(store.actionStatuses.keys), ["a:a-light"])
+        store.setActions(ActionListOut(enabled: false))
+        XCTAssertTrue(store.actionStatuses.isEmpty)
+    }
+
+    private func engine(_ server: FakeServer, _ userId: String, _ store: Store) -> SyncEngine {
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        return SyncEngine(api: server.api(for: userId), connect: server.connector(for: userId), wsUrl: URL(string: "ws://fake")!, store: store,
+                          getAccessToken: { "t" }, options: options)
+    }
+
+    func testReadsTheEventAndRefresh() async throws {
+        let server = FakeServer()
+        let me = server.addUser("me")
+        server.actions = buttons
+        server.statuses = [status(at: "2026-10-08T09:15:00Z")]
+        let store = Store()
+        let engine = engine(server, me.id, store)
+        await engine.start()
+        await engine.idle()
+        XCTAssertTrue(store.actionStatuses.isEmpty)  // read by the page, not the bootstrap
+        try await engine.loadActionStatuses()
+        try await engine.loadActionStatuses(refresh: true)
+        XCTAssertEqual(server.statusReads, [false, true])
+        XCTAssertEqual(store.actionStatuses["g:研究室の鍵"]?.status?.text, "施錠中・ドア閉")
+
+        // actions.status_updated replaces the group's state; an older one is dropped.
+        server.sendActionStatus(status(text: "解錠中", tone: "warn", at: "2026-10-08T09:15:04Z"))
+        await engine.idle()
+        XCTAssertEqual(store.actionStatuses["g:研究室の鍵"]?.status?.text, "解錠中")
+        server.sendActionStatus(status(text: "古い", at: "2026-10-08T09:10:00Z"))
+        await engine.idle()
+        XCTAssertEqual(store.actionStatuses["g:研究室の鍵"]?.status?.text, "解錠中")
+        engine.stop()
+    }
+
+    func testTheFeedSaysWhyAReadFailed() async {
+        let feed = ActionStatusFeed()
+        XCTAssertTrue(feed.loading)
+        await feed.read({ _ in throw ApiError.api(status: 429, code: "rate_limited", message: "x") }, refresh: true)
+        XCTAssertFalse(feed.loading)
+        XCTAssertFalse(feed.refreshing)
+        XCTAssertEqual(feed.error, "少し待ってからもう一度押してください")
+        var asked: [Bool] = []
+        await feed.read({ asked.append($0) })
+        XCTAssertNil(feed.error)
+        XCTAssertEqual(asked, [false])
+    }
+}

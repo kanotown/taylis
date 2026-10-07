@@ -27,6 +27,7 @@
 		A1400001C0FFEE0000000003 /* AttendanceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000003 /* AttendanceViews.swift */; };
 		A1400001C0FFEE0000000002 /* Attendance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000002 /* Attendance.swift */; };
 		A1430001C0FFEE0000000002 /* Actions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1430002C0FFEE0000000002 /* Actions.swift */; };
+		A1430001C0FFEE0000000004 /* ActionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1430002C0FFEE0000000004 /* ActionStatus.swift */; };
 		A1400001C0FFEE0000000005 /* AttendanceIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000005 /* AttendanceIcons.swift */; };
 		B1170001C0FFEE0000000001 /* Calls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1170002C0FFEE0000000001 /* Calls.swift */; };
 		0ECCCE363BA13FDFDB89F930 /* ScheduleSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */; };
@@ -374,6 +375,7 @@
 		A1400002C0FFEE0000000003 /* AttendanceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceViews.swift; sourceTree = "<group>"; };
 		A1400002C0FFEE0000000002 /* Attendance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attendance.swift; sourceTree = "<group>"; };
 		A1430002C0FFEE0000000002 /* Actions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Actions.swift; sourceTree = "<group>"; };
+		A1430002C0FFEE0000000004 /* ActionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionStatus.swift; sourceTree = "<group>"; };
 		A1400002C0FFEE0000000005 /* AttendanceIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceIcons.swift; sourceTree = "<group>"; };
 		B1170002C0FFEE0000000001 /* Calls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Calls.swift; sourceTree = "<group>"; };
 		278043686D3BDC38186699E5 /* Recurring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recurring.swift; sourceTree = "<group>"; };
@@ -889,6 +891,7 @@
 				A1400002C0FFEE0000000003 /* AttendanceViews.swift */,
 				A1400002C0FFEE0000000002 /* Attendance.swift */,
 				A1430002C0FFEE0000000002 /* Actions.swift */,
+				A1430002C0FFEE0000000004 /* ActionStatus.swift */,
 				A1400002C0FFEE0000000005 /* AttendanceIcons.swift */,
 				B1170002C0FFEE0000000001 /* Calls.swift */,
 				7787A42779309636F0D889A4 /* DirectoryView.swift */,
@@ -1340,6 +1343,7 @@
 				A1400001C0FFEE0000000003 /* AttendanceViews.swift in Sources */,
 				A1400001C0FFEE0000000002 /* Attendance.swift in Sources */,
 				A1430001C0FFEE0000000002 /* Actions.swift in Sources */,
+				A1430001C0FFEE0000000004 /* ActionStatus.swift in Sources */,
 				A1400001C0FFEE0000000005 /* AttendanceIcons.swift in Sources */,
 				B1170001C0FFEE0000000001 /* Calls.swift in Sources */,
 				BD01E7FD93BC7A0D72CA8F47 /* DirectoryView.swift in Sources */,

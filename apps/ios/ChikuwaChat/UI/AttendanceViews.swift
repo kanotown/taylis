@@ -13,6 +13,7 @@ struct AttendanceView: View {
     @State private var profileUserId: String?
     /// M143: the 操作ボタン on top (when the workspace shows them here).
     @State private var actionPresser = ActionPresser()
+    @State private var actionStatusFeed = ActionStatusFeed()
 
     private var store: Store { controller.store }
     private var meId: String? { store.me?.id ?? controller.me?.id }
@@ -64,7 +65,7 @@ struct AttendanceView: View {
         return List {
             // M143 (docs/ACTIONS.md D17): the 操作ボタン first, when the workspace says so.
             if !actions.isEmpty {
-                ActionButtonSections(controller: controller, actions: actions, presser: actionPresser, heading: actionsTitle)
+                ActionButtonSections(controller: controller, actions: actions, presser: actionPresser, heading: actionsTitle, feed: actionStatusFeed)
             }
             Section {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
@@ -140,6 +141,7 @@ struct AttendanceView: View {
         }
         .listStyle(.insetGrouped)
         .actionConfirmation(actionPresser, controller: controller)
+        .actionStatusPolling(controller, feed: actionStatusFeed, active: !actions.isEmpty)
     }
 
     private func stateButton(_ state: AttendanceStateOut, mine: AttendanceEntryOut?) -> some View {
