@@ -49,8 +49,8 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
             return .object(["kind": .string("hr")])
         case .codeBlock(let text, _):
             return .object(["kind": .string("codeblock"), "text": .string(text)])
-        case .quote(let lines):
-            return .object(["kind": .string("quote"), "lines": .array(lines.map { .string(plain($0)) })])
+        case .quote(let blocks):
+            return .object(["kind": .string("quote"), "blocks": .array(blocks.map(describe))])
         case .table:
             return .object(["kind": .string("table")])
         case .math(let tex):

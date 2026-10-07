@@ -37,7 +37,8 @@ struct BodyTaskItem: Equatable {
 enum BodyBlock: Equatable {
     case heading(Int, [BodyToken])
     case paragraph([[BodyToken]])
-    case quote([[BodyToken]])
+    /// Quoted lines (">" and one space stripped) as paragraphs and lists (apps/shared/lists.json `quoted`).
+    case quote([BodyBlock])
     case list(ordered: Bool, start: Int, items: [BodyListItem])
     case codeBlock(String, lang: String?)
     /// Display math: `$$…$$` on a line (or lines) of its own (apps/shared/math.json).
@@ -296,6 +297,47 @@ enum BodyTokenizer {
         return out
     }
 
+    /// List lines as list blocks (`from`: the row of its first item): a top-level item of the other kind starts a new
+    /// list (as in CommonMark).
+    static func listBlocks(_ rows: [ListLine]) -> [(block: BodyBlock, from: Int)] {
+        let items = listItems(rows)
+        var out: [(block: BodyBlock, from: Int)] = []
+        var from = 0
+        for k in 1...max(items.count, 1) where !items.isEmpty {
+            if k < items.count, !(items[k].level == 0 && items[k].ordered != items[from].ordered) { continue }
+            let run = Array(items[from..<k])
+            out.append((.list(ordered: run[0].ordered, start: run[0].ordered ? run[0].number : 1, items: run), from))
+            from = k
+        }
+        return out
+    }
+
+    /// A quote's lines (its ">" and one space stripped) as paragraphs and lists, read as at the top level: a run of list
+    /// lines is a list (nested by indent, numbered, the other kind a new list); any other line, a blank one too, is a
+    /// paragraph line (apps/shared/lists.json `quoted`, as markdown.ts quoteBlocks).
+    static func quoteBlocks(_ quoted: [String]) -> [BodyBlock] {
+        var out: [BodyBlock] = []
+        var i = 0
+        while i < quoted.count {
+            var rows: [ListLine] = []
+            while i < quoted.count, let row = listLine(quoted[i]) {
+                rows.append(row)
+                i += 1
+            }
+            if !rows.isEmpty {
+                out += listBlocks(rows).map(\.block)
+                continue
+            }
+            var paragraph: [[BodyToken]] = []
+            while i < quoted.count, paragraph.isEmpty || listLine(quoted[i]) == nil {
+                paragraph.append(tokenizeInline(quoted[i]))
+                i += 1
+            }
+            out.append(.paragraph(paragraph))
+        }
+        return out
+    }
+
     /// A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text.
     struct ListLine {
         let indent: Int
@@ -443,12 +485,13 @@ enum BodyTokenizer {
                 continue
             }
             if firstMatch(quote, line) != nil {
-                var quoted: [[BodyToken]] = []
+                var quoted: [String] = []
+                // A line without ">" ends the quote (no lazy continuation: a reply often follows a quote).
                 while i < lines.count, let q = firstMatch(quote, lines[i]) {
-                    quoted.append(tokenizeInline(group(q, 1, in: lines[i])))
+                    quoted.append(group(q, 1, in: lines[i]))
                     i += 1
                 }
-                append(.quote(quoted))
+                append(.quote(quoteBlocks(quoted)))
                 continue
             }
             if opensTable(i) {
@@ -470,15 +513,8 @@ enum BodyTokenizer {
                     rows.append(row)
                     i += 1
                 }
-                // A top-level item of the other kind starts a new list (as in CommonMark); each keeps the first line.
-                let items = listItems(rows)
-                var from = 0
-                for k in 1...items.count {
-                    if k < items.count, !(items[k].level == 0 && items[k].ordered != items[from].ordered) { continue }
-                    let run = Array(items[from..<k])
-                    lined.append((.list(ordered: run[0].ordered, start: run[0].ordered ? run[0].number : 1, items: run), first + from))
-                    from = k
-                }
+                // Each list keeps the line of its first item.
+                for run in listBlocks(rows) { lined.append((run.block, first + run.from)) }
                 continue
             }
             var paragraph: [[BodyToken]] = []
@@ -653,37 +689,26 @@ struct MessageBodyView: View {
                 .font(level == 1 ? .title.bold() : level == 2 ? .title2.bold() : .title3.bold())
         case .paragraph(let lines):
             paragraphView(BodyTokenizer.paragraphLayout(lines))
-        case .quote(let lines):
+        case .quote(let inner):
             // The bar is drawn beside the text rather than laid out with it: in an HStack the bar (a shape, as tall as
             // it is offered) took part in sharing the width, and the text was measured for one width and drawn in
-            // another (M38).
-            joined(lines).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            // another (M38). 2026-10-08: its lines are paragraphs and lists (apps/shared/lists.json `quoted`), drawn
+            // as outside a quote in the secondary colour (the drawn bullets take it too).
+            VStack(alignment: .leading, spacing: Self.blockSpacing) {
+                ForEach(Array(inner.enumerated()), id: \.offset) { _, block in
+                    quotedView(block)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, Self.quoteIndent)
                 .overlay(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 1.5).fill(Color.secondary.opacity(0.35)).frame(width: 3)
                 }
         case .list(_, _, let items):
-            // apps/shared/lists.json: each item's marker (1. a. i. / • ◦ ▪) comes from the parser.
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Group {
-                            if item.ordered {
-                                Text(item.marker).monospacedDigit().foregroundStyle(.secondary)
-                            } else {
-                                ListBulletMark(level: item.level).padding(.trailing, 2)
-                            }
-                        }
-                        .frame(minWidth: 20, alignment: .trailing)
-                        inlineText(item.tokens)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.leading, CGFloat(item.level) * 20)
-                }
-            }
+            listView(items)
         case .table(let align, let header, let rows):
             tableView(align: align, header: header, rows: rows)
         case .math(let tex):
@@ -704,6 +729,38 @@ struct MessageBodyView: View {
             .padding(.vertical, 8)
             .background(Self.codeBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2), lineWidth: 0.5))
+        }
+    }
+
+    /// A quote's paragraphs and lists (a function of its own: `blockView` cannot call itself in a view builder).
+    @ViewBuilder
+    private func quotedView(_ block: BodyBlock) -> some View {
+        switch block {
+        case .paragraph(let lines): paragraphView(BodyTokenizer.paragraphLayout(lines))
+        case .list(_, _, let items): listView(items)
+        default: EmptyView()
+        }
+    }
+
+    /// apps/shared/lists.json: each item's marker (1. a. i. / • ◦ ▪) comes from the parser; bullets are drawn.
+    private func listView(_ items: [BodyListItem]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Group {
+                        if item.ordered {
+                            Text(item.marker).monospacedDigit().foregroundStyle(.secondary)
+                        } else {
+                            ListBulletMark(level: item.level).padding(.trailing, 2)
+                        }
+                    }
+                    .frame(minWidth: 20, alignment: .trailing)
+                    inlineText(item.tokens)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.leading, CGFloat(item.level) * 20)
+            }
         }
     }
 
@@ -903,9 +960,9 @@ struct ListBulletMark: View {
 
     @ViewBuilder private var mark: some View {
         switch min(level, 2) {
-        case 0: Circle().fill(Color.primary).frame(width: size, height: size)
-        case 1: Circle().strokeBorder(Color.primary, lineWidth: max(1.3, size * 0.2)).frame(width: size * 1.05, height: size * 1.05)
-        default: RoundedRectangle(cornerRadius: 1).fill(Color.primary).frame(width: size * 0.9, height: size * 0.9)
+        case 0: Circle().fill(.foreground).frame(width: size, height: size)
+        case 1: Circle().strokeBorder(.foreground, lineWidth: max(1.3, size * 0.2)).frame(width: size * 1.05, height: size * 1.05)
+        default: RoundedRectangle(cornerRadius: 1).fill(.foreground).frame(width: size * 0.9, height: size * 0.9)
         }
     }
 }

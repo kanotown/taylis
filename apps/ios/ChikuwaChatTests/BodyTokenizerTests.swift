@@ -104,6 +104,8 @@ final class ListsFixtureTests: XCTestCase {
     private struct Fixture: Decodable {
         struct Case: Decodable { let name: String; let body: String; let blocks: [String]; let lists: [[Item]] }
         let cases: [Case]
+        struct Quoted: Decodable { let name: String; let body: String; let blocks: [String]; let quotes: JSONValue }
+        let quoted: [Quoted]
     }
 
     private func kind(_ block: BodyBlock) -> String {
@@ -134,6 +136,34 @@ final class ListsFixtureTests: XCTestCase {
                 return items.map { Item(level: $0.level, marker: $0.marker, text: CanvasMarkdownFixtureTests.plain($0.tokens)) }
             }
             XCTAssertEqual(lists, c.lists, c.name)
+        }
+    }
+
+    /// 2026-10-08: lists inside quotes (`quoted`): ["list", [[level, marker, text]…]] or ["paragraph", [line…]] per block.
+    func testTheSharedQuotedLists() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/lists.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        XCTAssertGreaterThan(fixture.quoted.count, 10)
+        for c in fixture.quoted {
+            let blocks = BodyTokenizer.parseBlocks(c.body)
+            XCTAssertEqual(blocks.map(kind), c.blocks, c.name)
+            let quotes = blocks.compactMap { block -> JSONValue? in
+                guard case .quote(let inner) = block else { return nil }
+                return .array(inner.map { block -> JSONValue in
+                    switch block {
+                    case .list(_, _, let items):
+                        return .array([.string("list"), .array(items.map {
+                            .array([.number(Double($0.level)), .string($0.marker), .string(CanvasMarkdownFixtureTests.plain($0.tokens))])
+                        })])
+                    case .paragraph(let lines):
+                        return .array([.string("paragraph"), .array(lines.map { .string(CanvasMarkdownFixtureTests.plain($0)) })])
+                    default:
+                        return .string(kind(block))
+                    }
+                })
+            }
+            XCTAssertEqual(JSONValue.array(quotes), c.quotes, c.name)
         }
     }
 }
@@ -171,7 +201,7 @@ final class BodyTokenizerTests: XCTestCase {
             BodyListItem(level: 0, ordered: true, number: 1, marker: "1.", tokens: [.text("first")]),
             BodyListItem(level: 0, ordered: true, number: 2, marker: "2.", tokens: [.text("second")]),
         ]))
-        XCTAssertEqual(blocks[3], .quote([[.text("quoted "), .italic("q")], [.text("more")]]))
+        XCTAssertEqual(blocks[3], .quote([.paragraph([[.text("quoted "), .italic("q")], [.text("more")]])]))
         XCTAssertEqual(blocks[4], .codeBlock("const x = 1;", lang: "ts"))
         XCTAssertEqual(blocks[5], .paragraph([[.text("tail")]]))
         XCTAssertEqual(BodyTokenizer.parseBlocks("```\nopen"), [.paragraph([[.text("```")], [.text("open")]])])
