@@ -579,7 +579,7 @@ export function Composer({
       value={text}
       maxLength={MAX_LENGTH}
       placeholder={placeholder}
-      className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-10 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
+      className={cn("block max-h-[280px] w-[calc(100%-2.25rem)] resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-1 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
       onChange={(e) => {
         setText(e.target.value);
         syncCaret(e.target);
@@ -828,7 +828,7 @@ export function Composer({
         <div ref={inputBox} className="relative" style={switchHold ? { minHeight: switchHold } : undefined}>
           {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
           {preview && (
-            <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-10 pt-3" aria-label={t("composer.preview")}>
+            <div className="mr-9 max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-1 pt-3" aria-label={t("composer.preview")}>
               {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">{t("composer.nothingToPreview")}</span>}
             </div>
           )}
@@ -860,7 +860,8 @@ export function Composer({
           ) : (
             textArea
           )}
-          {/* The preview toggle in the text's top-right corner (2026-10-04); 「書式の書き方」 is by the send button. */}
+          {/* The preview toggle in the text's top-right corner (2026-10-04); 「書式の書き方」 is by the send button. The text area and
+              the preview stop 2.25rem short of the right edge, so their scrollbar runs left of this button, never under it. */}
           {!rich && <IconButton label={preview ? t("composer.backToEdit") : t("composer.preview")} aria-pressed={preview} className={cn("absolute right-1 top-1 h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
             {preview ? <EyeOff size={15} /> : <Eye size={15} />}
           </IconButton>}
