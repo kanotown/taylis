@@ -2277,6 +2277,8 @@ export const ja = {
   "threads.openChannel": "チャンネルを開く",
   "threads.openConversation": "会話を開く",
   "threads.openThread": "スレッドを開く",
+  "threads.moreReplies": "他 {count} 件の返信",
+  "threads.replyFrom": "{name} さんの返信、スレッドで開く",
   "status.changeEmoji": "絵文字を変更",
   "status.pickEmoji": "絵文字を選ぶ",
   "status.removeEmoji": "絵文字を外す",

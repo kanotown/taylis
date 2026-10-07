@@ -3,7 +3,7 @@ import { MessagesSquare } from "lucide-react";
 import { useEffect } from "react";
 
 import type { AppController } from "../state/app";
-import type { ThreadEntry, ThreadFilter } from "../sync/types";
+import type { MessageState, ThreadEntry, ThreadFilter } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { dateLabel, fullTimestamp, timeLabel } from "./format";
 import { isDmChannel } from "./channels";
@@ -13,6 +13,8 @@ import { mentionsToNames } from "./mentions";
 import { BackButton } from "./compact";
 import { Badge, Button, cn } from "./primitives";
 import { EmojiText } from "./UserPopover";
+import { MessageBody } from "./MessageBody";
+import { threadCardReplies, type ThreadCardReply } from "./threadCard";
 import { t } from "../i18n";
 
 /**
@@ -24,7 +26,8 @@ import { t } from "../i18n";
 export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, embedded = false }: {
   controller: AppController;
   selectedId: string | null;
-  onOpen: (entry: ThreadEntry) => void;
+  /** The thread; with `reply` (a reply under the card), landing on that reply. */
+  onOpen: (entry: ThreadEntry, reply?: MessageState) => void;
   /** The conversation of a row, with its parent message revealed (as a permalink lands). */
   onOpenChannel: (entry: ThreadEntry) => void;
   /** M34: inside the phone's activity tab, which has its own header: only the filter is left here. */
@@ -85,7 +88,7 @@ export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, emb
         ) : (
           <ul className="divide-y divide-line">
             {rows.map((entry) => (
-              <ThreadRow key={entry.parent.id} entry={entry} controller={controller} selected={entry.parent.id === selectedId} onOpen={() => onOpen(entry)} onOpenChannel={() => onOpenChannel(entry)} />
+              <ThreadRow key={entry.parent.id} entry={entry} controller={controller} selected={entry.parent.id === selectedId} onOpen={(reply) => onOpen(entry, reply)} onOpenChannel={() => onOpenChannel(entry)} />
             ))}
           </ul>
         )}
@@ -104,13 +107,14 @@ export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, emb
 const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-accent-soft";
 
-function ThreadRow({ entry, controller, selected, onOpen, onOpenChannel }: {
+function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel }: {
   entry: ThreadEntry;
   controller: AppController;
   selected: boolean;
-  onOpen: () => void;
+  onOpen: (reply?: MessageState) => void;
   onOpenChannel: () => void;
 }) {
+  const onOpen = () => openAt();
   const store = controller.store;
   const { parent, state } = entry;
   const channel = store.getChannel(state.channel_id);
@@ -122,6 +126,7 @@ function ThreadRow({ entry, controller, selected, onOpen, onOpenChannel }: {
   const title = channel ? channelTitle(channel, controller) : "";
   const dm = channel ? isDmChannel(channel) : false;
   const openLabel = dm ? t("threads.openConversation") : t("threads.openChannel");
+  const preview = threadCardReplies(entry, store.me?.id, (id) => store.isBlocked(id));
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
@@ -169,6 +174,20 @@ function ThreadRow({ entry, controller, selected, onOpen, onOpenChannel }: {
               </div>
             </div>
           </button>
+          {preview && preview.replies.length > 0 && (
+            <div className="pb-3 pl-16 pr-4">
+              {preview.more > 0 && (
+                <button type="button" data-thread-more onClick={onOpen} className="mb-1 text-xs font-medium text-accent hover:underline">
+                  {t("threads.moreReplies", { count: preview.more })}
+                </button>
+              )}
+              <div className="space-y-1 border-l-2 border-line pl-3">
+                {preview.replies.map((reply) => (
+                  <ThreadPreviewReply key={reply.message.id} reply={reply} controller={controller} onOpen={() => openAt(reply.message)} />
+                ))}
+              </div>
+            </div>
+          )}
         </li>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
@@ -178,5 +197,53 @@ function ThreadRow({ entry, controller, selected, onOpen, onOpenChannel }: {
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
+  );
+}
+
+/** A reply under a card (THREADS.md §5): compact, the body in the message renderer clamped to four lines. */
+function ThreadPreviewReply({ reply, controller, onOpen }: { reply: ThreadCardReply; controller: AppController; onOpen: () => void }) {
+  const store = controller.store;
+  const { message, unread } = reply;
+  const author = store.users.get(message.sender_id);
+  const name = author?.display_name ?? "…";
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-thread-reply={message.id}
+      aria-label={t("threads.replyFrom", { name })}
+      onClick={(event) => {
+        // A link in the body follows the link, not the thread.
+        if ((event.target as HTMLElement).closest("a")) return;
+        onOpen();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onOpen();
+      }}
+      className="flex cursor-pointer gap-2 rounded-lg px-1.5 py-1 hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      <Avatar id={message.sender_id} name={author?.display_name ?? "?"} size={24} className="mt-0.5 rounded-md text-[10px]" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 text-[13px]">
+          <span className={cn("truncate", unread ? "font-bold" : "font-medium")}>{name}</span>
+          <span className="whitespace-nowrap text-[11px] text-muted" title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</span>
+          {unread && <span aria-label={t("sidebar.unread")} className="h-2 w-2 shrink-0 self-center rounded-full bg-accent" />}
+        </div>
+        {message.body.trim() ? (
+          <MessageBody
+            body={message.body}
+            users={store.users}
+            groups={store.groups}
+            customEmoji={store.customEmoji}
+            controller={controller}
+            className={cn("max-h-20 overflow-hidden text-[13px] leading-5", unread ? "text-ink" : "text-ink/85")}
+          />
+        ) : (
+          <p className="text-[13px] leading-5 text-muted">{attachmentText(message.attachments ?? [])}</p>
+        )}
+      </div>
+    </div>
   );
 }

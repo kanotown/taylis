@@ -2278,6 +2278,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "threads.openChannel": "Open channel",
   "threads.openConversation": "Open conversation",
   "threads.openThread": "Open thread",
+  "threads.moreReplies": "{count, plural, one {# more reply} other {# more replies}}",
+  "threads.replyFrom": "Reply from {name}, open in thread",
   "status.changeEmoji": "Change emoji",
   "status.pickEmoji": "Choose emoji",
   "status.removeEmoji": "Remove emoji",

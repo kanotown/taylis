@@ -2278,6 +2278,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "threads.openChannel": "打开频道",
   "threads.openConversation": "打开对话",
   "threads.openThread": "打开话题",
+  "threads.moreReplies": "另有 {count} 条回复",
+  "threads.replyFrom": "{name} 的回复，在话题中打开",
   "status.changeEmoji": "更改表情",
   "status.pickEmoji": "选择表情",
   "status.removeEmoji": "移除表情",

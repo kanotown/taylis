@@ -50,6 +50,8 @@ export function emptySnapshot(): Snapshot {
  * stay). Older history is paged in again when the reader scrolls up.
  */
 export const CACHED_MESSAGES_PER_CHANNEL = 500;
+/** How many newest replies a threads-list card shows (the server's LATEST_REPLIES, THREADS.md §5). */
+export const THREAD_PREVIEW_REPLIES = 2;
 
 /**
  * M88: the workspace settings a server before M88 (or an offline start) stands for: both on, as before. M117: calls are
@@ -825,12 +827,39 @@ export class Store {
         if ((entry.state.last_reply_at ?? "") >= oldest) this.threads.delete(id);
       }
     }
-    for (const item of items) this.threads.set(item.parent.id, { parent: item.parent, state: item.state });
+    // A server before the previews sends no latest_replies: the card stays the parent only.
+    for (const item of items) this.threads.set(item.parent.id, { parent: item.parent, state: item.state, latestReplies: (item as Partial<ThreadItem>).latest_replies });
     this.threadsFilter = filter;
     this.threadsLoaded = true;
     this.threadsCursor = cursor;
     this.threadsHasMore = items.length >= options.pageSize;
     this.emit();
+  }
+
+  /**
+   * A reply of a listed thread arrived, changed or went (message.created / updated / deleted, my own sends' answers): the
+   * card's preview keeps the newest THREAD_PREVIEW_REPLIES live replies without fetching the list again. A reply that
+   * left the preview is replaced from the thread's replies held here, if any (else the list's next fetch fills it).
+   * Replies of people I blocked stay out, as the server leaves them out.
+   */
+  private applyThreadPreview(message: MessageState): void {
+    if (!message.parent_id || message.seq === null) return;
+    const entry = this.threads.get(message.parent_id);
+    if (!entry?.latestReplies) return;
+    const shown = entry.latestReplies;
+    const held = shown.some((r) => r.id === message.id);
+    const visible = !message.deleted && !this.blockedUsers.has(message.sender_id);
+    if (!held && !visible) return;
+    let next = shown.filter((r) => r.id !== message.id);
+    if (visible) next.push(message);
+    const live = (r: MessageState) => r.seq !== null && !r.deleted && !this.blockedUsers.has(r.sender_id);
+    if (next.length < THREAD_PREVIEW_REPLIES) {
+      const ids = new Set(next.map((r) => r.id));
+      next.push(...this.replies(message.channel_id, message.parent_id).filter((r) => live(r) && !ids.has(r.id) && r.id !== message.id));
+    }
+    next = next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).slice(-THREAD_PREVIEW_REPLIES);
+    if (next.length === shown.length && next.every((r, i) => r === shown[i])) return;
+    this.threads.set(entry.parent.id, { ...entry, latestReplies: next });
   }
 
   /** thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known. */
@@ -1180,6 +1209,7 @@ export class Store {
       this.persist((p) => p.saveMessage(stored));
     }
     this.applyLastMessage(stored); // M49: events, catch-up pages and my own edits / deletes alike
+    this.applyThreadPreview(stored);
     this.onMessageStored?.(stored, !local);
     this.emit();
     return true;
