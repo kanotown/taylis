@@ -857,6 +857,12 @@ data class ActivityItem(
      * time against the page's `read_at` decides, as before.
      */
     val read: Boolean? = null,
+    /**
+     * 2026-10-07 (MOBILE_UI.md §6.4, 「開いたら既読」): the item's id for PUT /activity/items/read (the message's for a
+     * mention / reply / reaction, the item's `item_id` for the others). Null from an older server: opening the row sends
+     * nothing and the item waits for the read position (or its conversation).
+     */
+    val id: String? = null,
 ) {
     /** One row per kind and message (a reaction row is per message, whoever reacts next); a canvas one per item. */
     val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: reservation?.let { "reservation:${it.itemId}" }

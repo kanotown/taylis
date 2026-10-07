@@ -276,7 +276,7 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
       応答は `ActivitySummaryOut`（新しいバッジ）。自分の全端末に `activity.items_read` `{item_ids, read_at}`（user 宛て、seq なし）
     - `PUT /activity/read`（すべて既読にする）はそのまま。既読位置を進めたとき、その位置以前の `activity_item_reads` を消す（表が育たない）
     - `GET /activity` の `read`・summary の数・bootstrap の `activity` は 1〜4 の全部で求める
-    - **クライアントの規則**（Web は実装済み。iOS・Android は次にこれに合わせる）：
+    - **クライアントの規則**（Web・Android は実装済み。iOS は次にこれに合わせる。Android は見出しの下のフィルタの列の最後に「未読のみ」、⋮ の「すべて既読」はやめた）：
       - 行の点と太字：`read == false` かつ `at` > 今持っている `read_at`（store の `activity.read_at`。他端末の「すべて既読にする」で
         `activity.read` が来たら進む）かつ「開いた項目」（下）で既読でない かつ（メンション・返信は）会話で読んでいない。
         `read == null` のサーバは `at` と `read_at` だけ
@@ -288,7 +288,7 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
         「すべて既読にする」は `read_at` = max(今, 持っている行の一番新しい `at`)
       - 既読の行はふつうの字（名前は medium、本文は薄い色）、未読の行は太字・左の点・薄い色の背景
       - 「未読のみ」：持っている行から既読の行を除く（端末の中だけ。開いた行は一覧から消える）。空なら「未読のアクティビティはありません」
-    - **互換**：これより前のクライアント（iOS・Android の今の版）は今までどおり表示すると `PUT /activity/read` を送るので、その端末で
+    - **互換**：これより前のクライアント（iOS の今の版と、Android の 2026-10-07 より前の版）は今までどおり表示すると `PUT /activity/read` を送るので、その端末で
       開けば全部既読になる（`activity.read` で他の端末も既読になる）。これは受け入れる（それらの版が新しい規則に合わせるまで）
 - 研究室向けの候補: 「確認依頼」フィルタ。確認を求められていて自分がまだ確認していない投稿 (M15e の ack) を出す (決定事項 3)。
 

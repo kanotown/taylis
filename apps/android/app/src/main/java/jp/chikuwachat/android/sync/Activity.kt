@@ -11,6 +11,12 @@ import java.time.OffsetDateTime
 /** M39: the activity tab's badge as the engine keeps it current (ApiClient and the test fake). */
 interface ActivityApi {
     suspend fun activitySummary(): ActivitySummaryOut
+
+    /** PUT /activity/read (「すべて既読にする」): everything up to `readAt` is read. */
+    suspend fun markActivityRead(readAt: String): ActivitySummaryOut
+
+    /** PUT /activity/items/read (2026-10-07, MOBILE_UI.md §6.4): the items I opened. */
+    suspend fun markActivityItemsRead(itemIds: List<String>): ActivitySummaryOut
 }
 
 /**
@@ -62,18 +68,32 @@ object ActivityRules {
 
     /**
      * The server says the item is read although it is newer than the page's read position: it was read in its
-     * conversation (§6.4). One the read position covers is not this (its dot follows the list's baseline as before).
+     * conversation (§6.4) or, since 2026-10-07, opened. One the read position covers is not this (the position held
+     * decides its dot).
      */
     fun readByServerInConversation(item: ActivityItem, pageReadAt: String?): Boolean =
         item.read == true && isUnread(item.at, pageReadAt)
 
     /**
-     * The unread dot: newer than the list's baseline and, with a server that sends `read` ([conversationRule]), not read
-     * in its conversation, whether by the server's flag when the page came ([serverRead]) or the positions held since
-     * ([readHere]).
+     * The unread dot (MOBILE_UI.md §6.4; since 2026-10-07 「開いたら既読」, nothing is read by being on screen): newer than
+     * the read position held now ([readAt]: 「すべて既読にする」 here or on another device moves it), not opened since
+     * ([openedAt]: when I opened it, here or on another device — a reaction item with a newer reaction is unread again)
+     * and, with a server that sends `read` ([conversationRule]), not read in its conversation or opened, whether by the
+     * server's flag when the page came ([serverRead]) or the positions held since ([readHere]).
      */
-    fun showsUnread(item: ActivityItem, baseline: String?, conversationRule: Boolean, serverRead: Boolean, readHere: Boolean): Boolean =
-        isUnread(item.at, baseline) && !(conversationRule && (serverRead || readHere))
+    fun showsUnread(
+        item: ActivityItem, readAt: String?, conversationRule: Boolean, serverRead: Boolean, readHere: Boolean, openedAt: String? = null,
+    ): Boolean =
+        isUnread(item.at, readAt) && (openedAt == null || isUnread(item.at, openedAt)) && !(conversationRule && (serverRead || readHere))
+
+    /**
+     * 「すべて既読にする」's time: now, or the newest row held should this device's clock be behind the server's (the
+     * server never moves the position past its own now).
+     */
+    fun markAllAt(items: List<ActivityItem>, now: Instant): String {
+        val newest = items.mapNotNull { parse(it.at) }.maxOrNull()
+        return (if (newest != null && newest.isAfter(now)) newest else now).toString()
+    }
 
     fun parse(iso: String): Instant? =
         runCatching { Instant.parse(iso) }.getOrNull() ?: runCatching { OffsetDateTime.parse(iso).toInstant() }.getOrNull()

@@ -265,6 +265,31 @@ class FakeServer {
             return activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity before M39")
         }
 
+        /** PUT /activity/read calls made (「すべて既読にする」; since 2026-10-07 never on its own). */
+        val markActivityReadCalls = mutableListOf<String>()
+        override suspend fun markActivityRead(readAt: String): ActivitySummaryOut {
+            maybeFail()
+            markActivityReadCalls.add(readAt)
+            val held = activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity before M39")
+            val moved = if (readAt > held.readAt) readAt else held.readAt
+            val answer = ActivitySummaryOut(moved, 0, false)
+            activity[userId] = answer
+            emitActivityRead(userId, moved)
+            return answer
+        }
+
+        /** PUT /activity/items/read calls made (2026-10-07): the ids of each. */
+        val markActivityItemsReadCalls = mutableListOf<List<String>>()
+        override suspend fun markActivityItemsRead(itemIds: List<String>): ActivitySummaryOut {
+            maybeFail()
+            markActivityItemsReadCalls.add(itemIds)
+            val held = activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity items read before 2026-10-07")
+            val answer = held.copy(unreadCount = (held.unreadCount - itemIds.size).coerceAtLeast(0))
+            activity[userId] = answer
+            emitActivityItemsRead(userId, itemIds, now())
+            return answer
+        }
+
         /** Review v0.1.37 #6: when set, the next GET /reservation-pools answers as the server was then, but only once released. */
         var poolsHold: Hold? = null
         override suspend fun reservationPools(): List<PoolOut> {
@@ -1011,6 +1036,14 @@ class FakeServer {
     /** M39: PUT /activity/read on another device of `userId`: activity.read to their devices. */
     fun emitActivityRead(userId: String, readAt: String) {
         emit(setOf(userId), event("activity.read", null, null, buildJsonObject { put("read_at", readAt) }))
+    }
+
+    /** 2026-10-07: PUT /activity/items/read on a device of `userId`: activity.items_read to their devices. */
+    fun emitActivityItemsRead(userId: String, itemIds: List<String>, readAt: String) {
+        emit(setOf(userId), event("activity.items_read", null, null, buildJsonObject {
+            put("item_ids", kotlinx.serialization.json.JsonArray(itemIds.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            put("read_at", readAt)
+        }))
     }
 
     /** Review v0.1.22 (CANVAS.md §20.8): a canvas version's body erased blanked these activity items' excerpts. */

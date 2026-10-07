@@ -1649,15 +1649,28 @@ class AppController(private val app: Application) {
         attempt { api!!.listActivity(filter, cursor) }
 
     /**
-     * M39: the activity is read up to `readAt` (the server only moves it forward); the badge takes the answer. `quiet`:
-     * the tab's own mark as it is looked at, which the next look retries, so a failure only goes to the log; a
-     * 「すべて既読」 that failed says so.
+     * M39: 「すべて既読にする」 (MOBILE_UI.md §6.4): the activity is read up to `readAt` (the server only moves it forward);
+     * the dots and the badge take the answer; a failure says so. Since 2026-10-07 nothing calls it on its own (looking
+     * at the list reads nothing).
      */
-    suspend fun markActivityRead(readAt: String, quiet: Boolean = false): jp.chikuwachat.android.api.ActivitySummaryOut? =
-        attempt { api!!.markActivityRead(readAt) }
-            .onSuccess { store.setActivity(it) }
-            .onFailure { if (quiet) Log.i("AppController", "activity read not saved: $it") else error = describe(it) }
+    suspend fun markActivityRead(readAt: String): jp.chikuwachat.android.api.ActivitySummaryOut? =
+        attempt { engine?.markActivityRead(readAt) ?: api!!.markActivityRead(readAt).also { store.setActivity(it) } }
+            .onFailure { error = describe(it) }
             .getOrNull()
+
+    /**
+     * 2026-10-07 (MOBILE_UI.md §6.4, 「開いたら既読」): a row of the activity was opened: its dot goes at once and the
+     * server is told (SyncEngine.markActivityItemsRead). In the app's scope: the row's screen leaves as its item opens.
+     * A failure only goes to the log (the item is still read by opening it on the next try, or by its conversation).
+     */
+    fun markActivityItemsRead(item: jp.chikuwachat.android.api.ActivityItem) {
+        val engine = engine ?: return
+        if (item.id == null) return
+        scope.launch {
+            runCatching { engine.markActivityItemsRead(listOf(item)) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else Log.i("AppController", "activity item read not saved: $it") }
+        }
+    }
     suspend fun listFiles(channelId: String? = null, query: String? = null, cursor: String? = null): Result<jp.chikuwachat.android.api.FileListOut> =
         attempt { api!!.listFiles(channelId, query, cursor) }
     /** M11h: every public channel plus my private ones, for the channel browser. */

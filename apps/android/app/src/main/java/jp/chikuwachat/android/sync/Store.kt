@@ -1006,6 +1006,39 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
 
+    /**
+     * 2026-10-07 (MOBILE_UI.md §6.4, 「開いたら既読」): activity items I opened (a row tapped here, or on another device:
+     * activity.items_read), by id: when. An item is read while its `at` is not after that time. Not persisted (the
+     * server's `read` flags carry it on the next load).
+     */
+    var openedActivityItems: Map<String, String> = emptyMap()
+        private set
+
+    /** Activity items opened at `readAt` (each one's time only moves forward). */
+    fun noteActivityItemsRead(itemIds: Collection<String>, readAt: String) {
+        var next: MutableMap<String, String>? = null
+        for (id in itemIds) {
+            val held = (next ?: openedActivityItems)[id]
+            if (held != null && ActivityRules.later(held, readAt) == held) continue
+            (next ?: openedActivityItems.toMutableMap().also { next = it })[id] = readAt
+        }
+        val changed = next ?: return
+        openedActivityItems = changed
+        emit()
+    }
+
+    /**
+     * activity.read: 「すべて既読にする」 on one of my devices moved the read position to `readAt`. The dots follow it at
+     * once; the count comes with the summary read again after it.
+     */
+    fun advanceActivityReadAt(readAt: String) {
+        val current = activity ?: return
+        val later = ActivityRules.later(current.readAt, readAt) ?: return
+        if (later == current.readAt) return
+        activity = current.copy(readAt = later)
+        emit()
+    }
+
     fun reloadActivity() {
         activityReloads += 1
         emit()

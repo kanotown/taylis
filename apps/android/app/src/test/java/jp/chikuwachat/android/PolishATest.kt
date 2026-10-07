@@ -32,8 +32,9 @@ class PolishATest {
     }
 
     @Test
-    fun theActivityTabKeepsItsReadAllAndOtherScreensHaveNoMenu() {
-        assertEquals(listOf(BarMenuItem.READ_ALL_ACTIVITY), BarMenu.items(conversation = false, channel = false, archived = false, activityFeed = true))
+    fun theActivityTabAndOtherScreensHaveNoMenu() {
+        // 2026-10-07 (MOBILE_UI.md §6.4): the activity's 「すべて既読にする」 is its header's button, not the ⋮.
+        assertEquals(emptyList<BarMenuItem>(), BarMenu.items(conversation = false, channel = false, archived = false, activityFeed = true))
         // A thread, the details page, the DM tab, the home's lists: the app-wide actions are the home's ⋮ and the 自分 tab's.
         assertEquals(emptyList<BarMenuItem>(), BarMenu.items(conversation = false, channel = true, archived = false, activityFeed = false))
     }
