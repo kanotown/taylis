@@ -14,6 +14,7 @@ import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.ReservationsApi
 import jp.chikuwachat.android.sync.AttendanceApi
+import jp.chikuwachat.android.sync.ActionsApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncApi
@@ -71,7 +72,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
+) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
@@ -708,6 +709,17 @@ class ApiClient(
     // --- 在室状況 (M140, docs/PRESENCE.md §3) ------------------------------------------------------------
 
     override suspend fun attendance(): AttendanceBoardOut = request("GET", "/api/v1/attendance")
+
+    // --- 操作ボタン (M143, docs/ACTIONS.md §7.1) ---------------------------------------------------------
+
+    override suspend fun actions(): ActionListOut = request("GET", "/api/v1/actions")
+
+    /**
+     * One press (§4): 409 actions_disabled / action_disabled / action_invoke_id_reused, 404 action_not_found, 403
+     * action_not_allowed, 429 rate_limited. Never retried here (a 401 renews the token once, as every call).
+     */
+    override suspend fun invokeAction(actionId: String, clientInvokeId: String): ActionInvokeOut =
+        request("POST", "/api/v1/actions/$actionId/invoke", buildJsonObject { put("client_invoke_id", clientInvokeId) })
 
     /** My state (a workspace state or one of mine) and note (null = none); 422 attendance_state_invalid. */
     suspend fun setMyAttendance(stateId: String, note: String?): AttendanceEntryOut =

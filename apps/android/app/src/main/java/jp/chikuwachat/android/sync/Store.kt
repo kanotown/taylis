@@ -499,6 +499,16 @@ class Store(private val persistence: Persistence? = null) {
         emit()
         return board.states.any { it.id == entry.stateId }
     }
+    /**
+     * M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press (not persisted); null for guests, while off and from a server
+     * before M143. From the bootstrap and GET /actions (actions.updated).
+     */
+    var actions: jp.chikuwachat.android.api.ActionListOut? = null
+        private set
+    fun setActions(list: jp.chikuwachat.android.api.ActionListOut?) {
+        actions = list?.takeIf { it.enabled && me?.role != "guest" }
+        emit()
+    }
 
     /**
      * M46 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.

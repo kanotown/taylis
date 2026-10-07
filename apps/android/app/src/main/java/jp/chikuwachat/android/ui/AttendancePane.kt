@@ -110,6 +110,7 @@ fun AttendancePane(controller: AppController, version: Int) {
     val count = remember(board, users) { AttendanceRules.inRoomCount(board, users) }
     val choices = AttendanceRules.choices(board, meId)
     val own = AttendanceRules.myOwnStates(board, meId)
+    val onAttendance = remember(version) { ActionRules.onAttendance(store.actions, store.me?.role) }
     fun saveNote() {
         val current = mine ?: return
         val cleaned = AttendanceRules.cleanNote(note)
@@ -119,6 +120,10 @@ fun AttendancePane(controller: AppController, version: Int) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = maxOf(1, (maxWidth / 300.dp).toInt())
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+            // M143 (docs/ACTIONS.md §9): the 操作ボタン on top, when the workspace puts them here (show_on_attendance).
+            if (onAttendance.isNotEmpty()) item(key = "actions") {
+                ActionButtons(controller, onAttendance, version, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), compact = true)
+            }
             item(key = "count") {
                 Text(
                     stringResource(R.string.attendance_in_room, count),

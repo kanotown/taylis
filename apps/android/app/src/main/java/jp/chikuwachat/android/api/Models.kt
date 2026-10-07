@@ -630,6 +630,8 @@ data class BootstrapOut(
     val wiki: WikiBootstrap? = null,
     /** M140 (docs/PRESENCE.md §4): the 在室状況 board; null for guests, while it is off, and from a server before M140. */
     val attendance: AttendanceBoardOut? = null,
+    /** M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press; null for guests, while off, and from a server before M143. */
+    val actions: ActionListOut? = null,
 )
 
 /**

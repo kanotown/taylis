@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M143 (docs/ACTIONS.md §9): 操作ボタン. values/ is Japanese (the default); the same words as the desktop / Web. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="ja">
+    <string name="actions_nav">操作</string>
+    <string name="actions_title">%1$s：%2$s</string>
+    <string name="actions_confirm">%1$s を実行しますか？</string>
+    <string name="actions_run">実行</string>
+    <string name="actions_sending">送信中</string>
+    <string name="actions_done">%1$s を実行しました</string>
+    <string name="actions_page_none">押せるボタンはありません</string>
+    <string name="actions_error_timeout">機器（またはハブ）から応答がありませんでした。実行されたかどうかわかりません。状態を確かめてください</string>
+    <string name="actions_error_unreachable">機器（またはハブ）に接続できませんでした。オフラインかもしれません</string>
+    <string name="actions_error_interrupted">送信が途中で止まりました。実行されたかどうかわかりません。状態を確かめてください</string>
+    <string name="actions_error_setup">このボタンの設定に問題があります。管理者に連絡してください</string>
+    <string name="actions_error_relay">実行できませんでした（HTTP %1$s）</string>
+    <string name="actions_error_pending">まだ処理中です。少し待ってから状態を確かめてください</string>
+    <string name="actions_error_failed">実行できませんでした</string>
+    <string name="actions_error_too_fast">少し待ってからもう一度押してください</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M143 (docs/ACTIONS.md §9): action buttons, English (the desktop / Web words). -->
+<resources>
+    <string name="actions_nav">Actions</string>
+    <string name="actions_title">%1$s: %2$s</string>
+    <string name="actions_confirm">Run %1$s?</string>
+    <string name="actions_run">Run</string>
+    <string name="actions_sending">Sending</string>
+    <string name="actions_done">%1$s done</string>
+    <string name="actions_page_none">There are no buttons you can press.</string>
+    <string name="actions_error_timeout">The device (or its hub) did not answer. It may or may not have run; check its state.</string>
+    <string name="actions_error_unreachable">Could not connect to the device (or its hub). It may be offline.</string>
+    <string name="actions_error_interrupted">The request was cut off. It may or may not have run; check the state.</string>
+    <string name="actions_error_setup">This button is not set up correctly. Contact an admin.</string>
+    <string name="actions_error_relay">Could not run it (HTTP %1$s).</string>
+    <string name="actions_error_pending">Still in progress. Check the state in a moment.</string>
+    <string name="actions_error_failed">Could not run it.</string>
+    <string name="actions_error_too_fast">Wait a moment before pressing it again.</string>
+</resources>

@@ -343,6 +343,8 @@ enum class HomeTile(private val labelRes: Int?) {
     DOCS(R.string.docs_title),
     /** M140 (docs/PRESENCE.md §9): 「在室状況」, only while the workspace has the board on (and never for a guest); no number. */
     ATTENDANCE(R.string.common_attendance),
+    /** M143 (docs/ACTIONS.md §9): 「操作」, only while the buttons are on and I may press one (never for a guest); no number. */
+    ACTIONS(R.string.actions_nav),
     ;
 
     /** The tile's name; 「Times」 is the same in every language. */
@@ -365,18 +367,22 @@ object HomeTiles {
     /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?, reservations: ReservationTile? = null,
-        attendance: Boolean = false,
+        attendance: Boolean = false, actions: Boolean = false,
     ): List<TileState> {
-        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance).associateBy { it.tile.navKey }
-        return NavItems.tileKeys(navItems, NavItems.implemented(attendance)).mapNotNull { byKey[it] }
+        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions).associateBy { it.tile.navKey }
+        return NavItems.tileKeys(navItems, NavItems.implemented(attendance, actions)).mapNotNull { byKey[it] }
     }
 
     /** M112: 予約 once the server answered the pools: the to-dos due (shown only for an operator, red when any). */
     data class ReservationTile(val todos: Int, val operates: Boolean)
 
-    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null, attendance: Boolean = false): List<TileState> {
+    fun tiles(
+        threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null, attendance: Boolean = false,
+        actions: Boolean = false,
+    ): List<TileState> {
         val row = base(threads, drafts, saved, firedReminders).toMutableList()
         if (attendance) row.add(TileState(HomeTile.ATTENDANCE, null)) // M140
+        if (actions) row.add(TileState(HomeTile.ACTIONS, null)) // M143
         if (reservations != null) {
             val at = row.indexOfFirst { it.tile == HomeTile.DEADLINES }
             row.add(at + 1, TileState(HomeTile.RESERVATIONS, if (reservations.operates) reservations.todos else null, alert = reservations.todos > 0))

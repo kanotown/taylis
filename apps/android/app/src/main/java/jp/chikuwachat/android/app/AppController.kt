@@ -2825,6 +2825,39 @@ class AppController(private val app: Application) {
     suspend fun swapReservations(poolId: String, removeId: String, assignId: String): PoolOut? =
         withPool { it.swapReservations(poolId, removeId, assignId) }
 
+    // --- 操作ボタン (M143, docs/ACTIONS.md §9) ---------------------------------------------------------
+
+    /**
+     * One press of a button (already confirmed): the server calls the relay once; a network failure is sent again with
+     * the same client_invoke_id (ActionRules.invokeOnce). The outcome is the snackbar: the relay's message or the reason.
+     */
+    suspend fun invokeAction(action: jp.chikuwachat.android.api.ActionOut) {
+        val api = api ?: return
+        if (action.id in actionsBusy) return
+        actionsBusy.add(action.id)
+        try {
+            attempt { jp.chikuwachat.android.ui.ActionRules.invokeOnce(action.id, { id, key -> api.invokeAction(id, key) }) }
+                .onSuccess { out ->
+                    val result = jp.chikuwachat.android.ui.ActionRules.resultText(out, action)
+                    if (result.ok) notice = result.text else error = result.text
+                }
+                .onFailure { error = jp.chikuwachat.android.ui.ActionRules.refusalText(it) }
+        } finally {
+            actionsBusy.remove(action.id)
+        }
+    }
+
+    /**
+     * The buttons being sent (a spinner on each, wherever it shows; pressing one again meanwhile does nothing). The press
+     * runs in the app's scope, so leaving the page does not lose its answer.
+     */
+    val actionsBusy = androidx.compose.runtime.mutableStateListOf<String>()
+
+    fun pressAction(action: jp.chikuwachat.android.api.ActionOut) {
+        if (action.id in actionsBusy) return
+        scope.launch { invokeAction(action) }
+    }
+
     // --- 在室状況 (M140, docs/PRESENCE.md §9) ----------------------------------------------------------
 
     /** My state and note; the answer is my row at once (the event follows for my other devices). */

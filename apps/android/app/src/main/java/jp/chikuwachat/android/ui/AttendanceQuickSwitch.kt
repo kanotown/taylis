@@ -227,6 +227,12 @@ fun AttendanceQuickSheet(controller: AppController, version: Int, onDismiss: () 
                     ) { Text(stringResource(R.string.common_save)) }
                 }
             }
+            // M143 (docs/ACTIONS.md §9): the 操作ボタン too, when the workspace puts them on 在室状況 (show_on_attendance).
+            val actions = remember(version) { ActionRules.onAttendance(store.actions, store.me?.role) }
+            if (actions.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(top = 4.dp))
+                ActionSheetRows(controller, actions, version)
+            }
             HorizontalDivider()
             Row(
                 Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(role = Role.Button) { close(onOpenBoard) }.padding(horizontal = 24.dp),
