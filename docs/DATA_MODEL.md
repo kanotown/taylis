@@ -2319,6 +2319,7 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 
 - 押すと `pending` の行を書いてコミットし、トランザクションの外で中継を 1 回呼び、結果・監査（`action.invoked`）・任意の通知を 1 トランザクションで書く。outbox は使わない（再送しないため）。
 - 匿名化（`admin.anonymize`）でその人を全ボタンの `allowed_user_ids` から外す（`actions.forget_in_tx`）。押した記録は残る。
+- 移行 0107：`actions.provides_status`（boolean、既定 false）。組（`group_label`、無ければボタン自身）の状態をこのボタンの中継に尋ねる。組に 1 つまでをサーバが確かめる（`409 action_status_source_taken`）。状態の答えは DB に残さない（プロセスの中で 30 秒覚えるだけ。ACTIONS.md §12）。
 
 ### import_refs (移行元の対応、M18・M87・M125)
 
