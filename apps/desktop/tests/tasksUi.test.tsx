@@ -288,6 +288,82 @@ describe("「自分のタスク」", () => {
     expect(body).toMatchObject({ title: "掃除", status: "todo" });
     expect(body.channel_id).toBeUndefined();
   });
+
+  describe("quick add: the field keeps the focus for the next title", () => {
+    const open = async () => {
+      const setup_ = setup();
+      render(<MyTasksView controller={setup_.controller} onOpenBoard={() => {}} />);
+      await flush();
+      fireEvent.click(within(screen.getByRole("region", { name: "自分のタスク" })).getByRole("button", { name: "追加" }));
+      const input = screen.getByLabelText("新しいタスクの題名") as HTMLInputElement;
+      expect(document.activeElement).toBe(input);
+      return { ...setup_, input };
+    };
+
+    it("Enter adds, and the field stays focused and empty (also when the new row took the focus away)", async () => {
+      const { api, input } = await open();
+      const create = api.createTask.getMockImplementation()!;
+      // The list re-rendering around the new row drops the focus to the page.
+      api.createTask.mockImplementation(async (body) => {
+        (document.activeElement as HTMLElement | null)?.blur();
+        return create(body);
+      });
+      for (const title of ["一つ目", "二つ目"]) {
+        fireEvent.change(input, { target: { value: title } });
+        fireEvent.keyDown(input, { key: "Enter" });
+        expect(input.readOnly).toBe(true); // not disabled: that would drop the focus
+        await flush();
+        expect(screen.getByLabelText("新しいタスクの題名")).toBe(input);
+        expect(input.value).toBe("");
+        expect(input.readOnly).toBe(false);
+        expect(document.activeElement).toBe(input);
+      }
+      expect(api.createTask.mock.calls.map((c) => (c as unknown as [{ title: string }])[0].title)).toEqual(["一つ目", "二つ目"]);
+      expect(within(screen.getByRole("region", { name: "自分のタスク" })).getByText("二つ目")).toBeTruthy();
+    });
+
+    it("the Enter of an IME conversion and Shift+Enter add nothing", async () => {
+      const { api, input } = await open();
+      fireEvent.compositionStart(input);
+      fireEvent.change(input, { target: { value: "はっぴょう" } });
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+      fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+      fireEvent.compositionEnd(input);
+      fireEvent.keyDown(input, { key: "Enter", keyCode: 229 }); // Safari: the confirming Enter after compositionend
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      await flush();
+      expect(api.createTask).not.toHaveBeenCalled();
+      expect(input.value).toBe("はっぴょう");
+      expect(document.activeElement).toBe(input);
+    });
+
+    it("a failed add keeps the text and the focus", async () => {
+      const { api, controller, input } = await open();
+      api.createTask.mockRejectedValueOnce(new Error("offline"));
+      fireEvent.change(input, { target: { value: "掃除" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await flush();
+      expect(controller.setError).toHaveBeenCalled();
+      expect(input.value).toBe("掃除");
+      expect(document.activeElement).toBe(input);
+    });
+
+    it("does not take the focus back from where the user moved it", async () => {
+      const { api, input } = await open();
+      let finish: () => void = () => {};
+      const create = api.createTask.getMockImplementation()!;
+      api.createTask.mockImplementation((body) => new Promise((resolve) => { finish = () => resolve(create(body)); }));
+      fireEvent.change(input, { target: { value: "掃除" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      const other = screen.getByRole("button", { name: "タスクを追加" });
+      fireEvent.pointerDown(other);
+      other.focus();
+      await act(async () => { finish(); });
+      await flush();
+      expect(input.value).toBe("");
+      expect(document.activeElement).toBe(other);
+    });
+  });
 });
 
 describe("「タスクにする」", () => {
