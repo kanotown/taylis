@@ -241,6 +241,9 @@ const val CANVAS_PENDING_PREFIX = "canvas:"
 const val WIKI_PENDING_PREFIX = "wikipage:"
 const val WIKI_TREE_KEY = "wiki:tree"
 
+/** M124: the last opened database's rows for reading offline (one database). */
+const val WIKI_DB_KEY = "wiki:db"
+
 /**
  * At most this many messages are kept per channel (M22, SYNC_PROTOCOL.md §7.7): the newest ones (pending sends always
  * stay). Older history is paged in again when the reader scrolls up.
@@ -571,6 +574,16 @@ class Store(private val persistence: Persistence? = null) {
         persist { it.saveMeta(WIKI_TREE_KEY, snapshot?.let { value -> Codec.plain.encodeToString(WikiTreeSnapshot.serializer(), value) }) }
     }
 
+    /** M124: the last opened database as kept (read at start; written whenever it is read from the server). */
+    private var wikiDbKept: WikiDbSnapshot? = null
+
+    fun wikiDb(): WikiDbSnapshot? = wikiDbKept
+
+    fun saveWikiDb(snapshot: WikiDbSnapshot?) {
+        wikiDbKept = snapshot
+        persist { it.saveMeta(WIKI_DB_KEY, snapshot?.let { value -> Codec.plain.encodeToString(WikiDbSnapshot.serializer(), value) }) }
+    }
+
     /** The last copy of a page read on this device. Blocking: call off the main thread. */
     fun cachedPage(pageId: String): CachedPage? = persistence?.let { p ->
         runCatching { p.loadWikiPage(pageId)?.let { Codec.plain.decodeFromString(CachedPage.serializer(), it) } }.getOrNull()
@@ -731,6 +744,7 @@ class Store(private val persistence: Persistence? = null) {
             runCatching { Codec.plain.decodeFromString(CanvasPendingState.serializer(), value) }.getOrNull()?.let { pagePending[key.removePrefix(WIKI_PENDING_PREFIX)] = it }
         }
         wikiTreeKept = snapshot.meta[WIKI_TREE_KEY]?.let { runCatching { Codec.plain.decodeFromString(WikiTreeSnapshot.serializer(), it) }.getOrNull() }
+        wikiDbKept = snapshot.meta[WIKI_DB_KEY]?.let { runCatching { Codec.plain.decodeFromString(WikiDbSnapshot.serializer(), it) }.getOrNull() }
         me = snapshot.meta["me"]?.let { runCatching { Codec.plain.decodeFromString(UserMe.serializer(), it) }.getOrNull() }
         snapshot.users.forEach { users[it.id] = it }
         // §7.3: a timeline cached before `oldestLoadedSeq` existed may hide holes, so it loads again from the

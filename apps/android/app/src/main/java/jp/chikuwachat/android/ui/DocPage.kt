@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -35,6 +36,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +51,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -174,8 +178,28 @@ private fun DocPageView(
     LaunchedEffect(text, wikiVersion) { hub.resolve(WikiLinks.pageIds(text, controller.serverBase)) }
     val title = page?.title ?: treeItem?.title ?: ""
     val icon = page?.icon ?: treeItem?.icon
-    val listState = rememberLazyListState()
+    // M124: a database shows its rows under its description; a row its properties above its body.
+    val kind = treeItem?.kind ?: page?.kind ?: "page"
+    val dbSession = if (kind == "database") rememberDatabaseSession(controller, hub, pageId) else null
+    val dbVersion = dbSession?.version?.collectAsState()?.value ?: 0
+    val rowSession = if (kind == "row") rememberRowSession(controller, hub, pageId) else null
+    var selectedRow by rememberSaveable(pageId) { mutableStateOf<String?>(null) }
+    var addingRow by remember(pageId) { mutableStateOf(false) }
+    var refreshing by remember(pageId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val onRefresh: (() -> Unit)? = if (dbSession != null || rowSession != null) ({
+        refreshing = true
+        scope.launch {
+            try {
+                saver.online()
+                dbSession?.refresh()
+                rowSession?.refresh()
+            } finally {
+                refreshing = false
+            }
+        }
+    }) else null
+    val listState = rememberLazyListState()
     var backlinks by remember(pageId) { mutableStateOf<List<PageItem>?>(null) }
     LaunchedEffect(pageId, page?.version, controller.engineStatus) { controller.wikiBacklinks(pageId)?.let { backlinks = it } }
     val children = remember(wikiVersion, page, pageId) { DocPageText.children(hub.pages, page, pageId) }
@@ -232,13 +256,35 @@ private fun DocPageView(
                 }
                 editing -> CanvasEditorField(controller, saver, null, Modifier.fillMaxSize(), presence = false)
                 else -> Row(Modifier.fillMaxSize()) {
+                    // M124: on a tablet a database's rows and the open row sit side by side.
+                    val sideBySide = wide && dbSession != null
+                    val openRow: (String) -> Unit = if (sideBySide) ({ id -> selectedRow = id }) else onOpenPage
                     PageReader(
                         controller, saver, version, icon, title, page, rights, onToggle,
                         onEditSection = if (rights.edit && usable) ({ line -> section = CanvasSections.keyAt(saver.text, line) }) else null,
                         listState = listState, modifier = Modifier.weight(1f).fillMaxHeight(), preview = false,
                         children = children, backlinks = backlinks, onOpenPage = onOpenPage, onStartWriting = { mode = CanvasMode.EDIT },
+                        kind = kind,
+                        header = rowSession?.let { session -> { RowPropertiesSection(controller, session, version, onOpenPage) } },
+                        extra = dbSession?.let { session ->
+                            { databaseItems(controller, session, dbVersion, version, selectedRow.takeIf { sideBySide }, openRow) { addingRow = true } }
+                        },
+                        onRefresh = onRefresh, refreshing = refreshing,
                     )
-                    if (wide && headings.size >= 3) {
+                    if (addingRow && dbSession != null) {
+                        NewRowDialog(controller, dbSession, onDismiss = { addingRow = false }) { row ->
+                            addingRow = false
+                            openRow(row.id)
+                        }
+                    }
+                    if (sideBySide) {
+                        VerticalDivider()
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            val open = selectedRow
+                            if (open != null) key(open) { DocPagePane(controller, open, onOpenPage, onOpenCrumb) }
+                            else CanvasEmpty(stringResource(R.string.docs_db_select_row), null)
+                        }
+                    } else if (wide && headings.size >= 3) {
                         VerticalDivider()
                         OutlineColumn(headings, Modifier.width(220.dp).fillMaxHeight()) { entry -> scope.launch { scrollToHeading(listState, text, entry.line) } }
                     }
@@ -327,12 +373,21 @@ private fun PageNotice(controller: AppController, rights: PageRights, saver: Can
  * The page drawn: icon and title, 「最終更新」, the blocks, then (reading, not the editor's preview) the subpages and the
  * pages linking here. The items are title, blocks, end — the scroll sync of the two columns counts on it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PageReader(
     controller: AppController, saver: CanvasSaver, version: Int, icon: String?, title: String, page: PageOut?, rights: PageRights,
     onToggle: ((Int, Boolean) -> Unit)?, onEditSection: ((Int) -> Unit)?, listState: LazyListState, modifier: Modifier,
     preview: Boolean, children: List<PageItem>, backlinks: List<PageItem>?, onOpenPage: (String) -> Unit, onStartWriting: () -> Unit,
     spans: List<BlockSpan>? = null,
+    /** M124: page, database or row. */
+    kind: String = "page",
+    /** M124: under the title (a row's properties). */
+    header: (@Composable () -> Unit)? = null,
+    /** M124: after the body (a database's rows). */
+    extra: (LazyListScope.() -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null,
+    refreshing: Boolean = false,
 ) {
     val revision by saver.revision.collectAsState()
     val text = remember(revision) { saver.text }
@@ -345,15 +400,15 @@ private fun PageReader(
         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
         onNeedEmojiImage = { controller.loadEmojiImage(it) }, groups = store.groups, version = version,
     )
-    LazyColumn(
-        modifier.semantics { contentDescription = if (preview) L10n.str(R.string.docs_page_preview) else L10n.str(R.string.docs_page_content) },
+    val list = @Composable { listModifier: Modifier -> LazyColumn(
+        listModifier.semantics { contentDescription = if (preview) L10n.str(R.string.docs_page_preview) else L10n.str(R.string.docs_page_content) },
         state = listState, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         item(key = "title") {
             Column(Modifier.canvasColumn()) {
                 if (preview) Text(stringResource(R.string.common_preview), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
                 else {
-                    PageTitleText(controller, version, icon, title, MaterialTheme.typography.headlineSmall, Modifier.semantics { heading() }, maxLines = 3, fontWeight = FontWeight.Bold)
+                    PageTitleText(controller, version, icon, title, MaterialTheme.typography.headlineSmall, Modifier.semantics { heading() }, maxLines = 3, fontWeight = FontWeight.Bold, kind = kind)
                     if (page != null) {
                         val who = store.users[page.updatedBy]?.displayName ?: stringResource(R.string.common_member)
                         Text(
@@ -362,8 +417,9 @@ private fun PageReader(
                         )
                     }
                     Spacer(Modifier.height(12.dp))
+                    header?.invoke()
                 }
-                if (text.isBlank()) {
+                if (text.isBlank() && kind != "database") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.common_nothing_written_yet), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (rights.edit && !preview) TextButton(onClick = onStartWriting) { Text(stringResource(R.string.canvas_pane_start_writing)) }
@@ -386,8 +442,12 @@ private fun PageReader(
                 PageList(controller, version, stringResource(R.string.docs_backlinks), backlinks, onOpenPage)
             }
         }
+        if (!preview) extra?.invoke(this)
         item(key = "end") { Spacer(Modifier.height(48.dp)) }
-    }
+    } }
+    if (onRefresh != null && !preview) {
+        PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = modifier) { list(Modifier.fillMaxSize()) }
+    } else list(modifier)
 }
 
 /** サブページ / このページへのリンク: a heading and the pages, each opening on a tap. */
@@ -404,7 +464,7 @@ private fun PageList(controller: AppController, version: Int, heading: String, p
                 Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.docs_open_page)) { onOpen(item.id) }.heightIn(min = 40.dp).padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PageTitleText(controller, version, item.icon, item.title, MaterialTheme.typography.bodyMedium, Modifier.weight(1f))
+                PageTitleText(controller, version, item.icon, item.title, MaterialTheme.typography.bodyMedium, Modifier.weight(1f), kind = item.kind)
             }
         }
     }
@@ -464,5 +524,5 @@ fun DocPageBarTitle(controller: AppController, pageId: String) {
     val held = remember(wikiVersion, pageId) { hub?.current(pageId) }
     val title = item?.title ?: held?.canvas?.title
     if (title == null) Text(stringResource(R.string.docs_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
-    else PageTitleText(controller, version, item?.icon, title, MaterialTheme.typography.titleLarge)
+    else PageTitleText(controller, version, item?.icon, title, MaterialTheme.typography.titleLarge, kind = item?.kind ?: "page")
 }

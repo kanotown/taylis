@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="docs_db_title_prop">Name</string>
+    <string name="docs_db_table">Table</string>
+    <string name="docs_db_calendar">Calendar</string>
+    <string name="docs_db_views">Views</string>
+    <string name="docs_db_new_row">New</string>
+    <string name="docs_db_new_row_title">New row</string>
+    <plurals name="docs_db_count">
+        <item quantity="one">%1$d row</item>
+        <item quantity="other">%1$d rows</item>
+    </plurals>
+    <string name="docs_db_load_more">Load more</string>
+    <string name="docs_db_load_failed">Couldn\'t load the database</string>
+    <string name="docs_db_empty">No rows yet</string>
+    <string name="docs_db_agenda_empty">No rows this month</string>
+    <string name="docs_db_prev_month">Previous month</string>
+    <string name="docs_db_next_month">Next month</string>
+    <string name="docs_db_need_date_prop">A calendar needs a date property (add one on a computer)</string>
+    <string name="docs_db_month_pattern">MMMM y</string>
+    <string name="docs_db_day_pattern">EEE, MMM d</string>
+    <string name="docs_db_date_pattern">MMM d, y</string>
+    <string name="docs_db_hidden_rows">No access</string>
+    <string name="docs_db_hidden_rows_hint">Links to rows you can\'t read (they stay when you change this)</string>
+    <string name="docs_db_properties">Properties</string>
+    <string name="docs_db_no_properties">No properties yet</string>
+    <string name="docs_db_referenced_by">%2$s in %1$s</string>
+    <string name="docs_db_view_only">View only — you can\'t change the values</string>
+    <string name="docs_db_edit_cell">Edit %1$s</string>
+    <string name="docs_db_empty_value">Empty</string>
+    <string name="docs_db_empty_value_edit">Empty (tap to fill in)</string>
+    <string name="docs_db_clear">Clear</string>
+    <string name="docs_db_done">Done</string>
+    <string name="docs_db_start_date">Start</string>
+    <string name="docs_db_end_date">End date</string>
+    <string name="docs_db_include_time">Include time</string>
+    <string name="docs_db_find_person">Find a person</string>
+    <string name="docs_db_find_row">Find a row</string>
+    <string name="docs_db_no_rows_found">No rows you can read</string>
+    <string name="docs_db_no_options">No options yet (people with full access can add them on a computer)</string>
+    <string name="docs_db_invalid_number">Enter a number</string>
+    <string name="docs_db_invalid_url">Enter a URL starting with http:// or https://</string>
+    <string name="docs_db_remove">Remove</string>
+    <string name="docs_db_add">Add</string>
+    <string name="docs_db_open_row">Open row</string>
+    <string name="docs_db_open_link">Open link</string>
+    <string name="docs_db_select_row">Choose a row from the list</string>
+</resources>

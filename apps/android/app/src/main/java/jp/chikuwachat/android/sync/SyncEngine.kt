@@ -834,7 +834,10 @@ class SyncEngine(
             "wiki.page.updated" -> {
                 val page = frame.data["page"]?.let { runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.PageItem.serializer(), it) }.getOrNull() } ?: return
                 wiki.pageUpdated(page)
+                if (frame.data.str("change") == "props") wiki.propsChanged(page.id) // M124: an open row reads its cells
             }
+            // M124 (WIKI.md §18.1): a database's rows, schema or views changed: an open one reads again (folded).
+            "wiki.rows.changed" -> frame.data.str("database_id")?.let { wiki.rowsChanged(it) }
             "wiki.mentioned", "wiki.shared" -> {
                 // An activity item of mine was written: the badge and the list read again; the app says it while open.
                 store.noteActivity()

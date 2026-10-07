@@ -25,6 +25,8 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -230,14 +232,27 @@ private fun EmptyLine(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
 }
 
-/** A page's icon (an emoji, or a custom one by `:name:`) and title, as rows and headings show them. */
+/**
+ * A page's icon (an emoji, or a custom one by `:name:`) and title, as rows and headings show them. Without an icon a
+ * page shows 📄, a database (M124) a table icon, a database's row only its title.
+ */
 @Composable
 fun PageTitleText(
     controller: AppController, version: Int, icon: String?, title: String, style: androidx.compose.ui.text.TextStyle,
-    modifier: Modifier = Modifier, maxLines: Int = 1, fontWeight: FontWeight? = null,
+    modifier: Modifier = Modifier, maxLines: Int = 1, fontWeight: FontWeight? = null, kind: String = "page",
 ) {
+    val own = icon?.takeIf { it.isNotBlank() }
+    val text = title.ifBlank { L10n.str(R.string.docs_untitled) }
+    if (own == null && kind == "database") {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.TableChart, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(with(LocalDensity.current) { style.fontSize.toDp() * 1.1f }))
+            Spacer(Modifier.width(6.dp))
+            EmojiLineText(text, controller, version, style, MaterialTheme.colorScheme.onSurface, Modifier, maxLines, fontWeight)
+        }
+        return
+    }
     EmojiLineText(
-        (icon?.takeIf { it.isNotBlank() } ?: "📄") + "  " + title.ifBlank { L10n.str(R.string.docs_untitled) },
+        (own ?: if (kind == "row") null else "📄")?.let { "$it  " }.orEmpty() + text,
         controller, version, style, MaterialTheme.colorScheme.onSurface, modifier, maxLines, fontWeight,
     )
 }
@@ -270,7 +285,7 @@ private fun PageRow(
             }
         }
         Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
-            PageTitleText(controller, version, page.icon, page.title, MaterialTheme.typography.bodyLarge)
+            PageTitleText(controller, version, page.icon, page.title, MaterialTheme.typography.bodyLarge, kind = page.kind)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

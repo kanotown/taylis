@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M124 (docs/WIKI.md §5.5): databases on the phone. Japanese, the default; values-en / values-b+zh+Hans translate it. -->
+<resources>
+    <string name="docs_db_title_prop">名前</string>
+    <string name="docs_db_table">表</string>
+    <string name="docs_db_calendar">カレンダー</string>
+    <string name="docs_db_views">ビュー</string>
+    <string name="docs_db_new_row">新規</string>
+    <string name="docs_db_new_row_title">新しい行</string>
+    <plurals name="docs_db_count">
+        <item quantity="other">%1$d 行</item>
+    </plurals>
+    <string name="docs_db_load_more">さらに読み込む</string>
+    <string name="docs_db_load_failed">データベースを読み込めませんでした</string>
+    <string name="docs_db_empty">行はまだありません</string>
+    <string name="docs_db_agenda_empty">この月の行はありません</string>
+    <string name="docs_db_prev_month">前の月</string>
+    <string name="docs_db_next_month">次の月</string>
+    <string name="docs_db_need_date_prop">カレンダーには日付のプロパティが要ります（パソコンで追加してください）</string>
+    <string name="docs_db_month_pattern">y年M月</string>
+    <string name="docs_db_day_pattern">M月d日（E）</string>
+    <string name="docs_db_date_pattern">y/MM/dd</string>
+    <string name="docs_db_hidden_rows">アクセスできないページ</string>
+    <string name="docs_db_hidden_rows_hint">あなたが読めない行へのリンクがあります（変更しても残ります）</string>
+    <string name="docs_db_properties">プロパティ</string>
+    <string name="docs_db_no_properties">プロパティはまだありません</string>
+    <string name="docs_db_referenced_by">%1$s の %2$s</string>
+    <string name="docs_db_view_only">閲覧のみ — 値を変更する権限がありません</string>
+    <string name="docs_db_edit_cell">%1$s を編集</string>
+    <string name="docs_db_empty_value">空</string>
+    <string name="docs_db_empty_value_edit">空（タップで入力）</string>
+    <string name="docs_db_clear">消す</string>
+    <string name="docs_db_done">完了</string>
+    <string name="docs_db_start_date">開始</string>
+    <string name="docs_db_end_date">終了日</string>
+    <string name="docs_db_include_time">時刻を含める</string>
+    <string name="docs_db_find_person">人を探す</string>
+    <string name="docs_db_find_row">行を探す</string>
+    <string name="docs_db_no_rows_found">読める行が見つかりません</string>
+    <string name="docs_db_no_options">選択肢がありません（フルアクセスの人がパソコンで作れます）</string>
+    <string name="docs_db_invalid_number">数を入れてください</string>
+    <string name="docs_db_invalid_url">http:// か https:// で始まる URL を入れてください</string>
+    <string name="docs_db_remove">外す</string>
+    <string name="docs_db_add">追加</string>
+    <string name="docs_db_open_row">行を開く</string>
+    <string name="docs_db_open_link">リンクを開く</string>
+    <string name="docs_db_select_row">一覧から行を選んでください</string>
+</resources>

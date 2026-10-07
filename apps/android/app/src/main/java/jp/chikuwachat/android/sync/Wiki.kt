@@ -173,6 +173,29 @@ class WikiHub(
 
     val available: Boolean get() = api != null && supported
 
+    /** M124: the database endpoints (the same client). */
+    val dbApi: WikiDbApi? get() = api as? WikiDbApi
+
+    private val _rowsSignal = MutableStateFlow<Map<String, Long>>(emptyMap())
+    /** M124: per database, how many wiki.rows.changed came (an open database reads again, folded). */
+    val rowsSignal: StateFlow<Map<String, Long>> = _rowsSignal
+    private val _propsSignal = MutableStateFlow<Map<String, Long>>(emptyMap())
+    /** M124: per row, how many wiki.page.updated with change "props" came (an open row reads its cells again). */
+    val propsSignal: StateFlow<Map<String, Long>> = _propsSignal
+    private val _reconnects = MutableStateFlow(0)
+    /** M124: moves on every reconnect (open databases and rows read again: events may have been missed). */
+    val reconnects: StateFlow<Int> = _reconnects
+
+    /** wiki.rows.changed: rows, the schema or the views of a database changed. */
+    fun rowsChanged(databaseId: String) {
+        _rowsSignal.value = _rowsSignal.value + (databaseId to ((_rowsSignal.value[databaseId] ?: 0) + 1))
+    }
+
+    /** wiki.page.updated with change "props": a row's cells changed. */
+    fun propsChanged(pageId: String) {
+        _propsSignal.value = _propsSignal.value + (pageId to ((_propsSignal.value[pageId] ?: 0) + 1))
+    }
+
     /** Whether there is a tree to show (from the server, or kept on this device). */
     val hasTree: Boolean get() = cursor != null
 
@@ -411,6 +434,7 @@ class WikiHub(
     /** After (re)connecting: failed saves go out, open pages are read again, edits kept from before a restart resume. */
     fun online() {
         if (api == null) return
+        _reconnects.value = _reconnects.value + 1
         savers.values.toList().forEach { it.online() }
         store.pendingPages().forEach { (pageId, _) ->
             if (savers.containsKey(pageId)) return@forEach

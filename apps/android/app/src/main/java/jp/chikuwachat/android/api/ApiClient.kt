@@ -70,7 +70,8 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
+    jp.chikuwachat.android.sync.WikiDbApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -891,6 +892,44 @@ class ApiClient(
         val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
         return request("GET", "/api/v1/search/pages?q=" + Enc.encode(q, "UTF-8") + "&tz_offset_minutes=$tzOffset&limit=$limit&offset=$offset")
     }
+
+    // --- databases (docs/WIKI.md §18.2, M124) ---------------------------------------------------------
+
+    override suspend fun wikiDatabase(databaseId: String): DatabaseOut = request("GET", "/api/v1/wiki/databases/$databaseId")
+
+    override suspend fun queryRows(databaseId: String, viewId: String?, range: jp.chikuwachat.android.sync.DbRange?, cursor: String?, limit: Int): DbRowQueryOut =
+        request("POST", "/api/v1/wiki/databases/$databaseId/query", buildJsonObject {
+            viewId?.let { put("view_id", it) }
+            range?.let { r ->
+                put("range", buildJsonObject {
+                    put("prop_id", r.propId)
+                    put("start", r.start.toString())
+                    put("end", r.end.toString())
+                })
+            }
+            cursor?.let { put("cursor", it) }
+            put("limit", limit)
+        })
+
+    /** A new row (201; a retry with the same key answers the first one, 200). */
+    override suspend fun createRow(databaseId: String, title: String, props: JsonObject, clientSaveId: String): DbRowWithRefs =
+        request("POST", "/api/v1/wiki/databases/$databaseId/rows", buildJsonObject {
+            put("title", title)
+            put("props", props)
+            put("client_save_id", clientSaveId)
+        })
+
+    override suspend fun wikiRow(rowId: String): DbRowDetail = request("GET", "/api/v1/wiki/rows/$rowId")
+
+    /** Cells replaced (the last write wins per cell); the same `client_op_id` again changes nothing. */
+    override suspend fun setRowProps(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs =
+        request("PATCH", "/api/v1/wiki/rows/$rowId/props", buildJsonObject {
+            put("set", set)
+            put("client_op_id", clientOpId)
+        })
+
+    override suspend fun relationCandidates(databaseId: String, propId: String, q: String): List<DbRowRef> =
+        request("GET", "/api/v1/wiki/databases/$databaseId/properties/$propId/candidates?q=" + Enc.encode(q, "UTF-8") + "&limit=30")
 
     private fun <T> decodeOrThrow(serializer: kotlinx.serialization.KSerializer<T>, text: String): T = try {
         Codec.snake.decodeFromString(serializer, text)
