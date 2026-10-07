@@ -8,9 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.base import Base
 from app.core.time import utcnow
 
-# M117 (docs/CALLS.md): the public Jitsi server until an administrator sets another (or none).
-DEFAULT_MEETING_BASE_URL = "https://meet.jit.si/"
-
 
 class WorkspaceIdentity(Base):
     """The one row naming this deployment (WORKSPACES.md §3): clients route pushes by its id."""
@@ -48,10 +45,13 @@ class WorkspaceSettings(Base):
     # (`workspace-icon/<uuid7>`). The key's last part is the version clients cache by. None: the
     # clients draw the letter tile.
     icon_key: Mapped[str | None] = mapped_column(Text)
-    # M117 (docs/CALLS.md): the meeting service a call's room is made on (the room name is
-    # appended). NULL = calls are off.
-    meeting_base_url: Mapped[str | None] = mapped_column(
-        Text, default=DEFAULT_MEETING_BASE_URL, server_default=DEFAULT_MEETING_BASE_URL
+    # M117's meeting service, retired by M130 (docs/CALLS.md §11): always NULL and never read; the
+    # column goes in M136.
+    meeting_base_url: Mapped[str | None] = mapped_column(Text)
+    # M130 (docs/CALLS.md §5.1): the administrator's 「アプリ内通話」 switch. It only works on a
+    # server with LiveKit configured.
+    in_app_calls_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

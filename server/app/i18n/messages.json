@@ -9,7 +9,7 @@
   "push.group_dm": {"ja": "グループ DM", "en": "Group DM", "zh-Hans": "群组私信"},
   "push.priority.important": {"ja": "[重要] ", "en": "[Important] ", "zh-Hans": "[重要] "},
   "push.priority.urgent": {"ja": "[緊急] ", "en": "[Urgent] ", "zh-Hans": "[紧急] "},
-  "push.call.started": {"ja": "📞 {who} さんが通話を始めました", "en": "📞 {who} started a call", "zh-Hans": "📞 {who} 发起了通话"},
+  "push.call.started": {"ja": "🎧 {who} さんが通話を始めました", "en": "🎧 {who} started a call", "zh-Hans": "🎧 {who} 发起了通话"},
   "push.attachment.image": {"ja": "画像を送信しました", "en": "Sent an image", "zh-Hans": "发送了一张图片"},
   "push.attachment.images": {"ja": "画像を {n} 枚送信しました", "en": "Sent {n} images", "zh-Hans": "发送了 {n} 张图片"},
   "push.attachment.video": {"ja": "動画を送信しました", "en": "Sent a video", "zh-Hans": "发送了一个视频"},

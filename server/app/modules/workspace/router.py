@@ -66,10 +66,9 @@ async def get_workspace_settings(
 async def update_workspace_settings(
     actor: CurrentAdmin, body: WorkspaceSettingsUpdate, db: Db, request: Request
 ) -> AdminWorkspaceSettingsOut:
-    """M117 (docs/CALLS.md): also the meeting service for calls (`meeting_base_url`)."""
-    return await service.update_settings(
-        db, actor.id, body, _legacy(request), debug=request.app.state.settings.debug
-    )
+    """M130 (docs/CALLS.md §5.1): also 「アプリ内通話」 (`in_app_calls_enabled`). M117's
+    `meeting_base_url` is refused with 409 meeting_links_retired."""
+    return await service.update_settings(db, actor.id, body, _legacy(request))
 
 
 @router.post(

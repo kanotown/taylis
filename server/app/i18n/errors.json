@@ -176,10 +176,30 @@
    "en": "That occurrence was not found (it may have been changed or deleted).",
    "zh-Hans": "找不到该次重复（可能已被修改或删除）。"
   },
+  "call_ended": {
+   "ja": "この通話は終わりました",
+   "en": "This call has ended.",
+   "zh-Hans": "此通话已结束。"
+  },
+  "call_full": {
+   "ja": "この通話は満員です",
+   "en": "This call is full.",
+   "zh-Hans": "此通话人数已满。"
+  },
+  "call_not_found": {
+   "ja": "通話が見つかりません",
+   "en": "Call not found.",
+   "zh-Hans": "找不到该通话。"
+  },
   "calls_disabled": {
    "ja": "このワークスペースでは通話がオフになっています",
    "en": "Calls are turned off in this workspace.",
    "zh-Hans": "此工作区已关闭通话。"
+  },
+  "calls_unavailable": {
+   "ja": "通話のサーバにつながりません。しばらくしてからもう一度お試しください",
+   "en": "The call server can't be reached. Please try again later.",
+   "zh-Hans": "无法连接到通话服务器。请稍后重试。"
   },
   "cancelled": {
    "ja": "Google でのログインを取り消しました",
@@ -590,6 +610,11 @@
    "ja": "リンクが見つかりません",
    "en": "Link not found.",
    "zh-Hans": "找不到链接。"
+  },
+  "meeting_links_retired": {
+   "ja": "会議リンクの通話は終了しました。アプリ内の通話（🎧）をお使いください",
+   "en": "Calls by meeting link have ended. Use in-app calls (🎧) instead.",
+   "zh-Hans": "会议链接通话已停用。请改用应用内通话（🎧）。"
   },
   "meeting_url_invalid": {
    "ja": "会議サービスの URL が正しくありません（https:// で始まり、? や # を含まない URL にしてください）",

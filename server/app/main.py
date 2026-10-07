@@ -39,6 +39,8 @@ from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
 from app.modules.calendar import service as calendar
 from app.modules.calendar.router import router as calendar_router
+from app.modules.calls import livekit as calls_livekit
+from app.modules.calls import service as calls_service
 from app.modules.calls.router import router as calls_router
 from app.modules.canvases import service as canvases
 from app.modules.canvases.router import router as canvases_router
@@ -382,6 +384,39 @@ async def _preview_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 waiter.cancel()
 
 
+async def _calls_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """M130 (docs/CALLS.md §3.3): puts the calls right against LiveKit at start, every
+    LIVEKIT_RECONCILE_INTERVAL_SECONDS while a call is open, and at once when woken (someone may
+    have to be cut off a call). Ends nothing while LiveKit cannot be reached."""
+    rt: calls_service.CallsRuntime = app.state.calls
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        rt.wake.clear()
+        try:
+            async with app.state.db.session_factory() as session:
+                await calls_service.reconcile(session, rt.gateway)
+            rt.unreachable_since = None
+        except calls_livekit.LiveKitUnavailable as exc:
+            now = utcnow()
+            if rt.unreachable_since is None:
+                rt.unreachable_since = now
+                log.info("LiveKit cannot be reached (calls are left as they are): %s", exc)
+            elif now - rt.unreachable_since >= calls_service.UNREACHABLE_WARNING:
+                log.warning("LiveKit has been unreachable since %s: %s", rt.unreachable_since, exc)
+        except Exception:
+            log.exception("call reconcile failed")
+        waits = [asyncio.ensure_future(stop.wait()), asyncio.ensure_future(rt.wake.wait())]
+        try:
+            await asyncio.wait(
+                waits,
+                timeout=settings.livekit_reconcile_interval_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for waiter in waits:
+                waiter.cancel()
+
+
 async def _import_emoji_presets(app: FastAPI) -> None:
     """M102 (docs/EMOJI.md §8): the preset packs under EMOJI_PRESETS_DIR, once per start, in the
     background so that a large first import never delays readiness."""
@@ -423,6 +458,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_activity_loop(app, stop), name="activity"))
         if settings.previews_enabled:
             tasks.append(asyncio.create_task(_preview_loop(app, stop), name="previews"))
+        if app.state.calls is not None:
+            tasks.append(asyncio.create_task(_calls_loop(app, stop), name="calls"))
     try:
         yield
     finally:
@@ -535,6 +572,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.activity = analytics_activity.ActivityTracker(
         settings.activity_write_interval_seconds
     )
+    # M130 (docs/CALLS.md): LiveKit, when LIVEKIT_* are all set (else in-app calls are off).
+    livekit_config = calls_livekit.config_from_settings(settings)
+    app.state.calls = (
+        calls_service.CallsRuntime(
+            config=livekit_config,
+            gateway=calls_livekit.HttpLiveKitGateway(livekit_config),
+            public_base_url=settings.public_base_url.strip().rstrip("/"),
+        )
+        if livekit_config is not None
+        else None
+    )
+    workspace.set_in_app_calls_available(livekit_config is not None)
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
@@ -555,6 +604,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "moderation": RateLimiter(30),
         # M119: POST /reports, 10 an hour per person.
         "general_report": RateLimiter(10 / 60, burst=10),
+        # M130 (docs/CALLS.md §5.2): starting calls and getting tokens, per person per minute.
+        "call_start": RateLimiter(settings.call_start_rate_limit_per_user),
+        "call_join": RateLimiter(settings.call_join_rate_limit_per_user),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
@@ -606,6 +658,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tasks_service.TaskLeaveHandler(),
             tasks_service.TaskSourceHandler(),
             ai_service.AiMentionHandler(app.state.ai),
+            # M130: an archive, a removal, a deactivation or a block wakes the calls' reconcile.
+            *([calls_service.CallsWakeHandler(app.state.calls)] if app.state.calls else []),
         ],
         listen_dsn=asyncpg_dsn(settings.database_url),
         poll_interval=settings.outbox_poll_interval_seconds,

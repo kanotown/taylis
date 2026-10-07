@@ -1,0 +1,27 @@
+{
+  "_comment": "Webhooks sent by a real LiveKit server (livekit/livekit-server:v1.13.8 --dev, key devkey / secret secret) on 2026-10-07 for room 7c0f2b8e-1d2a-4c55-9a1e-3f4b5c6d7e80 and identity 2b1e4f6a-8c3d-4e5f-9a0b-1c2d3e4f5a60 (docs/CALLS.md §3.2, §9). Kept byte for byte: the signature covers the body.",
+  "api_key": "devkey",
+  "api_secret": "secret",
+  "events": [
+    {
+      "authorization": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZXZrZXkiLCJleHAiOjE3OTEzMzA1MDMsIm5iZiI6MTc5MTMzMDIwMywiaWF0IjoxNzkxMzMwMjAzLCJzaGEyNTYiOiJBQ1JjVEFReE1PVFdlZ1d4YlZDMERoNndRaUFrTlFLZ2FhOU5Nd2VsWHpvPSJ9.YTOu-LyWKDPeC3-rpxkWmX2eqmCNwXZu0OXl8kRwo2c",
+      "content_type": "application/webhook+json",
+      "body": "{\"event\":\"room_started\", \"room\":{\"sid\":\"RM_sBB4BQn5yDRR\", \"name\":\"7c0f2b8e-1d2a-4c55-9a1e-3f4b5c6d7e80\", \"emptyTimeout\":120, \"departureTimeout\":20, \"maxParticipants\":50, \"creationTime\":\"1791330203\", \"creationTimeMs\":\"1791330203029\", \"turnPassword\":\"EIXcZTRWTczVklIgfMzrUZ166P3opaT6jjK1m4DbcPJ\", \"enabledCodecs\":[{\"mime\":\"audio/PCMU\"}, {\"mime\":\"audio/PCMA\"}, {\"mime\":\"audio/opus\"}, {\"mime\":\"audio/red\"}, {\"mime\":\"video/VP8\"}, {\"mime\":\"video/H264\"}, {\"mime\":\"video/VP9\"}, {\"mime\":\"video/AV1\"}, {\"mime\":\"video/H265\"}, {\"mime\":\"video/rtx\"}]}, \"id\":\"EV_gnu7Qe3RoD58\", \"createdAt\":\"1791330203\"}"
+    },
+    {
+      "authorization": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZXZrZXkiLCJleHAiOjE3OTEzMzA1MDMsIm5iZiI6MTc5MTMzMDIwMywiaWF0IjoxNzkxMzMwMjAzLCJzaGEyNTYiOiI1Q2J5QlpBbHNIbjQ0bXJPcXdObE4ybU8yOEdNdjB4Y2RoOTZDa05KUlBVPSJ9.7iRKt8j-9nkesqKDkOZ7WTU64UqpWiAb3XgdaktEST4",
+      "content_type": "application/webhook+json",
+      "body": "{\"event\":\"participant_joined\", \"room\":{\"sid\":\"RM_sBB4BQn5yDRR\", \"name\":\"7c0f2b8e-1d2a-4c55-9a1e-3f4b5c6d7e80\", \"emptyTimeout\":120, \"departureTimeout\":20, \"maxParticipants\":50, \"creationTime\":\"1791330203\", \"creationTimeMs\":\"1791330203029\", \"turnPassword\":\"EIXcZTRWTczVklIgfMzrUZ166P3opaT6jjK1m4DbcPJ\", \"enabledCodecs\":[{\"mime\":\"audio/PCMU\"}, {\"mime\":\"audio/PCMA\"}, {\"mime\":\"audio/opus\"}, {\"mime\":\"audio/red\"}, {\"mime\":\"video/VP8\"}, {\"mime\":\"video/H264\"}, {\"mime\":\"video/VP9\"}, {\"mime\":\"video/AV1\"}, {\"mime\":\"video/H265\"}, {\"mime\":\"video/rtx\"}]}, \"participant\":{\"sid\":\"PA_SWEgSrZZpFvj\", \"identity\":\"2b1e4f6a-8c3d-4e5f-9a0b-1c2d3e4f5a60\", \"state\":\"ACTIVE\", \"joinedAt\":\"1791330203\", \"joinedAtMs\":\"1791330203289\", \"version\":2, \"permission\":{\"canSubscribe\":true, \"canPublish\":true, \"canPublishData\":true}}, \"id\":\"EV_7sygFBYQSTdZ\", \"createdAt\":\"1791330203\"}"
+    },
+    {
+      "authorization": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZXZrZXkiLCJleHAiOjE3OTEzMzA1MDksIm5iZiI6MTc5MTMzMDIwOSwiaWF0IjoxNzkxMzMwMjA5LCJzaGEyNTYiOiI5ZzhoOFNacnlkNWxhRTF6MG9CbDU4VVp1SmJiemtyd3ludi8ycnExQk5RPSJ9.1go75ELjUFUERqWU5vk2pDNukQzD29HeoxyOYRNFLKE",
+      "content_type": "application/webhook+json",
+      "body": "{\"event\":\"participant_left\", \"room\":{\"sid\":\"RM_sBB4BQn5yDRR\", \"name\":\"7c0f2b8e-1d2a-4c55-9a1e-3f4b5c6d7e80\", \"emptyTimeout\":120, \"departureTimeout\":20, \"maxParticipants\":50, \"creationTime\":\"1791330203\", \"creationTimeMs\":\"1791330203029\", \"turnPassword\":\"EIXcZTRWTczVklIgfMzrUZ166P3opaT6jjK1m4DbcPJ\", \"enabledCodecs\":[{\"mime\":\"audio/PCMU\"}, {\"mime\":\"audio/PCMA\"}, {\"mime\":\"audio/opus\"}, {\"mime\":\"audio/red\"}, {\"mime\":\"video/VP8\"}, {\"mime\":\"video/H264\"}, {\"mime\":\"video/VP9\"}, {\"mime\":\"video/AV1\"}, {\"mime\":\"video/H265\"}, {\"mime\":\"video/rtx\"}], \"numParticipants\":1}, \"participant\":{\"sid\":\"PA_SWEgSrZZpFvj\", \"identity\":\"2b1e4f6a-8c3d-4e5f-9a0b-1c2d3e4f5a60\", \"state\":\"DISCONNECTED\", \"joinedAt\":\"1791330203\", \"joinedAtMs\":\"1791330203289\", \"version\":3, \"permission\":{\"canSubscribe\":true, \"canPublish\":true, \"canPublishData\":true}, \"disconnectReason\":\"CLIENT_INITIATED\"}, \"id\":\"EV_rH3mWypxPaFB\", \"createdAt\":\"1791330209\"}"
+    },
+    {
+      "authorization": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZXZrZXkiLCJleHAiOjE3OTEzMzA1MjksIm5iZiI6MTc5MTMzMDIyOSwiaWF0IjoxNzkxMzMwMjI5LCJzaGEyNTYiOiJmMmwzaE4yREQyUWxiWkZLMUYrMjVVUGU1VXE4RUVPOXhiNzRuSlhMYmNnPSJ9.g6EqzbAPG-56W-ZPsHQt8bfkhGP0s_FiKytKHbye3to",
+      "content_type": "application/webhook+json",
+      "body": "{\"event\":\"room_finished\", \"room\":{\"sid\":\"RM_sBB4BQn5yDRR\", \"name\":\"7c0f2b8e-1d2a-4c55-9a1e-3f4b5c6d7e80\", \"emptyTimeout\":120, \"departureTimeout\":20, \"maxParticipants\":50, \"creationTime\":\"1791330203\", \"creationTimeMs\":\"1791330203029\", \"turnPassword\":\"EIXcZTRWTczVklIgfMzrUZ166P3opaT6jjK1m4DbcPJ\", \"enabledCodecs\":[{\"mime\":\"audio/PCMU\"}, {\"mime\":\"audio/PCMA\"}, {\"mime\":\"audio/opus\"}, {\"mime\":\"audio/red\"}, {\"mime\":\"video/VP8\"}, {\"mime\":\"video/H264\"}, {\"mime\":\"video/VP9\"}, {\"mime\":\"video/AV1\"}, {\"mime\":\"video/H265\"}, {\"mime\":\"video/rtx\"}]}, \"id\":\"EV_C8XZGh9UAWH4\", \"createdAt\":\"1791330229\", \"roomEndReason\":\"ROOM_END_IDLE_TIMEOUT\"}"
+    }
+  ]
+}

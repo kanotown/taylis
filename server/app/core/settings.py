@@ -190,6 +190,25 @@ class Settings(BaseSettings):
     # docs/AI.md §4: the prompt text of a run is dropped after this many days (cost stays).
     ai_input_retention_days: int = 90
 
+    # In-app calls on LiveKit (M130, docs/CALLS.md §3.4). Calls work only when the URL clients
+    # connect to, the URL the app reaches RoomService on, the key and the secret are all set. The
+    # secret is read from LIVEKIT_API_SECRET_FILE (production) or LIVEKIT_API_SECRET (local dev
+    # only: LiveKit's --dev secret).
+    livekit_url: str = ""
+    livekit_api_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+    livekit_api_secret_file: str = ""
+    livekit_max_participants: int = 50
+    livekit_token_ttl_seconds: int = 600
+    # RoomService calls give up after this long (LiveKit is then "unavailable").
+    livekit_api_timeout_seconds: float = 5.0
+    # §3.3: the reconcile loop's period while a call is open.
+    livekit_reconcile_interval_seconds: float = 60.0
+    # §5.2: starts per person per minute, joins (and rejoins) per person per minute.
+    call_start_rate_limit_per_user: int = 10
+    call_join_rate_limit_per_user: int = 30
+
     # Realtime (SYNC_PROTOCOL.md §5)
     ws_auth_timeout_seconds: float = 5.0
     ws_heartbeat_interval_seconds: int = 30
