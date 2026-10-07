@@ -419,6 +419,7 @@ const STATUS_KEYS = {
   delivered: "attendanceAdmin.status.delivered",
   failed: "attendanceAdmin.status.failed",
   superseded: "attendanceAdmin.status.superseded",
+  cancelled: "attendanceAdmin.status.cancelled",
 } as const;
 
 function Deliveries({ controller, integrationId }: { controller: AppController; integrationId: string }) {

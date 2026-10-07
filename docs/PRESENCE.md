@@ -45,7 +45,7 @@
 - **変えられる人**：アプリからは本人だけ。管理者は他人のを変えられる（監査 `attendance.set_by_admin`）。外のシステムからは連携の
   トークン（§6）。
 - **オフのとき**：データ（状態・今の値・記録・連携）は残すが、ボード・ボタン・Webhook・受信 API は止まる（受信は `409 attendance_disabled`）。
-  もう一度有効にすると元の値で戻る。
+  もう一度有効にすると元の値で戻る。オフにした時点で送っていない配送は取り消し（`cancelled`）、有効に戻しても送らない（§5.1）。
 
 ## 2. データ（移行 0100）
 
@@ -104,7 +104,7 @@ CREATE TABLE attendance_deliveries (    -- 送信 Webhook の 1 回の配送（o
   user_id uuid,
   outbox_event_id bigint,               -- UNIQUE (outbox_event_id, integration_id)：二重に作らない
   body jsonb NOT NULL,                  -- 送る JSON（作った時点の名前で固定。再送も同じ本文）
-  status text,                          -- pending | delivered | failed | superseded
+  status text,                          -- pending | delivered | failed | superseded | cancelled（オフにした。§5.1）
   attempts integer, next_attempt_at, last_status_code, last_error, delivered_at, created_at
 );
 ```
@@ -246,6 +246,11 @@ Android：`AttendanceBadgeColorsTest`）：
 - 2xx：`delivered`。408・429・5xx・接続の失敗・タイムアウト：再送（30 秒、1 分、2 分、5 分、10 分、30 分、1 時間、2 時間。8 回で `failed`）。
   ほかの 4xx・3xx（リダイレクトは追わない）：すぐ `failed`。
 - 同じ連携・同じ人について、もっと新しい配送が届いた後に古い配送の番が来たら、送らずに `superseded` にする（古い状態で上書きしない）。
+- **オフにしたら送らない**（2026-10-07、レビュー v0.1.43 #3）：管理者が在室状況をオフにすると、同じトランザクションで送っていない配送
+  （`pending`。初回待ち・再送待ちとも）を `cancelled`（`last_error = attendance_disabled`）にする。ワーカーも、行を取るときと
+  **1 件ずつ送る直前**に全体の `enabled` を読み直し、オフなら送らずに `cancelled` にする（行を取った後にオフにされた分も止まる）。
+  送っている途中でオフにされて失敗した配送も再送せず `cancelled` のまま。有効に戻しても取り消した分は送らない：オフのあいだも
+  人は動いており、遅れて届く古い状態は外のサイトを誤らせるため（次の変更から送る）。テスト送信もオフのあいだは送らない。
 - 1 回の送信は 10 秒まで。応答の本文は先頭 200 文字だけ記録する。
 - 配送の行は 30 日で消す。管理画面は連携ごとに最近の 50 件（時刻・人・状態・HTTP の番号・エラー・回数）を出す。
 

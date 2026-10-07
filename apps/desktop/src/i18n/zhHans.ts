@@ -475,6 +475,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "attendanceAdmin.status.delivered": "已送达",
   "attendanceAdmin.status.failed": "失败",
   "attendanceAdmin.status.superseded": "已被更新的更改取代",
+  "attendanceAdmin.status.cancelled": "已取消（功能已关闭）",
   "attendanceAdmin.noDeliveries": "尚未发送。",
   "attendanceAdmin.attempts": "{count} 次",
   "attendanceAdmin.source.app": "本人",
