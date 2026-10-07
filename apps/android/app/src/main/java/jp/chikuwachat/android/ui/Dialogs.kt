@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -319,9 +320,10 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                     Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence)
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(user?.displayName ?: "?")
+                            Text(user?.displayName ?: "?", modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             StatusEmoji(user, controller, version, modifier = Modifier.padding(start = 6.dp))
                             store.roster[member.userId]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
+                            AttendanceChip(controller, member.userId, version, Modifier.padding(start = 6.dp)) // M140
                         }
                         Text("@" + (user?.username ?: "") + (Roster.titleExtra(user?.title, store.roster[member.userId])?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

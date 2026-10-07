@@ -31,6 +31,7 @@ import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.ui.previewExcerpt
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.ReservationsApi
+import jp.chikuwachat.android.sync.AttendanceApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.api.DeltaOut
@@ -137,7 +138,7 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
         // --- M69 iCal feeds (CALENDAR.md §10.3, §10.6): 5 per person, the URL only in the answer that makes one ---
 
         override suspend fun calendarFeeds(): List<CalendarFeedOut> {
@@ -288,6 +289,13 @@ class FakeServer {
             activity[userId] = answer
             emitActivityItemsRead(userId, itemIds, now())
             return answer
+        }
+
+        /** M140: GET /attendance (guests: 403, as the server). */
+        override suspend fun attendance(): jp.chikuwachat.android.api.AttendanceBoardOut {
+            maybeFail(); attendanceReads += 1
+            if (users.getValue(userId).role == "guest") throw ApiException.Api(403, "guest_restricted", "guests do not see the board")
+            return attendanceBoard()
         }
 
         /** Review v0.1.37 #6: when set, the next GET /reservation-pools answers as the server was then, but only once released. */
@@ -628,6 +636,25 @@ class FakeServer {
         emit(setOf(userId), event("reservation.notice", null, null, buildJsonObject {
             put("item_id", "n1"); put("pool_id", "p1"); put("text", text); put("operator", true); put("at", "2026-10-05T01:00:00Z")
         }))
+    }
+
+    /** M140: the 在室状況 board (off by default, as the server); the helpers announce changes like the server (not to guests). */
+    var attendance = jp.chikuwachat.android.api.AttendanceBoardOut(enabled = false)
+    var attendanceReads = 0
+
+    fun attendanceBoard(): jp.chikuwachat.android.api.AttendanceBoardOut =
+        if (attendance.enabled) attendance else jp.chikuwachat.android.api.AttendanceBoardOut(enabled = false)
+
+    private fun nonGuests(): Set<String> = users.values.filter { it.role != "guest" }.map { it.id }.toSet()
+
+    fun configureAttendance(board: jp.chikuwachat.android.api.AttendanceBoardOut) {
+        attendance = board
+        emit(nonGuests(), event("attendance.config_updated", null, null, buildJsonObject {}))
+    }
+
+    fun setAttendanceEntry(entry: jp.chikuwachat.android.api.AttendanceEntryOut) {
+        attendance = attendance.copy(entries = attendance.entries.filter { it.userId != entry.userId } + entry)
+        emit(nonGuests(), event("attendance.updated", null, null, Codec.snake.encodeToJsonElement(jp.chikuwachat.android.api.AttendanceEntryOut.serializer(), entry) as JsonObject))
     }
 
     /** M15d: "user:channel:parent" → the saved draft. */
@@ -1139,6 +1166,7 @@ class FakeServer {
             drafts = draftsOf(userId),
             activity = activity[userId],
             workspaceSettings = workspaceSettings,
+            attendance = if (user.role == "guest" || !attendance.enabled) null else attendanceBoard(),
         )
     }
 

@@ -68,6 +68,8 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                         // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
                         Text("@" + (user?.username ?: "") + (Roster.displayTitle(user?.title, line)?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // M140 (PRESENCE.md §9): 在室状況 — the state's chip, the note and since when (nothing while off).
+                        AttendanceProfileLine(controller, userId, version, Modifier.padding(top = 4.dp))
                         if (Dnd.isActive(user)) {
                             Text(stringResource(R.string.profile_dialog_notifications_paused) + (user?.quietHours?.let { " · " + Dnd.label(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }

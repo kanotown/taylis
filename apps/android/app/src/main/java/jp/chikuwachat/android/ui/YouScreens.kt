@@ -647,7 +647,9 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
     val scope = rememberCoroutineScope()
     val stored = me.navItems
     val full = NavItems.full(stored)
-    val shown = NavItems.shown(full)
+    // M140: 「在室状況」 is listed only while the workspace has the board on.
+    val implemented = NavItems.implemented(attendance = AttendanceRules.shown(controller.store.attendance, me.role))
+    val shown = NavItems.shown(full, implemented = implemented)
     var saving by remember { mutableStateOf(false) }
     var reordering by rememberSaveable { mutableStateOf(false) }
     fun save(value: List<NavItem>?) {
@@ -666,10 +668,10 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
         if (reordering) {
             Row(Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, modifier = Modifier.weight(1f), color = if (item.visible) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(enabled = !saving && index > 0, onClick = { save(NavItems.move(full, item.key, -1)) }) {
+                IconButton(enabled = !saving && index > 0, onClick = { save(NavItems.move(full, item.key, -1, implemented)) }) {
                     Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.you_screens_move_up, label))
                 }
-                IconButton(enabled = !saving && index < shown.lastIndex, onClick = { save(NavItems.move(full, item.key, 1)) }) {
+                IconButton(enabled = !saving && index < shown.lastIndex, onClick = { save(NavItems.move(full, item.key, 1, implemented)) }) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.you_screens_move_down, label))
                 }
             }

@@ -717,6 +717,7 @@ fun MainScreen(controller: AppController) {
                         pane == Route.Tasks -> Text(stringResource(R.string.common_tasks))
                         pane == Route.Deadlines -> Text(stringResource(R.string.common_deadlines))
                         pane == Route.Reservations -> Text(stringResource(R.string.common_reservations))
+                        pane == Route.Attendance -> Text(stringResource(R.string.common_attendance))
                         // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
                         top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         top is Route.Activity -> Text(stringResource(R.string.common_activity), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1065,6 +1066,9 @@ fun MainScreen(controller: AppController) {
                 } else if (pane == Route.Reservations) {
                     // M112 (RESERVATIONS.md §6): per pool mine, 予約する / 今すぐ, the operators' to-do and a day's hours.
                     ReservationsPane(controller, version)
+                } else if (pane == Route.Attendance) {
+                    // M140 (PRESENCE.md §9): my one-tap buttons and note, my own states, the board by state.
+                    AttendancePane(controller, version)
                 } else if (pane == Route.Mentions) {
                     MentionsPane(controller, version, onOpen = ::reveal)
                 } else if (pane == Route.Drafts) {
@@ -1157,6 +1161,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.TASKS -> Route.Tasks
                                     HomeTile.DEADLINES -> Route.Deadlines
                                     HomeTile.RESERVATIONS -> Route.Reservations
+                                    HomeTile.ATTENDANCE -> Route.Attendance
                                     HomeTile.FILES -> Route.Files()
                                     HomeTile.DOCS -> Route.Docs
                                     HomeTile.CANVASES -> {

@@ -476,6 +476,23 @@ class Store(private val persistence: Persistence? = null) {
     fun dropReservationPool(poolId: String) {
         reservationPools?.let { list -> setReservationPools(list.filter { it.id != poolId }) }
     }
+    /**
+     * M140 (docs/PRESENCE.md §4): the 在室状況 board (not persisted); null for guests, while it is off and from a server
+     * before M140. From the bootstrap, attendance.updated (one row) and GET /attendance (attendance.config_updated).
+     */
+    var attendance: jp.chikuwachat.android.api.AttendanceBoardOut? = null
+        private set
+    fun setAttendance(board: jp.chikuwachat.android.api.AttendanceBoardOut?) {
+        attendance = board?.takeIf { it.enabled && me?.role != "guest" }
+        emit()
+    }
+    /** One person's row (attendance.updated, or my own change). False when its state is not known here (read the board again). */
+    fun applyAttendanceEntry(entry: jp.chikuwachat.android.api.AttendanceEntryOut): Boolean {
+        val board = attendance ?: return true
+        attendance = jp.chikuwachat.android.ui.AttendanceRules.withEntry(board, entry)
+        emit()
+        return board.states.any { it.id == entry.stateId }
+    }
 
     /**
      * M46 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.
