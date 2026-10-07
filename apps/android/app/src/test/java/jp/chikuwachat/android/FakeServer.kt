@@ -32,6 +32,7 @@ import jp.chikuwachat.android.ui.previewExcerpt
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.ReservationsApi
 import jp.chikuwachat.android.sync.AttendanceApi
+import jp.chikuwachat.android.sync.ActionsApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.api.DeltaOut
@@ -138,7 +139,7 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
         // --- M69 iCal feeds (CALENDAR.md §10.3, §10.6): 5 per person, the URL only in the answer that makes one ---
 
         override suspend fun calendarFeeds(): List<CalendarFeedOut> {
@@ -296,6 +297,26 @@ class FakeServer {
             maybeFail(); attendanceReads += 1
             if (users.getValue(userId).role == "guest") throw ApiException.Api(403, "guest_restricted", "guests do not see the board")
             return attendanceBoard()
+        }
+
+        /** M143: GET /actions (guests: none, as the server). */
+        override suspend fun actions(): jp.chikuwachat.android.api.ActionListOut {
+            maybeFail(); actionsReads += 1
+            return actionListFor(userId)
+        }
+
+        /** M143: a press; the same client_invoke_id answers the first result without calling the relay again. */
+        override suspend fun invokeAction(actionId: String, clientInvokeId: String): jp.chikuwachat.android.api.ActionInvokeOut {
+            invokeCalls += actionId to clientInvokeId
+            invokeFailures.removeFirstOrNull()?.let { throw it }
+            val out = invokeResults[userId to clientInvokeId]?.copy(repeated = true) ?: run {
+                relayCalls += 1
+                (relayAnswer[actionId] ?: jp.chikuwachat.android.api.ActionInvokeOut(
+                    invokeId = "inv-$relayCalls", actionId = actionId, ok = true, status = "succeeded", statusCode = 200, at = "2026-10-08T00:00:00Z",
+                )).copy(actionId = actionId).also { invokeResults[userId to clientInvokeId] = it }
+            }
+            invokeLostAnswers.removeFirstOrNull()?.let { throw it }  // the relay was called, but the answer never came back
+            return out
         }
 
         /** Review v0.1.37 #6: when set, the next GET /reservation-pools answers as the server was then, but only once released. */
@@ -675,6 +696,29 @@ class FakeServer {
     fun setAttendanceEntry(entry: jp.chikuwachat.android.api.AttendanceEntryOut) {
         attendance = attendance.copy(entries = attendance.entries.filter { it.userId != entry.userId } + entry)
         emit(nonGuests(), event("attendance.updated", null, null, Codec.snake.encodeToJsonElement(jp.chikuwachat.android.api.AttendanceEntryOut.serializer(), entry) as JsonObject))
+    }
+
+    /** M143: the 操作ボタン (off by default, as the server); every non-guest may press all of them here. */
+    var actionList = jp.chikuwachat.android.api.ActionListOut(enabled = false)
+    var actionsReads = 0
+    /** Every POST invoke (action id, client_invoke_id), the relay calls made, and the stored results by (user, id). */
+    val invokeCalls = ArrayList<Pair<String, String>>()
+    var relayCalls = 0
+    val invokeResults = HashMap<Pair<String, String>, jp.chikuwachat.android.api.ActionInvokeOut>()
+    /** What the relay answers for an action (default: a 200 without a message). */
+    val relayAnswer = HashMap<String, jp.chikuwachat.android.api.ActionInvokeOut>()
+    /** Failures thrown before the server handles the press (the request never arrived). */
+    val invokeFailures = ArrayDeque<Throwable>()
+    /** Failures thrown after the relay was called (the answer was lost on the way back). */
+    val invokeLostAnswers = ArrayDeque<Throwable>()
+
+    fun actionListFor(userId: String): jp.chikuwachat.android.api.ActionListOut =
+        if (users.getValue(userId).role == "guest") actionList.copy(actions = emptyList())
+        else if (actionList.enabled) actionList else actionList.copy(actions = emptyList())
+
+    fun configureActions(list: jp.chikuwachat.android.api.ActionListOut) {
+        actionList = list
+        emit(nonGuests(), event("actions.updated", null, null, buildJsonObject {}))
     }
 
     /** M15d: "user:channel:parent" → the saved draft. */
@@ -1188,6 +1232,7 @@ class FakeServer {
             activity = activity[userId],
             workspaceSettings = workspaceSettings,
             attendance = if (user.role == "guest" || !attendance.enabled) null else attendanceBoard(),
+            actions = if (user.role == "guest" || !actionList.enabled) null else actionListFor(userId),
         )
     }
 

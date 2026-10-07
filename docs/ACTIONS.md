@@ -7,8 +7,8 @@
 ただし Taylis は **汎用** のまま作る（ほかの研究室・会社も使う）：リポジトリに SwitchBot・Sesame・特定のサイトの名前や API は持たない。
 SwitchBot / Sesame の API への翻訳は中継（研究室の Web サイト。別に作る）の仕事。既定は **オフ** で、管理者が有効にする。
 
-**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。機器の状態の表示（§12）をサーバ・Desktop / Web に実装（2026-10-08、移行 0107。テスト：server `tests/test_action_status.py`）。iOS を実装（2026-10-08、§9.2）。Android は §9.3 のとおり後の作業
-（IMPLEMENTATION_PLAN.md の M143）。テスト：server `tests/test_actions.py`、desktop `tests/actions.test.tsx`、iOS `ActionsTests`。
+**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。機器の状態の表示（§12）をサーバ・Desktop / Web に実装（2026-10-08、移行 0107。テスト：server `tests/test_action_status.py`）。iOS（§9.2）・Android（§9.3）を実装（2026-10-08）
+（IMPLEMENTATION_PLAN.md の M143）。テスト：server `tests/test_actions.py`、desktop `tests/actions.test.tsx`、iOS `ActionsTests`・`ActionStatusTests`、Android `ActionsTest.kt`。
 マイルストーンの番号 M143 は仮（並行する作業と重なれば振り直す）。
 
 ## 1. 問題
@@ -256,10 +256,15 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
   手元より古ければ捨てる）、再接続の後は一度表示した状態を読み直す、機能がオフになったら消す。ピルのシートには出さない（狭い）。
 - 管理の画面は作らない（管理者にも何も出さない。Desktop / Web で）。文言は ja / en / zh-Hans。
 
-### 9.3 Android（後の作業）
+### 9.3 Android（2026-10-08 実装）
 
-- iOS と同じ（bootstrap と `actions.updated`、ホームのタイル、確認 → 待ち → バナー、通信のやり直しだけ同じ id、在室状況の画面と
-  シート）。管理の画面は作らない。
+- ホームのタイル「操作」（`HomeTile.ACTIONS`、押せるボタンが 1 つ以上のときだけ。設定の
+  「ホームのタイル」にも同じ条件で出る）→ 組ごとの見出しとボタン（アイコンは在室状況の一覧、無ければ絵文字、無ければ稲妻）。
+  押す → `AlertDialog` の確認（`confirm` のとき、文は Desktop / Web と同じ）→ ボタンにスピナー（アプリのスコープで送るので画面を
+  離れても答えは残る）→ スナックバーに中継の `message` か理由（文は Desktop / Web と同じ。押せなかった理由は共通のエラー表）。
+  `show_on_attendance` のときは在室状況の画面の一番上と、ピルのシートの「操作」の欄（行は「組：名前」）にも。bootstrap の
+  `actions` と `actions.updated`（300 ms でまとめて `GET /actions`）、ページを開いたときも読み直す。
+  `ui/Actions.kt`（規則）・`ui/ActionsPane.kt`、テスト `ActionsTest.kt`（11）。
 
 ## 10. やらないこと（今は）
 

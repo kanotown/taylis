@@ -321,6 +321,39 @@ class SyncEngine(
         }
     }
 
+    /**
+     * M143 (docs/ACTIONS.md §8): GET /actions (the page opening, actions.updated); `enabled: false` (turned off) clears
+     * the buttons. Guests have none: not asked. An answer that started before one already kept is dropped.
+     */
+    suspend fun loadActions() {
+        val actionsApi = api as? ActionsApi ?: return
+        if (store.me?.role == "guest") return
+        val read = ++actionsReads
+        runCatching { actionsApi.actions() }.onSuccess {
+            if (read < actionsKept) return@onSuccess
+            actionsKept = read
+            store.setActions(it)
+        }.onFailure { Log.w("SyncEngine", "could not read the action buttons", it) }
+    }
+
+    private var actionsReads = 0
+    private var actionsKept = 0
+    private var actionsReload: Job? = null
+    private var actionsDirty = false
+
+    /** actions.updated comes in bursts (a reorder, several edits): one read 300 ms after the last of them starts. */
+    private fun scheduleActionsReload() {
+        actionsDirty = true
+        if (actionsReload?.isActive == true) return
+        actionsReload = scope.launch {
+            while (actionsDirty) {
+                kotlinx.coroutines.delay(300)
+                actionsDirty = false
+                loadActions()
+            }
+        }
+    }
+
     /** M112: reservation.notice while the app is open (the server pushes to phones not on screen). */
     var onReservationNotice: ((jp.chikuwachat.android.api.ReservationNotice) -> Unit)? = null
 
@@ -734,6 +767,7 @@ class SyncEngine(
         store.replaceSidebarDefaults(bootstrap.sidebarDefaults)
         applyWorkspaceSettings(bootstrap.workspaceSettings, live = false) // the reconnect's openChannel loads a preview again
         store.setAttendance(bootstrap.attendance) // M140: null for guests, while off, before M140
+        store.setActions(bootstrap.actions) // M143: null for guests, while off, before M143
         drafts.applyBootstrap(bootstrap.drafts)
         wiki.applyBootstrap(bootstrap.wiki) // M122: the tree read, or caught up from the feed
         scope.launch { loadScheduled() }
@@ -867,6 +901,8 @@ class SyncEngine(
             }
             // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
             "attendance.config_updated" -> scheduleAttendanceReload()
+            // M143: the settings or a button changed; what I may press differs per person, so the event is empty.
+            "actions.updated" -> scheduleActionsReload()
             "reservation.notice" -> {
                 // M112: an activity item for me (an operator's to-do, or news of my own reservation).
                 scheduleActivityRefresh()

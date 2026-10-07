@@ -31,8 +31,8 @@ object NavItems {
         Entry("reservations", L10n.str(R.string.common_reservations), visible = true, platforms = BOTH),
         // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and I am not a guest).
         Entry("attendance", L10n.str(R.string.common_attendance), visible = true, platforms = BOTH),
-        // M143 (docs/ACTIONS.md §9): 「操作」, desktop / Web only until the phones get the page (the shared label).
-        Entry("actions", "操作", visible = true, platforms = listOf(Platform.DESKTOP)),
+        // M143 (docs/ACTIONS.md §9): 「操作」, implemented only while the buttons are on and I may press one.
+        Entry("actions", L10n.str(R.string.actions_nav), visible = true, platforms = BOTH),
     )
 
     val order: Map<Platform, List<String>> = mapOf(
@@ -42,12 +42,13 @@ object NavItems {
 
     /**
      * The tiles this app has (「予約」 joins when its page exists). アクティビティ is the bottom tab (and the tablet rail's),
-     * never a tile, so it cannot be hidden here. M140: 「在室状況」 counts only while the board is on ([implemented]).
+     * never a tile, so it cannot be hidden here. M140: 「在室状況」 counts only while the board is on ([implemented]); M143:
+     * 「操作」 only while the buttons are on and I may press one.
      */
     val implemented: List<String> get() = implemented(attendance = false)
 
-    fun implemented(attendance: Boolean): List<String> =
-        HomeTile.entries.filter { attendance || it != HomeTile.ATTENDANCE }.map { it.navKey }
+    fun implemented(attendance: Boolean, actions: Boolean = false): List<String> =
+        HomeTile.entries.filter { (attendance || it != HomeTile.ATTENDANCE) && (actions || it != HomeTile.ACTIONS) }.map { it.navKey }
 
     private val byKey = catalogue.associateBy { it.key }
 

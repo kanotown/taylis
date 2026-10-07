@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M143 (docs/ACTIONS.md §9): 操作按钮, Simplified Chinese (the desktop / Web words). -->
+<resources>
+    <string name="actions_nav">操作</string>
+    <string name="actions_title">%1$s：%2$s</string>
+    <string name="actions_confirm">要执行 %1$s 吗？</string>
+    <string name="actions_run">执行</string>
+    <string name="actions_sending">发送中</string>
+    <string name="actions_done">已执行 %1$s</string>
+    <string name="actions_page_none">没有可以按的按钮。</string>
+    <string name="actions_error_timeout">设备（或其集线器）没有响应。无法确定是否已执行，请确认状态。</string>
+    <string name="actions_error_unreachable">无法连接到设备（或其集线器）。它可能已离线。</string>
+    <string name="actions_error_interrupted">请求中途中断。无法确定是否已执行，请确认状态。</string>
+    <string name="actions_error_setup">此按钮的设置有问题。请联系管理员。</string>
+    <string name="actions_error_relay">无法执行（HTTP %1$s）。</string>
+    <string name="actions_error_pending">仍在处理中。请稍后确认状态。</string>
+    <string name="actions_error_failed">无法执行。</string>
+    <string name="actions_error_too_fast">请稍等片刻再按。</string>
+</resources>

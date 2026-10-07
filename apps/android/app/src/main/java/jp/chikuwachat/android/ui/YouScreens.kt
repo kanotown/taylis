@@ -648,7 +648,10 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
     val stored = me.navItems
     val full = NavItems.full(stored)
     // M140: 「在室状況」 is listed only while the workspace has the board on.
-    val implemented = NavItems.implemented(attendance = AttendanceRules.shown(controller.store.attendance, me.role))
+    val implemented = NavItems.implemented(
+        attendance = AttendanceRules.shown(controller.store.attendance, me.role),
+        actions = ActionRules.shown(controller.store.actions, me.role), // M143
+    )
     val shown = NavItems.shown(full, implemented = implemented)
     var saving by remember { mutableStateOf(false) }
     var reordering by rememberSaveable { mutableStateOf(false) }
