@@ -329,6 +329,68 @@ def _refs_for(rows: Iterable[RowOut], cells: Cells) -> list[RowRef]:
 # --- the database --------------------------------------------------------------------------------
 
 
+def _relation_values(
+    record: WikiDatabase,
+) -> list[tuple[dict[str, Any], int, uuid.UUID]]:
+    """(view, condition index, row id) of every saved relation condition naming a row."""
+    props = ds.props_by_id(record.schema_doc)
+    found: list[tuple[dict[str, Any], int, uuid.UUID]] = []
+    for view in record.views:
+        for index, cond in enumerate((view.get("filter") or {}).get("conditions") or []):
+            if props.get(cond.get("prop_id"), {}).get("type") != "relation":
+                continue
+            try:
+                found.append((view, index, uuid.UUID(str(cond.get("value")))))
+            except ValueError:
+                continue
+    return found
+
+
+async def _views_out(db: AsyncSession, actor: User, record: WikiDatabase) -> list[ViewOut]:
+    """The saved views as this person reads them (REVIEW-v0.1.43 #2, WIKI.md §5.7): a relation
+    condition on a row they cannot read (or one in the trash, or gone) shows the marker
+    "restricted:<index>" instead of the row's id. The stored view keeps the id (the condition
+    still applies, and a re-save with the marker keeps it: put_view)."""
+    values = _relation_values(record)
+    readable, _ = await _visibility(db, actor, (row_id for _, _, row_id in values))
+    masked: dict[tuple[str, int], str] = {
+        (view["id"], index): f"{ds.RESTRICTED}{index}"
+        for view, index, row_id in values
+        if row_id not in readable
+    }
+    out: list[ViewOut] = []
+    for view in record.views:
+        doc = view
+        if any(key[0] == view["id"] for key in masked):
+            doc = copy.deepcopy(view)
+            for index, cond in enumerate(doc["filter"]["conditions"]):
+                marker = masked.get((view["id"], index))
+                if marker is not None:
+                    cond["value"] = marker
+        out.append(ViewOut(**doc))
+    return out
+
+
+def _keep_restricted(doc: dict[str, Any], stored: Mapping[str, Any] | None) -> None:
+    """A saved view comes back with the markers its saver was shown: each takes the row id of
+    the stored view's condition it names (same property), so a re-save by someone who cannot
+    read that row keeps the condition as it was. A marker that names nothing is refused."""
+    stored_conditions = ((stored or {}).get("filter") or {}).get("conditions") or []
+    for cond in (doc.get("filter") or {}).get("conditions") or []:
+        value = cond.get("value")
+        if not ds.is_restricted(value):
+            continue
+        index = ds.restricted_index(value)
+        if index is None or index >= len(stored_conditions):
+            raise invalid_view("A restricted filter value names no saved condition")
+        original = stored_conditions[index]
+        if original.get("prop_id") != cond.get("prop_id") or ds.is_restricted(
+            original.get("value")
+        ):
+            raise invalid_view("A restricted filter value names no saved condition")
+        cond["value"] = original.get("value")
+
+
 async def _database_out(
     db: AsyncSession, actor: User, record: WikiDatabase, rank: int
 ) -> DatabaseOut:
@@ -376,7 +438,7 @@ async def _database_out(
         page_id=record.page_id,
         schema_version=record.schema_version,
         properties=out,
-        views=[ViewOut(**v) for v in record.views],
+        views=await _views_out(db, actor, record),
         my_level=level_name(rank),
         row_count=await _row_count(db, record.page_id),
         limits=LIMITS,
@@ -1379,6 +1441,7 @@ async def put_view(
     page, _, rank = await _load_database(db, actor, database_id, "full")
     record = (await _lock_records(db, [page.id], share=False))[page.id]
     doc = ds.view_doc(view_id.lower(), data.model_dump(mode="json"))
+    _keep_restricted(doc, next((v for v in record.views if v["id"] == doc["id"]), None))
     try:
         ds.check_view(record.schema_doc, doc)
     except ds.InvalidView as exc:

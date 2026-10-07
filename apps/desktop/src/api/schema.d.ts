@@ -8406,6 +8406,11 @@ export interface components {
          * @description One condition. value: text (contains…), a number (gt…), an option id (select), a user
          *     id or "me" (person), a row id (relation), true / false (checkbox), "YYYY-MM-DD" (date), or
          *     {"start", "end"} dates (between). is_empty / is_not_empty take none.
+         *
+         *     Relation: a saved view's condition on a row the reader cannot read comes as
+         *     "restricted:<n>" (n: the condition's index in the saved view) instead of the row id
+         *     (WIKI.md §5.7). Clients show it as an unreadable row and send it back unchanged: saving the
+         *     view keeps the hidden row id; in a query it matches like an unreadable row (nothing).
          */
         FilterCondition: {
             /**
