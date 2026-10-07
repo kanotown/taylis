@@ -6,6 +6,7 @@ from app.core.db import Db
 from app.modules.activity import service
 from app.modules.activity.schemas import (
     ActivityFilter,
+    ActivityItemsReadIn,
     ActivityListOut,
     ActivityReadIn,
     ActivitySummaryOut,
@@ -62,3 +63,16 @@ async def mark_activity_read(
     """Everything up to `read_at` is read (it only moves forward); every kind shares the one
     position."""
     return await service.mark_read(db, user, body.read_at, include)
+
+
+@router.put("/activity/items/read", response_model=ActivitySummaryOut)
+async def mark_activity_items_read(
+    user: CurrentUser,
+    body: ActivityItemsReadIn,
+    db: Db,
+    include: list[str] = Include,
+) -> ActivitySummaryOut:
+    """I opened these items (their `id` in GET /activity): each is read until it happens again (a
+    newer reaction to the message). Idempotent; ids that are not my items are ignored
+    (MOBILE_UI.md §6.4, 2026-10-07)."""
+    return await service.mark_items_read(db, user, body.item_ids, include)

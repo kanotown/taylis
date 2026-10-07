@@ -1,16 +1,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, exists, func, not_, or_, select
+from sqlalchemy import ColumnElement, and_, delete, exists, func, not_, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.modules.activity.models import CanvasMention
+from app.modules.activity.models import ActivityItemRead, CanvasMention, item_read
 from app.modules.canvases.models import Canvas
 from app.modules.channels.models import ChannelMember
 from app.modules.messages.models import Message, Reaction, mentions_of, timeline_filter
 from app.modules.moderation.blocks import not_blocked_by
 from app.modules.reads.models import ReadState
+from app.modules.reservations.models import ReservationNotice
 from app.modules.reservations.repository import unread_notices
 from app.modules.threads.models import ThreadFollow
 from app.modules.users.models import User
@@ -175,7 +177,7 @@ async def unread_page_notices(
         select(func.count()).select_from(
             _page_notices(actor, kinds)
             .with_only_columns(WikiNotice.id)
-            .where(WikiNotice.at > since)
+            .where(WikiNotice.at > since, ~item_read(actor.id, WikiNotice.id, WikiNotice.at))
             .limit(UNREAD_CAP)
             .subquery()
         )
@@ -234,7 +236,8 @@ async def unread(
     reservation: bool = False,
 ) -> tuple[int, bool]:
     """(items after `since`, capped; whether a mention is among them). Mentions and thread replies
-    count only while their message is unread in its conversation too (`read_by`, 2026-10-06).
+    count only while their message is unread in its conversation too (`read_by`, 2026-10-06);
+    no item counts once opened (`item_read`, 2026-10-07).
     `canvas`: canvas mention
     items count too (M76), as mentions. `reservation`: reservation notices not done (M112), as
     mentions too (they are addressed to me)."""
@@ -242,7 +245,11 @@ async def unread(
         select(func.count()).select_from(
             _mentions(user_id)
             .with_only_columns(Message.id)
-            .where(Message.created_at > since, not_(read_by(user_id)))
+            .where(
+                Message.created_at > since,
+                not_(read_by(user_id)),
+                not_(item_read(user_id, Message.id, Message.created_at)),
+            )
             .limit(UNREAD_CAP)
             .subquery()
         )
@@ -258,6 +265,7 @@ async def unread(
                 Message.created_at > since,
                 Message.seq > ThreadFollow.last_read_seq,
                 not_(read_by(user_id)),
+                not_(item_read(user_id, Message.id, Message.created_at)),
             )
             .limit(UNREAD_CAP)
             .subquery()
@@ -265,7 +273,11 @@ async def unread(
     )
     stmt, at = _reactions(user_id)
     reaction_count = await db.scalar(
-        select(func.count()).select_from(stmt.having(at > since).limit(UNREAD_CAP).subquery())
+        select(func.count()).select_from(
+            stmt.having(at > since, not_(item_read(user_id, Reaction.message_id, at)))
+            .limit(UNREAD_CAP)
+            .subquery()
+        )
     )
     canvas_count = 0
     if canvas:
@@ -274,7 +286,10 @@ async def unread(
                 select(func.count()).select_from(
                     _canvas_mentions(user_id)
                     .with_only_columns(CanvasMention.id)
-                    .where(CanvasMention.at > since)
+                    .where(
+                        CanvasMention.at > since,
+                        not_(item_read(user_id, CanvasMention.id, CanvasMention.at)),
+                    )
                     .limit(UNREAD_CAP)
                     .subquery()
                 )
@@ -294,3 +309,76 @@ async def unread(
     mentioned = (mention_count or 0) + canvas_count + reservation_count
     total = mentioned + (reply_count or 0) + (reaction_count or 0)
     return min(total, UNREAD_CAP), mentioned > 0
+
+
+async def opened(
+    db: AsyncSession, user_id: uuid.UUID, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, datetime]:
+    """2026-10-07: when the user last opened these items (those opened at all), one query."""
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(ActivityItemRead.item_id, ActivityItemRead.read_at).where(
+            ActivityItemRead.user_id == user_id, ActivityItemRead.item_id.in_(ids)
+        )
+    )
+    return {row.item_id: row.read_at for row in rows}
+
+
+async def own_items(
+    db: AsyncSession, actor: User, ids: list[uuid.UUID], since: datetime
+) -> list[uuid.UUID]:
+    """Which of these ids name an activity item of the user that may still be unread: a message in
+    a conversation they are in (mention / thread_reply after `since`, or their own message: a
+    reaction item, whose time is its newest reaction's), or one of their canvas mentions, wiki
+    notices or reservation notices after `since`. Anything else is not stored."""
+    if not ids:
+        return []
+    found: set[uuid.UUID] = set(
+        (
+            await db.execute(
+                select(Message.id)
+                .join(ChannelMember, _member(actor.id))
+                .where(
+                    Message.id.in_(ids),
+                    or_(Message.sender_id == actor.id, Message.created_at > since),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for id_col, user_col, at_col in (
+        (CanvasMention.id, CanvasMention.user_id, CanvasMention.at),
+        (WikiNotice.id, WikiNotice.user_id, WikiNotice.at),
+        (ReservationNotice.id, ReservationNotice.user_id, ReservationNotice.at),
+    ):
+        stmt = select(id_col).where(id_col.in_(ids), user_col == actor.id, at_col > since)
+        found |= set((await db.execute(stmt)).scalars().all())
+    return [i for i in ids if i in found]
+
+
+async def open_items(
+    db: AsyncSession, user_id: uuid.UUID, ids: list[uuid.UUID], at: datetime
+) -> None:
+    """Marks the items opened at `at` (a later time only moves it forward)."""
+    if not ids:
+        return
+    stmt = insert(ActivityItemRead).values(
+        [{"user_id": user_id, "item_id": i, "read_at": at} for i in ids]
+    )
+    await db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[ActivityItemRead.user_id, ActivityItemRead.item_id],
+            set_={"read_at": func.greatest(ActivityItemRead.read_at, stmt.excluded.read_at)},
+        )
+    )
+
+
+async def purge_opened(db: AsyncSession, user_id: uuid.UUID, upto: datetime) -> None:
+    """The read position moved to `upto`: rows at or below it say nothing more."""
+    await db.execute(
+        delete(ActivityItemRead).where(
+            ActivityItemRead.user_id == user_id, ActivityItemRead.read_at <= upto
+        )
+    )

@@ -10,12 +10,12 @@ import uuid
 from collections.abc import Iterable
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import not_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.outbox import write_outbox
 from app.modules.activity.events import ACTIVITY_UPDATED, ActivityUpdatedData
-from app.modules.activity.models import CanvasMention
+from app.modules.activity.models import CanvasMention, item_read
 from app.modules.messages.mentions import MENTION_GROUP, MENTION_USER, notification_text
 
 EXCERPT_LENGTH = 200
@@ -72,13 +72,15 @@ async def record(
     at: datetime,
 ) -> None:
     """The person's item for this canvas: their unread one moves (one item per canvas while
-    unread), else a new one. Saves of one canvas are serialised by its row lock."""
+    unread; one opened is read, 2026-10-07), else a new one. Saves of one canvas are serialised
+    by its row lock."""
     unread = await db.scalar(
         select(CanvasMention)
         .where(
             CanvasMention.user_id == user_id,
             CanvasMention.canvas_id == canvas_id,
             CanvasMention.at > read_at,
+            not_(item_read(user_id, CanvasMention.id, CanvasMention.at)),
         )
         .order_by(CanvasMention.at.desc())
         .limit(1)

@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Text, func, text
+from sqlalchemy import ColumnElement, DateTime, ForeignKey, Index, Text, exists, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -37,4 +38,30 @@ class CanvasMention(Base):
     __table_args__ = (
         Index("canvas_mentions_user_idx", "user_id", text("at DESC")),
         Index("canvas_mentions_canvas_idx", "canvas_id", "user_id"),
+    )
+
+
+class ActivityItemRead(Base):
+    """2026-10-07 (MOBILE_UI.md §6.4): an activity item I opened, by its id in GET /activity. Read
+    while the item's `at` is not after read_at. Kept only above users.activity_read_at: moving it
+    deletes the rows at or below it."""
+
+    __tablename__ = "activity_item_reads"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+
+def item_read(user_id: uuid.UUID, item_id: Any, at: Any) -> ColumnElement[bool]:
+    """The activity item (`item_id`, last happened `at`: expressions of the outer query) was
+    opened by the user since (2026-10-07)."""
+    return exists().where(
+        ActivityItemRead.user_id == user_id,
+        ActivityItemRead.item_id == item_id,
+        ActivityItemRead.read_at >= at,
     )

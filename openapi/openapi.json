@@ -295,6 +295,11 @@
             "title": "Emojis",
             "type": "array"
           },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "mention",
@@ -351,11 +356,31 @@
           }
         },
         "required": [
+          "id",
           "kind",
           "at",
           "actor_ids"
         ],
         "title": "ActivityItem",
+        "type": "object"
+      },
+      "ActivityItemsReadIn": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "ActivityItemsReadIn",
         "type": "object"
       },
       "ActivityListOut": {
@@ -18421,6 +18446,70 @@
           }
         ],
         "summary": "List Activity",
+        "tags": [
+          "activity"
+        ]
+      }
+    },
+    "/api/v1/activity/items/read": {
+      "put": {
+        "description": "I opened these items (their `id` in GET /activity): each is read until it happens again (a\nnewer reaction to the message). Idempotent; ids that are not my items are ignored\n(MOBILE_UI.md §6.4, 2026-10-07).",
+        "operationId": "mark_activity_items_read_api_v1_activity_items_read_put",
+        "parameters": [
+          {
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityItemsReadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivitySummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark Activity Items Read",
         "tags": [
           "activity"
         ]
