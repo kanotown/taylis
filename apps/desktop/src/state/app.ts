@@ -1461,6 +1461,23 @@ export class AppController {
     }
   }
 
+  /**
+   * 2026-10-07 (MOBILE_UI.md §6.4): the activity items opened (a row clicked): read until they happen again. Their dots
+   * go at once; the badge takes the server's answer; my other devices follow through activity.items_read. Items without
+   * an `id` (a server before it) are left to the read position.
+   */
+  async markActivityItemsRead(items: readonly { id?: string | null; at: string }[]): Promise<boolean> {
+    const engine = this.engine;
+    const opened = items.filter((item): item is { id: string; at: string } => !!item.id);
+    if (!engine || opened.length === 0) return false;
+    try {
+      return await engine.markActivityItemsRead(opened);
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   /** M11d: profile card fields (title, custom status). Null clears; omitted fields keep their value. */
   async updateProfile(patch: UserUpdate): Promise<boolean> {
     if (!this.api) return false;

@@ -311,9 +311,12 @@ export type TemplateUpdate = components["schemas"]["TemplateUpdate"];
  * Activity, stage B (M39, MOBILE_UI.md §6.4 / §7.2): mentions of me, reactions to my messages (one item per message) and
  * replies in threads I follow, newest first, with one read position per person (`read_at`, only moves forward).
  */
-export type ActivityItem = components["schemas"]["ActivityItem"];
+export type ActivityItem = Omit<components["schemas"]["ActivityItem"], "id"> & {
+  /** 2026-10-07: what PUT /activity/items/read takes; absent from a server before it (the item cannot be opened as read). */
+  id?: string;
+};
 export type ActivityKind = ActivityItem["kind"];
-export type ActivityListOut = components["schemas"]["ActivityListOut"];
+export type ActivityListOut = Omit<components["schemas"]["ActivityListOut"], "items"> & { items: ActivityItem[] };
 export type ActivitySummaryOut = components["schemas"]["ActivitySummaryOut"];
 export type ActivityFilter = "all" | "mentions" | "reactions" | "threads";
 /** reaction.added (audience = the message's author): someone reacted to my message. */
