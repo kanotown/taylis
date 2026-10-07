@@ -5,7 +5,7 @@
  *
  * - Markdown → document reads the body with the renderer's own parser (markdown.ts `parseBlocks`), so the editor shows
  *   what the message shows. One body line is one paragraph (an empty paragraph is an empty line), a quote holds one
- *   paragraph per line, list items nest by level, a table is a raw Markdown block (edited as text). TeX math
+ *   paragraph per line and its lists, list items nest by level, a table is a raw Markdown block (edited as text). TeX math
  *   (apps/shared/math.json) keeps its source: an inline `$…$` / `$$…$$` is text with the `math` mark (its TeX, written
  *   back between its dollars as it was), a display block is a raw Markdown block.
  * - Document → Markdown writes the dialect: `**bold**`, `_italic_`, `~~strike~~`, `` `code` ``, `[label](url)` (a URL
@@ -63,7 +63,8 @@ function blockNodes(block: Block): RichNode[] {
     case "heading":
       return [{ type: "heading", attrs: { level: block.level }, ...withContent(inlineNodes(block.tokens, false)) }];
     case "quote":
-      return [{ type: "blockquote", content: block.lines.map((line) => paragraph(inlineNodes(line, false))) }];
+      // One paragraph per quoted line; a quoted list (apps/shared/lists.json `quoted`) is a list inside the quote.
+      return [{ type: "blockquote", content: block.blocks.flatMap((inner) => (inner.kind === "list" ? listNodes(inner.items, 0, 0).nodes : inner.lines.map((line) => paragraph(inlineNodes(line, false))))) }];
     case "list":
       return listNodes(block.items, 0, 0).nodes;
     case "codeblock":
@@ -192,9 +193,14 @@ export function docToMarkdown(doc: RichNode): string {
       }
       case "blockquote":
         for (const child of block.content ?? []) {
+          if (child.type === "bulletList" || child.type === "orderedList") {
+            for (const text of listLines(child, 0)) lines.push({ text: `> ${text}`, paragraph: false });
+            continue;
+          }
           for (const line of splitLines(child.type === "paragraph" ? child.content : [{ type: "text", text: plainOf(child) }])) {
             const text = serializeLine(line);
-            lines.push({ text: text ? `> ${text}` : ">", paragraph: false });
+            // A quoted line typed as "- " / "1. " text stays text (the renderer reads quoted lists too).
+            lines.push({ text: text ? `> ${BULLET.test(text) || NUMBERED.test(text) ? ZWSP + text : text}` : ">", paragraph: false });
           }
         }
         break;

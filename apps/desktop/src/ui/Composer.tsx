@@ -1,6 +1,6 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
-import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut, WorkflowOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -28,10 +28,9 @@ import { slotsFromEntries } from "./scheduling";
 import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSchedule, scheduleUsage, templateCandidates, templateSummary, templateWithText } from "./templates";
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
+import { OverflowToolbar } from "./OverflowToolbar";
 
 const MAX_LENGTH = 20_000;
-/** Bold, italic, strikethrough, code, code block: always on the formatting bar. */
-const PRIMARY_TOOLS = 5;
 
 export function Composer({
   controller,
@@ -144,7 +143,6 @@ export function Composer({
   const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : slashHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
   // The poll form, and the scheduling poll's form with what it starts with (M53: `/日程 …` fills it in).
   const [pollForm, setPollForm] = useState<{ question?: string; options?: string[]; multiple?: boolean } | null>(null);
@@ -395,8 +393,7 @@ export function Composer({
     writeFormatBar(!formatBar);
     setFormatBar(!formatBar);
   };
-  // The first PRIMARY_TOOLS always show; the rest fold into 「その他の書式」 when the composer is narrow. `group`
-  // starts a group after a divider.
+  // The ones that do not fit fold into 「その他の書式」 (OverflowToolbar); `group` starts a group after a divider.
   const format = (name: RichFormat, markdown: () => void) => () => {
     const rich = editor();
     if (rich) rich.run(name);
@@ -701,54 +698,19 @@ export function Composer({
       )}
       {/* Sized by the composer, not the window: a thread pane or a narrow window folds what does not fit; no row wraps. */}
       <div className="@container rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
-        {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. Every
-            tool shows from 27rem: the tools and 「Aa | M↓」 take about 26rem, so a narrower bar (the default thread
-            pane) folds them; at 22rem the mode switch stuck out of the frame (2026-10-06). */}
+        {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. The tools
+            that fit the composer show and the rest fold into 「…」 (OverflowToolbar, measured: 2026-10-08), the mode
+            switch always at the end. */}
         {formatBar && (
-          <div className="flex items-center gap-0.5 px-2 pt-1.5" aria-label={t("composer.formatting")}>
-            {tools.map((tool, index) => (
-              <Fragment key={tool.label}>
-                {tool.group && <span className={cn("mx-1 h-4 w-px shrink-0 bg-line", index >= PRIMARY_TOOLS && "hidden @[27rem]:block")} />}
-                <IconButton
-                  label={tool.label}
-                  aria-pressed={rich ? !!tool.active : undefined}
-                  className={cn("h-7 w-7 shrink-0 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @[27rem]:inline-flex", rich && tool.active && "bg-accent-soft text-accent")}
-                  disabled={preview}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={tool.run}
-                >
-                  {tool.icon}
-                </IconButton>
-              </Fragment>
-            ))}
-            <PopoverRoot open={moreToolsOpen} onOpenChange={setMoreToolsOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" title={t("composer.moreFormatting")} aria-label={t("composer.moreFormatting")} disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @[27rem]:hidden">
-                  <Ellipsis size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-1.5" onOpenAutoFocus={(e) => e.preventDefault()}>
-                <div className="flex gap-0.5">
-                  {tools.slice(PRIMARY_TOOLS).map((tool) => (
-                    <IconButton
-                      key={tool.label}
-                      label={tool.label}
-                      aria-pressed={rich ? !!tool.active : undefined}
-                      className={cn("h-8 w-8 text-muted hover:text-ink", rich && tool.active && "bg-accent-soft text-accent")}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        tool.run();
-                        setMoreToolsOpen(false);
-                      }}
-                    >
-                      {tool.icon}
-                    </IconButton>
-                  ))}
-                </div>
-              </PopoverContent>
-            </PopoverRoot>
-            <ModeSwitch rich={rich} onSwitch={switchMode} />
-          </div>
+          <OverflowToolbar
+            role="group"
+            tools={tools.map((tool) => ({ ...tool, active: rich ? !!tool.active : undefined, disabled: preview }))}
+            label={t("composer.formatting")}
+            className="px-2 pt-1.5"
+            buttonClassName="h-7 w-7 shrink-0 text-muted hover:text-ink"
+            activeClassName="bg-accent-soft text-accent"
+            trailing={<ModeSwitch rich={rich} onSwitch={switchMode} />}
+          />
         )}
         {linkEdit && (
           <form

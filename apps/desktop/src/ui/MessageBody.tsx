@@ -111,7 +111,14 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
       );
     }
     case "quote":
-      return <blockquote className="my-1 border-l-[3px] border-line pl-3 text-muted">{lines(block.lines, users, options)}</blockquote>;
+      // 2026-10-08: its lines are paragraphs and lists (apps/shared/lists.json `quoted`), drawn as outside a quote.
+      return (
+        <blockquote className="my-1 border-l-[3px] border-line pl-3 text-muted">
+          {block.blocks.map((inner, i) => (
+            <BlockView key={i} block={inner} users={users} options={options} />
+          ))}
+        </blockquote>
+      );
     case "list":
       return <ListView groups={listGroups(block.items)} users={users} options={options} top />;
     case "table":

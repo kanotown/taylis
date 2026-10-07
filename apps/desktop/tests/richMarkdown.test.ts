@@ -37,7 +37,7 @@ function rendered(body: string): unknown {
       case "paragraph":
         return ["p", block.lines.map(line)];
       case "quote":
-        return ["quote", block.lines.map(line)];
+        return ["quote", block.blocks.map((inner) => (inner.kind === "list" ? ["list", inner.items.map((item) => [item.level, item.marker, tokens(item.tokens)])] : ["p", inner.lines.map(line)]))];
       case "heading":
         return ["h", block.level, tokens(block.tokens)];
       case "list":
@@ -60,6 +60,7 @@ const samples: string[] = [
   ...shared("inline-format.json").cases.map((c: { line: string }) => c.line),
   ...shared("inline-format.json").code_blocks.map((c: { body: string }) => c.body),
   ...shared("lists.json").cases.map((c: { body: string }) => c.body),
+  ...shared("lists.json").quoted.map((c: { body: string }) => c.body),
   ...shared("body-paragraphs.json").cases.map((c: { body: string }) => c.body),
   ...shared("math.json").inline.map((c: { line: string }) => c.line),
   ...shared("math.json").blocks.map((c: { body: string }) => c.body),
@@ -147,8 +148,12 @@ describe("rich composer serialisation", () => {
       expect(out).toBe(ZWSP + line);
       expect(parseBlocks(out)[0]!.kind).toBe("paragraph");
     }
-    // Inside a quote, a list item or a heading the renderer reads the text inline: nothing added.
-    expect(docToMarkdown(doc({ type: "blockquote", content: [p(text("- x"))] }))).toBe("> - x");
+    // Inside a quote the renderer reads lists too (apps/shared/lists.json `quoted`): a typed marker stays text.
+    expect(docToMarkdown(doc({ type: "blockquote", content: [p(text("- x"))] }))).toBe("> " + ZWSP + "- x");
+    expect(docToMarkdown(doc({ type: "blockquote", content: [p(text("> x"))] }))).toBe("> > x");
+    // A list in a quote is written as a quoted list.
+    expect(docToMarkdown(doc({ type: "blockquote", content: [p(text("q")), { type: "bulletList", content: [{ type: "listItem", content: [p(text("x"))] }] }] }))).toBe("> q\n> - x");
+    // In a list item or a heading the renderer reads the text inline: nothing added.
     expect(docToMarkdown(doc({ type: "bulletList", content: [{ type: "listItem", content: [p(text("> y"))] }] }))).toBe("- > y");
   });
 

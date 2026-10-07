@@ -47,7 +47,7 @@ describe("light markdown blocks", () => {
       ],
     });
     expect(blocks[2]).toMatchObject({ kind: "list", ordered: true, start: 1 });
-    expect(blocks[3]).toEqual({ kind: "quote", lines: [[{ kind: "text", text: "quoted " }, { kind: "italic", text: "q" }], [{ kind: "text", text: "more" }]] });
+    expect(blocks[3]).toEqual({ kind: "quote", blocks: [{ kind: "paragraph", lines: [[{ kind: "text", text: "quoted " }, { kind: "italic", text: "q" }], [{ kind: "text", text: "more" }]] }] });
     expect(blocks[4]).toEqual({ kind: "codeblock", text: "const x = 1;", lang: "ts" });
     expect(blocks[5]).toEqual({
       kind: "paragraph",
