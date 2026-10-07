@@ -3385,6 +3385,18 @@
             ],
             "title": "Emoji"
           },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
           "kind": {
             "enum": [
               "in_room",
@@ -3458,6 +3470,17 @@
             ],
             "title": "Emoji"
           },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -3498,6 +3521,7 @@
           "id",
           "owner_id",
           "label",
+          "icon",
           "emoji",
           "color",
           "kind",
@@ -3509,7 +3533,7 @@
       },
       "AttendanceStateUpdate": {
         "additionalProperties": false,
-        "description": "Only what is sent changes; `emoji: null` removes the emoji.",
+        "description": "Only what is sent changes; `emoji: null` / `icon: null` removes the emoji / icon.",
         "properties": {
           "color": {
             "anyOf": [
@@ -3543,6 +3567,18 @@
               }
             ],
             "title": "Emoji"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "kind": {
             "anyOf": [

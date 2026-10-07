@@ -6575,6 +6575,8 @@ export interface components {
             color: "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink";
             /** Emoji */
             emoji?: string | null;
+            /** Icon */
+            icon?: string | null;
             /**
              * Kind
              * @enum {string}
@@ -6599,6 +6601,8 @@ export interface components {
             color: "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink";
             /** Emoji */
             emoji: string | null;
+            /** Icon */
+            icon: string | null;
             /**
              * Id
              * Format: uuid
@@ -6618,13 +6622,15 @@ export interface components {
         };
         /**
          * AttendanceStateUpdate
-         * @description Only what is sent changes; `emoji: null` removes the emoji.
+         * @description Only what is sent changes; `emoji: null` / `icon: null` removes the emoji / icon.
          */
         AttendanceStateUpdate: {
             /** Color */
             color?: ("gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink") | null;
             /** Emoji */
             emoji?: string | null;
+            /** Icon */
+            icon?: string | null;
             /** Kind */
             kind?: ("in_room" | "on_site" | "off_site" | "gone") | null;
             /** Label */

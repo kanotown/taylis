@@ -65,12 +65,14 @@ from app.modules.users.models import User
 MAX_WORKSPACE_STATES = 20
 MAX_PERSONAL_STATES = 10
 KIND_ORDER: tuple[Kind, ...] = ("in_room", "on_site", "off_site", "gone")
-# The states made when the board is first enabled (docs/PRESENCE.md §1): kind, emoji, colour.
-DEFAULT_STATES: tuple[tuple[Kind, str, str], ...] = (
-    ("in_room", "🟢", "green"),
-    ("on_site", "🏫", "blue"),
-    ("off_site", "🚶", "orange"),
-    ("gone", "🏠", "gray"),
+# The states made when the board is first enabled (docs/PRESENCE.md §1): kind, icon
+# (apps/shared/attendance-icons.json "defaults"), emoji (the fallback for clients without the
+# icons), colour.
+DEFAULT_STATES: tuple[tuple[Kind, str, str, str], ...] = (
+    ("in_room", "in_room", "🟢", "green"),
+    ("on_site", "on_site", "🏫", "blue"),
+    ("off_site", "off_site", "🚶", "purple"),
+    ("gone", "gone", "🏠", "red"),
 )
 # How far back an outside system may date a change (docs/PRESENCE.md §6).
 INBOUND_MAX_AGE = timedelta(hours=24)
@@ -172,11 +174,12 @@ def _same_label(a: str, b: str) -> bool:
 
 async def _seed_defaults(db: AsyncSession, locale: str | None) -> None:
     now = utcnow()
-    for position, (kind, emoji, color) in enumerate(DEFAULT_STATES):
+    for position, (kind, icon, emoji, color) in enumerate(DEFAULT_STATES):
         db.add(
             AttendanceState(
                 owner_id=None,
                 label=i18n.t(f"attendance.default.{kind}", locale),
+                icon=icon,
                 emoji=emoji,
                 color=color,
                 kind=kind,
@@ -455,6 +458,7 @@ async def create_mine(
     row = AttendanceState(
         owner_id=actor.id,
         label=data.label,
+        icon=data.icon,
         emoji=data.emoji,
         color=data.color,
         kind=data.kind,
@@ -474,6 +478,8 @@ def _apply_update(row: AttendanceState, data: AttendanceStateUpdate) -> None:
         row.label = data.label
     if "emoji" in data.model_fields_set:
         row.emoji = data.emoji
+    if "icon" in data.model_fields_set:
+        row.icon = data.icon
     if data.color is not None:
         row.color = data.color
     if data.kind is not None:
@@ -597,6 +603,7 @@ async def create_state(
     row = AttendanceState(
         owner_id=None,
         label=data.label,
+        icon=data.icon,
         emoji=data.emoji,
         color=data.color,
         kind=data.kind,
@@ -612,7 +619,7 @@ async def create_state(
         action="attendance.state_created",
         target_type="attendance_state",
         target_id=row.id,
-        details={"label": row.label, "kind": row.kind},
+        details={"label": row.label, "kind": row.kind, "icon": row.icon},
     )
     await _config_changed(db)
     await db.commit()
