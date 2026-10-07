@@ -18,6 +18,22 @@ final class UpsideDownTests: XCTestCase {
         XCTAssertEqual(UpsideDown.arrival(atNewest: false, mine: false), .stay)
     }
 
+    /// A thread's new reply is animated in only at the newest edge, once placed: animated while older replies were read,
+    /// the insertion moved the row being read by the new reply's height (84 pt; 0 pt unanimated).
+    func testThreadArrivalIsAnimatedOnlyAtTheNewestEdge() {
+        XCTAssertNotNil(UpsideDown.arrivalAnimation(atNewest: true, placed: true))
+        XCTAssertNil(UpsideDown.arrivalAnimation(atNewest: false, placed: true))
+        XCTAssertNil(UpsideDown.arrivalAnimation(atNewest: true, placed: false))
+    }
+
+    /// iOS 17, a thread's marker laid out once: at the newest row while the marker is within nearNewest under the bottom.
+    func testMarkerSaysNewestWithinNearNewestOfTheBottom() {
+        XCTAssertTrue(UpsideDown.markerNear(markerMinY: 591, viewportHeight: 600)) // at the origin (8 pt padding)
+        XCTAssertTrue(UpsideDown.markerNear(markerMinY: 600 + UpsideDown.nearNewest, viewportHeight: 600))
+        XCTAssertFalse(UpsideDown.markerNear(markerMinY: 600 + UpsideDown.nearNewest + 1, viewportHeight: 600))
+        XCTAssertFalse(UpsideDown.markerNear(markerMinY: 2_000, viewportHeight: 600)) // reading far up
+    }
+
     /// The thread's jump button counts like the channel's: replies from others after the newest one seen at the edge.
     func testThreadJumpButtonCountsRepliesFromOthersBelow() {
         func reply(_ seq: Int, _ sender: String) -> MessageState {

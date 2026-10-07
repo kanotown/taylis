@@ -39,6 +39,19 @@ enum UpsideDown {
         return mine ? .jump : .stay
     }
 
+    /// How a new newest row goes in (a thread): moving up with the others at the newest edge once the list is placed; at
+    /// once while older rows are read, where an animated insertion moved the row being read by the new row's height
+    /// (`scrollPosition(id:)` in a plain VStack keeps it only unanimated; iOS 26, 2026-10-07).
+    static func arrivalAnimation(atNewest: Bool, placed: Bool) -> Animation? {
+        atNewest && placed ? .easeOut(duration: 0.25) : nil
+    }
+
+    /// iOS 17, a marker laid out once (a plain VStack): whether the newest edge's marker, at `markerMinY` on screen, says
+    /// the list is at its newest row (within `nearNewest` under the viewport's bottom, as the scroll geometry on iOS 18).
+    static func markerNear(markerMinY: CGFloat, viewportHeight: CGFloat) -> Bool {
+        markerMinY <= viewportHeight + nearNewest
+    }
+
     /// Takes the list to its newest edge at once (my post, the jump button) and keeps it there: the kept row becomes the
     /// edge's marker. A `scrollTo` alone left the kept row where the reader had been.
     @MainActor
@@ -99,13 +112,22 @@ private struct NewestEdgeDetector: ViewModifier {
     }
 }
 
-/// The marker at the newest edge; on iOS 17 its appearing is what says the list is there.
+/// The marker at the newest edge; on iOS 17 its appearing is what says the list is there (a LazyVStack makes it only
+/// near the screen). A plain VStack (a thread's rows) makes it once, on screen or not: there `placed` gives the coordinate
+/// space outside the flip and the viewport's height, and on iOS 17 it says so from where it is on screen.
 struct NewestEdgeMarker: View {
+    var placed: (space: String, viewportHeight: CGFloat)?
     let action: (Bool) -> Void
 
     var body: some View {
         Color.clear.frame(height: 1).id(UpsideDown.newest)
-            .onAppear { if #unavailable(iOS 18.0) { action(true) } }
+            .onAppear { if #unavailable(iOS 18.0), placed == nil { action(true) } }
             .onDisappear { if #unavailable(iOS 18.0) { action(false) } }
+            .onGeometryChange(for: Bool.self) { geometry in
+                guard let placed else { return false }
+                return UpsideDown.markerNear(markerMinY: geometry.frame(in: .named(placed.space)).minY, viewportHeight: placed.viewportHeight)
+            } action: { near in
+                if #unavailable(iOS 18.0), placed != nil { action(near) }
+            }
     }
 }
