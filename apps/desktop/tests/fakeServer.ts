@@ -336,10 +336,20 @@ export class FakeServer {
     return { unread_count: states.filter((s) => s.unread_count > 0).length, mention_count: states.filter((s) => s.mention_count > 0).length };
   }
 
+  /** false: answer GET /threads as a server before the reply previews did. */
+  threadPreviews = true;
+
   threads(userId: string, filter: ThreadFilter, cursor: string | null, limit: number): ThreadListOut {
     let items = [...this.threadFollows.values()]
       .filter((f) => f.userId === userId && f.following)
-      .map((f) => ({ parent: this.threadParent(f.parentId).parent, state: this.threadState(userId, f.parentId) }))
+      .map((f) => {
+        const { record, parent } = this.threadParent(f.parentId);
+        const replies = record.messages.filter((m) => m.parent_id === parent.id && !m.deleted).sort((a, b) => a.seq - b.seq).slice(-2);
+        const item = { parent, state: this.threadState(userId, f.parentId), latest_replies: replies };
+        // A server before the previews (THREADS.md §5) sends no latest_replies.
+        if (!this.threadPreviews) delete (item as Partial<typeof item>).latest_replies;
+        return item;
+      })
       .filter((i) => !i.parent.deleted && i.parent.reply_count > 0)
       .sort((a, b) => (b.parent.last_reply_at ?? "").localeCompare(a.parent.last_reply_at ?? "") || b.parent.seq - a.parent.seq);
     if (cursor) items = items.filter((i) => (i.parent.last_reply_at ?? "") < cursor);

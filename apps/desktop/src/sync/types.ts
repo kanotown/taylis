@@ -6,6 +6,12 @@ export type { AckOut, AttachmentOut, ChannelLinkOut, ChannelOut, PoolOut, Custom
 export interface ThreadEntry {
   parent: MessageOut;
   state: ThreadState;
+  /**
+   * The thread's newest replies, oldest first (at most THREAD_PREVIEW_REPLIES; GET /threads `latest_replies`, then kept
+   * by message events). undefined: a server before the previews, or a row made from thread.updated alone; the card
+   * shows the parent only.
+   */
+  latestReplies?: MessageState[];
 }
 
 /** A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1). */

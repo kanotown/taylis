@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { AppController } from "../state/app";
 import type { ActivityItem, ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
-import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
+import type { ChannelState, MessageState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
 import { CallButton, canStartCall } from "./Calls";
 import { Composer } from "./Composer";
@@ -408,10 +408,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   // A row of this screen's lists being revealed is placed by its own handler (M34: an activity row stays on its tab).
   const revealing = useRef<string | null>(null);
+  // A reply opened from a threads-list card: its thread is already open where the list put it (see landOnReply).
+  const threadListFocus = useRef<string | null>(null);
   // A focus set outside this screen (a permalink opened in the browser, M12j): show its conversation. On a phone it
   // lands on its tab (M34), unless its conversation is the one on screen.
   useEffect(() => {
     const focus = controller.messageFocus;
+    if (focus && threadListFocus.current === focus.messageId) return;
+    if (focus) threadListFocus.current = null;
     if (!focus || (compact && revealing.current === focus.messageId) || (focus.channelId === currentId && view === "channel" && (!compact || pane === "main"))) return;
     // M39: a reply opened from the activity tab: its thread is over that tab's root, and shows the reply itself.
     if (compact && mobileTab === "activity" && view === "threads" && pane === "main" && focus.parentId !== null && focus.parentId === threadId) return;
@@ -739,14 +743,26 @@ export function MainScreen({ controller }: { controller: AppController }) {
   /** L8: 「自分の times を作る」 (from the feed's header too): made on the server, then it opens. */
   const createTimes = () => void controller.ensureTimes().then((id) => { if (id) open(id); });
 
-  const openThreadEntry = (entry: ThreadEntry) => {
+  /**
+   * A reply under a threads-list card (THREADS.md §5): its thread opens at once and lands on the reply when the focus comes
+   * (the thread pane scrolls to and marks the focused reply). The view stays where it is: the focus effect above leaves a
+   * focus marked here alone.
+   */
+  const landOnReply = (reply: MessageState | undefined) => {
+    if (!reply || reply.seq === null) return;
+    threadListFocus.current = reply.id;
+    void controller.revealMessage(reply as MessageOut);
+  };
+
+  const openThreadEntry = (entry: ThreadEntry, reply?: MessageState) => {
     controller.clearMessageFocus();
     setThreadChannelId(entry.state.channel_id);
     setThreadId(entry.parent.id);
+    landOnReply(reply);
   };
 
   /** M34: a thread row of the activity tab: the thread goes over that tab's root. */
-  const openActivityThread = (entry: ThreadEntry) => {
+  const openActivityThread = (entry: ThreadEntry, reply?: MessageState) => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     resetConversation();
@@ -756,6 +772,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadChannelId(entry.state.channel_id);
     setThreadId(entry.parent.id);
     setPane("main");
+    landOnReply(reply);
   };
 
   /**

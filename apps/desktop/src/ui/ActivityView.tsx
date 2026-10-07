@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ActivityFilter, ActivityItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
-import type { ThreadEntry } from "../sync/types";
+import type { MessageState, ThreadEntry } from "../sync/types";
 import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt, type ReadPositions } from "./activity";
 import { Avatar } from "./Avatar";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
@@ -38,7 +38,7 @@ export function ActivityView({ controller, active, onOpen, onOpenMessage, onOpen
   onOpen: (item: ActivityItem) => void;
   /** Stage A: a mention opens its message, a thread row its thread. */
   onOpenMessage: (message: MessageOut) => void;
-  onOpenThread: (entry: ThreadEntry) => void;
+  onOpenThread: (entry: ThreadEntry, reply?: MessageState) => void;
 }) {
   if (controller.store.activity === null) return <ActivityStageA controller={controller} onOpenMessage={onOpenMessage} onOpenThread={onOpenThread} />;
   return <ActivityFeed controller={controller} active={active} onOpen={onOpen} />;
@@ -345,7 +345,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
 function ActivityStageA({ controller, onOpenMessage, onOpenThread }: {
   controller: AppController;
   onOpenMessage: (message: MessageOut) => void;
-  onOpenThread: (entry: ThreadEntry) => void;
+  onOpenThread: (entry: ThreadEntry, reply?: MessageState) => void;
 }) {
   const [segment, setSegment] = useState<ActivitySegment>("mentions");
   const [threadsShown, setThreadsShown] = useState(false);

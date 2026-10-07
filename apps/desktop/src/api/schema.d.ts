@@ -11178,6 +11178,11 @@ export interface components {
         };
         /** ThreadItem */
         ThreadItem: {
+            /**
+             * Latest Replies
+             * @default []
+             */
+            latest_replies: components["schemas"]["MessageOut"][];
             parent: components["schemas"]["MessageOut"];
             state: components["schemas"]["ThreadState"];
         };
