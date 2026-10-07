@@ -1,12 +1,15 @@
 """在室状況 (attendance, M140, docs/PRESENCE.md): states, the board, the log, events, webhooks
 (signing, the outbox planner, retries, idempotency, SSRF) and the inbound API."""
 
+import asyncio
 import hashlib
 import hmac
 import importlib.util
 import json
+import time
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -21,7 +24,12 @@ from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.models import OutboxEvent
 from app.modules.attendance import service, webhooks
-from app.modules.attendance.models import AttendanceDelivery, AttendanceLog, AttendanceState
+from app.modules.attendance.models import (
+    AttendanceDelivery,
+    AttendanceIntegration,
+    AttendanceLog,
+    AttendanceState,
+)
 from app.modules.attendance.schemas import ICON_KEYS
 from app.modules.channels.service import resolve_event_audience
 from app.modules.users.models import User
@@ -530,6 +538,165 @@ async def test_integration_urls_are_checked(
     prod = dev.model_copy(update={"environment": "production"})
     with pytest.raises(Exception, match="https"):
         service.check_target("http://127.0.0.1:9000/hook", prod)
+
+
+# A loopback receiver that answers slowly (review v0.1.43 #4): each byte comes well within
+# httpx's per-read timeout, so only a bound on the whole send stops it.
+Handler = Callable[[asyncio.StreamReader, asyncio.StreamWriter], Awaitable[None]]
+
+
+async def _read_request(reader: asyncio.StreamReader) -> None:
+    head = await reader.readuntil(b"\r\n\r\n")
+    length = 0
+    for line in head.split(b"\r\n"):
+        if line.lower().startswith(b"content-length:"):
+            length = int(line.split(b":", 1)[1])
+    await reader.readexactly(length)
+
+
+def _trickling(head: bytes, body: bytes, *, head_slowly: bool, step: float = 0.03) -> Handler:
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await _read_request(reader)
+            if head_slowly:
+                for i in range(len(head)):
+                    writer.write(head[i : i + 1])
+                    await writer.drain()
+                    await asyncio.sleep(step)
+            else:
+                writer.write(head)
+            for i in range(len(body)):
+                writer.write(body[i : i + 1])
+                await writer.drain()
+                await asyncio.sleep(step)
+            writer.close()
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+
+    return handle
+
+
+def _answering(head: bytes, body: bytes = b"") -> Handler:
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await _read_request(reader)
+            writer.write(head + body)
+            await writer.drain()
+            await asyncio.sleep(5)  # the rest of a long body never comes
+            writer.close()
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+
+    return handle
+
+
+@asynccontextmanager
+async def _receiver(handler: Handler) -> AsyncIterator[str]:
+    server = await asyncio.start_server(handler, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        yield f"http://127.0.0.1:{port}/hook"
+    finally:
+        server.close()
+        server.close_clients()
+        await server.wait_closed()
+
+
+def _quick(settings: Settings, timeout: float = 0.3) -> Settings:
+    return settings.model_copy(
+        update={
+            "attendance_webhook_allow_private": True,
+            "attendance_webhook_timeout_seconds": timeout,
+        }
+    )
+
+
+async def test_a_trickling_answer_is_cut_off_at_the_timeout(app: FastAPI) -> None:
+    """Review v0.1.43 #4: the timeout bounds the whole send, not each read; a success's body is
+    not read and an error's only up to a bounded prefix."""
+    send = webhooks.build_sender(_quick(app.state.settings))
+    status_line = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+    # The status line itself trickles in (~120 bytes x 30 ms, each read well within 0.3 s).
+    async with _receiver(_trickling(status_line * 3, b"", head_slowly=True)) as url:
+        started = time.monotonic()
+        result = await send(url, {}, b"{}")
+        elapsed = time.monotonic() - started
+    assert result == webhooks.SendResult(None, "timeout") and result.retryable
+    assert elapsed < 0.3 + 0.5
+    # A 2xx whose body trickles: done when the status arrives (the body is not waited for).
+    ok_head = b"HTTP/1.1 200 OK\r\nContent-Length: 40\r\n\r\n"
+    async with _receiver(_trickling(ok_head, b"x" * 40, head_slowly=False)) as url:
+        started = time.monotonic()
+        result = await send(url, {}, b"{}")
+        elapsed = time.monotonic() - started
+    assert result.ok and result.status_code == 200 and elapsed < 0.3
+    # An error with an endless body: the first 200 characters, without waiting for the rest.
+    error_head = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 1000000\r\n\r\n"
+    async with _receiver(_answering(error_head, b"e" * 2000)) as url:
+        started = time.monotonic()
+        result = await send(url, {}, b"{}")
+        elapsed = time.monotonic() - started
+    assert result.status_code == 500 and result.error == "e" * webhooks.RESPONSE_SNIPPET
+    assert elapsed < 0.3
+    # An error whose body trickles: still bounded by the whole-send timeout.
+    async with _receiver(_trickling(error_head, b"e" * 100, head_slowly=False)) as url:
+        started = time.monotonic()
+        result = await send(url, {}, b"{}")
+        elapsed = time.monotonic() - started
+    assert result == webhooks.SendResult(None, "timeout")
+    assert elapsed < 0.3 + 0.5
+
+
+async def test_a_slow_receiver_does_not_hold_up_the_next_delivery(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    tmp_path: Path,
+) -> None:
+    root = await make_user(db, "root", role="admin")
+    as_user(root)
+    settings = await _enable(client)
+    slow = await _integration(client, "slow")
+    fast = await _integration(client, "fast")
+    await client.put("/api/v1/attendance/me", json={"state_id": _state_id(settings, "in_room")})
+    await _drain(app)
+    received: list[bytes] = []
+
+    async def record(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        received.append(b"request")
+        await _answering(b"HTTP/1.1 204 No Content\r\n\r\n")(reader, writer)
+
+    trickle = _trickling(b"HTTP/1.1 200 OK\r\n\r\n" * 5, b"", head_slowly=True)
+    async with _receiver(trickle) as slow_url, _receiver(record) as fast_url:
+        slow_id = uuid.UUID(slow["integration"]["id"])
+        fast_id = uuid.UUID(fast["integration"]["id"])
+        for integration_id, url in ((slow_id, slow_url), (fast_id, fast_url)):
+            await db.execute(
+                update(AttendanceIntegration)
+                .where(AttendanceIntegration.id == integration_id)
+                .values(url=url)
+            )
+        # The slow one is first in the batch.
+        await db.execute(
+            update(AttendanceDelivery)
+            .where(AttendanceDelivery.integration_id == slow_id)
+            .values(created_at=utcnow() - timedelta(minutes=1))
+        )
+        await db.commit()
+        quick = _with_secrets(_quick(app.state.settings), tmp_path)
+        started = time.monotonic()
+        attempted = await webhooks.process_due(
+            app.state.db.session_factory, quick, webhooks.build_sender(quick)
+        )
+        elapsed = time.monotonic() - started
+    assert attempted == 2 and received == [b"request"]
+    assert elapsed < 2 * 0.3 + 1.0
+    rows = {r.integration_id: r for r in (await db.execute(select(AttendanceDelivery))).scalars()}
+    for row in rows.values():
+        await db.refresh(row)
+    assert rows[slow_id].status == "pending" and rows[slow_id].last_error == "timeout"
+    assert rows[fast_id].status == "delivered" and rows[fast_id].last_status_code == 204
 
 
 async def _integration(client: AsyncClient, name: str, *, inbound: bool = False) -> dict[str, Any]:

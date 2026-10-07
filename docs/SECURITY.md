@@ -726,8 +726,8 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   連携ごとに 1 分 60 回（まとめて 30 回）。人はメールアドレス・ユーザー名・id で探し、ゲスト・ボット・無効の人は 404。
   状態は既にあるものだけ（作らない）。24 時間より前の変更は 422、今より古い変更は反映しない。
 - **送信 Webhook**：https の公開の URL だけ（保存時に形、送るたびに DNS の結果を §14 と同じ検査）。リダイレクトは追わない。
-  10 秒で切る。開発のときだけ `ATTENDANCE_WEBHOOK_ALLOW_PRIVATE=true` で私的なアドレスと http を許す（`ENVIRONMENT=production`
-  では効かない）。本文は HMAC-SHA256 で署名し（`X-Taylis-Signature`・`X-Taylis-Timestamp`）、`delivery_id` で重複を捨てられる。
+  DNS の確認から応答までの全体を 10 秒で切り、応答の本文は先頭だけ読む（遅い受け手がワーカーを止めない）。
+  開発のときだけ `ATTENDANCE_WEBHOOK_ALLOW_PRIVATE=true` で私的なアドレスと http を許す（`ENVIRONMENT=production` では効かない）。本文は HMAC-SHA256 で署名し（`X-Taylis-Signature`・`X-Taylis-Timestamp`）、`delivery_id` で重複を捨てられる。
   機能をオフにすると、送っていない配送は取り消し（送る直前にも確かめる）、メールアドレスやメモを外へ出さない（PRESENCE.md §5.1）。
 - **送る中身**：外の名簿と突き合わせるため、本人の id・メールアドレス・ユーザー名・表示名、前後の状態、メモ、時刻、変更の出どころ。
   ほかのプロフィールは送らない。メールアドレスを外に出すので、送信先は管理者が信頼できるサイトだけにする。
