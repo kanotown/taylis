@@ -26,7 +26,7 @@ describe("a popover over a dialog keeps the wheel (2026-10-04: the section icon'
         </PopoverRoot>
       </Modal>,
     );
-    const grid = screen.getByTitle(":grinning:").parentElement!;
+    const grid = screen.getByTitle(":grinning:").closest(".overflow-y-auto")!;
     expect(grid.className).toContain("overflow-y-auto");
     expect(wheel(grid)).toBe(false);
     // The lock still holds for the page behind the dialog.
