@@ -99,6 +99,9 @@
   表示し、通知しない (未読の数え方は変えない)。M104 より前のサーバは送らない (空とみなす)。変化は `block.updated` で届く。
 - `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。`in_app_calls` (M130、docs/CALLS.md §5.1) は `{ enabled, video, screen_share }` (`enabled` = 管理者のスイッチ かつ サーバに LiveKit の設定がある)。無いサーバ (M130 より前) では通話のボタンを出さない。M117 の `calls_enabled` / `meeting_base_url` は M130 からいつも false / null (公開済みの M117 のクライアントが 📞 を出さないように)。
 - `active_calls` (M130) は自分が入れる会話の通話中の通話 (`[CallOut]`、下の `call.started`)。変化は `call.*` で届く。
+- `attendance`（M140、docs/PRESENCE.md §3.1・§4）は在室状況のボード `{ enabled, states, entries, can_personalize }`。
+  ゲスト・ボットと、管理者がオフにしているときは null（M140 より前のサーバは送らない：無いものとみなす）。変化は
+  `attendance.updated`（1 人の行）と `attendance.config_updated`（`GET /attendance` を読み直す）で届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -283,6 +286,8 @@
 | `channel.member_updated` | channel | — | `{ channel_id, user_id, role }` (L4、M31)。オーナーの追加・解除 (`PATCH /channels/{id}/members/{user_id}`)。自分なら `membership.role` を変え、開いているメンバー一覧を読み直す |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` (UserPublic)。本人だけの設定 (UserMe の `notify_keywords`・`notification_default`・`notify_reactions`・`quick_reactions`・`nav_items`・`locale`・`composer_mode` など) は載らない。`PATCH /users/me` はどの項目でも `updated_at` を進めて `user.updated` を出すので、**自分についての `user.updated` の `updated_at` が手元の `me` より新しければ、別の端末が設定を変えた**: クライアントは `GET /users/me` を読み直して `me` を置き換える (M50。iOS・Android も M111 から読み直す。読み直さない端末も次の bootstrap の `me` で揃う) |
 | `session.revoked` | session | — | `{ reason }` |
+| `attendance.updated` | all（guest を除く） | — | `{ user_id, state_id, since, note, source, log_id }`（M140、docs/PRESENCE.md §4）。ある人の在室状況が変わった。`user_id` の行を置き換える。`state_id` を知らなければ `GET /attendance` を読み直す。`log_id` は端末では使わない |
+| `attendance.config_updated` | all（guest を除く） | — | `{}`（M140）。在室状況の有効・無効、自分用の状態の規則、状態（ワークスペース・個人）が変わった。人ごとに違う（`can_personalize`）ので中身は無い。`GET /attendance` を読み直す（300 ms でまとめる。`enabled: false` ならボードを消す） |
 | `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url } }` (M88、docs/MEMBERSHIP.md §3。`in_app_calls` は M130、`calls_enabled` / `meeting_base_url` はいつも false / null。docs/CALLS.md)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
 | `call.started` / `call.updated` / `call.ended` | channel | — | `{ call: CallOut }` (M130、docs/CALLS.md §5.3)。`CallOut` = `{ id, channel_id, message_id, started_by, started_at, ended_at, participants: [{ user_id, joined_at }], participant_count, peak_participants }`。通話が始まった / 人が入った・抜けた / 終わった。会話の「通話中 (n)」を id で置き換える (ended なら外す)。seq は無く取りこぼしうるので、再接続のあとは bootstrap の `active_calls` か `GET /calls?active=true` で置き換える。通話の記録はメッセージの側 (終わると `message.updated` の change `call`) |
 

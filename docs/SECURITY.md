@@ -272,7 +272,8 @@ guest に見えるのは同じチャンネルの人だけで、次の経路も�
 `user.*` イベント (本人か同じチャンネルの人の変更だけ届く)、プレゼンス (接続時に見える人の集合を持つ)、
 `GET /users/{id}` と `GET /users/{id}/avatar` (見えない人は 404)、ユーザーグループ (メンバー一覧を見える人に
 絞り、`group.updated` は届けない)、名簿 (見える人の行だけ、`roster.updated` は届けない。M23)、bootstrap の
-presence / groups / roster。
+presence / groups / roster。在室状況（M140、docs/PRESENCE.md）は guest には一切見せない（API は 403、イベントは届かない、
+bootstrap は null）。
 スレッドのフォロー、保存済み (bookmarks)、下書き、リマインダーは、そのチャンネルのメンバーでなくなった時点で
 一覧・件数・通知・プレビューから外れる (抜けた非公開チャンネルの本文を見せ続けない)。リマインダーは本文の
 コピーを持たず、表示と通知のたびに元のメッセージから作る (編集・削除で消した本文が残らない)。
@@ -530,6 +531,10 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 
 ## 7. 秘密情報
 
+- 在室状況の送信 Webhook の署名の鍵（M140、docs/PRESENCE.md §5.3）は `ATTENDANCE_WEBHOOK_SECRETS_DIR`（既定
+  `/run/secrets/attendance`）のファイルで、DB には鍵の名前だけを置く（バックアップに秘密を含めない）。受信のトークンは
+  SHA-256 だけを保存し、作成と作り直しの応答で 1 回だけ見せる。
+
 - `SECRET_KEY`、DB パスワード、versitygw のルート認証情報 (`ROOT_ACCESS_KEY_ID` / `ROOT_SECRET_ACCESS_KEY`)、APNs の `.p8` 鍵、FCM サービスアカウント、Google でログインの client secret (M48)、Anthropic の API キー (M65、`AI_API_KEY_FILE`。DB にも端末にも置かない)、Team ID /
   Key ID / Bundle ID は環境変数またはマウントしたファイル (`/run/secrets/...`) で渡す。
   リポジトリにはコミットしない (`.env.example` のみ。`.gitignore` で `.env` と `*.p8` を除外)。
@@ -704,3 +709,19 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
       `verify-attachments` を書き、リハーサルで件数一致を確認した
 - [x] `/readyz` がスキーマの適用状況 (alembic head) と outbox の滞留を返す。本番はポートを公開しない
 - [ ] 未対応 (認識済み): ウイルススキャン、presigned URL、2FA / OIDC、監査ログの閲覧 UI (今は DB / psql)
+
+## 16. 在室状況（M140、docs/PRESENCE.md）
+
+- **見える人**：ゲストでない有効な人だけ（いつ部屋にいるかは外部の人に出さない）。ボードの API はゲストに `403
+  guest_restricted`、イベントの宛先からもゲストを外す（`channels.resolve_event_audience`）、bootstrap は null。
+- **変える人**：アプリからは本人だけ（`PUT /attendance/me`、1 分 30 回）。管理者は他人のを変えられ、監査ログ
+  `attendance.set_by_admin` に残る。設定・状態・連携の変更も監査（`attendance.*`。秘密の値は残さない）。
+- **受信 API**：連携のトークン（`Authorization: Bearer`、ハッシュで保存、作り直し・停止・受信の取り消しができる）。
+  連携ごとに 1 分 60 回（まとめて 30 回）。人はメールアドレス・ユーザー名・id で探し、ゲスト・ボット・無効の人は 404。
+  状態は既にあるものだけ（作らない）。24 時間より前の変更は 422、今より古い変更は反映しない。
+- **送信 Webhook**：https の公開の URL だけ（保存時に形、送るたびに DNS の結果を §14 と同じ検査）。リダイレクトは追わない。
+  10 秒で切る。開発のときだけ `ATTENDANCE_WEBHOOK_ALLOW_PRIVATE=true` で私的なアドレスと http を許す（`ENVIRONMENT=production`
+  では効かない）。本文は HMAC-SHA256 で署名し（`X-Taylis-Signature`・`X-Taylis-Timestamp`）、`delivery_id` で重複を捨てられる。
+- **送る中身**：外の名簿と突き合わせるため、本人の id・メールアドレス・ユーザー名・表示名、前後の状態、メモ、時刻、変更の出どころ。
+  ほかのプロフィールは送らない。メールアドレスを外に出すので、送信先は管理者が信頼できるサイトだけにする。
+- **ループ**：ある連携から来た変更はその連携に送り返さない。同じ状態・メモの再送は何もしない（別の連携を経て戻ってきても止まる）。

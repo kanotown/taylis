@@ -6,7 +6,9 @@
 研究室の要望（2026-10-07）から作るが、**汎用の機能**として作る：リポジトリに特定のサイト・人・状態の名前は持たない。既定は
 **オフ**で、管理者が有効にする。
 
-**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0100）。iOS / Android は §9 の仕様で後から足す。
+**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0100）。iOS / Android は §9 の仕様で後から足す
+（ナビの鍵 `attendance` は 3 端末のカタログにあるが、スマホではまだ実装済みに数えない）。マイルストーンの番号 M140 は仮
+（並行する作業と重なれば振り直す）。
 
 ## 0. 名前（presence と attendance）
 
@@ -153,7 +155,7 @@ CREATE TABLE attendance_deliveries (    -- 送信 Webhook の 1 回の配送（o
 
 | type | audience | seq | data |
 | --- | --- | --- | --- |
-| `attendance.updated` | all（ゲストを除く） | — | `{ user_id, state_id, since, note, source }`。ある人の在室状況が変わった。端末は `user_id` の行を置き換える。`state_id` を知らなければ `GET /attendance` を読み直す |
+| `attendance.updated` | all（ゲストを除く） | — | `{ user_id, state_id, since, note, source, log_id }`（`log_id` は Webhook の計画に使う。端末は無視する）。ある人の在室状況が変わった。端末は `user_id` の行を置き換える。`state_id` を知らなければ `GET /attendance` を読み直す |
 | `attendance.config_updated` | all（ゲストを除く） | — | `{}`。設定（有効・無効、個人の状態の規則）か状態（ワークスペース・個人）が変わった。中身は人ごとに違う（`can_personalize`）ので載せない。端末は `GET /attendance` を読み直す（続けて届いたものは 300 ms でまとめる） |
 
 - bootstrap の `attendance: AttendanceBoardOut | null`。ゲストと、オフのときは null。再接続のあとも bootstrap（か `GET /attendance`）で
@@ -171,6 +173,8 @@ CREATE TABLE attendance_deliveries (    -- 送信 Webhook の 1 回の配送（o
 3. ワーカー（`attendance-webhooks` のループ）が期限の来た行を取り（`FOR UPDATE SKIP LOCKED`、次の試行の時刻を先に進めてコミット）、
    DB のトランザクションの外で送り、結果を書く。
 
+- 送る前に取った行は 2 分のあいだ順番から外す（送っている途中でサーバが落ちたら 2 分後にやり直す。受け手は
+  `delivery_id` で重複を捨てる）。
 - 2xx：`delivered`。408・429・5xx・接続の失敗・タイムアウト：再送（30 秒、1 分、2 分、5 分、10 分、30 分、1 時間、2 時間。8 回で `failed`）。
   ほかの 4xx・3xx（リダイレクトは追わない）：すぐ `failed`。
 - 同じ連携・同じ人について、もっと新しい配送が届いた後に古い配送の番が来たら、送らずに `superseded` にする（古い状態で上書きしない）。
@@ -243,7 +247,8 @@ compose は `infra/secrets/attendance/` を読み取り専用でマウント）�
 - 今と同じ状態・メモなら何もしない（`200 {applied: false, reason: "unchanged"}`）。これで、Taylis から送った変更を外のサイトが
   送り返してきても止まる（同じ連携へはそもそも送り返さない。§5.1）。
 - 反映すると `200 {applied: true, user_id, state_id, since}`。source は `integration`、記録に連携の id。
-- 無効なトークン・無効にした連携・受信をやめた連携は `401 invalid_token`。機能がオフなら `409 attendance_disabled`。
+- トークンは `tya_` で始まる。無効なトークン・無効にした連携・受信をやめた連携は `401 invalid_token`（無ければ
+  `401 missing_token`）。24 時間より前の `at` は `422 attendance_change_too_old`。機能がオフなら `409 attendance_disabled`。
   連携ごとに 1 分 60 回（まとめて 30 回）。
 
 ## 7. 画面（Desktop / Web）
@@ -266,7 +271,7 @@ compose は `infra/secrets/attendance/` を読み取り専用でマウント）�
 - アプリからは本人だけが変える。管理者の変更は監査に残る。外からは連携のトークン（ハッシュで保存、作り直せる、連携ごとに止められる）。
 - ゲストには見せない（在室は「いつ部屋にいるか」なので、外部の人に出さない）。
 - Webhook はメールアドレスを含む（突き合わせに要る）。送信先は管理者が決めた https の公開の URL だけ。署名つき。
-- 記録は保持日数で消える（既定 365 日）。アカウントを匿名化・削除すると、その人の行（今の値・記録・個人の状態）は消える（CASCADE）。
+- 記録は保持日数で消える（既定 365 日）。アカウントを匿名化（管理者の操作・本人のアカウント削除）すると、その人の今の値・記録・個人の状態・Webhook の配送（本文にメールアドレスがある）を同じトランザクションで消す（`attendance.forget_in_tx`）。無効化だけならボードから外れるだけで行は残る。
 - 外へ送る失敗は管理画面の配送の記録に出る（黙って捨てない）。
 
 ## 9. iOS / Android（後から）

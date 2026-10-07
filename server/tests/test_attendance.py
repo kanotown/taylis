@@ -751,6 +751,26 @@ async def test_inbound_api_auth_mapping_and_loop_prevention(
     assert off.status_code == 401
 
 
+async def test_anonymizing_forgets_the_person(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    root = await make_user(db, "root", role="admin")
+    alice = await make_user(db, "alice")
+    as_user(root)
+    await _enable(client, personal_rule="everyone")
+    as_user(alice)
+    own = (
+        await client.post("/api/v1/attendance/my-states", json={"label": "会議", "kind": "on_site"})
+    ).json()
+    await client.put("/api/v1/attendance/me", json={"state_id": own["id"]})
+    as_user(root)
+    done = await client.post(f"/api/v1/admin/users/{alice.id}/anonymize")
+    assert done.status_code == 200, done.text
+    board = (await client.get("/api/v1/attendance")).json()
+    assert board["entries"] == [] and own["id"] not in [s["id"] for s in board["states"]]
+    assert await db.scalar(select(func.count()).select_from(AttendanceLog)) == 0
+
+
 async def test_retention_purges_old_log_rows(
     client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:
