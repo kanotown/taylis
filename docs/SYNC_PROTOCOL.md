@@ -71,6 +71,7 @@
   "bookmarks": [ "<message_id>", "..." ],
   "favorites": [ "<channel_id>", "..." ],
   "dm_pins": [ "<channel_id>", "..." ],
+  "closed_dms": [ "<channel_id>", "..." ],
   "blocked_user_ids": [ "<user_id>", "..." ],
   "custom_emoji": [ { "id": "...", "name": "party_parrot", "kind": "image", "content_type": "image/gif", "width": 64, "height": 64, "label": null, "color": null, "keywords": [], "pack_id": null, "position": 0, "created_by": "...", "created_at": "..." } ],
   "emoji_packs": [ { "id": "...", "name": "ドットはんぺん", "position": 0, "tab_version": "0192…", "created_at": "...", "updated_at": "..." } ],
@@ -95,6 +96,10 @@
 - `bookmarks` は自分が保存したメッセージの id (新しい順)。本文つきの一覧は `GET /bookmarks`。変化は `bookmark.updated` で届く。
 - `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
 - `dm_pins` (M118) は自分が先頭に固定した DM・グループ DM の id (`channels` に含まれるものだけ、固定の古い順。この順で DM の一覧の先頭に並べる。DATA_MODEL.md conversation_pins)。M118 より前のサーバは送らない (固定なしとみなし、固定の操作を出さない)。変化は `dm_pin.updated` で届く。
+- `closed_dms` (M141) は自分が閉じた (「会話を閉じる」) DM・グループ DM のうち、閉じてから新しいメッセージが来て
+  いないものの id (`channels` に含まれるものだけ、閉じた古い順。DATA_MODEL.md conversation_closes)。DM の一覧から
+  隠す (§7.9)。M141 より前のサーバは送らない (閉じたものなしとみなし、閉じる操作を出さない)。変化は `dm_close.updated`
+  と `message.created` で届く。
 - `blocked_user_ids` (M104、docs/MODERATION.md §4) は自分がブロックした人の id (古い順)。その人のメッセージは折りたたんで
   表示し、通知しない (未読の数え方は変えない)。M104 より前のサーバは送らない (空とみなす)。変化は `block.updated` で届く。
 - `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。`in_app_calls` (M130、docs/CALLS.md §5.1) は `{ enabled, video, screen_share }` (`enabled` = 管理者のスイッチ かつ サーバに LiveKit の設定がある)。無いサーバ (M130 より前) では通話のボタンを出さない。M117 の `calls_enabled` / `meeting_base_url` は M130 からいつも false / null (公開済みの M117 のクライアントが 📞 を出さないように)。
@@ -244,6 +249,7 @@
 | `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く。会話を自分のセクションへ入れたときも `favorite: false` で届く (DATA_MODEL.md sidebar_sections「1 つの会話は 1 か所」、2026-10-07) |
 | `dm_pin.updated` | user | — | `{ channel_id, pinned, at }` (M118)。自分が DM・グループ DM を先頭に固定した / 外した (変わったときだけ。自分の全端末)。固定なら手元の `dm_pins` の最後に足し (すでにあれば動かさない)、外したなら取り除く。`at` は変えた時刻 |
+| `dm_close.updated` | user | — | `{ channel_id, closed, at }` (M141)。自分が DM・グループ DM を閉じた / 開いた (`PUT` / `DELETE /channels/{id}/close`、既にある DM を返す `POST /dms`。閉じている状態が変わったときだけ。自分の全端末)。閉じたなら手元の `closed_dms` に足し、開いたなら取り除く。新しいメッセージで開いたときは送らない (§7.9) |
 | `block.updated` | user | — | `{ user_id, blocked }` (M104、docs/MODERATION.md §4)。自分がブロック / 解除したとき自分の全端末に届く。ブロックされた人には届かない |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える。M100: 表示名・キーワード・色・セットの変更でも出る (文字の絵文字のピルは描き直す) |
@@ -489,6 +495,29 @@ on message.created / message.updated / message.deleted / 差分・履歴・自�
 - 取り直しの応答より新しいもの (その間に届いたイベント) が手元にあれば、それを残す。
 - 取りこぼしは再接続の bootstrap で直る (bootstrap の値で置き換える。null も含む)。
 - 編集は seq を変えないので、最後の行の編集は本文だけ差し替わる。リアクションだけの `message.updated` では変わらない。
+
+### 7.9 閉じた DM (M141、「会話を閉じる」)
+
+DATA_MODEL.md conversation_closes。3 端末共通の規則:
+
+```
+状態: closed_dms (集合)。bootstrap の値で置き換える (再接続のたび。取りこぼしはここで直る)
+on dm_close.updated {channel_id, closed}: closed なら足し、そうでなければ取り除く
+on message.created (m): m がタイムラインの行 (parent_id が無いか also_in_channel) で、m.channel_id が closed_dms に
+    あれば取り除く (API は呼ばない。サーバも同じ規則で開いたとみなす)
+閉じる (DM の行のメニュー・会話の見出しの「…」): その場で closed_dms に足し、dm_pins から外し、未読を 0 にする
+    → PUT /channels/{id}/close。失敗したら 3 つとも元に戻してエラーを出す。開いている会話を閉じたら、Desktop / Web は
+    ホームへ、スマホは一覧へ戻る
+開く (検索・ジャンプ・プロフィールの「メッセージを送る」・リンク・通知・Desktop の「元に戻す」で、closed_dms にある
+    会話を開いた): その場で取り除き DELETE /channels/{id}/close (失敗はログだけ。次の bootstrap で閉じた状態に戻る)
+```
+
+- 隠す所: サイドバーのすべての場所 (お気に入り・自分のセクション・「ダイレクトメッセージ」)、スマホの DM タブと
+  ホームの「ダイレクトメッセージ」、iPad / タブレットの一覧、Alt+↑/↓ の移動。自分だけの DM が閉じているときは、まだ
+  無いときの仮の行も出さない。隠さない所: 検索、ジャンプ (⌘K)、メンバー・プロフィール、通知、アクティビティ。
+- 閉じた会話は既読になっており、新しいメッセージが来れば開くので、バッジの数え方は変えない。
+- Desktop / Web は閉じたあと「会話を閉じました」と「元に戻す」を数秒出す。元に戻すと開き (DELETE)、固定していた
+  なら固定し直す (固定の最後に付く)。既読は戻さない。
 
 ## 8. マージ規則
 

@@ -48,6 +48,9 @@ class BootstrapOut(BaseModel):
     # M118: my pinned DMs and group DMs among the channels above, oldest pin first (the top of
     # my DM list in this order); changes arrive as dm_pin.updated.
     dm_pins: list[UUID] = []
+    # M141: DMs and group DMs I closed (「会話を閉じる」) that no newer message reopened; hidden
+    # from my DM lists. Changes arrive as dm_close.updated; a new message reopens one.
+    closed_dms: list[UUID] = []
     # Custom emoji (M12f): the whole table, by name; changes arrive as emoji.updated.
     custom_emoji: list[CustomEmojiOut] = []
     # Emoji packs (M100) in tab order; changes arrive as emoji_pack.updated.

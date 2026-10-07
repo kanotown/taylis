@@ -30,18 +30,32 @@ async def set_pinned(
         else await repo.remove(db, actor.id, channel.id)
     )
     if changed:
-        await write_outbox(
-            db,
-            event_type=DM_PIN_UPDATED,
-            audience_type="user",
-            audience_id=actor.id,
-            channel_id=channel.id,
-            payload=DmPinUpdatedData(channel_id=channel.id, pinned=pinned, at=utcnow()).model_dump(
-                mode="json"
-            ),
-        )
+        await _announce(db, actor.id, channel.id, pinned)
     await db.commit()
     return DmPinStateOut(channel_id=channel.id, pinned=pinned), changed
+
+
+async def _announce(
+    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, pinned: bool
+) -> None:
+    await write_outbox(
+        db,
+        event_type=DM_PIN_UPDATED,
+        audience_type="user",
+        audience_id=user_id,
+        channel_id=channel_id,
+        payload=DmPinUpdatedData(channel_id=channel_id, pinned=pinned, at=utcnow()).model_dump(
+            mode="json"
+        ),
+    )
+
+
+async def unpin_in_tx(db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID) -> bool:
+    """M141: closing a DM unpins it (dm_pin.updated when it was pinned). The caller commits."""
+    changed = await repo.remove(db, user_id, channel_id)
+    if changed:
+        await _announce(db, user_id, channel_id, False)
+    return changed
 
 
 async def ids_for(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:

@@ -2644,6 +2644,35 @@
         "type": "object"
       }
     },
+    "dm_close.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id",
+          "closed",
+          "at"
+        ],
+        "title": "DmCloseUpdatedData",
+        "type": "object"
+      }
+    },
     "dm_pin.updated": {
       "audience": "user",
       "consumes_seq": false,

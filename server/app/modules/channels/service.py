@@ -239,6 +239,17 @@ def set_membership_writer(writer: MembershipWriter | None) -> None:
     _membership_writer = writer
 
 
+# M141: POST /dms resolving an existing DM opens it again if I had closed it. The dm_closes module
+# registers it (channels does not depend on dm_closes).
+DmResolvedHook = Callable[[AsyncSession, User, uuid.UUID], Awaitable[None]]
+_dm_resolved_hook: DmResolvedHook | None = None
+
+
+def set_dm_resolved_hook(hook: DmResolvedHook | None) -> None:
+    global _dm_resolved_hook
+    _dm_resolved_hook = hook
+
+
 async def _bot_ids(db: AsyncSession, user_ids: list[uuid.UUID]) -> set[uuid.UUID]:
     if not user_ids:
         return set()
@@ -1100,6 +1111,8 @@ async def get_or_create_dm(
             channel = await repo.get_by_dm_key(db, dm_key)
             if channel is None:
                 raise
+    if not created and _dm_resolved_hook is not None:
+        await _dm_resolved_hook(db, actor, channel.id)
     membership = await repo.get_membership(db, channel.id, actor.id)
     return to_channel_out(channel, membership, user_ids), created
 
