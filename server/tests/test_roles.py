@@ -25,6 +25,7 @@ from app.core.roles import (
     roles_with,
 )
 from app.modules.audit.models import AuditLog
+from app.modules.lab.models import LabProfile
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -84,7 +85,8 @@ PROBES: list[Probe] = [
     Probe("POST", "/admin/invites", A, {"role": "admin"}, gate=M),
     Probe("DELETE", f"/admin/invites/{X}", M),
     # --- roster and the yearly rollover ---
-    Probe("PUT", f"/lab/roster/{X}", M, {"affiliation": "student", "grade": "M1"}),
+    # "other": no managed group (a manager gives only the groups they are in, ROLES.md §4.2).
+    Probe("PUT", f"/lab/roster/{X}", M, {"affiliation": "other"}),
     Probe("DELETE", f"/lab/roster/{X}", M),
     Probe("POST", "/lab/rollover/preview", A, {"academic_year": 2027}),
     Probe("GET", "/lab/rollovers", A),
@@ -364,6 +366,9 @@ async def test_roster_not_own_line_nor_an_admins(
     client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:
     people = await _people(db)
+    # A student manager (the usual case) may place students in any grade (ROLES.md §4.2).
+    db.add(LabProfile(user_id=people["manager"].id, affiliation="student", grade="D1"))
+    await db.commit()
     as_user(people["manager"])
     line = {"affiliation": "faculty"}
     own = await client.put(f"/api/v1/lab/roster/{people['manager'].id}", json=line)

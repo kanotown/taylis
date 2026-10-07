@@ -7,6 +7,7 @@ travels only in the URL and is stored hashed; the response of `create` is the on
 shown.
 """
 
+import logging
 import re
 import secrets
 import uuid
@@ -43,6 +44,8 @@ from app.modules.lab.schemas import LabPreset
 from app.modules.users import service as users
 from app.modules.users.models import User
 
+log = logging.getLogger(__name__)
+
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
 
 
@@ -74,6 +77,8 @@ async def create(db: AsyncSession, actor: User, data: InviteCreate) -> tuple[Inv
             raise bad_request("guest_restricted", "A guest cannot have a times channel")
         if data.lab.supervisor_id is not None:
             await lab.check_supervisor(db, data.lab.supervisor_id)
+        # REVIEW-v0.1.43 #1: a manager presets only roster groups they are in (ROLES.md §4.2).
+        await lab.check_grant(db, actor, None, data.lab.as_put())
     token = secrets.token_urlsafe(32)
     now = utcnow()
     invite = Invite(
@@ -158,6 +163,15 @@ async def _apply_lab_preset(db: AsyncSession, invite: Invite, user: User) -> Non
         followers = [put.supervisor_id] if put.supervisor_id else []
         await channels.create_times_in_tx(db, user, followers)
     issuer = await users.get_user(db, invite.created_by)
+    if issuer is not None:
+        # The issuer's right to give these groups is checked again (their role or own line may
+        # have changed since): without it the account is made without the roster line, for an
+        # administrator to set (REVIEW-v0.1.43 #1, ROLES.md §4.2).
+        try:
+            await lab.check_grant(db, issuer, None, put)
+        except AppError:
+            log.warning("invite %s: the issuer can no longer give this roster line", invite.id)
+            return
     await lab.put_in_tx(db, issuer, user.id, put)
 
 

@@ -7,7 +7,7 @@ import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
 import { EMPTY_PRESET, INVITE_STATUS_LABELS, type InvitePresetForm, inviteLink, invitePreset, inviteUsesLabel } from "./invite";
 import { Badge, Button, cn, Field, Input } from "./primitives";
-import { AFFILIATIONS, GRADES, invitePresetSummary, RANKS } from "./roster";
+import { AFFILIATIONS, GRADES, grantableAffiliations, invitePresetSummary, RANKS } from "./roster";
 import { t, labelled } from "../i18n";
 import { assignableRoles } from "./roles";
 
@@ -44,7 +44,9 @@ export function InvitesTab({ controller }: { controller: AppController }) {
     expiry: "168" as (typeof EXPIRY)[number][0],
     channelIds: new Set(channels.filter((c) => c.name === "general").map((c) => c.id)),
   }));
-  const [preset, setPreset] = useState<InvitePresetForm>(EMPTY_PRESET);
+  // REVIEW-v0.1.43 #1 (ROLES.md §4.2): a manager presets only their own affiliation (a student: any grade) or "other".
+  const grantable = grantableAffiliations(controller.can("users.manage"), store.me ? store.roster.get(store.me.id) : undefined);
+  const [preset, setPreset] = useState<InvitePresetForm>(() => (grantable.has(EMPTY_PRESET.affiliation) ? EMPTY_PRESET : { ...EMPTY_PRESET, affiliation: "other" }));
   // The admin toast sits behind this dialog: a failed issue (e.g. 422 invalid_supervisor) is said inside the form.
   const [formError, setFormError] = useState<string | null>(null);
   // The server takes faculty on the roster only as supervisors (422 invalid_supervisor).
@@ -187,9 +189,9 @@ export function InvitesTab({ controller }: { controller: AppController }) {
             </legend>
             {preset.on ? (
               <div className="grid grid-cols-2 gap-3">
-                <Field label={t("roster.affiliation")}>
+                <Field label={t("roster.affiliation")} hint={grantable.size < AFFILIATIONS.length ? t("roster.grantHint") : undefined}>
                   <select value={preset.affiliation} onChange={(e) => setPreset({ ...preset, affiliation: e.target.value as Affiliation })} className={SELECT}>
-                    {AFFILIATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    {AFFILIATIONS.map(([value, label]) => <option key={value} value={value} disabled={!grantable.has(value)}>{label}</option>)}
                   </select>
                 </Field>
                 {preset.affiliation === "faculty" && (

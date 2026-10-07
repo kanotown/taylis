@@ -1914,6 +1914,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "roster.view": "Roster view",
   "roster.rollover": "Year rollover",
   "roster.note": "The roster only sets the display order and grouping (permissions don't change). @faculty @students @alumni @b4 @m1 @m2 @d follow the roster automatically.",
+  "roster.grantHint": "An admin sets affiliations you don't have yourself (such as faculty or alumni).",
   "roster.notInRoster": "Not in roster",
   "roster.add": "Add to roster",
   "roster.removeTitle": "Remove from roster (the account stays)",
