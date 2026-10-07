@@ -837,6 +837,63 @@ rm -rf /srv/chikuwachat/import
 チャンネルごとの件数、使われていた絵文字のうち画像が無いもの、取れなかったファイル、警告が出る。添付の分だけオブジェクト
 ストアが増え、ダウンロードの間はキャッシュの分も要る (`df -h /srv` で空きを確かめる)。
 
+## Notion からの移行 (M125)
+
+Notion のワークスペース（またはページ）の書き出しを、「ドキュメント」へ読み込む。詳しい対応と型の推測は
+[docs/WIKI.md §6](../docs/WIKI.md)。Slack・Mattermost の移行と同じ仕組み（`import_refs`・やり直し・`--dry-run`）を使う。
+
+**読み込むもの**：ページと木（サブページ）、データベース（CSV の列をプロパティにする。型は値から推測：チェック・数・日付
+（範囲・時刻つき）・URL・人・マルチセレクト・セレクト・関係（双方向も）・テキスト）、行と行の本文、日付のあるデータベースには
+カレンダーのビュー、画像とファイル（アップロードと同じ検査とサムネイル）、ページ間のリンク、コールアウト（引用になる）・
+トグル（箇条書きになる）・数式・コード・表。**読み込まないもの**：共有設定、コメント、ページの履歴、ビューの設定、アイコンと
+カバー、作成者と作成・更新の日時（書き出しに無い。作成者は `--actor` の管理者になる）、数式・ロールアップの計算（値だけ）。
+
+**書き出しを作る（Notion 側）**：取り込みたいページ（ワークスペース全体ならいちばん上のページそれぞれ）の「…」→「エクスポート」で、
+形式「Markdown & CSV」、「サブページを含める」をオン、「サブページ用のフォルダを作成する」をオンにする。できた zip（大きいと
+zip の中に zip が入っている）をそのまま使う（展開しなくてよい。展開したフォルダも渡せる）。
+
+**共有**：書き出しに共有設定は無い。最上位に取り込むと、取り込んだいちばん上のページは既定で**全員が編集**できる
+（`--access workspace-edit`。`workspace-view` は全員が閲覧、`private` は実行した管理者だけ）。下のページは受け継ぐ。
+**教員だけのページなど、全員に見えてはいけないページが入っているときは `--access private` で取り込み**、ドキュメントの画面で
+中身を確かめてから、ページごとに共有を広げる。`--parent <ページの id>` を付けると、そのページの下に取り込み、共有は親から
+受け継ぐ。
+
+**人**：Notion の「人」の列と本文の `@名前` は、Taylis のユーザーの表示名かユーザー名と一致すれば、その人になる（一致しない
+ときは文字のまま、列はテキストかセレクトになる）。`--user "Notion の名前=username"`（何回でも）か、1 行に 1 つ書いた
+`--user-map FILE` で指定できる。取り込みではメンションの通知を出さない。
+
+**型の指定**：試し読みの「databases」の型が違うときは、`列名 = 型` か `データベース名 / 列名 = 型` を 1 行ずつ書いたファイルを
+`--column-types FILE` で渡す（型は text・number・select・multi_select・date・person・checkbox・url）。タイムゾーンの無い時刻は
+`--timezone`（既定 Asia/Tokyo）。
+
+```sh
+cd /srv/chikuwachat/infra
+install -d -m 700 /srv/chikuwachat/import
+# (手元から) scp ~/Downloads/<書き出し>.zip root@<サーバー>:/srv/chikuwachat/import/notion-export.zip
+
+# 1. 試し読み (何も書かない)。件数・データベースの列と型・つながらないリンク・取れないファイル・警告が出る
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
+  run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
+  python -m app.cli import-notion /import/notion-export.zip --actor admin --access private \
+  --dry-run 2>&1 | tee /srv/chikuwachat/import/notion-dry-run.txt
+
+# 2. 本番: 1. から --dry-run を外して実行する。最後に「imported top pages: <id>」が出る
+
+# 3. 終わったら書き出しを消す (全ページとファイルが入っている)
+rm -rf /srv/chikuwachat/import
+```
+
+**もう一度実行する**：同じコマンドで、Notion で増えたページ・行・ファイルを足し、Taylis で**変わっていない**ページは書き出しの
+中身で上書きする（履歴に「取り込み」の版が増える）。Taylis で本文・プロパティ・題名を変えたページは**触らず**、結果の
+「pages changed in Taylis since the last import」に出す（移動と共有の変更は変えたうちに入らない）。ゴミ箱のページ・完全に
+消したページは作り直さない。データベースは、無い列と選択肢だけを足す（ビューは作り直さない）。
+
+結果の見方：`counts` の `pages / databases / rows: new`（新しい）・`same`（同じ）・`update`（上書き）・`edited`（変えられて
+いたので触らない）・`trashed` / `gone`、`files: new`、`databases`（データベースごとの行数・CSV に無い行のページ（テンプレートの
+ことが多い）・カレンダーのビューを足したか・列と型）、`written another way`（引用にしたコールアウトなど）、`links that do not
+lead …`（取り込んでいないページへのリンク：Notion の URL のまま、またはリンクの文字だけになる）、`files not brought over`
+（空・`ATTACHMENT_MAX_BYTES` を超える・画素数が多すぎる画像）。
+
 ## 実機での動作確認 (iPhone)
 
 前提: `apps/ios/project.yml` の `DEVELOPMENT_TEAM` で自動署名できること (Xcode にそのチームの Apple ID を
