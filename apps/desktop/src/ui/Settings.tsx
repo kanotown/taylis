@@ -565,12 +565,15 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
       </div>
       <section className="space-y-2">
         <h3 className={HEADING}>{t("settings.appearance.palette")}</h3>
+        {/* The swatch cards' radios are sr-only (position: absolute): each card is `relative`, so its radio sits inside
+            it and scrolls with the pane. Placed by an outer box instead, a radio below the pane's first screen stuck
+            out of the settings dialog, and choosing it scrolled the whole dialog up to bring it into view. */}
         <div role="radiogroup" aria-label={t("settings.appearance.palette")} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {PALETTES.map((option) => (
             <label
               key={option.value}
               className={cn(
-                "flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-2.5 py-2 text-sm hover:bg-panel has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50",
+                "relative flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-2.5 py-2 text-sm hover:bg-panel has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50",
                 palette === option.value ? "border-accent bg-accent-soft/50" : "border-line",
               )}
             >
@@ -594,7 +597,7 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
               <label
                 key={value}
                 className={cn(
-                  "flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-2.5 py-2 text-sm hover:bg-panel has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50",
+                  "relative flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-2.5 py-2 text-sm hover:bg-panel has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50",
                   sidebarTone === value ? "border-accent bg-accent-soft/50" : "border-line",
                 )}
               >

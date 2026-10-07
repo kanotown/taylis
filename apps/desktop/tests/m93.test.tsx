@@ -230,6 +230,18 @@ describe("the workspace icon", () => {
     expect(within(screen.getByRole("button", { name: "Alpha" })).queryByTestId("workspace-icon")).toBeNull();
   });
 
+  it("frames the open workspace with a box of its own, not ring + ring-offset (whose seam showed around a transparent icon)", () => {
+    render(<WorkspaceRail controller={railController([A, B])} />);
+    const open = screen.getByRole("button", { name: "Alpha" });
+    const frame = within(open).getByTestId("workspace-active-frame");
+    expect(frame.className).toContain("border-sidebar-strong");
+    expect(open.className).not.toMatch(/\bring-/);
+    expect(open.className).not.toContain("shadow-sm"); // it would show in the frame's transparent gap
+    const other = screen.getByRole("button", { name: "研究室" });
+    expect(within(other).queryByTestId("workspace-active-frame")).toBeNull();
+    expect(other.className).toContain("shadow-sm");
+  });
+
   it("falls back to the letter when the picture cannot be fetched, and asks once per version", async () => {
     const fetch = vi.fn(async () => { throw new Error("offline"); });
     configureWorkspaceIcons(fetch);

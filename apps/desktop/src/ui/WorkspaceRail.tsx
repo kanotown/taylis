@@ -378,13 +378,19 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
             }}
             className={cn(
               "relative flex h-10 w-10 touch-none select-none items-center justify-center rounded-xl text-[15px] font-bold text-white shadow-sm transition-all",
-              active ? "ring-2 ring-sidebar-strong ring-offset-2 ring-offset-sidebar-rail" : "opacity-85 hover:opacity-100",
+              active ? "shadow-none" : "opacity-85 hover:opacity-100",
               !signedIn && !active && "opacity-45 grayscale",
               placeholder && "cursor-grabbing opacity-0 transition-none",
               landing && "transition-none",
             )}
           >
             <WorkspaceIcon serverUrl={entry.serverUrl} version={entry.iconVersion} name={entry.name} colorKey={entry.workspaceId ?? entry.serverUrl} className="h-10 w-10 rounded-xl" />
+            {/* The open workspace's frame: a 2 px line 2 px out from the tile, its own box with a transparent gap. Not
+                ring + ring-offset: those are two box-shadows stacked, and along the tile's rounded edge the ring's
+                colour showed through the offset's anti-aliased inner edge as a thin line inside the frame (dark on the
+                light sidebar, light on the dark one), plainly around an icon with a transparent background. The tile's
+                own shadow goes too (it would show in the gap). */}
+            {active && <span aria-hidden data-testid="workspace-active-frame" className="pointer-events-none absolute -inset-1 rounded-2xl border-2 border-sidebar-strong" />}
             {badge > 0 ? (
               <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-sidebar-rail">
                 {badge > 99 ? "99+" : badge}

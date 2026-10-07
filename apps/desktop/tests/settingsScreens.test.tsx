@@ -280,6 +280,14 @@ it("「表示」 with two workspaces: テーマの色 and サイドバー are th
   expect(box.textContent).toContain("テーマの色とサイドバーは「研究室」だけに使われます");
   const shareAll = within(box).getByRole("button", { name: "すべてのワークスペースに使う" }) as HTMLButtonElement;
   expect(shareAll.disabled).toBe(true);
+  // The swatch cards hold their sr-only radios (`relative`): placed by an outer box, a radio below the pane's first
+  // screen stuck out of the settings dialog, and choosing it scrolled the whole dialog up.
+  for (const group of ["テーマの色", "サイドバー"]) {
+    for (const radio of within(within(you()).getByRole("radiogroup", { name: group })).getAllByRole("radio")) {
+      expect(radio.className).toContain("sr-only");
+      expect(radio.closest("label")!.className.split(/\s+/)).toContain("relative");
+    }
+  }
   fireEvent.click(within(you()).getByRole("radio", { name: "紫" }));
   fireEvent.click(within(within(you()).getByRole("radiogroup", { name: "サイドバー" })).getByRole("radio", { name: "明るい色" }));
   expect(document.documentElement.dataset["palette"]).toBe("purple");
