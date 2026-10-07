@@ -1398,6 +1398,29 @@ CREATE TABLE wiki_notices (                                 -- アクティビ�
 );
 CREATE TABLE wiki_tombstones (page_id uuid PRIMARY KEY, seq bigint NOT NULL, purged_at timestamptz NOT NULL);  -- 30 日
 CREATE TABLE wiki_feed_state (id smallint PRIMARY KEY CHECK (id = 1), purged_through bigint NOT NULL DEFAULT 0);
+-- M123 (移行 0097、docs/WIKI.md §5・§18): データベース。行は wiki_pages (kind = 'row'、親はデータベース、props に値)
+CREATE TABLE wiki_databases (
+  page_id uuid PRIMARY KEY REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  schema jsonb NOT NULL,          -- {"properties": [{"id","name","type","options":[{"id","name","color"}],"number_format","relation":{"database_id","pair_id","primary"}}]}
+  views jsonb NOT NULL,           -- [{"id","name","type": table | calendar,"columns","sort","filter","date_prop_id"}]
+  schema_version bigint NOT NULL DEFAULT 1   -- スキーマ・ビューの変更ごとに +1 (古い版を元にした変更は 409)
+);
+CREATE TABLE wiki_relations (     -- 関係のつながり 1 つ。双方向の逆のプロパティは同じ行を dst の側から読む
+  src_page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  prop_id varchar(24) NOT NULL,
+  dst_page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  src_database_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  position integer NOT NULL,      -- 元のマスの中の並び
+  seq bigint NOT NULL DEFAULT nextval('wiki_relation_seq'),  -- 逆のマスの並び (作った順)
+  PRIMARY KEY (src_page_id, prop_id, dst_page_id)
+);
+CREATE INDEX wiki_relations_dst_idx ON wiki_relations (dst_page_id, src_database_id, prop_id);
+CREATE TABLE wiki_props_legacy (  -- 型の変更で変換できなかった値 (30 日。元の型に戻すと戻る)
+  id uuid PRIMARY KEY, page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  prop_id varchar(24) NOT NULL, prop_type varchar(16) NOT NULL, value jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX wiki_pages_rows_idx ON wiki_pages (parent_id, position, id) WHERE kind = 'row' AND deleted_at IS NULL;
+CREATE SEQUENCE wiki_rows_seq;    -- wiki.rows.changed の seq
 ALTER TABLE attachments ADD COLUMN page_id uuid REFERENCES wiki_pages(id) ON DELETE SET NULL;
 ```
 
