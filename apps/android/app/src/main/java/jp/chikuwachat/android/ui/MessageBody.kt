@@ -7,6 +7,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -367,10 +368,14 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
             modifier = Modifier.padding(top = 2.dp),
         )
         is BodyBlock.Paragraph -> ParagraphView(paragraphLayout(block.lines), inline)
+        // 2026-10-08: its lines are paragraphs and lists (apps/shared/lists.json `quoted`), drawn as outside a quote
+        // in the muted colour (the drawn bullets take it too).
         is BodyBlock.Quote -> Row(Modifier.padding(vertical = 2.dp).height(IntrinsicSize.Min)) {
             Box(Modifier.width(3.dp).fillMaxHeight().background(muted.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
             Spacer(Modifier.width(8.dp))
-            Text(inline.joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge, color = muted)
+            CompositionLocalProvider(LocalContentColor provides muted) {
+                Column { block.blocks.forEach { BodyBlockView(it, inline) } }
+            }
         }
         // apps/shared/lists.json: each item's marker (1. a. i. / • ◦ ▪) comes from the parser; a wide one ("viii.")
         // pushes its text over rather than wrapping.

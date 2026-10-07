@@ -48,7 +48,8 @@ sealed class BodyBlock {
     /** `line`: the heading's line in the body (canvas only; the outline and the section editor use it). */
     data class Heading(val level: Int, val tokens: List<BodyToken>, val line: Int? = null) : BodyBlock()
     data class Paragraph(val lines: List<List<BodyToken>>) : BodyBlock()
-    data class Quote(val lines: List<List<BodyToken>>) : BodyBlock()
+    /** Quoted lines (">" and one space stripped) as [Paragraph]s and [ListBlock]s (apps/shared/lists.json `quoted`). */
+    data class Quote(val blocks: List<BodyBlock>) : BodyBlock()
     data class ListBlock(val ordered: Boolean, val start: Int, val items: List<BodyListItem>) : BodyBlock()
     data class CodeBlock(val text: String, val lang: String?) : BodyBlock()
     /** Display math: `$$…$$` on a line (or lines) of its own (apps/shared/math.json). */
@@ -295,6 +296,48 @@ fun straightPunctuation(text: String): String = buildString {
     }
 }
 
+/** List lines as list blocks: a top-level item of the other kind starts a new list (as in CommonMark). */
+private fun listBlocks(rows: List<ListLine>, inline: (String) -> List<BodyToken>): List<BodyBlock.ListBlock> {
+    val items = listItems(rows, inline)
+    val out = ArrayList<BodyBlock.ListBlock>()
+    var from = 0
+    for (k in 1..items.size) {
+        if (k < items.size && !(items[k].level == 0 && items[k].ordered != items[from].ordered)) continue
+        val run = items.subList(from, k).toList()
+        out.add(BodyBlock.ListBlock(run[0].ordered, if (run[0].ordered) run[0].number else 1, run))
+        from = k
+    }
+    return out
+}
+
+/**
+ * A quote's lines (its ">" and one space stripped) as paragraphs and lists, read as at the top level: a run of list
+ * lines is a list (nested by indent, numbered, the other kind a new list); any other line, a blank one too, is a
+ * paragraph line (apps/shared/lists.json `quoted`, as markdown.ts quoteBlocks).
+ */
+private fun quoteBlocks(quoted: List<String>, inline: (String) -> List<BodyToken>): List<BodyBlock> {
+    val out = ArrayList<BodyBlock>()
+    var i = 0
+    while (i < quoted.size) {
+        val rows = ArrayList<ListLine>()
+        while (i < quoted.size) {
+            rows.add(listLine(quoted[i]) ?: break)
+            i++
+        }
+        if (rows.isNotEmpty()) {
+            out.addAll(listBlocks(rows, inline))
+            continue
+        }
+        val paragraph = ArrayList<List<BodyToken>>()
+        while (i < quoted.size && (paragraph.isEmpty() || listLine(quoted[i]) == null)) {
+            paragraph.add(inline(quoted[i]))
+            i++
+        }
+        out.add(BodyBlock.Paragraph(paragraph))
+    }
+    return out
+}
+
 /** A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text. */
 class ListLine(val indent: Int, val ordered: Boolean, val written: Int, val text: String)
 
@@ -440,13 +483,13 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
             continue
         }
         if (QUOTE.matches(line)) {
-            val quoted = ArrayList<List<BodyToken>>()
+            val quoted = ArrayList<String>()
             while (i < lines.size) {
-                val q = QUOTE.find(lines[i]) ?: break
-                quoted.add(inlineOf(q.groupValues[1]))
+                val q = QUOTE.find(lines[i]) ?: break // a line without ">" ends the quote (no lazy continuation)
+                quoted.add(q.groupValues[1])
                 i++
             }
-            blocks.add(BodyBlock.Quote(quoted))
+            blocks.add(BodyBlock.Quote(quoteBlocks(quoted, inlineOf)))
             continue
         }
         if (opensTable(i)) {
@@ -468,15 +511,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
                 rows.add(listLine(lines[i]) ?: break)
                 i++
             }
-            // A top-level item of the other kind starts a new list (as in CommonMark).
-            val items = listItems(rows, inlineOf)
-            var from = 0
-            for (k in 1..items.size) {
-                if (k < items.size && !(items[k].level == 0 && items[k].ordered != items[from].ordered)) continue
-                val run = items.subList(from, k).toList()
-                blocks.add(BodyBlock.ListBlock(run[0].ordered, if (run[0].ordered) run[0].number else 1, run))
-                from = k
-            }
+            blocks.addAll(listBlocks(rows, inlineOf))
             continue
         }
         val paragraph = ArrayList<List<BodyToken>>()
