@@ -1,8 +1,9 @@
-import { Bell, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { AppWindow, Bell, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
 import { isTauri } from "../platform/env";
+import { readRunInBackground, runInBackgroundNote, writeRunInBackground } from "../platform/background";
 import { DEFAULT_ZOOM, stepZoom, useZoom, writeZoom, ZOOM_STEPS, zoomLabel } from "../platform/zoom";
 import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
 import type { AppController } from "../state/app";
@@ -530,8 +531,44 @@ function NotificationsSection({ controller }: { controller: AppController }) {
         )}
         {/* PUSH_NOTIFICATIONS.md §15: does a notification reach this device and my phones? */}
         <TestNotificationCard controller={controller} permission={permission} />
+        {isTauri() && <RunInBackgroundCard />}
       </section>
     </div>
+  );
+}
+
+/**
+ * 「ウィンドウを閉じてもバックグラウンドで動かす」 (desktop app, this device only; on by default): closing the window hides
+ * it (the Dock on macOS, the notification area on Windows) so that notifications keep coming (platform/background.ts).
+ */
+export function RunInBackgroundCard({ windows }: { windows?: boolean }) {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let current = true;
+    void readRunInBackground().then((value) => { if (current) setEnabled(value); });
+    return () => { current = false; };
+  }, []);
+  if (enabled === null) return null;
+  const change = (on: boolean) => {
+    setEnabled(on);
+    setFailed(false);
+    writeRunInBackground(on).catch((err: unknown) => {
+      console.warn("could not save the background setting", err);
+      setEnabled(!on);
+      setFailed(true);
+    });
+  };
+  return (
+    <label className={cn(CARD, "cursor-pointer")}>
+      <AppWindow size={18} className="text-muted" />
+      <span className="min-w-0 flex-1 text-sm">
+        {t("settings.background.title")}
+        <span className="block text-xs text-muted">{runInBackgroundNote(windows)}</span>
+        {failed && <span role="alert" className="block text-xs text-danger">{t("settings.background.failed")}</span>}
+      </span>
+      <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={enabled} onChange={(e) => change(e.target.checked)} />
+    </label>
   );
 }
 
