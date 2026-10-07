@@ -66,14 +66,15 @@ ON/OFF できるようにもしたい。管理者側の設定で、入る前に�
 (管理者のみ。PATCH は送った項目だけを変える。未知の項目は 422)。変更は監査ログ `workspace.settings_updated`
 (`{項目: {from, to}}`) に残し、`workspace.settings_updated` (audience all、`{settings}`) で全端末に届ける。
 クライアントは bootstrap の `workspace_settings` (`{show_membership_messages, preview_before_join, icon_version,
-calls_enabled, meeting_base_url}`) で受け取る (`icon_version` は M93 のワークスペースのアイコン。WORKSPACES.md §3.4。
-`calls_enabled` / `meeting_base_url` は M117 の通話。docs/CALLS.md)。
+in_app_calls, calls_enabled, meeting_base_url}`) で受け取る (`icon_version` は M93 のワークスペースのアイコン。WORKSPACES.md §3.4。
+`in_app_calls` = `{enabled, video, screen_share}` は M130 のアプリ内通話。M117 の `calls_enabled` / `meeting_base_url` は
+M130 からいつも false / null。docs/CALLS.md)。
 
 | 項目 | 既定 | オフにすると |
 | --- | --- | --- |
 | `show_membership_messages` 「参加・退出の表示」 | オン | 新しい行を書かない。書いた行は残る |
 | `preview_before_join` 「参加前にチャンネルの中を見られる」 | オン (M27 のプレビュー) | 下の通り |
-| `meeting_base_url` 「通話の会議サービス」 (M117) | `https://meet.jit.si/` | `""` か null で通話がオフ (`calls_enabled = false`、📞 を出さない)。docs/CALLS.md §3 |
+| `in_app_calls_enabled` 「アプリ内通話」 (M130) | オン | 新しい通話を始められない (通話中のものは続く)。サーバに LiveKit の設定が無ければオンでも使えない (`in_app_calls.enabled = false`)。M117 の `meeting_base_url` は PATCH すると `409 meeting_links_retired`。docs/CALLS.md |
 
 **プレビューをオフにしたとき**: 参加していない公開チャンネルについて、一覧 (`GET /channels?include=public`) と
 `GET /channels/{id}` の名前・トピック・説明・人数は今まで通り。メッセージの履歴・差分・前後・単体・スレッドの返信・

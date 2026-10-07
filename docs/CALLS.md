@@ -3,15 +3,16 @@
 会話（チャンネル・DM・グループ DM）に付いた「通話」を、自前の LiveKit（SFU、Apache-2.0）でアプリの中で行う。
 Slack のハドルと同じ形：会話で誰かが通話を始め、メンバーは出入りでき、会話とサイドバーに「通話中（n）」が出る。
 
-**状態：設計（2026-10-07）**。利用者の決定（2026-10-07）：アプリ内の通話は LiveKit で作る。会議リンクの通話（M117）は
-要らないので **LiveKit の通話で置き換えて廃止する**（§11）。M117 の設計は履歴として末尾の付録 A に残す。
+**状態：M130（サーバと手元の infra・M117 の廃止）は実装済み（2026-10-07）。M131〜M136 は設計**。利用者の決定（2026-10-07）：
+アプリ内の通話は LiveKit で作る。会議リンクの通話（M117）は要らないので **LiveKit の通話で置き換えて廃止する**（§11）。
+M117 の設計は履歴として末尾の付録 A に残す。M130 で確かめたこと・設計からの違い・端末向けの API の要点は §13。
 
 M117 のコードと他の文書にある「CALLS.md §n」（M117 の時点の節）は、付録 A の「A.n」を指す（M130〜M135 で M117 のコードを
 消すときに直す）。
 
-この文書で確かめられていない LiveKit の細部は「**要確認**」と書く（手元で LiveKit を動かして確かめたものではない。
-LiveKit の公開の文書 `docs.livekit.io` と `config-sample.yaml` を 2026-10-07 に読んだ範囲）。M130・M131 の最初に確かめ、
-この文書を直す。
+この文書で確かめられていない LiveKit の細部は「**要確認**」と書く（LiveKit の公開の文書 `docs.livekit.io` と
+`config-sample.yaml` を 2026-10-07 に読んだ範囲）。M130 で手元の LiveKit（`livekit/livekit-server:v1.13.8`、dev モード）を
+動かして確かめたものは「（M130 で確認）」と書き直した（§13.1）。残りは M131 で VPS の上で確かめる。
 
 ## 1. 範囲
 
@@ -76,7 +77,7 @@ LiveKit の公開の文書 `docs.livekit.io` と `config-sample.yaml` を 2026-1
 
 | 段階 | 起きること |
 | --- | --- |
-| 始める | `POST /channels/{id}/huddle`（§5.2）。その会話に進行中の通話が無ければ、1 つのトランザクションで `calls` の行と通話のメッセージ（`message.created`、プッシュ、§6）を作り、コミットの後で RoomService `CreateRoom`（`empty_timeout`・`departure_timeout`・`max_participants`）。進行中の通話があれば新しく作らずそれに参加する |
+| 始める | `POST /channels/{id}/huddle`（§5.2）。その会話に進行中の通話が無ければ、1 つのトランザクションで `calls` の行と通話のメッセージ（`message.created`、プッシュ、§6）を書き、**コミットの前に** RoomService `CreateRoom`（`empty_timeout`・`departure_timeout`・`max_participants`）。LiveKit に届かなければロールバックして `503 calls_unavailable`（何も投稿されず、誰にも通知が行かない。M130 の実装。コミットが後で失敗したときに残る空の部屋は `empty_timeout` で LiveKit が消す）。進行中の通話があれば新しく作らずそれに参加する |
 | 参加 | トークンを渡す（始めた人にも）。端末が LiveKit につながると webhook `participant_joined` → `call_participants` に行 → `call.updated` |
 | 退出 | 端末が切る・アプリを閉じる → `participant_left` → 行に `left_at` → `call.updated` |
 | 終わる | 最後の人が出て `departure_timeout`（20 秒）経つと LiveKit が部屋を閉じる → `room_finished` → `calls.ended_at` → 通話のメッセージを更新（`message.updated` の `change: "call"`、「通話 · 12 分 · 参加者 4 人」）と `call.ended` |
@@ -131,15 +132,22 @@ workspace_settings
 ### 3.2 webhook
 
 - LiveKit の `webhook.urls` に `http://app:8000/api/v1/livekit/webhook`、`webhook.api_key` にアプリと同じキー。
-- **検証**：`Authorization` ヘッダの JWT を API シークレットで検証（HS256、`iss` = API キー、期限）し、その `sha256` の値が
-  本文の SHA-256（base64）と一致することを確かめる。合わなければ `401`（ログに残す。本文は処理しない）。LiveKit の
-  webhook の署名はこの方式（要確認：クレーム名 `sha256`、base64 か hex か。Go / Node の SDK の `WebhookReceiver` を読んで
-  合わせる）。
+- **検証**（M130 で確認）：`Authorization` ヘッダにそのまま JWT が入る（`Bearer` は付かない）。HS256、API シークレットで署名、
+  `iss` = API キー、`nbf`・`iat`・`exp`（**5 分**。LiveKit の `protocol/webhook/url_notifier.go` の `SetValidFor(5 * time.Minute)`）、
+  クレーム `sha256` = 本文の SHA-256 の **標準の base64**（パディングあり、`base64.StdEncoding`）。`Content-Type` は
+  `application/webhook+json`、`User-Agent: LiveKit`。本文は protobuf の JSON（**camelCase**：`joinedAt`・`numParticipants`、
+  int64 は文字列 `"1791329539"`）。アプリはこれを確かめ、合わなければ `401`（ログに残す。本文は処理しない）。期限の検査には
+  60 秒の余裕を見る。本物の LiveKit が送った 4 つ（`room_started`・`participant_joined`・`participant_left`・`room_finished`）を
+  `server/tests/fixtures/livekit_webhooks.json` に記録し、試験はそれを検証する。
+- 再送の重複・5 分以内の再生（replay）は、処理が冪等なので害が無い（`livekit_sid` で 1 行、終わった通話・知らない部屋は捨てる）。
 - 扱うイベント：`participant_joined`・`participant_left`・`room_finished`（`room_started` は使わない。部屋はアプリが作る）。
   `track_published` などは捨てる（v1 は「カメラを入れている人」をサーバで持たない）。
 - 知らない部屋（ほかのサーバの部屋、終わった通話）は `200` で捨てる。重複・順序の入れ替わりは `livekit_sid` で吸収
   （先に `left` が来たら、参加者の情報の `joined_at` で行を作って閉じる）。処理は冪等。
-- LiveKit は失敗した webhook を再送するが、ずっと待つわけではない（要確認：再試行の回数と間隔）。欠けは §3.3 で直す。
+- LiveKit の webhook は URL ごとの待ち行列（既定 100 件、あふれたら **捨てる**）と 10 の worker で送り、失敗は
+  go-retryablehttp で再送する（LiveKit は回数を設定していないので retryablehttp の既定。`url_notifier.go` を 2026-10-07 に
+  読んだ範囲。retryablehttp の既定の値（4 回・1〜30 秒）は読んでいない）。欠けは §3.3 で直す。
+- `room_started` と `track_published` などは捨てる（M130 の実装は `participant_joined`・`participant_left`・`room_finished` だけ）。
 
 ### 3.3 突き合わせ（webhook が欠けたとき）
 
@@ -156,7 +164,9 @@ workspace_settings
 | --- | --- | --- |
 | `LIVEKIT_URL` | `wss://livekit.chat.example.com` | 端末がつなぐ URL（トークンと一緒に返す） |
 | `LIVEKIT_API_URL` | `http://livekit:7880` | アプリから RoomService |
-| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET_FILE` | `taylis` / `/run/secrets/livekit_api_secret` | キーとシークレット（シークレットはファイル。リポジトリに入れない） |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET_FILE` | `taylis` / `/run/secrets/livekit_api_secret` | キーとシークレット（シークレットはファイル。リポジトリに入れない。本番（`ENVIRONMENT=production`）では 32 バイト未満なら通話はオフになり、ログに出る） |
+| `LIVEKIT_API_SECRET` | `secret` | 手元の開発だけ（LiveKit の dev モードの決まったシークレット）。ファイルがあればファイルが優先 |
+| `LIVEKIT_RECONCILE_INTERVAL_SECONDS` | `60` | §3.3 の突き合わせの間隔 |
 | `LIVEKIT_MAX_PARTICIPANTS` | `50` | 1 通話の上限 |
 | `LIVEKIT_TOKEN_TTL_SECONDS` | `600` | トークンの期限 |
 
@@ -288,7 +298,8 @@ simulcast・帯域の調整・再接続）は自分で書くものではない�
 - 通話が終わったら `ended_at`・`duration_seconds`・`participant_count` を入れて `message.updated`（`change: "call"`、seq を 1 つ）。
 - `<PUBLIC_BASE_URL>/call/<id>` は Web クライアントのページ（ログインの後もこのパスを保ち、その通話の会話を開いて参加の
   確認を出す）。古い端末の「参加する」・本文のリンクはこれを外のブラウザで開くので、古い端末の人もブラウザで入れる。
-  `PUBLIC_BASE_URL` が無いサーバでは本文に URL を付けない（`call.url` は null）。
+  `PUBLIC_BASE_URL` が無いサーバでは本文に URL を付けず、`call.url` はパスだけの `/call/<id>`（**null にしない**：出してある
+  Android 1.0.2 は null の `url` を読めずメッセージを落とす。§13.2）。
 
 ## 6. 通知
 
@@ -358,7 +369,7 @@ simulcast・帯域の調整・再接続）は自分で書くものではない�
 | ICE/UDP | 50000–60000/udp（参加者 1 人に 2 つ）か、1 ポートにまとめる `rtc.udp_port`（例 7882） | **7882/udp の 1 ポート** | 開ける |
 | TURN/UDP（STUN も） | 3478/udp | 3478/udp | 開ける |
 | TURN/TLS | 5349/tcp（LiveKit の文書：ロードバランサが無ければ 443 に置くべき） | **5349/tcp**（443 は nginx が持つ） | 開ける |
-| TURN のリレー | `relay_range_start/end`（既定 1024–30000） | 組み込み TURN と SFU は同じコンテナの中で話すので外には要らない見込み（**要確認**） | 開けない |
+| TURN のリレー | `relay_range_start/end`（1.13.8 の起動ログでは 30000–40000） | 組み込み TURN と SFU は同じコンテナの中で話すので外には要らない見込み（**要確認**：リレーは SFU の公開の候補（`NODE_IP`:7882）へ送るので、Docker のヘアピン NAT を通る。M131 で TURN だけの経路（`iceTransportPolicy: relay`）を試す） | 開けない |
 
 - **1 ポートの UDP（7882）を選ぶ理由**：ファイアウォールの穴が 1 つで済み、Docker のブリッジ網のポートの割り当てでも
   そのまま動く（1 万ポートの範囲をブリッジで出すのは重く、LiveKit は範囲を使うならホスト網を勧める）。30 人規模なら
@@ -379,7 +390,18 @@ simulcast・帯域の調整・再接続）は自分で書くものではない�
   読み取り専用でコンテナに入れ、更新の後に LiveKit を再起動する（その証明書だけの `renew_hook`。LiveKit が証明書を
   読み直すかは要確認）。
 
-### 8.2 LiveKit の設定（下書き。M130 で `infra/livekit.yaml.template` に）
+### 8.2 LiveKit の設定（M130：`infra/livekit.yaml`）
+
+設計の下書き（下）から変えた点：テンプレートにせず、サーバごとの値は環境変数で渡す（LiveKit は設定ファイルの中の `${…}` を
+展開しないが、全ての項目を環境変数でも受ける）。`docker-compose.livekit.yml` が `infra/.env` から `NODE_IP`（=
+`LIVEKIT_NODE_IP`）・`LIVEKIT_TURN_DOMAIN`（= `LIVEKIT_DOMAIN`）・`LIVEKIT_TURN_CERT_FILE` / `LIVEKIT_TURN_KEY_FILE`
+（certbot の `/etc/letsencrypt/live/<domain>/`）・`LIVEKIT_WEBHOOK_API_KEY`（= `LIVEKIT_API_KEY`）を渡す。キーとシークレットは
+`LIVEKIT_KEYS`（`secrets/livekit.env`、deploy.sh が作る、権限 600）。**LiveKit は他人が読める鍵ファイル（`key_file`）を
+起動の時に拒む**（「key file others permissions must be set to 0」、M130 で確認）ため、アプリと同じファイルは使えない。
+帯域のために `rtc.congestion_control`（`enabled`・`allow_pause`）と `rtc.allow_tcp_fallback` を明示した（§8.4）。
+この設定で 1.13.8 が起動し、TURN（3478/udp・5349/tcp）を開くことを手元で確かめた（自己署名の証明書）。
+
+下書き（設計の時点）：
 
 ```yaml
 port: 7880
@@ -414,7 +436,7 @@ logging:
 | **（a）本番（共用の研究室の VPS、nginx が 80/443、D22）** | compose に `docker-compose.livekit.yml`（新規）を `EXTRA_COMPOSE_FILES` で足す：ブリッジ網、`127.0.0.1:7880`、`7881/tcp`・`7882/udp`・`3478/udp`・`5349/tcp`。nginx に `livekit.<domain>` のサイト（`infra/nginx-livekit.conf.example`、WebSocket の Upgrade と長い timeout、certbot で 443）。DNS の A レコード。ファイアウォールに 4 つ。**どれも共用のサーバの変更なので利用者の了承の後**。メモリに余裕の少ないサーバだが、LiveKit は数百 MB（§8.5） |
 | **（b）taylis の VPS（12 GB、nginx が 80/443）** | （a）と同じ構成。**最初にここで試す**（M131）：本番より余裕があり、CI の runner と同じ所で試せる |
 | **（c）デモ（taylis の VPS の 2 つ目の compose）** | v1 では **通話はオフ**（LiveKit を置かない。`in_app_calls.enabled = false` で 🎧 が出ない）。ストアの審査で通話を見せる必要が出たら、デモ用の LiveKit を別のポート（7891/tcp・7892/udp・3479/udp・5350/tcp）と別の名前（`livekit-demo.<domain>`）で足す（ポートは同じホストの 2 つの LiveKit で共有できない） |
-| **（d）手元の開発** | `docker compose --profile calls up`：`livekit/livekit-server --dev`（キー `devkey` / シークレット `secret`、手元専用）、`7880`・`7881`・`7882/udp` を出す。`LIVEKIT_NODE_IP` は既定 `127.0.0.1`、実機（同じ Wi-Fi）で試すときは Mac の LAN の IP。TURN なし。`LIVEKIT_URL=ws://<その IP>:7880`（iOS は `NSAllowsLocalNetworking` が既にある。Android の開発ビルドは平文の手元の通信を許しているかを確かめる）。Web は `localhost` なら `getUserMedia` が使える |
+| **（d）手元の開発** | `docker compose --profile calls up`：`livekit/livekit-server --dev`（キー `devkey` / シークレット `secret`、手元専用）、`7880`・`7881`・`7882/udp` を出す。**dev モードの LiveKit は 127.0.0.1 でしか待たない**ので `--bind 0.0.0.0` を付ける（付けないとアプリのコンテナから RoomService に届かない。M130 で確認）。`LIVEKIT_NODE_IP` は既定 `127.0.0.1`、実機（同じ Wi-Fi）で試すときは Mac の LAN の IP。TURN なし。`LIVEKIT_URL=ws://<その IP>:7880`（iOS は `NSAllowsLocalNetworking` が既にある。Android の開発ビルドは平文の手元の通信を許しているかを確かめる）。Web は `localhost` なら `getUserMedia` が使える |
 
 ### 8.4 帯域（目安。**M131 で実測して直す**）
 
@@ -447,13 +469,55 @@ LiveKit は SFU で、映像を変換しない。各人は自分の 1 本（simu
 
 ### 8.6 利用者がすること（本番・taylis の VPS ごと）
 
-1. DNS：`livekit.<chat のドメイン>` の A レコードを VPS の IP に。
-2. ファイアウォール（VPS のパケットフィルタと、あれば OS の nftables / ufw）：`7881/tcp`・`7882/udp`・`3478/udp`・`5349/tcp` を開ける。
-   ほかのサイトがこれらのポートを使っていないことを `ss -lntup` で確かめる。
-3. nginx：`livekit.<domain>` のサイトを足し、`certbot --nginx -d livekit.<domain>`。証明書の更新の後に LiveKit を再起動する
-   `renew_hook` を、その証明書の更新設定だけに足す。
-4. `infra/secrets/livekit_api_secret` を作り、`.env` に `LIVEKIT_*` を書き、`deploy.conf` の `EXTRA_COMPOSE_FILES` に足す。
-5. 研究室・学内 Wi-Fi・携帯の回線から接続を試す（M131 の手順）。
+M131（taylis の VPS、162.43.29.120）で行う。DNS（1）は済んでいる（`livekit.kano-lab.com` → 162.43.29.120、利用者 2026-10-07）。
+ほかの手順は M131 の作業者が利用者と一緒に行う（共用のサーバの変更は利用者の了承済み、§12）。`<domain>` は `kano-lab.com`、
+`/srv/taylis` は infra の置き場所に読み替える。
+
+1. **DNS**：`dig +short livekit.kano-lab.com` が `162.43.29.120` を返すこと。
+2. **ポートが空いているか**：`sudo ss -lntupH | grep -E ':(7880|7881|7882|3478|5349)\b'` が何も出さないこと（出たら、その
+   ポートを使っているほかのサイトを利用者と確かめる）。
+3. **ファイアウォール**：VPS の管理画面のパケットフィルタ（あれば）と OS の両方で `7881/tcp`・`7882/udp`・`3478/udp`・
+   `5349/tcp` を受け入れる。ufw なら `sudo ufw allow 7881/tcp && sudo ufw allow 7882/udp && sudo ufw allow 3478/udp && sudo ufw allow 5349/tcp`。
+   7880 は開けない（127.0.0.1 だけ）。
+4. **UDP の受信バッファ**：LiveKit は起動の時に「UDP receive buffer is too small for a production set-up（425984、勧めは
+   5000000）」と警告する（M130 で確認）。`echo 'net.core.rmem_max=5000000' | sudo tee /etc/sysctl.d/90-livekit.conf && sudo sysctl --system`
+   （`net.core.wmem_max` も同じ値にしてよい）。ほかのサイトへの害は無い（上限を上げるだけ）。
+5. **nginx と証明書**：`infra/nginx-livekit.conf.example` の `livekit.example.com` を `livekit.kano-lab.com` にして
+   `/etc/nginx/sites-available/taylis-livekit` に置き、`ln -s` → `sudo nginx -t && sudo systemctl reload nginx` →
+   `sudo certbot --nginx -d livekit.kano-lab.com --redirect`。
+6. **証明書の更新の後に LiveKit を再起動**：`/etc/letsencrypt/renewal/livekit.kano-lab.com.conf` の `[renewalparams]` に
+   `renew_hook = cd /srv/taylis/infra && docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml -f docker-compose.livekit.yml --profile proxy restart livekit`
+   を 1 行足す（この証明書だけ。ほかのサイトの更新では動かない）。`sudo certbot renew --dry-run --cert-name livekit.kano-lab.com` で確かめる。
+7. **シークレットと設定**：`openssl rand -base64 48 | tr -d '\n' > /srv/taylis/infra/secrets/livekit_api_secret && chmod 644 /srv/taylis/infra/secrets/livekit_api_secret`。
+   `infra/.env` に `LIVEKIT_URL=wss://livekit.kano-lab.com`・`LIVEKIT_API_KEY=taylis`・`LIVEKIT_NODE_IP=162.43.29.120`・
+   `LIVEKIT_DOMAIN=livekit.kano-lab.com`、`deploy.conf` の `EXTRA_COMPOSE_FILES` に `docker-compose.livekit.yml` を足す。
+   次のデプロイで deploy.sh が `secrets/livekit.env` を作り、LiveKit が起動する。
+8. **回線と転送量**（§8.4・§8.7）：VPS の契約の管理画面で、回線の速さ（共有か・上限）と月の転送量の上限の有無を見る。
+9. **つながるかを試す**：M131 の手順（研究室の有線・学内 Wi-Fi・携帯の回線・自宅、§8.7）。
+
+### 8.7 帯域とつながりやすさ（利用者の決定 2026-10-07：「できるだけ多くの場面に対応する」）
+
+できるだけ多くの網・回線でつながり、細い回線でも話せるようにする。サーバと端末で次を全部使う：
+
+| 手段 | どこで | 効くこと |
+| --- | --- | --- |
+| UDP 1 ポート（7882）→ ICE/TCP（7881）→ TURN/UDP（3478）→ TURN/TLS（5349） | サーバ（M130 の設定）と SDK の既定 | UDP が閉じた網でも TCP・TLS でつながる。`rtc.allow_tcp_fallback`：UDP が不安定な端末は TCP に移る |
+| simulcast（3 層） | 端末の公開（M133〜M135 で有効にする。SDK の既定はオン） | 受け手ごとに 180p / 360p / 720p を選べる |
+| adaptiveStream | 端末の購読（M133〜M135） | 画面のタイルの大きさに合った層だけを受ける。見えないタイルは止める |
+| dynacast | 端末の公開（M133〜M135） | 誰も見ていない層は上げない（上りの節約） |
+| 混雑の制御（`congestion_control`、`allow_pause`） | サーバ（M130 の設定） | 受け手の下りを推定し、層を下げ、足りなければ映像を止めて音声を残す |
+| 音声だけに落とす | 端末（M132〜M135）：接続の質（`ConnectionQuality.Poor`）が続いたら「映像を止めますか」を出し、受ける映像を止める。8 人以上の通話はマイクをオフで入る（§4.3） | 細い回線・携帯で話を続けられる |
+| 443 しか通らない網 | §8.1 の選択肢。利用者の決定：**（3）LiveKit 専用の小さな VPS（443 が空いている）**（M131 の実測で 443 以外が閉じた網が見つかったとき） | TURN/TLS を 443 に置ける |
+
+**利用者が VPS で確かめること**（M131 で作業者と一緒に）：
+
+1. 回線：契約の管理画面で回線の速さと月の転送量の上限。目安は §8.4（30 人の会議で外向き 60〜120 Mbps、1 時間 30〜50 GB）。
+2. 実際の外向きの速さ：3 の `lk load-test` の間に `vnstat -l` で外向きの Mbps を見る（回線の上限に近ければ、ほかのサイトにも
+   響く。そのときは「カメラは話す人だけ」の案内と、端末の公開の上限（720p → 540p）で下げる）。
+3. LiveKit の負荷：`lk load-test`（M131、§9）で 30 人の CPU・メモリ・外向きの帯域を `docker stats` と `vnstat -l`（無ければ
+   `sudo apt install vnstat`）で記録し、§8.4・§8.5 を直す。
+4. どの経路でつながったか：LiveKit のログ（`docker compose ... logs livekit | grep -i candidate`）か、端末の `getStats` の
+   `candidateType`（host / srflx / relay）と `protocol`（udp / tcp）を、研究室・学内 Wi-Fi・携帯・自宅で記録する。
 
 ## 9. 試験
 
@@ -479,7 +543,7 @@ LiveKit は SFU で、映像を変換しない。各人は自分の 1 本（simu
 
 | # | 名前 | 完了条件 |
 | --- | --- | --- |
-| M130 | サーバと手元の infra・M117 の廃止 | `calls`・`call_participants`・`messages.call_id`・`in_app_calls_enabled` の移行。`LiveKitGateway`、トークン、webhook、突き合わせ、§5 の API とイベント、通話のメッセージとプッシュ。M117 の廃止（§11）。`docker-compose.yml` の `calls` プロファイル、`docker-compose.livekit.yml`、`livekit.yaml.template`、`nginx-livekit.conf.example`、infra/README.md。pytest・mypy・ruff が通り、手元の LiveKit と `lk` で、参加・退出・終わりが API とイベントに出る。M117 の古い 3 端末（Desktop 0.1.39・Android 1.0.2・iOS build 105）を手元のサーバにつなぎ、📞 が消えて落ちないこと |
+| M130 | サーバと手元の infra・M117 の廃止（**済み 2026-10-07**、§13） | `calls`・`call_participants`・`messages.call_id`・`in_app_calls_enabled` の移行。`LiveKitGateway`、トークン、webhook、突き合わせ、§5 の API とイベント、通話のメッセージとプッシュ。M117 の廃止（§11）。`docker-compose.yml` の `calls` プロファイル、`docker-compose.livekit.yml`、`livekit.yaml.template`、`nginx-livekit.conf.example`、infra/README.md。pytest・mypy・ruff が通り、手元の LiveKit と `lk` で、参加・退出・終わりが API とイベントに出る。M117 の古い 3 端末（Desktop 0.1.39・Android 1.0.2・iOS build 105）を手元のサーバにつなぎ、📞 が消えて落ちないこと |
 | M131 | taylis の VPS での試し・網の実測 | 利用者の了承の後に（b）を設定（§8.6）。`lk` でトークンを作り、LiveKit の公開の試験ページ（LiveKit Meet の「カスタム」）から研究室・学内 Wi-Fi・携帯の回線でつながる経路を記録。`lk load-test` で 30 人の CPU・メモリ・帯域を記録して §8.4・§8.5 を直す。443 以外が閉じた網があれば §8.1 の選択肢を利用者に示す |
 | M132 | Desktop / Web の音声 | Tauri（macOS・Windows）とブラウザで `getUserMedia` を確かめる（§4.2）。🎧・通話のバー・ペイン・入出力の選択・話している表示・「通話中（n）」・カード・DM のバナー・`/call/<id>` のページ・管理の設定（「アプリ内通話」のスイッチ。会議サービスの欄を消す）。Mac・Windows・ブラウザの 3 人で 10 分話せ、表示が合う。tsc・Vitest・`tauri build` |
 | M133 | Desktop / Web のビデオと画面共有 | カメラ（simulcast・adaptiveStream・dynacast）、画面共有（macOS の画面収録の許可・Windows）、タイルの並べ方。3 人がカメラ・1 人が画面共有で 10 分 |
@@ -517,26 +581,91 @@ M130 で M117 を止めると、M132 まで通話が無い期間ができる。�
 | 会話を開く | `calls_enabled = false` なので 📞 を出さない |
 | 手元に古い設定が残っていて 📞 を押した | `POST /channels/{id}/calls` → `409 calls_disabled` → 「このワークスペースでは通話がオフになっています」を出して 📞 を隠す（3 端末とも実装済み） |
 | M117 のメッセージ | 今までどおりのカード（`call.url` を外で開く） |
-| LiveKit の通話のメッセージ | `call.url`（`/call/<id>` の Web のページ）があるので M117 のカードが出る。「参加する」で外のブラウザが開き、Web クライアントで参加できる（M132 から。それまでは Web のページは会話を開くだけ） |
+| LiveKit の通話のメッセージ | `call.url`（`/call/<id>` の Web のページ）があるので M117 のカードが出る（追加の項目は 3 端末とも読み飛ばす、M130 で 3 端末の出した版のコードで確認）。`PUBLIC_BASE_URL` のあるサーバでは「参加する」で外のブラウザが開き、Web クライアントで参加できる（M132 から。それまでは Web のページは会話を開くだけ）。パスだけの URL（`PUBLIC_BASE_URL` の無いサーバ）は開けない：iOS はボタンを出さず、Android は「開けません」を出し、Tauri の Desktop は何もしない（どれも落ちない）。本文は「🎧 通話を始めました」なので、Desktop・iOS は本文もカードの下に出す（見た目だけ） |
 | Desktop の管理画面（0.1.39） | 「通話の会議サービス」の欄は出る（`calls_enabled` の項目があるため）が、オフの表示。保存すると `409 meeting_links_retired`（一般のエラーの文）。Desktop は自動更新があるので短い間 |
 | `call.started` などの新しいイベント | 知らない種類のイベントは捨てる（3 端末とも既存の作り。M130 の試験で古い版を手元のサーバにつないで確かめる） |
 
-## 12. 未決の点（利用者に聞く）
+## 12. 利用者の決定（2026-10-07）
 
-1. **ホスト名**：`livekit.<chat のドメイン>`（本番・taylis それぞれ）でよいか。DNS の A レコードは利用者が作る。
-2. **どのサーバに置くか**：taylis の VPS で先に試し（M131）、本番（共用の VPS）にも置くか。デモはオフでよいか。
-3. **共用の VPS の変更**：ファイアウォールで `7881/tcp`・`7882/udp`・`3478/udp`・`5349/tcp` を開け、nginx にサイトを 1 つ・
-   certbot の `renew_hook` を 1 つ足してよいか。
-4. **大学の網**：443 以外が閉じていて通話がつながらない場合、2 つ目の IP・nginx の SNI 振り分け・LiveKit 専用の小さな VPS の
-   どれにするか（M131 の実測の後で）。
-5. **帯域**：VPS の回線の速さ・月の転送量の上限（30 人の会議で外向き 60〜120 Mbps）。研究室の会議で「カメラは話す人だけ」を
-   案内にしてよいか。
-6. **上限人数**：1 通話 50 人でよいか。
-7. **画面共有**：Desktop / Web だけで始め、スマホは後でよいか（見るのは全端末）。
-8. **着信**：v1 はふつうのプッシュ + アプリ内のバナー（DM・グループ DM）で、全画面の着信は後でよいか。
-9. **ブロック**：1:1 の DM ではどちらかがブロックしていれば通話できない、グループ・チャンネルでは拒まない（§7.2）でよいか。
-10. **M117 の空白**：M130（サーバ）から M132（Desktop）まで通話が無い期間ができてよいか（嫌なら、M130 のサーバの廃止の部分だけを
-    M132 のリリースまで出さない）。
+設計の時点の「未決の点」に利用者が答えた。
+
+1. **ホスト名**：`livekit.kano-lab.com`。A レコード → 162.43.29.120（taylis の VPS）を利用者が作った（済み）。本番のホスト名は M136 で決める。
+2. **どのサーバに置くか**：まず taylis の VPS（M131）。本番（共用の VPS）は後で（M136）。デモのサーバは通話をオフ（LiveKit を置かない）。
+3. **共用の VPS の変更**：ポートを開ける・nginx にサイトを 1 つ・certbot の `renew_hook` を 1 つ足すことを了承。作業は M131（§8.6）。
+4. **大学の網（443 以外が閉じている場合）**：この文書の勧め（§8.1 の（3）、LiveKit 専用の小さな VPS）。M131 の実測で必要になったとき。
+5. **帯域**：できるだけ多くの場面に対応する（simulcast・adaptiveStream・dynacast・音声だけへの切り替え・TURN/TLS。§8.7）。
+   VPS で確かめることは §8.6・§8.7 に手順を書いた。
+6. **上限人数**：1 通話 50 人。
+7. **画面共有**：v1 は Desktop / Web だけ（見るのは全端末）。
+8. **着信**：v1 はふつうのプッシュ + アプリ内のバナー（DM・グループ DM）。全画面の着信は後で。
+9. **ブロック**：1:1 の DM はどちらかがブロックしていれば通話できない。グループ・チャンネルでは拒まない（§7.2）。
+10. **M117 の空白**：M130 で M117 を止め、M132 まで通話が無い期間ができてよい。
+
+## 13. M130 の実装（2026-10-07）
+
+### 13.1 手元の LiveKit で確かめたこと
+
+`livekit/livekit-server:v1.13.8`（dev モード）と `lk`（livekit-cli 2.18.8）・LiveKit の Python SDK（使い捨ての環境。プロジェクトの
+依存には入れない）で確かめた。
+
+- webhook の形と署名（§3.2）。記録は `server/tests/fixtures/livekit_webhooks.json`。
+- RoomService（Twirp の JSON、`/twirp/livekit.RoomService/<Method>`、`Authorization: Bearer <JWT>`）：要求は proto の名前
+  （`empty_timeout` など snake_case）で受け、答えも snake_case（webhook の camelCase と違う）。`CreateRoom` は `roomCreate`、
+  `ListRooms` は `roomList`（無いと `401 unauthenticated`）、`ListParticipants`・`RemoveParticipant` は `roomAdmin` + `room`、
+  `DeleteRoom` は `roomCreate`。知らない部屋の `DeleteRoom` と居ない人の `RemoveParticipant` は `404 not_found`（アプリは
+  「もう無い」として扱う）。知らない部屋の `ListParticipants` は `200` で空。
+- 部屋を閉じる時間：最後の人が出てから `departure_timeout`（20 秒）で `room_finished`（`roomEndReason: ROOM_END_IDLE_TIMEOUT`）。
+- 端から端まで（compose の `calls` プロファイル + アプリ）：始める（201、`call.started`、メッセージ `kind: livekit`）→ 本物の
+  クライアントがアプリのトークンでつながる → webhook で参加者が出る（0.5 秒以内）→ 2 人目（iOS の端末のセッション）の
+  トークンに画面共有が無く、画面共有の音声の公開は LiveKit に拒まれる → 退出・`leave` → 20 秒後に終わり、メッセージが
+  `message.updated`（`change: "call"`）で「30 秒・2 人」になる → `join` は `409 call_ended`、M117 の `POST /channels/{id}/calls`
+  は `409 calls_disabled`。
+- 突き合わせ：webhook の行を消しても 1 周（試験では 15 秒）で戻る。チャンネルをアーカイブすると、outbox の起床でその場で
+  `DeleteRoom` と `end_reason = 'archived'`、つないでいた端末は LiveKit から切られる。
+- 本番の設定（`infra/livekit.yaml` + 環境変数）で 1.13.8 が起動し、TURN を開く（自己署名の証明書）。
+
+### 13.2 設計からの違い
+
+| 項目 | 設計 | 実装 | 理由 |
+| --- | --- | --- | --- |
+| `CreateRoom` の時 | コミットの後 | コミットの前（§2.1） | LiveKit に届かないとき、投稿・プッシュを出さずに `503` を返せる |
+| `call.url`（`PUBLIC_BASE_URL` が無いサーバ） | `null` | `/call/<id>`（パスだけ）。本文には URL を付けない | **出してある Android 1.0.2 は `call.url` が null だとメッセージを読めず、ページごと同期に失敗する**（`url: String`）。iOS は `call` を捨てるだけ、Desktop は落ちない。パスなら 3 端末とも落ちない（「参加する」は開けない） |
+| `infra/livekit.yaml.template` | テンプレート | `infra/livekit.yaml`（固定）+ 環境変数 | §8.2 |
+| LiveKit のシークレット | 環境変数で渡す | `secrets/livekit.env`（deploy.sh が作る、600）の `LIVEKIT_KEYS` | §8.2 |
+| `POST /livekit/webhook` | §5.2 の表 | OpenAPI に出さない（端末の API ではない） | — |
+| 外された人・無効化・アーカイブ・ブロックで切る | アプリが `RemoveParticipant` / `DeleteRoom` | 突き合わせの作業がする。`channel.archived`・`channel.member_removed`・`user.deactivated`・`block.updated` の outbox で起こされ、その場で動く（待っても 60 秒） | channels モジュールが calls に依存しない。1 か所で全部の規則を当てる |
+| 1:1 の DM でブロックが後からできた | — | その通話を（突き合わせで）2 人とも切る | 声は折りたためない（§7.2） |
+| ボット | 入れない | `403 forbidden` | 新しいコードを足さない |
+| 管理者のスイッチをオフにした後の `join` | — | 進行中の通話には入れる（新しく始めるのは `409 calls_disabled`） | §5.1「進行中の通話は切らない」 |
+| 終わった通話の `huddle` の再送 | — | `409 call_ended`（新しい鍵なら新しい通話） | — |
+| `GET /calls/{id}` でメンバーでない | — | `403 not_a_member`（無い id は `404 call_not_found`） | チャンネルと同じ |
+| `in_app_calls_enabled` の監査 | — | ほかの設定と同じ `workspace.settings_updated` | — |
+
+### 13.3 端末（M132〜M135）が使う API
+
+- **設定**：bootstrap と `workspace.settings_updated` の `workspace_settings.in_app_calls = {enabled, video, screen_share}`。
+  `enabled` が false なら 🎧 を出さない（M130 より前のサーバは項目が無い → false と読む）。`calls_enabled` / `meeting_base_url` は
+  読まない（いつも false / null）。管理画面は `in_app_calls_enabled`（`PATCH /admin/workspace-settings`）。
+- **始める・入る**：`POST /channels/{id}/huddle {client_msg_id}` → `201`（始めた）/ `200`（再送・進行中に参加）
+  `{call: CallOut, message: MessageOut, join: {url, token, expires_at}}`。失敗の再送は同じ `client_msg_id`。
+  `join.url` と `join.token` で LiveKit の SDK の `room.connect(url, token)`。identity = 自分のユーザー id、部屋の名前 = `call.id`。
+- **つなぎ直し**：`POST /calls/{id}/join` → `{call, join}`（トークンは 10 分。つないでいる間は LiveKit が更新するので、長い切断の
+  後だけ取り直す）。
+- **出る**：SDK で切ってから `POST /calls/{id}/leave`（204、冪等）。
+- **状態**：`GET /calls/{id}` → `{call}`、`GET /calls?active=true` → `{calls}`（自分がメンバーの会話の進行中の通話）。
+  bootstrap の `active_calls`。イベント `call.started` / `call.updated` / `call.ended`（`{call}`、seq なし、会話のメンバーへ）：
+  id で差し替える。つなぎ直したら `GET /calls?active=true` で全部差し替える。
+- `CallOut = {id, channel_id, message_id, started_by, started_at, ended_at, participants: [{user_id, joined_at}], participant_count, peak_participants}`。
+  `participants` は今いる人（1 人 1 件、入った順）。
+- **カード**：`message.call = {kind: "livekit", url, started_by, call_id, started_at, ended_at, duration_seconds, participant_count}`。
+  `ended_at` が null の間は「参加」、終わったら「🎧 通話 · n 分 · 参加者 m 人」。`kind` が `"link"`（または無い）なら M117 の
+  過去のカード（§11.2）。本文は `🎧 通話を始めました` + 改行 + URL（カードがあれば出さない）。
+- **エラー**：`403 not_a_member` / `posting_restricted`（アナウンスのチャンネルで始める）/ `dm_unavailable` / `forbidden`、
+  `404 call_not_found`、`409 calls_disabled` / `channel_archived` / `call_full`（`details.max`）/ `call_ended` /
+  `idempotency_conflict`、`429 rate_limited`（始める 10 回・参加 30 回 / 分）、`503 calls_unavailable`。
+- **公開できるもの**：トークンの `canPublishSources`。iOS / Android のセッションには画面共有が無い（サーバがセッションの端末の
+  `platform` で決める）。
+- **Web の CSP**：M132 で Caddy の `connect-src` に `LIVEKIT_URL` のホスト（`wss:`・`https:`）を足す（M130 では足していない）。
 
 ## 付録 A：会議リンクの通話（M117、2026-10-06。M130 で廃止）
 

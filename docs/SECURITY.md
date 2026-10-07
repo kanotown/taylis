@@ -575,11 +575,22 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   数は公開チャンネルと自分が参加している非公開チャンネルだけ名前付きで、参加していない非公開チャンネルと DM / グループ DM は
   合計 (個数と投稿数) だけ (名前・メンバー・相手は出さない)。1 時間ごとの利用の記録 (`user_activity_hours`) は 120 日で消す。
   運営者はこのことを利用者に知らせる (website/docs/privacy.md)。
-- 通話 (M117、docs/CALLS.md): 通話は外の会議サービス (既定は公開の meet.jit.si) で行い、音声・映像はそのサービスを通る
-  (Taylis のサーバは通らない)。部屋の URL はサーバが `secrets` の 120 ビットの乱数で作り (会話や人の id からは作らない)、
-  会話のメンバーにだけメッセージとして届くが、URL を知っていれば誰でも入れる (リンクが鍵)。始められるのは投稿できる人
-  だけ (§3.2)。会議サービスの URL は管理者だけが変えられ、https だけ (DEBUG の localhost を除く)、`?` `#` 資格情報なし
-  (`422 meeting_url_invalid`)。気になるワークスペースは自前の Jitsi を設定するか、通話をオフ (空) にする。
+- 通話 (M130、LiveKit、docs/CALLS.md §7): 音声・映像は自前の LiveKit (同じ compose) を通り、外のサービスは通らない
+  (M117 の会議リンクは廃止。`PATCH` の `meeting_base_url` は `409 meeting_links_retired`、`POST /channels/{id}/calls` は
+  いつも `409 calls_disabled`)。**トークン**: サーバだけが出す HS256 の JWT (iss = API キー、sub = ユーザーの id、有効 10 分)、
+  その部屋だけの `roomJoin`・`canPublish`・`canSubscribe`、`canPublishData` と `canUpdateOwnMetadata` は false、
+  `canPublishSources` はマイク・カメラ・画面共有 (iOS / Android の端末のセッションには画面共有を出さない)。`roomCreate`・
+  `roomAdmin`・`roomList`・`recorder`・`hidden` は出さない。応答は `Cache-Control: no-store`。**webhook**
+  (`POST /livekit/webhook`): `Authorization` の JWT (Bearer なし) を API シークレットで HS256 として確かめ、iss = API キー・
+  5 分以内・`sha256` の claim と本文の SHA-256 (base64) が合うことを確かめる (違えば 401)。外からは Caddy が 404 を返す。
+  **シークレット**: `LIVEKIT_API_SECRET_FILE` (`infra/secrets/livekit_api_secret`、本番は 32 バイト以上、足りなければ通話は
+  オフ)。`LIVEKIT_API_SECRET` は開発用。LiveKit 自身へは `deploy.sh` が書く `secrets/livekit.env` (mode 600) の `LIVEKIT_KEYS`。
+  **網**: 7880 (API・シグナリング) はサーバでは 127.0.0.1 だけに開け、nginx が `/twirp/` を断る。**誰が入れるか**:
+  会話のメンバーだけ (1 対 1 の DM でどちらかがブロックしていれば `403 dm_unavailable`、ボットは `403 forbidden`、
+  アナウンスのチャンネルは始めるのがオーナー・管理者で入るのは誰でも)、50 人まで (`409 call_full`)。突き合わせ
+  (通話中は 60 秒ごと、アーカイブ・メンバーの削除・利用停止・ブロックでもすぐ) で、もう入れない人を LiveKit から外し、
+  アーカイブした会話の通話を終える。始めるのは 1 人 1 分に 10 回、参加は 30 回まで。**録音・録画はしない**。E2EE は
+  v1 ではしない (メディアは DTLS-SRTP で端末と自前の LiveKit の間だけ。CALLS.md §7.3)。
 
 ## 10. 依存関係
 

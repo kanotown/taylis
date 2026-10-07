@@ -10,6 +10,10 @@
 | `web.Dockerfile` | Caddy + ブラウザクライアント (apps/desktop を `vite build` して `/srv/web` に置く。M12j) |
 | `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限（パスごと。下の「既存の nginx の後ろで動かす」）、それ以外は SPA (index.html) |
 | `.env.example` | 必要な環境変数の一覧 (SECRET_KEY、DATABASE_URL、S3_*、PUSH_*)。秘密の実値は置かない |
+| `docker-compose.livekit.yml` | 本番のアプリ内通話 (M130): LiveKit を app の隣に足す上書き (`deploy.conf` の `EXTRA_COMPOSE_FILES`)。docs/CALLS.md §8 |
+| `livekit.yaml` | 本番の LiveKit の設定 (秘密もサーバごとの値も入れない。鍵は `secrets/livekit.env`、ほかは `.env` から) |
+| `livekit.dev.yaml` | 開発の LiveKit の設定 (`calls` プロファイル、`--dev` の `devkey` / `secret`、TURN なし) |
+| `nginx-livekit.conf.example` | 共用の VPS の nginx で `livekit.<domain>` のシグナリングを 127.0.0.1:7880 へ渡すサイトの例 (`/twirp/` は断る) |
 
 ## 使い方
 
@@ -92,6 +96,18 @@ MPL-2.0)。PDF の 1 ページ目とページ数は app が pypdfium2 で作る�
 - **状態の場所**: converter は状態を持たない (バックアップ不要)。プレビューの PDF と WebP は versitygw の
   `attachments/{id}.preview.*` に入り、いつものバックアップに含まれる (`verify-attachments` も見る)。失ったときは、その行の
   `preview_status` を `none` に戻してから `generate-previews` で作り直せる。
+
+## アプリ内通話 (LiveKit、M130)
+
+音声・ビデオ通話の SFU ([LiveKit](https://livekit.io/)、Apache-2.0)。設計・ポート・本番の準備は
+[docs/CALLS.md](../docs/CALLS.md) §8、手元で試す手順は [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md) §4。
+
+- **開発**: `docker compose --profile calls up -d` と `.env` の `LIVEKIT_*` の 4 行 (`.env.example`)。無ければ通話はオフ。
+- **本番**: `docker-compose.livekit.yml` を足し、`secrets/livekit_api_secret` (32 バイト以上、足りなければ通話はオフ) を置く。
+  `deploy.sh` がそこから LiveKit 用の `secrets/livekit.env` (`LIVEKIT_KEYS`、mode 600) を書く。7880 は 127.0.0.1 だけに開け、
+  外からの `/api/v1/livekit/webhook` は Caddy が 404 を返す。共用の VPS の変更 (DNS・ファイアウォール・nginx・certbot) は
+  CALLS.md §8.6。
+- **状態**: LiveKit は状態を持たない (バックアップ不要。通話の記録は PostgreSQL の `calls`・`call_participants`)。
 
 ## 方針
 

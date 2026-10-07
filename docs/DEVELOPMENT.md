@@ -60,6 +60,16 @@ AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `opena
 | iOS | `xcodebuild -project apps/ios/ChikuwaChat.xcodeproj -scheme ChikuwaChat -destination 'id=<シミュレータの ID>' test`。途中は `-only-testing:ChikuwaChatTests/<Class>` で絞り、全体はコミット前に 1 回。「Application failed preflight checks (Busy)」は、シミュレータの起動し直しとアプリの削除で直る |
 | Android | `ANDROID_HOME=$HOME/Library/Android/sdk apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`。正規表現のフラグなど、JVM の単体テストでは通るが Android で落ちるものがあるのでエミュレータでも確かめる |
 
+**アプリ内通話を手元で試す (M130、docs/CALLS.md)**: `infra/.env` に `LIVEKIT_URL=ws://localhost:7880`・
+`LIVEKIT_API_URL=http://livekit:7880`・`LIVEKIT_API_KEY=devkey`・`LIVEKIT_API_SECRET=secret` を書き、
+`docker compose -f infra/docker-compose.yml --profile calls up -d` (LiveKit v1.13.8 を `--dev` で。app もコンテナで動かす:
+webhook は `http://app:8000` に来る)。プロファイルとこの 4 行が無ければアプリ内通話はオフになるだけ。同じ Wi-Fi の実機から
+試すときは `LIVEKIT_URL=ws://<Mac の LAN の IP>:7880`・`LIVEKIT_NODE_IP=<Mac の LAN の IP>`・`LIVEKIT_BIND=0.0.0.0`。
+相手の参加者は使い捨てのコンテナの `lk` で:
+`docker run --rm --network <compose のプロジェクト名>_default livekit/livekit-cli room join --url http://livekit:7880 --dev --identity <ユーザーの uuid> <通話の id>`
+(メディアは node IP の 127.0.0.1 に行くので、既定のままではホストからしか届かない)。ホストからなら livekit の Python SDK で
+(`uv run --no-project --with livekit python script.py`、トークンは `POST /channels/{id}/huddle` の `join.token`)。
+
 iOS のビルド番号は `apps/ios/ChikuwaChat/Info.plist` (CFBundleVersion) と `apps/ios/project.yml` の 2 か所を同じにする。
 TestFlight / App Store と Google Play への配信 (版の番号、署名、スクリプト) は docs/STORE_RELEASE.md。
 
