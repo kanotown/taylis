@@ -19,6 +19,7 @@ import { BackButton, BackToList } from "./compact";
 import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 import { t } from "../i18n";
+import { FileName } from "./FileName";
 
 export type SearchTab = "messages" | "files" | "canvases" | "docs";
 
@@ -541,7 +542,7 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
               {files.map((name, i) => (
                 <span key={i} className="inline-flex max-w-[240px] items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 text-xs text-muted">
                   <FileText size={12} />
-                  <span className="truncate">{highlightPieces(name, keywords).map((p, j) => (p.hit ? <mark key={j} className="bg-warning/35 text-ink">{p.text}</mark> : <span key={j}>{p.text}</span>))}</span>
+                  <FileName name={name} render={(part) => highlightPieces(part, keywords).map((p, j) => (p.hit ? <mark key={j} className="bg-warning/35 text-ink">{p.text}</mark> : <span key={j}>{p.text}</span>))} />
                 </span>
               ))}
             </div>

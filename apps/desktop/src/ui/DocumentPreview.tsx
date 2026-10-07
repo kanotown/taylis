@@ -9,6 +9,7 @@ import { DOCUMENT_CARD_WIDTH, documentPreviewState, documentThumbBox, pageCountL
 import type { PDFDocumentProxy } from "./pdfLoader";
 import { cn } from "./primitives";
 import { t } from "../i18n";
+import { FileName } from "./FileName";
 
 /**
  * M108 (docs/PREVIEWS.md §5): the card of a PDF or Office file with a preview, as Slack shows one. Ready: the first
@@ -55,7 +56,7 @@ export function DocumentCard({ attachment, controller }: { attachment: Attachmen
           className="min-w-0 flex-1 text-left"
           onClick={() => (state === "ready" ? setOpen(true) : void controller.downloadAttachment(attachment))}
         >
-          <span className="block truncate" title={attachment.filename}>{attachment.filename}</span>
+          <FileName name={attachment.filename} />
           <span className="block text-xs text-muted">
             {state === "pending" ? <span role="status">{t("docPreview.creating")}</span> : meta}
           </span>
@@ -173,7 +174,7 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
           <Dialog.Description className="sr-only">{t("docPreview.description")}</Dialog.Description>
           <div className="flex items-center gap-2 px-4 py-3 text-white">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{attachment.filename}</div>
+              <FileName name={attachment.filename} className="text-sm font-medium" />
               <div className="text-xs text-white/70">{[formatSize(attachment.size_bytes), pageCountLabel(pages)].filter(Boolean).join(" · ")}</div>
             </div>
             <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title={t("docPreview.zoomOut")} aria-label={t("docPreview.zoomOut")} disabled={zoomIndex <= 0} onClick={() => setZoom(ZOOMS[Math.max(0, zoomIndex - 1)] ?? 1)}>

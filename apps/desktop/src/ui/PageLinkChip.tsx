@@ -12,6 +12,7 @@ import type { AppController } from "../state/app";
 import { PageIcon } from "./PageIcon";
 import { cn } from "./primitives";
 import { t } from "../i18n";
+import { FileName } from "./FileName";
 
 const CHIP = "inline-flex max-w-full items-center gap-1 rounded-md px-1 align-baseline leading-6";
 
@@ -74,7 +75,7 @@ export function FileLinkChip({ controller, attachmentId, label }: { controller: 
       }}
     >
       <Paperclip size={13} className="shrink-0 text-muted" aria-hidden="true" />
-      <span className="truncate">{name}</span>
+      <FileName name={name} />
     </button>
   );
 }

@@ -55,7 +55,7 @@ it("shows a plain download row when there is no preview, and 「プレビュー�
   const fetch = vi.fn(async () => new Blob());
   const view = render(<AttachmentList attachments={[{ ...base, preview: { status: "failed", pages: null, width: null, height: null } }]} controller={controller(fetch, download)} />);
   expect(document.querySelector("[data-document-card]")).toBeNull();
-  fireEvent.click(screen.getByText("議事録.docx"));
+  fireEvent.click(screen.getByTitle("議事録.docx"));
   expect(download).toHaveBeenCalledTimes(1);
 
   view.rerender(<AttachmentList attachments={[{ ...base, preview: { status: "pending", pages: null, width: null, height: null } }]} controller={controller(fetch, download)} />);

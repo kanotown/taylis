@@ -12,6 +12,7 @@ import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { formatSize, Lightbox, useAttachmentImage } from "./Attachments";
 import { t } from "../i18n";
+import { FileName } from "./FileName";
 
 export function CanvasImage({ controller, attachmentId, alt }: { controller: AppController; attachmentId: string; alt: string }) {
   const [meta, setMeta] = useState<AttachmentOut | null | undefined>(undefined);
@@ -39,7 +40,7 @@ export function CanvasImage({ controller, attachmentId, alt }: { controller: App
     return (
       <button type="button" data-attachment-id={attachmentId} className="my-2 inline-flex max-w-full items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-left text-sm hover:bg-accent-soft/40" onClick={() => void controller.downloadAttachment(meta)}>
         <FileText size={16} className="shrink-0 text-muted" />
-        <span className="truncate">{meta.filename}</span>
+        <FileName name={meta.filename} />
         <span className="shrink-0 text-xs text-muted">{formatSize(meta.size_bytes)}</span>
       </button>
     );

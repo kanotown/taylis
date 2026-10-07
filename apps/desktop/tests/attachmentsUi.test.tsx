@@ -50,7 +50,7 @@ it("puts two or more photos in one wrapping row of equal squares, one photo and 
   expect(grid.className).not.toContain("grid-cols-2");
   expect(grid.querySelectorAll("button")).toHaveLength(3);
   for (const tile of grid.querySelectorAll("button")) expect(tile.className).toContain("photo-tile aspect-square");
-  expect(screen.getByText("notes.pdf").closest("[data-photo-grid]")).toBeNull(); // files stay in their own row
+  expect(screen.getByTitle("notes.pdf").closest("[data-photo-grid]")).toBeNull(); // files stay in their own row
   view.rerender(<AttachmentList attachments={[attachment, file]} controller={controller(async () => new Blob())} />);
   expect(document.querySelector("[data-photo-grid]")).toBeNull();
   // One photo in its own shape: the box the server's size gives (10 x 10, never enlarged), the picture filling it.

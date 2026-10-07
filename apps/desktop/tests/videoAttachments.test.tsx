@@ -240,6 +240,6 @@ describe("in a message", () => {
     render(<AttachmentList attachments={[base, { ...base, id: "b" }, video, file]} controller={controller} />);
     expect(document.querySelectorAll("[data-photo-grid] button")).toHaveLength(2);
     expect(document.querySelectorAll("[data-video-row] [data-video-tile]")).toHaveLength(1);
-    expect(screen.getByText("notes.pdf").closest("[data-photo-grid], [data-video-row]")).toBeNull();
+    expect(screen.getByTitle("notes.pdf").closest("[data-photo-grid], [data-video-row]")).toBeNull();
   });
 });

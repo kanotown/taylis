@@ -10,6 +10,7 @@ import { channelTitle } from "./MainScreen";
 import { BackButton } from "./compact";
 import { Button, cn, IconButton, Input } from "./primitives";
 import { t } from "../i18n";
+import { FileName } from "./FileName";
 
 /** Attachments in my channels (or one channel), newest first, filtered by file name; pages of 50. */
 function useFileItems(controller: AppController, channelId: string | null, query: string) {
@@ -146,7 +147,7 @@ export function FileRow({ item, controller, onOpen }: { item: FileItem; controll
           {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : <FileText size={20} className="text-muted" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-ink">{attachment.filename}</span>
+          <FileName name={attachment.filename} className="text-sm font-medium text-ink" />
           <span className="block truncate text-xs text-muted">
             {formatSize(attachment.size_bytes)} · {uploader} · {channel ? channelTitle(channel, controller) : "?"} · {fullTimestamp(item.attached_at)}
           </span>
