@@ -2256,6 +2256,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "thread.actions": "Thread actions",
   "thread.summarize": "Summarize this thread",
   "thread.newReplies": "New replies",
+  "thread.newCount": "{count, plural, one {# new reply} other {# new replies}}",
+  "thread.toLatest": "Jump to latest reply",
   "thread.replyPlaceholder": "Reply in thread",
   "files.filter": "Filter by file name",
   "files.allChannels": "All channels",
