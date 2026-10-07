@@ -43,6 +43,7 @@ import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, jumpToLatestShown, ListAnchor, stillAtBottom, unseenBelow as countUnseen } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
+import { backToLatestShown, focusWindow } from "./focusWindow";
 import { READER_BACK } from "../platform/idle";
 import { ReactionsDialog } from "./WhoDialogs";
 import { isSystemMessage, systemMessageText } from "./systemMessage";
@@ -67,7 +68,11 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   const store = controller.store;
   const engine = controller.engine;
   const focus = controller.messageFocus?.channelId === channel.id ? controller.messageFocus : null;
-  const messages: MessageState[] = focus ? focus.context.map((m) => { const cached = store.message(channel.id, m.id); return cached && cached.updated_seq >= m.updated_seq ? cached : m; }).filter((m) => !m.deleted) : store.messages(channel.id);
+  // Opened at a message: the server's window around it, joined to the live tail when the two meet (focusWindow.ts).
+  const around = focus ? focusWindow(focus.context.map((m) => { const cached = store.message(channel.id, m.id); return cached && cached.updated_seq >= m.updated_seq ? cached : m; }), store.messages(channel.id), channel.oldestLoadedSeq) : null;
+  const messages: MessageState[] = around ? around.rows : store.messages(channel.id);
+  /** Not a fixed window: the live tail is in the list, so new rows come in and are followed as in the live view. */
+  const live = !around || around.joined;
   const me = store.me;
   const container = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -297,7 +302,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     const el = container.current;
     atBottom.current = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK_PX;
     lastTop.current = el?.scrollTop ?? 0;
-    setShowJump(!atBottom.current);
+    setShowJump(jumpToLatestShown(atBottom.current, el ? el.scrollHeight - el.scrollTop - el.clientHeight : 0));
     if (atBottom.current) markSeen();
     recordPosition();
   }, [channel.id, focus?.messageId, messages.length]);
@@ -317,7 +322,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     const last = messages[messages.length - 1];
     // A poll made here is such a post too, though it skips the send queue (no placeholder).
     const mine = !!last && last.sender_id === me?.id && !last.parent_id && (last.pending === true || last.id === controller.postedHere);
-    if (opened || focus || !positioned.current || !(atBottom.current || mine)) return;
+    if (opened || !live || !positioned.current || !(atBottom.current || mine)) return;
     scrollToBottom();
     // A batch taller than the screen (the catch-up after reconnecting, or when a held channel opens) would put its
     // unread rows above the viewport unseen, and reading at the bottom would then skip them: its first unread row
@@ -502,7 +507,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
       )}
       <div data-message-list data-chat-focus tabIndex={-1} aria-label={t("timeline.list")} className="timeline flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" ref={container} onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
-        {focus && (
+        {focus && backToLatestShown(live, showJump) && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
             <span>{t("timeline.aroundResult")}</span>
             {/* The conversation then opens like any other (first unread row or the newest), see the positioning above. */}

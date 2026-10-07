@@ -147,7 +147,8 @@ describe("conversation UX", () => {
     w.markRead.mockClear();
     w.controller.messageFocus = { channelId: w.channel.id, messageId: messages[0]!.id, parentId: null, context: [messages[0]!] };
     view.rerender(<Timeline controller={w.controller} channel={w.store.getChannel(w.channel.id)!} />);
-    expect(screen.getByText("検索位置の前後の会話")).toBeTruthy();
+    // The store holds the whole channel and its end is on screen: no 「最新の会話に戻る」 bar (focusWindow.test.tsx).
+    expect(screen.queryByText("検索位置の前後の会話")).toBeNull();
     expect(view.container.querySelector("article.highlighted")?.id).toBe(`timeline-${messages[0]!.id}`);
     expect(scroll).toHaveBeenLastCalledWith({ block: "center" });
     expect(w.markRead).not.toHaveBeenCalled();
