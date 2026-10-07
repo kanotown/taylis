@@ -1448,6 +1448,38 @@
         }
       }
     },
+    "運営" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manager"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运营"
+          }
+        }
+      }
+    },
+    "運営として参加します" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You'll join as a manager"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你将以运营身份加入"
+          }
+        }
+      }
+    },
     "選択肢がありません（パソコンでフルアクセスの人が作れます）" : {
       "localizations" : {
         "en" : {

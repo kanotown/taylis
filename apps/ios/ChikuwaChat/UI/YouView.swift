@@ -50,7 +50,8 @@ struct YouView: View {
                     NavigationLink(value: YouRoute.profile) { YouRow(title: tr("プロフィールを編集"), symbol: "person.crop.circle") }
                     NavigationLink(value: YouRoute.account) { YouRow(title: tr("アカウント"), symbol: "lock") }
                     NavigationLink(value: YouRoute.workspaces) { YouRow(title: tr("ワークスペース"), symbol: "square.stack", value: controller.workspaceName) }
-                    if controller.store.me?.role == "admin" {
+                    // M142: managers (「運営」) have a part of 管理 too (docs/ROLES.md §8).
+                    if controller.store.me?.role == "admin" || controller.store.me?.role == "manager" {
                         NavigationLink(value: YouRoute.admin) { YouRow(title: tr("管理"), symbol: "shield") }
                     }
                 }

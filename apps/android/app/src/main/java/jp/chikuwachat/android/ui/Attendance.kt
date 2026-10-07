@@ -37,7 +37,10 @@ object AttendanceRules {
     fun shown(board: AttendanceBoardOut?, myRole: String?): Boolean = board != null && board.enabled && myRole != "guest"
 
     /** Who can be on the board: active people, not guests, not bots (the server's rule). */
-    fun onBoard(user: UserPublic): Boolean = user.deactivatedAt == null && (user.role == "admin" || user.role == "member")
+    fun onBoard(user: UserPublic): Boolean = user.deactivatedAt == null && user.role in PERSON_ROLES
+
+    /** M142: the roles of people (not guests, not bots); 「運営」 (manager) is one (docs/ROLES.md §1). */
+    val PERSON_ROLES = setOf("admin", "manager", "member")
 
     /** The buttons for me: the workspace's states in their order, then mine (archived ones are never offered). */
     fun myChoices(board: AttendanceBoardOut, meId: String?): List<AttendanceStateOut> {

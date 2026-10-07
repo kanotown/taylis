@@ -26,6 +26,7 @@ struct InviteView: View {
                 Section {
                     Text("\(preview.invitedBy) さんから招待されています").font(.headline)
                     if preview.role == "admin" { Text("管理者として参加します").font(.footnote) }
+                    if preview.role == "manager" { Text("運営として参加します").font(.footnote) } // M142
                     if let lab = preview.lab { Text(Invite.labLine(lab)).font(.footnote) }  // L7
                     if !preview.channels.isEmpty {
                         Text(tr("参加するチャンネル：") + preview.channels.map { "#\($0)" }.joined(separator: " ")).font(.footnote).foregroundStyle(.secondary)

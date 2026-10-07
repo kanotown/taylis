@@ -771,6 +771,7 @@
     <string name="dialogs_topic">トピック</string>
     <string name="dialogs_unarchive">アーカイブを解除</string>
     <string name="directory_dialog_admin">管理者</string>
+    <string name="directory_dialog_manager">運営</string>
     <string name="directory_dialog_guest">ゲスト</string>
     <string name="directory_dialog_incoming_webhook">受信 Webhook</string>
     <string name="directory_dialog_members">メンバー（%1$s）</string>
@@ -836,6 +837,7 @@
     <string name="invite_screen_the_invite_link_is_not_in">招待リンクの形式が正しくありません（https://サーバ/invite/… の形です）</string>
     <string name="invite_screen_use_another_link">別のリンクを使う</string>
     <string name="invite_screen_you_will_join_as_an_administrator">管理者として参加します</string>
+    <string name="invite_screen_you_will_join_as_a_manager">運営として参加します</string>
     <string name="invite_supervisor">指導教員 %1$s</string>
     <string name="invite_this_invite_link_has_already_been">この招待リンクはすでに使われています</string>
     <string name="invite_this_invite_link_has_been_revoked">この招待リンクは取り消されています</string>

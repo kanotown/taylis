@@ -17,14 +17,17 @@ enum AttendanceRules {
         }
     }
 
+    /// The roles of people (not guests, not bots): M142 「運営」 (manager) is one (docs/ROLES.md §1).
+    static let personRoles: Set<String> = ["admin", "manager", "member"]
+
     /// Who can be on the board: active people, not guests, not bots (the server's rule).
     static func onBoard(_ user: UserPublic) -> Bool {
-        user.deactivatedAt == nil && (user.role == "admin" || user.role == "member")
+        user.deactivatedAt == nil && personRoles.contains(user.role)
     }
 
     /// Whether this person sees 在室状況 at all: never a guest or a bot, and only while the board is on.
     static func visible(board: AttendanceBoardOut?, role: String?) -> Bool {
-        board?.enabled == true && (role == "admin" || role == "member")
+        board?.enabled == true && personRoles.contains(role ?? "")
     }
 
     /// My buttons: the workspace's states, then mine (deleted ones are not offered), each in its order.

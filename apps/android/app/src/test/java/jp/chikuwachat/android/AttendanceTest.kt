@@ -70,6 +70,17 @@ class AttendanceTest {
         ),
     )
 
+    /** M142 (docs/ROLES.md §1): a manager (「運営」) is a person on the board; guests, bots and unknown roles are not. */
+    @Test fun managersAreOnTheBoard() {
+        assertTrue(AttendanceRules.onBoard(user("m", "M", role = "manager")))
+        assertTrue(AttendanceRules.onBoard(user("a", "A", role = "admin")))
+        assertTrue(AttendanceRules.onBoard(user("b", "B")))
+        assertFalse(AttendanceRules.onBoard(user("g", "G", role = "guest")))
+        assertFalse(AttendanceRules.onBoard(user("x", "X", role = "bot")))
+        assertFalse(AttendanceRules.onBoard(user("s", "S", role = "someday")))
+        assertFalse(AttendanceRules.onBoard(user("d", "D", role = "manager", deactivated = true)))
+    }
+
     @Test fun decodesTheServersBoard() {
         val json = """
             {"enabled": true, "can_personalize": false,

@@ -125,6 +125,8 @@ final class AttendanceTests: XCTestCase {
         let on = AttendanceBoardOut(enabled: true, states: states, entries: [])
         XCTAssertTrue(AttendanceRules.visible(board: on, role: "member"))
         XCTAssertTrue(AttendanceRules.visible(board: on, role: "admin"))
+        XCTAssertTrue(AttendanceRules.visible(board: on, role: "manager"))  // M142 「運営」
+        XCTAssertFalse(AttendanceRules.visible(board: on, role: "someday"))
         XCTAssertFalse(AttendanceRules.visible(board: on, role: "guest"))
         XCTAssertFalse(AttendanceRules.visible(board: on, role: "bot"))
         XCTAssertFalse(AttendanceRules.visible(board: AttendanceBoardOut(enabled: false, states: [], entries: []), role: "member"))

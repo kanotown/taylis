@@ -99,7 +99,7 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
                                         Spacer(Modifier.width(6.dp))
                                         Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                         roster[user.id]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
-                                        val tag = when (user.role) { "admin" -> stringResource(R.string.directory_dialog_admin); "guest" -> stringResource(R.string.directory_dialog_guest); "bot" -> "BOT"; else -> null }
+                                        val tag = when (user.role) { "admin" -> stringResource(R.string.directory_dialog_admin); "manager" -> stringResource(R.string.directory_dialog_manager); "guest" -> stringResource(R.string.directory_dialog_guest); "bot" -> "BOT"; else -> null }
                                         if (tag != null) { Spacer(Modifier.width(6.dp)); Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
                                         if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); Text("🔕", style = MaterialTheme.typography.labelSmall) }
                                     }

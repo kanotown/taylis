@@ -55,6 +55,7 @@ struct DirectoryView: View {
                     Text("@\(user.username)").font(.footnote).foregroundStyle(.secondary)
                     if let line = controller.store.roster[user.id] { RosterBadge(profile: line) }
                     if user.role == "admin" { Text("管理者").font(.caption2).foregroundStyle(Color.accentColor) }
+                    if user.role == "manager" { Text("運営").font(.caption2).foregroundStyle(Color.accentColor) } // M142
                     if user.role == "guest" { Text("ゲスト").font(.caption2).foregroundStyle(.secondary) }
                     if controller.isAiBot(user.id) { AiBadge() } else if user.role == "bot" { Text("BOT").font(.caption2).bold().foregroundStyle(.secondary) }
                     if user.dndUntil != nil { Text("🔕").font(.caption2) }

@@ -108,6 +108,8 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
         } else {
             Text(stringResource(R.string.invite_screen_invited_you, shown.invitedBy), style = MaterialTheme.typography.titleMedium)
             if (shown.role == "admin") Text(stringResource(R.string.invite_screen_you_will_join_as_an_administrator), style = MaterialTheme.typography.bodySmall)
+            // M142 (docs/ROLES.md §8): 「運営」; otherwise a manager is a member on the phones.
+            if (shown.role == "manager") Text(stringResource(R.string.invite_screen_you_will_join_as_a_manager), style = MaterialTheme.typography.bodySmall)
             shown.lab?.let { Text(Invite.labText(it), style = MaterialTheme.typography.bodySmall) }
             if (shown.channels.isNotEmpty()) Text(stringResource(R.string.invite_screen_channels_youll_join) + shown.channels.joinToString(" ") { "#$it" }, style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.invite_screen_server, chosen.server), style = MaterialTheme.typography.bodySmall)
