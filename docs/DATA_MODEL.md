@@ -1398,7 +1398,7 @@ CREATE TABLE wiki_notices (                                 -- アクティビ�
 );
 CREATE TABLE wiki_tombstones (page_id uuid PRIMARY KEY, seq bigint NOT NULL, purged_at timestamptz NOT NULL);  -- 30 日
 CREATE TABLE wiki_feed_state (id smallint PRIMARY KEY CHECK (id = 1), purged_through bigint NOT NULL DEFAULT 0);
--- M123 (移行 0097、docs/WIKI.md §5・§18): データベース。行は wiki_pages (kind = 'row'、親はデータベース、props に値)
+-- M123 (移行 0098、docs/WIKI.md §5・§18): データベース。行は wiki_pages (kind = 'row'、親はデータベース、props に値)
 CREATE TABLE wiki_databases (
   page_id uuid PRIMARY KEY REFERENCES wiki_pages(id) ON DELETE CASCADE,
   schema jsonb NOT NULL,          -- {"properties": [{"id","name","type","options":[{"id","name","color"}],"number_format","relation":{"database_id","pair_id","primary"}}]}
