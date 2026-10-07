@@ -1,5 +1,5 @@
 {
-  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). The desktop's 下書き and リマインダー still show only while there is something in them. M121: 「ドキュメント」 (docs, WIKI.md §9.1) is desktop / Web only until the phones' M122. M140: 「在室状況」 (attendance, docs/PRESENCE.md) on both platforms, implemented by a client only while the workspace has the board turned on.",
+  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). The desktop's 下書き and リマインダー still show only while there is something in them. M121: 「ドキュメント」 (docs, WIKI.md §9.1) is desktop / Web only until the phones' M122. M140: 「在室状況」 (attendance, docs/PRESENCE.md) on both platforms, implemented by a client only while the workspace has the board turned on. M143: 「操作」 (actions, docs/ACTIONS.md §9) on the desktop / Web for now (the phones later), implemented by a client only while the workspace has the buttons on and I may press at least one.",
   "items": [
     {
       "key": "threads",
@@ -125,6 +125,14 @@
         "desktop",
         "mobile"
       ]
+    },
+    {
+      "key": "actions",
+      "label": "操作",
+      "visible": true,
+      "platforms": [
+        "desktop"
+      ]
     }
   ],
   "order": {
@@ -142,7 +150,8 @@
       "reservations",
       "saved",
       "times-feed",
-      "attendance"
+      "attendance",
+      "actions"
     ],
     "mobile": [
       "threads",
@@ -158,7 +167,8 @@
       "canvases",
       "docs",
       "activity",
-      "attendance"
+      "attendance",
+      "actions"
     ]
   },
   "cases": [
@@ -233,6 +243,10 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
           "visible": true
         }
       ],
@@ -351,6 +365,10 @@
         {
           "key": "attendance",
           "visible": true
+        },
+        {
+          "key": "actions",
+          "visible": true
         }
       ],
       "shown": [
@@ -468,6 +486,10 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
           "visible": true
         }
       ],
@@ -602,6 +624,10 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
           "visible": true
         }
       ],
@@ -745,6 +771,10 @@
         {
           "key": "attendance",
           "visible": true
+        },
+        {
+          "key": "actions",
+          "visible": true
         }
       ],
       "shown": [
@@ -879,6 +909,10 @@
         {
           "key": "attendance",
           "visible": true
+        },
+        {
+          "key": "actions",
+          "visible": true
         }
       ],
       "shown": [
@@ -995,6 +1029,10 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
           "visible": true
         }
       ],
@@ -1114,6 +1152,10 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
           "visible": true
         }
       ],
@@ -1279,6 +1321,10 @@
         {
           "key": "attendance",
           "visible": true
+        },
+        {
+          "key": "actions",
+          "visible": true
         }
       ]
     },
@@ -1365,6 +1411,10 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
           "visible": true
         }
       ]

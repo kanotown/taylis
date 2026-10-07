@@ -34,19 +34,25 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   { key: "reservations", label: "予約", visible: true, platforms: ["desktop", "mobile"] },
   // M140 (docs/PRESENCE.md): 「在室状況」, implemented only while the workspace has the board on.
   { key: "attendance", label: "在室状況", visible: true, platforms: ["desktop", "mobile"] },
+  // M143 (docs/ACTIONS.md §9): 「操作」, implemented only while the buttons are on and I may press one (phones later).
+  { key: "actions", label: "操作", visible: true, platforms: ["desktop"] },
 ];
 
 export const NAV_ORDER: Readonly<Record<NavPlatform, readonly string[]>> = {
-  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance"],
-  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance"],
+  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"],
+  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance", "actions"],
 };
 
 /** The items this client draws in its sidebar (M112: 「予約」 with its page). */
 export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"];
 
-/** M140: the items implemented here now: 「在室状況」 only while the workspace has the board on. */
-export function desktopNavKeys(attendance: boolean): readonly string[] {
-  return attendance ? [...DESKTOP_NAV_KEYS, "attendance"] : DESKTOP_NAV_KEYS;
+/**
+ * The items implemented here now: 「在室状況」 (M140) only while the workspace has the board on, 「操作」 (M143) only while
+ * the buttons are on and I may press at least one.
+ */
+export function desktopNavKeys(attendance: boolean, actions = false): readonly string[] {
+  if (!attendance && !actions) return DESKTOP_NAV_KEYS;
+  return [...DESKTOP_NAV_KEYS, ...(attendance ? ["attendance"] : []), ...(actions ? ["actions"] : [])];
 }
 
 const byKey = new Map(NAV_CATALOGUE.map((item) => [item.key, item]));
@@ -66,6 +72,7 @@ const LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   deadlines: "nav.deadlines",
   reservations: "nav.reservations",
   attendance: "nav.attendance",
+  actions: "nav.actions",
 };
 
 export function navLabel(key: string): string {
