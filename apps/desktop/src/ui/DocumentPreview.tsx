@@ -65,7 +65,7 @@ export function DocumentCard({ attachment, controller }: { attachment: Attachmen
           type="button"
           className="shrink-0 rounded-lg p-1.5 text-muted hover:bg-accent-soft/60 hover:text-ink"
           title={t("attach.download")}
-          aria-label={t("attach.download")}
+          aria-label={t("attach.downloadName", { name: attachment.filename })}
           onClick={() => void controller.downloadAttachment(attachment)}
         >
           <Download size={14} />

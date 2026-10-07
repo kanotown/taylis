@@ -1,6 +1,6 @@
 import { Download, FileText, Film, Loader2, Play, X } from "lucide-react";
 import { Dialog } from "radix-ui";
-import { type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type FocusEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -26,21 +26,26 @@ export function formatSize(bytes: number): string {
  * The column is `items-start`: a tile is only as wide as its picture, so a click beside it does nothing (a stretched
  * button made the whole message width open the photo).
  */
-export function AttachmentList({ attachments, controller }: { attachments: AttachmentOut[]; controller: AppController }) {
+export function AttachmentList({ attachments, controller, downloadable = true }: {
+  attachments: AttachmentOut[];
+  controller: AppController;
+  /** False while the message is still being sent or failed to send: no download buttons on its files (2026-10-07). */
+  downloadable?: boolean;
+}) {
   if (attachments.length === 0) return null;
   const { photos, videos, files } = groupAttachments(attachments);
   return (
     <div data-attachments="" className="mt-1.5 flex flex-col items-start gap-2">
       {photoLayout(photos.length) === "row" ? (
         <div data-photo-grid="" className="flex flex-wrap gap-1.5 self-stretch">
-          {photos.map((attachment) => <Thumbnail key={attachment.id} attachment={attachment} controller={controller} square />)}
+          {photos.map((attachment) => <Thumbnail key={attachment.id} attachment={attachment} controller={controller} downloadable={downloadable} square />)}
         </div>
       ) : (
-        photos.map((attachment) => <Thumbnail key={attachment.id} attachment={attachment} controller={controller} />)
+        photos.map((attachment) => <Thumbnail key={attachment.id} attachment={attachment} controller={controller} downloadable={downloadable} />)
       )}
       {videos.length > 0 && (
         <div data-video-row="" className="flex max-w-full flex-wrap items-start gap-1.5">
-          {videos.map((attachment) => <VideoTile key={attachment.id} attachment={attachment} controller={controller} />)}
+          {videos.map((attachment) => <VideoTile key={attachment.id} attachment={attachment} controller={controller} downloadable={downloadable} />)}
         </div>
       )}
       {files.length > 0 && (
@@ -53,12 +58,14 @@ export function AttachmentList({ attachments, controller }: { attachments: Attac
               key={attachment.id}
               type="button"
               className="group flex max-w-full items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-left text-sm text-ink hover:border-accent/50 hover:bg-accent-soft/40"
+              aria-label={t("attach.downloadName", { name: attachment.filename })}
               onClick={() => void controller.downloadAttachment(attachment)}
             >
               <FileText size={18} className="shrink-0 text-muted" />
               <FileName name={attachment.filename} className="max-w-64" />
               <span className="text-xs text-muted">{formatSize(attachment.size_bytes)}</span>
-              <Download size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+              {/* The whole row downloads; the icon says so on hover and on keyboard focus (hover only with a mouse). */}
+              {downloadable && <Download data-download-hint="" size={14} aria-hidden className="text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />}
             </button>
           ))}
         </div>
@@ -112,9 +119,10 @@ export function useAttachmentImage(controller: AppController, attachment: Attach
  * `square`: a tile of the photo row (`photo-tile`: filled, cropped to a square); otherwise the image's own shape up to
  * a cap, and the button is only as large as the image.
  */
-function Thumbnail({ attachment, controller, square = false }: { attachment: AttachmentOut; controller: AppController; square?: boolean }) {
+function Thumbnail({ attachment, controller, square = false, downloadable = true }: { attachment: AttachmentOut; controller: AppController; square?: boolean; downloadable?: boolean }) {
   const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "thumbnail");
   const [open, setOpen] = useState(false);
+  const reveal = useDownloadReveal();
   // Its final size from the start when the server knows the photo's (attachmentLayout.photoBox).
   const box = square ? null : photoBox(attachment);
   return (
@@ -128,9 +136,10 @@ function Thumbnail({ attachment, controller, square = false }: { attachment: Att
             <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>{t("attach.openOriginal")}</Button>
           </div>
         </div>
-      ) : <button
+      ) : <div data-media-tile="" className={cn("relative max-w-full", square && "photo-tile")} {...reveal.handlers}>
+      <button
         type="button"
-        className={cn("block max-w-full overflow-hidden rounded-xl border border-line bg-panel transition-shadow hover:shadow-md", square && "photo-tile aspect-square")}
+        className={cn("block max-w-full overflow-hidden rounded-xl border border-line bg-panel transition-shadow hover:shadow-md", square && "aspect-square w-full")}
         style={box ? { width: box.width, aspectRatio: `${box.width} / ${box.height}` } : undefined}
         data-photo-box={box ? `${box.width}x${box.height}` : undefined}
         title={`${attachment.filename} (${formatSize(attachment.size_bytes)}) — ${t("attach.clickToZoom")}`}
@@ -145,9 +154,69 @@ function Thumbnail({ attachment, controller, square = false }: { attachment: Att
             <Loader2 size={18} className="animate-spin" />
           </span>
         )}
-      </button>}
+      </button>
+      {downloadable && <DownloadOverlay attachment={attachment} controller={controller} shown={reveal.shown} />}
+      </div>}
       {open && <Lightbox attachment={attachment} controller={controller} onClose={() => setOpen(false)} />}
     </>
+  );
+}
+
+/** True when the browser says this focus is from the keyboard (a click or tap on a button focuses it without it). */
+function focusVisible(element: EventTarget): boolean {
+  try {
+    return (element as Element).matches(":focus-visible");
+  } catch {
+    return true; // an engine without :focus-visible: show it on every focus
+  }
+}
+
+/**
+ * When a photo / video tile shows its download button (2026-10-07): while a mouse or pen is over the tile, or while
+ * the keyboard focus is in it (the tile or the button). A touch never reveals it (there is no hover on a phone; the
+ * viewer has the download button), and neither does the focus a click or tap leaves on the tile.
+ */
+export function useDownloadReveal() {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  return {
+    shown: hovered || focused,
+    handlers: {
+      onPointerEnter: (event: PointerEvent) => { if (event.pointerType !== "touch") setHovered(true); },
+      onPointerLeave: () => setHovered(false),
+      onFocus: (event: FocusEvent) => { if (focusVisible(event.target)) setFocused(true); },
+      onBlur: (event: FocusEvent) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+      },
+    },
+  };
+}
+
+/**
+ * The small download button over the top-right corner of a photo or video tile (2026-10-07, as Slack): it downloads
+ * the way the viewer's button does (`controller.downloadAttachment`: Tauri's save dialog, an <a download> on the Web,
+ * the bearer token) without opening the viewer. Always in the DOM so the keyboard reaches it; hidden and not
+ * clickable until `shown`.
+ */
+function DownloadOverlay({ attachment, controller, shown }: { attachment: AttachmentOut; controller: AppController; shown: boolean }) {
+  return (
+    <button
+      type="button"
+      data-download-overlay=""
+      data-shown={shown ? "true" : "false"}
+      className={cn(
+        "absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-white/20 bg-black/60 text-white shadow-md transition-opacity hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        shown ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+      title={t("attach.download")}
+      aria-label={t("attach.downloadName", { name: attachment.filename })}
+      onClick={(event) => {
+        event.stopPropagation();
+        void controller.downloadAttachment(attachment);
+      }}
+    >
+      <Download size={14} />
+    </button>
   );
 }
 
@@ -272,7 +341,8 @@ export function useVideoShape(attachment: AttachmentOut) {
  * VIDEO_INLINE_MAX_BYTES are fetched once the row nears the screen (the timeline renders every row it holds) for
  * their first frame; a larger one shows a plain tile until it is opened.
  */
-function VideoTile({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
+function VideoTile({ attachment, controller, downloadable = true }: { attachment: AttachmentOut; controller: AppController; downloadable?: boolean }) {
+  const reveal = useDownloadReveal();
   const probe = useRef<HTMLButtonElement>(null);
   const poster = useAttachmentImage(controller, attachment, "thumbnail", hasPoster(attachment));
   const inline = loadsInlineVideo(attachment, poster.failed);
@@ -299,7 +369,7 @@ function VideoTile({ attachment, controller }: { attachment: AttachmentOut; cont
   const box = fitBox(shape?.width, shape?.height, VIDEO_TILE_MAX) ?? VIDEO_TILE_PLACEHOLDER;
   const loading = inline && near && !url && !failed;
   return (
-    <>
+    <div data-media-tile="" className="relative max-w-full" {...reveal.handlers}>
       <button
         ref={probe}
         type="button"
@@ -341,8 +411,9 @@ function VideoTile({ attachment, controller }: { attachment: AttachmentOut; cont
           {[formatDuration(attachment.duration_ms), formatSize(attachment.size_bytes)].filter(Boolean).join(" · ")}
         </span>
       </button>
+      {downloadable && <DownloadOverlay attachment={attachment} controller={controller} shown={reveal.shown} />}
       {open && <VideoViewer attachment={attachment} controller={controller} onClose={() => setOpen(false)} />}
-    </>
+    </div>
   );
 }
 
