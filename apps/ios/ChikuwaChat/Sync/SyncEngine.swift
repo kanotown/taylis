@@ -844,7 +844,13 @@ final class SyncEngine {
             }
         case "dm_close.updated":  // M141 (§7.9): closed on one of my devices, or opened again explicitly
             if let id = frame.data["channel_id"]?.stringValue, case .bool(let closed)? = frame.data["closed"] {
-                store.setDmClosed(id, closed: closed)
+                // Review v0.1.43 #6: a close older than a timeline message held here is not taken (that message reopened it).
+                var closedSeq: Int?
+                if case .number(let seq)? = frame.data["closed_seq"] { closedSeq = Int(seq) }
+                let held = store.channel(id)?.channel.lastMessage?.seq
+                if DmCloseRules.takesEvent(closed: closed, closedSeq: closedSeq, lastMessageSeq: held) {
+                    store.setDmClosed(id, closed: closed)
+                }
             }
         case "thread.updated":
             // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
