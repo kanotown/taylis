@@ -871,6 +871,11 @@ cd /srv/chikuwachat/infra
 install -d -m 700 /srv/chikuwachat/import
 # (手元から) scp ~/Downloads/<書き出し>.zip root@<サーバー>:/srv/chikuwachat/import/notion-export.zip
 
+# release の compose はイメージの名前が要る (deploy.sh が渡すもの)。動いている版に合わせる
+export CHIKUWA_SERVER_IMAGE=$(docker inspect chikuwachat-app-1 --format '{{.Config.Image}}')
+export CHIKUWA_WEB_IMAGE=$(docker inspect chikuwachat-caddy-1 --format '{{.Config.Image}}')
+# deploy.conf の EXTRA_COMPOSE_FILES (behind-proxy・livekit など) も -f で足す
+
 # 1. 試し読み (何も書かない)。件数・データベースの列と型・つながらないリンク・取れないファイル・警告が出る
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
   run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
