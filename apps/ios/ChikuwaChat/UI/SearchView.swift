@@ -961,7 +961,7 @@ struct SearchResultRow: View {
                     ForEach(message.attachments.prefix(3)) { attachment in
                         HStack(spacing: 4) {
                             Image(systemName: attachment.contentType.hasPrefix("image/") ? "photo" : "doc")
-                            Text(SearchHighlighter.attributed(attachment.filename, keywords: keywords)).lineLimit(1)
+                            Text(SearchHighlighter.attributed(attachment.filename, keywords: keywords)).fileNameLine(attachment.filename)
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)

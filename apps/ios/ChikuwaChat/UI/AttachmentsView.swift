@@ -241,7 +241,7 @@ struct VideoTile: View {
                         // M82: bottom left, the length with the size (「0:42 · 1.9 MB」); a narrow (portrait) tile cuts the
                         // name, not these.
                         Text(model.caption).lineLimit(1).fixedSize()
-                        Text(attachment.filename).lineLimit(1)
+                        Text(attachment.filename).fileNameLine(attachment.filename)
                         Spacer(minLength: 0)
                     }
                     .font(.caption2).foregroundStyle(.white.opacity(0.85))
@@ -418,7 +418,7 @@ struct ThumbnailView: View {
                 .accessibilityLabel("\(attachment.filename) を再読み込み")
             } else if loader.failed {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(attachment.filename).lineLimit(2)
+                    Text(attachment.filename).fileNameLine(attachment.filename)
                     Label("画像を読み込めませんでした", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
                     HStack {
@@ -559,7 +559,7 @@ private struct PendingTile: View {
             } else {
                 VStack(spacing: 3) {
                     Image(systemName: item.isVideo ? "film" : item.isImage ? "photo" : "doc").font(.title3)
-                    Text(item.filename).font(.system(size: 9)).lineLimit(2).multilineTextAlignment(.center)
+                    FileNameTwoLines(name: item.filename).font(.system(size: 9)).multilineTextAlignment(.center)
                 }
                 .foregroundStyle(.secondary)
                 .padding(4)

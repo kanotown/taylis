@@ -42,6 +42,7 @@
 		1863970FF4FAE0FDCC8E0C3D /* M38Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4479857A765D06FFDC363E09 /* M38Tests.swift */; };
 		18705BA325204C3824490358 /* TemplatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5F2726C9A1A5967B40BDC4A /* TemplatesTests.swift */; };
 		BC5077E05DAB8CD974B2F8AF /* TitleDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D129113CD0B55925462B86 /* TitleDisplayTests.swift */; };
+		C613499524CE06BB8FD22D5D /* FileNameEllipsisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01CBA5ECFB9407666A5C8EC /* FileNameEllipsisTests.swift */; };
 		A99E0011C0FFEE0000000011 /* PinListsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99E0012C0FFEE0000000011 /* PinListsTests.swift */; };
 		B1050001C0FFEE0000000001 /* UpsideDownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1050002C0FFEE0000000001 /* UpsideDownTests.swift */; };
 		192D5EA9BB517C68F4356693 /* SchedulePoll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7B640035DAEED17AD3FC06 /* SchedulePoll.swift */; };
@@ -105,6 +106,7 @@
 		4A7672ACA0C9D91772B5CE9D /* TaskSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8A7F7E100BB442252F52DC /* TaskSnapshotTests.swift */; };
 		4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B03D2E682612B378434AF45 /* Store.swift */; };
 		4C1D216F9007A60F431172C1 /* Roster.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD7B56434AC3E290743128FF /* Roster.swift */; };
+		8DBF503C98E92EFC7A89A806 /* FileNameEllipsis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E89686916435ED32305744B /* FileNameEllipsis.swift */; };
 		4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7662F23ED981268EBFB0F8 /* ChannelView.swift */; };
 		4D1FD0A84466DAB53C3CC055 /* TotpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 684FAA7E106DDB3A241A57B4 /* TotpView.swift */; };
 		4D946F259735F0F933A6C100 /* WorkflowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07E85FF7965E4D1558A04EB /* WorkflowsTests.swift */; };
@@ -520,6 +522,7 @@
 		B5CFB01E67A972B78B96D8C2 /* PinsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinsView.swift; sourceTree = "<group>"; };
 		B5F2726C9A1A5967B40BDC4A /* TemplatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesTests.swift; sourceTree = "<group>"; };
 		68D129113CD0B55925462B86 /* TitleDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleDisplayTests.swift; sourceTree = "<group>"; };
+		A01CBA5ECFB9407666A5C8EC /* FileNameEllipsisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameEllipsisTests.swift; sourceTree = "<group>"; };
 		A99E0012C0FFEE0000000011 /* PinListsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinListsTests.swift; sourceTree = "<group>"; };
 		B1050002C0FFEE0000000001 /* UpsideDownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsideDownTests.swift; sourceTree = "<group>"; };
 		B6BACB32869D36BC76BFACD3 /* Sheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sheets.swift; sourceTree = "<group>"; };
@@ -564,6 +567,7 @@
 		DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverProbeTests.swift; sourceTree = "<group>"; };
 		DD69D59780770BA776367B43 /* InviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteView.swift; sourceTree = "<group>"; };
 		DD7B56434AC3E290743128FF /* Roster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Roster.swift; sourceTree = "<group>"; };
+		1E89686916435ED32305744B /* FileNameEllipsis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameEllipsis.swift; sourceTree = "<group>"; };
 		DFD4BEB12A7FB7E3B18F5E17 /* VideoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoViewer.swift; sourceTree = "<group>"; };
 		E000C191299DE61BDC3CCF4F /* ChannelPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelPreviewView.swift; sourceTree = "<group>"; };
 		E02FA6771A99098019D92F95 /* ReminderFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderFormView.swift; sourceTree = "<group>"; };
@@ -811,6 +815,7 @@
 				1427088F8204B7D1A390857F /* TimelineTests.swift */,
 				E43503F626BEC5744F1A2151 /* TimesFeedSnapshotTests.swift */,
 				68D129113CD0B55925462B86 /* TitleDisplayTests.swift */,
+				A01CBA5ECFB9407666A5C8EC /* FileNameEllipsisTests.swift */,
 				A99E0012C0FFEE0000000011 /* PinListsTests.swift */,
 				B1050002C0FFEE0000000001 /* UpsideDownTests.swift */,
 				770BBF88FFF6DAB25FB340E6 /* TimesFeedTests.swift */,
@@ -918,6 +923,7 @@
 				D5025810DA770D8747ACC610 /* RemindersView.swift */,
 				411D0F28175679909161F694 /* RevisionsView.swift */,
 				DD7B56434AC3E290743128FF /* Roster.swift */,
+				1E89686916435ED32305744B /* FileNameEllipsis.swift */,
 				9B4C8A95833707C7581F036D /* SavedView.swift */,
 				0B404F9D56E0D4FC24A30F35 /* Schedule.swift */,
 				A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */,
@@ -1231,6 +1237,7 @@
 				AB626CA2B33DEA99788CE811 /* TimelineTests.swift in Sources */,
 				B6F9EEFB67EC3A8B6AB41383 /* TimesFeedSnapshotTests.swift in Sources */,
 				BC5077E05DAB8CD974B2F8AF /* TitleDisplayTests.swift in Sources */,
+				C613499524CE06BB8FD22D5D /* FileNameEllipsisTests.swift in Sources */,
 				A99E0011C0FFEE0000000011 /* PinListsTests.swift in Sources */,
 				B1050001C0FFEE0000000001 /* UpsideDownTests.swift in Sources */,
 				C1D3972FAE8971139D6344A6 /* TimesFeedTests.swift in Sources */,
@@ -1372,6 +1379,7 @@
 				E4DA52B9A5BEDC920C00F9D2 /* RemindersView.swift in Sources */,
 				995E4F17B336663DCCF7D424 /* RevisionsView.swift in Sources */,
 				4C1D216F9007A60F431172C1 /* Roster.swift in Sources */,
+				8DBF503C98E92EFC7A89A806 /* FileNameEllipsis.swift in Sources */,
 				A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */,
 				F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */,
 				1C8D809901927C185631CCC1 /* Schedule.swift in Sources */,
