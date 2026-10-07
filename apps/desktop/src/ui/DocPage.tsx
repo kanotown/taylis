@@ -6,7 +6,7 @@
  * like a canvas (merge, conflict choices, retries) on the wiki endpoints. A page someone else edits comes in while
  * nothing is typed here. Offline, the page as last read shows read only.
  */
-import { ChevronRight, CloudOff, Copy, Download, FilePlus2, History, Link2, ListTree, Loader2, MoreHorizontal, Share2, SmilePlus, Trash2 } from "lucide-react";
+import { ChevronRight, CloudOff, Copy, Download, FilePlus2, History, Link2, ListTree, Loader2, MoreHorizontal, Share2, SmilePlus, Table2, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { describeError } from "../api/errors";
@@ -22,7 +22,9 @@ import { stripTaskMarkers } from "./canvasMarkers";
 import { outline, toggleTaskLine } from "./canvasText";
 import { useCompact } from "./compact";
 import { pageRights } from "./docsAccess";
-import { createChildRef, lookupPages, pageTitle, updatePage, wikiCall } from "./docsActions";
+import { DatabaseView } from "./DatabaseView";
+import { createChildRef, createPage, lookupPages, pageTitle, trashPage, updatePage, wikiCall } from "./docsActions";
+import { RowProperties } from "./RowProperties";
 import { PageRow } from "./DocsDialogs";
 import { useWikiHub } from "./DocsTree";
 import { EmojiPicker } from "./EmojiPicker";
@@ -35,7 +37,7 @@ import { t } from "../i18n";
 
 type Mode = "view" | "edit";
 
-export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing = false, onShare, onTrash, onAddChild }: {
+export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing = false, onShare, onTrash, onAddChild, embedded = false, onClosed }: {
   controller: AppController;
   pageId: string;
   onOpenPage: (pageId: string) => void;
@@ -46,6 +48,10 @@ export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing =
   onShare: (page: Pick<PageItem, "id" | "title" | "icon">) => void;
   onTrash: (page: PageItem) => void;
   onAddChild: (parentId: string) => void;
+  /** M123: a database row beside its table (narrower, no outline). */
+  embedded?: boolean;
+  /** M123: the row went to the trash from here. */
+  onClosed?: () => void;
 }) {
   const hub = useWikiHub(controller);
   const [saver, setSaver] = useState<PageSaver | null>(null);
@@ -56,14 +62,14 @@ export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing =
     return held.release;
   }, [hub, pageId]);
   if (!hub || !saver) return <Centre><Loader2 size={22} className="animate-spin text-muted" /></Centre>;
-  return <PageView key={pageId} controller={controller} saver={saver} pageId={pageId} onOpenPage={onOpenPage} onBack={onBack ?? null} startEditing={startEditing} onShare={onShare} onTrash={onTrash} onAddChild={onAddChild} />;
+  return <PageView key={pageId} controller={controller} saver={saver} pageId={pageId} onOpenPage={onOpenPage} onBack={onBack ?? null} startEditing={startEditing} onShare={onShare} onTrash={onTrash} onAddChild={onAddChild} embedded={embedded} onClosed={onClosed} />;
 }
 
 function Centre({ children }: { children: ReactNode }) {
   return <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center text-sm text-muted">{children}</div>;
 }
 
-function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing, onShare, onTrash, onAddChild }: {
+function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing, onShare, onTrash, onAddChild, embedded, onClosed }: {
   controller: AppController;
   saver: PageSaver;
   pageId: string;
@@ -73,9 +79,11 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   onShare: (page: Pick<PageItem, "id" | "title" | "icon">) => void;
   onTrash: (page: PageItem) => void;
   onAddChild: (parentId: string) => void;
+  embedded: boolean;
+  onClosed?: () => void;
 }) {
   const hub = useWikiHub(controller)!;
-  const compact = useCompact();
+  const compact = useCompact() || embedded;
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.revision);
   useEffect(() => {
     const onHide = () => {
@@ -114,7 +122,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const [editorArea, setEditorArea] = useState<HTMLTextAreaElement | null>(null);
   const [previewBox, setPreviewBox] = useState<HTMLDivElement | null>(null);
   useCanvasScrollSync(editing && !compact ? editorArea : null, editing && !compact ? previewBox : null, saver.text);
-  const showOutline = !compact && !editing && headings.length >= 3;
+  const showOutline = !compact && !editing && headings.length >= 3 && meta?.kind !== "database";
 
   const children = hub.tree().children.get(pageId) ?? (hub.hasTree ? [] : cached?.children ?? []);
   const crumbs = cached?.breadcrumbs ?? [];
@@ -123,7 +131,21 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const docLinks = useMemo(() => ({
     lookup: (q: string) => lookupPages(controller, q),
     createChild: () => createChildRef(controller, pageId),
+    createDatabase: () => createChildRef(controller, pageId, "database"),
   }), [controller, pageId]);
+  const kind = meta?.kind ?? "page";
+  const databaseId = kind === "row" ? [...crumbs].reverse().find((c) => c.readable)?.id ?? null : null;
+  const trashRow = async () => {
+    if (!(await trashPage(controller, pageId))) return;
+    controller.setNotice(t("docs.db.rowTrashed"));
+    if (onClosed) onClosed();
+    else if (databaseId) onOpenPage(databaseId);
+  };
+  const addDatabase = async () => {
+    const siblings = hub.tree().children.get(pageId) ?? [];
+    const page = await createPage(controller, { parentId: pageId, kind: "database", afterId: siblings[siblings.length - 1]?.id ?? null });
+    if (page) onOpenPage(page.id);
+  };
 
   const history: HistorySource | null = meta ? {
     id: pageId,
@@ -198,7 +220,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
             ))}
           </div>
         )}
-        {meta && saver.status !== "gone" && (
+        {meta && saver.status !== "gone" && kind !== "row" && (
           <button type="button" onClick={() => onShare({ id: pageId, title, icon: meta.icon })} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-ink transition-colors hover:bg-ink/6" title={rights.share ? t("docs.share.button") : t("docs.share.see")}>
             <Share2 size={15} />
             <span className="max-md:sr-only">{t("docs.share.button")}</span>
@@ -215,7 +237,14 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
               <MenuItem onSelect={() => void controller.copyPageLink(pageId)}><Link2 size={14} /> {t("canvas.copyLink")}</MenuItem>
               <MenuItem onSelect={() => setHistoryOpen(true)}><History size={14} /> {t("canvas.historyMenu")}</MenuItem>
               <MenuItem onSelect={() => void exportMarkdown()}><Download size={14} /> {t("docs.exportMarkdown")}</MenuItem>
-              {rights.edit && <MenuItem onSelect={() => onAddChild(pageId)}><FilePlus2 size={14} /> {t("docs.addChild")}</MenuItem>}
+              {rights.edit && kind === "page" && <MenuItem onSelect={() => onAddChild(pageId)}><FilePlus2 size={14} /> {t("docs.addChild")}</MenuItem>}
+              {rights.edit && kind === "page" && <MenuItem onSelect={() => void addDatabase()}><Table2 size={14} /> {t("docs.db.addDatabase")}</MenuItem>}
+              {rights.edit && kind === "row" && (
+                <>
+                  <MenuSeparator />
+                  <MenuItem className="text-danger" onSelect={() => void trashRow()}><Trash2 size={14} /> {t("docs.db.trashRow")}</MenuItem>
+                </>
+              )}
               {rights.manage && listed && (
                 <>
                   <MenuSeparator />
@@ -251,17 +280,25 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
       ) : (
         <div className="flex min-h-0 flex-1">
           <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")}>
-            <article className="mx-auto max-w-3xl px-6 py-6 max-md:px-4 max-md:py-4">
+            <article className={cn("mx-auto px-6 py-6 max-md:px-4 max-md:py-4", kind === "database" ? "max-w-none" : "max-w-3xl", embedded && "px-4 py-4")}>
               <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable={rights.edit && !!loaded} />
               {meta && <Byline controller={controller} page={meta} />}
-              {text.trim() === "" ? (
+              {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} />}
+              {text.trim() === "" ? (kind === "database" ? null : (
                 <p className="mt-6 text-sm text-muted">
                   {t("canvas.emptyBody")}{rights.edit && loaded && <button type="button" className="text-accent hover:underline" onClick={() => setMode("edit")}>{t("canvas.startWriting")}</button>}
                 </p>
-              ) : (
+              )) : (
                 <CanvasBody body={text} controller={controller} onToggleTask={offlineCopy ? null : onToggleTask} className="mt-5" />
               )}
-              <ChildList controller={controller} pages={children} canAdd={rights.edit && !!loaded} onOpen={onOpenPage} onAdd={() => onAddChild(pageId)} />
+              {kind === "database" && (
+                <DatabaseView controller={controller} databaseId={pageId} compact={compact} onOpenRowPage={onOpenPage}
+                  renderPeek={(rowId, close) => (
+                    <DocPage key={rowId} controller={controller} pageId={rowId} onOpenPage={onOpenPage} onShare={onShare} onTrash={onTrash} onAddChild={onAddChild} embedded onClosed={close} />
+                  )}
+                />
+              )}
+              {kind === "page" && <ChildList controller={controller} pages={children} canAdd={rights.edit && !!loaded} onOpen={onOpenPage} onAdd={() => onAddChild(pageId)} />}
               <Backlinks controller={controller} pageId={pageId} version={meta?.version ?? 0} onOpen={onOpenPage} />
             </article>
           </div>

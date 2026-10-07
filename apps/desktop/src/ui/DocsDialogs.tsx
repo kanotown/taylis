@@ -306,7 +306,7 @@ export function DocsTrashDialog({ controller, onClose, onRestored }: { controlle
         ) : (
           rows.map((page) => (
             <div key={page.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-panel" data-trashed={page.id}>
-              <PageIcon controller={controller} icon={page.icon} size={15} />
+              <PageIcon controller={controller} icon={page.icon} kind={page.kind} size={15} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm">{pageTitle(page, t("docs.untitled"))}</span>
                 <span className="block text-[11px] text-muted">{t("canvas.deletedAt", { when: page.deleted_at ? sinceLabel(page.deleted_at) : "" })}</span>

@@ -21,9 +21,9 @@ export async function wikiCall<T>(controller: AppController, run: (api: ApiClien
 const hub = (controller: AppController) => controller.engine?.wiki ?? null;
 
 /** A new page: at the top level (`access` for 「共有」 / 「プライベート」, §4.2) or below `parentId` (it inherits). */
-export async function createPage(controller: AppController, options: { parentId?: string | null; access?: "workspace" | "private"; title?: string | null; afterId?: string | null }): Promise<PageOut | null> {
+export async function createPage(controller: AppController, options: { parentId?: string | null; access?: "workspace" | "private"; title?: string | null; afterId?: string | null; kind?: "page" | "database" }): Promise<PageOut | null> {
   const body: PageCreate = {
-    kind: "page",
+    kind: options.kind ?? "page",
     parent_id: options.parentId ?? null,
     access: options.access ?? "workspace",
     title: options.title ?? null,
@@ -37,9 +37,9 @@ export async function createPage(controller: AppController, options: { parentId?
 }
 
 /** The `/` menu's 「子ページ」: a page below `parentId`, as a link target. */
-export async function createChildRef(controller: AppController, parentId: string): Promise<PageRef | null> {
+export async function createChildRef(controller: AppController, parentId: string, kind: "page" | "database" = "page"): Promise<PageRef | null> {
   const siblings = hub(controller)?.tree().children.get(parentId) ?? [];
-  const page = await createPage(controller, { parentId, afterId: siblings[siblings.length - 1]?.id ?? null });
+  const page = await createPage(controller, { parentId, afterId: siblings[siblings.length - 1]?.id ?? null, kind });
   if (!page) return null;
   return { id: page.id, title: page.title, icon: page.icon, kind: page.kind };
 }

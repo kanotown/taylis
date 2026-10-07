@@ -995,6 +995,7 @@ export class SyncEngine {
         return;
       case "wiki.changed":
       case "wiki.page.updated":
+      case "wiki.rows.changed":
         this.wiki.applyEvent(frame.event, frame.data);
         return;
       case "wiki.mentioned":

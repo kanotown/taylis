@@ -39,6 +39,8 @@ export interface DocEditorLinks {
   lookup(q: string): Promise<PageRef[]>;
   /** The `/` menu's 「子ページ」: a new page below this one (null: refused, the error shown). */
   createChild(): Promise<PageRef | null>;
+  /** The `/` menu's 「データベース」 (M123): a new database below this page. */
+  createDatabase?(): Promise<PageRef | null>;
 }
 
 export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea, doc = null }: {
@@ -335,9 +337,10 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     else if (result.kind === "image") {
       if (isPickBusy(picker.current)) controller.setError(t("canvasEditor.stillReading"));
       else picker.current?.click();
-    } else if (result.kind === "childPage" && doc) {
+    } else if ((result.kind === "childPage" || result.kind === "database") && doc) {
+      const create = result.kind === "database" && doc.createDatabase ? doc.createDatabase() : doc.createChild();
       setChildBusy(true);
-      void doc.createChild().then((page) => {
+      void create.then((page) => {
         setChildBusy(false);
         if (!page) return;
         const current = area.current;
