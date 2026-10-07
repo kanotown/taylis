@@ -736,6 +736,41 @@ CREATE INDEX conversation_pins_user_idx ON conversation_pins (user_id, created_a
 - メンバーでなくなっても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える（お気に入りと同じ）。
 - 並び順の規則は sidebar_sections の「セクションの中の並び順」の「DM の固定」。
 
+### conversation_closes（閉じた DM、M141）
+
+```sql
+CREATE TABLE conversation_closes (
+  user_id     uuid NOT NULL REFERENCES users(id),
+  channel_id  uuid NOT NULL REFERENCES channels(id),   -- type が dm / group_dm のものだけ
+  closed_seq  bigint NOT NULL,                          -- 閉じたときの channels.last_seq
+  closed_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, channel_id)
+);
+```
+
+- Slack の「会話を閉じる」（利用者の要望 2026-10-07）。自分の DM の一覧から DM・グループ DM（自分だけの DM も）を
+  隠す。何も消さず、ほかのメンバーには何も見えない。個人データなので `seq` を消費しない（移行 0102）。
+- **閉じている** ＝ 行があり、その会話に `closed_seq` より後のタイムラインの行（トップレベルと `also_in_channel` の
+  返信。§7.8 の `last_message` と同じ対象）が無いこと。読むときに求めるので、新しいメッセージ（誰のものでも、自分の
+  別の端末からでも、system の行でも）が来れば書き込みなしで開く。編集・削除・リアクション・スレッドだけの返信では
+  開かない。比べるのは時刻でなく seq（`last_message_at` はトランザクションの開始時刻なので前後しうる）。
+- `PUT /channels/{id}/close`（閉じる。いつも 200 `{channel_id, closed: true, closed_at}`。閉じたものをもう一度
+  閉じると閉じた位置を今に動かす）、`DELETE /channels/{id}/close`（開く。行を消す。いつも 200
+  `{channel_id, closed: false, closed_at: null}`）。メンバー（`403 not_a_member`）の DM とグループ DM だけ（公開・
+  非公開チャンネルは `409 dm_close_not_dm`。チャンネルには「退出」がある）。
+- 閉じると同じトランザクションで **最後まで既読にし**（`read.updated`。Slack と同じ。隠れた会話がバッジに数えられない
+  ように）、**固定を外す**（`conversation_pins` の行を消し `dm_pin.updated {pinned: false}`。固定は「いつも見える所に
+  置く」で、閉じるのと逆の意味なので）。**お気に入りの星と自分のセクションはそのまま**（どこにしまったかの記録なので、
+  開いたときに元の場所に戻る。閉じているあいだはそこでも隠れる）。
+- 明示的に開く：クライアントは閉じた会話を開いたとき（検索・ジャンプ・プロフィールの「メッセージを送る」・リンク・
+  通知）に `DELETE` を呼ぶ。サーバも `POST /dms` が既にある DM を返すとき（その人と DM を始め直した）に呼んだ本人の
+  行を消す（channels は dm_closes に依存しないので、dm_closes が import 時に `channels.set_dm_resolved_hook` で登録する）。
+- 端末間は `dm_close.updated`（audience=user、`{channel_id, closed, at}`。閉じた / 開いた状態が変わったときだけ）で
+  揃え、bootstrap には閉じている会話の id の一覧（`closed_dms`、閉じた古い順）を入れる。新しいメッセージで開いたことは
+  知らせない（どの端末にも `message.created` が届く）。
+- メンバーでなくなっても行は残すが、bootstrap は現在のメンバーシップと結合して返すので出ない（固定と同じ）。
+- 表示の規則は sidebar_sections の「1 つの会話は 1 か所」の「閉じた DM」と SYNC_PROTOCOL.md §7.9。
+
 ### user_blocks (ブロック、M104、MODERATION.md §4)
 
 ```sql
@@ -1054,6 +1089,9 @@ CREATE TABLE sidebar_section_channels (
     セクションも）へ移しても何も起きないように見えた（利用者の報告 2026-10-07）。移行 0096 は星の付いた会話の
     セクションの行を消す（見た目は変わらない）。古いサーバのために、クライアントは今もお気に入りを優先して出し、
     星の付いた会話の「セクションに移動」では「現在」を出さない。
+  - **閉じた DM（M141、conversation_closes）**：閉じた DM・グループ DM は、それが入っている場所（お気に入り・自分の
+    セクション・既定の「ダイレクトメッセージ」）のどこにも出さない（スマホの DM タブ・ホームの「ダイレクトメッセージ」・
+    iPad / タブレットの一覧も）。星とセクションの行は残すので、開くと元の場所に戻る。
 - 変更はすべて `sidebar.updated` (audience=user) で自分の全端末へ、ペイロードはセクションの一覧全体。
 - **M26 (Slack のようなセクション)**: 作るときに名前・アイコン・入れる会話をまとめて決められる
   (`POST /sidebar/sections {name, emoji, channel_ids}`、ほかのセクションにあった会話はこちらへ移る)。名前とアイコンは

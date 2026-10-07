@@ -222,6 +222,7 @@ server/
    M90: `workspace.service → channels.models` (既定のチャンネルの検証。service には依存しない)。既定のチャンネルに入れる
    処理は別のファイル `workspace/default_channels.py` (`→ channels, workspace.service, audit`) に置き、`admin`
    (`create_user_in_tx`) と workspace の router が使う (channels → workspace.service と循環しないため、MEMBERSHIP.md §6)。
+   M141（閉じた DM、DATA_MODEL.md conversation_closes）：`dm_closes → channels, reads, dm_pins`（メンバーの確認、閉じるときの既読と固定の解除）。閉じているかの判定のため `messages.models` と `channels.models` の `ChannelMember` を読み取り専用で参照する（`dm_pins` と同じ）。既にある DM を返す `POST /dms` で開くのは `dm_closes` が import 時に `channels.set_dm_resolved_hook` で登録する（channels は dm_closes に依存しない）。
    `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。
    `reads` は葉 (どのモジュールにも依存しない): 参加時の既読位置の初期化は `channels` が、送信者の既読は
    `messages` が同一トランザクション内で呼ぶ。`PUT /channels/{id}/read` は `channels` の router に置く

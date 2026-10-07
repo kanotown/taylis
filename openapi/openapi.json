@@ -3951,6 +3951,15 @@
             "title": "Channels",
             "type": "array"
           },
+          "closed_dms": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Closed Dms",
+            "type": "array"
+          },
           "custom_emoji": {
             "default": [],
             "items": {
@@ -7287,6 +7296,37 @@
           }
         },
         "title": "DeviceUpdate",
+        "type": "object"
+      },
+      "DmCloseStateOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          }
+        },
+        "required": [
+          "channel_id",
+          "closed"
+        ],
+        "title": "DmCloseStateOut",
         "type": "object"
       },
       "DmCreate": {
@@ -26157,6 +26197,102 @@
         "summary": "Create Canvas",
         "tags": [
           "canvases"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/close": {
+      "delete": {
+        "description": "Open it again (clients call this when I open a closed conversation). Idempotent: 200\nwhether or not it was closed.",
+        "operationId": "reopen_dm_api_v1_channels__channel_id__close_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DmCloseStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reopen Dm",
+        "tags": [
+          "dm-closes"
+        ]
+      },
+      "put": {
+        "description": "Close a DM or group DM I belong to (M141, 「会話を閉じる」): hidden from my DM lists until a\nnew message arrives in it or I open it again. It is marked read and unpinned. Idempotent\n(closing again moves the closing point to now). 403 not_a_member, 409 dm_close_not_dm for a\nchannel.",
+        "operationId": "close_dm_api_v1_channels__channel_id__close_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DmCloseStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Close Dm",
+        "tags": [
+          "dm-closes"
         ]
       }
     },
