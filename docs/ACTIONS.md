@@ -7,7 +7,7 @@
 ただし Taylis は **汎用** のまま作る（ほかの研究室・会社も使う）：リポジトリに SwitchBot・Sesame・特定のサイトの名前や API は持たない。
 SwitchBot / Sesame の API への翻訳は中継（研究室の Web サイト。別に作る）の仕事。既定は **オフ** で、管理者が有効にする。
 
-**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。iOS・Android は §9.2 のとおり後の作業
+**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。機器の状態の表示（§12）をサーバ・Desktop / Web に実装（2026-10-08、移行 0107。テスト：server `tests/test_action_status.py`）。iOS・Android は §9.2 のとおり後の作業
 （IMPLEMENTATION_PLAN.md の M143）。テスト：server `tests/test_actions.py`、desktop `tests/actions.test.tsx`。
 マイルストーンの番号 M143 は仮（並行する作業と重なれば振り直す）。
 
@@ -68,6 +68,7 @@ CREATE TABLE actions (
   allowed_user_ids  uuid[] NOT NULL DEFAULT '{}',   -- 個別のユーザー
   notice_channel_id uuid REFERENCES channels(id) ON DELETE SET NULL,  -- 成功を知らせる会話（NULL = 知らせない）
   enabled           boolean NOT NULL DEFAULT true,
+  provides_status   boolean NOT NULL DEFAULT false, -- 組の状態をこのボタンの中継に尋ねる（§12、移行 0107。組に 1 つ）
   position          integer NOT NULL,          -- 並び
   created_by, created_at, updated_at
 );
@@ -169,6 +170,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
   `ActionOut = { id, name, group_label, icon, emoji, confirm, confirm_text, position }`（URL・`action_key`・鍵の名前・押せる人は出さない）。
   オフのとき・ゲスト・ボットは `{ enabled: false または true, actions: [] }`。
 - `POST /actions/{id}/invoke { client_invoke_id }` → `ActionInvokeOut`（§4）。
+- `GET /actions/status[?refresh=true]` → `ActionStatusListOut`（操作する機器の状態、§12.3）。`ActionOut` には `provides_status` もある。
 - bootstrap の `actions: ActionListOut | null`（ゲストと、オフのときは null）。
 
 ### 7.2 管理（`integrations.manage`、管理者だけ）
@@ -188,13 +190,15 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 ### 7.3 エラー（apps/shared/errors.json）
 
 `actions_disabled`（409）、`action_not_found`（404）、`action_disabled`（409）、`action_not_allowed`（403）、
-`action_invoke_id_reused`（409）、`action_url_not_allowed`（400）、`action_limit`（409、50 個まで）、`rate_limited`（429）。
+`action_invoke_id_reused`（409）、`action_url_not_allowed`（400）、`action_limit`（409、50 個まで）、`rate_limited`（429）、
+`action_status_source_taken`（409、組の状態のボタンは 1 つ、§12）。
 
 ## 8. イベント
 
 | type | audience | seq | data |
 | --- | --- | --- | --- |
 | `actions.updated` | all（ゲストを除く） | — | `{}`。設定かボタンが変わった。押せるボタンは人ごとに違うので中身は載せない。端末は `GET /actions` を読み直す（続けて届いたものは 300 ms でまとめる） |
+| `actions.status_updated` | 組のボタンを 1 つでも押せる人（audience `action`） | — | `ActionStatusOut`（§12.3）。押した数秒後の再読、または状態が変わったとき |
 
 押した記録はイベントにしない（押した人は答えで知る。ほかの人には任意の会話の通知）。再接続のあとは bootstrap で正しい一覧に戻る。
 
@@ -226,10 +230,12 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 - ホームのタイル「操作」（`nav-items.json` の `actions` に `mobile` を足す）。`show_on_attendance` のときは在室状況の画面の上と
   ピルのシートにも「操作」の欄。押す → 確認 → 待ち → バナー（Desktop / Web と同じ規則・文）。
 - `client_invoke_id` は押すごとに作り、通信のやり直しだけ同じ id。管理の画面は作らない（Desktop / Web で）。
+- 機器の状態（§12.4）：画面を開いたとき `GET /actions/status`、表示中は 60 秒ごと（バックグラウンドでは止める）、`actions.status_updated` で置き換え（`fetched_at` が古いものは捨てる）。組の見出しの下に色の点・文・details・「◯分前に確認」・更新（`refresh=true`、`429` は「少し待って…」）。
 
 ## 10. やらないこと（今は）
 
-- 鍵の今の状態（開いている・閉まっている）の表示：中継から Taylis へ状態を送る受信 API が要る。必要になったら在室状況の受信 API の形で足す。
+- 中継から Taylis へ状態を送る受信 API（push）：今は Taylis が尋ねる（§12、D18）。即時の通知（ドアが開いたら知らせる）が要るようになったら在室状況の受信 API の形で足す。
+- 状態をもとにしたボタンの出し分け（施錠中なら「閉める」を隠す）：状態は数十秒古いことがあり、隠すと押せないときが生まれる。
 - 予約と連動した自動の解錠、時間帯の制限（中継の側で絞れる）。
 - 鍵・電球などのアイコン：今は絵文字。要望が増えたら attendance-icons.json とは別の一覧を作る。
 
@@ -241,3 +247,82 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 - 遅れた・重なった操作が起きないよう、再送しない・outbox を通さない・同じ `client_invoke_id` では中継を呼ばない・連打を制限する。
 - 中継にはメールアドレスを含む本人の情報を送る（中継の側の名簿と突き合わせ、中継でも絞れるように）。送信先は信頼できるサイトだけにする。
 - 中継の `message` はプレーンテキストとして 200 文字まで出す（HTML として描かない）。
+
+## 12. 操作する機器の状態（2026-10-08、利用者の要望「状態はわかるようにしておきたい」）
+
+研究室の SwitchBot の鍵（511・507）について、ボタンを押す人が **今の状態**（施錠・解錠、ドアの開閉、電池）を見られるようにする。
+Taylis は汎用のまま：Taylis が知るのは「中継が返した短い文と色」だけで、鍵・ドア・電池の意味は中継が決める。
+
+### 12.1 決めたこと（2026-10-08。★ が選んだもの）
+
+| # | 論点 | 選んだもの ★ | ほかの案と、選ばなかった理由 |
+| --- | --- | --- | --- |
+| D18 | 状態の取り方 | ★ **Taylis が中継に尋ねる**（pull）。署名つきの `action.status` を送り、中継が今の状態を答える | 中継から Taylis に送る（push、在室状況の受信 API の形）：中継の側に「いつ送るか」（SwitchBot の Webhook の購読・ポーリング）が要り、受信の鍵・API が増える。研究室の Web サイトは押されたときに動くだけの作りで、常駐の監視を持たない。必要になったら受信 API を足せる（§10） |
+| D19 | どのボタンが状態を持つか | ★ **組ごとに 1 つ**、管理者が選んだボタン（`provides_status`）の中継に尋ねる。組の無いボタンはそれだけで 1 組。2 つ目は `409 action_status_source_taken` | ボタンごと：「開ける」「閉める」は同じ鍵の状態で、2 回尋ねることになる。状態だけの別の欄（ボタンでない「機器」）：表と管理画面が増える。今は組の見出しの下に 1 行あれば足りる |
+| D20 | 答えの形 | ★ `{status: {text（80 文字）, tone（ok / warn / alert / neutral）, state?（短い英小文字の語）, details?（6 個まで）}}`。Taylis は文と色をそのまま出す | 鍵の型（`locked: bool` など）を決める：鍵以外（照明・エアコン・プリンタ）に使えなくなり、製品の知識が Taylis に入る（D1 に反する）。`state` は端末やボットが機械的に使える短い語として任意で持つ |
+| D21 | 中継を呼ぶ回数 | ★ サーバが **ボタンごとに 30 秒**（`ACTION_STATUS_CACHE_SECONDS`）覚え、その間は何人見ても中継を呼ばない。同じ時に来た読み取りは 1 回の問い合わせを待つ。「更新」（`refresh=true`）は覚えを使わず、人ごとに 5 秒に 1 回（`429`） | 端末が中継を直に呼ぶ：鍵（署名の秘密）を端末に配ることになる。覚えなし：見ている人 × 1 分ごとに中継と SwitchBot を呼び、SwitchBot の 1 日 10,000 回の上限に近づく。覚えはプロセスの中だけ（1 台の構成。複数台にしたら EventBus と同じく外に出す） |
+| D22 | 押した後 | ★ 成功した押下の後、その組の覚えを消し、**4 秒後**（`ACTION_STATUS_AFTER_INVOKE_SECONDS`、錠の動きを待つ）にもう一度尋ね、`actions.status_updated` でその組を見られる人に送る | 押した答えに状態を含める：錠は答えの後で動くので古い状態になる。端末が押した後に読み直す：押した人の画面しか変わらない |
+| D23 | 変わったことを知らせる | ★ 上の再読と、覚えの切れた読み取りで前と **違う** 成功の答えが来たときに `actions.status_updated`（outbox、audience `action` = その組のボタンを 1 つでも押せる人） | 毎回送る：変わらない状態で outbox が増える。失敗は送らない（見ている人は最後の成功の状態を保ち、自分の読み取りで失敗を知る） |
+| D24 | 見られる人 | ★ 組のボタンを **1 つでも押せる人**（状態のボタン自体を押せなくてもよい。たとえば状態は管理者だけの「状態」ボタンから取り、メンバーは「開ける」だけ押せる） | 状態のボタンを押せる人だけ：見るだけの人のために押す権限を配ることになる。全員：押せない人には要らず、在室の推測にもなりうる |
+| D25 | 記録 | ★ 状態の問い合わせは押下ではない：`action_invocations` にも監査にも残さない。失敗だけサーバのログに warning | 記録する：30 秒ごとの読み取りで記録が押下より多くなり、押した記録が見えにくくなる |
+
+### 12.2 中継への問い合わせ
+
+`POST <状態のボタンの url>`（押下と同じ送信の部品・署名・SSRF の検査・全体で 10 秒・応答 4 KB まで・再送なし）。
+
+```json
+{
+  "type": "action.status",
+  "request_id": "0192f0c2-…",
+  "action_id": "0192…",
+  "action_key": "lab-door-511.unlock",
+  "user": { "id": "0192…", "username": "taro", "email": "taro@example.ac.jp", "display_name": "山田 太郎", "role": "member" },
+  "workspace": { "id": "0192…", "name": "○○研究室" },
+  "at": "2026-10-08T09:15:00.123Z"
+}
+```
+
+- ヘッダ：`X-Taylis-Event: action.status`、`X-Taylis-Delivery: <request_id>`、`X-Taylis-Timestamp`、`X-Taylis-Signature`（§5 と同じ）。
+- `user` は覚えの切れた読み取りをした人（押した後の再読は押した人）。中継はこれで絞ってもよいが、多くの人に同じ答えが配られる（D21）ので、人によって答えを変えないこと。
+- 中継が確かめること：時刻（1 分以内）と署名。状態の問い合わせは **何も動かさない読み取り** なので、`request_id` の重複を捨てなくてよい。`action.status` で機器を動かしてはならない。
+- 答え（2xx）：
+
+```json
+{ "status": { "text": "施錠中・ドア閉・電池 85%", "tone": "ok", "state": "locked",
+              "details": [ { "label": "電池", "value": "85%" } ] } }
+```
+
+  `text` は必須（制御文字を除き空白を詰めて 80 文字まで）。`tone` は ok（あるべき状態）/ warn（注意：解錠中・ドアが開いている）/ alert（異常：
+  動作不良）/ neutral（それ以外・不明）で、知らない値は neutral。`state` は英小文字・数字・`_` `-` の 32 文字までの語（`locked`・`unlocked`・
+  `jammed`・`unknown` など。合わなければ捨てる）。`details` は `label`（40 文字）と `value`（80 文字）の組を 6 個まで。すべてプレーンテキスト。
+- `text` の無い 2xx は `invalid_answer`。2xx 以外は失敗で、`{"message": "…"}` があれば理由として見せる（§5 と同じ 200 文字）。
+
+### 12.3 API とイベント
+
+- `GET /actions/status[?refresh=true]` → `ActionStatusListOut { enabled, statuses: [ActionStatusOut] }`。見られる組（D24）ごとに 1 つ、ボタンの並び順。
+  `ActionStatusOut = { action_id（状態のボタン）, group_label, ok, status: {text, tone, state, details} | null, error, message, fetched_at }`。
+  `error` は timeout / network / relay_error / invalid_answer / url_not_allowed / secret_missing。中継の失敗も HTTP は 200（`ok: false`）。
+  機能がオフなら `{enabled: false, statuses: []}`、ゲスト・ボットは空。組ごとの問い合わせは並べて行う（それぞれ 10 秒まで）。
+- `ActionOut.provides_status`（このボタンが組の状態を持つか）。端末は、状態を持つ組で最初の答えまで「状態を確認中…」を出すのに使う。
+  状態のボタンが自分の押せないボタンのときは `ActionOut` に無いので、答えが来たら組の見出し（`group_label`、組の無いボタンは `action_id`）で合わせる。
+- 管理：`ActionCreate` / `ActionUpdate` / `ActionAdminOut` の `provides_status`（組に 1 つ、`409 action_status_source_taken`）。
+  `POST /admin/actions/{id}/status` →`ActionStatusOut`（「状態を確認」：そのボタンの中継にその場で尋ねる。覚えを使わず、状態のボタンでなくても・止めていても・
+  機能がオフでも送れる。テスト送信と同じく 1 分 6 回）。ボタンや設定を変えると覚えを捨てる。
+- イベント `actions.status_updated`（audience：組のボタンを 1 つでも押せる人、seq なし）：data は `ActionStatusOut`。端末は `fetched_at` が手元より古ければ捨てる。
+  再接続の後は `GET /actions/status` を読み直す（イベントは状態の写しで、取りこぼしても次の読み取りで揃う）。
+- 設定：`ACTION_STATUS_CACHE_SECONDS`（30）、`ACTION_STATUS_REFRESH_MIN_INTERVAL_SECONDS`（5）、`ACTION_STATUS_AFTER_INVOKE_SECONDS`（4）。
+
+### 12.4 端末
+
+- **Desktop / Web（2026-10-08 実装）**：「操作」の画面と（`show_on_attendance` のとき）在室状況の画面の上で、組の見出しの下に 1 行：色の点
+  （ok 緑・warn 黄・alert 赤・neutral 灰）・文・`details`（「電池 85%」）・「たった今確認」「3 分前に確認」・更新のボタン（回っている間は押せない）。
+  組の無いボタンは名前を添えて 1 行ずつ。最初の答えまで「状態を確認中…」、失敗は「状態を取得できませんでした：中継から応答がありませんでした」
+  （中継の `message` があればそれ）。画面を開いたときに読み、見えている間は 60 秒ごと（隠れている間は止め、戻ったら古ければすぐ）、
+  `actions.status_updated` で置き換える。ピルのメニューには出さない（狭い）。管理のフォームに「状態の取得に使う」、一覧に「状態」の印と「状態を確認」。
+- **iOS / Android（後の作業）**：同じ規則（§9.2 に追記）。
+
+### 12.5 中継の例（研究室の SwitchBot の鍵）
+
+研究室の Web サイトの中継（別のリポジトリ）は `action_key` から機器を引き、SwitchBot の `GET /v1.1/devices/{id}/status`（Smart Lock：
+`lockState` locked / unlocked / jammed、`doorState` opened / closed、`battery`）を読んで、施錠かつドア閉 → ok「施錠中・ドア閉」、解錠 →
+warn「解錠中」、ドアが開いている → warn、動作不良 → alert、電池 20% 未満で「電池残りわずか」を添える、のように訳す。7 秒で打ち切る。
