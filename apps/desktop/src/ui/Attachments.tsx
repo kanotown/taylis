@@ -10,6 +10,7 @@ import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
 import { t } from "../i18n";
+import { FileName } from "./FileName";
 
 export function formatSize(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
@@ -55,7 +56,7 @@ export function AttachmentList({ attachments, controller }: { attachments: Attac
               onClick={() => void controller.downloadAttachment(attachment)}
             >
               <FileText size={18} className="shrink-0 text-muted" />
-              <span className="max-w-64 truncate">{attachment.filename}</span>
+              <FileName name={attachment.filename} className="max-w-64" />
               <span className="text-xs text-muted">{formatSize(attachment.size_bytes)}</span>
               <Download size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
@@ -120,7 +121,7 @@ function Thumbnail({ attachment, controller, square = false }: { attachment: Att
     <>
       {failed ? (
         <div className={cn("flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm", square ? "photo-tile overflow-hidden" : "w-64 max-w-full")}>
-          <span className="truncate" title={attachment.filename}>{attachment.filename}</span>
+          <FileName name={attachment.filename} />
           <span role="status" className="text-muted">{t("attach.imageFailed")}</span>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={retry}>{t("common.retry")}</Button>
@@ -172,7 +173,7 @@ function ViewerShell({ attachment, description, shape, controller, onClose, body
           <Dialog.Description className="sr-only">{description}</Dialog.Description>
           <div className="flex items-center gap-3 px-4 py-3 text-white" onClick={(e) => e.stopPropagation()}>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{attachment.filename}</div>
+              <FileName name={attachment.filename} className="text-sm font-medium" />
               <div className="text-xs text-white/70">
                 {formatSize(attachment.size_bytes)}
                 {shape ? ` · ${shape.width}×${shape.height}` : ""}
@@ -328,7 +329,7 @@ function VideoTile({ attachment, controller }: { attachment: AttachmentOut; cont
         ) : (
           <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 pb-8 text-white/80">
             {loading ? <Loader2 size={18} className="animate-spin" aria-label={t("attach.loadingVideo")} /> : <Film size={22} />}
-            <span className="line-clamp-2 w-full break-all text-center text-xs">{attachment.filename}</span>
+            <FileName name={attachment.filename} stacked className="w-full text-center text-xs" />
           </span>
         )}
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -438,7 +439,7 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
         ) : (
           <>
             {video ? <Film size={18} /> : <FileText size={18} />}
-            <span className="line-clamp-2 w-full break-all px-1 text-center text-[9px] leading-tight">{item.filename}</span>
+            <FileName name={item.filename} stacked className="w-full px-1 text-center text-[9px] leading-tight" />
           </>
         )}
       </button>

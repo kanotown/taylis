@@ -1,0 +1,29 @@
+{
+  "_comment": "How a client shortens a long attachment / file name so its extension stays visible (2026-10-07): the name is split into head + tail + ext, and only head is truncated (「研究報告書_最終版_修正…2026年度.pdf」). ext: from the last '.' to the end, when that dot is not the first character (a dot file such as .env has no extension) nor the last, and the 1 to 8 characters after it hold no whitespace; otherwise there is no extension and the whole name is head (it truncates at the end as before). tail: with an extension and a stem (head + tail) longer than 12 code points, its last 6 code points, moved earlier so it never starts inside a character (a combining mark such as the NFD dakuten U+3099, a variation selector, a skin tone, ZWJ, a tag, Hangul vowel / final jamo, the second regional indicator of a flag, or the character after a ZWJ); otherwise empty. Lengths count Unicode code points. Hand-written; desktop (tests/fileNameEllipsis.test.ts), iOS (FileNameEllipsisTests) and Android (FileNameEllipsisTest) read this file.",
+  "cases": [
+    { "name": "short", "input": "report.pdf", "head": "report", "tail": "", "ext": ".pdf" },
+    { "name": "long Japanese stem", "input": "研究報告書_最終版_修正済み_2026年度.pdf", "head": "研究報告書_最終版_修正済み_", "tail": "2026年度", "ext": ".pdf" },
+    { "name": "docx", "input": "研究報告書_最終版_修正済み_2026年度_提出用.docx", "head": "研究報告書_最終版_修正済み_2026", "tail": "年度_提出用", "ext": ".docx" },
+    { "name": "stem of 12 has no tail", "input": "abcdefghijkl.txt", "head": "abcdefghijkl", "tail": "", "ext": ".txt" },
+    { "name": "stem of 13 has a tail", "input": "abcdefghijklm.txt", "head": "abcdefg", "tail": "hijklm", "ext": ".txt" },
+    { "name": "upper-case extension", "input": "IMG_20261007_123456.JPG", "head": "IMG_20261007_", "tail": "123456", "ext": ".JPG" },
+    { "name": "two dots: the last one", "input": "archive.tar.gz", "head": "archive.tar", "tail": "", "ext": ".gz" },
+    { "name": "dot file", "input": ".env", "head": ".env", "tail": "", "ext": "" },
+    { "name": "dot file with an extension", "input": ".hidden.txt", "head": ".hidden", "tail": "", "ext": ".txt" },
+    { "name": "no dot", "input": "README", "head": "README", "tail": "", "ext": "" },
+    { "name": "long name without a dot", "input": "very_long_document_name_without_any_extension", "head": "very_long_document_name_without_any_extension", "tail": "", "ext": "" },
+    { "name": "trailing dot", "input": "notes.", "head": "notes.", "tail": "", "ext": "" },
+    { "name": "extension of 8", "input": "data.12345678", "head": "data", "tail": "", "ext": ".12345678" },
+    { "name": "extension of 9 is not special", "input": "data.123456789", "head": "data.123456789", "tail": "", "ext": "" },
+    { "name": "a sentence is not an extension", "input": "Mr. Smith report", "head": "Mr. Smith report", "tail": "", "ext": "" },
+    { "name": "ideographic space", "input": "議事録.第3回　確定", "head": "議事録.第3回　確定", "tail": "", "ext": "" },
+    { "name": "full-width dot is not a dot", "input": "資料．pdf", "head": "資料．pdf", "tail": "", "ext": "" },
+    { "name": "Japanese extension", "input": "file.日本語", "head": "file", "tail": "", "ext": ".日本語" },
+    { "name": "empty", "input": "", "head": "", "tail": "", "ext": "" },
+    { "name": "NFD dakuten stays with its kana", "input": "abcdefghijklmが12345.pdf", "head": "abcdefghijklm", "tail": "が12345", "ext": ".pdf" },
+    { "name": "ZWJ sequence stays whole", "input": "aaaaaaaaaaaa👨‍👩‍👧xy.png", "head": "aaaaaaaaaaaa", "tail": "👨‍👩‍👧xy", "ext": ".png" },
+    { "name": "skin tone stays with its emoji", "input": "aaaaaaaaaaaa👍🏽wxyz.png", "head": "aaaaaaaaaaaa", "tail": "👍🏽wxyz", "ext": ".png" },
+    { "name": "flag stays whole", "input": "aaaaaaaaaaaaa🇯🇵abcde.jpg", "head": "aaaaaaaaaaaaa", "tail": "🇯🇵abcde", "ext": ".jpg" },
+    { "name": "astral characters count once", "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀.gif", "head": "😀😀😀😀😀😀😀", "tail": "😀😀😀😀😀😀", "ext": ".gif" }
+  ]
+}
