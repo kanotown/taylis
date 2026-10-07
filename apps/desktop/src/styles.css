@@ -195,6 +195,14 @@
 }
 :root[data-theme="dark"] .text-emoji { background: var(--te-bg-dark); color: var(--te-fg-dark); }
 
+/* 在室状況 (docs/PRESENCE.md §2.2): an unselected state button's icon in the state's colour (ui/attendanceIcons.tsx
+   attendanceTintStyle). The badges themselves are solid with white in both themes. */
+.attendance-tint { color: var(--at-tint); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .attendance-tint { color: var(--at-tint-dark); }
+}
+:root[data-theme="dark"] .attendance-tint { color: var(--at-tint-dark); }
+
 /* 「フォント」 (2026-10-05, ui/theme.ts): the bundled Noto Sans JP first, then the system's; <html data-font="system">
    leaves it out (and so never fetches it). Code (2026-10-06, .body code / pre): the bundled JetBrains Mono, then the
    system's monospace fonts; Japanese in code, which none of them has, falls through to the UI font. The system choice
