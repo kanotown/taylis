@@ -257,6 +257,26 @@ export type WebhookCreate = components["schemas"]["WebhookCreate"];
 export type WebhookUpdate = components["schemas"]["WebhookUpdate"];
 export type WebhookCreated = components["schemas"]["WebhookCreated"];
 
+/** 在室状況 (M140, docs/PRESENCE.md). */
+export type AttendanceBoardOut = components["schemas"]["AttendanceBoardOut"];
+export type AttendanceStateOut = components["schemas"]["AttendanceStateOut"];
+export type AttendanceEntryOut = components["schemas"]["AttendanceEntryOut"];
+export type AttendanceKind = AttendanceStateOut["kind"];
+export type AttendanceColor = AttendanceStateOut["color"];
+export type AttendanceStateCreate = components["schemas"]["AttendanceStateCreate"];
+export type AttendanceStateUpdate = components["schemas"]["AttendanceStateUpdate"];
+export type AttendanceLogPage = components["schemas"]["AttendanceLogPage"];
+export type AttendanceLogOut = components["schemas"]["AttendanceLogOut"];
+export type AttendanceAdminSettingsOut = components["schemas"]["AttendanceAdminSettingsOut"];
+export type AttendanceSettingsUpdate = components["schemas"]["AttendanceSettingsUpdate"];
+export type AttendancePersonalRule = AttendanceAdminSettingsOut["personal_rule"];
+export type AttendanceIntegrationOut = components["schemas"]["AttendanceIntegrationOut"];
+export type AttendanceIntegrationCreate = components["schemas"]["AttendanceIntegrationCreate"];
+export type AttendanceIntegrationUpdate = components["schemas"]["AttendanceIntegrationUpdate"];
+export type AttendanceIntegrationCreated = components["schemas"]["AttendanceIntegrationCreated"];
+export type AttendanceTokenOut = components["schemas"]["AttendanceTokenOut"];
+export type AttendanceDeliveryOut = components["schemas"]["AttendanceDeliveryOut"];
+
 /** Workspace roles (M13e adds guest). */
 export type Role = components["schemas"]["AdminUserCreate"]["role"];
 

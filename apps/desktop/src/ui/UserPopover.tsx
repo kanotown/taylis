@@ -2,6 +2,7 @@ import { Ban, Flag, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
 import { Fragment, type PointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
+import { AttendanceChip } from "./AttendanceChip";
 import { Avatar, presenceLabel } from "./Avatar";
 import { CustomEmojiImage, customEmojiName, splitCustomEmoji } from "./customEmoji";
 import { replaceShortcodes } from "./emoji";
@@ -157,6 +158,8 @@ function UserCard({ controller, userId, onClose, onReport }: { controller: AppCo
             {user?.role === "guest" && <div className="mt-0.5 text-xs text-muted">{t("popover.guest")}</div>}
             {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">{controller.store.aiAgentOf(userId) ? t("ai.badgeTitle") : t("popover.webhookBot")}</div>}
             <div className="mt-0.5 text-xs text-muted">{presenceLabel(presence)}</div>
+            {/* M140: 在室状況, when the workspace has the board on and the person set one. */}
+            <AttendanceChip controller={controller} userId={userId} className="mt-1" />
             {dndActive(user) && (
               <div className="mt-0.5 text-xs text-muted" title={user?.quiet_hours ? t("popover.quietHours", { hours: quietHoursLabel(user.quiet_hours) }) : undefined}>🔕 {t("popover.paused")}</div>
             )}

@@ -18,6 +18,8 @@ import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
 import { FeedsDialog } from "./ChannelFeeds";
 import { ReservationsView } from "./Reservations";
+import { AttendanceView } from "./AttendanceView";
+import { inRoomCount } from "./attendance";
 import { DocsView } from "./DocsView";
 import { reservationTodoCount } from "./reservationPools";
 import { RecurringPostsDialog } from "./RecurringPosts";
@@ -85,7 +87,8 @@ import { t } from "../i18n";
 // "deadlines" (M85): 「締切」, my channels' deadlines (DEADLINES.md).
 // "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
 // "docs" (M121): 「ドキュメント」, the Docs tree and a page (WIKI.md §9.1).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs";
+// "attendance" (M140): 「在室状況」, the workspace's board (docs/PRESENCE.md §7).
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance";
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -707,7 +710,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -1117,6 +1120,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onReservations={store.reservationPools ? () => openView("reservations") : undefined}
       reservationsActive={view === "reservations"}
       reservationsCount={reservationTodoCount(store.reservationPools)}
+      onAttendance={store.attendance ? () => openView("attendance") : undefined}
+      attendanceActive={view === "attendance"}
+      attendanceCount={store.attendance ? inRoomCount(store.attendance, store.users.values()) : 0}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -1250,6 +1256,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <DeadlinesView controller={controller} />
       ) : view === "reservations" ? (
         <ReservationsView controller={controller} />
+      ) : view === "attendance" ? (
+        <AttendanceView controller={controller} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -1653,6 +1661,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onTasks={() => openView("tasks")}
           onDeadlines={() => openView("deadlines")}
           onReservations={store.reservationPools ? () => openView("reservations") : undefined}
+          onAttendance={store.attendance ? () => openView("attendance") : undefined}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}

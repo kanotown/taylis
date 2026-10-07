@@ -16,7 +16,7 @@ import { OVERALL_LEVEL_LABELS, overallLevel, overallLevelNote } from "./channels
 import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18n";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
-import { fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
+import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
@@ -760,14 +760,16 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
   const [dragging, setDragging] = useState<string | null>(null);
   if (!me || me.nav_items === undefined) return null;
   const full = fullNavItems(me.nav_items);
-  const shown = shownNavItems(full);
+  // M140: 「在室状況」 only while the workspace has the board on.
+  const implemented = desktopNavKeys(!!controller.store.attendance);
+  const shown = shownNavItems(full, "desktop", implemented);
   const save = (list: typeof full | null) => void controller.setNavItems(list);
   const drop = (target: string) => {
     if (!dragging || dragging === target) return setDragging(null);
     const keys = shown.map((item) => item.key).filter((key) => key !== dragging);
     keys.splice(keys.indexOf(target) + (shown.findIndex((i) => i.key === dragging) < shown.findIndex((i) => i.key === target) ? 1 : 0), 0, dragging);
     setDragging(null);
-    save(reorderNavItems(full, keys));
+    save(reorderNavItems(full, keys, "desktop", implemented));
   };
   return (
     <section className="space-y-2" aria-label={t("settings.navItems.title")}>
@@ -801,10 +803,10 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
                 onChange={(e) => save(setNavItemVisible(full, item.key, e.target.checked))}
               />
             </label>
-            <button type="button" aria-label={t("settings.navItems.up", { item: navLabel(item.key) })} disabled={index === 0} onClick={() => save(moveNavItem(full, item.key, -1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
+            <button type="button" aria-label={t("settings.navItems.up", { item: navLabel(item.key) })} disabled={index === 0} onClick={() => save(moveNavItem(full, item.key, -1, "desktop", implemented))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
               <ChevronUp size={14} />
             </button>
-            <button type="button" aria-label={t("settings.navItems.down", { item: navLabel(item.key) })} disabled={index === shown.length - 1} onClick={() => save(moveNavItem(full, item.key, 1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
+            <button type="button" aria-label={t("settings.navItems.down", { item: navLabel(item.key) })} disabled={index === shown.length - 1} onClick={() => save(moveNavItem(full, item.key, 1, "desktop", implemented))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
               <ChevronDown size={14} />
             </button>
           </li>

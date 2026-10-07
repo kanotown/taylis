@@ -1,5 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import { acceptLanguage } from "../i18n";
+import type { AttendanceAdminSettingsOut, AttendanceBoardOut, AttendanceDeliveryOut, AttendanceEntryOut, AttendanceIntegrationCreate, AttendanceIntegrationCreated, AttendanceIntegrationOut, AttendanceIntegrationUpdate, AttendanceLogPage, AttendanceSettingsUpdate, AttendanceStateCreate, AttendanceStateOut, AttendanceStateUpdate, AttendanceTokenOut } from "./types";
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, LegacyCallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate, AdminPageOut, PageCreate, PageItem, PageMeta, PageMove, PageOut, PageRef, PageRevisionMeta, PageRevisionOut, PageRevisionPage, PageSaveIn, PageSaveOut, PageSearchOut, PageUpdate, WikiAccessOut, WikiAccessUpdate, WikiChangesOut, WikiMoveOut, WikiTreeOut, DatabaseOut, DbSchemaChange, DbViewIn, DbRowQuery, DbRowQueryOut, DbRowCreate, DbRowWithRefs, DbRowDetail, DbRowRef } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
@@ -1289,6 +1290,103 @@ export class ApiClient {
 
   adminDeleteWebhook(webhookId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/admin/webhooks/${webhookId}`);
+  }
+
+  // --- 在室状況 (M140, docs/PRESENCE.md §3) -----------------------------------------------------
+
+  /** The board (`enabled: false` while off; 403 guest_restricted for guests). */
+  attendance(): Promise<AttendanceBoardOut> {
+    return this.request("GET", "/api/v1/attendance");
+  }
+
+  /** My state (and note); the same again changes nothing. */
+  setMyAttendance(stateId: string, note: string | null): Promise<AttendanceEntryOut> {
+    return this.request("PUT", "/api/v1/attendance/me", { state_id: stateId, note });
+  }
+
+  attendanceLog(options: { userId?: string; beforeId?: number; limit?: number } = {}): Promise<AttendanceLogPage> {
+    const query = new URLSearchParams();
+    if (options.userId) query.set("user_id", options.userId);
+    if (options.beforeId !== undefined) query.set("before_id", String(options.beforeId));
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    const qs = query.toString();
+    return this.request("GET", qs ? `/api/v1/attendance/log?${qs}` : "/api/v1/attendance/log");
+  }
+
+  createMyAttendanceState(body: AttendanceStateCreate): Promise<AttendanceStateOut> {
+    return this.request("POST", "/api/v1/attendance/my-states", body);
+  }
+
+  updateMyAttendanceState(stateId: string, patch: AttendanceStateUpdate): Promise<AttendanceStateOut> {
+    return this.request("PATCH", `/api/v1/attendance/my-states/${stateId}`, patch);
+  }
+
+  deleteMyAttendanceState(stateId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/attendance/my-states/${stateId}`);
+  }
+
+  adminAttendanceSettings(): Promise<AttendanceAdminSettingsOut> {
+    return this.request("GET", "/api/v1/admin/attendance/settings");
+  }
+
+  adminUpdateAttendanceSettings(patch: AttendanceSettingsUpdate): Promise<AttendanceAdminSettingsOut> {
+    return this.request("PATCH", "/api/v1/admin/attendance/settings", patch);
+  }
+
+  adminCreateAttendanceState(body: AttendanceStateCreate): Promise<AttendanceStateOut> {
+    return this.request("POST", "/api/v1/admin/attendance/states", body);
+  }
+
+  adminUpdateAttendanceState(stateId: string, patch: AttendanceStateUpdate): Promise<AttendanceStateOut> {
+    return this.request("PATCH", `/api/v1/admin/attendance/states/${stateId}`, patch);
+  }
+
+  adminDeleteAttendanceState(stateId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/attendance/states/${stateId}`);
+  }
+
+  adminReorderAttendanceStates(ids: string[]): Promise<AttendanceAdminSettingsOut> {
+    return this.request("PUT", "/api/v1/admin/attendance/states/order", { ids });
+  }
+
+  /** Someone else's state (audited). */
+  adminSetAttendance(userId: string, stateId: string, note: string | null): Promise<AttendanceEntryOut> {
+    return this.request("PUT", `/api/v1/admin/attendance/users/${userId}`, { state_id: stateId, note });
+  }
+
+  adminAttendanceIntegrations(): Promise<AttendanceIntegrationOut[]> {
+    return this.request("GET", "/api/v1/admin/attendance/integrations");
+  }
+
+  /** `inbound: true` returns the inbound token, this once. */
+  adminCreateAttendanceIntegration(body: AttendanceIntegrationCreate): Promise<AttendanceIntegrationCreated> {
+    return this.request("POST", "/api/v1/admin/attendance/integrations", body);
+  }
+
+  adminUpdateAttendanceIntegration(integrationId: string, patch: AttendanceIntegrationUpdate): Promise<AttendanceIntegrationOut> {
+    return this.request("PATCH", `/api/v1/admin/attendance/integrations/${integrationId}`, patch);
+  }
+
+  adminDeleteAttendanceIntegration(integrationId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/attendance/integrations/${integrationId}`);
+  }
+
+  /** A new inbound token (shown once); the old one stops working. */
+  adminRotateAttendanceToken(integrationId: string): Promise<AttendanceTokenOut> {
+    return this.request("POST", `/api/v1/admin/attendance/integrations/${integrationId}/token`);
+  }
+
+  adminRevokeAttendanceToken(integrationId: string): Promise<AttendanceIntegrationOut> {
+    return this.request("DELETE", `/api/v1/admin/attendance/integrations/${integrationId}/token`);
+  }
+
+  /** 「テスト送信」: sends now and answers with the recorded delivery. */
+  adminTestAttendanceIntegration(integrationId: string): Promise<{ delivery: AttendanceDeliveryOut }> {
+    return this.request("POST", `/api/v1/admin/attendance/integrations/${integrationId}/test`);
+  }
+
+  adminAttendanceDeliveries(integrationId: string): Promise<AttendanceDeliveryOut[]> {
+    return this.request("GET", `/api/v1/admin/attendance/integrations/${integrationId}/deliveries`);
   }
 
   // --- AI (M65, docs/AI.md §5) -----------------------------------------------------------------

@@ -1,6 +1,6 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
+import type { ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
@@ -160,6 +160,24 @@ export class Store {
   }
   dropReservationPool(poolId: string): void {
     if (this.reservationPools) this.setReservationPools(this.reservationPools.filter((p) => p.id !== poolId));
+  }
+  /**
+   * M140 (docs/PRESENCE.md §4): the 在室状況 board (not persisted); null for guests, while it is off, and on a server
+   * before M140. From the bootstrap, attendance.updated (one row) and GET /attendance (attendance.config_updated).
+   */
+  attendance: AttendanceBoardOut | null = null;
+  setAttendance(board: AttendanceBoardOut | null): void {
+    this.attendance = board && board.enabled ? board : null;
+    this.emit();
+  }
+  /** One person's row (attendance.updated, or my own change). False when the state is not known here (read again). */
+  applyAttendanceEntry(entry: AttendanceEntryOut): boolean {
+    const board = this.attendance;
+    if (!board) return true;
+    const entries = board.entries.filter((e) => e.user_id !== entry.user_id);
+    this.attendance = { ...board, entries: [...entries, entry] };
+    this.emit();
+    return board.states.some((s) => s.id === entry.state_id);
   }
   /** M112: reservation activity items marked done since the list was read (activity.updated). */
   doneActivityItems: ReadonlySet<string> = new Set();

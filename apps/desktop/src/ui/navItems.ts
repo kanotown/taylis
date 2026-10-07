@@ -32,15 +32,22 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   { key: "tasks", label: "タスク", visible: true, platforms: ["desktop", "mobile"] },
   { key: "deadlines", label: "締切", visible: true, platforms: ["desktop", "mobile"] },
   { key: "reservations", label: "予約", visible: true, platforms: ["desktop", "mobile"] },
+  // M140 (docs/PRESENCE.md): 「在室状況」, implemented only while the workspace has the board on.
+  { key: "attendance", label: "在室状況", visible: true, platforms: ["desktop", "mobile"] },
 ];
 
 export const NAV_ORDER: Readonly<Record<NavPlatform, readonly string[]>> = {
-  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"],
-  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity"],
+  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance"],
+  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance"],
 };
 
 /** The items this client draws in its sidebar (M112: 「予約」 with its page). */
 export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"];
+
+/** M140: the items implemented here now: 「在室状況」 only while the workspace has the board on. */
+export function desktopNavKeys(attendance: boolean): readonly string[] {
+  return attendance ? [...DESKTOP_NAV_KEYS, "attendance"] : DESKTOP_NAV_KEYS;
+}
 
 const byKey = new Map(NAV_CATALOGUE.map((item) => [item.key, item]));
 
@@ -58,6 +65,7 @@ const LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   tasks: "nav.tasks",
   deadlines: "nav.deadlines",
   reservations: "nav.reservations",
+  attendance: "nav.attendance",
 };
 
 export function navLabel(key: string): string {
@@ -113,6 +121,6 @@ export function moveNavItem(full: readonly NavItem[], key: string, by: number, p
 }
 
 /** The sidebar's items to draw, in my order (the visible ones this client implements). */
-export function sidebarNavKeys(stored: readonly NavItem[] | null | undefined): string[] {
-  return shownNavItems(fullNavItems(stored)).filter((item) => item.visible).map((item) => item.key);
+export function sidebarNavKeys(stored: readonly NavItem[] | null | undefined, implemented: readonly string[] = DESKTOP_NAV_KEYS): string[] {
+  return shownNavItems(fullNavItems(stored), "desktop", implemented).filter((item) => item.visible).map((item) => item.key);
 }
