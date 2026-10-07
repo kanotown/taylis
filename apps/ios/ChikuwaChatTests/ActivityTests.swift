@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import ChikuwaChat
 
@@ -153,31 +154,74 @@ final class ActivityTests: XCTestCase {
         let item = conversationItem("mention", seq: 10)
         XCTAssertTrue(ActivityRules.isUnread(item, readAt: seenFrom))
         XCTAssertFalse(ActivityRules.isUnread(item, readAt: seenFrom, conversationRead: true))
-        // The server's verdict: read although after the page's read position = read in its conversation.
+        // The server's verdict: read although after the page's read position = read in its conversation, or (since
+        // 2026-10-07) opened — any kind.
         let pageReadAt = "2026-10-06T08:00:00Z"
-        let marked = ActivityRules.markingConversationReads([conversationItem("mention", seq: 10, read: true), conversationItem("mention", seq: 11, read: false),
-                                                            conversationItem("mention", seq: 12, read: nil), conversationItem("reaction", seq: 13, read: true)],
-                                                           readAt: pageReadAt)
-        XCTAssertEqual(marked.map(\.readInConversation), [true, false, false, false])
-        XCTAssertEqual(marked.map { ActivityRules.isUnread($0, readAt: seenFrom) }, [false, true, true, true])
-        // Read by the position itself (at not after it): no conversation read is implied; the dots compare with the
-        // position the tab opened at, as before.
-        let byPosition = ActivityRules.markingConversationReads([conversationItem("mention", seq: 10, read: true)], readAt: "2026-10-06T11:00:00Z")
-        XCTAssertFalse(byPosition[0].readInConversation)
+        let marked = ActivityRules.markingServerReads([conversationItem("mention", seq: 10, read: true), conversationItem("mention", seq: 11, read: false),
+                                                      conversationItem("mention", seq: 12, read: nil), conversationItem("reaction", seq: 13, read: true)],
+                                                     readAt: pageReadAt)
+        XCTAssertEqual(marked.map(\.readOnServer), [true, false, false, true])
+        XCTAssertEqual(marked.map { ActivityRules.isUnread($0, readAt: seenFrom) }, [false, true, true, false])
+        // Read by the position itself (at not after it): nothing more is implied.
+        let byPosition = ActivityRules.markingServerReads([conversationItem("mention", seq: 10, read: true)], readAt: "2026-10-06T11:00:00Z")
+        XCTAssertFalse(byPosition[0].readOnServer)
         XCTAssertTrue(ActivityRules.isUnread(byPosition[0], readAt: seenFrom))
     }
 
-    func testBeingOnScreenReadsUpToTheNewestRowOnlyOnAll() {
-        let rows = [item("mention", at: "2026-09-30T01:00:00Z", id: "a"), item("reaction", at: "2026-09-30T03:00:00.25Z", id: "b"),
-                    item("thread_reply", at: "2026-09-30T02:00:00Z", id: "c")]
-        XCTAssertEqual(ActivityRules.newest(rows), "2026-09-30T03:00:00.25Z")
+    // MARK: 開いたら既読 (MOBILE_UI.md §6.4, 2026-10-07)
+
+    func testTheItemIdDecodesAndIsOptional() throws {
+        func first(_ extra: String) throws -> ActivityItem {
+            let json = """
+            {"items": [{"kind": "reaction", "at": "2026-09-30T01:00:00Z", "message": \(Self.messageJson), "actor_ids": ["u2"]\(extra)}],
+             "next_cursor": null, "read_at": "2026-09-30T00:00:00Z"}
+            """
+            return try XCTUnwrap(JSON.snakeDecoder.decode(ActivityListOut.self, from: Data(json.utf8)).items.first)
+        }
+        let current = try first(#", "id": "0b6f8a8e-1111-4c1e-9a55-2d7f6b1c0001", "read": false"#)
+        XCTAssertEqual(current.itemId, "0b6f8a8e-1111-4c1e-9a55-2d7f6b1c0001")
+        XCTAssertEqual(current.id, "reaction:m1") // the row's key is unchanged
+        XCTAssertEqual(ActivityRules.openable([current]).map(\.id), ["0b6f8a8e-1111-4c1e-9a55-2d7f6b1c0001"])
+        XCTAssertEqual(ActivityRules.openable([current]).map(\.at), ["2026-09-30T01:00:00Z"]) // the row's own time
+        // A server before it: no id, nothing is sent when the row is opened.
+        let older = try first("")
+        XCTAssertNil(older.itemId)
+        XCTAssertTrue(ActivityRules.openable([older]).isEmpty)
+    }
+
+    func testAnOpenedItemIsReadUntilItHappensAgain() {
+        let readAt = "2026-10-07T00:00:00Z"
+        let reaction = item("reaction", at: "2026-10-07T01:00:00Z")
+        XCTAssertTrue(ActivityRules.isUnread(reaction, readAt: readAt))
+        XCTAssertFalse(ActivityRules.isUnread(reaction, readAt: readAt, openedAt: "2026-10-07T01:00:00Z")) // opened as shown
+        XCTAssertFalse(ActivityRules.isUnread(reaction, readAt: readAt, openedAt: "2026-10-07T02:00:00Z"))
+        // Someone reacted again after it was opened: its `at` moved on, unread again (as Slack).
+        XCTAssertTrue(ActivityRules.isUnread(item("reaction", at: "2026-10-07T03:00:00Z"), readAt: readAt, openedAt: "2026-10-07T02:00:00Z"))
+    }
+
+    func testOpenedTimesOnlyMoveForward() {
+        let store = Store()
+        store.noteActivityItemsRead(["a", "b"], readAt: "2026-10-07T02:00:00Z")
+        store.noteActivityItemsRead(["a"], readAt: "2026-10-07T01:00:00Z") // an older time (a late event): kept
+        store.noteActivityItemsRead(["b"], readAt: "2026-10-07T03:00:00.5Z")
+        XCTAssertEqual(store.openedActivityItems, ["a": "2026-10-07T02:00:00Z", "b": "2026-10-07T03:00:00.5Z"])
+    }
+
+    func testTheHeaderAndUnreadOnly() {
+        XCTAssertEqual(ActivityRules.unreadHeader(0), "未読はありません")
+        XCTAssertEqual(ActivityRules.unreadHeader(3), "未読 3 件")
+        XCTAssertEqual(ActivityRules.unreadHeader(99), "未読 99+ 件")
+        XCTAssertEqual(ActivityRules.unreadHeader(120), "未読 99+ 件")
+        let rows = [item("mention", at: "2026-10-07T01:00:00Z", id: "a"), item("reaction", at: "2026-10-07T02:00:00Z", id: "b")]
+        XCTAssertEqual(ActivityRules.shown(rows, unreadOnly: false) { $0.id == "mention:a" }.map(\.id), ["mention:a", "reaction:b"])
+        XCTAssertEqual(ActivityRules.shown(rows, unreadOnly: true) { $0.id == "mention:a" }.map(\.id), ["mention:a"])
+        // 「すべて既読にする」 reads at least up to the newest row held.
+        XCTAssertEqual(ActivityRules.newest(rows), "2026-10-07T02:00:00Z")
         XCTAssertNil(ActivityRules.newest([]))
         XCTAssertTrue(ActivityRules.moves("2026-09-30T03:00:00.25Z", readAt: "2026-09-30T03:00:00Z"))
         XCTAssertFalse(ActivityRules.moves("2026-09-30T03:00:00Z", readAt: "2026-09-30T03:00:00Z"))
         XCTAssertFalse(ActivityRules.moves(nil, readAt: nil))
         XCTAssertTrue(ActivityRules.moves("2026-09-30T03:00:00Z", readAt: nil))
-        // One position covers every kind: a filtered list must not read what the others hold unseen.
-        XCTAssertEqual(ActivityRules.filters.filter { ActivityRules.readsOnScreen(filter: $0) }, ["all"])
     }
 
     func testTheReadPositionOnlyMovesForward() {
@@ -432,6 +476,78 @@ final class ActivityTests: XCTestCase {
         w.engine.stop()
     }
 
+    /// 2026-10-07 (MOBILE_UI.md §6.4): opening a row reads that item only — its dot goes at once (up to the row's `at`),
+    /// PUT /activity/items/read carries only its id, the badge is the server's answer; the other rows keep their dots and
+    /// the read position does not move.
+    func testOpeningARowReadsOnlyThatItem() async throws {
+        let w = makeWorld()
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-10-07T00:00:00Z", unreadCount: 3, mentionUnread: true)
+        await w.engine.start()
+        await settle(w.engine)
+        let tapped = ActivityItem(kind: "mention", at: "2026-10-07T01:00:00Z", message: nil, actorIds: ["u2"], itemId: "i-tapped", read: false)
+        let other = ActivityItem(kind: "reaction", at: "2026-10-07T02:00:00Z", message: nil, actorIds: ["u2"], itemId: "i-other", read: false)
+        let sent = try await w.engine.markActivityItemsRead(ActivityRules.openable([tapped]))
+        XCTAssertTrue(sent)
+        XCTAssertEqual(w.server.itemsRead[w.bob.id], ["i-tapped"])
+        XCTAssertEqual(w.store.activity, ActivitySummary(readAt: "2026-10-07T00:00:00Z", unreadCount: 2, mentionUnread: true))
+        XCTAssertFalse(w.api.calls.contains("markActivityRead")) // the read position is not moved
+        let readAt = w.store.activity?.readAt
+        XCTAssertFalse(ActivityRules.isUnread(tapped, readAt: readAt, openedAt: w.store.openedActivityItems["i-tapped"]))
+        XCTAssertTrue(ActivityRules.isUnread(other, readAt: readAt, openedAt: w.store.openedActivityItems["i-other"]))
+        await settle(w.engine)
+        // activity.items_read came back with the server's time (not before the row's): still read.
+        XCTAssertFalse(ActivityRules.isUnread(tapped, readAt: readAt, openedAt: w.store.openedActivityItems["i-tapped"]))
+        w.engine.stop()
+    }
+
+    /// The controller's tap: rows without the server's id (a server before 2026-10-07) send nothing and move nothing.
+    func testAnOlderServersRowsSendNothingWhenOpened() async throws {
+        let w = makeWorld()
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-10-07T00:00:00Z", unreadCount: 1, mentionUnread: false)
+        await w.engine.start()
+        await settle(w.engine)
+        let older = ActivityItem(kind: "mention", at: "2026-10-07T01:00:00Z", message: nil, actorIds: ["u2"])
+        let sent = try await w.engine.markActivityItemsRead(ActivityRules.openable([older]))
+        XCTAssertFalse(sent)
+        XCTAssertFalse(w.api.calls.contains("markActivityItemsRead"))
+        XCTAssertFalse(w.api.calls.contains("markActivityRead"))
+        XCTAssertTrue(w.store.openedActivityItems.isEmpty)
+        // Its dot stays until the read position passes it (「すべて既読にする」, here or on another device).
+        XCTAssertTrue(ActivityRules.isUnread(older, readAt: w.store.activity?.readAt))
+        w.engine.stop()
+    }
+
+    /// 「すべて既読にする」 and the items opened on my other devices clear the dots here live.
+    func testMarkAllAndOtherDevicesClearTheDots() async throws {
+        let w = makeWorld()
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-10-07T00:00:00Z", unreadCount: 2, mentionUnread: true)
+        await w.engine.start()
+        await settle(w.engine)
+        let a = ActivityItem(kind: "mention", at: "2026-10-07T01:00:00Z", message: nil, actorIds: ["u2"], itemId: "i-a", read: false)
+        let b = ActivityItem(kind: "reaction", at: "2026-10-07T02:00:00Z", message: nil, actorIds: ["u2"], itemId: "i-b", read: false)
+        func dots() -> [Bool] {
+            [a, b].map { ActivityRules.isUnread($0, readAt: w.store.activity?.readAt, openedAt: $0.itemId.flatMap { w.store.openedActivityItems[$0] }) }
+        }
+        XCTAssertEqual(dots(), [true, true])
+        // Opened on my other device: activity.items_read.
+        let before = summaryCalls(w.api)
+        _ = try w.server.markActivityItemsRead(w.bob.id, itemIds: ["i-a"])
+        await settle(w.engine)
+        XCTAssertEqual(dots(), [false, true])
+        XCTAssertGreaterThan(summaryCalls(w.api), before) // the badge is fetched again
+        XCTAssertEqual(w.store.activity?.unreadCount, 1)
+        // 「すべて既読にする」 on my other device: activity.read.
+        _ = try w.server.markActivityRead(w.bob.id, readAt: "2026-10-07T03:00:00Z")
+        await settle(w.engine)
+        XCTAssertEqual(dots(), [false, false])
+        XCTAssertEqual(w.store.activity?.unreadCount, 0)
+        // … and here: the answer is the badge.
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-10-07T03:00:00Z", unreadCount: 4, mentionUnread: true)
+        try await w.engine.markActivityRead("2026-10-07T04:00:00Z")
+        XCTAssertEqual(w.store.activity, ActivitySummary(readAt: "2026-10-07T04:00:00Z", unreadCount: 0, mentionUnread: false))
+        w.engine.stop()
+    }
+
     /// Review v0.1.22 #3 (CANVAS.md §20.8): an erased canvas version blanks the excerpts taken from it; activity.updated
     /// names the items, the list held drops those excerpts (only theirs) and the row shows no excerpt line.
     func testActivityUpdatedBlanksTheNamedCanvasExcerpts() async throws {
@@ -476,5 +592,84 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(summaryCalls(w.api), 0)
         XCTAssertNil(w.store.activity)
         w.engine.stop()
+    }
+}
+
+/// 2026-10-07 (MOBILE_UI.md §6.4 「開いたら既読」): the activity list on screen reads nothing — before, 「すべて」 sent
+/// PUT /activity/read about 1.5 s after its rows came on screen.
+@MainActor
+final class ActivityFeedScreenTests: XCTestCase {
+    private final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [String] = []
+        func add(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
+    }
+
+    private static let page = Data("""
+    {"items": [
+      {"id": "00000000-0000-4000-8000-000000000001", "kind": "mention", "at": "2026-10-07T02:00:00Z", "read": false, "actor_ids": ["u2"],
+       "message": {"id": "m1", "channel_id": "c1", "sender_id": "u2", "seq": 5, "updated_seq": 5, "client_msg_id": "k1", "body": "見てください",
+                   "created_at": "2026-10-07T02:00:00Z", "edited_at": null, "deleted": false}},
+      {"id": "00000000-0000-4000-8000-000000000002", "kind": "reaction", "at": "2026-10-07T01:00:00Z", "read": false, "actor_ids": ["u2"], "emojis": ["👍"],
+       "message": {"id": "m2", "channel_id": "c1", "sender_id": "u1", "seq": 4, "updated_seq": 4, "client_msg_id": "k2", "body": "スライド",
+                   "created_at": "2026-10-07T00:30:00Z", "edited_at": null, "deleted": false}}
+     ], "next_cursor": null, "read_at": "2026-10-07T00:00:00Z"}
+    """.utf8)
+
+    func testShowingTheListReadsNothing() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let channel = server.createChannel("general", ownerId: alice.id)
+        server.join(channel.id, bob.id)
+        server.activity[bob.id] = ActivitySummary(readAt: "2026-10-07T00:00:00Z", unreadCount: 2, mentionUnread: true)
+        let store = Store()
+        var options = EngineOptions()
+        options.reconnectMin = 0
+        options.sleep = { _ in }
+        options.random = { 0.5 }
+        let fake = server.api(for: bob.id)
+        let engine = SyncEngine(api: fake, connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "token" }, options: options)
+        engine.isActive = { false }
+        await engine.start()
+        for _ in 0..<50 { await engine.idle(); await Task.yield() }
+        XCTAssertEqual(engine.status, .online)
+
+        let recorder = Recorder()
+        StubProtocol.handler = { request in
+            recorder.add("\(request.httpMethod ?? "") \(request.url?.path ?? "")")
+            return request.url?.path == "/api/v1/activity" ? (200, Self.page) : (404, Data(#"{"error": {"code": "not_found", "message": "no"}}"#.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let client = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+        client.accessToken = "access"
+        let controller = AppController()
+        controller.attachForTesting(store: store, engine: engine)
+        controller.api = client
+
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 700))
+        window.frame = CGRect(x: 0, y: 0, width: 393, height: 700)
+        let host = UIHostingController(rootView: NavigationStack { ActivityFeedView(controller: controller, onOpen: { _ in }) })
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        // Longer than the old 1.5 s before the rows counted as read.
+        let deadline = Date().addingTimeInterval(2.5)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            await Task.yield()
+        }
+        window.isHidden = true
+
+        XCTAssertTrue(recorder.all.contains("GET /api/v1/activity"), "the list loaded: \(recorder.all)")
+        XCTAssertFalse(recorder.all.contains { $0.hasPrefix("PUT") }, "nothing is marked read: \(recorder.all)")
+        XCTAssertFalse(fake.calls.contains("markActivityRead"))
+        XCTAssertFalse(fake.calls.contains("markActivityItemsRead"))
+        XCTAssertEqual(store.activity?.unreadCount, 2)
+        XCTAssertTrue(store.openedActivityItems.isEmpty)
+        engine.stop()
     }
 }

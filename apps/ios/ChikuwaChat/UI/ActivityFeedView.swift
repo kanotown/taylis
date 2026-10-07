@@ -2,9 +2,11 @@ import SwiftUI
 import UIKit
 
 /// M39, the activity tab at stage B (MOBILE_UI.md §6.4): [すべて | メンション | スレッド | リアクション] over GET /activity.
-/// The dots compare with the read position as it was when the tab came on screen, so they stay while looking; once the
-/// newest row of 「すべて」 has been on screen a moment it counts as read (PUT /activity/read) and the badge clears. New
-/// activity while looking (the badge rises) brings the first page again.
+/// Since 2026-10-07 (「開いたら既読」, like Slack) looking reads nothing: an item stays unread (bold, a dot, a tinted row,
+/// counted in 「未読 n 件」 and the badge) until it is opened (a tap: PUT /activity/items/read), read in its conversation
+/// (a mention, a reply), done (a reservation to-do) or 「すべて既読にする」 (PUT /activity/read). A server before it (items
+/// without `id`) is read the same way less the tap: its rows wait for the read position. New activity while looking
+/// (the badge rises) brings the first page again.
 struct ActivityFeedView: View {
     @Bindable var controller: AppController
     /// A row opens its message (in its conversation, or its thread) on the activity tab's stack.
@@ -12,8 +14,6 @@ struct ActivityFeedView: View {
 
     /// Rows per GET /activity page.
     static let pageSize = 50
-    /// How long the rows stay on screen before the activity counts as read up to the newest of them.
-    static let readDelay: Duration = .milliseconds(1500)
 
     struct Page: Equatable {
         var items: [ActivityItem] = []
@@ -21,12 +21,11 @@ struct ActivityFeedView: View {
         var loading = false
     }
 
-    @Environment(\.scenePhase) private var scenePhase
     @State private var filter = "all"
     @State private var lists: [String: Page] = [:]
     @State private var failed = false
-    /// The read position the dots compare with: taken when the view comes on screen, and by 「すべて既読」.
-    @State private var seenFrom: String?
+    /// 「未読のみ」: the rows held, less the read ones (an opened row leaves the list).
+    @State private var unreadOnly = false
     @State private var visible = false
     /// Numbers each list's loads, so an older answer never replaces a newer one.
     @State private var requests: [String: Int] = [:]
@@ -40,29 +39,22 @@ struct ActivityFeedView: View {
         let online: Bool
     }
 
-    private struct ReadKey: Equatable {
-        let onScreen: Bool
-        let filter: String
-        let newest: String?
-        let readAt: String?
-    }
-
     var body: some View {
         let list = lists[filter]
-        let items = list?.items ?? []
         let unread = store.activity?.unreadCount ?? 0
-        let onScreen = visible && scenePhase == .active
+        let items = ActivityRules.shown(list?.items ?? [], unreadOnly: unreadOnly, isUnread: isUnread)
         VStack(spacing: 0) {
             Picker("表示する項目", selection: $filter) {
                 ForEach(ActivityRules.filters, id: \.self) { Text(ActivityRules.filterLabel($0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            header(unread)
             List {
                 if list == nil || (items.isEmpty && list?.loading == true && !failed) {
                     ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
-                } else if items.isEmpty {
+                } else if items.isEmpty && !(unreadOnly && list?.cursor != nil) {
                     if failed {
                         ContentUnavailableView {
                             Label("読み込めませんでした", systemImage: "exclamationmark.triangle")
@@ -71,16 +63,18 @@ struct ActivityFeedView: View {
                         }
                         .listRowSeparator(.hidden)
                     } else {
-                        ContentUnavailableView(ActivityRules.emptyText(filter), systemImage: "bell")
+                        ContentUnavailableView(unreadOnly ? tr("未読のアクティビティはありません") : ActivityRules.emptyText(filter), systemImage: "bell")
                             .listRowSeparator(.hidden)
                     }
                 } else {
                     ForEach(items) { item in
-                        Button { onOpen(item) } label: {
-                            ActivityRowView(controller: controller, item: item, unread: ActivityRules.isUnread(item, readAt: seenFrom, conversationRead: readInConversation(item)))
+                        let unread = isUnread(item)
+                        Button { open(item) } label: {
+                            ActivityRowView(controller: controller, item: item, unread: unread)
                         }
                         .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 16))
+                        .listRowBackground(unread && item.reservation?.done != true ? Color.accentColor.opacity(0.08) : nil)
                     }
                     if list?.cursor != nil {
                         Button("さらに読み込む") { Task { await load(filter, more: true) } }
@@ -96,19 +90,15 @@ struct ActivityFeedView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("すべて既読", systemImage: "checkmark.circle") { Task { await markAllRead() } }
-                } label: {
-                    Image(systemName: "ellipsis")
+                // 「すべて既読にする」 (MOBILE_UI.md §6.4, 2026-10-07): in the header, not behind ⋯; nothing to read at 0.
+                Button { Task { await markAllRead() } } label: {
+                    Label("すべて既読にする", systemImage: "checkmark.circle")
+                        .labelStyle(.titleOnly)
                 }
-                .accessibilityLabel("アクティビティのメニュー")
+                .disabled(unread == 0)
             }
         }
-        .onAppear {
-            // On screen again: the dots start from the read position now (what was seen last time is read).
-            seenFrom = store.activity?.readAt
-            visible = true
-        }
+        .onAppear { visible = true }
         .onDisappear { visible = false }
         // The first page of the list on screen: when it comes on screen, on another filter and after reconnecting …
         .task(id: LoadKey(filter: filter, visible: visible, online: online)) {
@@ -133,15 +123,33 @@ struct ActivityFeedView: View {
             lists = lists.filter { $0.key == filter }
             if visible, online { Task { await load(filter) } }
         }
-        // Being on screen reads the activity up to the newest row shown, on 「すべて」 only (ActivityRules.readsOnScreen);
-        // the rows' dots stay until the view is left.
-        .task(id: ReadKey(onScreen: onScreen, filter: filter, newest: ActivityRules.newest(items), readAt: store.activity?.readAt)) {
-            let newest = ActivityRules.newest(items)
-            guard onScreen, ActivityRules.readsOnScreen(filter: filter), ActivityRules.moves(newest, readAt: store.activity?.readAt), let newest else { return }
-            try? await Task.sleep(for: Self.readDelay)
-            guard !Task.isCancelled else { return }
-            _ = await controller.markActivityRead(newest)
+    }
+
+    /// 「未読 n 件」 (「未読はありません」 at 0) and the 「未読のみ」 switch.
+    private func header(_ unread: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(ActivityRules.unreadHeader(unread))
+                .font(.footnote.weight(unread > 0 ? .semibold : .regular))
+                .foregroundStyle(unread > 0 ? Color.accentColor : .secondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Button { unreadOnly.toggle() } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(unreadOnly ? Color.accentColor : Color.secondary).frame(width: 6, height: 6)
+                    Text("未読のみ")
+                }
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(unreadOnly ? Color.accentColor : .secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(unreadOnly ? Color.accentColor.opacity(0.12) : Color.clear, in: Capsule())
+                .overlay(Capsule().stroke(unreadOnly ? Color.accentColor : Color(.separator), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(unreadOnly ? .isSelected : [])
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
 
     private func load(_ which: String, more: Bool = false) async {
@@ -155,9 +163,8 @@ struct ActivityFeedView: View {
             let page = try await api.listActivity(filter: which, cursor: cursor, limit: Self.pageSize)
             guard requests[which] == request else { return } // a newer load of this list answers instead
             failed = false
-            if seenFrom == nil { seenFrom = page.readAt }
             let held = more ? lists[which]?.items ?? [] : []
-            let items = ActivityRules.markingConversationReads(page.items, readAt: page.readAt)
+            let items = ActivityRules.markingServerReads(page.items, readAt: page.readAt)
             lists[which] = Page(items: ActivityRules.append(held, items), cursor: page.nextCursor, loading: false)
         } catch {
             guard requests[which] == request else { return }
@@ -167,6 +174,14 @@ struct ActivityFeedView: View {
                 controller.error = controller.describe(error)
             }
         }
+    }
+
+    /// The row's dot (ActivityRules.isUnread): against the read position held now, the items opened here or on another
+    /// device, and this device's read positions in the conversations. A to-do done has none.
+    private func isUnread(_ item: ActivityItem) -> Bool {
+        guard item.reservation?.done != true else { return false }
+        return ActivityRules.isUnread(item, readAt: store.activity?.readAt, conversationRead: readInConversation(item),
+                                      openedAt: item.itemId.flatMap { store.openedActivityItems[$0] })
     }
 
     /// MOBILE_UI.md §6.4 (2026-10-06): this device's read positions cover the item's message (read here, or read.updated
@@ -179,11 +194,19 @@ struct ActivityFeedView: View {
                                               threadReadSeq: message?.parentId.flatMap { store.threads[$0]?.state.lastReadSeq })
     }
 
-    /// ⋯ 「すべて既読」: everything up to now (or the newest row held, if the clock is behind), on every filter.
+    /// A row opened is read until it happens again (MOBILE_UI.md §6.4, 2026-10-07): its dot goes now (up to the row's own
+    /// `at`), PUT /activity/items/read gives the badge, then the row opens its message, canvas, page or reservations.
+    private func open(_ item: ActivityItem) {
+        for opened in ActivityRules.openable([item]) { store.noteActivityItemsRead([opened.id], readAt: opened.at) }
+        Task { await controller.markActivityItemsRead([item]) }
+        onOpen(item)
+    }
+
+    /// 「すべて既読にする」: everything up to now (or the newest row held, if the clock is behind), on every filter.
     private func markAllRead() async {
         let newest = ActivityRules.newest(lists.values.flatMap(\.items)).flatMap(parseIsoDate) ?? .distantPast
         let at = ISO8601DateFormatter.activity.string(from: max(Date(), newest))
-        if await controller.markActivityRead(at) { seenFrom = store.activity?.readAt ?? at }
+        _ = await controller.markActivityRead(at)
     }
 }
 
@@ -195,7 +218,8 @@ private extension ISO8601DateFormatter {
     }()
 }
 
-/// One item: who (their pictures) did what, where and when, and the message's opening words.
+/// One item: who (their pictures) did what, where and when, and the message's opening words. Unread (§6.4): bold with a
+/// dot (the list tints its background); read: plain.
 struct ActivityRowView: View {
     @Bindable var controller: AppController
     let item: ActivityItem
@@ -224,7 +248,9 @@ struct ActivityRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     HStack(spacing: 3) {
-                        (Text(who).fontWeight(.semibold) + Text(what))
+                        // §6.4 (2026-10-07): unread bold, read plain (the name medium, as the desktop's rows).
+                        (Text(who).fontWeight(unread ? .bold : .medium) + Text(what).fontWeight(unread ? .semibold : .regular))
+                            .foregroundStyle(unread ? Color.primary : Color.primary.opacity(0.75))
                             .lineLimit(item.kind == "canvas_mention" || item.page != nil ? 2 : 1) // the title in it
                         if item.kind == "reaction" {
                             ForEach(item.emojis, id: \.self) { ReactionGlyph(controller: controller, emoji: $0, height: 16) }

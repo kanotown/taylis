@@ -567,6 +567,13 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("PUT", Self.pathWithQuery("/api/v1/activity/read", Self.activityIncludeItems), body: .object(["read_at": .string(readAt)]))
     }
 
+    /// 2026-10-07 (MOBILE_UI.md §6.4): I opened these items (their `id` in GET /activity, 1–100); each is read until it
+    /// happens again. The answer is the new badge.
+    func markActivityItemsRead(itemIds: [String]) async throws -> ActivitySummary {
+        try await request("PUT", Self.pathWithQuery("/api/v1/activity/items/read", Self.activityIncludeItems),
+                          body: .object(["item_ids": .array(itemIds.map(JSONValue.string))]))
+    }
+
     func listBookmarks(cursor: String? = nil, limit: Int = 50) async throws -> BookmarkListOut {
         var items = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }

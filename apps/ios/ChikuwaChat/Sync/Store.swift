@@ -931,6 +931,18 @@ final class Store {
         setActivity(current)
     }
 
+    /// 2026-10-07 (MOBILE_UI.md §6.4 「開いたら既読」): the activity items I opened (a row tapped here, or
+    /// activity.items_read from any of my devices), by the server's item id: when. An item is read while its `at` is not
+    /// after that time (a reaction item with a newer reaction is unread again). Not kept: the next list's `read` says so.
+    private(set) var openedActivityItems: [String: String] = [:]
+
+    /// Activity items opened at `readAt` (each time only moves forward).
+    func noteActivityItemsRead(_ itemIds: [String], readAt: String) {
+        for id in itemIds where ActivityRules.moves(readAt, readAt: openedActivityItems[id]) {
+            openedActivityItems[id] = readAt
+        }
+    }
+
     /// Review v0.1.22 #3 (CANVAS.md §20.8): activity.updated events received; the activity list on screen follows it.
     private(set) var activityUpdates = 0
     /// Their item ids not yet taken by the list (takeUpdatedActivityItems).

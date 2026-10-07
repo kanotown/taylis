@@ -85,6 +85,11 @@ final class FakeServer {
             return try server.markActivityRead(userId, readAt: readAt)
         }
 
+        func markActivityItemsRead(itemIds: [String]) async throws -> ActivitySummary {
+            try maybeFail("markActivityItemsRead")
+            return try server.markActivityItemsRead(userId, itemIds: itemIds)
+        }
+
         func channelLinks(channelId: String) async throws -> [ChannelLinkOut] {
             try maybeFail("channelLinks")
             guard server.channels[channelId]?.members.contains(userId) == true else { throw ApiError.api(status: 403, code: "not_a_member", message: "Not a member") }
@@ -484,6 +489,28 @@ final class FakeServer {
             emitActivityRead(userId, readAt: readAt)
         }
         return summary
+    }
+
+    /// 2026-10-07 PUT /activity/items/read: each opened item leaves the count (the fake keeps no items: one per id, never
+    /// below 0, the position unchanged); activity.items_read to the user's devices.
+    var itemsRead: [String: [String]] = [:]
+
+    func markActivityItemsRead(_ userId: String, itemIds: [String]) throws -> ActivitySummary {
+        guard var summary = activity[userId] else { throw ApiError.api(status: 404, code: "not_found", message: "Not Found") }
+        let fresh = itemIds.filter { !(itemsRead[userId] ?? []).contains($0) }
+        itemsRead[userId, default: []] += fresh
+        summary.unreadCount = max(0, summary.unreadCount - fresh.count)
+        if summary.unreadCount == 0 { summary.mentionUnread = false }
+        activity[userId] = summary
+        emitActivityItemsRead(userId, itemIds: itemIds, readAt: now())
+        return summary
+    }
+
+    func emitActivityItemsRead(_ userId: String, itemIds: [String], readAt: String) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("activity.items_read"), "ts": .string(now()),
+                                "channel_id": .null, "seq": .null,
+                                "data": .object(["item_ids": .array(itemIds.map(JSONValue.string)), "read_at": .string(readAt)])]))
     }
 
     func emitActivityRead(_ userId: String, readAt: String) {

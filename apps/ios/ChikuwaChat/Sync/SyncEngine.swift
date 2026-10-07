@@ -818,6 +818,13 @@ final class SyncEngine {
             // fetched again.
             if let readAt = frame.data["read_at"]?.stringValue { store.advanceActivityRead(readAt) }
             scheduleActivityRefresh()
+        case "activity.items_read":
+            // 2026-10-07 (MOBILE_UI.md §6.4): I opened these items on one of my devices (this one too): their dots go,
+            // the badge is fetched again.
+            struct Payload: Decodable { let itemIds: [String]; let readAt: String }
+            let payload = try frame.data.decode(Payload.self)
+            store.noteActivityItemsRead(payload.itemIds, readAt: payload.readAt)
+            scheduleActivityRefresh()
         case "activity.updated":
             // Review v0.1.22 #3 (CANVAS.md §20.8): items I may hold changed in place (an erased canvas version blanked
             // their excerpts). The list on screen drops those excerpts and reads again (ActivityFeedView); no badge change.
@@ -1381,12 +1388,26 @@ final class SyncEngine {
         if let summary = try? await api.activitySummary() { store.setActivity(summary) }
     }
 
-    /// Everything in the activity up to `readAt` is read (「すべて既読」, or the newest item the list showed). The server
-    /// only moves it forward; its answer is the new badge, and my other devices get activity.read.
+    /// Everything in the activity up to `readAt` is read (「すべて既読にする」). The server only moves it forward; its
+    /// answer is the new badge, and my other devices get activity.read. Being on screen reads nothing (MOBILE_UI.md §6.4,
+    /// 2026-10-07).
     func markActivityRead(_ readAt: String) async throws {
         guard let api = api as? ActivityApi else { return }
         activityRefreshTask?.cancel()
         store.setActivity(try await api.markActivityRead(readAt: readAt))
+    }
+
+    /// 2026-10-07 (MOBILE_UI.md §6.4 「開いたら既読」): I opened these activity items. Their dots go at once, read as they
+    /// were shown (up to their `at`, not this device's clock, which may be ahead of the server's; activity.items_read
+    /// brings the server's time). The server's answer is the new badge. False: nothing to send (no item carries the
+    /// server's id: a server before it, whose rows wait for the read position).
+    @discardableResult
+    func markActivityItemsRead(_ items: [(id: String, at: String)]) async throws -> Bool {
+        guard let api = api as? ActivityApi, !items.isEmpty else { return false }
+        for item in items { store.noteActivityItemsRead([item.id], readAt: item.at) }
+        activityRefreshTask?.cancel()
+        store.setActivity(try await api.markActivityItemsRead(itemIds: items.map(\.id)))
+        return true
     }
 
     /// Waits for the debounced activity refresh (tests).
