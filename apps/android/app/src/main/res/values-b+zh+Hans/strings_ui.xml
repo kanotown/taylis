@@ -1469,6 +1469,10 @@
     <string name="threads_pane_open_channel">打开频道</string>
     <string name="threads_pane_open_conversation">打开会话</string>
     <string name="threads_pane_open_named">打开 %1$s</string>
+    <plurals name="threads_pane_more_replies">
+        <item quantity="other">另有 %1$d 条回复</item>
+    </plurals>
+    <string name="threads_pane_reply_from">%1$s 的回复，在话题中打开</string>
     <string name="threads_pane_show_more">显示更多</string>
     <string name="threads_pane_threads_you_posted_in_replied_to">你发帖、回复或被提及的话题会显示在这里。</string>
     <string name="threads_pane_unread">" · %1$s 条未读"</string>

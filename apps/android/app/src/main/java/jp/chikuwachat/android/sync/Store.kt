@@ -252,7 +252,16 @@ const val CACHED_MESSAGES_PER_CHANNEL = 500
  * One row of the threads view (THREADS.md §5): the parent and my relation to the thread. Not persisted:
  * the badge comes with bootstrap and the list is fetched when the view opens.
  */
-data class ThreadEntry(val parent: MessageOut, val state: ThreadState) {
+data class ThreadEntry(
+    val parent: MessageOut,
+    val state: ThreadState,
+    /**
+     * The thread's newest replies, oldest first (at most [Store.THREAD_PREVIEW_REPLIES]; GET /threads `latest_replies`,
+     * then kept by message events). null: a server before the previews, or a row made from thread.updated alone; the
+     * card shows the parent only.
+     */
+    val latestReplies: List<MessageState>? = null,
+) {
     val id: String get() = parent.id
 }
 
@@ -1024,12 +1033,36 @@ class Store(private val persistence: Persistence? = null) {
                     (entry.state.lastReplyAt ?: "") >= oldest
             }
         }
-        items.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state) }
+        items.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state, it.latestReplies?.map { reply -> MessageState.from(reply) }) }
         threadsFilter = filter
         threadsLoaded = true
         threadsCursor = cursor
         threadsHasMore = items.size >= pageSize
         emit()
+    }
+
+    /**
+     * A reply of a listed thread arrived, changed or went (message.created / updated / deleted, my own sends' answers):
+     * the card keeps the newest [THREAD_PREVIEW_REPLIES] live replies without fetching the list again. A reply that left
+     * the card is replaced from the thread's replies held here, if any (else the list's next fetch fills it). Replies of
+     * people I blocked stay out, as the server leaves them out.
+     */
+    private fun applyThreadPreview(message: MessageState) {
+        val parentId = message.parentId ?: return
+        if (message.seq == null) return
+        val entry = threads[parentId] ?: return
+        val shown = entry.latestReplies ?: return
+        val held = shown.any { it.id == message.id }
+        val visible = !message.deleted && message.senderId !in blockedUsers
+        if (!held && !visible) return
+        val next = shown.filter { it.id != message.id }.toMutableList()
+        if (visible) next += message
+        if (next.size < THREAD_PREVIEW_REPLIES) {
+            val ids = next.map { it.id }.toSet() + message.id
+            next += replies(message.channelId, parentId).filter { it.seq != null && !it.deleted && it.senderId !in blockedUsers && it.id !in ids }
+        }
+        val kept = next.sortedBy { it.seq ?: 0 }.takeLast(THREAD_PREVIEW_REPLIES)
+        if (kept != shown) threads[parentId] = entry.copy(latestReplies = kept)
     }
 
     /** thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known. */
@@ -1038,7 +1071,7 @@ class Store(private val persistence: Persistence? = null) {
         val existing = threads[state.parentId]
         val before = existing?.state
         if (existing != null) {
-            threads[state.parentId] = ThreadEntry(existing.parent.copy(replyCount = state.replyCount, lastReplyAt = state.lastReplyAt), state)
+            threads[state.parentId] = existing.copy(parent = existing.parent.copy(replyCount = state.replyCount, lastReplyAt = state.lastReplyAt), state = state)
         } else {
             val known = parent ?: messagesByChannel[state.channelId]?.get(state.parentId)?.toOut()
             if (known != null) threads[state.parentId] = ThreadEntry(known.copy(replyCount = state.replyCount, lastReplyAt = state.lastReplyAt), state)
@@ -1395,6 +1428,7 @@ class Store(private val persistence: Persistence? = null) {
             persist { it.saveMessage(stored) }
         }
         applyLastMessage(message, quiet = true) // M49: events, catch-up pages and my own edits / deletes alike
+        applyThreadPreview(message)
         emit()
         return true
     }
@@ -1531,6 +1565,9 @@ class Store(private val persistence: Persistence? = null) {
     )
 
     companion object {
+        /** How many newest replies a threads-list card shows (the server's LATEST_REPLIES, THREADS.md §5). */
+        const val THREAD_PREVIEW_REPLIES = 2
+
         fun fromSnapshot(snapshot: Snapshot, persistence: Persistence? = null): Store = Store(persistence).also { it.apply(snapshot) }
     }
 }
