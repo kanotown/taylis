@@ -31,6 +31,41 @@
    "en": "You can send a reminder once an hour. Try again later.",
    "zh-Hans": "每小时只能提醒一次。请稍后再试。"
   },
+  "action_disabled": {
+   "ja": "このボタンは止められています",
+   "en": "This button is turned off.",
+   "zh-Hans": "此按钮已停用。"
+  },
+  "action_invoke_id_reused": {
+   "ja": "この操作の ID はほかのボタンで使われています。もう一度押してください",
+   "en": "This request ID was used for another button. Press it again.",
+   "zh-Hans": "此请求 ID 已用于其他按钮。请再按一次。"
+  },
+  "action_limit": {
+   "ja": "ボタンは 50 個までです",
+   "en": "You can have up to 50 buttons.",
+   "zh-Hans": "最多 50 个按钮。"
+  },
+  "action_not_allowed": {
+   "ja": "このボタンを押す権限がありません",
+   "en": "You are not allowed to press this button.",
+   "zh-Hans": "你没有权限按此按钮。"
+  },
+  "action_not_found": {
+   "ja": "このボタンは見つかりません",
+   "en": "This button was not found.",
+   "zh-Hans": "找不到此按钮。"
+  },
+  "action_url_not_allowed": {
+   "ja": "https の公開の URL だけを使えます",
+   "en": "Only public https URLs can be used.",
+   "zh-Hans": "只能使用公开的 https 地址。"
+  },
+  "actions_disabled": {
+   "ja": "操作ボタンはオフになっています",
+   "en": "Action buttons are turned off.",
+   "zh-Hans": "操作按钮已关闭。"
+  },
   "admin_not_member": {
    "ja": "公開に変換できるのは、このチャンネルのメンバーである管理者だけです",
    "en": "Only an admin who is a member of this channel can make it public.",
@@ -366,15 +401,15 @@
    "en": "Only public channels can be default channels.",
    "zh-Hans": "只有公开频道可以设为默认频道。"
   },
-  "dm_immutable": {
-   "ja": "ダイレクトメッセージでは行えない操作です",
-   "en": "This can't be done in a direct message.",
-   "zh-Hans": "私信中不能执行此操作。"
-  },
   "dm_close_not_dm": {
    "ja": "閉じられるのはダイレクトメッセージだけです",
    "en": "Only direct messages can be closed.",
    "zh-Hans": "只有私信可以关闭。"
+  },
+  "dm_immutable": {
+   "ja": "ダイレクトメッセージでは行えない操作です",
+   "en": "This can't be done in a direct message.",
+   "zh-Hans": "私信中不能执行此操作。"
   },
   "dm_pin_not_dm": {
    "ja": "上に固定できるのはダイレクトメッセージだけです",

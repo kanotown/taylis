@@ -5,6 +5,16 @@
     "session_revoked": 4003
   },
   "events": {
+    "actions.updated": {
+      "audience": "all (not guests)",
+      "consumes_seq": false,
+      "data": {
+        "description": "`actions.updated` (audience all but guests): the settings or a button changed. What I may\npress differs per person, so nothing is carried: GET /actions again.",
+        "properties": {},
+        "title": "ActionsUpdatedData",
+        "type": "object"
+      }
+    },
     "activity.items_read": {
       "audience": "user",
       "consumes_seq": false,

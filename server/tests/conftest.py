@@ -42,6 +42,10 @@ TABLES = [
     "attendance_current",
     "attendance_states",
     "attendance_settings",
+    # M143: the settings row has no foreign key to users (the buttons go with users' CASCADE too).
+    "action_invocations",
+    "actions",
+    "action_settings",
     # M120: no foreign key to users, so not emptied by the CASCADE below.
     "wiki_tombstones",
     "wiki_feed_state",

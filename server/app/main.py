@@ -20,6 +20,8 @@ from app.core.settings import Settings, get_settings
 from app.core.time import utcnow
 from app.events.in_memory import InMemoryEventBus
 from app.events.outbox import OutboxRelay, asyncpg_dsn, purge_processed
+from app.modules.actions import service as actions_service
+from app.modules.actions.router import router as actions_router
 from app.modules.activity.router import router as activity_router
 from app.modules.admin.router import router as admin_router
 from app.modules.ai import bot_typing as ai_bot_typing
@@ -194,6 +196,11 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     purged_log,
                     purged_deliveries,
                 )
+            async with app.state.db.session_factory() as session:
+                # M143 (docs/ACTIONS.md §3): presses past the administrator's retention.
+                purged_presses = await actions_service.purge(session, now=utcnow())
+            if purged_presses:
+                log.info("actions: purged %d presses", purged_presses)
             async with app.state.db.session_factory() as session:
                 # M48: sign-ins that were started or ticketed and never finished.
                 purged_sso = await sso_service.purge_expired(session, utcnow())
@@ -565,6 +572,7 @@ def build_api_router() -> APIRouter:
     api.include_router(groups_router)
     api.include_router(lab_router)
     api.include_router(attendance_router)
+    api.include_router(actions_router)
     api.include_router(webhooks_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
@@ -668,6 +676,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.attendance_inbound_rate_limit_per_integration, burst=30
         ),
         "attendance_test": RateLimiter(6),
+        # M143 (docs/ACTIONS.md §4): one press per person per button every few seconds, and the
+        # admin's test sends (6 a minute).
+        "action_invoke": RateLimiter(
+            60 / max(settings.action_invoke_min_interval_seconds, 0.001), burst=1
+        ),
+        "action_test": RateLimiter(6),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
@@ -691,6 +705,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M140 (docs/PRESENCE.md §5): the webhook sender (SSRF-checked) and the event that wakes it.
     app.state.attendance_sender = attendance_webhooks.build_sender(settings)
     app.state.attendance_wake = asyncio.Event()
+    # M143 (docs/ACTIONS.md §5): the relay sender (SSRF-checked, bounded, never retried).
+    app.state.action_poster = actions_service.build_poster(settings)
     app.state.bus = InMemoryEventBus()
     app.state.hub = RealtimeHub(
         queue_size=settings.ws_send_queue_size, away_seconds=settings.presence_away_seconds
