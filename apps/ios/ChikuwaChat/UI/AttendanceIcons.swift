@@ -259,10 +259,7 @@ struct AttendanceQuickSheet: View {
         let current = AttendanceRules.isSelected(state, mine: mine)
         return Button { choose(state) } label: {
             HStack(spacing: 12) {
-                AttendanceGlyph(controller: controller, state: state, size: 17)
-                    .foregroundStyle(AttendancePalette.onSolid)
-                    .frame(width: 32, height: 32)
-                    .background(AttendancePalette.solid(state.color), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                AttendanceGlyphTile(controller: controller, state: state)
                 Text(state.label).fontWeight(current ? .semibold : .regular).lineLimit(1)
                 if state.ownerId != nil { Text("自分用").font(.caption).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
@@ -298,6 +295,19 @@ struct AttendanceQuickSheet: View {
             busy = false
             if ok { dismiss() }
         }
+    }
+}
+
+/// The quick sheet's square for a state: its icon in white on the state's solid shade.
+struct AttendanceGlyphTile: View {
+    let controller: AppController
+    let state: AttendanceStateOut
+
+    var body: some View {
+        AttendanceGlyph(controller: controller, state: state, size: 17)
+            .foregroundStyle(AttendancePalette.onSolid)
+            .frame(width: 32, height: 32)
+            .background(AttendancePalette.solid(state.color), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

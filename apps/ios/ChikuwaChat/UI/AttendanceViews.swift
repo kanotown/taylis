@@ -149,17 +149,7 @@ struct AttendanceView: View {
         return Button {
             choose(state.id, note: AttendanceRules.noteForChoice(state, mine: mine))
         } label: {
-            // Selected: the solid badge (white on the state's shade). Unselected: outlined, only the icon in the colour.
-            AttendanceStateLabel(controller: controller, state: state, glyphSize: 17, iconColor: !selected)
-                .font(.body.weight(selected ? .semibold : .regular))
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .padding(.horizontal, 8)
-                .background(selected ? AttendancePalette.solid(state.color) : Color(.secondarySystemGroupedBackground),
-                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(selected ? Color.clear : Color(.separator), lineWidth: 1))
-                .foregroundStyle(selected ? AttendancePalette.onSolid : Color.primary)
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            AttendanceStateButtonFace(controller: controller, state: state, selected: selected)
         }
         .buttonStyle(.plain)
         .disabled(busy)
@@ -201,25 +191,52 @@ struct AttendanceView: View {
     }
 }
 
+/// A state button's face: selected, the solid badge (white icon and name on the state's shade); unselected, outlined,
+/// only the icon in the state's colour.
+struct AttendanceStateButtonFace: View {
+    let controller: AppController
+    let state: AttendanceStateOut
+    let selected: Bool
+
+    var body: some View {
+        AttendanceStateLabel(controller: controller, state: state, glyphSize: 17, solid: selected)
+            .font(.body.weight(selected ? .semibold : .regular))
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .padding(.horizontal, 8)
+            .background(selected ? AttendancePalette.solid(state.color) : Color(.secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(selected ? Color.clear : Color(.separator), lineWidth: 1))
+            .foregroundStyle(selected ? AttendancePalette.onSolid : Color.primary)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
 /// Which own state the form edits (nil = a new one).
 struct OwnStateTarget: Identifiable {
     let state: AttendanceStateOut?
     var id: String { state?.id ?? "new" }
 }
 
-/// A state's picture (its icon, else its emoji — a custom one as its image) and name. `iconColor`: the picture in the
-/// state's colour (an unselected button).
+/// A state's picture (its icon, else its emoji — a custom one as its image) and name. `solid`: on the solid badge, the
+/// icon and the name in white (`onSolid`); otherwise (an unselected button) the icon in the state's colour and the name in
+/// the primary colour.
+///
+/// Both colours are set here, never left to inherit: `.foregroundStyle(.foreground)` on the icon resolved to the default
+/// foreground (black in light) instead of the badge's white, so the chips' and the selected button's icons were black
+/// while their names were white (2026-10-08).
 struct AttendanceStateLabel: View {
     let controller: AppController
     let state: AttendanceStateOut
     var glyphSize: CGFloat = 16
-    var iconColor = false
+    var solid = true
 
     var body: some View {
         HStack(spacing: glyphSize < 14 ? 3 : 5) {
             AttendanceGlyph(controller: controller, state: state, size: glyphSize)
-                .foregroundStyle(iconColor ? AnyShapeStyle(AttendancePalette.tint(state.color)) : AnyShapeStyle(.foreground))
+                .foregroundStyle(solid ? AttendancePalette.onSolid : AttendancePalette.tint(state.color))
             Text(state.label).lineLimit(1)
+                .foregroundStyle(solid ? AttendancePalette.onSolid : Color.primary)
         }
     }
 }
