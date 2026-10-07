@@ -394,6 +394,11 @@ final class Store {
     private(set) var dmPins: [String] = []
     /// The server sends `dm_pins` (M118 or later): only then are 「上に固定」/「固定を外す」 offered.
     private(set) var dmPinsSupported = false
+    /// M141 (SYNC_PROTOCOL.md §7.9): the DMs I closed (「会話を閉じる」), hidden from the DM lists until a new message
+    /// or an explicit open; from bootstrap, dm_close.updated and message.created, not persisted.
+    private(set) var closedDms: Set<String> = []
+    /// The server sends `closed_dms` (M141 or later): only then is 「会話を閉じる」 offered.
+    private(set) var closedDmsSupported = false
     /// M104 (MODERATION.md §4): the people I blocked; from bootstrap and block.updated, not persisted.
     var blockedUsers: Set<String> = []
     /// My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted.
@@ -1221,6 +1226,22 @@ final class Store {
     func restoreDmPin(_ channelId: String, at place: Int?) {
         dmPins.removeAll { $0 == channelId }
         if let place { dmPins.insert(channelId, at: min(place, dmPins.count)) }
+    }
+
+    // MARK: closed DMs (M141)
+
+    func isDmClosed(_ channelId: String) -> Bool { closedDms.contains(channelId) }
+
+    /// dm_close.updated, a new timeline message, my own close and open.
+    func setDmClosed(_ channelId: String, closed: Bool) {
+        if closed { closedDms.insert(channelId) } else if closedDms.contains(channelId) { closedDms.remove(channelId) }
+    }
+
+    /// bootstrap's `closed_dms`; nil from a server before M141, which then offers no closing.
+    func replaceClosedDms(_ ids: [String]?) {
+        closedDmsSupported = ids != nil
+        let set = Set(ids ?? [])
+        if closedDms != set { closedDms = set }
     }
 
     // MARK: blocks (M104)

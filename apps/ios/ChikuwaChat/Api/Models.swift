@@ -1017,6 +1017,8 @@ struct BootstrapOut: Codable {
     var favorites: [String]? = nil
     /// M118: the DMs and group DMs I pinned to the top, oldest pin first; nil from an older server (no pinning there).
     var dmPins: [String]? = nil
+    /// M141: the DMs and group DMs I closed with no newer message since; nil from an older server (no closing there).
+    var closedDms: [String]? = nil
     /// Custom emoji (M12f): the whole table; changes arrive as emoji.updated.
     var customEmoji: [CustomEmojiOut]? = nil
     /// M100: emoji packs in tab order; changes arrive as emoji_pack.updated.
@@ -1397,6 +1399,13 @@ struct FavoriteStateOut: Codable, Equatable {
 struct DmPinStateOut: Codable, Equatable {
     let channelId: String
     let pinned: Bool
+}
+
+/// M141 (DATA_MODEL.md conversation_closes): `PUT` / `DELETE /channels/{id}/close`.
+struct DmCloseStateOut: Codable, Equatable {
+    let channelId: String
+    let closed: Bool
+    var closedAt: String? = nil
 }
 
 /// One row of POST /channels/read-all (M12a).

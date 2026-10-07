@@ -1023,6 +1023,7 @@ struct SearchConversationView: View {
             guard !opened, let engine = controller.engine else { return }
             opened = true
             previous = engine.currentChannelId
+            controller.reopenDmIfClosed(route.channelId)  // M141 (SYNC_PROTOCOL.md §7.9)
             await engine.openChannel(route.channelId)
         }
         .onDisappear {

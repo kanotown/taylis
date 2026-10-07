@@ -613,6 +613,7 @@ final class SyncEngine {
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
         store.replaceDmPins(bootstrap.dmPins)  // M118
+        store.replaceClosedDms(bootstrap.closedDms)  // M141
         store.replaceBlocked(bootstrap.blockedUserIds ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
         store.replaceEmojiPacks(bootstrap.emojiPacks ?? [])
@@ -841,6 +842,10 @@ final class SyncEngine {
             if let id = frame.data["channel_id"]?.stringValue, case .bool(let on)? = frame.data["pinned"] {
                 store.setDmPin(id, on: on)
             }
+        case "dm_close.updated":  // M141 (§7.9): closed on one of my devices, or opened again explicitly
+            if let id = frame.data["channel_id"]?.stringValue, case .bool(let closed)? = frame.data["closed"] {
+                store.setDmClosed(id, closed: closed)
+            }
         case "thread.updated":
             // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
             // refreshed from the server shortly after, which also covers threads we do not hold.
@@ -898,6 +903,8 @@ final class SyncEngine {
         let isNew = frame.event == "message.created"
         onTimelineMessage?(frame.event, message, thread)
         if isNew {
+            // M141 (§7.9): a new timeline row opens a closed DM again (the server counts it so too, no call).
+            if message.parentId == nil || message.alsoInChannel { store.setDmClosed(channelId, closed: false) }
             noteActivity(message)
             // M39: a mention of me or a reply in a thread I follow moves the activity badge (the server counts it).
             let followed = message.parentId.flatMap { store.threads[$0]?.state.following } ?? false
