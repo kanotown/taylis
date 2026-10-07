@@ -2235,7 +2235,9 @@ CREATE TABLE call_participants (
   user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   livekit_sid  text NOT NULL UNIQUE,                      -- LiveKit の参加者の sid。webhook の重複・順序の入れ替わりを吸収する
   joined_at    timestamptz NOT NULL,
-  left_at      timestamptz                                -- NULL = 通話の中
+  left_at      timestamptz,                               -- NULL = 通話の中
+  left_reason  text CHECK (left_reason IN ('left', 'reconciled', 'ended'))
+                                                          -- 移行 0105。閉じた理由（CALLS.md §3.3。0105 より前に閉じた行は NULL）
 );
 CREATE INDEX call_participants_open_idx ON call_participants (call_id) WHERE left_at IS NULL;
 CREATE INDEX call_participants_call_idx ON call_participants (call_id, user_id);

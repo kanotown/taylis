@@ -65,8 +65,16 @@ class CallParticipant(Base):
     livekit_sid: Mapped[str] = mapped_column(Text, unique=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why it closed (migration 0105): 'left' (participant_left / hung up), 'reconciled' (missing
+    # from LiveKit's list: reopened if a later list has it) or 'ended'. NULL: open, or closed
+    # before 0105 (treated as confirmed).
+    left_reason: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
+        CheckConstraint(
+            "left_reason IS NULL OR left_reason IN ('left', 'reconciled', 'ended')",
+            name="call_participants_left_reason_check",
+        ),
         Index("call_participants_open_idx", "call_id", postgresql_where=text("left_at IS NULL")),
         Index("call_participants_call_idx", "call_id", "user_id"),
     )

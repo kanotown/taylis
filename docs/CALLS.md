@@ -115,6 +115,8 @@ call_participants
 - livekit_sid   text UNIQUE（LiveKit の参加者の sid。webhook の重複・順序の入れ替わりを吸収する鍵）
 - joined_at     timestamptz
 - left_at       timestamptz NULL
+- left_reason   text NULL（移行 0105：'left' 退出の webhook・自分で切った / 'reconciled' 突き合わせで LiveKit に居なかった /
+                'ended' 通話が終わった。§3.3）
 - INDEX (call_id) WHERE left_at IS NULL
 
 messages
@@ -153,7 +155,18 @@ workspace_settings
 
 - アプリの中の定期の作業（今の outbox の worker と同じプロセス）：進行中の通話があるときだけ 60 秒ごと、と起動したとき。
   `ListRooms` と各部屋の `ListParticipants` を取り、`call_participants` と `calls` を正す：
-  - LiveKit に居てアプリに無い人 → 行を作る。アプリで開いたままで LiveKit に居ない人 → `left_at` を入れる。
+  - LiveKit に居てアプリに無い人 → 行を作る。アプリで開いたままで LiveKit に居ない人 → `left_at` を入れる
+    （`left_reason = 'reconciled'`）。
+  - **webhook との行き違い**（2026-10-07、レビュー v0.1.43 #5）：LiveKit に聞いている間はトランザクションを持たないので、
+    その間に webhook が処理される。一覧は聞いた時点のものなので、
+    - 閉じるのは **一覧を頼む前に開いていた接続** のうち一覧に無いものだけ（頼む前に読んでおく）。一覧を待つ間に
+      `participant_joined` で入った接続は、古い一覧に無くても閉じない。
+    - 「誰も居ない」と見るのは、一覧が空で、**正した後に開いている行も無い** ときだけ（待つ間に入った人がいる部屋を終えない）。
+    - 突き合わせが閉じた行（`reconciled`）は「確かめた退出」ではない：後の突き合わせで LiveKit がその sid をまだ返せば
+      開き直す（`left_at` を NULL に戻す）。`participant_left`（と自分で切った `leave`）は確かめた退出（`left`）で、
+      開き直さない。突き合わせが閉じた後に `participant_left` が届けば `left` に変える（その前に頼んだ古い一覧で戻さないため）。
+    - webhook の `participant_joined` は、行がある sid では何もしない（閉じた行も開き直さない）：遅れて届いた参加の通知は、
+      「居ない」と見た一覧より古い知らせのことがあるため。今の LiveKit の状態に合わせるのは突き合わせ（次の回で収束する）。
   - 部屋が無い・2 分以上誰も居ない → 通話を終える（`end_reason = 'reconciled'`、部屋が残っていれば `DeleteRoom`）。
 - LiveKit に届かない（落ちている・再起動中）ときは何も終えない（誤って終えない）。5 分続けば警告のログ。
 - 変化があれば webhook のときと同じイベントを出す。
