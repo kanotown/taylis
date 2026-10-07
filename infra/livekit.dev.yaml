@@ -1,0 +1,19 @@
+# LiveKit for local development (docs/CALLS.md §8.3 (d), M130): `docker compose --profile calls up -d livekit`.
+# Started with --dev (the key `devkey` / secret `secret`, for this machine only) and --node-ip from LIVEKIT_NODE_IP
+# (127.0.0.1 by default; the Mac's LAN address to try from a phone on the same Wi-Fi). No TURN.
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+room:
+  empty_timeout: 120
+  departure_timeout: 20
+  max_participants: 50
+webhook:
+  # Signed with this key's secret (the app checks it, docs/CALLS.md §3.2). Inside the compose network only.
+  api_key: devkey
+  urls:
+    - http://app:8000/api/v1/livekit/webhook
+logging:
+  level: info
