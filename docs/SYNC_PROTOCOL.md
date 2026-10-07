@@ -264,6 +264,7 @@
 | `wiki.page.updated` | page（送る時点でページを読める人） | — | `{ page: PageMeta, change }`（M120）。`change` は `content` / `meta` / `restore`。開いているページを読み直す（編集中なら次の保存でマージ）。`page.parent_id` は常に null |
 | `wiki.mentioned` | user（読める人だけ） | — | `{ page_id, rev_id, title, by_user_id }`（M120）。ページの保存で新しくメンションされた |
 | `wiki.shared` | user（読める人だけ） | — | `{ page_id, title, level, by_user_id }`（M120）。名前を挙げて共有された |
+| `wiki.rows.changed` | page（送る時点でデータベースを読める人） | — | `{ database_id, seq, schema_version }`（M123）。行・値・題名・ゴミ箱・スキーマ・ビューが変わった。開いている表を読み直す（§17） |
 | `reservation.updated` | all | — | `{ pool_id, deleted }` (M99 → M112、RESERVATIONS.md §7)。ワークスペースの予約の枠が変わった (設定・予約・待ち・利用中、`deleted` なら枠が消えた)。中身は人ごとに違う (自分の予約、担当者だけのアドレスと作業) ので載せない。端末は `GET /reservation-pools` で読み直す (続けて届いたものは 300 ms で 1 回にまとめる)。bootstrap のたびにも読む。M99〜M111 の端末は `channel_id` が無いので読まない (`GET /channels/{id}/reservation-pools` はいつも空) |
 | `reservation.notice` | user | — | `{ item_id, pool_id, reservation_id, text, operator, at }` (M112)。自分あての予約の知らせ (担当者の作業か、自分の予約・利用のこと)。アクティビティの項目 (種類 `reservation`、`include=reservation`) が増えたのでバッジを読み直し、開いている端末はバナー / 通知を出す (プッシュは PUSH_NOTIFICATIONS.md §4)。ほかの担当者が対応して済みになった項目は `activity.updated` の `item_ids` に入る |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
@@ -1110,3 +1111,8 @@ base・送られた本文・head を 3-way マージする。
 - **保存**：`PUT /wiki/pages/{id}/content`（キャンバスと同じ `base_rev_id`・`client_save_id`・`on_conflict`、409 `page_conflict` /
   `page_base_expired`）。閲覧（view）の人はチェックも付けられない（403 `page_edit_restricted`）。
 - **読めないページ**：どの経路でも 404 `page_not_found`（存在ごと隠す）。手元にあれば外す。
+- **データベース（M123、WIKI.md §5・§18）**：行は木にもフィードにも入らない。開いている表・カレンダーは
+  `POST /wiki/databases/{id}/query` で読み、`wiki.rows.changed {database_id, seq, schema_version}`（データベースを読める人、送る時点で
+  解決）が来たら 300 ms まとめて読み直す。`schema_version` が手元と違えば `GET /wiki/databases/{id}` も読み直す。再接続の後も読み直す
+  （イベントは失われうる）。マスの変更は `PATCH /wiki/rows/{id}/props {set, client_op_id}`（マスごとの後勝ち、同じ `client_op_id` の
+  再送は 1 回だけ効く）。行のページは `wiki.page.updated`（`change: "props"`）でも読み直す。
