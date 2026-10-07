@@ -183,6 +183,9 @@ tauri.conf.json を揃える)。公証する場合はステープルしたアプ
   かかるので、URL がどこを指してもよい。Tauri の updater（reqwest）は GitHub の添付ファイルの URL からの
   リダイレクト（`objects.githubusercontent.com` など）をたどり、ホストの制限もない）。v0.1.42 に更新したアプリは、
   次の確認から kanotown/taylis を見る。
+- **過去のリリース**：v0.1.31〜v0.1.41（v0.1.32 は無し）は、同じタイトル・リリースノート・インストーラ（.dmg／.exe／.msi）で
+  kanotown/taylis の同じタグにも作った（2026-10-07。Latest にはせず、`latest.json` と更新用のファイルは付けない）。
+  一覧はタグのコミットの日時の順に並ぶので、新しいものが上になる。
 - **終わらせる時期**：早くても 2026-11-30。その前に、本番のサーバーで 30 日以内に動いた v0.1.41 以前のデスクトップ版が
   無いことを確かめる：
   `SELECT app_version, count(*) FROM devices WHERE platform = 'desktop' AND enabled AND last_seen_at > now() - interval '30 days' GROUP BY 1 ORDER BY 1;`
