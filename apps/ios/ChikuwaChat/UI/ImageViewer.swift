@@ -141,7 +141,7 @@ struct ImageViewer: View {
         if let current {
             let position = ImageGallery.position(index, of: attachments.count)
             VStack(spacing: 0) {
-                Text(current.filename).font(.footnote.weight(.semibold)).lineLimit(1)
+                Text(current.filename).font(.footnote.weight(.semibold)).fileNameLine(current.filename)
                 Text([formatSize(current.sizeBytes), position].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption2).foregroundStyle(.secondary)
             }

@@ -117,7 +117,7 @@ struct FileRowView: View {
             .frame(width: 48, height: 48)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
-                Text(attachment.filename).font(.subheadline).fontWeight(.medium).lineLimit(1)
+                Text(attachment.filename).font(.subheadline).fontWeight(.medium).fileNameLine(attachment.filename)
                 Text("\(VideoTileModel(attachment: attachment).caption) · \(uploader) · \(channel) · \(Timeline.timeLabel(item.attachedAt))")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }

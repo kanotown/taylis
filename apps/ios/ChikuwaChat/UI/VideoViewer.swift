@@ -178,7 +178,7 @@ struct VideoViewer: View {
         .tint(.white)
         .overlay {
             VStack(spacing: 0) {
-                Text(attachment.filename).font(.footnote.weight(.semibold)).lineLimit(1)
+                Text(attachment.filename).font(.footnote.weight(.semibold)).fileNameLine(attachment.filename)
                 Text(formatSize(attachment.sizeBytes)).font(.caption2).foregroundStyle(.secondary)
             }
             .foregroundStyle(.white)

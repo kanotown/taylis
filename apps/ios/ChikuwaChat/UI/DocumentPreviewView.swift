@@ -69,7 +69,7 @@ struct DocumentPreviewCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "doc.richtext").foregroundStyle(.secondary)
                 VStack(alignment: .leading) {
-                    Text(attachment.filename).font(.subheadline).lineLimit(2)
+                    Text(attachment.filename).font(.subheadline).fileNameLine(attachment.filename)
                     Text(DocumentFit.detail(attachment)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
@@ -146,6 +146,8 @@ struct DocumentPDFViewer: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                // The system title cuts a long name at its end; this one keeps the extension (FileNameEllipsis).
+                ToolbarItem(placement: .principal) { Text(attachment.filename).font(.headline).fileNameLine(attachment.filename) }
                 if let file = loader.file {
                     ToolbarItem(placement: .primaryAction) {
                         ShareLink(item: file) { Image(systemName: "square.and.arrow.up") }
