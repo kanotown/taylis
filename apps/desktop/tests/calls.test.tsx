@@ -182,7 +182,7 @@ describe("管理 → 設定 (M130: the meeting service field is gone)", () => {
       legacy_sso_default_channels: [],
     } as unknown as AdminWorkspaceSettingsOut;
     const store = new Store();
-    const controller = { api: { adminWorkspaceSettings: vi.fn(async () => settings), channels: vi.fn(async () => []) }, store, setError: vi.fn() } as unknown as AppController;
+    const controller = { api: { adminWorkspaceSettings: vi.fn(async () => settings), channels: vi.fn(async () => []) }, store, setError: vi.fn(), can: () => true } as unknown as AppController;
     render(<WorkspaceSettingsTab controller={controller} />);
     await waitFor(() => expect(screen.queryAllByRole("checkbox").length + screen.queryAllByRole("switch").length).toBeGreaterThan(0));
     expect(screen.queryByText("通話の会議サービス")).toBeNull();

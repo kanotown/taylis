@@ -14,6 +14,7 @@ import { Badge, Button, cn, IconButton, Input } from "./primitives";
 import { RecurringPostList } from "./RecurringPosts";
 import { ChannelWorkflowsDialog } from "./WorkflowViews";
 import { t } from "../i18n";
+import { canManageChannelByRight } from "./roles";
 
 /** What the details page asks MainScreen to open (the existing dialogs). */
 export type DetailsDialog = "rename" | "archive" | "leave" | "convert" | "link" | "add-member";
@@ -35,7 +36,7 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
   membersVersion: number;
 }) {
   const isChannel = channel.type === "public" || channel.type === "private";
-  const canManage = controller.isAdmin || channel.membership?.role === "owner";
+  const canManage = channel.membership?.role === "owner" || canManageChannelByRight(channel, (capability) => controller.can(capability)); // M142
   const canEdit = channel.isMember && !channel.archived;
   const [members, setMembers] = useMembers(controller, channel.id, `${membersVersion}:${channel.member_count}`);
   const [workflowsOpen, setWorkflowsOpen] = useState(false);

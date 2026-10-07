@@ -281,7 +281,7 @@ function MembersTable({ controller, reload }: { controller: AppController; reloa
                   <div className="truncate font-medium" title={member.display_name}>{member.display_name}</div>
                   <div className="truncate text-xs text-muted">@{member.username}</div>
                 </td>
-                <td className="px-3 py-1.5">{member.role === "admin" ? t("admin.users.role.admin") : member.role === "guest" ? t("dialogs.guest") : t("admin.users.role.member")}</td>
+                <td className="px-3 py-1.5">{member.role === "admin" ? t("admin.users.role.admin") : member.role === "manager" ? t("admin.users.role.manager") : member.role === "guest" ? t("dialogs.guest") : t("admin.users.role.member")}</td>
                 <td className="px-3 py-1.5">{member.status === "active" ? t("admin.users.filter.active") : t("admin.users.filter.deactivated")}</td>
                 <td className="px-3 py-1.5 whitespace-nowrap"><TimeCell iso={member.last_login_at} /></td>
                 <td className="px-3 py-1.5 whitespace-nowrap"><TimeCell iso={member.last_active_at} /></td>

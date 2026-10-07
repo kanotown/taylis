@@ -645,7 +645,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update User */
+        /**
+         * Update User
+         * @description `role` / `deactivated` / `username`: administrators. `display_name` / `title` (M142):
+         *     managers too, for members and guests (docs/ROLES.md §5).
+         */
         patch: operations["update_user_api_v1_admin_users__user_id__patch"];
         trace?: never;
     };
@@ -5740,6 +5744,11 @@ export interface components {
             /** Resolved By */
             resolved_by: string | null;
             /**
+             * Snapshot Hidden
+             * @default false
+             */
+            snapshot_hidden: boolean;
+            /**
              * Status
              * @enum {string}
              */
@@ -5756,7 +5765,7 @@ export interface components {
              * @default member
              * @enum {string}
              */
-            role: "admin" | "member" | "guest";
+            role: "admin" | "manager" | "member" | "guest";
             /** Username */
             username: string;
         };
@@ -5792,6 +5801,8 @@ export interface components {
             must_change_password: boolean;
             /** Role */
             role: string;
+            /** Title */
+            title?: string | null;
             /**
              * Totp Enabled
              * @default false
@@ -5809,8 +5820,12 @@ export interface components {
         AdminUserUpdate: {
             /** Deactivated */
             deactivated?: boolean | null;
+            /** Display Name */
+            display_name?: string | null;
             /** Role */
-            role?: ("admin" | "member" | "guest") | null;
+            role?: ("admin" | "manager" | "member" | "guest") | null;
+            /** Title */
+            title?: string | null;
             /** Username */
             username?: string | null;
         };
@@ -8638,7 +8653,7 @@ export interface components {
              * @default member
              * @enum {string}
              */
-            role: "admin" | "member" | "guest";
+            role: "admin" | "manager" | "member" | "guest";
         };
         /**
          * InviteCreated
@@ -12137,6 +12152,11 @@ export interface components {
             avatar_updated_at?: string | null;
             /** Bot Kind */
             bot_kind?: string | null;
+            /**
+             * Capabilities
+             * @default []
+             */
+            capabilities: string[];
             /** Composer Mode */
             composer_mode?: ("rich" | "markdown") | null;
             /**

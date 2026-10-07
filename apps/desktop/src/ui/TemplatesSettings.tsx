@@ -17,7 +17,7 @@ export function TemplatesSettings({ controller }: { controller: AppController })
   const all = orderTemplates(controller.store.templates.values());
   const mine = all.filter((t) => t.scope === "user");
   const shared = all.filter((t) => t.scope === "workspace");
-  const admin = controller.isAdmin;
+  const admin = controller.can("templates.manage"); // M142: administrators and managers
   const [editing, setEditing] = useState<{ scope: Scope; template: TemplateOut | null } | null>(null);
   const [deleting, setDeleting] = useState<TemplateOut | null>(null);
   const [busy, setBusy] = useState(false);

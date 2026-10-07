@@ -56,7 +56,7 @@ export const SECTION_TITLES: Record<SettingsSection, string> = {
   get admin() { return t("settings.section.admin"); },
 };
 
-/** The pushed screens after the two quick ones, in the list's order (このアプリについて in the desktop app, 管理 only for admins). */
+/** The pushed screens after the two quick ones, in the list's order (このアプリについて in the desktop app, 管理 only for admins and managers, M142). */
 export function menuSections(isAdmin: boolean, desktop: boolean = isTauri()): SettingsSection[] {
   return ["notifications", "appearance", "input", "profile", "account", "workspaces", ...(desktop ? (["about"] as const) : []), ...(isAdmin ? (["admin"] as const) : [])];
 }
@@ -192,7 +192,7 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
         </button>
       </div>
       {group([row("pause"), row("quiet")], t("settings.list.quick"))}
-      {group(menuSections(controller.isAdmin).map((section) => row(section, page ? sectionSubtitle(section) : undefined)), t("settings.list.items"))}
+      {group(menuSections(controller.canAdminister).map((section) => row(section, page ? sectionSubtitle(section) : undefined)), t("settings.list.items"))}
       {/* M119 (docs/MODERATION.md §3.1): always visible, guests too (Google Play's child safety standards). */}
       {group(
         <li>
@@ -1359,7 +1359,7 @@ function AboutSection({ controller }: { controller: AppController }) {
  * Opens on 「通知」 unless told otherwise.
  */
 export function SettingsDialog({ controller, onClose, initialSection = "notifications" }: { controller: AppController; onClose: () => void; initialSection?: SettingsSection }) {
-  const [section, setSection] = useState<SettingsSection>(initialSection === "admin" && !controller.isAdmin ? "notifications" : initialSection);
+  const [section, setSection] = useState<SettingsSection>(initialSection === "admin" && !controller.canAdminister ? "notifications" : initialSection);
   const [confirmLogout, setConfirmLogout] = useState(false);
   useStoreUpdates(controller);
   return (

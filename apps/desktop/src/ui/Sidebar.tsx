@@ -223,7 +223,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
             <Search size={17} />
           </IconButton>
         )}
-        {onAdmin && controller.isAdmin && (
+        {onAdmin && controller.canAdminister && (
           <IconButton tone="sidebar" label={t("settings.section.admin")} onClick={onAdmin}>
             <ShieldCheck size={17} />
           </IconButton>

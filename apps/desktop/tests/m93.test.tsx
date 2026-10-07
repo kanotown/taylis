@@ -83,7 +83,7 @@ describe("the admin tab row", () => {
     expect(UNDERLINE_TAB).not.toContain("-mb-px");
     const store = new Store();
     const api = new Proxy({}, { get: () => async () => [] });
-    const controller = { store, api, engine: null, isAdmin: true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
+    const controller = { store, api, engine: null, isAdmin: true, can: () => true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
     render(<AdminBody controller={controller} />);
     await settle();
     const row = screen.getByRole("tablist", { name: "管理" });
@@ -263,7 +263,7 @@ describe("the workspace icon", () => {
       channels: vi.fn(async () => []),
     };
     const store = new Store();
-    const controller = { api, store, setError: vi.fn(), activeEntry: A, workspaceName: "Alpha", serverUrl: A.serverUrl } as unknown as AppController;
+    const controller = { api, store, setError: vi.fn(), can: () => true, activeEntry: A, workspaceName: "Alpha", serverUrl: A.serverUrl } as unknown as AppController;
     render(<WorkspaceSettingsTab controller={controller} />);
     const section = await screen.findByTestId("workspace-icon-section");
     expect(within(section).queryByRole("button", { name: /削除/ })).toBeNull();
@@ -283,7 +283,7 @@ describe("the workspace icon", () => {
   it("is not offered by a server before M93", async () => {
     const base = { show_membership_messages: true, preview_before_join: true, updated_at: null, updated_by: null, default_channel_ids: [], default_channels: [], default_channels_set: true, legacy_sso_default_channels: [] } as AdminWorkspaceSettingsOut;
     const api = { adminWorkspaceSettings: vi.fn(async () => base), channels: vi.fn(async () => []) };
-    render(<WorkspaceSettingsTab controller={{ api, store: new Store(), setError: vi.fn() } as unknown as AppController} />);
+    render(<WorkspaceSettingsTab controller={{ api, store: new Store(), setError: vi.fn(), can: () => true } as unknown as AppController} />);
     await screen.findByText("参加・退出の表示");
     expect(screen.queryByTestId("workspace-icon-section")).toBeNull();
   });

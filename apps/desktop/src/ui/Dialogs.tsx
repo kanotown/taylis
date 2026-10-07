@@ -13,6 +13,7 @@ import { AttendanceChip } from "./AttendanceChip";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 import { type MessageKey, t } from "../i18n";
+import { canManageChannelByRight } from "./roles";
 
 // The settings (M40) are in Settings.tsx: the phone's 「自分」 list and the wide layout's dialog.
 
@@ -282,7 +283,7 @@ export function MemberList({ controller, channel, members, onChange, className }
   className?: string;
 }) {
   // Not in a DM (its members are the conversation itself).
-  const canManage = (controller.isAdmin || channel.membership?.role === "owner") && (channel.type === "public" || channel.type === "private");
+  const canManage = (channel.membership?.role === "owner" || canManageChannelByRight(channel, (capability) => controller.can(capability))) && (channel.type === "public" || channel.type === "private"); // M142
   const users = controller.store.users;
   const roster = controller.store.roster;
   const setMembers = onChange;

@@ -165,7 +165,7 @@ describe("Administration → 設定", () => {
     const row = { show_membership_messages: true, preview_before_join: true, updated_at: null, updated_by: null } as AdminWorkspaceSettingsOut; // an M88 server (no default channels)
     const adminWorkspaceSettings = vi.fn(async () => row);
     const adminUpdateWorkspaceSettings = vi.fn(async (patch: object) => ({ ...row, ...patch }));
-    const controller = { api: { adminWorkspaceSettings, adminUpdateWorkspaceSettings }, store: new Store(), setError: vi.fn() } as unknown as AppController;
+    const controller = { api: { adminWorkspaceSettings, adminUpdateWorkspaceSettings }, store: new Store(), setError: vi.fn(), can: () => true } as unknown as AppController;
     render(<WorkspaceSettingsTab controller={controller} />);
     const lines = (await screen.findByRole("switch", { name: "参加・退出の表示" })) as HTMLInputElement;
     const preview = screen.getByRole("switch", { name: "参加前にチャンネルの中を見られる" }) as HTMLInputElement;
@@ -183,6 +183,7 @@ describe("Administration → 設定", () => {
       api: { adminWorkspaceSettings: vi.fn(async () => row), adminUpdateWorkspaceSettings: vi.fn(async () => { throw new Error("offline"); }) },
       store: new Store(),
       setError,
+      can: () => true,
     } as unknown as AppController;
     render(<WorkspaceSettingsTab controller={controller} />);
     const lines = (await screen.findByRole("switch", { name: "参加・退出の表示" })) as HTMLInputElement;
@@ -191,7 +192,7 @@ describe("Administration → 設定", () => {
     expect(setError).toHaveBeenCalled();
 
     cleanup();
-    const old = { api: { adminWorkspaceSettings: vi.fn(async () => { throw Object.assign(new Error("not found"), { status: 404 }); }) }, store: new Store(), setError: vi.fn() } as unknown as AppController;
+    const old = { api: { adminWorkspaceSettings: vi.fn(async () => { throw Object.assign(new Error("not found"), { status: 404 }); }) }, store: new Store(), setError: vi.fn(), can: () => true } as unknown as AppController;
     render(<WorkspaceSettingsTab controller={old} />);
     expect(await screen.findByText("このサーバはワークスペースの設定に対応していません。")).toBeTruthy();
   });

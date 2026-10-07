@@ -67,6 +67,7 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       <span className="truncate text-xs text-muted">@{user.username}</span>
                       {line && <Badge>{rosterLabel(line)}</Badge>}
                       {user.role === "admin" && <Badge tone="accent">{t("admin.users.role.admin")}</Badge>}
+                      {user.role === "manager" && <Badge tone="accent">{t("admin.users.role.manager")}</Badge>}
                       {user.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                       {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
                       {user.dnd_until && <span title={t("popover.paused")}>🔕</span>}

@@ -2,8 +2,9 @@
 import type { components } from "./schema";
 
 export type UserPublic = components["schemas"]["UserPublic"];
-export type UserMe = components["schemas"]["UserMe"];
-export type TokenResponse = components["schemas"]["TokenResponse"];
+/** M142 (docs/ROLES.md §2.1): `capabilities` is missing from a server before M142 (ui/roles.ts capabilitiesOf). */
+export type UserMe = Omit<components["schemas"]["UserMe"], "capabilities"> & { capabilities?: string[] };
+export type TokenResponse = Omit<components["schemas"]["TokenResponse"], "user"> & { user: UserMe };
 export type ChannelOut = components["schemas"]["ChannelOut"];
 /** M49: a member's conversation's newest message as one line (MOBILE_UI.md §7.1). */
 export type LastMessageOut = components["schemas"]["LastMessageOut"];
@@ -42,7 +43,9 @@ export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallS
  * M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered); M130: one before it no
  * `active_calls`.
  */
-export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "closed_dms" | "workspace_settings" | "active_calls"> & {
+export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "closed_dms" | "workspace_settings" | "active_calls" | "me"> & {
+  /** M142: UserMe with `capabilities` optional (older servers). */
+  me: UserMe;
   dm_pins?: string[];
   /** M141: a server before it sends none (nothing closed, and the close action is not offered). */
   closed_dms?: string[];
@@ -143,7 +146,8 @@ export type BlockOut = components["schemas"]["BlockOut"];
 export type ReportCreate = components["schemas"]["ReportCreate"];
 export type ReportReason = ReportCreate["reason"];
 export type ReportAck = components["schemas"]["ReportAck"];
-export type AdminReportOut = components["schemas"]["AdminReportOut"];
+/** M142: `snapshot_hidden` (docs/ROLES.md §4.3) is missing from older servers. */
+export type AdminReportOut = Omit<components["schemas"]["AdminReportOut"], "snapshot_hidden"> & { snapshot_hidden?: boolean };
 /** M119 (docs/MODERATION.md §3.1): a report of a person or of anything else, or feedback (POST /reports). */
 export type GeneralReportCreate = components["schemas"]["GeneralReportCreate"];
 export type ReportCategory = GeneralReportCreate["category"];

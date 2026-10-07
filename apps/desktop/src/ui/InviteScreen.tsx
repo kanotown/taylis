@@ -86,7 +86,7 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
           <>
             <div className="rounded-xl border border-accent/40 bg-accent-soft/50 px-3 py-2 text-sm">
               <div>
-                {tRich("inviteScreen.invitedBy", { b: (s) => <span className="font-medium">{s}</span> }, { name: preview?.invited_by ?? "" })}{preview?.role === "admin" && t("inviteScreen.asAdmin")}
+                {tRich("inviteScreen.invitedBy", { b: (s) => <span className="font-medium">{s}</span> }, { name: preview?.invited_by ?? "" })}{preview?.role === "admin" && t("inviteScreen.asAdmin")}{preview?.role === "manager" && t("inviteScreen.asManager")}
               </div>
               {preview?.lab && <div className="mt-0.5 text-xs">{inviteLabLine(preview.lab)}</div>}
               {preview && preview.channels.length > 0 && <div className="mt-0.5 text-xs text-muted">{t("inviteScreen.channels", { channels: preview.channels.map((name) => `#${name}`).join(" ") })}</div>}

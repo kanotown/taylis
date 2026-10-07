@@ -59,8 +59,12 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
   if (unsupported) return <p className="mt-4 text-sm text-muted">{t("workspace.unsupported")}</p>;
   if (!settings) return <p role="status" className="mt-6 text-center text-sm text-muted">{t("common.loading")}</p>;
   const changedBy = settings.updated_by ? controller.store.users.get(settings.updated_by)?.display_name : null;
+  // M142 (docs/ROLES.md §5): a manager sees and changes the default channels only (channels.manage).
+  const full = controller.can("workspace.settings");
   return (
     <div className="mt-4 space-y-3">
+      {full && (
+      <>
       <WorkspaceIconSection controller={controller} settings={settings} onSaved={setSettings} />
       <label className={cn(CARD, "cursor-pointer")}>
         <UsersRound size={18} className="shrink-0 text-muted" />
@@ -94,7 +98,9 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
           onChange={(e) => void save({ preview_before_join: e.target.checked })}
         />
       </label>
-      <DefaultChannelsSection controller={controller} settings={settings} onSaved={setSettings} />
+      </>
+      )}
+      {controller.can("channels.manage") && <DefaultChannelsSection controller={controller} settings={settings} onSaved={setSettings} />}
       {settings.updated_at && changedBy && (
         <p className="text-xs text-muted">
           {t("workspace.lastChanged", { who: changedBy, at: fullTimestamp(settings.updated_at) })}

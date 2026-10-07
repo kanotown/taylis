@@ -9,6 +9,10 @@ import { EMPTY_PRESET, INVITE_STATUS_LABELS, type InvitePresetForm, inviteLink, 
 import { Badge, Button, cn, Field, Input } from "./primitives";
 import { AFFILIATIONS, GRADES, invitePresetSummary, RANKS } from "./roster";
 import { t, labelled } from "../i18n";
+import { assignableRoles } from "./roles";
+
+/** M142: the role choices of an invite (a manager gets member and guest only). */
+const ROLE_OPTION_KEYS = { member: "admin.users.role.member", manager: "admin.users.role.managerNote", admin: "admin.users.role.admin", guest: "admin.users.role.guestNote" } as const;
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
@@ -35,7 +39,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(() => ({
     note: "",
-    role: "member" as "member" | "admin" | "guest",
+    role: "member" as "member" | "manager" | "admin" | "guest",
     uses: "1" as (typeof USES)[number][0],
     expiry: "168" as (typeof EXPIRY)[number][0],
     channelIds: new Set(channels.filter((c) => c.name === "general").map((c) => c.id)),
@@ -145,10 +149,11 @@ export function InvitesTab({ controller }: { controller: AppController }) {
             <Input value={form.note} maxLength={80} autoFocus onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </Field>
           <Field label={t("admin.users.role")}>
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "member" | "admin" | "guest" })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
-              <option value="member">{t("admin.users.role.member")}</option>
-              <option value="admin">{t("admin.users.role.admin")}</option>
-              <option value="guest">{t("admin.users.role.guestNote")}</option>
+            {/* M142: a manager invites members and guests only (giving a higher role is the administrators'). */}
+            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "member" | "manager" | "admin" | "guest" })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
+              {assignableRoles((capability) => controller.can(capability)).map((role) => (
+                <option key={role} value={role}>{t(ROLE_OPTION_KEYS[role])}</option>
+              ))}
             </select>
           </Field>
           <Field label={t("invites.usesLabel")}>
@@ -238,6 +243,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
                     <span className="truncate font-medium">{invite.note || t("invites.link")}</span>
                     <Badge tone={active ? "accent" : "neutral"}>{INVITE_STATUS_LABELS[invite.status]}</Badge>
                     {invite.role === "admin" && <Badge tone="danger">{t("admin.users.role.admin")}</Badge>}
+                    {invite.role === "manager" && <Badge tone="accent">{t("admin.users.role.manager")}</Badge>}
                     {invite.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                     <span className="text-xs text-muted">{inviteUsesLabel(invite)}</span>
                   </div>

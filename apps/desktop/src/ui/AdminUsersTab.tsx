@@ -24,6 +24,11 @@ const SELECT = "h-9 rounded-lg border border-line bg-canvas px-2 text-sm";
 export function UsersTab({ controller }: { controller: AppController }) {
   const store = controller.store;
   const me = store.me;
+  // M142 (docs/ROLES.md §7): accounts (create, roles, passwords …) are users.manage; a manager only edits the names and
+  // titles of members and guests (users.edit_profile).
+  const manage = controller.can("users.manage");
+  const editProfiles = controller.can("users.edit_profile");
+  const [profiling, setProfiling] = useState<AdminUserOut | null>(null);
   const [users, setUsers] = useState<AdminUserOut[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ username: "", display_name: "", email: "", role: "member" as Role });
@@ -126,11 +131,14 @@ export function UsersTab({ controller }: { controller: AppController }) {
       </div>
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm text-muted" aria-live="polite">{users ? (narrowed ? t("admin.users.countNarrowed", { shown: shown.length, total: users.length }) : t("common.people", { count: users.length })) : t("common.loading")}</span>
-        <Button size="sm" onClick={() => setCreating((open) => !open)}>
-          <UserPlus size={14} /> {t("admin.users.create")}
-        </Button>
+        {manage && (
+          <Button size="sm" onClick={() => setCreating((open) => !open)}>
+            <UserPlus size={14} /> {t("admin.users.create")}
+          </Button>
+        )}
       </div>
-      {creating && (
+      {!manage && <p className="text-xs text-muted">{t("admin.users.managerNote")}</p>}
+      {creating && manage && (
         <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3 max-sm:grid-cols-1" onSubmit={create}>
           <Field label={t("admin.users.usernameLabel")} hint={usernameHint()}>
             <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required autoFocus onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
@@ -144,6 +152,7 @@ export function UsersTab({ controller }: { controller: AppController }) {
           <Field label={t("admin.users.role")}>
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
               <option value="member">{t("admin.users.role.member")}</option>
+              <option value="manager">{t("admin.users.role.managerNote")}</option>
               <option value="admin">{t("admin.users.role.admin")}</option>
               <option value="guest">{t("admin.users.role.guestNote")}</option>
             </select>
@@ -169,6 +178,7 @@ export function UsersTab({ controller }: { controller: AppController }) {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="min-w-0 font-medium [overflow-wrap:anywhere]" title={user.display_name}>{user.display_name}</span>
                     {user.role === "admin" && <Badge tone="accent">{t("admin.users.role.admin")}</Badge>}
+                    {user.role === "manager" && <Badge tone="accent">{t("admin.users.role.manager")}</Badge>}
                     {user.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                     {user.role === "bot" && <Badge>{store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
                     {off && <Badge>{t("admin.users.filter.deactivated")}</Badge>}
@@ -190,6 +200,8 @@ export function UsersTab({ controller }: { controller: AppController }) {
                   user={user}
                   self={self}
                   busy={busy}
+                  manage={manage}
+                  onEditProfile={editProfiles && !self && !anonymized && profileEditable(user, manage) ? () => setProfiling(user) : null}
                   onRole={(role) => void run(async () => { await controller.api!.adminUpdateUser(user.id, { role }); })}
                   onRename={anonymized ? null : () => setRenaming(user)}
                   onResetPassword={() => void run(async () => { const out = await controller.api!.adminResetPassword(user.id); setIssued({ username: user.username, password: out.temporary_password }); })}
@@ -204,6 +216,14 @@ export function UsersTab({ controller }: { controller: AppController }) {
           })}
           {shown.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("admin.users.noMatch")}</li>}
         </ul>
+      )}
+      {profiling && (
+        <ProfileEditor
+          user={profiling}
+          initialTitle={store.users.get(profiling.id)?.title ?? profiling.title ?? ""}
+          onClose={() => setProfiling(null)}
+          onSave={(patch) => run(async () => { await controller.api!.adminUpdateUser(profiling.id, patch); setProfiling(null); })}
+        />
       )}
       {renaming && (
         <Modal onClose={() => setRenaming(null)} title={t("admin.users.renameTitle", { name: renaming.display_name })} className="w-[480px]">
@@ -240,6 +260,40 @@ export function UsersTab({ controller }: { controller: AppController }) {
   );
 }
 
+/** M142: whose name and title I may edit here: anyone but a bot with users.manage; members and guests otherwise. */
+export function profileEditable(user: { role: string }, manage: boolean): boolean {
+  if (user.role === "bot") return false;
+  return manage || user.role === "member" || user.role === "guest";
+}
+
+/** M142 「表示名・肩書きを変更」: someone else's display name and title (PATCH /admin/users/{id}). */
+function ProfileEditor({ user, initialTitle, onClose, onSave }: { user: AdminUserOut; initialTitle: string; onClose: () => void; onSave: (patch: { display_name: string; title: string | null }) => Promise<void> }) {
+  const [name, setName] = useState(user.display_name);
+  const [title, setTitle] = useState(initialTitle);
+  const [saving, setSaving] = useState(false);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    void onSave({ display_name: name.trim(), title: title.trim() || null }).finally(() => setSaving(false));
+  };
+  return (
+    <Modal onClose={onClose} title={t("admin.users.editProfileTitle", { name: user.display_name })} className="w-[440px]">
+      <form className="mt-3 space-y-3" onSubmit={submit}>
+        <Field label={t("settings.profile.displayName")}>
+          <Input value={name} maxLength={80} required autoFocus onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label={t("settings.profile.title")}>
+          <Input value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={saving || !name.trim()}>{t("common.save")}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /** M116: 「最終ログイン 3 日前」 (「未ログイン」 when never); a server before M116 sends neither → nothing. */
 function lastLoginText(user: AdminUserOut): string {
   if (user.last_login_at === undefined) return "";
@@ -259,10 +313,13 @@ function lastLoginTitle(user: AdminUserOut): string {
  * bots), ユーザー名を変更, パスワード再設定, セッション失効, 2FA を解除 (with 2FA), 無効化. Someone else, deactivated:
  * 再有効化, ユーザー名を変更, 匿名化 (not twice). Me: ユーザー名を変更 only. An anonymized person cannot be renamed.
  */
-function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRevokeSessions, onResetTotp, onDeactivate, onReactivate, onAnonymize }: {
+function UserActions({ user, self, busy, manage, onEditProfile, onRole, onRename, onResetPassword, onRevokeSessions, onResetTotp, onDeactivate, onReactivate, onAnonymize }: {
   user: AdminUserOut;
   self: boolean;
   busy: boolean;
+  /** M142: users.manage; without it (a manager) the menu has 「表示名・肩書きを変更」 only. */
+  manage: boolean;
+  onEditProfile: (() => void) | null;
   onRole: (role: Role) => void;
   onRename: (() => void) | null;
   onResetPassword: () => void;
@@ -273,7 +330,14 @@ function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRe
   onAnonymize: (() => void) | null;
 }) {
   const off = !!user.deactivated_at;
+  if (!manage) onRename = null;
+  if (!manage && !onEditProfile) return null;
   if (self && !onRename) return null;
+  const profile = onEditProfile && (
+    <MenuItem disabled={busy} onSelect={onEditProfile}>
+      <Pencil size={14} /> {t("admin.users.editProfile")}
+    </MenuItem>
+  );
   const rename = onRename && (
     <MenuItem disabled={busy} onSelect={onRename}>
       <Pencil size={14} /> {t("admin.users.rename")}
@@ -294,7 +358,9 @@ function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRe
       </MenuTrigger>
       <MenuContent className="max-w-[min(20rem,calc(100vw-2rem))]">
         <MenuLabel><span className="block truncate normal-case tracking-normal">{user.display_name} (@{user.username})</span></MenuLabel>
-        {self ? (
+        {!manage ? (
+          profile
+        ) : self ? (
           rename
         ) : !off ? (
           <>
@@ -303,12 +369,14 @@ function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRe
                 <MenuLabel><span className="inline-flex items-center gap-1 normal-case tracking-normal"><ShieldCheck size={12} /> {t("admin.users.role")}</span></MenuLabel>
                 <MenuRadioGroup value={user.role} onValueChange={(value) => { if (value !== user.role) onRole(value as Role); }}>
                   <MenuRadioItem value="member" disabled={busy}>{t("admin.users.role.member")}</MenuRadioItem>
+                  <MenuRadioItem value="manager" disabled={busy}>{t("admin.users.role.manager")}</MenuRadioItem>
                   <MenuRadioItem value="admin" disabled={busy}>{t("admin.users.role.admin")}</MenuRadioItem>
                   <MenuRadioItem value="guest" disabled={busy}>{t("dialogs.guest")}</MenuRadioItem>
                 </MenuRadioGroup>
                 <MenuSeparator />
               </>
             )}
+            {profile}
             {rename}
             <MenuItem disabled={busy} title={t("admin.users.issueTemporary")} onSelect={onResetPassword}>
               <KeyRound size={14} /> {t("admin.users.resetPassword")}
@@ -337,6 +405,7 @@ function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRe
             <MenuItem disabled={busy} onSelect={onReactivate}>
               <UserCheck size={14} /> {t("admin.users.reactivate")}
             </MenuItem>
+            {profile}
             {rename}
             {onAnonymize && (
               <>

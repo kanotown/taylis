@@ -63,7 +63,7 @@ async function setupAdmin(fail?: ApiError) {
   const store = new Store();
   store.setMe({ ...users[0], has_password: true } as never);
   const proxy = new Proxy(api as Record<string, unknown>, { get: (t, key: string) => t[key] ?? (async () => []) });
-  const controller = { store, api: proxy, engine: { ai: { loadStatus: async () => {} } }, isAdmin: true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
+  const controller = { store, api: proxy, engine: { ai: { loadStatus: async () => {} } }, isAdmin: true, can: () => true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
   render(<AdminBody controller={controller} />);
   await settle();
   return { updates, controller };

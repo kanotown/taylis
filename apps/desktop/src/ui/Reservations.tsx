@@ -55,7 +55,7 @@ export function ReservationsView({ controller }: { controller: AppController }) 
         <BackButton />
         <span className="text-muted max-md:hidden"><Ticket size={18} /></span>
         <strong className="text-[15px]">{t("nav.reservations")}</strong>
-        {controller.isAdmin && (
+        {controller.can("reservations.manage") && (
           <Button size="sm" className="ml-auto" onClick={() => setEditing("new")} aria-label={t("reservations.addPool")}>
             <Plus size={14} /> <span className="max-md:hidden">{t("reservations.addPool")}</span>
           </Button>
@@ -67,7 +67,7 @@ export function ReservationsView({ controller }: { controller: AppController }) 
             <p className="text-sm text-muted">{t("common.loading")}</p>
           ) : pools.length === 0 ? (
             <p className="text-sm text-muted">
-              {t("reservations.none")}{controller.isAdmin ? t("reservations.noneAdmin") : ""}
+              {t("reservations.none")}{controller.can("reservations.manage") ? t("reservations.noneAdmin") : ""}
             </p>
           ) : (
             pools.map((pool) => <PoolSection key={pool.id} controller={controller} pool={pool} onEdit={() => setEditing(pool)} />)
