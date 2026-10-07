@@ -15,6 +15,8 @@ struct YouView: View {
     @Binding var path: [YouRoute]
     /// A sheet's 閉じる; nil on the tab.
     var onClose: (() -> Void)? = nil
+    /// The 在室状況 pill's 「在室状況を開く」 (PRESENCE.md §9.1); nil: no pill.
+    var onOpenAttendance: (() -> Void)? = nil
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
     @State private var confirmLogout = false
     @State private var reportingProblem = false
@@ -67,6 +69,20 @@ struct YouView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if let onClose { ToolbarItem(placement: .confirmationAction) { Button("閉じる", action: onClose) } }
+                // PRESENCE.md §9.1: my 在室状況 pill at the top (while the board is on for me).
+                if let onOpenAttendance,
+                   AttendanceRules.pillVisible(board: controller.store.attendance, role: controller.store.me?.role ?? controller.me?.role) {
+                    if #available(iOS 26.0, *) {
+                        ToolbarItem(placement: onClose == nil ? .topBarTrailing : .topBarLeading) {
+                            AttendancePill(controller: controller, onOpenBoard: onOpenAttendance)
+                        }
+                        .sharedBackgroundVisibility(.hidden)
+                    } else {
+                        ToolbarItem(placement: onClose == nil ? .topBarTrailing : .topBarLeading) {
+                            AttendancePill(controller: controller, onOpenBoard: onOpenAttendance)
+                        }
+                    }
+                }
             }
             .navigationDestination(for: YouRoute.self) { route in destination(route) }
             .sheet(isPresented: $reportingProblem) { ReportProblemSheet(controller: controller) }
