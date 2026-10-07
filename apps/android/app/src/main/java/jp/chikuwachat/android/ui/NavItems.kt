@@ -31,11 +31,13 @@ object NavItems {
         Entry("reservations", L10n.str(R.string.common_reservations), visible = true, platforms = BOTH),
         // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and I am not a guest).
         Entry("attendance", L10n.str(R.string.common_attendance), visible = true, platforms = BOTH),
+        // M143 (docs/ACTIONS.md §9): 「操作」, desktop / Web only until the phones get the page (the shared label).
+        Entry("actions", "操作", visible = true, platforms = listOf(Platform.DESKTOP)),
     )
 
     val order: Map<Platform, List<String>> = mapOf(
-        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance"),
-        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance"),
+        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"),
+        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance", "actions"),
     )
 
     /**

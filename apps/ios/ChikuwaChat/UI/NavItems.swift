@@ -29,13 +29,15 @@ enum NavItems {
         Entry(key: "reservations", label: tr("予約"), visible: true, platforms: [.desktop, .mobile]),
         // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and never for a guest).
         Entry(key: "attendance", label: tr("在室状況"), visible: true, platforms: [.desktop, .mobile]),
+        // M143 (docs/ACTIONS.md §9): 「操作」, desktop / Web only until the phones get the page.
+        Entry(key: "actions", label: "操作", visible: true, platforms: [.desktop]),  // not tr(): 「操作」 is also the gestures page
     ] }
 
     static let order: [Platform: [String]] = [
         .desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved",
-                   "times-feed", "attendance"],
+                   "times-feed", "attendance", "actions"],
         .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs",
-                  "activity", "attendance"],
+                  "activity", "attendance", "actions"],
     ]
 
     /// The tiles this app has (「予約」 joins when its page exists). アクティビティ is the phone's tab and the iPad
