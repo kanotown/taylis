@@ -1,8 +1,8 @@
 import { isTauri } from "../platform/env";
 
 /**
- * In-app updates (「更新して再起動」, desktop only). The Tauri updater reads latest.json from the public binaries-only
- * repository kanotown/taylis-releases (tauri.conf.json plugins.updater; docs/DEVELOPMENT.md 「デスクトップ版のリリース」)
+ * In-app updates (「更新して再起動」, desktop only). The Tauri updater reads latest.json from the latest GitHub Release
+ * of kanotown/taylis (tauri.conf.json plugins.updater; docs/DEVELOPMENT.md 「デスクトップ版のリリース」)
  * and checks the download against the updater key's signature. This side decides when to look (at start and every
  * 6 hours), what the banner shows, and the order of 更新: download → save what is pending (drafts, the send queue)
  * → install → relaunch. Windows' installer quits the app as it starts, so the saving comes before installing.

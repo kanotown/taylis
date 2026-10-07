@@ -94,7 +94,7 @@ Taylis を使うには、所属する組織の Taylis サーバーと、管理�
 
 | アプリ | 入手方法 |
 | --- | --- |
-| Windows / macOS | [GitHub のリリース（taylis-releases）](https://github.com/kanotown/taylis-releases/releases/latest) からインストーラをダウンロードしてください。アプリの中から新しい版に更新できます。 |
+| Windows / macOS | [GitHub のリリース](https://github.com/kanotown/taylis/releases/latest) からインストーラをダウンロードしてください。アプリの中から新しい版に更新できます。 |
 | iOS / iPadOS | 準備中です（App Store での配信を準備しています） |
 | Android | 準備中です（Google Play での配信を準備しています） |
 | ブラウザ | インストールは要りません。サーバーの URL（例：`https://chat.example.com/`）をブラウザで開いてください。 |

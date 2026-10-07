@@ -24,7 +24,7 @@ tauri-plugin-opener = "~2.5.5"
 # Google sign-in (M48, docs/SSO.md §6) returns through `chikuwachat://sso?ticket=…`. 2.4.x is the last line on
 # tauri 2.11 (2.5 needs tauri 2.12); keep it in step with @tauri-apps/plugin-deep-link in package.json.
 tauri-plugin-deep-link = "~2.4.10"
-# In-app updates (「更新して再起動」): the updater checks kanotown/taylis-releases' latest.json, and the process plugin
+# In-app updates (「更新して再起動」): the updater checks kanotown/taylis' latest.json, and the process plugin
 # relaunches after installing. 2.12.x / 2.3.x are the last lines on tauri 2.11 (2.13 / 2.4 need tauri 2.12); keep them
 # in step with @tauri-apps/plugin-updater and @tauri-apps/plugin-process in package.json.
 tauri-plugin-updater = "~2.12.0"
