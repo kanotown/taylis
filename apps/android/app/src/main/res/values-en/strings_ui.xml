@@ -1467,6 +1467,7 @@
     <string name="test_notification_this_server_has_no_push_notifications">This server has no push notifications set up (the iPhone and Android apps only show notifications while open)</string>
     <string name="thread_pane_message_not_found">Message not found</string>
     <string name="thread_pane_new_replies">"  New replies"</string>
+    <string name="thread_pane_go_to_the_latest_reply">Go to the latest reply</string>
     <string name="threads_pane_cant_load_threads_while_offline">Can\'t load threads while offline</string>
     <string name="threads_pane_couldnt_load_threads">Couldn\'t load threads</string>
     <string name="threads_pane_no_followed_threads">No followed threads</string>

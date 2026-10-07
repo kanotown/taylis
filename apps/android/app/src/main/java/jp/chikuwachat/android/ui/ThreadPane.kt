@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -119,6 +120,14 @@ object ThreadRows {
         lastVisibleIndex != null && lastVisibleIndex == lastIndex && lastVisibleEnd - contentEnd <= slopPx
 
     /**
+     * The button to the newest reply (testers, 2026-10-07: long threads had none while reading older replies): with more
+     * than two items below the lowest one laid out, as the channel's 「最新のメッセージへ」 (its first visible index > 2 in
+     * the reversed list); with replies from others below the end it shows anyway, as 「新着 N 件」.
+     */
+    fun jumpShown(lastVisibleIndex: Int?, lastIndex: Int, atNewestEnd: Boolean, unseenBelow: Int): Boolean =
+        !atNewestEnd && (unseenBelow > 0 || (lastVisibleIndex != null && lastIndex - lastVisibleIndex > 2))
+
+    /**
      * Replies came in at the newest end: the last key changed and the reply that was last is still there, now further
      * up (not a reload, another thread or the last reply deleted). The first reply of a thread that had none counts.
      * Keys oldest first, as the replies are.
@@ -212,6 +221,8 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     // 「新着 N 件」 (§10.1 rule 7, as in the channel): replies from others past the newest one seen at the end.
     LaunchedEffect(atEnd, maxSeq, positioned) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned, atEnd, maxSeq) }
     val unseenBelow = if (positioned) ReadGate.newBelow(replies, seenSeq, me) else 0
+    val lastVisible by remember(listState) { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index } }
+    val showJump = (placed || positioned) && ThreadRows.jumpShown(lastVisible, header + replies.size - 1, atEnd, unseenBelow)
     val scope = rememberCoroutineScope()
     LaunchedEffect(parentId) {
         listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) userScrolled = true }
@@ -306,13 +317,21 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
                     }
                 }
             }
-            if (!atEnd && unseenBelow > 0 && replies.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { scope.launch { listState.animateScrollToItem(header + replies.size - 1) } },
-                    icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
-                    text = { Text(stringResource(R.string.common_new, unseenBelow)) },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                )
+            if (showJump && replies.isNotEmpty()) {
+                // As in the channel (ChannelPane): 「新着 N 件」 when replies from others came below, else the small button.
+                val toEnd: () -> Unit = { scope.launch { listState.animateScrollToItem(header + replies.size - 1) } }
+                if (unseenBelow > 0) {
+                    ExtendedFloatingActionButton(
+                        onClick = toEnd,
+                        icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
+                        text = { Text(stringResource(R.string.common_new, unseenBelow)) },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                    )
+                } else {
+                    SmallFloatingActionButton(onClick = toEnd, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.thread_pane_go_to_the_latest_reply))
+                    }
+                }
             }
         }
         HorizontalDivider()
