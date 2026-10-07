@@ -18,6 +18,62 @@ enum UpsideDown {
 
     /// This close to the origin, the reader is at the newest row.
     static let nearNewest: CGFloat = 40
+
+    /// What a conversation does when a new newest row comes in (UpsideDown.arrival).
+    enum Arrival: Equatable {
+        /// At the newest edge: the edge's marker becomes the kept row, so the new row shows, moving in with the others.
+        case follow
+        /// My own post from further up: straight to the newest edge, without scrolling through the rows in between.
+        case jump
+        /// Someone else's row while the reader is further up: the row being read stays (the jump button counts it).
+        case stay
+    }
+
+    /// The kept row (`scrollPosition(id:)`) is the row at the newest edge's side of the screen, which is the edge's marker
+    /// only within a few points of the origin: a little further up (still `atNewest`, within `nearNewest`) it was the
+    /// newest row, and an arrival went in under it, out of sight (iOS build 105). So at the newest edge the marker is made
+    /// the kept row as the row comes in. My own post from further up jumps: an animated scroll over a long conversation
+    /// spun through every row on the way, and the kept row, still the one I had been reading, could take the list back.
+    static func arrival(atNewest: Bool, mine: Bool) -> Arrival {
+        if atNewest { return .follow }
+        return mine ? .jump : .stay
+    }
+
+    /// Takes the list to its newest edge at once (my post, the jump button) and keeps it there: the kept row becomes the
+    /// edge's marker. A `scrollTo` alone left the kept row where the reader had been.
+    @MainActor
+    static func jumpToNewest(_ kept: Binding<String?>, _ proxy: ScrollViewProxy) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            kept.wrappedValue = newest
+            proxy.scrollTo(newest, anchor: anchor(.bottom))
+        }
+    }
+}
+
+/// 「新着 N 件」 / ↓ at the bottom right of a conversation (a channel, a thread) while it is not at its newest row.
+struct JumpToNewestButton: View {
+    let unseen: Int
+    /// What VoiceOver says when there is nothing new: 「最新のメッセージへ」, 「最新の返信へ」.
+    let latestLabel: LocalizedStringKey
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if unseen > 0 {
+                Label("新着 \(unseen) 件", systemImage: "arrow.down")
+                    .font(.footnote.bold())
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Color.accentColor, in: Capsule())
+                    .foregroundStyle(.white)
+            } else {
+                Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+            }
+        }
+        .accessibilityLabel(unseen > 0 ? Text("新着 \(unseen) 件へ") : Text(latestLabel))
+        .padding(12)
+    }
 }
 
 extension View {

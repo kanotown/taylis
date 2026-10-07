@@ -28,6 +28,9 @@ struct ThreadView: View {
     /// M15c: "also send to the channel", unticked again after each send (Slack).
     @State private var alsoInChannel = false
     @State private var atBottom = true
+    /// The newest reply the reader has had on screen at the newest edge (ChannelView.seenSeq): replies from others after
+    /// it are 「新着 N 件」 on the jump button.
+    @State private var seenSeq: Int?
     @State private var visibleFrames: [String: CGRect] = [:]
     @State private var viewportHeight: CGFloat = 0
     @State private var cover = CoverProbe()
@@ -78,13 +81,8 @@ struct ThreadView: View {
                     // Upside down like a conversation (UpsideDownList.swift): the newest reply stays above the input as
                     // the keyboard comes and goes, and a new one pushes the others up by itself.
                     ScrollView {
-                        // The end marker outside the replies' stack, and the channel's 8 pt: under the newest reply the
-                        // same gap as under a channel's newest message (2026-10-02: the default padding of 16 and the
-                        // stack's 12 between the marker and that reply left 20 pt more).
-                        VStack(alignment: .leading, spacing: 0) {
-                            EndMarker(viewportHeight: viewport.size.height) { atBottom = $0 }.id(UpsideDown.newest)
-                            rowStack()
-                        }
+                        // The channel's 8 pt: under the newest reply the same gap as under a channel's newest message.
+                        rowStack()
                         .padding(.vertical, 8) // the side margin is each row's (margin)
                         // MOBILE_POLISH.md C7: a thread shorter than the screen starts at the top (the parent under the
                         // bar, the replies after it; Slack), not at the bottom under a gap. At least a screen tall, with
@@ -98,7 +96,13 @@ struct ThreadView: View {
                     .scrollPosition(id: $keptRowId, anchor: .top)
                     .upsideDown()
                     .clipped()
+                    .onNewestEdge { atBottom = $0 }
                     .dismissesKeyboardOnTap()
+                    .overlay(alignment: .bottomTrailing) {
+                        if !atBottom && positioned {
+                            JumpToNewestButton(unseen: unseenBelow, latestLabel: "最新の返信へ") { UpsideDown.jumpToNewest($keptRowId, proxy) }
+                        }
+                    }
                     .onUserScroll {
                         if provisional && !positioned { userScrolled = true }
                         if anchor.landing != nil { landingInterrupted = true }
@@ -114,14 +118,20 @@ struct ThreadView: View {
                 .coordinateSpace(name: "threadViewport")
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: replies.last?.rowKey) { _, _ in
-                    // At the newest reply the list shows a new one by itself; my own reply from further up brings it down.
+                    // As in a channel (UpsideDown.arrival): at the newest reply a new one shows, my own reply from further
+                    // up jumps to it, someone else's leaves the reader where they are (the jump button counts it).
+                    guard positioned || provisional else { return }
                     let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
-                    guard mine, positioned || provisional, controller.messageFocus?.parentId != parentId else { return }
-                    if anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
-                    if !atBottom {
-                        withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) }
+                    let moves = mine && controller.messageFocus?.parentId != parentId
+                    if moves && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+                    switch UpsideDown.arrival(atNewest: atBottom, mine: moves) {
+                    case .follow: keptRowId = UpsideDown.newest
+                    case .jump: UpsideDown.jumpToNewest($keptRowId, proxy)
+                    case .stay: break
                     }
+                    if atBottom || moves { markSeen() }
                 }
+                .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
                 .onChange(of: scenePhase) { _, _ in markRead() }
                 .onChange(of: controller.engine?.status) { _, _ in markRead() }
                 .onChange(of: threadReady) { _, _ in
@@ -210,25 +220,29 @@ struct ThreadView: View {
         .keepsChannelRows(controller.engine, channelId)
     }
 
-    /// The thread's rows, laid out all at once up to `lazyFrom` replies. A LazyVStack went into an endless layout pass
-    /// after landing on the first unread reply (a row at the edge of its range kept entering and leaving it as its estimated
-    /// and measured heights differed): the main thread spun and the sheet stayed blank until a touch moved the list
-    /// (testers, 2026-09-29; reproduced on iOS 26.2 with 60 replies of mixed heights over a slow network). A thread's rows
-    /// are few, and with every height known the landing and the bottom are exact too. A very long thread stays lazy.
-    private static let lazyFrom = 200
     /// The list's side margin, inside each row: a message's highlight reaches the sheet's edges (ChannelView).
     private static let margin: CGFloat = 16
 
-    @ViewBuilder
+    /// Lazy like a channel's rows: only a lazy stack keeps the row being read when a reply arrives below
+    /// (`scrollPosition(id:)`; a plain VStack left the list at its offset and every row moved up by the new one, iOS 26.5,
+    /// 2026-10-07). The newest edge's marker is one of the scroll targets, as in a channel, so at the newest edge it can
+    /// be the kept row (UpsideDown.arrival). The stack has no spacing (it would put 12 pt between the marker and the
+    /// newest reply): each row brings the gap above it.
+    /// (A plain VStack was used from build 13, when a lazy one went into an endless layout pass after landing on the first
+    /// unread reply in the top-down list of the time; the flipped list lands the way a channel does.)
     private func rowStack() -> some View {
-        if replies.count > Self.lazyFrom {
-            LazyVStack(alignment: .leading, spacing: 12) { rows() }.scrollTargetLayout()
-        } else {
-            VStack(alignment: .leading, spacing: 12) { rows() }.scrollTargetLayout()
+        LazyVStack(alignment: .leading, spacing: 0) {
+            NewestEdgeMarker { atBottom = $0 }
+            rows()
         }
+        .scrollTargetLayout()
     }
 
-    /// Upside down (the list is flipped): the replies newest first (the end marker is before them, in body), then the
+    /// The gap above a reply (between it and the one before it, or the reply count); none above a grouped reply, which
+    /// sits right under the one before it, as a channel's rows do.
+    private static let rowGap: CGFloat = 12
+
+    /// Upside down (the list is flipped): the replies newest first (the end marker is before them, in rowStack), then the
     /// reply count and the parent; each flipped back the right way up.
     @ViewBuilder
     private func rows() -> some View {
@@ -246,13 +260,18 @@ struct ThreadView: View {
                                                    value: [reply.id: geometry.frame(in: .named("threadViewport"))])
                         })
                 }
-                // A grouped reply sits right under the one before it, as a channel's rows do (they have no spacing).
-                .padding(.top, compact ? -12 : 0)
+                .padding(.top, compact ? 0 : Self.rowGap)
                 .upsideDown()
                 .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                 .id(reply.rowKey)
             }
-            Group {
+            // In screen order (top to bottom), flipped back as one.
+            VStack(alignment: .leading, spacing: Self.rowGap) {
+                MessageRow(message: parent, controller: controller, margin: Self.margin, highlighted: highlighted(parent),
+                           present: { messageSheet = $0 })
+                Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
+                Divider().padding(.horizontal, Self.margin)
                 if loadFailed {
                     HStack(spacing: 10) {
                         Label("スレッドを読み込めませんでした", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
@@ -263,11 +282,6 @@ struct ThreadView: View {
                     }
                     .font(.footnote).padding(.horizontal, Self.margin)
                 }
-                Divider().padding(.horizontal, Self.margin)
-                Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
-                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
-                MessageRow(message: parent, controller: controller, margin: Self.margin, highlighted: highlighted(parent),
-                           present: { messageSheet = $0 })
             }
             .upsideDown()
         } else {
@@ -307,14 +321,42 @@ struct ThreadView: View {
             return
         }
         positioned = true
-        if userScrolled { return }
+        if userScrolled {
+            seenSeq = ReadGate.seenLeftInPlace(rows, dividerMark: nil)
+            return
+        }
         switch ReadGate.threadTarget(rows, focusId: focusReplyId, lastReadSeq: state.lastReadSeq, meId: controller.store.me?.id) {
-        case .center(let key): proxy.scrollTo(key, anchor: .center)
+        case .center(let key):
+            seenSeq = ReadGate.seenLeftInPlace(rows, dividerMark: nil)
+            center(key, rowId: rows.first { $0.rowKey == key }?.id, proxy)
         case .top(let key):
             // Anchored only once the reply is really on screen: a long thread lands by estimated heights first.
             if let row = rows.first(where: { $0.rowKey == key }) { anchor.land(on: row) }
-        case .bottom: proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom))
+            seenSeq = dividerMark ?? state.lastReadSeq // 「新着 N 件」 counts the unread replies below the landing
+        case .bottom:
+            proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom))
+            markSeen()
         }
+    }
+
+    /// A focus reply in the middle; again while the lazy rows' estimated heights leave it off screen (ChannelView).
+    private func center(_ key: String, rowId: String?, _ proxy: ScrollViewProxy) {
+        proxy.scrollTo(key, anchor: .center)
+        Task {
+            for _ in 0..<3 {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard let rowId, visibleFrames[rowId].map({ $0.maxY > 0 && $0.minY < viewportHeight }) != true else { return }
+                proxy.scrollTo(key, anchor: .center)
+            }
+        }
+    }
+
+    /// 「新着 N 件」: replies from others after the newest one seen at the newest edge.
+    private var unseenBelow: Int { ReadGate.newBelow(replies, seenSeq: seenSeq, meId: controller.store.me?.id) }
+
+    /// At the newest edge: the newest reply counts as seen, once placed and not landing (ChannelView.markSeen).
+    private func markSeen() {
+        seenSeq = ReadGate.seenAtBottom(seenSeq, rows: replies, placed: positioned && anchor.landing == nil)
     }
 
     /// Scrolls the first unread reply (and its divider) to the top, again while LazyVStack's estimates leave it off
@@ -337,6 +379,7 @@ struct ThreadView: View {
         }
         guard anchor.landing == landing else { return }
         anchor.landed()
+        if atBottom { markSeen() } // a short unread region lands clamped at the newest edge (ChannelView.land)
         markRead()
     }
 
@@ -361,19 +404,6 @@ struct ThreadView: View {
                                visible: visible, onScreenIds: onScreen)
         if next != anchor { anchor = next }
         if let seq { controller.engine?.markThreadRead(parentId, seq: seq) }
-    }
-}
-
-/// The end of the thread's list, and whether it is on screen: from where it is, since a plain VStack (before the rows,
-/// in body) makes it once, on screen or not, and its onAppear said nothing.
-private struct EndMarker: View {
-    let viewportHeight: CGFloat
-    let onScreen: (Bool) -> Void
-
-    var body: some View {
-        Color.clear.frame(height: 1)
-            .onGeometryChange(for: Bool.self) { $0.frame(in: .named("threadViewport")).minY <= viewportHeight + 1 } action: { onScreen($0) }
-            .onDisappear { onScreen(false) } // the thread closed
     }
 }
 
