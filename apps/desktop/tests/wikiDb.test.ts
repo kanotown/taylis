@@ -11,6 +11,7 @@ import {
   clampWidth,
   columnsOf,
   formatNumber,
+  isRestrictedValue,
   layoutWeek,
   monthBounds,
   monthGrid,
@@ -87,6 +88,14 @@ describe("filters", () => {
     expect(newCondition(prop("c", "checkbox"))).toEqual({ prop_id: "c", op: "equals", value: true });
     expect(newCondition(prop("p", "person")).value).toBe("me");
     expect(readyConditions([{ op: "contains", value: "" }, { op: "is_empty" }, { op: "gt", value: 0 }])).toEqual([{ op: "is_empty" }, { op: "gt", value: 0 }]);
+  });
+
+  it("a saved condition on a row I cannot read is a marker, kept and sent back as it is", () => {
+    expect(isRestrictedValue("restricted:1")).toBe(true);
+    expect(isRestrictedValue("0190a6f0-0000-7000-8000-000000000000")).toBe(false);
+    expect(isRestrictedValue(1)).toBe(false);
+    const hidden = { op: "contains" as const, value: "restricted:0" };
+    expect(readyConditions([hidden])).toEqual([hidden]);
   });
 });
 

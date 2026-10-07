@@ -45,6 +45,7 @@ import {
   viewBody,
   viewDiffers,
   asDate,
+  isRestrictedValue,
 } from "./wikiDb";
 
 const PAGE = 200;
@@ -561,6 +562,7 @@ function RelationFilterValue({ ctx, prop, value, onChange }: { ctx: DbCtx; prop:
   return (
     <select aria-label={t("docs.db.filterValue")} className={cn(selectClass, "min-w-0 flex-1")} value={value} onChange={(event) => onChange(event.target.value)}>
       <option value="">—</option>
+      {isRestrictedValue(value) && <option value={value}>{t("docs.db.hiddenRows")}</option>}
       {options.map((o) => <option key={o.id} value={o.id}>{o.title || t("docs.untitled")}</option>)}
     </select>
   );

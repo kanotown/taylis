@@ -90,6 +90,21 @@ def default_schema() -> dict[str, Any]:
     return {"properties": [{"id": TITLE_ID, "name": "", "type": "title"}]}
 
 
+# REVIEW-v0.1.43 #2 (WIKI.md §5.7): a saved relation condition's value that names a row the reader
+# cannot read is shown as "restricted:<n>" (n: the condition's index in the stored view). The
+# stored view keeps the real id; saving the view with the marker keeps that condition's id.
+RESTRICTED = "restricted:"
+
+
+def is_restricted(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(RESTRICTED)
+
+
+def restricted_index(value: str) -> int | None:
+    raw = value[len(RESTRICTED) :]
+    return int(raw) if raw.isdigit() and len(raw) <= 3 else None
+
+
 def view_doc(view_id: str, view: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "id": view_id,
@@ -586,6 +601,10 @@ def _condition(prop: Mapping[str, Any], op: str, value: Any, ctx: Ctx) -> Predic
         if op in ("is_empty", "is_not_empty"):
             want = op == "is_empty"
             return lambda r: (not links.get(r.id) and r.id not in hidden) == want
+        if is_restricted(value):
+            # A saved condition on a row this person cannot read, as their copy of the view
+            # shows it (WIKI.md §5.7): it is an unreadable row, which matches nothing.
+            return (lambda r: False) if op == "contains" else (lambda r: True)
         try:
             target = UUID(str(value))
         except ValueError as exc:

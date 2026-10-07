@@ -153,6 +153,10 @@ export function readyConditions<T extends { op: DbFilterOp; value?: unknown }>(c
   return conditions.filter((c) => !opNeedsValue(c.op) || (c.value !== "" && c.value !== null && c.value !== undefined));
 }
 
+/** A saved relation condition on a row I cannot read comes as "restricted:<n>" instead of the row id (WIKI.md §5.7).
+ * It is shown as an inaccessible row and sent back as it is: the server keeps the hidden row when the view is saved. */
+export const isRestrictedValue = (value: unknown): value is string => typeof value === "string" && value.startsWith("restricted:");
+
 export const sortable = (type: DbPropType) => type !== "relation";
 
 // --- the table's columns -------------------------------------------------------------------------------------------
