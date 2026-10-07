@@ -6,7 +6,7 @@
     { "key": "off_site", "lucide": "MapPin", "sf": "mappin.and.ellipse", "material": "Place", "label": { "ja": "外出", "en": "Out", "zh-Hans": "外出" } },
     { "key": "gone", "lucide": "House", "sf": "house", "material": "Home", "label": { "ja": "帰宅", "en": "Gone home", "zh-Hans": "回家" } },
     { "key": "meeting", "lucide": "Users", "sf": "person.2", "material": "Groups", "label": { "ja": "会議", "en": "Meeting", "zh-Hans": "会议" } },
-    { "key": "class", "lucide": "Presentation", "sf": "rectangle.inset.filled.and.person.filled", "material": "CoPresent", "label": { "ja": "授業・発表", "en": "Class / talk", "zh-Hans": "上课・报告" } },
+    { "key": "class", "lucide": "Presentation", "sf": "rectangle.inset.filled.and.person.filled", "material": "CoPresent", "label": { "ja": "授業・発表", "en": "Class / talk", "zh-Hans": "上课/报告" } },
     { "key": "remote", "lucide": "Laptop", "sf": "laptopcomputer", "material": "Laptop", "label": { "ja": "リモート", "en": "Remote", "zh-Hans": "远程" } },
     { "key": "lunch", "lucide": "Utensils", "sf": "fork.knife", "material": "Restaurant", "label": { "ja": "食事", "en": "Lunch", "zh-Hans": "用餐" } },
     { "key": "trip", "lucide": "Plane", "sf": "airplane", "material": "Flight", "label": { "ja": "出張・移動", "en": "Trip", "zh-Hans": "出差" } },

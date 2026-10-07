@@ -430,6 +430,7 @@ const SHORTCUT_KEYS: Array<[string, MessageKey]> = [
   ["Tab / Shift + Tab", "shortcuts.indent"],
   ["Ctrl/⌘ + U", "shortcuts.attach"],
   ["Ctrl/⌘ + Shift + L", "shortcuts.focus"],
+  ["Ctrl/⌘ + Shift + Y", "shortcuts.attendance"],
   ["Ctrl/⌘ + /", "shortcuts.this"],
 ];
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { isWeb } from "../platform/env";
 import type { AppController } from "../state/app";
 import { useStoreUpdates } from "./hooks";
+import { AttendancePill } from "./AttendancePill";
 import { IconButton } from "./primitives";
 import { LogoutConfirm, SECTION_TITLES, SettingsList, SettingsSectionBody, type SettingsSection } from "./Settings";
 import { t } from "../i18n";
@@ -16,7 +17,13 @@ const FIELD = "chikuwaYou";
  * 「おやすみ時間」, then the screens (通知, 表示, 入力, プロフィールを編集, アカウント, ワークスペース, 管理) and a red
  * 「ログアウト」. A row pushes its screen; ← or the browser's Back returns to the list.
  */
-export function YouView({ controller, popToRoot = 0 }: { controller: AppController; /** Bumped by a tap on 「自分」 while it is selected. */ popToRoot?: number }) {
+export function YouView({ controller, popToRoot = 0, onAttendance }: {
+  controller: AppController;
+  /** Bumped by a tap on 「自分」 while it is selected. */
+  popToRoot?: number;
+  /** 在室状況's quick switch's 「在室状況を開く」 (only while the board is on). */
+  onAttendance?: () => void;
+}) {
   const [section, setSection] = useState<SettingsSection | null>(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
   useStoreUpdates(controller);
@@ -66,8 +73,11 @@ export function YouView({ controller, popToRoot = 0 }: { controller: AppControll
   }
   return (
     <section aria-label={t("mobileTabs.you")} className="flex min-h-0 flex-1 flex-col bg-canvas">
-      <header className="flex h-[52px] shrink-0 items-center border-b border-line px-4">
-        <strong className="min-w-0 flex-1 truncate text-[17px]">{t("mobileTabs.you")}</strong>
+      <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4">
+        <strong data-title-name className="min-w-0 truncate text-[17px]">{t("mobileTabs.you")}</strong>
+        <span data-flex-spacer className="flex-1" />
+        {/* 在室状況's quick switch (docs/PRESENCE.md §7.1), at the top of 「自分」. */}
+        <AttendancePill controller={controller} placement="inline" onOpenBoard={onAttendance} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto bg-panel/50">
         <SettingsList controller={controller} variant="page" onSelect={open} onLogout={() => setConfirmLogout(true)} />

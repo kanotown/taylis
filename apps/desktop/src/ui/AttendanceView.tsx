@@ -4,21 +4,39 @@
  * next to a name (the profile card, member lists).
  */
 import { DoorOpen, Pencil, Plus, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import type { AttendanceColor, AttendanceKind, AttendanceStateOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { ATTENDANCE_COLORS, ATTENDANCE_KINDS, boardGroups, entryOf, inRoomCount, kindLabel, myChoices, myOwnStates, sinceLabel, stateText } from "./attendance";
-import { attendanceColorStyle } from "./AttendanceChip";
+import { ATTENDANCE_COLORS, ATTENDANCE_KINDS, boardGroups, entryOf, inRoomCount, kindLabel, myChoices, myOwnStates, sinceLabel } from "./attendance";
+import { ATTENDANCE_ICONS, attendanceColorStyle, attendanceIconLabel, StateBadge, StateGlyph } from "./attendanceIcons";
 import { Avatar } from "./Avatar";
 import { BackButton } from "./compact";
 import { useStoreUpdates } from "./hooks";
 import { Button, cn, Field, Input, Modal } from "./primitives";
-import { TEXT_EMOJI_COLOR_NAMES } from "./textEmoji";
+import { TEXT_EMOJI_COLOR_NAMES, textEmojiColors } from "./textEmoji";
 import { UserPopover } from "./UserPopover";
 import { t } from "../i18n";
 
 const colorStyle = attendanceColorStyle;
+
+/** The default states' icons (apps/shared/attendance-icons.json "defaults"): a new state's icon until one is picked. */
+const DEFAULT_ICON_OF_KIND: Readonly<Record<AttendanceKind, string>> = { in_room: "in_room", on_site: "on_site", off_site: "off_site", gone: "gone" };
+
+/**
+ * Sets my state (one press; the page's buttons and the quick switch). The note stays when the same state is chosen
+ * again and is cleared by another state (a note belongs to its state: 「15 時に戻ります」 is wrong once back).
+ */
+export async function chooseMyState(controller: AppController, stateId: string, note: string | null): Promise<boolean> {
+  if (!controller.api) return false;
+  try {
+    controller.store.applyAttendanceEntry(await controller.api.setMyAttendance(stateId, note));
+    return true;
+  } catch (error) {
+    controller.setError(error);
+    return false;
+  }
+}
 
 /** The page (the centre view on a wide screen, a pushed screen on a phone). */
 export function AttendanceView({ controller }: { controller: AppController }) {
@@ -49,12 +67,10 @@ export function AttendanceView({ controller }: { controller: AppController }) {
   }
 
   const choose = async (stateId: string, nextNote: string | null) => {
-    if (!controller.api || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
-      store.applyAttendanceEntry(await controller.api.setMyAttendance(stateId, nextNote));
-    } catch (error) {
-      controller.setError(error);
+      await chooseMyState(controller, stateId, nextNote);
     } finally {
       setBusy(false);
     }
@@ -86,12 +102,13 @@ export function AttendanceView({ controller }: { controller: AppController }) {
                     disabled={busy}
                     onClick={() => void choose(state.id, current ? (mine?.note ?? null) : null)}
                     style={current ? colorStyle(state.color) : undefined}
+                    data-current={current || undefined}
                     className={cn(
                       "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60",
                       current ? "text-emoji border-transparent shadow-sm" : "border-line bg-canvas hover:bg-panel-2",
                     )}
                   >
-                    {state.emoji && <span aria-hidden>{state.emoji}</span>}
+                    <StateGlyph state={state} size={16} className={current ? undefined : "opacity-80"} />
                     {state.label}
                     {state.owner_id && <span className="sr-only"> {t("attendance.personal")}</span>}
                   </button>
@@ -131,7 +148,7 @@ export function AttendanceView({ controller }: { controller: AppController }) {
                 <ul className="flex flex-wrap gap-2">
                   {own.map((state) => (
                     <li key={state.id} className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-sm">
-                      <span>{stateText(state)}</span>
+                      <StateBadge state={state} />
                       <span className="text-xs text-muted">· {kindLabel(state.kind)}</span>
                       <button type="button" className="rounded p-1 text-muted hover:bg-panel-2 hover:text-ink" aria-label={t("attendance.editOwn", { name: state.label })} onClick={() => setEditing(state)}>
                         <Pencil size={13} />
@@ -157,7 +174,7 @@ export function AttendanceView({ controller }: { controller: AppController }) {
               <div key={group.state?.id ?? "unset"} data-attendance-group={group.state?.id ?? "unset"} className="space-y-1.5">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   {group.state ? (
-                    <span className="text-emoji inline-flex items-center rounded px-1.5 leading-6" style={colorStyle(group.state.color)}>{stateText(group.state)}</span>
+                    <StateBadge state={group.state} />
                   ) : (
                     <span className="text-muted">{t("attendance.unset")}</span>
                   )}
@@ -207,29 +224,48 @@ export function StateForm({ initial, busy, submitLabel, onCancel, onSubmit }: {
   busy: boolean;
   submitLabel: string;
   onCancel: () => void;
-  onSubmit: (form: { label: string; emoji: string | null; color: AttendanceColor; kind: AttendanceKind }) => void;
+  onSubmit: (form: { label: string; icon: string | null; emoji: string | null; color: AttendanceColor; kind: AttendanceKind }) => void;
 }) {
   const [label, setLabel] = useState(initial?.label ?? "");
+  // A new state's icon follows its kind's default (学外 → map pin …) until one is picked.
+  const [picked, setPicked] = useState<string | null | undefined>(initial ? initial.icon : undefined);
   const [emoji, setEmoji] = useState(initial?.emoji ?? "");
   const [color, setColor] = useState<AttendanceColor>(initial?.color ?? "gray");
   const [kind, setKind] = useState<AttendanceKind>(initial?.kind ?? "on_site");
+  const icon = picked === undefined ? DEFAULT_ICON_OF_KIND[kind] : picked;
+  const setIcon = setPicked;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!label.trim()) return;
-    onSubmit({ label: label.trim(), emoji: emoji.trim() || null, color, kind });
+    onSubmit({ label: label.trim(), icon, emoji: emoji.trim() || null, color, kind });
   };
   return (
     <form className="mt-4 space-y-3" onSubmit={submit}>
       <Field label={t("attendance.form.label")}>
         <Input value={label} maxLength={40} required autoFocus placeholder={t("attendance.form.labelPlaceholder")} onChange={(e) => setLabel(e.target.value)} />
       </Field>
-      <Field label={t("attendance.form.emoji")}>
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <span>{t("attendance.form.preview")}</span>
+        <StateBadge state={{ id: "", owner_id: null, label: label.trim() || t("attendance.form.labelPlaceholder"), icon, emoji: emoji.trim() || null, color, kind, position: 0, archived: false }} />
+      </div>
+      <ChoiceGrid
+        label={t("attendance.form.color")}
+        name="attendance-color"
+        options={ATTENDANCE_COLORS.map((c) => ({ value: c, label: TEXT_EMOJI_COLOR_NAMES[c] }))}
+        value={color}
+        onChange={(value) => setColor(value as AttendanceColor)}
+        render={(value) => <span aria-hidden className="block h-5 w-5 rounded-full border border-black/10" style={{ background: textEmojiColors(value).light.fg }} />}
+      />
+      <ChoiceGrid
+        label={t("attendance.form.icon")}
+        name="attendance-icon"
+        options={[{ value: "", label: t("attendance.form.iconNone") }, ...ATTENDANCE_ICONS.map((i) => ({ value: i.key, label: attendanceIconLabel(i.key) }))]}
+        value={icon ?? ""}
+        onChange={(value) => setIcon(value || null)}
+        render={(value) => (value ? <StateGlyph state={{ icon: value, emoji: null }} size={16} /> : <span aria-hidden className="text-[11px]">—</span>)}
+      />
+      <Field label={t("attendance.form.emoji")} hint={t("attendance.form.iconHint")}>
         <Input value={emoji} maxLength={32} placeholder="🗣️" onChange={(e) => setEmoji(e.target.value)} />
-      </Field>
-      <Field label={t("attendance.form.color")}>
-        <select aria-label={t("attendance.form.color")} value={color} onChange={(e) => setColor(e.target.value as AttendanceColor)} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
-          {ATTENDANCE_COLORS.map((c) => <option key={c} value={c}>{TEXT_EMOJI_COLOR_NAMES[c]}</option>)}
-        </select>
       </Field>
       <Field label={t("attendance.form.kind")} hint={t("attendance.form.kindHint")}>
         <select aria-label={t("attendance.form.kind")} value={kind} onChange={(e) => setKind(e.target.value as AttendanceKind)} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
@@ -241,6 +277,37 @@ export function StateForm({ initial, busy, submitLabel, onCancel, onSubmit }: {
         <Button type="submit" size="sm" disabled={busy || !label.trim()}>{submitLabel}</Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * A row of square choices (radio buttons: Tab into the group, arrows move; each has its name as tooltip and screen
+ * reader label). The colour swatches and the icon picker.
+ */
+function ChoiceGrid({ label, name, options, value, onChange, render }: {
+  label: string;
+  name: string;
+  options: Array<{ value: string; label: string }>;
+  value: string;
+  onChange: (value: string) => void;
+  render: (value: string) => ReactNode;
+}) {
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="mb-1.5 text-sm font-medium">{label}</legend>
+      <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5" data-choice-grid={name}>
+        {options.map((option) => (
+          <label
+            key={option.value}
+            title={option.label}
+            className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-line text-ink hover:bg-panel-2 has-[:checked]:border-accent has-[:checked]:bg-accent/10 has-[:checked]:ring-1 has-[:checked]:ring-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/60"
+          >
+            <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} aria-label={option.label} className="sr-only" />
+            {render(option.value)}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

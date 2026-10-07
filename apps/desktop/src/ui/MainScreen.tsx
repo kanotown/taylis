@@ -48,6 +48,7 @@ import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WindowControls } from "./WindowControls";
 import { WorkspaceMenu } from "./WorkspaceRail";
+import { AttendancePill } from "./AttendancePill";
 import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
 import { customTitleBar, isWeb, overlayTitleBar, TITLE_ROW_HEIGHT, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
@@ -1673,7 +1674,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       ) : value === "activity" ? (
         <ActivityView controller={controller} active={atRoot && mobileTab === "activity"} onOpen={openActivityItem} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
       ) : (
-        <YouView controller={controller} popToRoot={youPopToRoot} />
+        <YouView controller={controller} popToRoot={youPopToRoot} onAttendance={store.attendance ? () => openView("attendance") : undefined} />
       );
     return (
       <BackToList.Provider value={back}>
@@ -1755,6 +1756,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         style={trafficLights ? { height: TITLE_ROW_HEIGHT, paddingLeft: controller.showsRail ? TITLE_ROW_INSET_AFTER_RAIL : `calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1))` } : undefined}
       >
         <WorkspaceMenu controller={controller} />
+        {/* 在室状況's quick switch (docs/PRESENCE.md §7.1): the free space right of the name; icon only when narrow. */}
+        <AttendancePill controller={controller} placement="sidebar" shortcut onOpenBoard={() => openView("attendance")} />
       </div>
       <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 border-b border-sidebar-edge bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")} style={trafficLights ? { height: TITLE_ROW_HEIGHT } : undefined}>
         {/* M67: back / forward between places, beside the search box as in Slack. */}

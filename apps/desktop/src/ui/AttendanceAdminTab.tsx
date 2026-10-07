@@ -10,6 +10,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { AttendanceAdminSettingsOut, AttendanceDeliveryOut, AttendanceIntegrationOut, AttendanceLogOut, AttendancePersonalRule, AttendanceStateOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { kindLabel, onBoard, stateText } from "./attendance";
+import { StateBadge } from "./attendanceIcons";
 import { StateForm } from "./AttendanceView";
 import { fullTimestamp } from "./format";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
@@ -94,7 +95,7 @@ export function AttendanceAdminTab({ controller }: { controller: AppController }
             <ul className="divide-y divide-line rounded-xl border border-line">
               {states.map((state, index) => (
                 <li key={state.id} data-admin-state={state.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-medium">{stateText(state)}</span>
+                  <span className="flex min-w-0 flex-1"><StateBadge state={state} /></span>
                   <span className="text-xs text-muted">{kindLabel(state.kind)}</span>
                   <button type="button" className="rounded p-1 text-muted hover:bg-panel-2 disabled:opacity-30" disabled={busy || index === 0} aria-label={t("settings.navItems.up", { item: state.label })} onClick={() => move(index, -1)}>
                     <ArrowUp size={14} />

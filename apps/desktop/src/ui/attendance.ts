@@ -7,6 +7,7 @@
  */
 import type { AttendanceBoardOut, AttendanceEntryOut, AttendanceKind, AttendanceStateOut, UserPublic } from "../api/types";
 import { type MessageKey, t } from "../i18n";
+import { attendanceIcon } from "./attendanceIcons";
 
 export const ATTENDANCE_KINDS: readonly AttendanceKind[] = ["in_room", "on_site", "off_site", "gone"];
 /** The text emoji palette (apps/shared/text-emoji.json): the states' colours. */
@@ -96,7 +97,15 @@ export function sinceLabel(since: string, now: Date = new Date()): string {
   return t("attendance.since", { when: sameDay ? time : `${at.getMonth() + 1}/${at.getDate()} ${time}` });
 }
 
-/** A state's name with its emoji (「🟢 在室」). */
+/**
+ * A state as plain text (a select's option, a log line): the name, with the emoji in front only when the state has no
+ * icon this client draws (「🟢 在室」); where a picture can be drawn, use StateBadge / StateGlyph (attendanceIcons.tsx).
+ */
 export function stateText(state: AttendanceStateOut): string {
-  return state.emoji ? `${state.emoji} ${state.label}` : state.label;
+  return state.emoji && !attendanceIcon(state.icon) ? `${state.emoji} ${state.label}` : state.label;
+}
+
+/** My state now (null: none, or the board is off). */
+export function myState(board: AttendanceBoardOut | null, meId: string | null | undefined): AttendanceStateOut | null {
+  return meId ? stateOf(board, entryOf(board, meId)?.state_id) : null;
 }
