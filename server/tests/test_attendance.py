@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import Settings
@@ -25,6 +25,7 @@ from app.core.time import utcnow
 from app.events.models import OutboxEvent
 from app.modules.attendance import service, webhooks
 from app.modules.attendance.models import (
+    AttendanceCurrent,
     AttendanceDelivery,
     AttendanceIntegration,
     AttendanceLog,
@@ -146,6 +147,12 @@ async def test_english_admin_gets_english_defaults(
 SHARED = Path(__file__).resolve().parents[2] / "apps" / "shared"
 MIGRATION_0101 = (
     Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0101_attendance_icons.py"
+)
+MIGRATION_0104 = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "versions"
+    / "0104_attendance_changed_at.py"
 )
 
 
@@ -1108,6 +1115,114 @@ async def test_inbound_api_auth_mapping_and_loop_prevention(
         url, json={"email": "alice@example.com", "state": "在室"}, headers=new_auth
     )
     assert off.status_code == 401
+
+
+async def test_late_inbound_changes_never_undo_newer_ones(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """Review v0.1.43 #8: a late change is compared with the last change taken (`changed_at`,
+    moved by note-only changes too), not with `since` (moved by state changes only)."""
+    root = await make_user(db, "root", role="admin")
+    alice = await make_user(db, "alice")
+    as_user(root)
+    settings = await _enable(client)
+    site = await _integration(client, "site", inbound=True)
+    auth = {"Authorization": f"Bearer {site['token']}"}
+    url = "/api/v1/integrations/attendance"
+    app.dependency_overrides.clear()
+
+    async def post(state: str, note: str, minutes_ago: int) -> dict[str, Any]:
+        at = (utcnow() - timedelta(minutes=minutes_ago)).isoformat()
+        response = await client.post(
+            url, json={"username": "alice", "state": state, "note": note, "at": at}, headers=auth
+        )
+        assert response.status_code == 200, response.text
+        data: dict[str, Any] = response.json()
+        return data
+
+    async def board() -> tuple[str, str | None]:
+        as_user(alice)
+        entries = (await client.get("/api/v1/attendance")).json()["entries"]
+        app.dependency_overrides.clear()
+        entry = next(e for e in entries if e["user_id"] == str(alice.id))
+        return entry["state_id"], entry["note"]
+
+    async def log_count() -> int:
+        return int(await db.scalar(select(func.count()).select_from(AttendanceLog)) or 0)
+
+    in_room, gone = _state_id(settings, "in_room"), _state_id(settings, "gone")
+    # Only the note changes; then an older note arrives late.
+    assert (await post("在室", "original", 60))["applied"] is True
+    since = (await post("在室", "new note", 10))["since"]
+    late = await post("在室", "old late note", 30)
+    assert late["applied"] is False and late["reason"] == "stale" and late["since"] == since
+    assert await board() == (in_room, "new note")
+    # A late state change older than a later note-only change: stale too.
+    late_state = await post("帰宅", "", 20)
+    assert late_state["applied"] is False and late_state["reason"] == "stale"
+    assert await board() == (in_room, "new note")
+    # Newer than the note: taken (and `since` moves, the state changed).
+    assert (await post("帰宅", "bye", 5))["applied"] is True
+    assert await board() == (gone, "bye")
+    logged = await log_count()
+
+    # The same value said again later moves changed_at on: a change from before it is stale.
+    same = await post("帰宅", "bye", 2)
+    assert same["applied"] is False and same["reason"] == "unchanged"
+    assert (await post("在室", "", 3))["reason"] == "stale"
+    # An older resend of the same value is just unchanged (it does not move anything back).
+    assert (await post("帰宅", "bye", 4))["reason"] == "unchanged"
+    assert (await post("在室", "", 3))["reason"] == "stale"
+    assert await log_count() == logged
+
+    # A change made in the app is the newest: an outside change from before it is stale.
+    as_user(alice)
+    mine = await client.put("/api/v1/attendance/me", json={"state_id": in_room, "note": "app"})
+    assert mine.status_code == 200, mine.text
+    app.dependency_overrides.clear()
+    assert (await post("帰宅", "site", 1))["reason"] == "stale"
+    assert await board() == (in_room, "app")
+    # A note-only change in the app counts as well.
+    as_user(alice)
+    await client.put("/api/v1/attendance/me", json={"state_id": in_room, "note": "app 2"})
+    app.dependency_overrides.clear()
+    assert (await post("在室", "site", 0))["applied"] is True  # `at` now: newer
+    assert await board() == (in_room, "site")
+    assert await log_count() == logged + 3
+    notes = [e.payload.get("note") for e in await _events(db, "attendance.updated")]
+    assert "old late note" not in notes
+
+
+async def test_migration_0104_backfills_changed_at(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """0104: the newest logged change of the person, never before `since`."""
+    spec = importlib.util.spec_from_file_location("migration_0104", MIGRATION_0104)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    root = await make_user(db, "root", role="admin")
+    bob = await make_user(db, "bob")
+    root_id, bob_id = root.id, bob.id
+    as_user(root)
+    settings = await _enable(client)
+    in_room = _state_id(settings, "in_room")
+    await client.put("/api/v1/attendance/me", json={"state_id": in_room})
+    await client.put("/api/v1/attendance/me", json={"state_id": in_room, "note": "later"})
+    as_user(bob)
+    await client.put("/api/v1/attendance/me", json={"state_id": in_room})
+    noted = await db.scalar(
+        select(func.max(AttendanceLog.at)).where(AttendanceLog.user_id == root.id)
+    )
+    await db.execute(delete(AttendanceLog).where(AttendanceLog.user_id == bob.id))  # purged
+    await db.execute(update(AttendanceCurrent).values(changed_at=utcnow() - timedelta(days=9)))
+    await db.commit()
+    await db.execute(migration.BACKFILL)
+    await db.commit()
+    db.expire_all()
+    rows = {r.user_id: r for r in (await db.execute(select(AttendanceCurrent))).scalars()}
+    assert rows[root_id].changed_at == noted and rows[root_id].changed_at > rows[root_id].since
+    assert rows[bob_id].changed_at == rows[bob_id].since
 
 
 async def test_anonymizing_forgets_the_person(

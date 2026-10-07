@@ -78,6 +78,7 @@ CREATE TABLE attendance_current (
   user_id        uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   state_id       uuid NOT NULL REFERENCES attendance_states(id),
   since          timestamptz NOT NULL,   -- この状態になった時刻（メモだけの変更では動かない）
+  changed_at     timestamptz NOT NULL,   -- 最後に受け付けた変更（状態・メモ）の時刻（移行 0104。§6 の古さの比較に使う）
   note           varchar(100),
   source         text NOT NULL,          -- app | admin | integration | auto
   actor_id       uuid,                   -- 変えた人（本人 / 管理者。連携なら NULL）
@@ -317,8 +318,14 @@ compose は `infra/secrets/attendance/` を読み取り専用でマウント）�
 - `state`：状態の id か名前（前後の空白を除き、大文字小文字を区別しない）。探す順は、ワークスペースの状態、その人の個人の状態
   （消したものは対象外）。見つからなければ `422 attendance_state_unknown`。**個人の状態は作らない**（打ち間違いでごみが増えるため。
   本人がアプリで足す）。
-- `at`（省略可）：その変更が起きた時刻。未来は今にそろえ、24 時間より前は `422`。今の `since` より古い変更は反映しない
-  （`200 {applied: false, reason: "stale"}`。受け手と送り手が行き違ったときに古い値で上書きしない）。
+- `at`（省略可）：その変更が起きた時刻。未来は今にそろえ、24 時間より前は `422`。**最後に受け付けた変更**（`changed_at`）より古い変更は
+  反映しない（`200 {applied: false, reason: "stale"}`。受け手と送り手が行き違ったときに古い値で上書きしない）。
+  - 比べるのは `since` ではない（2026-10-07、レビュー v0.1.43 #8）：`since` は状態が変わったときしか動かないので、同じ状態のまま
+    メモだけ変えた後に、それより古いメモの変更が遅れて届くと上書きしてしまっていた。`changed_at` は状態・メモどちらの変更でも、
+    アプリ・管理者・受信 API のどの変更でも進む（アプリと管理者の変更は受け付けた時刻）。移行 0104 は、その人の記録の最後の
+    `at`（`since` より前にはしない）で埋める。
+  - 今と同じ状態・メモの再送（下の `unchanged`）は何も書かないが、その `at` が `changed_at` より新しければ `changed_at` だけ進める
+    （その時刻にもその値だったので、それより前の変更が遅れて届いても戻さない）。古い再送は何も動かさない。
 - `note`（省略可）：100 文字まで。省略すると空。
 - 今と同じ状態・メモなら何もしない（`200 {applied: false, reason: "unchanged"}`）。これで、Taylis から送った変更を外のサイトが
   送り返してきても止まる（同じ連携へはそもそも送り返さない。§5.1）。

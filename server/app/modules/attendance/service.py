@@ -278,22 +278,28 @@ async def _apply(
     at: datetime | None = None,
 ) -> Applied:
     """Sets the state in the caller's transaction (it commits). Unchanged state and note: nothing
-    happens. An `at` older than the current since is stale and ignored (docs/PRESENCE.md §6)."""
+    happens (a newer `at` still moves changed_at on). An `at` older than the last change taken
+    (`changed_at`: state or note, not `since`) is stale and ignored (docs/PRESENCE.md §6)."""
     await _lock_person(db, user.id)
     now = utcnow()
+    moment = min(at, now) if at is not None else now
     current = await db.get(AttendanceCurrent, user.id, with_for_update=True, populate_existing=True)
     if current is not None:
         if current.state_id == state.id and (current.note or None) == (note or None):
+            # The same value said again, later: it still holds at that time, so a change from
+            # before it that arrives late must not undo it.
+            if moment > current.changed_at:
+                current.changed_at = moment
             return Applied(to_entry_out(current), applied=False, reason="unchanged")
-        if at is not None and at < current.since:
+        if at is not None and at < current.changed_at:
             return Applied(to_entry_out(current), applied=False, reason="stale")
-    moment = min(at, now) if at is not None else now
     from_state = current.state_id if current is not None else None
     if current is None:
         current = AttendanceCurrent(
             user_id=user.id,
             state_id=state.id,
             since=moment,
+            changed_at=moment,
             note=note,
             source=source,
             actor_id=actor_id,
@@ -304,6 +310,7 @@ async def _apply(
     else:
         if current.state_id != state.id:
             current.since = moment
+        current.changed_at = moment
         current.state_id = state.id
         current.note = note
         current.source = source
