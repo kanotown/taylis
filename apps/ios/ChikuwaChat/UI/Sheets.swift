@@ -248,6 +248,7 @@ struct ChannelInfoView: View {
                     HStack(spacing: 6) {
                         Text(user?.displayName ?? "?")
                         StatusEmojiView(user: user, controller: controller)
+                        AttendanceUserChip(controller: controller, userId: member.userId)  // M140
                     }
                     Text("@\(user?.username ?? "")" + (Roster.titleExtra(user?.title, store.roster[member.userId]).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
                 }

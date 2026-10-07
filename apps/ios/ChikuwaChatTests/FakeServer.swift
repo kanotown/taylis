@@ -73,7 +73,14 @@ final class FakeServer {
     }
 
     @MainActor
-    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ReservationsApi {
+    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ReservationsApi, AttendanceApi {
+        func attendance() async throws -> AttendanceBoardOut {
+            try maybeFail("attendance")
+            server.attendanceReads += 1
+            guard server.users[userId]?.role != "guest" else { throw ApiError.api(status: 403, code: "guest_restricted", message: "Guests") }
+            return server.attendance ?? AttendanceBoardOut(enabled: false, states: [], entries: [])
+        }
+
         func activitySummary() async throws -> ActivitySummary {
             try maybeFail("activitySummary")
             guard let summary = server.activity[userId] else { throw ApiError.api(status: 404, code: "not_found", message: "Not Found") }
@@ -577,6 +584,31 @@ final class FakeServer {
                                                  "text": .string(text), "operator": .bool(true), "at": .string(now())])]))
     }
 
+    /// M140: the 在室状況 board (nil or `enabled: false` = off); bootstrap gives it to everyone but guests while on.
+    var attendance: AttendanceBoardOut?
+    /// How many times GET /attendance was read.
+    var attendanceReads = 0
+
+    private var attendanceAudience: Set<String> { Set(users.values.filter { $0.role != "guest" && $0.role != "bot" }.map(\.id)) }
+
+    /// attendance.updated for one person's row (the board changes as the server's would).
+    func setAttendance(_ entry: AttendanceEntryOut, logId: Int = 1) {
+        if var board = attendance {
+            board.entries.removeAll { $0.userId == entry.userId }
+            board.entries.append(entry)
+            attendance = board
+        }
+        var data = (try? JSONValue.from(entry)) ?? .null
+        if case .object(var map) = data { map["log_id"] = .number(Double(logId)); data = .object(map) }
+        emitEvent(attendanceAudience, "attendance.updated", channelId: nil, data: data)
+    }
+
+    /// attendance.config_updated (empty) after the board's settings or states changed.
+    func setAttendanceConfig(_ board: AttendanceBoardOut?) {
+        attendance = board
+        emitEvent(attendanceAudience, "attendance.config_updated", channelId: nil, data: .object([:]))
+    }
+
     /// M15d: "user:channel:parent" → the saved draft.
     var drafts: [String: DraftOut] = [:]
 
@@ -1063,7 +1095,8 @@ final class FakeServer {
                             bookmarks: bookmarks[userId] ?? [],
                             favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
                             customEmoji: Array(customEmoji.values), roster: Array(roster.values), drafts: drafts(of: userId),
-                            activity: activity[userId], workspaceSettings: workspaceSettings)
+                            activity: activity[userId], workspaceSettings: workspaceSettings,
+                            attendance: user.role == "guest" || attendance?.enabled != true ? nil : attendance)
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

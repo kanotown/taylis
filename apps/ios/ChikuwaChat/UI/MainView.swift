@@ -669,6 +669,8 @@ struct MainView: View {
             DeadlinesView(controller: controller)  // M86: a row opens the deadline over the list, on this stack
         case ReservationsView.selectionId:
             ReservationsView(controller: controller)  // M112
+        case AttendanceView.selectionId:
+            AttendanceView(controller: controller)  // M140
         case FilesView.selectionId:
             FilesView(controller: controller) { messageId, channelId, parentId in
                 Task {
@@ -703,7 +705,7 @@ private extension String {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
          TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId,
-         DocsView.selectionId].contains(self)
+         DocsView.selectionId, AttendanceView.selectionId].contains(self)
     }
 }
 

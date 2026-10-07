@@ -1041,6 +1041,8 @@ struct BootstrapOut: Codable {
     var blockedUserIds: [String]? = nil
     /// M122 (docs/WIKI.md §10): the wiki's change feed position (the tree is GET /wiki/tree); nil from a server without it.
     var wiki: WikiBootstrap? = nil
+    /// M140 (docs/PRESENCE.md §4): the 在室状況 board; nil for guests, while it is off and from a server before M140.
+    var attendance: AttendanceBoardOut? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message

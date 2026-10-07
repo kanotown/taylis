@@ -258,6 +258,38 @@ final class SyncEngine {
         }
     }
 
+    /// M140 (docs/PRESENCE.md §4): GET /attendance; `enabled: false` (turned off) clears the board. Not for guests (the
+    /// server refuses them and sends them no events). A failure keeps what the store holds until the next bootstrap.
+    func loadAttendance() async {
+        guard let attendanceApi = api as? AttendanceApi, let role = store.me?.role, role == "admin" || role == "member" else { return }
+        attendanceReads += 1
+        let read = attendanceReads
+        do {
+            let board = try await attendanceApi.attendance()
+            guard read > attendanceKept else { return }
+            attendanceKept = read
+            store.setAttendance(board)
+        } catch {
+            print("could not load the attendance board: \(error)")
+        }
+    }
+
+    /// GET /attendance started, and the latest one whose answer the store took (an older answer never overwrites).
+    private var attendanceReads = 0
+    private var attendanceKept = 0
+
+    /// attendance.config_updated comes in bursts (a reorder, several edits): one read for them, 300 ms after the first.
+    private var attendanceReload: Task<Void, Never>?
+    private func scheduleAttendanceReload() {
+        guard attendanceReload == nil else { return }
+        attendanceReload = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            self.attendanceReload = nil
+            await self.loadAttendance()
+        }
+    }
+
     /// Save edited drafts now instead of after the typing pause (tests, sign-out).
     func flushDrafts() async { await drafts.flush() }
 
@@ -594,6 +626,9 @@ final class SyncEngine {
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
         Task { await self.loadReservationPools() }  // M112
+        // M140: a bootstrap answer is newer than any board read that started before it.
+        attendanceKept = attendanceReads
+        store.setAttendance(bootstrap.attendance)
         let wikiFeed = bootstrap.wiki
         Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
         onBadge?(store.badgeCount)
@@ -738,6 +773,13 @@ final class SyncEngine {
             let payload = try frame.data.decode(Payload.self)
             if payload.deleted == true { store.dropReservationPool(payload.poolId) }
             scheduleReservationReload()
+        case "attendance.updated":
+            // M140 (docs/PRESENCE.md §4): one person's row; a state not on the board held here (someone's new own
+            // state): read the board.
+            if !store.applyAttendanceEntry(try frame.data.decode(AttendanceEntryOut.self)) { scheduleAttendanceReload() }
+        case "attendance.config_updated":
+            // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
+            scheduleAttendanceReload()
         case "reservation.notice":  // M112: an activity item for me (an operator's to-do, or news of my own reservation)
             scheduleActivityRefresh()
             if let notice = try? frame.data.decode(ReservationNotice.self) { onReservationNotice?(notice) }

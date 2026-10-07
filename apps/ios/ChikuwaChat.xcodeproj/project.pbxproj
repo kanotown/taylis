@@ -24,6 +24,8 @@
 		0BF3079882ED5F8F73F73D6D /* ThreadsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095DC9C14EA053C04A5D3DEA /* ThreadsSnapshotTests.swift */; };
 		0CD37B57BF8A3351293975F1 /* DeadlineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F2E1F442AABF5274105E9F /* DeadlineViews.swift */; };
 		A99E0001C0FFEE0000000002 /* ReservationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99E0002C0FFEE0000000002 /* ReservationViews.swift */; };
+		A1400001C0FFEE0000000003 /* AttendanceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000003 /* AttendanceViews.swift */; };
+		A1400001C0FFEE0000000002 /* Attendance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000002 /* Attendance.swift */; };
 		B1170001C0FFEE0000000001 /* Calls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1170002C0FFEE0000000001 /* Calls.swift */; };
 		0ECCCE363BA13FDFDB89F930 /* ScheduleSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */; };
 		118575FA56C717B3175B0528 /* SectionFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */; };
@@ -83,6 +85,7 @@
 		4516C9968AF6F1EEDAFBD299 /* MessageActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B42F0BDEFE3B98EEFF6C089 /* MessageActions.swift */; };
 		4816B148BAC44696895EE017 /* DeadlineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91630F043CCF6DFD7412AD3 /* DeadlineTests.swift */; };
 		A99E0001C0FFEE0000000003 /* ReservationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99E0002C0FFEE0000000003 /* ReservationTests.swift */; };
+		A1400001C0FFEE0000000004 /* AttendanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000004 /* AttendanceTests.swift */; };
 		B1180001C0FFEE0000000001 /* DmPinsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1180002C0FFEE0000000001 /* DmPinsTests.swift */; };
 		B1170001C0FFEE0000000002 /* CallsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1170002C0FFEE0000000002 /* CallsTests.swift */; };
 		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
@@ -254,6 +257,7 @@
 		EAAE7B92CDA78833C1DF4F4A /* TaskForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4E163AE2421C62B73980FB9 /* TaskForm.swift */; };
 		EDA87000DF31685194047A41 /* WorkflowModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2130A3A2160C181A9D70A45 /* WorkflowModels.swift */; };
 		A99E0001C0FFEE0000000001 /* ReservationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99E0002C0FFEE0000000001 /* ReservationModels.swift */; };
+		A1400001C0FFEE0000000001 /* AttendanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000001 /* AttendanceModels.swift */; };
 		EDDA7B56DBA5B948E7557B5B /* CanvasSave.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9393E38B1CAB5781D5AF359 /* CanvasSave.swift */; };
 		EDE53AD32D895962D18304A7 /* ComposerFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191961E1D178CA371B035C04 /* ComposerFormat.swift */; };
 		F078BBB3BB92B5F179638714 /* ScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */; };
@@ -359,6 +363,8 @@
 		7538F2457861132B83A4BC2D /* PageSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageSearch.swift; sourceTree = "<group>"; };
 		26F2E1F442AABF5274105E9F /* DeadlineViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeadlineViews.swift; sourceTree = "<group>"; };
 		A99E0002C0FFEE0000000002 /* ReservationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReservationViews.swift; sourceTree = "<group>"; };
+		A1400002C0FFEE0000000003 /* AttendanceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceViews.swift; sourceTree = "<group>"; };
+		A1400002C0FFEE0000000002 /* Attendance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attendance.swift; sourceTree = "<group>"; };
 		B1170002C0FFEE0000000001 /* Calls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Calls.swift; sourceTree = "<group>"; };
 		278043686D3BDC38186699E5 /* Recurring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recurring.swift; sourceTree = "<group>"; };
 		279D7A61D6600ABCC49403E1 /* CanvasViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasViews.swift; sourceTree = "<group>"; };
@@ -506,6 +512,7 @@
 		B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClientTests.swift; sourceTree = "<group>"; };
 		B2130A3A2160C181A9D70A45 /* WorkflowModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowModels.swift; sourceTree = "<group>"; };
 		A99E0002C0FFEE0000000001 /* ReservationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReservationModels.swift; sourceTree = "<group>"; };
+		A1400002C0FFEE0000000001 /* AttendanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceModels.swift; sourceTree = "<group>"; };
 		B5CFB01E67A972B78B96D8C2 /* PinsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinsView.swift; sourceTree = "<group>"; };
 		B5F2726C9A1A5967B40BDC4A /* TemplatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesTests.swift; sourceTree = "<group>"; };
 		68D129113CD0B55925462B86 /* TitleDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleDisplayTests.swift; sourceTree = "<group>"; };
@@ -544,6 +551,7 @@
 		D79BC6E6143225F08A21EECD /* WorkflowSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowSnapshotTests.swift; sourceTree = "<group>"; };
 		D91630F043CCF6DFD7412AD3 /* DeadlineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeadlineTests.swift; sourceTree = "<group>"; };
 		A99E0002C0FFEE0000000003 /* ReservationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReservationTests.swift; sourceTree = "<group>"; };
+		A1400002C0FFEE0000000004 /* AttendanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceTests.swift; sourceTree = "<group>"; };
 		B1180002C0FFEE0000000001 /* DmPinsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmPinsTests.swift; sourceTree = "<group>"; };
 		B1170002C0FFEE0000000002 /* CallsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallsTests.swift; sourceTree = "<group>"; };
 		DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareMessageSheet.swift; sourceTree = "<group>"; };
@@ -637,6 +645,7 @@
 				9570146DD2C90451ED144458 /* TaskModels.swift */,
 				B2130A3A2160C181A9D70A45 /* WorkflowModels.swift */,
 				A99E0002C0FFEE0000000001 /* ReservationModels.swift */,
+				A1400002C0FFEE0000000001 /* AttendanceModels.swift */,
 			);
 			path = Api;
 			sourceTree = "<group>";
@@ -738,6 +747,7 @@
 				1E58245D5480A2E09DFF4DC8 /* CustomEmojiTests.swift */,
 				D91630F043CCF6DFD7412AD3 /* DeadlineTests.swift */,
 				A99E0002C0FFEE0000000003 /* ReservationTests.swift */,
+				A1400002C0FFEE0000000004 /* AttendanceTests.swift */,
 				B1180002C0FFEE0000000001 /* DmPinsTests.swift */,
 				B1170002C0FFEE0000000002 /* CallsTests.swift */,
 				72879EA8557DCBD4F44B68E7 /* DMPreviewTests.swift */,
@@ -855,6 +865,8 @@
 				1F8DFD2ABCB6F523BB308DDB /* DeadlineRules.swift */,
 				26F2E1F442AABF5274105E9F /* DeadlineViews.swift */,
 				A99E0002C0FFEE0000000002 /* ReservationViews.swift */,
+				A1400002C0FFEE0000000003 /* AttendanceViews.swift */,
+				A1400002C0FFEE0000000002 /* Attendance.swift */,
 				B1170002C0FFEE0000000001 /* Calls.swift */,
 				7787A42779309636F0D889A4 /* DirectoryView.swift */,
 				0979C692C57AD564B5051EAC /* DND.swift */,
@@ -1154,6 +1166,7 @@
 				33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */,
 				4816B148BAC44696895EE017 /* DeadlineTests.swift in Sources */,
 				A99E0001C0FFEE0000000003 /* ReservationTests.swift in Sources */,
+				A1400001C0FFEE0000000004 /* AttendanceTests.swift in Sources */,
 				B1180001C0FFEE0000000001 /* DmPinsTests.swift in Sources */,
 				B1170001C0FFEE0000000002 /* CallsTests.swift in Sources */,
 				F6B0289DCC3A8F13206BE205 /* DraftSyncTests.swift in Sources */,
@@ -1296,6 +1309,8 @@
 				D5303BF2958066D4B2D64736 /* DeadlineRules.swift in Sources */,
 				0CD37B57BF8A3351293975F1 /* DeadlineViews.swift in Sources */,
 				A99E0001C0FFEE0000000002 /* ReservationViews.swift in Sources */,
+				A1400001C0FFEE0000000003 /* AttendanceViews.swift in Sources */,
+				A1400001C0FFEE0000000002 /* Attendance.swift in Sources */,
 				B1170001C0FFEE0000000001 /* Calls.swift in Sources */,
 				BD01E7FD93BC7A0D72CA8F47 /* DirectoryView.swift in Sources */,
 				08F3CC14499210725A24A0E5 /* DraftSync.swift in Sources */,
@@ -1383,6 +1398,7 @@
 				A4237035856B7D0FB8927960 /* WebSocketTransport.swift in Sources */,
 				EDA87000DF31685194047A41 /* WorkflowModels.swift in Sources */,
 				A99E0001C0FFEE0000000001 /* ReservationModels.swift in Sources */,
+				A1400001C0FFEE0000000001 /* AttendanceModels.swift in Sources */,
 				B9648EAE32F1694D4F17D34C /* WorkflowViews.swift in Sources */,
 				BAE6BC79A402D35E9B26FF35 /* Workflows.swift in Sources */,
 				F4589722D2A3D658DBB7DD74 /* WorkspaceViews.swift in Sources */,
