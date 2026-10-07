@@ -15,6 +15,9 @@ import { Check, CircleDashed, DoorOpen } from "lucide-react";
 import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
+import type { ActionOut } from "../api/types";
+import { actionTitle, onAttendance } from "./actions";
+import { ActionGlyph, useActionPress } from "./ActionButtons";
 import { entryOf, myChoices, myState } from "./attendance";
 import { attendanceColorStyle, StateGlyph } from "./attendanceIcons";
 import { chooseMyState } from "./AttendanceView";
@@ -86,6 +89,8 @@ export function AttendancePill({ controller, onOpenBoard, placement, collapsed, 
   const measurer = useRef<HTMLSpanElement>(null);
   const [measured, setMeasured] = useState<PillMode>("full");
   const [open, setOpen] = useState(false);
+  // M143 (docs/ACTIONS.md D17): the 操作ボタン in the menu too, when the workspace says so.
+  const { press, busy, dialog } = useActionPress(controller);
   const visible = !!board && !!meId && !controller.isGuest;
   const state = visible ? myState(board, meId) : null;
   const label = state?.label ?? t("attendance.pill.none");
@@ -170,10 +175,17 @@ export function AttendancePill({ controller, onOpenBoard, placement, collapsed, 
         {open && (
           // The menu focuses the current state itself (rather than Radix's first focusable).
           <PopoverContent align={sidebar ? "end" : "start"} className="w-72 p-1.5" onOpenAutoFocus={(event) => event.preventDefault()}>
-            <PillMenu controller={controller} onDone={() => setOpen(false)} onOpenBoard={onOpenBoard ? () => { setOpen(false); onOpenBoard(); } : undefined} />
+            <PillMenu
+              controller={controller}
+              onDone={() => setOpen(false)}
+              onOpenBoard={onOpenBoard ? () => { setOpen(false); onOpenBoard(); } : undefined}
+              busyActions={busy}
+              onAction={(action) => { setOpen(false); press(action); }}
+            />
           </PopoverContent>
         )}
       </PopoverRoot>
+      {dialog}
     </div>
   );
 }
@@ -183,7 +195,13 @@ function shortcutLabel(): string {
 }
 
 /** The menu: my states as one-press items, the note, 「在室状況を開く」. */
-function PillMenu({ controller, onDone, onOpenBoard }: { controller: AppController; onDone: () => void; onOpenBoard?: () => void }) {
+function PillMenu({ controller, onDone, onOpenBoard, busyActions, onAction }: {
+  controller: AppController;
+  onDone: () => void;
+  onOpenBoard?: () => void;
+  busyActions: ReadonlySet<string>;
+  onAction: (action: ActionOut) => void;
+}) {
   const store = controller.store;
   const board = store.attendance!;
   const meId = store.me?.id ?? null;
@@ -196,6 +214,7 @@ function PillMenu({ controller, onDone, onOpenBoard }: { controller: AppControll
     (items?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]') ?? items?.querySelector<HTMLElement>('[role="menuitemradio"]'))?.focus();
   }, []);
   const choices = myChoices(board, meId);
+  const actions = onAttendance(store.actions);
 
   const choose = async (stateId: string) => {
     if (busy) return;
@@ -273,6 +292,28 @@ function PillMenu({ controller, onDone, onOpenBoard }: { controller: AppControll
             {t("common.save")}
           </Button>
         </form>
+      )}
+      {actions.length > 0 && (
+        <div data-attendance-menu-actions className="mt-1.5 border-t border-line pt-1.5">
+          <div className="px-2 pb-1 text-[11px] font-semibold text-muted">{t("nav.actions")}</div>
+          <div role="group" aria-label={t("nav.actions")} className="flex flex-col">
+            {actions.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                data-action={action.id}
+                disabled={busyActions.has(action.id)}
+                onClick={() => onAction(action)}
+                className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-sm outline-none transition-colors hover:bg-panel-2 focus-visible:bg-panel-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:opacity-60"
+              >
+                <span aria-hidden className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-panel-2">
+                  <ActionGlyph action={action} size={14} />
+                </span>
+                <span className="min-w-0 flex-1 truncate">{actionTitle(action)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {onOpenBoard && <div role="separator" className="mx-1 my-1.5 h-px bg-line" />}
       {onOpenBoard && (

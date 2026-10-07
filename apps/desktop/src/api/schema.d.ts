@@ -4,6 +4,50 @@
  */
 
 export interface paths {
+    "/api/v1/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Actions
+         * @description The enabled buttons I may press, in order (none while the feature is off, and never for
+         *     guests or bots). No URL, key or rights.
+         */
+        get: operations["list_actions_api_v1_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/actions/{action_id}/invoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoke
+         * @description Calls the button's relay once, now, and returns its answer (docs/ACTIONS.md §4). A relay
+         *     failure is 200 with `ok: false`. The same client_invoke_id again returns the earlier result
+         *     without calling the relay. Never retried. 409 actions_disabled / action_disabled, 403
+         *     action_not_allowed, 429 (one press per button every few seconds).
+         */
+        post: operations["invoke_api_v1_actions__action_id__invoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/activity": {
         parameters: {
             query?: never;
@@ -84,6 +128,125 @@ export interface paths {
         get: operations["activity_summary_api_v1_activity_summary_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin List
+         * @description Every button, with its relay, key file name (never the key) and rights.
+         */
+        get: operations["admin_list_api_v1_admin_actions_get"];
+        put?: never;
+        /**
+         * Create Action
+         * @description `url` must be https and public; `secret_name` names the signing key's file in
+         *     ACTION_SECRETS_DIR. At most 50 buttons.
+         */
+        post: operations["create_action_api_v1_admin_actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/actions/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder */
+        put: operations["reorder_api_v1_admin_actions_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/actions/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_admin_actions_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Settings */
+        patch: operations["update_settings_api_v1_admin_actions_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/actions/{action_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Action */
+        delete: operations["delete_action_api_v1_admin_actions__action_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Action */
+        patch: operations["update_action_api_v1_admin_actions__action_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/actions/{action_id}/invocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invocations
+         * @description Newest first.
+         */
+        get: operations["list_invocations_api_v1_admin_actions__action_id__invocations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/actions/{action_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Action
+         * @description 「テスト送信」: an `action.test` now (the relay must not act on it); recorded, never
+         *     retried.
+         */
+        post: operations["test_action_api_v1_admin_actions__action_id__test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5463,6 +5626,280 @@ export interface components {
             /** Reminded */
             reminded: number;
         };
+        /** ActionAdminOut */
+        ActionAdminOut: {
+            /** Action Key */
+            action_key: string;
+            /** Allowed Group Ids */
+            allowed_group_ids: string[];
+            /** Allowed Roles */
+            allowed_roles: ("admin" | "manager" | "member")[];
+            /** Allowed User Ids */
+            allowed_user_ids: string[];
+            /** Confirm */
+            confirm: boolean;
+            /** Confirm Text */
+            confirm_text: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Emoji */
+            emoji: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Group Label */
+            group_label: string | null;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Invoked At */
+            last_invoked_at?: string | null;
+            /** Name */
+            name: string;
+            /** Notice Channel Id */
+            notice_channel_id: string | null;
+            /** Position */
+            position: number;
+            /** Secret Name */
+            secret_name: string;
+            /** Secret Present */
+            secret_present: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url: string;
+        };
+        /** ActionCreate */
+        ActionCreate: {
+            /** Action Key */
+            action_key: string;
+            /** Allowed Group Ids */
+            allowed_group_ids?: string[];
+            /** Allowed Roles */
+            allowed_roles?: ("admin" | "manager" | "member")[];
+            /** Allowed User Ids */
+            allowed_user_ids?: string[];
+            /**
+             * Confirm
+             * @default true
+             */
+            confirm: boolean;
+            /** Confirm Text */
+            confirm_text?: string | null;
+            /** Emoji */
+            emoji?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Group Label */
+            group_label?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Name */
+            name: string;
+            /** Notice Channel Id */
+            notice_channel_id?: string | null;
+            /** Secret Name */
+            secret_name: string;
+            /** Url */
+            url: string;
+        };
+        /** ActionInvocationOut */
+        ActionInvocationOut: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "invoke" | "test";
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Message */
+            message: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "succeeded" | "failed";
+            /** Status Code */
+            status_code: number | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** ActionInvoke */
+        ActionInvoke: {
+            /**
+             * Client Invoke Id
+             * Format: uuid
+             */
+            client_invoke_id: string;
+        };
+        /** ActionInvokeOut */
+        ActionInvokeOut: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Error */
+            error: string | null;
+            /**
+             * Invoke Id
+             * Format: uuid
+             */
+            invoke_id: string;
+            /** Message */
+            message: string | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Repeated
+             * @default false
+             */
+            repeated: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "succeeded" | "failed";
+            /** Status Code */
+            status_code: number | null;
+        };
+        /** ActionListOut */
+        ActionListOut: {
+            /**
+             * Actions
+             * @default []
+             */
+            actions: components["schemas"]["ActionOut"][];
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Show On Attendance
+             * @default false
+             */
+            show_on_attendance: boolean;
+        };
+        /** ActionOrder */
+        ActionOrder: {
+            /** Ids */
+            ids: string[];
+        };
+        /**
+         * ActionOut
+         * @description A button I may press (no URL, key or rights).
+         */
+        ActionOut: {
+            /** Confirm */
+            confirm: boolean;
+            /** Confirm Text */
+            confirm_text: string | null;
+            /** Emoji */
+            emoji: string | null;
+            /** Group Label */
+            group_label: string | null;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+        };
+        /** ActionSettingsOut */
+        ActionSettingsOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Log Retention Days */
+            log_retention_days: number;
+            /** Show On Attendance */
+            show_on_attendance: boolean;
+        };
+        /** ActionSettingsUpdate */
+        ActionSettingsUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Log Retention Days */
+            log_retention_days?: number | null;
+            /** Show On Attendance */
+            show_on_attendance?: boolean | null;
+        };
+        /**
+         * ActionUpdate
+         * @description Only what is sent changes; group_label, icon, emoji, confirm_text and notice_channel_id
+         *     can be cleared with null.
+         */
+        ActionUpdate: {
+            /** Action Key */
+            action_key?: string | null;
+            /** Allowed Group Ids */
+            allowed_group_ids?: string[] | null;
+            /** Allowed Roles */
+            allowed_roles?: ("admin" | "manager" | "member")[] | null;
+            /** Allowed User Ids */
+            allowed_user_ids?: string[] | null;
+            /** Confirm */
+            confirm?: boolean | null;
+            /** Confirm Text */
+            confirm_text?: string | null;
+            /** Emoji */
+            emoji?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Group Label */
+            group_label?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notice Channel Id */
+            notice_channel_id?: string | null;
+            /** Secret Name */
+            secret_name?: string | null;
+            /** Url */
+            url?: string | null;
+        };
         /**
          * ActivityCanvas
          * @description A canvas_mention item's canvas (M76): it opens the canvas in its conversation.
@@ -6805,6 +7242,7 @@ export interface components {
         };
         /** BootstrapOut */
         BootstrapOut: {
+            actions?: components["schemas"]["ActionListOut"] | null;
             /**
              * Active Calls
              * @default []
@@ -12715,6 +13153,61 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_actions_api_v1_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionListOut"];
+                };
+            };
+        };
+    };
+    invoke_api_v1_actions__action_id__invoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionInvoke"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionInvokeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_activity_api_v1_activity_get: {
         parameters: {
             query?: {
@@ -12841,6 +13334,273 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivitySummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_list_api_v1_admin_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionAdminOut"][];
+                };
+            };
+        };
+    };
+    create_action_api_v1_admin_actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionAdminOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_api_v1_admin_actions_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionAdminOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_admin_actions_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionSettingsOut"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_admin_actions_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_action_api_v1_admin_actions__action_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_action_api_v1_admin_actions__action_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionAdminOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invocations_api_v1_admin_actions__action_id__invocations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionInvocationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_action_api_v1_admin_actions__action_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionInvokeOut"];
                 };
             };
             /** @description Validation Error */

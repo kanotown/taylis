@@ -52,7 +52,7 @@ export function hasCapability(me: Me, capability: Capability): boolean {
   return capabilitiesOf(me).has(capability);
 }
 
-export type AdminTab = "users" | "analytics" | "reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates" | "docs" | "attendance";
+export type AdminTab = "users" | "analytics" | "reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates" | "docs" | "attendance" | "actions";
 
 /** Which capability opens each tab of 「管理」 (docs/ROLES.md §7); the workspace tab also for the default channels. */
 const TAB_NEEDS: Record<AdminTab, Capability[]> = {
@@ -64,6 +64,8 @@ const TAB_NEEDS: Record<AdminTab, Capability[]> = {
   invites: ["invites.manage"],
   webhooks: ["integrations.manage"],
   attendance: ["attendance.manage"],
+  // M143 (docs/ACTIONS.md §7.2): the relays and their key files are integrations.
+  actions: ["integrations.manage"],
   workflows: ["channels.moderate"],
   ai: ["ai.manage"],
   workspace: ["workspace.settings", "channels.manage"],

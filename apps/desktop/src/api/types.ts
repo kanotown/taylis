@@ -285,6 +285,18 @@ export type AttendanceIntegrationCreated = components["schemas"]["AttendanceInte
 export type AttendanceTokenOut = components["schemas"]["AttendanceTokenOut"];
 export type AttendanceDeliveryOut = components["schemas"]["AttendanceDeliveryOut"];
 
+/** M143 (docs/ACTIONS.md): 操作ボタン, buttons that send one signed request to an outside relay. */
+export type ActionListOut = components["schemas"]["ActionListOut"];
+export type ActionOut = components["schemas"]["ActionOut"];
+export type ActionInvokeOut = components["schemas"]["ActionInvokeOut"];
+export type ActionAdminOut = components["schemas"]["ActionAdminOut"];
+export type ActionCreate = components["schemas"]["ActionCreate"];
+export type ActionUpdate = components["schemas"]["ActionUpdate"];
+export type ActionSettingsOut = components["schemas"]["ActionSettingsOut"];
+export type ActionSettingsUpdate = components["schemas"]["ActionSettingsUpdate"];
+export type ActionInvocationOut = components["schemas"]["ActionInvocationOut"];
+export type ActionPressRole = ActionAdminOut["allowed_roles"][number];
+
 /** Workspace roles (M13e adds guest). */
 export type Role = components["schemas"]["AdminUserCreate"]["role"];
 
