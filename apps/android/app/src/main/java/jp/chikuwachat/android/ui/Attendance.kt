@@ -122,8 +122,65 @@ object AttendanceRules {
         return L10n.str(R.string.attendance_since, if (sameDay) time else "${at.monthValue}/${at.dayOfMonth} $time")
     }
 
-    /** A state's name with its emoji (「🟢 在室」); a custom emoji keeps its `:name:` here (TalkBack, plain text). */
-    fun stateText(state: AttendanceStateOut): String = state.emoji?.let { "$it ${state.label}" } ?: state.label
+    /**
+     * A state as plain text: the name, with the emoji in front only when the state has no icon this app draws (「🟢 在室」;
+     * a custom emoji keeps its `:name:`). Where a picture can be drawn, use StateBadge (AttendancePane.kt).
+     */
+    fun stateText(state: AttendanceStateOut): String =
+        state.emoji?.takeIf { AttendanceIcons.vector(state.icon) == null }?.let { "$it ${state.label}" } ?: state.label
+
+    /** My state now (null: none, or the board is off). */
+    fun myState(board: AttendanceBoardOut?, meId: String?): AttendanceStateOut? =
+        meId?.let { stateOf(board, entryOf(board, it)?.stateId) }
+
+    /** A new state's icon until one is picked (§2.1): its kind's default. [picked] null = picked 「なし」. */
+    fun formIcon(picked: String?, pickedYet: Boolean, kind: String): String? =
+        if (pickedYet) picked else AttendanceIcons.DEFAULT_OF_KIND[kind]
+
+    // --- the quick switch (§7.1, §9.1) ----------------------------------------------------------------
+
+    /** The status chip in the home header and on 「自分」: while the board is on, signed in, never for a guest. */
+    fun quickSwitchShown(board: AttendanceBoardOut?, myRole: String?, meId: String?): Boolean = meId != null && shown(board, myRole)
+
+    /** The chip's TalkBack name: 「在室状況：学外」, or 「在室状況」 while I have none. */
+    fun chipLabel(state: AttendanceStateOut?): String =
+        state?.let { L10n.str(R.string.attendance_pill_label, it.label) } ?: L10n.str(R.string.attendance_pill_none)
+
+    /** What a row of the sheet sends: the state, with my note kept only when it is my state already (as [noteForPress]). */
+    data class Press(val stateId: String, val note: String?)
+
+    fun sheetPress(board: AttendanceBoardOut, meId: String?, stateId: String): Press = Press(stateId, noteForPress(board, meId, stateId))
+
+    /** The sheet's note saved: my current state with the cleaned note; null when there is no state or nothing changed. */
+    fun sheetNote(board: AttendanceBoardOut, meId: String?, text: String): Press? {
+        val mine = meId?.let { entryOf(board, it) } ?: return null
+        val cleaned = cleanNote(text)
+        return if (cleaned == mine.note) null else Press(mine.stateId, cleaned)
+    }
+
+    /** The chip's name: cut to [CHIP_CHARS] characters (Web's 8em), with 「…」. */
+    fun chipText(label: String): String {
+        if (label.codePointCount(0, label.length) <= CHIP_CHARS) return label
+        return label.substring(0, label.offsetByCodePoints(0, CHIP_CHARS - 1)) + "…"
+    }
+
+    const val CHIP_CHARS = 8
+
+    enum class ChipMode { FULL, ICON, HIDDEN }
+
+    /** The workspace name keeps at least this many characters before the chip gives way (Web's NAME_MIN_EM). */
+    const val NAME_MIN_CHARS = 4
+
+    /**
+     * How the chip fits beside the workspace name (dp): with its name while the whole name and the whole chip fit, else
+     * only its icon (the name gives up its tail down to [NAME_MIN_CHARS] characters), else hidden (Web's pillMode).
+     * [room] = the row's width minus everything but the name and the chip.
+     */
+    fun chipMode(room: Float, nameNatural: Float, nameMin: Float, full: Float, iconOnly: Float, gap: Float): ChipMode = when {
+        room - nameNatural - gap >= full -> ChipMode.FULL
+        room - minOf(nameNatural, nameMin) - gap >= iconOnly -> ChipMode.ICON
+        else -> ChipMode.HIDDEN
+    }
 
     /** The person's line under the name: the note and since when. */
     fun detail(entry: AttendanceEntryOut, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String =

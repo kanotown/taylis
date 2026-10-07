@@ -2790,8 +2790,8 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** Adds (`id` null) or changes one of my own states; the board is read again (the states list). */
-    suspend fun saveMyAttendanceState(id: String?, label: String, emoji: String?, color: String, kind: String): Boolean = attempt {
-        if (id == null) api!!.createMyAttendanceState(label, emoji, color, kind) else api!!.updateMyAttendanceState(id, label, emoji, color, kind)
+    suspend fun saveMyAttendanceState(id: String?, label: String, icon: String?, emoji: String?, color: String, kind: String): Boolean = attempt {
+        if (id == null) api!!.createMyAttendanceState(label, icon, emoji, color, kind) else api!!.updateMyAttendanceState(id, label, icon, emoji, color, kind)
         engine?.loadAttendance(); true
     }.getOrElse { error = describe(it); false }
 

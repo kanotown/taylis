@@ -12,6 +12,8 @@ data class AttendanceStateOut(
     val id: String,
     val ownerId: String? = null,
     val label: String,
+    /** M140 §2.1 (migration 0101): a key of apps/shared/attendance-icons.json (ui/AttendanceIcons); null or unknown = the emoji. */
+    val icon: String? = null,
     val emoji: String? = null,
     val color: String = "gray",
     val kind: String,

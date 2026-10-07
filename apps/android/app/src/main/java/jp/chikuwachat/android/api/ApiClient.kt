@@ -714,18 +714,19 @@ class ApiClient(
         })
 
     /** One of my own states (403 attendance_personal_not_allowed, 409 attendance_label_taken / attendance_state_limit). */
-    suspend fun createMyAttendanceState(label: String, emoji: String?, color: String, kind: String): AttendanceStateOut =
-        request("POST", "/api/v1/attendance/my-states", attendanceStateBody(label, emoji, color, kind))
+    suspend fun createMyAttendanceState(label: String, icon: String?, emoji: String?, color: String, kind: String): AttendanceStateOut =
+        request("POST", "/api/v1/attendance/my-states", attendanceStateBody(label, icon, emoji, color, kind))
 
-    suspend fun updateMyAttendanceState(id: String, label: String, emoji: String?, color: String, kind: String): AttendanceStateOut =
-        request("PATCH", "/api/v1/attendance/my-states/$id", attendanceStateBody(label, emoji, color, kind))
+    suspend fun updateMyAttendanceState(id: String, label: String, icon: String?, emoji: String?, color: String, kind: String): AttendanceStateOut =
+        request("PATCH", "/api/v1/attendance/my-states/$id", attendanceStateBody(label, icon, emoji, color, kind))
 
     /** Archives it (204); whoever has it keeps it. */
     suspend fun deleteMyAttendanceState(id: String) { requestRaw("DELETE", "/api/v1/attendance/my-states/$id", null, auth = true, retry401 = true) }
 
-    /** `emoji: null` removes the emoji on a PATCH. */
-    private fun attendanceStateBody(label: String, emoji: String?, color: String, kind: String) = buildJsonObject {
+    /** `icon: null` / `emoji: null` remove the icon / emoji on a PATCH. */
+    private fun attendanceStateBody(label: String, icon: String?, emoji: String?, color: String, kind: String) = buildJsonObject {
         put("label", label)
+        put("icon", icon?.let { JsonPrimitive(it) } ?: JsonNull)
         put("emoji", emoji?.let { JsonPrimitive(it) } ?: JsonNull)
         put("color", color)
         put("kind", kind)

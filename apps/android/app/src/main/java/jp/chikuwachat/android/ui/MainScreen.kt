@@ -273,6 +273,15 @@ fun MainScreen(controller: AppController) {
         searchText = MainNav.search(stack)?.params?.q ?: ""
     }
 
+    // M140 (PRESENCE.md §9.1): 「在室状況を開く」 from the quick switch: the page over the home tab (from 「自分」 too).
+    fun openAttendanceBoard() {
+        focusManager.clearFocus()
+        if (tabs.selected != MainTab.HOME) controller.messageFocus = null
+        val home = MainTabs.stack(tabs, MainTab.HOME)
+        val opened = if (MainNav.top(home) == Route.Attendance) home else AdaptiveLayout.openFromList(listOf(MainNav.rootOf(home)), Route.Attendance, layout)
+        tabs = MainTabs.withStack(tabs, MainTab.HOME, opened).copy(selected = MainTab.HOME)
+    }
+
     // Errors from actions on this screen (edit, upload, settings…) surface as a snackbar.
     LaunchedEffect(controller.error) {
         val message = controller.error ?: return@LaunchedEffect
@@ -653,7 +662,7 @@ fun MainScreen(controller: AppController) {
         } else if (top == Route.ChannelList) {
             // M37 (MOBILE_UI.md §6.1): the home's own bar: the workspace (a switcher with two or more) and ⋮.
             TopAppBar(
-                title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2) },
+                title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2, version = version, onOpenAttendance = ::openAttendanceBoard) },
                 actions = {
                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_menu)) }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -723,7 +732,7 @@ fun MainScreen(controller: AppController) {
                         top is Route.Activity -> Text(stringResource(R.string.common_activity), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         top == Route.You -> Text(stringResource(R.string.common_you), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         top is Route.Settings -> Text(top.page.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
+                        else -> WorkspaceTitle(controller, version = version, onOpenAttendance = ::openAttendanceBoard) // M16c: tap to switch workspaces
                     }
                 },
                 navigationIcon = {
@@ -801,6 +810,8 @@ fun MainScreen(controller: AppController) {
                     if (barButtons && conversationPage && Calls.canStart(store.workspaceSettings, selectedChannel, controller.isAdmin)) {
                         IconButton(onClick = { confirmCallIn = selectedChannel?.id }) { Icon(Icons.Default.Call, contentDescription = stringResource(R.string.calls_start_call)) }
                     }
+                    // M140 (PRESENCE.md §9.1): my 在室状況 chip at the right of 「自分」's header.
+                    if (top == Route.You) AttendanceQuickSwitch(controller, version, ::openAttendanceBoard, Modifier.padding(end = 12.dp))
                     // The 自分 tab is the settings page: no search or menu over it.
                     if (barButtons) {
                         IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search)) }

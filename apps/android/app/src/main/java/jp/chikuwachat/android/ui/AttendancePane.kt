@@ -234,11 +234,12 @@ fun AttendancePane(controller: AppController, version: Int) {
 
     if (adding || editing != null) {
         OwnStateDialog(
+            controller, version,
             state = editing, busy = busy,
             onDismiss = { adding = false; editing = null },
-            onSubmit = { label, emoji, color, kind ->
+            onSubmit = { label, icon, emoji, color, kind ->
                 val id = editing?.id
-                run { if (controller.saveMyAttendanceState(id, label, emoji, color, kind)) { adding = false; editing = null } }
+                run { if (controller.saveMyAttendanceState(id, label, icon, emoji, color, kind)) { adding = false; editing = null } }
             },
         )
     }
@@ -294,26 +295,42 @@ private fun PersonRow(
 
 /** The light or dark (background, text) pair of a text emoji colour, as the theme is. */
 @Composable
-private fun attendanceColors(color: String): Pair<Color, Color> {
+internal fun attendanceColors(color: String): Pair<Color, Color> {
     val palette = TextEmojiPill.PALETTE[color] ?: TextEmojiPill.PALETTE.getValue("gray")
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val (bg, fg) = if (dark) palette.second else palette.first
     return Color(0xFF000000L or bg) to Color(0xFF000000L or fg)
 }
 
-/** A state's emoji and name on its colour (the board's headings, my own states, the chip when [small]). */
+/**
+ * A state's picture (§2.1): its Material icon in [tint], else its emoji (a custom one too), else nothing. Decorative: the
+ * name is always next to it or in the node's label.
+ */
+@Composable
+fun StateGlyph(controller: AppController, icon: String?, emoji: String?, version: Int, size: Dp, tint: Color) {
+    when (val glyph = AttendanceIcons.glyph(icon, emoji)) {
+        is AttendanceIcons.Glyph.Icon -> Icon(AttendanceIcons.vector(glyph.key)!!, contentDescription = null, tint = tint, modifier = Modifier.size(size))
+        is AttendanceIcons.Glyph.Emoji -> SectionIcon(controller, glyph.text, version, size = size)
+        AttendanceIcons.Glyph.None -> Unit
+    }
+}
+
+/**
+ * A state's badge (§2.1): its icon (or emoji) and name, in the palette's dark colour on its light one, rounded (the board's
+ * headings, my own states, the form's preview; the chip next to a name when [small]).
+ */
 @Composable
 fun StatePill(controller: AppController, state: AttendanceStateOut, version: Int, modifier: Modifier = Modifier, small: Boolean = false) {
     val (bg, fg) = attendanceColors(state.color)
     Row(
-        modifier.background(bg, RoundedCornerShape(if (small) 4.dp else 6.dp))
+        modifier.background(bg, RoundedCornerShape(if (small) 5.dp else 7.dp))
             .padding(horizontal = if (small) 5.dp else 8.dp, vertical = if (small) 1.dp else 3.dp)
             .clearAndSetSemantics { contentDescription = state.label },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        state.emoji?.let {
-            SectionIcon(controller, it, version, size = if (small) 12.dp else 16.dp)
-            Spacer(Modifier.size(if (small) 3.dp else 4.dp))
+        if (AttendanceIcons.glyph(state) != AttendanceIcons.Glyph.None) {
+            StateGlyph(controller, state.icon, state.emoji, version, size = if (small) 12.dp else 16.dp, tint = fg)
+            Spacer(Modifier.size(if (small) 3.dp else 5.dp))
         }
         Text(
             state.label, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium,
@@ -341,8 +358,9 @@ private fun StateButton(controller: AppController, state: AttendanceStateOut, se
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.padding(horizontal = 14.dp).clearAndSetSemantics {}, verticalAlignment = Alignment.CenterVertically) {
-            state.emoji?.let {
-                SectionIcon(controller, it, version, size = 18.dp)
+            if (AttendanceIcons.glyph(state) != AttendanceIcons.Glyph.None) {
+                // The icon in the state's colour even when not pressed: the colour tells the states apart at a glance.
+                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = fg)
                 Spacer(Modifier.size(6.dp))
             }
             Text(
@@ -385,14 +403,25 @@ fun AttendanceProfileLine(controller: AppController, userId: String, version: In
     }
 }
 
-/** Adding ([state] null) or changing one of my own states: name, emoji, colour, kind. */
+/**
+ * Adding ([state] null) or changing one of my own states (§9.1): name, a live preview of the badge, colour (the 8 swatches),
+ * icon (the 16 of §2.1 and 「なし」; a new state's follows its kind's default until one is picked), the emoji (stands in on
+ * older apps) and kind.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OwnStateDialog(state: AttendanceStateOut?, busy: Boolean, onDismiss: () -> Unit, onSubmit: (String, String?, String, String) -> Unit) {
+private fun OwnStateDialog(
+    controller: AppController, version: Int, state: AttendanceStateOut?, busy: Boolean,
+    onDismiss: () -> Unit, onSubmit: (String, String?, String?, String, String) -> Unit,
+) {
     var label by rememberSaveable { mutableStateOf(state?.label ?: "") }
     var emoji by rememberSaveable { mutableStateOf(state?.emoji ?: "") }
     var color by rememberSaveable { mutableStateOf(state?.color ?: "gray") }
     var kind by rememberSaveable { mutableStateOf(state?.kind ?: "on_site") }
+    // An existing state's icon is its own; a new one's follows the kind until picked.
+    var picked by rememberSaveable { mutableStateOf(state?.icon) }
+    var pickedYet by rememberSaveable { mutableStateOf(state != null) }
+    val icon = AttendanceRules.formIcon(picked, pickedYet, kind)
     val cleaned = label.trim().split(Regex("\\s+")).joinToString(" ")
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -404,10 +433,14 @@ private fun OwnStateDialog(state: AttendanceStateOut?, busy: Boolean, onDismiss:
                     label = { Text(stringResource(R.string.attendance_form_label)) },
                     placeholder = { Text(stringResource(R.string.attendance_form_label_placeholder)) },
                 )
-                OutlinedTextField(
-                    emoji, { emoji = it.take(32) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    label = { Text(stringResource(R.string.attendance_form_emoji)) }, placeholder = { Text("🗣️") },
-                )
+                Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.attendance_form_preview), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val preview = AttendanceStateOut(
+                        id = "", label = cleaned.ifEmpty { stringResource(R.string.attendance_form_label_placeholder) },
+                        icon = icon, emoji = emoji.trim().ifEmpty { null }, color = color, kind = kind,
+                    )
+                    StatePill(controller, preview, version, Modifier.padding(start = 8.dp).widthIn(max = 200.dp))
+                }
                 Text(stringResource(R.string.attendance_form_color), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
                 FlowRow(Modifier.fillMaxWidth().selectableGroup()) {
                     SectionLetterIcon.COLORS.forEach { (key, name) ->
@@ -421,10 +454,41 @@ private fun OwnStateDialog(state: AttendanceStateOut?, busy: Boolean, onDismiss:
                             Box(
                                 Modifier.size(30.dp).background(bg, CircleShape)
                                     .border(if (color == key) 3.dp else 1.dp, if (color == key) fg else MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                            )
+                                contentAlignment = Alignment.Center,
+                            ) { Box(Modifier.size(12.dp).background(fg, CircleShape)) }
                         }
                     }
                 }
+                Text(stringResource(R.string.attendance_form_icon), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
+                val (selectedBg, selectedFg) = attendanceColors(color)
+                FlowRow(Modifier.fillMaxWidth().selectableGroup()) {
+                    val options = listOf<String?>(null) + AttendanceIcons.CATALOGUE.map { it.key }
+                    options.forEach { key ->
+                        val selected = icon == key
+                        val name = key?.let { AttendanceIcons.label(it) } ?: stringResource(R.string.attendance_form_icon_none)
+                        val shape = RoundedCornerShape(10.dp)
+                        Box(
+                            Modifier.size(TouchTarget.MIN).padding(2.dp).clip(shape)
+                                .background(if (selected) selectedBg else Color.Transparent, shape)
+                                .border(if (selected) 2.dp else 1.dp, if (selected) selectedFg else MaterialTheme.colorScheme.outlineVariant, shape)
+                                .selectable(selected = selected, role = Role.RadioButton) { picked = key; pickedYet = true }
+                                .semantics { contentDescription = name },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val vector = AttendanceIcons.vector(key)
+                            if (vector != null) {
+                                Icon(vector, contentDescription = null, tint = if (selected) selectedFg else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                            } else {
+                                Text("—", color = if (selected) selectedFg else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    emoji, { emoji = it.take(32) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    label = { Text(stringResource(R.string.attendance_form_emoji)) }, placeholder = { Text("🗣️") },
+                    supportingText = { Text(stringResource(R.string.attendance_form_icon_hint)) },
+                )
                 Text(stringResource(R.string.attendance_form_kind), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
                 Text(stringResource(R.string.attendance_form_kind_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column(Modifier.selectableGroup()) {
@@ -441,7 +505,7 @@ private fun OwnStateDialog(state: AttendanceStateOut?, busy: Boolean, onDismiss:
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSubmit(cleaned, emoji.trim().ifEmpty { null }, color, kind) }, enabled = !busy && cleaned.isNotEmpty()) {
+            TextButton(onClick = { onSubmit(cleaned, icon, emoji.trim().ifEmpty { null }, color, kind) }, enabled = !busy && cleaned.isNotEmpty()) {
                 Text(if (state != null) stringResource(R.string.common_save) else stringResource(R.string.common_add))
             }
         },

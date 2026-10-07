@@ -31,4 +31,29 @@
     <string name="attendance_form_color">色</string>
     <string name="attendance_form_kind">分類</string>
     <string name="attendance_form_kind_hint">ボードの並びと「在室 n 人」の数え方に使います</string>
+    <!-- §2.1 / §9.1: the icons' meanings (apps/shared/attendance-icons.json "label"; AttendanceIconsTest compares) and the quick switch. -->
+    <string name="attendance_icon_in_room">在室</string>
+    <string name="attendance_icon_on_site">建物内</string>
+    <string name="attendance_icon_off_site">外出</string>
+    <string name="attendance_icon_gone">帰宅</string>
+    <string name="attendance_icon_meeting">会議</string>
+    <string name="attendance_icon_class">授業・発表</string>
+    <string name="attendance_icon_remote">リモート</string>
+    <string name="attendance_icon_lunch">食事</string>
+    <string name="attendance_icon_trip">出張・移動</string>
+    <string name="attendance_icon_away">少し離席</string>
+    <string name="attendance_icon_busy">取り込み中</string>
+    <string name="attendance_icon_sick">体調不良</string>
+    <string name="attendance_icon_vacation">休暇</string>
+    <string name="attendance_icon_lab">実験</string>
+    <string name="attendance_icon_library">図書館</string>
+    <string name="attendance_icon_other">その他</string>
+    <string name="attendance_form_icon">アイコン</string>
+    <string name="attendance_form_icon_none">なし</string>
+    <string name="attendance_form_preview">見た目</string>
+    <string name="attendance_form_icon_hint">絵文字はアイコンを表示できない古いアプリでの代わりです</string>
+    <string name="attendance_pill_none">在室状況</string>
+    <string name="attendance_pill_label">在室状況：%1$s</string>
+    <string name="attendance_pill_open">在室状況を開く</string>
+    <string name="attendance_pill_menu">在室状況を変える</string>
 </resources>
