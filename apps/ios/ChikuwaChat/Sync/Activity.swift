@@ -6,6 +6,9 @@ import Foundation
 protocol ActivityApi: AnyObject {
     func activitySummary() async throws -> ActivitySummary
     func markActivityRead(readAt: String) async throws -> ActivitySummary
+    /// 2026-10-07 (MOBILE_UI.md §6.4): PUT /activity/items/read, the items I opened (a server before it answers 404,
+    /// but its items carry no id, so nothing is sent to it).
+    func markActivityItemsRead(itemIds: [String]) async throws -> ActivitySummary
 }
 
 /// M39, the activity (MOBILE_UI.md §6.4 stage B, §7.2): the pure rules of the list, its badge and its read position
@@ -38,11 +41,15 @@ enum ActivityRules {
         iso.flatMap(parseIsoDate) ?? .distantPast
     }
 
-    /// The row's dot: it happened after the read position (an item at the position itself is read) and, for a mention
-    /// or a thread reply, its message is not read in its conversation yet (`conversationRead`: this device's read
-    /// positions say so; the item's `readInConversation`: the server did). No position known: no dots.
-    static func isUnread(_ item: ActivityItem, readAt: String?, conversationRead: Bool = false) -> Bool {
-        guard let readAt, !conversationRead, !item.readInConversation else { return false }
+    /// The row's dot (MOBILE_UI.md §6.4, 2026-10-07 「開いたら既読」): it happened after the read position held now (an item
+    /// at the position itself is read; 「すべて既読にする」 here or on another device moves it), I have not opened it since
+    /// (`openedAt`: this device's taps and activity.items_read — a reaction item with a newer reaction is unread again),
+    /// the server did not call it read (`readOnServer`: opened, or read in its conversation) and, for a mention or a
+    /// thread reply, this device's read positions do not cover its message (`conversationRead`). No position known: no
+    /// dots. Being on screen reads nothing.
+    static func isUnread(_ item: ActivityItem, readAt: String?, conversationRead: Bool = false, openedAt: String? = nil) -> Bool {
+        guard let readAt, !conversationRead, !item.readOnServer else { return false }
+        if let openedAt, time(item.at) <= time(openedAt) { return false }
         return time(item.at) > time(readAt)
     }
 
@@ -61,18 +68,19 @@ enum ActivityRules {
         return false
     }
 
-    /// A page as the list holds it: a mention or a thread reply the server calls read although it is after the page's
-    /// read position was read in its conversation, which the dots then follow (they compare with the position the tab
-    /// opened at, not the server's). A server before the rule sends no `read`: nothing changes.
-    static func markingConversationReads(_ items: [ActivityItem], readAt: String?) -> [ActivityItem] {
+    /// A page as the list holds it: an item the server calls read although it is after the page's read position was
+    /// read in its conversation (a mention, a reply; 2026-10-06) or opened (any kind; 2026-10-07), which the dots then
+    /// follow. A server before the rule sends no `read`: nothing changes.
+    static func markingServerReads(_ items: [ActivityItem], readAt: String?) -> [ActivityItem] {
         items.map { item in
             var item = item
-            item.readInConversation = item.read == true && readInConversationKinds.contains(item.kind) && time(item.at) > time(readAt)
+            item.readOnServer = item.read == true && time(item.at) > time(readAt)
             return item
         }
     }
 
-    /// The newest `at` of the rows (what being on screen marks read); nil without rows.
+    /// The newest `at` of the rows (「すべて既読にする」 reads at least up to it, should this device's clock be behind); nil
+    /// without rows.
     static func newest(_ items: [ActivityItem]) -> String? {
         items.max { time($0.at) < time($1.at) }?.at
     }
@@ -84,10 +92,21 @@ enum ActivityRules {
         return time(at) > time(readAt)
     }
 
-    /// Being on screen reads the activity only on 「すべて」: one position covers every kind, so a filtered list would
-    /// mark read what the other filters hold unseen (the lead's rule for all clients, 2026-09-30). 「すべて既読」 works
-    /// on every filter.
-    static func readsOnScreen(filter: String) -> Bool { filter == "all" }
+    /// The header's words (MOBILE_UI.md §6.4, 2026-10-07): 「未読 n 件」 (99 and more: 「99+」), 「未読はありません」 at 0.
+    static func unreadHeader(_ count: Int) -> String {
+        count <= 0 ? tr("未読はありません") : tr("未読 \(count >= 99 ? "99+" : String(count)) 件")
+    }
+
+    /// 「未読のみ」: the rows held less the read ones (an opened row leaves the list), on this device only.
+    static func shown(_ items: [ActivityItem], unreadOnly: Bool, isUnread: (ActivityItem) -> Bool) -> [ActivityItem] {
+        unreadOnly ? items.filter(isUnread) : items
+    }
+
+    /// The items an opened row sends to PUT /activity/items/read: those with the server's id (a server before
+    /// 2026-10-07 sends none; its rows wait for the read position).
+    static func openable(_ items: [ActivityItem]) -> [(id: String, at: String)] {
+        items.compactMap { item in item.itemId.map { ($0, item.at) } }
+    }
 
     /// A summary replaces the one held unless it is behind it: the read position only moves forward, so a GET answered
     /// after a newer PUT (or activity.read) is stale. nil (a server before M39) always replaces.

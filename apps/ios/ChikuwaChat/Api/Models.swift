@@ -1064,11 +1064,16 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     /// M122: a `page_mention` / `page_shared` item's page (asked for with `include=page_mention,page_shared`).
     var page: ActivityPage? = nil
     /// 2026-10-06 (MOBILE_UI.md §6.4): the server's verdict — read by the activity's read position, or (a mention or a
-    /// thread reply) read in its conversation, or a done reservation to-do. nil from a server before it.
+    /// thread reply) read in its conversation, or a done reservation to-do; since 2026-10-07 also opened since it
+    /// happened. nil from a server before it.
     var read: Bool? = nil
-    /// Not sent: the list sets it when `read` says more than the read position does (read in its conversation; see
-    /// ActivityRules.conversationRead), so the dots, which compare with the position the tab opened at, follow it.
-    var readInConversation = false
+    /// 2026-10-07 (MOBILE_UI.md §6.4): the server's id of the item (the message's for a mention, a reply or a reaction,
+    /// else the canvas / page / reservation item's), which PUT /activity/items/read takes. nil from a server before it:
+    /// an opened row is not sent and waits for the read position.
+    var itemId: String? = nil
+    /// Not sent: the list sets it when `read` says more than the read position does (read in its conversation, or
+    /// opened; see ActivityRules.markingServerReads), so the dots follow it.
+    var readOnServer = false
 
     /// One row per kind and message; a canvas item is its own (`canvas_mention:<item_id>`), a reservation notice too.
     var id: String {
@@ -1081,10 +1086,12 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     /// The conversation the row is in.
     var channelId: String? { canvas?.channelId ?? message?.channelId }
 
-    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, page, read }
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, page, read, itemId = "id" }
 
     init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil,
-         reservation: ActivityReservation? = nil, page: ActivityPage? = nil) {
+         reservation: ActivityReservation? = nil, page: ActivityPage? = nil, itemId: String? = nil, read: Bool? = nil) {
+        self.itemId = itemId
+        self.read = read
         self.kind = kind
         self.at = at
         self.message = message
@@ -1119,6 +1126,7 @@ struct ActivityItem: Codable, Equatable, Identifiable {
         actorIds = try c.decodeIfPresent([String].self, forKey: .actorIds) ?? []
         emojis = try c.decodeIfPresent([String].self, forKey: .emojis) ?? []
         read = try c.decodeIfPresent(Bool.self, forKey: .read)
+        itemId = try c.decodeIfPresent(String.self, forKey: .itemId)
     }
 }
 

@@ -254,6 +254,12 @@ final class AppController {
         Task { await refreshServerInfo(serverUrl) }
     }
 
+    /// A view test runs a screen on a store and an engine of its own (the sign-in flow makes them otherwise).
+    func attachForTesting(store: Store, engine: SyncEngine) {
+        self.store = store
+        self.engine = engine
+    }
+
     /// The workspace on screen goes: its engine stops and its store closes. Nothing of it may show in the next one.
     private func closeSession() {
         engine?.stop()
@@ -1510,13 +1516,25 @@ final class AppController {
         return false
     }
 
-    /// M39: the activity is read up to `readAt` (「すべて既読」, or the newest item the list showed). The badge takes the
-    /// server's answer; my other devices follow through activity.read. Whether it went through (the reason is shown).
+    /// M39: the activity is read up to `readAt` (「すべて既読にする」). The badge takes the server's answer; my other
+    /// devices follow through activity.read. Whether it went through (the reason is shown).
     func markActivityRead(_ readAt: String) async -> Bool {
         guard let engine else { return false }
         do {
             try await engine.markActivityRead(readAt)
             return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// 2026-10-07 (MOBILE_UI.md §6.4 「開いたら既読」): activity rows opened (tapped). Their dots go at once; the badge takes
+    /// the server's answer; my other devices follow through activity.items_read. Rows without the server's id (a server
+    /// before it) are left to the read position. Whether it went through (a failure is shown; the dot stays gone here,
+    /// and the next list says what the server holds).
+    @discardableResult
+    func markActivityItemsRead(_ items: [ActivityItem]) async -> Bool {
+        guard let engine else { return false }
+        do {
+            return try await engine.markActivityItemsRead(ActivityRules.openable(items))
         } catch { self.error = describe(error); return false }
     }
 
