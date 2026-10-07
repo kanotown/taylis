@@ -52,11 +52,15 @@ final class ThreadsSnapshotTests: XCTestCase {
         let topic = message("m1", channel: "c1", sender: "u2", body: "来週のリリース手順、**ここで**まとめます。\n1. DB バックアップ\n2. compose up --build", seq: 1, minute: 10, replyCount: 2)
         let question = message("m5", channel: "c2", sender: "me", body: "検索の日本語トークンについて質問があります", seq: 2, minute: 20, replyCount: 1)
         _ = store.upsertMessage(topic)
-        _ = store.upsertMessage(message("m2", channel: "c1", sender: "me", body: "了解です。バックアップは `infra/backup.sh` で大丈夫ですか？", seq: 2, minute: 12, parentId: "m1"))
-        _ = store.upsertMessage(message("m3", channel: "c1", sender: "u2", body: "<@me> はい、それで。終わったらここに書いてください。", seq: 3, minute: 15, parentId: "m1"))
+        let m2 = message("m2", channel: "c1", sender: "me", body: "了解です。バックアップは `infra/backup.sh` で大丈夫ですか？", seq: 2, minute: 12, parentId: "m1")
+        let m3 = message("m3", channel: "c1", sender: "u2", body: "<@me> はい、それで。終わったらここに書いてください。\n- 手順書\n- 確認\n- 連絡\n- 片付け", seq: 3, minute: 15, parentId: "m1")
+        _ = store.upsertMessage(m2)
+        _ = store.upsertMessage(m3)
         store.setThreadPage(filter: "all", items: [
+            // THREADS.md §5: the newest replies under the parent (three in all: 「他 1 件の返信」), the unread one marked.
             ThreadItem(parent: topic, state: ThreadState(parentId: "m1", channelId: "c1", following: true, lastReadSeq: 2, unreadCount: 1, mentionCount: 1,
-                                                          replyCount: 2, lastReplyAt: topic.lastReplyAt, participantIds: ["u2", "me"])),
+                                                          replyCount: 3, lastReplyAt: topic.lastReplyAt, participantIds: ["u2", "me"]),
+                       latestReplies: [m2, m3]),
             ThreadItem(parent: question, state: ThreadState(parentId: "m5", channelId: "c2", following: true, lastReadSeq: 4, unreadCount: 0, mentionCount: 0,
                                                              replyCount: 1, lastReplyAt: question.lastReplyAt, participantIds: ["me", "u2"])),
         ], cursor: nil, append: false, pageSize: 50)

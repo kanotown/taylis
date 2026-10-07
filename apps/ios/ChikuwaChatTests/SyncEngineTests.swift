@@ -1478,3 +1478,82 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 }
+
+/// The threads list's reply previews (THREADS.md §5): GET /threads `latest_replies`, kept live by message events.
+extension SyncEngineTests {
+    private func previewWorld(previews: Bool = true) async throws -> (World, MessageOut) {
+        let w = makeWorld()
+        w.server.threadPreviews = previews
+        let carol = w.server.addUser("carol")
+        w.server.join(w.channel.id, carol.id)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await w.engine.send(w.channel.id, body: "topic")
+        await settle(w.engine)
+        let parent = try w.server.messageByBody(w.channel.id, "topic")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "first", parentId: parent.id)
+        try w.server.post(channelId: w.channel.id, senderId: carol.id, body: "second", parentId: parent.id)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "third", parentId: parent.id)
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        await w.engine.loadThreads(filter: "all")
+        return (w, parent)
+    }
+
+    func testThreadsListShowsTheNewestRepliesAndKeepsThemLive() async throws {
+        let (w, parent) = try await previewWorld()
+        XCTAssertEqual(w.store.threads[parent.id]?.latestReplies?.map(\.body), ["second", "third"])
+        let card = try XCTUnwrap(ThreadCardRules.replies(try XCTUnwrap(w.store.threads[parent.id]), me: w.bob.id, isBlocked: { _ in false }))
+        XCTAssertEqual(card.more, 1)
+        XCTAssertEqual(card.replies.map(\.unread), [true, true])
+
+        // Events (and the replies held here) keep the newest two.
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "fourth", parentId: parent.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threads[parent.id]?.latestReplies?.map(\.body), ["third", "fourth"])
+        let fourth = try w.server.messageByBody(w.channel.id, "fourth")
+        _ = try w.server.edit(channelId: w.channel.id, userId: w.alice.id, messageId: fourth.id, body: "fourth (edited)")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threads[parent.id]?.latestReplies?.map(\.body), ["third", "fourth (edited)"])
+        await w.engine.loadReplies(w.channel.id, parentId: parent.id)
+        _ = try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: fourth.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threads[parent.id]?.latestReplies?.map(\.body), ["second", "third"])
+        w.engine.stop()
+    }
+
+    func testThreadPreviewsFollowMessagesWithoutTheList() {
+        // The store alone: a reply event changes the card with no GET /threads.
+        let store = Store()
+        func reply(_ id: String, _ seq: Int, sender: String = "u2") -> MessageOut {
+            MessageOut(id: id, channelId: "c1", senderId: sender, seq: seq, updatedSeq: seq, clientMsgId: nil, body: id, createdAt: "2026-10-07T01:00:00Z",
+                       editedAt: nil, deleted: false, parentId: "p")
+        }
+        let parent = MessageOut(id: "p", channelId: "c1", senderId: "me", seq: 1, updatedSeq: 1, clientMsgId: nil, body: "topic",
+                                createdAt: "2026-10-07T00:00:00Z", editedAt: nil, deleted: false, replyCount: 3)
+        let state = ThreadState(parentId: "p", channelId: "c1", following: true, lastReadSeq: 3, unreadCount: 1, mentionCount: 0, replyCount: 3,
+                                lastReplyAt: nil, participantIds: [])
+        store.setThreadPage(filter: "all", items: [ThreadItem(parent: parent, state: state, latestReplies: [reply("b", 3), reply("c", 4)])],
+                            cursor: nil, append: false, pageSize: 50)
+        store.upsertMessage(reply("d", 5))
+        XCTAssertEqual(store.threads["p"]?.latestReplies?.map(\.id), ["c", "d"])
+        store.setBlocked("u9", on: true)
+        store.upsertMessage(reply("e", 6, sender: "u9")) // someone I blocked: not in the card
+        XCTAssertEqual(store.threads["p"]?.latestReplies?.map(\.id), ["c", "d"])
+        let card = ThreadCardRules.replies(store.threads["p"]!, me: "me", isBlocked: store.isBlocked)!
+        XCTAssertEqual(card.replies.map(\.unread), [true, true]) // both after my position 3
+        XCTAssertEqual(card.more, 1)
+        // An older server: no previews, the card is the parent only, and events add none.
+        store.setThreadPage(filter: "all", items: [ThreadItem(parent: parent, state: state)], cursor: nil, append: false, pageSize: 50)
+        store.upsertMessage(reply("f", 7))
+        XCTAssertNil(store.threads["p"]?.latestReplies)
+        XCTAssertNil(ThreadCardRules.replies(store.threads["p"]!, me: "me", isBlocked: { _ in false }))
+    }
+
+    func testThreadsListFromAnOlderServerHasNoPreviews() async throws {
+        let (w, parent) = try await previewWorld(previews: false)
+        XCTAssertNotNil(w.store.threads[parent.id])
+        XCTAssertNil(w.store.threads[parent.id]?.latestReplies)
+        w.engine.stop()
+    }
+}

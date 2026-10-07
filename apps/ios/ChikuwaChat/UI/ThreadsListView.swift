@@ -21,6 +21,16 @@ struct ThreadsListView: View {
     private var store: Store { controller.store }
     private var rows: [ThreadEntry] { store.threadList() }
 
+    /// A reply under a card: its thread, landing on the reply (the thread view scrolls to and marks the focused reply).
+    /// The focus comes first, as an activity reply's does; the thread opens at its usual place when it cannot be had.
+    private func openReply(_ reply: MessageState, of entry: ThreadEntry) {
+        let open = Target(id: entry.parent.id, channelId: entry.state.channelId)
+        Task {
+            _ = await controller.revealMessage(id: reply.id, channelId: reply.channelId, parentId: entry.parent.id)
+            target = open
+        }
+    }
+
     var body: some View {
         List {
             Section {
@@ -42,7 +52,8 @@ struct ThreadsListView: View {
                 ForEach(rows) { entry in
                     let openThread = { target = Target(id: entry.parent.id, channelId: entry.state.channelId) }
                     let openConversation = onOpenConversation.map { open in { open(entry) } }
-                    ThreadRowView(entry: entry, controller: controller, onOpenThread: openThread, onOpenConversation: openConversation)
+                    ThreadRowView(entry: entry, controller: controller, onOpenThread: openThread, onOpenConversation: openConversation,
+                                  onOpenReply: { reply in openReply(reply, of: entry) })
                         .contextMenu {
                             if let openConversation {
                                 Button(action: openConversation) {
@@ -75,6 +86,8 @@ struct ThreadRowView: View {
     @Bindable var controller: AppController
     let onOpenThread: () -> Void
     var onOpenConversation: (() -> Void)?
+    /// A reply under the parent (THREADS.md §5); nil opens the thread.
+    var onOpenReply: ((MessageState) -> Void)?
 
     private var store: Store { controller.store }
 
@@ -124,6 +137,26 @@ struct ThreadRowView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction { onOpenThread() }
+                if let card = ThreadCardRules.replies(entry, me: store.me?.id, isBlocked: store.isBlocked), !card.replies.isEmpty {
+                    let openReply = onOpenReply ?? { _ in onOpenThread() }
+                    VStack(alignment: .leading, spacing: 4) {
+                        if card.more > 0 {
+                            Button(action: onOpenThread) {
+                                Text("他 \(card.more) 件の返信").font(.caption).fontWeight(.medium).foregroundStyle(.tint)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        ForEach(card.replies, id: \.message.id) { reply in
+                            ThreadPreviewReplyView(reply: reply, controller: controller)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openReply(reply.message) }
+                                .accessibilityAction { openReply(reply.message) }
+                        }
+                    }
+                    .padding(.leading, 8)
+                    .overlay(alignment: .leading) { Rectangle().fill(Color.secondary.opacity(0.25)).frame(width: 2) }
+                    .padding(.top, 4)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -134,5 +167,65 @@ struct ThreadRowView: View {
     /// One-line preview: mentions as names, light markdown stripped (DATA_MODEL.md 本文の形式).
     private func excerpt(_ message: MessageOut) -> String {
         Timeline.excerpt(message.body, attachments: message.attachments, users: store.users, groups: store.groups)
+    }
+}
+
+/// The replies part of a threads-list card (THREADS.md §5).
+enum ThreadCardRules {
+    struct Reply {
+        let message: MessageState
+        /// Someone else's reply after my read position in the thread (marked as the thread view marks it).
+        let unread: Bool
+    }
+
+    /// nil when the server sent no previews (the card is the parent only, as before); `more` is 「他 n 件の返信」.
+    static func replies(_ entry: ThreadEntry, me: String?, isBlocked: (String) -> Bool) -> (replies: [Reply], more: Int)? {
+        guard let latest = entry.latestReplies else { return nil }
+        // Someone blocked after the list came: their replies leave the card at once (the server leaves them out too).
+        let shown = latest.filter { !$0.deleted && !isBlocked($0.senderId) }.map {
+            Reply(message: $0, unread: $0.senderId != me && ($0.seq ?? 0) > entry.state.lastReadSeq)
+        }
+        return (shown, max(0, entry.state.replyCount - shown.count))
+    }
+}
+
+/// A reply under a card: compact, the body in the message renderer cut to about four lines.
+struct ThreadPreviewReplyView: View {
+    let reply: ThreadCardRules.Reply
+    @Bindable var controller: AppController
+
+    private var store: Store { controller.store }
+
+    var body: some View {
+        let message = reply.message
+        let name = store.users[message.senderId]?.displayName ?? "…"
+        HStack(alignment: .top, spacing: 8) {
+            AvatarView(id: message.senderId, name: name, size: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(name).font(.footnote).fontWeight(reply.unread ? .bold : .medium).lineLimit(1)
+                    Text(Timeline.timeLabel(message.createdAt)).font(.caption2).foregroundStyle(.secondary)
+                    if reply.unread {
+                        Circle().fill(Color.accentColor).frame(width: 7, height: 7).accessibilityLabel(Text("未読"))
+                    }
+                }
+                if message.body.isEmpty {
+                    Text(Timeline.excerpt(message.body, attachments: message.attachments, users: store.users, groups: store.groups))
+                        .font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
+                                    customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
+                                    onNeedEmojiImage: { controller.loadEmojiImage($0) })
+                        .font(.footnote)
+                        .frame(maxHeight: 84, alignment: .top)
+                        .clipped()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(Text("\(name) さんの返信、スレッドで開く"))
     }
 }

@@ -260,6 +260,10 @@ struct MessageState: Codable, Identifiable, Equatable {
 struct ThreadEntry: Identifiable, Equatable {
     var parent: MessageOut
     var state: ThreadState
+    /// The thread's newest replies, oldest first (at most `Store.threadPreviewReplies`; GET /threads `latest_replies`, then
+    /// kept by message events). nil: a server before the previews, or a row made from thread.updated alone; the card
+    /// shows the parent only.
+    var latestReplies: [MessageState]? = nil
     var id: String { parent.id }
 }
 
@@ -962,11 +966,39 @@ final class Store {
                 if (entry.state.lastReplyAt ?? "") >= oldest { threads[id] = nil }
             }
         }
-        for item in items { threads[item.parent.id] = ThreadEntry(parent: item.parent, state: item.state) }
+        for item in items {
+            threads[item.parent.id] = ThreadEntry(parent: item.parent, state: item.state, latestReplies: item.latestReplies?.map { MessageState($0) })
+        }
         threadsFilter = filter
         threadsLoaded = true
         threadsCursor = cursor
         threadsHasMore = items.count >= pageSize
+    }
+
+    /// How many newest replies a threads-list card shows (the server's LATEST_REPLIES, THREADS.md §5).
+    static let threadPreviewReplies = 2
+
+    /// A reply of a listed thread arrived, changed or went (message.created / updated / deleted, my own sends' answers):
+    /// the card keeps the newest `threadPreviewReplies` live replies without fetching the list again. A reply that left
+    /// the card is replaced from the thread's replies held here, if any (else the list's next fetch fills it). Replies of
+    /// people I blocked stay out, as the server leaves them out.
+    private func applyThreadPreview(_ message: MessageState) {
+        guard let parentId = message.parentId, message.seq != nil, var entry = threads[parentId], let shown = entry.latestReplies else { return }
+        let held = shown.contains { $0.id == message.id }
+        let visible = !message.deleted && !blockedUsers.contains(message.senderId)
+        guard held || visible else { return }
+        var next = shown.filter { $0.id != message.id }
+        if visible { next.append(message) }
+        if next.count < Self.threadPreviewReplies {
+            let ids = Set(next.map(\.id)).union([message.id])
+            next += replies(message.channelId, parentId: parentId).filter {
+                $0.seq != nil && !$0.deleted && !blockedUsers.contains($0.senderId) && !ids.contains($0.id)
+            }
+        }
+        next = Array(next.sorted { ($0.seq ?? 0) < ($1.seq ?? 0) }.suffix(Self.threadPreviewReplies))
+        guard next != shown else { return }
+        entry.latestReplies = next
+        threads[parentId] = entry
     }
 
     /// thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known.
@@ -1371,6 +1403,7 @@ final class Store {
             persist { try $0.saveMessage(message) }
         }
         applyLastMessage(message) // M49: events, catch-up pages and my own sends, edits and deletes alike
+        applyThreadPreview(message)
         return true
     }
 
