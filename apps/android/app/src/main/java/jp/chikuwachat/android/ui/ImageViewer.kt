@@ -25,7 +25,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -108,7 +107,7 @@ fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss:
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.image_viewer_close_image)) }
-                    Text(attachment.filename, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    FileNameText(attachment.filename, Modifier.weight(1f))
                     IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {

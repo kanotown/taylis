@@ -56,7 +56,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -138,7 +137,7 @@ internal fun DocumentCard(attachment: AttachmentOut, controller: AppController) 
         ) {
             Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.weight(1f)) {
-                Text(attachment.filename, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                FileNameText(attachment.filename, style = MaterialTheme.typography.bodyMedium)
                 Text(DocumentCards.detail(attachment), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
@@ -240,7 +239,7 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.document_preview_close_preview)) }
                     Column(Modifier.weight(1f)) {
-                        Text(attachment.filename, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        FileNameText(attachment.filename)
                         val count = current?.sizes?.size ?: attachment.preview?.pages
                         DocumentCards.pagesLabel(count)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }

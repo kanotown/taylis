@@ -145,7 +145,7 @@ fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(attachment.filename, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            FileNameText(attachment.filename, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(
                 "${if (attachment.isVideo) VideoTiles.label(attachment) else formatSize(attachment.sizeBytes)} · $uploader · $channel · ${Timeline.timeLabel(item.attachedAt)}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
