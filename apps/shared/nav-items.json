@@ -1,5 +1,5 @@
 {
-  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). The desktop's 下書き and リマインダー still show only while there is something in them. M121: 「ドキュメント」 (docs, WIKI.md §9.1) is desktop / Web only until the phones' M122. M140: 「在室状況」 (attendance, docs/PRESENCE.md) on both platforms, implemented by a client only while the workspace has the board turned on. M143: 「操作」 (actions, docs/ACTIONS.md §9) on the desktop / Web for now (the phones later), implemented by a client only while the workspace has the buttons on and I may press at least one.",
+  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). The desktop's 下書き and リマインダー still show only while there is something in them. M121: 「ドキュメント」 (docs, WIKI.md §9.1) is desktop / Web only until the phones' M122. M140: 「在室状況」 (attendance, docs/PRESENCE.md) on both platforms, implemented by a client only while the workspace has the board turned on. M143: 「操作」 (actions, docs/ACTIONS.md §9) on both platforms (the phones' tile since the iOS / Android pages), implemented by a client only while the workspace has the buttons on and I may press at least one.",
   "items": [
     {
       "key": "threads",
@@ -131,7 +131,8 @@
       "label": "操作",
       "visible": true,
       "platforms": [
-        "desktop"
+        "desktop",
+        "mobile"
       ]
     }
   ],
@@ -1206,6 +1207,146 @@
         },
         {
           "key": "saved",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "M143: actions (「操作」) shows on the phones only while implemented (the buttons on and one I may press)",
+      "stored": [
+        {
+          "key": "actions",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        }
+      ],
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "canvases",
+        "attendance",
+        "actions"
+      ],
+      "full": [
+        {
+          "key": "actions",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "attendance",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "actions",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "attendance",
           "visible": true
         }
       ]

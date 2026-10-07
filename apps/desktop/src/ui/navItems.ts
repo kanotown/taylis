@@ -35,7 +35,7 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   // M140 (docs/PRESENCE.md): 「在室状況」, implemented only while the workspace has the board on.
   { key: "attendance", label: "在室状況", visible: true, platforms: ["desktop", "mobile"] },
   // M143 (docs/ACTIONS.md §9): 「操作」, implemented only while the buttons are on and I may press one (phones later).
-  { key: "actions", label: "操作", visible: true, platforms: ["desktop"] },
+  { key: "actions", label: "操作", visible: true, platforms: ["desktop", "mobile"] },
 ];
 
 export const NAV_ORDER: Readonly<Record<NavPlatform, readonly string[]>> = {

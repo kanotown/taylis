@@ -173,7 +173,7 @@ describe("the page", () => {
 
 describe("the sidebar item", () => {
   it("is in the shared catalogue (desktop only for now) and implemented only while I may press a button", () => {
-    expect(NAV_CATALOGUE.find((item) => item.key === "actions")).toEqual({ key: "actions", label: "操作", visible: true, platforms: ["desktop"] });
+    expect(NAV_CATALOGUE.find((item) => item.key === "actions")).toEqual({ key: "actions", label: "操作", visible: true, platforms: ["desktop", "mobile"] });
     expect(NAV_ORDER.desktop.at(-1)).toBe("actions");
     expect(sidebarNavKeys(null, desktopNavKeys(false, false))).not.toContain("actions");
     expect(sidebarNavKeys(null, desktopNavKeys(false, true))).toContain("actions");
