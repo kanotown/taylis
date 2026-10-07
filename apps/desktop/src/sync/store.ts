@@ -5,6 +5,7 @@ import type { ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, Canvas
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
 import type { CanvasPendingState } from "./canvasSave";
+import { restoredDmPins } from "./dmCloses";
 import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
 
@@ -1105,6 +1106,16 @@ export class Store {
     const pins = this.dmPins ?? [];
     if (on === pins.includes(channelId)) return;
     this.dmPins = on ? [...pins, channelId] : pins.filter((id) => id !== channelId);
+    this.emit();
+  }
+
+  /** Review v0.1.43 #7: a refused close puts back its own pin only (its place before, or out); the others stay. */
+  restoreDmPin(channelId: string, place: number | null): void {
+    const pins = this.dmPins;
+    if (pins === null) return;
+    const next = restoredDmPins(pins, channelId, place);
+    if (next.length === pins.length && next.every((id, i) => id === pins[i])) return;
+    this.dmPins = next;
     this.emit();
   }
 

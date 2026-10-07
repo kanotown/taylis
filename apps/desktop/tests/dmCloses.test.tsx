@@ -5,12 +5,17 @@
  * bootstrap's closed_dms and dm_close.updated keep the set, a new timeline message opens it; closing is optimistic
  * (closed, unpinned, read) and put back when refused; 「元に戻す」 and opening it on purpose reopen it (DELETE).
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../src/api/errors";
-import type { SidebarSectionOut } from "../src/api/types";
+import type { ReadStateOut, SidebarSectionOut } from "../src/api/types";
 import { AppController } from "../src/state/app";
+import { readFallback, restoredDmPins, takesDmClose } from "../src/sync/dmCloses";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
@@ -158,6 +163,7 @@ function controllerWith(store: Store, api: unknown): Stub {
     setError: vi.fn(),
     setNotice: AppController.prototype.setNotice,
     closeDm: AppController.prototype.closeDm,
+    restoreReadAfterRefusedClose: AppController.prototype["restoreReadAfterRefusedClose"],
     undoCloseDm: AppController.prototype.undoCloseDm,
     reopenIfClosed: AppController.prototype.reopenIfClosed,
     toggleDmPin: vi.fn(),
@@ -180,6 +186,8 @@ describe("「会話を閉じる」", () => {
       closeDm: vi.fn(async (id: string) => { if (fail) throw new ApiError(500, "internal", "boom"); return { channel_id: id, closed: true, closed_at: "" }; }),
       reopenDm: vi.fn(async (id: string) => ({ channel_id: id, closed: false, closed_at: null })),
       pinDm: vi.fn(async (id: string) => ({ channel_id: id, pinned: true })),
+      // Review v0.1.43 #7: a refused close asks for the read state again; unreachable as the close itself here.
+      markRead: vi.fn(async (): Promise<ReadStateOut> => { throw new ApiError(500, "internal", "boom"); }),
     };
     return { store, api, controller: controllerWith(store, api) };
   }
@@ -311,5 +319,112 @@ describe("the menus and the toast", () => {
     fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
     expect(run).toHaveBeenCalledTimes(1);
     expect(controller.setNotice).toHaveBeenCalledWith(null);
+  });
+});
+
+// --- Review v0.1.43 #6 / #7: the shared rules (apps/shared/dm-close-rules.json) and the races they settle -----------
+
+interface Mark { last_seq: number; last_read_seq: number; unread_count: number; mention_count: number }
+interface Rules {
+  close_event: { name: string; closed: boolean; closed_seq: number | null; last_message_seq: number | null; apply: boolean }[];
+  restore_pin: { name: string; pins_before: string[]; pins_now: string[]; channel: string; expect: string[] }[];
+  read_fallback: { name: string; optimistic: Mark; now: Mark; expect: "snapshot" | "keep" }[];
+}
+const rules = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "dm-close-rules.json"), "utf8")) as Rules;
+const mark = (m: Mark) => ({ lastSeq: m.last_seq, lastReadSeq: m.last_read_seq, unreadCount: m.unread_count, mentionCount: m.mention_count });
+
+describe("dm-close-rules (apps/shared/dm-close-rules.json)", () => {
+  it.each(rules.close_event.map((c) => [c.name, c] as const))("close_event: %s", (_name, c) => {
+    expect(takesDmClose(c.closed, c.closed_seq, c.last_message_seq)).toBe(c.apply);
+  });
+  it.each(rules.restore_pin.map((c) => [c.name, c] as const))("restore_pin: %s", (_name, c) => {
+    const place = c.pins_before.indexOf(c.channel);
+    expect(restoredDmPins(c.pins_now, c.channel, place < 0 ? null : place)).toEqual(c.expect);
+  });
+  it.each(rules.read_fallback.map((c) => [c.name, c] as const))("read_fallback: %s", (_name, c) => {
+    expect(readFallback(mark(c.optimistic), mark(c.now))).toBe(c.expect);
+  });
+});
+
+describe("Review v0.1.43 #6: a close older than a message held here leaves the DM open", () => {
+  it("the race: message.created, then the close that read the seq before it; a close at that message still closes", async () => {
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const bob = server.addUser("bob");
+    const withAlice = server.createChannel("", bob.id, "dm");
+    server.join(withAlice.id, alice.id);
+    server.post(withAlice.id, alice.id, "earlier");
+    const store = new Store();
+    const engine = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 50 });
+    await engine.start();
+    await engine.idle();
+    const stale = store.getChannel(withAlice.id)!.lastSeq;
+
+    // The close read `stale`; alice's message committed meanwhile and its event came first.
+    const fresh = server.post(withAlice.id, alice.id, "while you were closing").message;
+    await engine.idle();
+    server.emitDmClose(bob.id, withAlice.id, true, stale);
+    await engine.idle();
+    expect(store.isDmClosed(withAlice.id)).toBe(false);
+    expect(store.getChannel(withAlice.id)!.unreadCount).toBe(2);
+
+    // A close that includes the newest message is taken; one from an older server (no closed_seq) as before.
+    server.emitDmClose(bob.id, withAlice.id, true, fresh.seq);
+    await engine.idle();
+    expect(store.isDmClosed(withAlice.id)).toBe(true);
+    server.emitDmClose(bob.id, withAlice.id, false, null);
+    server.emitDmClose(bob.id, withAlice.id, true, null);
+    await engine.idle();
+    expect(store.isDmClosed(withAlice.id)).toBe(true);
+    engine.stop();
+  });
+});
+
+describe("Review v0.1.43 #7: a refused close puts back only what it touched", () => {
+  function held() {
+    const store = new Store();
+    store.upsertChannel({ ...dm("a", ["u1"], 5), last_seq: 3 } as never, { isMember: true });
+    store.updateChannel("a", { lastSeq: 3, lastReadSeq: 3, unreadCount: 0, mentionCount: 0, firstUnreadAt: null });
+    store.replaceClosedDms([]);
+    store.replaceDmPins(["b", "a", "c"]);
+    let refuse: (error: Error) => void = () => {};
+    const api = {
+      closeDm: vi.fn(() => new Promise<never>((_resolve, reject) => { refuse = reject; })),
+      markRead: vi.fn(async (): Promise<ReadStateOut> => ({ last_read_seq: 3, unread_count: 1, mention_count: 0, first_unread_at: "2026-10-07T00:00:00Z" })),
+    };
+    return { store, api, controller: controllerWith(store, api), refuse: (error: Error) => refuse(error) };
+  }
+
+  /** What the engine does meanwhile: another device pins d, a message comes to a (seq 4, unread). */
+  function meanwhile(store: Store) {
+    store.setDmPinned("d", true);
+    store.updateChannel("a", { lastSeq: 4, unreadCount: store.getChannel("a")!.unreadCount + 1, firstUnreadAt: "2026-10-07T00:00:00Z" });
+  }
+
+  it("as the review replayed it: d's pin and a's new unread survive the 503; a goes back to its own place", async () => {
+    const { store, api, controller, refuse } = held();
+    const done = controller.closeDm("a");
+    expect(store.dmPins).toEqual(["b", "c"]);
+    meanwhile(store);
+    refuse(new ApiError(503, "unavailable", "busy"));
+    expect(await done).toBe(false);
+    expect(store.isDmClosed("a")).toBe(false);
+    expect(store.dmPins).toEqual(["b", "a", "c", "d"]);
+    expect(api.markRead).toHaveBeenCalledWith("a", 0); // the server's read state, asked again
+    expect(store.getChannel("a")).toMatchObject({ lastSeq: 4, lastReadSeq: 3, unreadCount: 1, firstUnreadAt: "2026-10-07T00:00:00Z" });
+    expect(controller.setError).toHaveBeenCalled();
+  });
+
+  it("the read state unreachable too: what came meanwhile is kept, not the snapshot", async () => {
+    const { store, api, controller, refuse } = held();
+    api.markRead.mockRejectedValueOnce(new ApiError(503, "unavailable", "busy"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const done = controller.closeDm("a");
+    meanwhile(store);
+    refuse(new ApiError(503, "unavailable", "busy"));
+    expect(await done).toBe(false);
+    expect(store.getChannel("a")).toMatchObject({ lastSeq: 4, unreadCount: 1 });
+    expect(store.dmPins).toEqual(["b", "a", "c", "d"]);
+    warn.mockRestore();
   });
 });
