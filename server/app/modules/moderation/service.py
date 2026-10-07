@@ -16,6 +16,7 @@ import uuid
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, not_found
@@ -261,8 +262,18 @@ async def report_message(
         body_snapshot=message.body[:SNAPSHOT_MAX],
         created_at=utcnow(),
     )
-    db.add(report)
-    await db.flush()
+    refused = await _insert_report(db, report, "message_reports_once")
+    if refused is not None:
+        # The same report sent twice at once: the other request's row (committed: the insert
+        # waited for it) is the answer, without a second audit entry or notice.
+        again = await db.scalar(
+            select(MessageReport).where(
+                MessageReport.message_id == message_id, MessageReport.reporter_id == actor.id
+            )
+        )
+        if again is None:
+            raise refused
+        return _ack(again), False
     await audit.record_in_tx(
         db,
         actor_id=actor.id,
@@ -271,18 +282,7 @@ async def report_message(
         target_id=message.id,
         details={"report_id": str(report.id), "reason": data.reason},
     )
-    try:
-        await db.commit()
-    except Exception:  # the same report sent twice at once
-        await db.rollback()
-        again = await db.scalar(
-            select(MessageReport).where(
-                MessageReport.message_id == message_id, MessageReport.reporter_id == actor.id
-            )
-        )
-        if again is None:
-            raise
-        return _ack(again), False
+    await db.commit()
     ack = _ack(report)
     channel = await channels.require_channel(db, message.channel_id)
     author = await users.get_user(db, message.sender_id)
@@ -338,6 +338,24 @@ def _general_ack(report: MessageReport) -> GeneralReportAck:
     )
 
 
+async def _insert_report(
+    db: AsyncSession, report: MessageReport, once: str
+) -> IntegrityError | None:
+    """Inserts the report in a savepoint. Returns the error when the unique constraint `once`
+    refused it (the same report, committed by a concurrent request: the insert waited for it);
+    any other error propagates. The savepoint keeps the request's transaction, and the objects
+    loaded in it, usable afterwards."""
+    try:
+        async with db.begin_nested():
+            db.add(report)
+            await db.flush()
+    except IntegrityError as exc:
+        if once not in str(exc.orig):
+            raise
+        return exc
+    return None
+
+
 async def find_general_report(
     db: AsyncSession, actor: User, client_report_id: uuid.UUID | None
 ) -> GeneralReportAck | None:
@@ -376,8 +394,15 @@ async def submit_report(
         client_report_id=data.client_report_id,
         created_at=utcnow(),
     )
-    db.add(report)
-    await db.flush()
+    refused = await _insert_report(db, report, "message_reports_client_id")
+    if refused is not None:
+        # The same client_report_id sent twice at once (REVIEW-v0.1.43 #9): the unique index
+        # made this insert wait for the other request and fail at the flush; its report is the
+        # answer (200), without a second audit entry or notice.
+        again = await find_general_report(db, actor, data.client_report_id)
+        if again is None:
+            raise refused
+        return again, False
     await audit.record_in_tx(
         db,
         actor_id=actor.id,
@@ -386,14 +411,7 @@ async def submit_report(
         target_id=target.id if target is not None else report.id,
         details={"report_id": str(report.id), "kind": report.kind, "category": data.category},
     )
-    try:
-        await db.commit()
-    except Exception:  # the same client_report_id sent twice at once
-        await db.rollback()
-        again = await find_general_report(db, actor, data.client_report_id)
-        if again is None:
-            raise
-        return again, False
+    await db.commit()
     ack = _general_ack(report)
     await notify_admins(
         db,
