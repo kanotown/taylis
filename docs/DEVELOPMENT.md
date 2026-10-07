@@ -75,6 +75,12 @@ TestFlight / App Store と Google Play への配信 (版の番号、署名、ス
 
 ## 5. 気をつけること (これまでにはまったところ)
 
+- デスクトップ版を手元で起動して試すときは、普段使いの Taylis.app と区別できるよう `identifier` と `productName` を
+  別の `--config` で上書きしたビルドを使う (例：`{"productName": "TaylisBGTest", "identifier": "jp.chikuwachat.desktop.bgtest"}`
+  を `npx tauri build --debug --bundles app --config src-tauri/tauri.no-updater.conf.json --config <そのファイル>` に渡す)。
+  プロセス名はどちらも `chikuwachat-desktop` なので、System Events でプロセス名を指定する操作は普段使いのアプリに届きうる。
+  `osascript` はアプリのパスで指定する。試した後は `~/Library/{Application Support,Caches,WebKit}/<識別子>` を消す。
+
 - データを後から埋める移行は、端末が持っている行にも届くよう `updated_seq` を進める (0049 の例)。
 - SwiftUI で、中身が空になりうる `Group` や `if` に `.task` や `.sheet` を付けない (リンクのカード、後で送信のダイアログで起きた)。
 - iOS の会話は上下を反転したリスト (ARCHITECTURE D23)。下に貼り付けるための補正のコードを足さない。
