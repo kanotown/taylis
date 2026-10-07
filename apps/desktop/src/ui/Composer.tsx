@@ -69,6 +69,10 @@ export function Composer({
   // 「リッチ」 / 「Markdown」 (users.composer_mode, rich when never chosen); both keep the draft as Markdown. A controller
   // without the setting (the tests' stand-ins) keeps the text area.
   const rich = (controller.composerMode ?? "markdown") === "rich";
+  // The preview is the text area's: it goes with it, whichever composer (or settings, or another device) switched every
+  // composer of mine to rich. Left on, it stood above the editor with no button to close it, the box as tall again
+  // and the list above thrown up by as much (user report 2026-10-07); back in Markdown it came back instead of the text.
+  if (rich && preview) setPreview(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const mediaInput = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
@@ -434,7 +438,6 @@ export function Composer({
     if (next === (rich ? "rich" : "markdown")) return;
     focusAfterSwitch.current = true;
     setLinkEdit(null);
-    setPreview(false);
     void controller.setComposerMode(next);
   };
   useEffect(() => {
