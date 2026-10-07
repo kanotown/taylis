@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.activity.models import item_read
 from app.modules.groups.models import UserGroupMember
 from app.modules.reservations import access
 from app.modules.reservations.models import (
@@ -149,9 +150,14 @@ async def notices_for(
 
 
 def unread_notices(user_id: uuid.UUID, since: datetime):  # type: ignore[no-untyped-def]
-    """Not done, after the read position, readable now (access.may_read)."""
+    """Not done, after the read position, not opened (2026-10-07), readable now
+    (access.may_read)."""
     return (
         access.readable_notices(user_id)
         .with_only_columns(ReservationNotice.id)
-        .where(ReservationNotice.at > since, ReservationNotice.done_at.is_(None))
+        .where(
+            ReservationNotice.at > since,
+            ReservationNotice.done_at.is_(None),
+            ~item_read(user_id, ReservationNotice.id, ReservationNotice.at),
+        )
     )

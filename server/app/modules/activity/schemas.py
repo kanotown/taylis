@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.modules.messages.schemas import MessageOut
 
@@ -75,6 +75,9 @@ class ActivityReservation(BaseModel):
 
 
 class ActivityItem(BaseModel):
+    # The item's id (2026-10-07): the message's for mention / thread_reply / reaction, else the
+    # canvas / page / reservation item's `item_id`. PUT /activity/items/read takes it.
+    id: UUID
     kind: ActivityKind
     # When it happened: the message's time, a reaction's (the newest on that message), or the
     # canvas save's.
@@ -91,10 +94,11 @@ class ActivityItem(BaseModel):
     actor_ids: list[UUID]
     # A reaction item's emoji (the distinct ones on my message by others).
     emojis: list[str] = []
-    # Read (2026-10-06, MOBILE_UI.md §6.4): `at` is not after read_at, or the item's message is
-    # read in its conversation (mention / thread_reply: the channel's read position for a
-    # timeline row, the thread's for a reply), or a reservation to-do is done. The unread dot
-    # and the badge follow it. Null from a server before it: compare `at` with read_at.
+    # Read (MOBILE_UI.md §6.4): `at` is not after read_at, or I opened the item since it
+    # happened (PUT /activity/items/read, 2026-10-07), or the item's message is read in its
+    # conversation (mention / thread_reply: the channel's read position for a timeline row, the
+    # thread's for a reply; 2026-10-06), or a reservation to-do is done. The unread dot and the
+    # badge follow it. Null from a server before 2026-10-06: compare `at` with read_at.
     read: bool | None = None
 
 
@@ -119,6 +123,20 @@ class ActivityReadIn(BaseModel):
 
 
 class ActivityReadData(BaseModel):
+    read_at: datetime
+
+
+class ActivityItemsReadIn(BaseModel):
+    # Items' `id`s from GET /activity (ids that are not my items are ignored).
+    item_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class ActivityItemsReadData(BaseModel):
+    """To me (2026-10-07): I opened these activity items on one of my devices; each is read
+    while its `at` is not after `read_at` (a reaction item with a newer reaction is unread
+    again). Clients drop their dots and fetch the summary again."""
+
+    item_ids: list[UUID]
     read_at: datetime
 
 

@@ -29,6 +29,7 @@ from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.modules.activity import canvas_mentions as mention_text
+from app.modules.activity.models import item_read
 from app.modules.attachments import service as attachments
 from app.modules.audit import service as audit
 from app.modules.canvases import repository as canvas_templates
@@ -809,6 +810,7 @@ async def _record_notice(
             WikiNotice.page_id == page.id,
             WikiNotice.kind == kind,
             WikiNotice.at > person.activity_read_at,
+            ~item_read(person.id, WikiNotice.id, WikiNotice.at),
         )
         .order_by(WikiNotice.at.desc())
         .limit(1)

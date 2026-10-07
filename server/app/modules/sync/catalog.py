@@ -76,6 +76,11 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     thread_events.THREAD_UPDATED: (thread_events.ThreadUpdatedData, "user", False),
     bookmark_events.BOOKMARK_UPDATED: (bookmark_events.BookmarkUpdatedData, "user", False),
     activity_events.ACTIVITY_READ: (activity_events.ActivityReadData, "user", False),
+    activity_events.ACTIVITY_ITEMS_READ: (
+        activity_events.ActivityItemsReadData,
+        "user",
+        False,
+    ),
     activity_events.ACTIVITY_UPDATED: (activity_events.ActivityUpdatedData, "user", False),
     activity_events.REACTION_ADDED: (activity_events.ReactionAddedData, "user", False),
     favorite_events.FAVORITE_UPDATED: (favorite_events.FavoriteUpdatedData, "user", False),

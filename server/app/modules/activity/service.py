@@ -3,6 +3,7 @@
 M76 (CANVAS.md §20): canvas mentions are items too, for the clients that ask for them by name
 (`include=canvas_mention`): the phones of M39-M76 fail on an item without a message."""
 
+import uuid
 from collections.abc import Collection
 from datetime import datetime
 
@@ -11,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.activity import repository as repo
-from app.modules.activity.events import ACTIVITY_READ
+from app.modules.activity.events import ACTIVITY_ITEMS_READ, ACTIVITY_READ
 from app.modules.activity.schemas import (
     ActivityCanvas,
     ActivityFilter,
     ActivityItem,
+    ActivityItemsReadData,
     ActivityListOut,
     ActivityPage,
     ActivityReadData,
@@ -70,6 +72,7 @@ async def list_activity(
         for row, canvas in await repo.canvas_mentions(db, actor.id, before=cursor, limit=limit):
             items.append(
                 ActivityItem(
+                    id=row.id,
                     kind="canvas_mention",
                     at=row.at,
                     canvas=ActivityCanvas(
@@ -89,6 +92,7 @@ async def list_activity(
     ):
         items.append(
             ActivityItem(
+                id=page_notice.id,
                 kind="page_mention" if page_notice.kind == "mention" else "page_shared",
                 at=page_notice.at,
                 page=ActivityPage(
@@ -110,6 +114,7 @@ async def list_activity(
         ):
             items.append(
                 ActivityItem(
+                    id=notice.id,
                     kind="reservation",
                     at=notice.at,
                     reservation=ActivityReservation(
@@ -141,6 +146,7 @@ async def list_activity(
         for message in await messages_out(db, mention_rows, actor.id):
             items.append(
                 ActivityItem(
+                    id=message.id,
                     kind="mention",
                     at=message.created_at,
                     message=message,
@@ -152,6 +158,7 @@ async def list_activity(
         for message in await messages_out(db, reply_rows, actor.id):
             items.append(
                 ActivityItem(
+                    id=message.id,
                     kind="thread_reply",
                     at=message.created_at,
                     message=message,
@@ -167,6 +174,7 @@ async def list_activity(
             if message_id in shaped:
                 items.append(
                     ActivityItem(
+                        id=message_id,
                         kind="reaction",
                         at=at,
                         message=shaped[message_id],
@@ -177,6 +185,11 @@ async def list_activity(
                 )
     items.sort(key=_item_key, reverse=True)
     page = items[:limit]
+    # Items opened since they happened are read too (2026-10-07, MOBILE_UI.md §6.4).
+    opened = await repo.opened(db, actor.id, [i.id for i in page if not i.read])
+    for item in page:
+        if not item.read and item.id in opened and item.at <= opened[item.id]:
+            item.read = True
     full = len(items) >= limit
     return ActivityListOut(
         items=page,
@@ -213,16 +226,42 @@ async def mark_read(
     include: Collection[str] = (),
 ) -> ActivitySummaryOut:
     """Moves the read position forward only (max-merge, like read states), never past now; my other
-    devices follow."""
+    devices follow. The items opened one by one at or below it are forgotten (they are read by
+    the position now)."""
     target = min(read_at, utcnow())
     if target > actor.activity_read_at:
         actor.activity_read_at = target
+        await repo.purge_opened(db, actor.id, target)
         await write_outbox(
             db,
             event_type=ACTIVITY_READ,
             audience_type="user",
             audience_id=actor.id,
             payload=ActivityReadData(read_at=target).model_dump(mode="json"),
+        )
+        await db.commit()
+    return await summary(db, actor, include)
+
+
+async def mark_items_read(
+    db: AsyncSession,
+    actor: User,
+    item_ids: list[uuid.UUID],
+    include: Collection[str] = (),
+) -> ActivitySummaryOut:
+    """2026-10-07 (MOBILE_UI.md §6.4): I opened these items: each is read until it happens again
+    (a reaction item's newer reaction). Idempotent; ids that are not my items (or are read by the
+    read position already) are not stored. My other devices follow through activity.items_read."""
+    now = utcnow()
+    ids = await repo.own_items(db, actor, list(dict.fromkeys(item_ids)), actor.activity_read_at)
+    if ids:
+        await repo.open_items(db, actor.id, ids, now)
+        await write_outbox(
+            db,
+            event_type=ACTIVITY_ITEMS_READ,
+            audience_type="user",
+            audience_id=actor.id,
+            payload=ActivityItemsReadData(item_ids=ids, read_at=now).model_dump(mode="json"),
         )
         await db.commit()
     return await summary(db, actor, include)

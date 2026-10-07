@@ -5,6 +5,34 @@
     "session_revoked": 4003
   },
   "events": {
+    "activity.items_read": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "To me (2026-10-07): I opened these activity items on one of my devices; each is read\nwhile its `at` is not after `read_at` (a reaction item with a newer reaction is unread\nagain). Clients drop their dots and fetch the summary again.",
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_ids",
+          "read_at"
+        ],
+        "title": "ActivityItemsReadData",
+        "type": "object"
+      }
+    },
     "activity.read": {
       "audience": "user",
       "consumes_seq": false,
