@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CustomEmojiOut, EmojiPackOut } from "../src/api/types";
@@ -63,16 +63,17 @@ describe("the picker's pack tabs (M100)", () => {
     store: { sortedEmojiPacks: () => [pack] },
   } as unknown as AppController;
 
-  it("shows a tab per pack with its emoji in big cells; 「カスタム」 keeps only the ungrouped ones, text emoji as pills", () => {
+  it("shows a section and a tab per pack with its emoji in big cells; 「カスタム」 keeps only the ungrouped ones, text emoji as pills", () => {
     URL.createObjectURL = vi.fn(() => "blob:x");
     const picked: string[] = [];
     render(<EmojiPicker onPick={(e) => picked.push(e.glyph)} custom={[bow, plain, parrot, kakunin]} controller={controller} />);
-    fireEvent.click(screen.getByRole("button", { name: "カスタム" }));
-    expect(screen.getAllByTitle(":parrot:").length).toBeGreaterThan(0);
-    expect(screen.queryAllByTitle("おじぎ :hpd-bow:")).toHaveLength(0);
-    expect(screen.getByLabelText("文字の絵文字").textContent).toBe("確認しました");
-    fireEvent.click(screen.getByRole("button", { name: "ドットはんぺん" }));
-    const cells = screen.getAllByTitle(/:hpd-/).filter((el) => el.tagName === "BUTTON");
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label") ?? tab.textContent).slice(0, 3)).toEqual(["カスタム", "ドットはんぺん", "顔"]);
+    const customSection = screen.getByRole("region", { name: "カスタム" });
+    expect(within(customSection).getAllByTitle(":parrot:").length).toBeGreaterThan(0);
+    expect(within(customSection).queryAllByTitle("おじぎ :hpd-bow:")).toHaveLength(0);
+    expect(within(customSection).getByLabelText("文字の絵文字").textContent).toBe("確認しました");
+    const packSection = screen.getByRole("region", { name: "ドットはんぺん" });
+    const cells = within(packSection).getAllByTitle(/:hpd-/).filter((el) => el.tagName === "BUTTON");
     expect(cells.map((c) => c.getAttribute("title"))).toEqual(["通常 :hpd-plain:", "おじぎ :hpd-bow:"]); // pack order
     expect(cells[0]!.className).toContain("h-[4.5rem]");
     fireEvent.click(cells[1]!);

@@ -29,16 +29,15 @@ describe("the picker's recent row (testers, 2026-09-29: 「:hanpen:」 as text, 
     expect(row.querySelectorAll("button")).toHaveLength(2);
   });
 
-  it("is pinned above the categories and stays whatever category is shown; the picker fits the popover's height (2026-10-04)", () => {
+  it("is the first section of the one list, with a tab of its own; the picker fits the popover's height (2026-10-07)", () => {
     const { container } = render(<EmojiPicker onPick={() => {}} recent={["🎓", "👍"]} />);
     const recent = screen.getByRole("group", { name: "最近使った絵文字" });
-    const chip = screen.getByRole("button", { name: "旗" });
-    expect(recent.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(chip);
-    expect(screen.getByRole("group", { name: "最近使った絵文字" }).textContent).toContain("🎓");
+    const flags = screen.getByTitle(":checkered_flag:");
+    expect(recent.compareDocumentPosition(flags) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole("tab")[0]!.getAttribute("aria-label")).toBe("最近使った絵文字");
     const root = container.firstElementChild as HTMLElement;
     expect(root.style.maxHeight).toContain("--radix-popover-content-available-height");
-    // Searching hides the row (the hits are the list then).
+    // Searching hides the sections (the hits are the list then).
     fireEvent.change(screen.getByPlaceholderText(/検索/), { target: { value: "卒業" } });
     expect(screen.queryByRole("group", { name: "最近使った絵文字" })).toBeNull();
     expect(screen.getByTitle(":mortar_board:")).toBeTruthy();
