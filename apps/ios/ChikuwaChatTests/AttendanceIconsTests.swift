@@ -284,6 +284,60 @@ final class AttendanceIconsTests: XCTestCase {
         }
     }
 
+    /// A solid badge's icon is white like its name, in light and dark (2026-10-08: on the phone the icon was black on
+    /// the chips, the board's headings and the selected button while the name was white). Every opaque pixel is the
+    /// shade, white or a blend of the two — nothing darker than the shade — and the icon's box has white pixels.
+    func testTheSolidBadgesIconIsWhite() throws {
+        let controller = AppController()
+        let states = [
+            state("a", "在室", kind: "in_room", icon: "in_room", color: "green"),
+            state("b", "学内", icon: "on_site", color: "yellow"),
+            state("c", "帰宅", kind: "gone", icon: "gone", color: "red"),
+        ]
+        for scheme in [ColorScheme.light, .dark] {
+            for item in states {
+                // name, view, the icon box's x range (pt) from the left edge
+                let faces: [(String, AnyView, ClosedRange<CGFloat>)] = [
+                    ("chip large", AnyView(AttendanceChip(controller: controller, state: item, large: true)), 8...(8 + AttendanceIcons.boxWidth(14))),
+                    ("chip small", AnyView(AttendanceChip(controller: controller, state: item)), 5...(5 + AttendanceIcons.boxWidth(11))),
+                    ("pill", AnyView(AttendancePillFace(controller: controller, state: item)), 10...(10 + AttendanceIcons.boxWidth(14))),
+                    ("sheet tile", AnyView(AttendanceGlyphTile(controller: controller, state: item)), 0...32),
+                    ("selected button", AnyView(AttendanceStateButtonFace(controller: controller, state: item, selected: true).frame(width: 140)), 0...140),
+                ]
+                for (name, view, iconBox) in faces {
+                    let label = "\(name) \(item.label) \(scheme)"
+                    let renderer = ImageRenderer(content: view.environment(\.colorScheme, scheme))
+                    renderer.scale = 2
+                    let image = try XCTUnwrap(renderer.cgImage, label)
+                    try Self.assertWhiteOnShade(image, shade: AttendancePalette.solidRGB(item.color), iconBox: iconBox, scale: 2, label)
+                }
+            }
+        }
+    }
+
+    private static func assertWhiteOnShade(_ image: CGImage, shade: UInt32, iconBox: ClosedRange<CGFloat>, scale: CGFloat, _ label: String) throws {
+        let (width, height) = (image.width, image.height)
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try XCTUnwrap(CGContext(data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        func luminance(_ r: Double, _ g: Double, _ b: Double) -> Double { 0.2126 * r + 0.7152 * g + 0.0722 * b }
+        let floor = luminance(Double((shade >> 16) & 0xFF), Double((shade >> 8) & 0xFF), Double(shade & 0xFF)) - 12
+        var dark = 0
+        var whiteInBox = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let i = (y * width + x) * 4
+                guard data[i + 3] == 255 else { continue }  // the rounded corners' edges, outside
+                let (r, g, b) = (Double(data[i]), Double(data[i + 1]), Double(data[i + 2]))
+                if luminance(r, g, b) < floor { dark += 1 }
+                if iconBox.contains(CGFloat(x) / scale), r > 235, g > 235, b > 235 { whiteInBox += 1 }
+            }
+        }
+        XCTAssertEqual(dark, 0, "\(label): \(dark) pixels darker than the shade (a black icon?)")
+        XCTAssertGreaterThan(whiteInBox, 10, "\(label): no white icon pixels")
+    }
+
     /// Switching between states whose names are as long must not move the home header's pill (2026-10-07): each symbol
     /// sits in the same box, so the pill's size is the same for all of them.
     func testThePillKeepsItsSizeAcrossSameLengthStates() {

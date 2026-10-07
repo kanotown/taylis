@@ -439,6 +439,9 @@ Web（§2.1・§7.1）と同じ規則で作る：
   テキストだけの読み上げ（`stateText`）は、アイコンを描ける状態なら名前だけ。
 - バッジ：ボタン（選んでいない状態はアイコンだけ状態の色、選んだ状態は全体を塗る）、ボードの見出し、「自分用の状態」の行、
   プロフィールカードとメンバー一覧のチップ。色は `AttendancePalette`（§2.2 の写し。`solid` と白の `onSolid`、ボタンのアイコンの `tint`）。
+  アイコンと名前の色は `AttendanceStateLabel` が両方とも決めて渡す（塗りつぶしなら白、そうでなければアイコンは `tint`・名前は primary）。
+  アイコンに `.foregroundStyle(.foreground)` を付けていたときは、外側の白ではなく既定の前景色（ライトで黒）になり、チップ・ボードの
+  見出し・選んだボタンでアイコンだけ黒かった（2026-10-08）。`AttendanceIconsTests` が描いた画素でアイコンが白いことを見る。
 - アイコンは決まった幅の箱（`AttendanceIcons.boxWidth`、高さの 1.2 倍）に置く。SF Symbols は記号ごとに幅が違い、ホームの見出しの
   ピルが「在室 → 学内 → 学外 → 帰宅」の切り替えで 61.7〜68.3 pt と伸び縮みして揺れて見えた（2026-10-07）。ピルは切り替えを
   アニメーションしない（`.transaction { $0.animation = nil }`、名前は `.contentTransition(.identity)`）。テストで同じ長さの名前の
@@ -460,7 +463,8 @@ Web（§2.1・§7.1）と同じ規則で作る：
   意味の名前は `strings_attendance.xml` の `attendance_icon_<鍵>`。`AttendanceIconsTest` が鍵の順・名前・ベクターの名前（`Outlined.<名前>`）・
   3 言語の名前・`defaults` を JSON と突き合わせる。
 - バッジ（`StatePill`）：塗りつぶしの角丸に白いアイコンと名前（ボードの見出し・自分用の状態・チップ・編集のプレビュー。色は
-  `AttendanceBadgeColors`、§2.2 の写し）。ボタンは押されていなくてもアイコンは状態の色（`attendanceTint`）。Material のアイコンは
+  `AttendanceBadgeColors`、§2.2 の写し）。ボタンは押されていなくてもアイコンは状態の色（`attendanceTint`）。アイコンの色はどこでも
+  `attendanceTint(color, solid)`（規則は `AttendanceBadgeColors.glyphTint`：塗りつぶしの上ならライトでもダークでも白。テストあり）から取る。Material のアイコンは
   どれも同じ正方形の大きさなので、ピルは同じ長さの名前どうしで幅が変わらない（エミュレータで確かめた）。知らない鍵・null は絵文字（`SectionIcon`、カスタム絵文字も）、無ければ名前だけ。
 - 編集：名前の下に見た目のプレビュー、色の 8 色の見本、アイコンの格子（「なし」と 16 個、各 48 dp、TalkBack は意味の名前と選択状態）、
   絵文字（「代わり」の説明つき）、分類。新しい状態のアイコンは選ぶまで分類の既定。
