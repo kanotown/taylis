@@ -1096,7 +1096,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             {message.body && !pollHidesBody(message) && !callHidesBody(message) && (
               <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} jumbo />
             )}
-            <AttachmentList attachments={message.attachments ?? []} controller={controller} />
+            <AttachmentList attachments={message.attachments ?? []} controller={controller} downloadable={!message.pending && !message.failed} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} auto={autoLinkPreview(store, message.sender_id)} />}
           </>
         )}

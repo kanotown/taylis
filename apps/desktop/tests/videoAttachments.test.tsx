@@ -238,7 +238,7 @@ describe("in a message", () => {
   it("keeps photos, videos and files in their own rows", () => {
     const { controller } = controllerWith(async () => new Blob());
     render(<AttachmentList attachments={[base, { ...base, id: "b" }, video, file]} controller={controller} />);
-    expect(document.querySelectorAll("[data-photo-grid] button")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-photo-grid] [data-media-tile]")).toHaveLength(2);
     expect(document.querySelectorAll("[data-video-row] [data-video-tile]")).toHaveLength(1);
     expect(screen.getByTitle("notes.pdf").closest("[data-photo-grid], [data-video-row]")).toBeNull();
   });

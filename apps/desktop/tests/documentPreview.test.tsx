@@ -79,7 +79,7 @@ it("shows the first page in its final box with the name, size and page count, an
   deliver(new Blob());
   await waitFor(() => expect(box.querySelector("img")?.getAttribute("src")).toBe("blob:preview"));
   expect(box.style.height).toBe("200px");
-  fireEvent.click(screen.getByRole("button", { name: "ダウンロード" }));
+  fireEvent.click(screen.getByRole("button", { name: "議事録.docx をダウンロード" }));
   expect(download).toHaveBeenCalledWith(ready);
 });
 

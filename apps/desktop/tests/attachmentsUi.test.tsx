@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { AttachmentList } from "../src/ui/Attachments";
@@ -13,7 +13,7 @@ beforeEach(() => {
     static override revokeObjectURL = vi.fn();
   });
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("shows failed fetches and retries the authenticated thumbnail request", async () => {
   const fetch = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(new Blob());
@@ -48,8 +48,12 @@ it("puts two or more photos in one wrapping row of equal squares, one photo and 
   // A row that wraps only when full: no two-column grid, which broke the line after the second photo (2026-09-30).
   expect(grid.className).toContain("flex-wrap");
   expect(grid.className).not.toContain("grid-cols-2");
-  expect(grid.querySelectorAll("button")).toHaveLength(3);
-  for (const tile of grid.querySelectorAll("button")) expect(tile.className).toContain("photo-tile aspect-square");
+  // Each tile is a wrapper (its download button over the corner) with the square photo button filling it.
+  expect(grid.querySelectorAll("[data-media-tile]")).toHaveLength(3);
+  for (const tile of grid.querySelectorAll("[data-media-tile]")) {
+    expect(tile.className).toContain("photo-tile");
+    expect(tile.querySelector("button:not([data-download-overlay])")!.className).toContain("aspect-square w-full");
+  }
   expect(screen.getByTitle("notes.pdf").closest("[data-photo-grid]")).toBeNull(); // files stay in their own row
   view.rerender(<AttachmentList attachments={[attachment, file]} controller={controller(async () => new Blob())} />);
   expect(document.querySelector("[data-photo-grid]")).toBeNull();
@@ -94,4 +98,83 @@ it("keeps the full image viewer open while retrying a failed original", async ()
   await within(screen.getByRole("dialog")).findByRole("img");
   expect(fetch).toHaveBeenLastCalledWith("/api/v1/attachments/a/content");
   expect(screen.getByRole("dialog")).toBeTruthy();
+});
+
+describe("the download button over a photo or video (2026-10-07)", () => {
+  const video: AttachmentOut = { ...attachment, id: "v", filename: "clip.mp4", content_type: "video/mp4", size_bytes: 9_000_000, has_thumbnail: false, width: null, height: null };
+  const file: AttachmentOut = { ...attachment, id: "f", filename: "notes.zip", content_type: "application/zip", has_thumbnail: false, width: null, height: null };
+  const setup = (attachments: AttachmentOut[], downloadable?: boolean) => {
+    const downloadAttachment = vi.fn(async () => {});
+    const ctl = { api: { fetchBlob: async () => new Blob() }, downloadAttachment } as unknown as AppController;
+    render(<AttachmentList attachments={attachments} controller={ctl} downloadable={downloadable} />);
+    return downloadAttachment;
+  };
+  const overlay = (name: string) => screen.getByRole("button", { name: `${name} をダウンロード` });
+
+  it("appears while a mouse is over a photo tile (also in a row of photos) and goes when it leaves; a touch never shows it", async () => {
+    setup([attachment, { ...attachment, id: "b", filename: "second.png" }]);
+    await screen.findAllByRole("img");
+    const button = overlay("second.png");
+    expect(button.dataset["shown"]).toBe("false");
+    expect(button.className).toContain("pointer-events-none");
+    const tile = button.closest("[data-media-tile]")!;
+    fireEvent.pointerEnter(tile, { pointerType: "touch" });
+    expect(button.dataset["shown"]).toBe("false");
+    fireEvent.pointerEnter(tile, { pointerType: "mouse" });
+    expect(button.dataset["shown"]).toBe("true");
+    expect(button.className).not.toContain("pointer-events-none");
+    expect(button.getAttribute("title")).toBe("ダウンロード");
+    expect(overlay("result.png").dataset["shown"]).toBe("false"); // only the tile under the pointer
+    fireEvent.pointerLeave(tile, { pointerType: "mouse" });
+    expect(button.dataset["shown"]).toBe("false");
+  });
+
+  it("appears while the keyboard focus is on the tile or on the button, and not after it leaves", () => {
+    setup([attachment]);
+    const button = overlay("result.png");
+    const tile = button.closest("[data-media-tile]")!;
+    const photo = tile.querySelector<HTMLButtonElement>("button:not([data-download-overlay])")!;
+    // The focus a click leaves (not :focus-visible) does not show it.
+    act(() => photo.focus());
+    expect(button.dataset["shown"]).toBe("false");
+    act(() => photo.blur());
+    // Keyboard focus: jsdom has no focus-visible heuristics, so the browser's answer is stubbed.
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
+      return selector === ":focus-visible" ? this === document.activeElement : matches.call(this, selector);
+    });
+    act(() => photo.focus());
+    expect(button.dataset["shown"]).toBe("true");
+    act(() => button.focus()); // tabbing from the photo to its button keeps it
+    expect(button.dataset["shown"]).toBe("true");
+    act(() => button.blur());
+    expect(button.dataset["shown"]).toBe("false");
+  });
+
+  it("downloads like the viewer's button without opening the viewer", () => {
+    const download = setup([attachment, video]);
+    fireEvent.click(overlay("result.png"));
+    expect(download).toHaveBeenCalledWith(attachment);
+    fireEvent.click(overlay("clip.mp4"));
+    expect(download).toHaveBeenCalledWith(video);
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The photo itself still opens the viewer.
+    fireEvent.click(screen.getByTitle(/result\.png \(100 B\)/));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("is not there while the message is still being sent or failed to send", () => {
+    setup([attachment, video, file], false);
+    expect(document.querySelector("[data-download-overlay]")).toBeNull();
+    expect(document.querySelector("[data-download-hint]")).toBeNull();
+  });
+
+  it("a file row downloads as a whole and names itself for screen readers; its icon shows on hover and keyboard focus", () => {
+    const download = setup([file]);
+    const row = overlay("notes.zip");
+    expect(row.querySelector("[data-download-hint]")!.getAttribute("class")).toContain("group-focus-visible:opacity-100");
+    fireEvent.click(row);
+    expect(download).toHaveBeenCalledWith(file);
+  });
 });
