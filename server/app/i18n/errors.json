@@ -56,6 +56,11 @@
    "en": "This button was not found.",
    "zh-Hans": "找不到此按钮。"
   },
+  "action_status_source_taken": {
+   "ja": "この組の状態はほかのボタンが取得しています。先にそちらをオフにしてください",
+   "en": "Another button of this group already provides its state. Turn that off first.",
+   "zh-Hans": "此组的状态已由其他按钮获取。请先关闭那个按钮的设置。"
+  },
   "action_url_not_allowed": {
    "ja": "https の公開の URL だけを使えます",
    "en": "Only public https URLs can be used.",

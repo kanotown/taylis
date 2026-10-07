@@ -183,6 +183,12 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "all (not guests)",
         False,
     ),
+    # §12: a group's state, to whoever may press something in the group.
+    actions_events.ACTIONS_STATUS_UPDATED: (
+        actions_events.ActionStatusUpdatedData,
+        "users who may press a button of the group",
+        False,
+    ),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (
         notification_events.NotificationPreferenceUpdatedData,
         "user",

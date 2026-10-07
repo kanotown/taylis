@@ -81,6 +81,11 @@ class Action(Base):
         ForeignKey("channels.id", ondelete="SET NULL")
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # The button whose relay is asked for the state of its group (docs/ACTIONS.md §12): at most one
+    # per group label (a button without a group is its own group).
+    provides_status: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     position: Mapped[int] = mapped_column(Integer)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
