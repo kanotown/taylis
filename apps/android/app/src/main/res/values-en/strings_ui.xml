@@ -642,6 +642,7 @@
     <string name="common_report">Report</string>
     <string name="common_request_review">Request review</string>
     <string name="common_reservations">Reservations</string>
+    <string name="common_attendance">Attendance</string>
     <string name="common_resume">Resume</string>
     <string name="common_retry">Retry</string>
     <string name="common_review_request">Review request</string>

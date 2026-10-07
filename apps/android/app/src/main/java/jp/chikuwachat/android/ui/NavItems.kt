@@ -29,11 +29,13 @@ object NavItems {
         Entry("tasks", L10n.str(R.string.common_tasks), visible = true, platforms = BOTH),
         Entry("deadlines", L10n.str(R.string.common_deadlines), visible = true, platforms = BOTH),
         Entry("reservations", L10n.str(R.string.common_reservations), visible = true, platforms = BOTH),
+        // M140 (docs/PRESENCE.md): only while the workspace has the board on (not drawn by this app yet).
+        Entry("attendance", L10n.str(R.string.common_attendance), visible = true, platforms = BOTH),
     )
 
     val order: Map<Platform, List<String>> = mapOf(
-        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"),
-        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity"),
+        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance"),
+        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance"),
     )
 
     /**
