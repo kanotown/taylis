@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -91,30 +94,66 @@ fun WorkspaceTile(entry: Workspace?, name: String, size: Dp, modifier: Modifier 
 /**
  * The channel list's title: the workspace on screen; a dot when another one has something unread. Opens the switcher;
  * M37: on the phone's home only with two workspaces or more (`switchable`; with one, ⋮ offers 「ワークスペースを追加」).
+ *
+ * M140 (docs/PRESENCE.md §9.1): with [onOpenAttendance], my 在室状況 chip right after the name (AttendanceQuickSwitch).
+ * It never wraps and never pushes the name off: whole while the whole name and the whole chip fit, else only its icon
+ * (the name keeps at least 4 characters), else hidden ([AttendanceRules.chipMode], the Web's pillMode).
  */
 @Composable
-fun WorkspaceTitle(controller: AppController, switchable: Boolean = true) {
+fun WorkspaceTitle(controller: AppController, switchable: Boolean = true, version: Int = 0, onOpenAttendance: (() -> Unit)? = null) {
     val entry = controller.activeWorkspace
     val name = controller.workspaceName
     val othersUnread = controller.workspaces.any { it.serverUrl != controller.activeKey && !it.signedOut && (it.hasUnread || it.badge > 0) }
     val tap = if (switchable) Modifier.clickable(onClickLabel = stringResource(R.string.workspace_views_switch_workspace)) { controller.openSwitcher() } else Modifier
-    Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).then(tap).padding(horizontal = 4.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box {
-            WorkspaceTile(entry, name, 30.dp)
-            if (othersUnread) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(start = 0.dp).size(11.dp)
-                        .background(MaterialTheme.colorScheme.surface, CircleShape).padding(2.dp)
-                        .background(MaterialTheme.colorScheme.error, CircleShape),
+    val store = controller.store
+    val chip = onOpenAttendance != null && AttendanceRules.quickSwitchShown(store.attendance, store.me?.role, store.me?.id)
+    BoxWithConstraints {
+        val nameStyle = MaterialTheme.typography.titleLarge
+        val chipStyle = MaterialTheme.typography.labelLarge
+        val measurer = rememberTextMeasurer()
+        val density = LocalDensity.current
+        val mode = if (!chip) AttendanceRules.ChipMode.HIDDEN else {
+            val state = AttendanceRules.myState(store.attendance, store.me?.id)
+            val chipLabel = state?.label?.let(AttendanceRules::chipText) ?: stringResource(R.string.attendance_pill_none)
+            with(density) {
+                fun width(text: String, style: androidx.compose.ui.text.TextStyle) = measurer.measure(text, style, maxLines = 1).size.width.toDp().value
+                // Around the name: the row's padding (2 × 4), the tile (30) and its space (10), ⌄ (24 + 2).
+                val chrome = 8f + 30f + 10f + if (switchable) 26f else 0f
+                // The chip: its padding (2 × 10), the picture (16) and its space (5), the label; at least its 48 dp touch
+                // target (icon only: a 30 dp face in it). 2 dp between the name and the target.
+                AttendanceRules.chipMode(
+                    room = if (constraints.hasBoundedWidth) maxWidth.value - chrome else Float.MAX_VALUE,
+                    nameNatural = width(name, nameStyle),
+                    nameMin = width(name.take(AttendanceRules.NAME_MIN_CHARS), nameStyle),
+                    full = maxOf(48f, 20f + 16f + 5f + width(chipLabel, chipStyle)),
+                    iconOnly = 48f,
+                    gap = 2f,
                 )
             }
         }
-        Spacer(Modifier.width(10.dp))
-        Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        if (switchable) Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.workspace_views_switch_workspace), modifier = Modifier.padding(start = 2.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f, fill = false).clip(RoundedCornerShape(8.dp)).then(tap).padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box {
+                    WorkspaceTile(entry, name, 30.dp)
+                    if (othersUnread) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).padding(start = 0.dp).size(11.dp)
+                                .background(MaterialTheme.colorScheme.surface, CircleShape).padding(2.dp)
+                                .background(MaterialTheme.colorScheme.error, CircleShape),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(name, style = nameStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (switchable) Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.workspace_views_switch_workspace), modifier = Modifier.padding(start = 2.dp))
+            }
+            if (onOpenAttendance != null && mode != AttendanceRules.ChipMode.HIDDEN) {
+                AttendanceQuickSwitch(controller, version, onOpenAttendance, Modifier.padding(start = 2.dp), mode = mode)
+            }
+        }
     }
 }
 

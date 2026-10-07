@@ -32,4 +32,29 @@
     <string name="attendance_form_color">Colour</string>
     <string name="attendance_form_kind">Kind</string>
     <string name="attendance_form_kind_hint">Used for the board\'s order and the “in the room” count.</string>
+    <!-- §2.1 / §9.1: the icons' meanings (apps/shared/attendance-icons.json "label"; AttendanceIconsTest compares) and the quick switch. -->
+    <string name="attendance_icon_in_room">In the room</string>
+    <string name="attendance_icon_on_site">On site</string>
+    <string name="attendance_icon_off_site">Out</string>
+    <string name="attendance_icon_gone">Gone home</string>
+    <string name="attendance_icon_meeting">Meeting</string>
+    <string name="attendance_icon_class">Class / talk</string>
+    <string name="attendance_icon_remote">Remote</string>
+    <string name="attendance_icon_lunch">Lunch</string>
+    <string name="attendance_icon_trip">Trip</string>
+    <string name="attendance_icon_away">Away</string>
+    <string name="attendance_icon_busy">Busy</string>
+    <string name="attendance_icon_sick">Sick</string>
+    <string name="attendance_icon_vacation">Vacation</string>
+    <string name="attendance_icon_lab">Lab work</string>
+    <string name="attendance_icon_library">Library</string>
+    <string name="attendance_icon_other">Other</string>
+    <string name="attendance_form_icon">Icon</string>
+    <string name="attendance_form_icon_none">None</string>
+    <string name="attendance_form_preview">Preview</string>
+    <string name="attendance_form_icon_hint">The emoji stands in for the icon in older apps that cannot show it</string>
+    <string name="attendance_pill_none">Attendance</string>
+    <string name="attendance_pill_label">Attendance: %1$s</string>
+    <string name="attendance_pill_open">Open attendance</string>
+    <string name="attendance_pill_menu">Change attendance</string>
 </resources>

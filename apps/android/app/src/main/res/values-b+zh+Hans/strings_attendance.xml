@@ -31,4 +31,29 @@
     <string name="attendance_form_color">颜色</string>
     <string name="attendance_form_kind">分类</string>
     <string name="attendance_form_kind_hint">用于看板的排列和“在室 n 人”的计数。</string>
+    <!-- §2.1 / §9.1: the icons' meanings (apps/shared/attendance-icons.json "label"; AttendanceIconsTest compares) and the quick switch. -->
+    <string name="attendance_icon_in_room">在室</string>
+    <string name="attendance_icon_on_site">楼内</string>
+    <string name="attendance_icon_off_site">外出</string>
+    <string name="attendance_icon_gone">回家</string>
+    <string name="attendance_icon_meeting">会议</string>
+    <string name="attendance_icon_class">上课/报告</string>
+    <string name="attendance_icon_remote">远程</string>
+    <string name="attendance_icon_lunch">用餐</string>
+    <string name="attendance_icon_trip">出差</string>
+    <string name="attendance_icon_away">暂离</string>
+    <string name="attendance_icon_busy">忙碌</string>
+    <string name="attendance_icon_sick">生病</string>
+    <string name="attendance_icon_vacation">休假</string>
+    <string name="attendance_icon_lab">实验</string>
+    <string name="attendance_icon_library">图书馆</string>
+    <string name="attendance_icon_other">其他</string>
+    <string name="attendance_form_icon">图标</string>
+    <string name="attendance_form_icon_none">无</string>
+    <string name="attendance_form_preview">预览</string>
+    <string name="attendance_form_icon_hint">在无法显示图标的旧版应用中，用表情符号代替</string>
+    <string name="attendance_pill_none">在室状况</string>
+    <string name="attendance_pill_label">在室状况：%1$s</string>
+    <string name="attendance_pill_open">打开在室状况</string>
+    <string name="attendance_pill_menu">更改在室状况</string>
 </resources>
