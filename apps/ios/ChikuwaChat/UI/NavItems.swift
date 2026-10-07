@@ -29,8 +29,8 @@ enum NavItems {
         Entry(key: "reservations", label: tr("予約"), visible: true, platforms: [.desktop, .mobile]),
         // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and never for a guest).
         Entry(key: "attendance", label: tr("在室状況"), visible: true, platforms: [.desktop, .mobile]),
-        // M143 (docs/ACTIONS.md §9): 「操作」, desktop / Web only until the phones get the page.
-        Entry(key: "actions", label: "操作", visible: true, platforms: [.desktop]),  // not tr(): 「操作」 is also the gestures page
+        // M143 (docs/ACTIONS.md §9): implemented only while the buttons are on and I may press one (never for a guest).
+        Entry(key: "actions", label: actionsTitle, visible: true, platforms: [.desktop, .mobile]),
     ] }
 
     static let order: [Platform: [String]] = [
@@ -41,11 +41,12 @@ enum NavItems {
     ]
 
     /// The tiles this app has (「予約」 joins when its page exists). アクティビティ is the phone's tab and the iPad
-    /// sidebar's own row, never a tile, so it cannot be hidden here. 「在室状況」 (M140) only while the board is on.
+    /// sidebar's own row, never a tile, so it cannot be hidden here. 「在室状況」 (M140) only while the board is on,
+    /// 「操作」 (M143) only while the buttons are on and I may press one.
     static var implemented: [String] { implemented(attendance: false) }
 
-    static func implemented(attendance: Bool) -> [String] {
-        HomeTile.Kind.allCases.filter { attendance || $0 != .attendance }.map(\.navKey)
+    static func implemented(attendance: Bool, actions: Bool = false) -> [String] {
+        HomeTile.Kind.allCases.filter { (attendance || $0 != .attendance) && (actions || $0 != .actions) }.map(\.navKey)
     }
 
     private static let byKey = Dictionary(uniqueKeysWithValues: catalogue.map { ($0.key, $0) })
@@ -102,8 +103,11 @@ struct HomeTilesSettingsView: View {
     @State private var editMode: EditMode = .inactive
 
     private var setting: NavItemsSetting { (controller.store.me ?? controller.me)?.navItems ?? .unsupported }
-    /// M140: 「在室状況」 has its switch only while the board is on for me.
-    private var implemented: [String] { NavItems.implemented(attendance: controller.store.attendance != nil && !controller.isGuest) }
+    /// M140: 「在室状況」 has its switch only while the board is on for me; M143: 「操作」 while I may press a button.
+    private var implemented: [String] {
+        NavItems.implemented(attendance: controller.store.attendance != nil && !controller.isGuest,
+                             actions: ActionRules.visible(controller.store.actions, role: (controller.store.me ?? controller.me)?.role))
+    }
 
     var body: some View {
         let full = NavItems.full(setting.chosen)

@@ -695,6 +695,8 @@ struct MainView: View {
             ReservationsView(controller: controller)  // M112
         case AttendanceView.selectionId:
             AttendanceView(controller: controller)  // M140
+        case ActionsView.selectionId:
+            ActionsView(controller: controller)  // M143
         case FilesView.selectionId:
             FilesView(controller: controller) { messageId, channelId, parentId in
                 Task {
@@ -729,7 +731,7 @@ private extension String {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
          TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId,
-         DocsView.selectionId, AttendanceView.selectionId].contains(self)
+         DocsView.selectionId, AttendanceView.selectionId, ActionsView.selectionId].contains(self)
     }
 }
 

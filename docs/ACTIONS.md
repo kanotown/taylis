@@ -7,8 +7,8 @@
 ただし Taylis は **汎用** のまま作る（ほかの研究室・会社も使う）：リポジトリに SwitchBot・Sesame・特定のサイトの名前や API は持たない。
 SwitchBot / Sesame の API への翻訳は中継（研究室の Web サイト。別に作る）の仕事。既定は **オフ** で、管理者が有効にする。
 
-**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。機器の状態の表示（§12）をサーバ・Desktop / Web に実装（2026-10-08、移行 0107。テスト：server `tests/test_action_status.py`）。iOS・Android は §9.2 のとおり後の作業
-（IMPLEMENTATION_PLAN.md の M143）。テスト：server `tests/test_actions.py`、desktop `tests/actions.test.tsx`。
+**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。機器の状態の表示（§12）をサーバ・Desktop / Web に実装（2026-10-08、移行 0107。テスト：server `tests/test_action_status.py`）。iOS を実装（2026-10-08、§9.2）。Android は §9.3 のとおり後の作業
+（IMPLEMENTATION_PLAN.md の M143）。テスト：server `tests/test_actions.py`、desktop `tests/actions.test.tsx`、iOS `ActionsTests`。
 マイルストーンの番号 M143 は仮（並行する作業と重なれば振り直す）。
 
 ## 1. 問題
@@ -224,13 +224,33 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
   （ロールのチェック、グループと人を選ぶ）・通知の会話）、テスト送信（結果を出す）、最近の記録（50 件）。
 - 文言は ja / en / zh-Hans。
 
-### 9.2 iOS / Android（後の作業）
+### 9.2 iOS（2026-10-08 実装）
 
-- bootstrap の `actions` を持ち、`actions.updated` で `GET /actions` を読み直す。
-- ホームのタイル「操作」（`nav-items.json` の `actions` に `mobile` を足す）。`show_on_attendance` のときは在室状況の画面の上と
-  ピルのシートにも「操作」の欄。押す → 確認 → 待ち → バナー（Desktop / Web と同じ規則・文）。
-- `client_invoke_id` は押すごとに作り、通信のやり直しだけ同じ id。管理の画面は作らない（Desktop / Web で）。
-- 機器の状態（§12.4）：画面を開いたとき `GET /actions/status`、表示中は 60 秒ごと（バックグラウンドでは止める）、`actions.status_updated` で置き換え（`fetched_at` が古いものは捨てる）。組の見出しの下に色の点・文・details・「◯分前に確認」・更新（`refresh=true`、`429` は「少し待って…」）。
+- **同期**：bootstrap の `actions`（`Store.actions`。オフ・ゲスト・古いサーバは nil）。`actions.updated` は 300 ms でまとめて
+  `GET /actions` を 1 回読み直す（`SyncEngine.loadActions`。ゲストとボットは読まない）。押したときに `actions_disabled`・
+  `action_not_found`・`action_disabled`・`action_not_allowed` が返ったら、一覧が古いので読み直す。
+- **ホームのタイル「操作」**（アイコン `bolt`、数は出さない、在室状況の後ろ）。`nav-items.json` の `actions` は両方の形
+  （`desktop`・`mobile`）。機能が有効で押せるボタンが 1 つ以上あるときだけ実装済みに数え（`ActionRules.visible`）、
+  自分 → 表示 →「ホームのタイル」にもそのときだけ行が出る。iPad のサイドバーのタイルも同じ。
+- **画面**（`UI/Actions.swift` の `ActionsView`）：`group_label` ごとに List の Section（見出しが組の名前）、その中にボタンを
+  横に並べる（幅に合わせて折り返す）。組の無いボタンは最後。ボタンはアイコン（在室状況の一覧の SF Symbol）か絵文字か ⚡ と名前。
+  引っ張って読み直す。ボタンが無いときは「押せるボタンはありません」。
+- **押す**：`confirm` のときアラート（題は「組：名前」、文は `confirm_text` か「研究室の鍵：開ける を実行しますか？」、
+  「キャンセル」「実行」）→ ボタンにスピナー（その間は同じボタンを押せない）→ 成功は下のトースト（中継の `message`、無ければ
+  「研究室の鍵：開ける を実行しました」）、失敗は赤いバナー（Desktop / Web と同じ文：中継の `message`、タイムアウトは
+  「機器（またはハブ）から応答がありませんでした。実行されたかどうかわかりません。状態を確かめてください」、つながらないは
+  「機器（またはハブ）に接続できませんでした。オフラインかもしれません」、`429` は「少し待ってからもう一度押してください」、
+  権限・オフなどは apps/shared/errors.json の文）。
+- **冪等**：`client_invoke_id` は押すごとに新しい UUID。サーバから答えが無い（`ApiError.network`）ときだけ同じ id で 2 回まで
+  やり直す（1 秒・2 秒あけて。`ActionRules.invokeOnce`）。サーバの拒否・429・5xx はやり直さない。
+- **在室状況**：`show_on_attendance` のとき、在室状況の画面の一番上に「操作」の組（同じボタン）と、ピルのシート（「在室状況を
+  変える」）に「操作」の欄（行は「組：名前」）。シートの行は押して答えが返ったらシートを閉じ、トーストかバナーを見せる。
+- 管理の画面は作らない（管理者にも何も出さない。Desktop / Web で）。文言は ja / en / zh-Hans。
+
+### 9.3 Android（後の作業）
+
+- iOS と同じ（bootstrap と `actions.updated`、ホームのタイル、確認 → 待ち → バナー、通信のやり直しだけ同じ id、在室状況の画面と
+  シート）。管理の画面は作らない。
 
 ## 10. やらないこと（今は）
 

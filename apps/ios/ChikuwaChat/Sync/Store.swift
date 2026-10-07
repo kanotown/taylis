@@ -487,6 +487,13 @@ final class Store {
         let next = board?.enabled == true ? board : nil
         if next != attendance { attendance = next }  // every reconnect bootstraps: unchanged redraws nothing
     }
+    /// M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press (not persisted); nil for guests, while the feature is off and
+    /// from a server before M143. From the bootstrap and GET /actions (actions.updated).
+    private(set) var actions: ActionListOut?
+    func setActions(_ list: ActionListOut?) {
+        let next = list?.enabled == true ? list : nil
+        if next != actions { actions = next }
+    }
     /// One person's row (attendance.updated, or my own change answered). False when its state is not on the board held
     /// here (someone's new own state): the caller reads the board again.
     @discardableResult
