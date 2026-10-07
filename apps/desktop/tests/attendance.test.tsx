@@ -471,6 +471,62 @@ describe("the quick switch", () => {
     expect(onOpenBoard).toHaveBeenCalled();
   });
 
+  it("the menu closes on a press on the title bar (a drag region), on the window's blur and on Esc; not on a press inside", async () => {
+    // 2026-10-08: it stayed open after a click elsewhere in the top bar. The bar as the desktop app has it: Tauri's
+    // script stops the mousedown on the bare drag region (and the WebView may send that press without a pointerdown).
+    const row = document.createElement("div");
+    row.setAttribute("data-tauri-drag-region", "");
+    document.body.append(row);
+    const tauri = (event: MouseEvent) => {
+      if (event.target === row) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener("mousedown", tauri);
+    try {
+      render(<AttendancePill controller={controllerFor(storeWith(withIcons()), {})} placement="sidebar" />);
+      const pill = screen.getByRole("button", { name: "在室状況を変える" });
+      const reopen = async () => {
+        fireEvent.click(pill);
+        return screen.findByRole("menu");
+      };
+
+      const menu = await reopen();
+      // Inside (a state, the note) keeps it open.
+      fireEvent.pointerDown(within(menu).getAllByRole("menuitemradio")[1]!);
+      fireEvent.mouseDown(within(menu).getAllByRole("menuitemradio")[1]!);
+      expect(screen.queryByRole("menu")).toBeTruthy();
+
+      fireEvent.mouseDown(row, { button: 0 });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+      await reopen();
+      fireEvent.pointerDown(row, { button: 0 });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+      await reopen();
+      act(() => {
+        fireEvent.blur(window);
+      });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+      await reopen();
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+      // The pill itself still toggles.
+      await reopen();
+      fireEvent.pointerDown(pill);
+      fireEvent.mouseDown(pill);
+      fireEvent.click(pill);
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    } finally {
+      document.removeEventListener("mousedown", tauri);
+      row.remove();
+    }
+  });
+
   it("works from the keyboard: ↓ opens, arrows move, Esc closes, ⌘⇧Y opens from anywhere", async () => {
     render(<AttendancePill controller={controllerFor(storeWith(withIcons()), {})} placement="sidebar" shortcut />);
     const pill = screen.getByRole("button", { name: "在室状況を変える" });

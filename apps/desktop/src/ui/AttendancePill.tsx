@@ -21,6 +21,7 @@ import { ActionGlyph, useActionPress } from "./ActionButtons";
 import { entryOf, myChoices, myState } from "./attendance";
 import { attendanceColorStyle, StateGlyph } from "./attendanceIcons";
 import { chooseMyState } from "./AttendanceView";
+import { useDismissOutside } from "./dismissOutside";
 import { useStoreUpdates } from "./hooks";
 import { Button, cn, Input, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
@@ -89,6 +90,10 @@ export function AttendancePill({ controller, onOpenBoard, placement, collapsed, 
   const measurer = useRef<HTMLSpanElement>(null);
   const [measured, setMeasured] = useState<PillMode>("full");
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  // Radix alone misses presses on the title bar (a drag region) in the desktop app: see dismissOutside.
+  useDismissOutside(open, () => setOpen(false), [trigger, content]);
   // M143 (docs/ACTIONS.md D17): the 操作ボタン in the menu too, when the workspace says so.
   const { press, busy, dialog } = useActionPress(controller);
   const visible = !!board && !!meId && !controller.isGuest;
@@ -149,6 +154,7 @@ export function AttendancePill({ controller, onOpenBoard, placement, collapsed, 
       <PopoverRoot open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
+            ref={trigger}
             type="button"
             data-attendance-pill={state?.kind ?? "none"}
             data-collapsed={iconOnly || undefined}
@@ -174,7 +180,7 @@ export function AttendancePill({ controller, onOpenBoard, placement, collapsed, 
         </PopoverTrigger>
         {open && (
           // The menu focuses the current state itself (rather than Radix's first focusable).
-          <PopoverContent align={sidebar ? "end" : "start"} className="w-72 p-1.5" onOpenAutoFocus={(event) => event.preventDefault()}>
+          <PopoverContent ref={content} align={sidebar ? "end" : "start"} className="w-72 p-1.5" onOpenAutoFocus={(event) => event.preventDefault()}>
             <PillMenu
               controller={controller}
               onDone={() => setOpen(false)}

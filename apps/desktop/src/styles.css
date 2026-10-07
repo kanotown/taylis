@@ -269,6 +269,17 @@
 .fold-inner { min-height: 0; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .fold-row { transition: none; } }
 
+/* The window's chrome (the top bar, the workspace rail, the title strips: everything marked as a drag region) is not
+   text. 2026-10-08, Windows: a press there showed a blinking caret. WebView2 keeps Chromium's caret browsing (F7, a
+   setting that stays on in the app's profile once pressed), which puts a caret wherever a press lands in selectable
+   text; text that cannot be selected takes none, as in a native title bar. caret-color covers anything focusable that
+   is not a field. The fields inside (the search box) keep their selection and caret: WebKit would otherwise not let
+   one type in a field under user-select: none. */
+[data-tauri-drag-region] { -webkit-user-select: none; user-select: none; caret-color: transparent; }
+[data-tauri-drag-region] :is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+  -webkit-user-select: text; user-select: text; caret-color: auto;
+}
+
 /* A workspace tile is lifted (M93): the grabbing hand wherever the pointer goes, and no text selection. */
 body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important; user-select: none; }
 
