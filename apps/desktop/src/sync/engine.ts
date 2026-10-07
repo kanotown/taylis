@@ -20,6 +20,7 @@ import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, typ
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
+import { takesDmClose } from "./dmCloses";
 import { caughtUp, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
 
 /** §7.7: a channel nobody looks at is trimmed back to the cap once live rows take it this far past it. */
@@ -1081,9 +1082,11 @@ export class SyncEngine {
         return;
       }
       case "dm_close.updated": {
-        // M141 (SYNC_PROTOCOL.md §7.9): my own devices; a server before M141 sends none.
-        const data = frame.data as { channel_id: string; closed: boolean };
-        store.setDmClosed(data.channel_id, data.closed);
+        // M141 (SYNC_PROTOCOL.md §7.9): my own devices; a server before M141 sends none. Review v0.1.43 #6: a close older
+        // than a timeline message held here is not taken (that message reopened it on the server too).
+        const data = frame.data as { channel_id: string; closed: boolean; closed_seq?: number | null };
+        const held = store.getChannel(data.channel_id)?.last_message?.seq ?? null;
+        if (takesDmClose(data.closed, data.closed_seq, held)) store.setDmClosed(data.channel_id, data.closed);
         return;
       }
       case "bookmark.updated": {

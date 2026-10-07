@@ -1412,7 +1412,15 @@ export class FakeServer {
     if (closed) map.set(channelId, record.channel.last_seq);
     else map.delete(channelId);
     if (was === closed) return;
-    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "dm_close.updated", ts: now(), channel_id: null, seq: null, data: { channel_id: channelId, closed, at: now() } });
+    this.emitDmClose(userId, channelId, closed, closed ? record.channel.last_seq : null);
+  }
+
+  /**
+   * dm_close.updated as it is sent (closed_seq: where it was closed, Review v0.1.43 #6). Called alone, it replays the
+   * race the review found: a close that read the seq before a new message, delivered after that message.created.
+   */
+  emitDmClose(userId: string, channelId: string, closed: boolean, closedSeq: number | null): void {
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "dm_close.updated", ts: now(), channel_id: null, seq: null, data: { channel_id: channelId, closed, at: now(), closed_seq: closedSeq } });
   }
 
   /**

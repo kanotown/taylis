@@ -34,6 +34,7 @@ import { clearNotifications, notify } from "../platform/notify";
 import type { ReportCategory, ReportReason, TestNotificationOut } from "../api/types";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
+import { readFallback, type CloseReadMark } from "../sync/dmCloses";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
@@ -1099,29 +1100,58 @@ export class AppController {
    * M141 「会話を閉じる」 (SYNC_PROTOCOL.md §7.9): the DM leaves every list at once, unpinned and read; all three are put
    * back when refused. The main screen leaves it when it is the one open (`closedChannelRequest`), and a toast offers
    * 「元に戻す」. dm_close.updated brings my other devices along.
+   *
+   * Review v0.1.43 #7: the rollback puts back only what the close touched (apps/shared/dm-close-rules.json): its own pin
+   * in its place (pins changed meanwhile stay), and the read state as the server has it (asked again; the snapshot only
+   * when that fails too and nothing changed it since), so a message or another device's read that came meanwhile stays.
    */
   async closeDm(channelId: string): Promise<boolean> {
     const channel = this.store.getChannel(channelId);
-    if (!this.api || this.store.closedDms === null || !channel || !isDmChannel(channel) || this.store.isDmClosed(channelId)) return false;
-    const pins = this.store.dmPins;
+    const api = this.api;
+    if (!api || this.store.closedDms === null || !channel || !isDmChannel(channel) || this.store.isDmClosed(channelId)) return false;
+    const pins = this.store.dmPins ?? [];
     const wasPinned = this.store.isDmPinned(channelId);
+    const pinPlace = wasPinned ? pins.indexOf(channelId) : null;
     const read = { lastReadSeq: channel.lastReadSeq, unreadCount: channel.unreadCount, mentionCount: channel.mentionCount, firstUnreadAt: channel.firstUnreadAt };
+    const optimistic = { lastSeq: channel.lastSeq, lastReadSeq: Math.max(channel.lastReadSeq, channel.lastSeq), unreadCount: 0, mentionCount: 0 };
     this.store.setDmClosed(channelId, true);
     if (wasPinned) this.store.setDmPinned(channelId, false);
-    this.store.updateChannel(channelId, { lastReadSeq: Math.max(channel.lastReadSeq, channel.lastSeq), unreadCount: 0, mentionCount: 0, firstUnreadAt: null });
+    this.store.updateChannel(channelId, { lastReadSeq: optimistic.lastReadSeq, unreadCount: 0, mentionCount: 0, firstUnreadAt: null });
     this.closedChannelRequest = channelId;
     this.emit();
     try {
-      await this.api.closeDm(channelId);
+      await api.closeDm(channelId);
     } catch (error) {
       this.store.setDmClosed(channelId, false);
-      if (pins !== null) this.store.replaceDmPins(pins);
-      this.store.updateChannel(channelId, read);
+      if (wasPinned) this.store.restoreDmPin(channelId, pinPlace);
       this.setError(error);
+      await this.restoreReadAfterRefusedClose(api, channelId, read, optimistic);
       return false;
     }
     this.setNotice(t("dmClose.closed"), { label: t("dmClose.undo"), run: () => void this.undoCloseDm(channelId, wasPinned) });
     return true;
+  }
+
+  /**
+   * Review v0.1.43 #7: after a refused close, the read state as the server has it (PUT read with 0: an advance that moves
+   * nothing and answers the state), taken as it is. Unreachable too: the snapshot goes back only if nothing changed the
+   * read state since the close set it; otherwise what came meanwhile stays until the next bootstrap.
+   */
+  private async restoreReadAfterRefusedClose(
+    api: ApiClient,
+    channelId: string,
+    snapshot: Pick<ChannelState, "lastReadSeq" | "unreadCount" | "mentionCount" | "firstUnreadAt">,
+    optimistic: CloseReadMark,
+  ): Promise<void> {
+    try {
+      const state = await api.markRead(channelId, 0);
+      this.store.updateChannel(channelId, { lastReadSeq: state.last_read_seq, unreadCount: state.unread_count, mentionCount: state.mention_count, firstUnreadAt: state.first_unread_at ?? null });
+      return;
+    } catch (error) {
+      console.warn("could not read the read state back after a refused close", error);
+    }
+    const now = this.store.getChannel(channelId);
+    if (now && readFallback(optimistic, now) === "snapshot") this.store.updateChannel(channelId, snapshot);
   }
 
   /** M141 「元に戻す」: opens it again (DELETE) and pins it again (last) when it was pinned; the read position stays. */
