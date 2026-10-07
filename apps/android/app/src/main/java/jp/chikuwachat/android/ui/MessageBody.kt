@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +52,8 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -372,18 +375,25 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
         // apps/shared/lists.json: each item's marker (1. a. i. / • ◦ ▪) comes from the parser; a wide one ("viii.")
         // pushes its text over rather than wrapping.
         is BodyBlock.ListBlock -> Column(Modifier.padding(vertical = 1.dp)) {
+            val bulletLift = with(LocalDensity.current) { BULLET_LIFT.roundToPx() }
             block.items.forEach { item ->
                 Row(Modifier.padding(start = (item.level * 20).dp), verticalAlignment = Alignment.Top) {
-                    Text(
-                        item.marker,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = muted,
-                        maxLines = 1,
-                        softWrap = false,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.widthIn(min = 20.dp).padding(end = 6.dp),
-                    )
-                    Text(inline.build(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
+                    if (item.ordered) {
+                        Text(
+                            item.marker,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = muted,
+                            maxLines = 1,
+                            softWrap = false,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.alignByBaseline().widthIn(min = 20.dp).padding(end = 6.dp),
+                        )
+                    } else {
+                        Box(Modifier.alignBy { it.measuredHeight / 2 + bulletLift }.widthIn(min = 20.dp).padding(end = 8.dp), contentAlignment = Alignment.CenterEnd) {
+                            ListBulletMark(item.level)
+                        }
+                    }
+                    Text(inline.build(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.alignByBaseline())
                 }
             }
         }
@@ -413,6 +423,27 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
     }
 }
 
+
+/** How far above the text's baseline a bullet's centre sits: half the x-height and a little (0.31 of bodyLarge). */
+private val BULLET_LIFT = 5.sp
+/** A level-1 dot's size, about 0.4 of bodyLarge (16 sp). */
+private val BULLET_SIZE = 6.4.sp
+
+/**
+ * 2026-10-08: a bullet drawn rather than a glyph ("•" in the muted colour was small and faint), as the web draws it
+ * (styles.css `.md-ul`): a solid dot for the first level, a ring for the second, a small square for the third, in the
+ * text's colour. Its row aligns its centre BULLET_LIFT above the text's first baseline.
+ */
+@Composable
+private fun ListBulletMark(level: Int) {
+    val color = LocalContentColor.current
+    val size = with(LocalDensity.current) { BULLET_SIZE.toDp() }
+    when (level.coerceAtMost(2)) {
+        0 -> Box(Modifier.size(size).background(color, CircleShape))
+        1 -> Box(Modifier.size(size * 1.05f).border(maxOf(1.3.dp, size * 0.2f), color, CircleShape))
+        else -> Box(Modifier.size(size * 0.9f).background(color, RoundedCornerShape(1.dp)))
+    }
+}
 
 /** Column widths and row heights of the last layout pass, for drawing the grid lines. */
 private class TableGeometry {
