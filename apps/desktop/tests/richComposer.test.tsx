@@ -212,6 +212,26 @@ describe("rich composer", () => {
     expect(box.style.minHeight).toBe("");
   });
 
+  it("drops the Markdown preview when the mode is switched elsewhere (the other composer, settings)", async () => {
+    const w = await world({ draft: "a\nb" });
+    act(() => void fireEvent.click(screen.getByRole("button", { name: "Markdown" })));
+    const area = screen.getByRole("textbox", { name: "メッセージ" });
+    // Preview on, off and on again, then the thread pane's composer (or settings) switches every composer to rich: the
+    // preview went with the text area, never left above the editor (the box twice as tall, the list above thrown up
+    // by as much), with no button to close it there.
+    for (let i = 0; i < 3; i++) act(() => void fireEvent.click(screen.getByRole("button", { name: i % 2 ? "編集に戻る" : "プレビュー" })));
+    expect(document.querySelector("[aria-label='プレビュー']:not(button)")).not.toBeNull();
+    expect(area.className).toContain("hidden");
+    await act(async () => void (await w.controller.setComposerMode("rich")));
+    await waitFor(() => expect(w.dom()).not.toBeNull());
+    expect(document.querySelector("[aria-label='プレビュー']:not(button)")).toBeNull();
+    // Back to Markdown the same way: the text area, not the preview again.
+    await act(async () => void (await w.controller.setComposerMode("markdown")));
+    expect(document.querySelector("[aria-label='プレビュー']:not(button)")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "メッセージ" }).className).not.toContain("hidden");
+    expect(screen.getByRole("button", { name: "プレビュー" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("pastes HTML as the supported formats, plain text literally, files as attachments", async () => {
     const w = await world();
     act(() => void w.editor().commands.focus());
