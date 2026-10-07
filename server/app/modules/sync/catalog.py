@@ -6,6 +6,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from app.modules.activity import events as activity_events
 from app.modules.ai import events as ai_events
+from app.modules.attendance import events as attendance_events
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
 from app.modules.calendar import events as calendar_events
@@ -162,6 +163,17 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     ),
     group_events.GROUP_UPDATED: (group_events.GroupUpdatedData, "all", False),
     lab_events.ROSTER_UPDATED: (lab_events.RosterUpdatedData, "all", False),
+    # M140 (docs/PRESENCE.md §4): the 在室状況 board, not for guests.
+    attendance_events.ATTENDANCE_UPDATED: (
+        attendance_events.AttendanceUpdatedData,
+        "all (not guests)",
+        False,
+    ),
+    attendance_events.ATTENDANCE_CONFIG_UPDATED: (
+        attendance_events.AttendanceConfigUpdatedData,
+        "all (not guests)",
+        False,
+    ),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (
         notification_events.NotificationPreferenceUpdatedData,
         "user",

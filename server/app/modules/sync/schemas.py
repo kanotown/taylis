@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.modules.activity.schemas import ActivitySummaryOut
+from app.modules.attendance.schemas import AttendanceBoardOut
 from app.modules.calls.schemas import CallOut
 from app.modules.channels.schemas import ChannelOut
 from app.modules.drafts.schemas import DraftOut
@@ -78,6 +79,9 @@ class BootstrapOut(BaseModel):
     # M130 (docs/CALLS.md §5.3): the calls in progress in my conversations; changes arrive as
     # call.started / call.updated / call.ended (no seq: GET /calls?active=true after a reconnect).
     active_calls: list[CallOut] = []
+    # M140 (docs/PRESENCE.md §4): the 在室状況 board; null for guests and while it is off.
+    # Changes arrive as attendance.updated / attendance.config_updated.
+    attendance: AttendanceBoardOut | None = None
 
 
 class UnreadSummaryOut(BaseModel):

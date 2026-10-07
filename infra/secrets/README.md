@@ -9,6 +9,7 @@
 | `openai_api_key` | OpenAI の API キー (1 行。docs/AI.md §12)。モデルが OpenAI のボット用。無ければそのボットが「使えない」になるだけ | `AI_OPENAI_API_KEY_FILE` (既定 `/run/secrets/openai_api_key`。compose が `infra/.env` の `OPENAI_API_KEY_FILE` のファイルをマウント) |
 | `livekit_api_secret` | LiveKit の API シークレット (1 行。32 バイト以上の乱数。`openssl rand -base64 48`。M130 のアプリ内通話、docs/CALLS.md §7.4・§8.6)。サーバで通話を使うときだけ | `LIVEKIT_API_SECRET_FILE` (`docker-compose.livekit.yml` が `/run/secrets/livekit_api_secret` にマウント。権限 `644`) |
 | `livekit.env` | deploy.sh が `livekit_api_secret` と `.env` の `LIVEKIT_API_KEY` から作る (`LIVEKIT_KEYS=<key>: <secret>`、権限 `600`)。手で書かない | LiveKit のコンテナの `env_file` (LiveKit は他人が読める鍵ファイルを拒むため) |
+| `attendance/<名前>` | 在室状況の送信 Webhook の署名の鍵 (M140、docs/PRESENCE.md §5.3)。連携の「鍵の名前」と同じファイル名で 1 行 (16 バイト以上。`openssl rand -hex 32`)。権限 `644`、フォルダは `755` (deploy.sh が作る) | `ATTENDANCE_WEBHOOK_SECRETS_DIR` (既定 `/run/secrets/attendance`。compose がフォルダを読み取り専用でマウント) |
 | `fcm_service_account.json` | FCM のサービスアカウント鍵 (Firebase コンソール → プロジェクトの設定 → サービス アカウント → 新しい秘密鍵の生成) | `PUSH_FCM_SERVICE_ACCOUNT_PATH` (compose で `/run/secrets/fcm_service_account.json` にマウント) |
 
 - ディレクトリは `700` (deploy ユーザーだけ) にする。ファイルは `600` が基本だが、コンテナのアプリ (uid 10001) が読むもの

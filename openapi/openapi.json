@@ -2578,6 +2578,1034 @@
         "title": "AttachmentPreviewOut",
         "type": "object"
       },
+      "AttendanceAdminSettingsOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "log_retention_days": {
+            "title": "Log Retention Days",
+            "type": "integer"
+          },
+          "personal_group_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Personal Group Ids",
+            "type": "array"
+          },
+          "personal_rule": {
+            "enum": [
+              "nobody",
+              "everyone",
+              "admins",
+              "groups"
+            ],
+            "title": "Personal Rule",
+            "type": "string"
+          },
+          "states": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceStateOut"
+            },
+            "title": "States",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "personal_rule",
+          "personal_group_ids",
+          "log_retention_days",
+          "states"
+        ],
+        "title": "AttendanceAdminSettingsOut",
+        "type": "object"
+      },
+      "AttendanceBoardOut": {
+        "description": "GET /attendance and the bootstrap's `attendance` (null for guests and while off).",
+        "properties": {
+          "can_personalize": {
+            "default": false,
+            "title": "Can Personalize",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "entries": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttendanceEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "states": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttendanceStateOut"
+            },
+            "title": "States",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AttendanceBoardOut",
+        "type": "object"
+      },
+      "AttendanceDeliveryOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status Code"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "delivered",
+              "failed",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "to_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Label"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "user_id",
+          "status",
+          "attempts",
+          "last_status_code",
+          "last_error",
+          "created_at",
+          "delivered_at",
+          "next_attempt_at",
+          "to_label"
+        ],
+        "title": "AttendanceDeliveryOut",
+        "type": "object"
+      },
+      "AttendanceEntryOut": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "app",
+              "admin",
+              "integration",
+              "auto"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state_id": {
+            "format": "uuid",
+            "title": "State Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "state_id",
+          "since",
+          "note",
+          "source"
+        ],
+        "title": "AttendanceEntryOut",
+        "type": "object"
+      },
+      "AttendanceInbound": {
+        "additionalProperties": false,
+        "description": "POST /integrations/attendance (docs/PRESENCE.md §6): one of user_id / email / username.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "state": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "AttendanceInbound",
+        "type": "object"
+      },
+      "AttendanceInboundOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "unchanged",
+                  "stale"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "state_id": {
+            "format": "uuid",
+            "title": "State Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applied",
+          "user_id",
+          "state_id",
+          "since"
+        ],
+        "title": "AttendanceInboundOut",
+        "type": "object"
+      },
+      "AttendanceIntegrationCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "inbound": {
+            "default": false,
+            "title": "Inbound",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "secret_name": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AttendanceIntegrationCreate",
+        "type": "object"
+      },
+      "AttendanceIntegrationCreated": {
+        "properties": {
+          "integration": {
+            "$ref": "#/components/schemas/AttendanceIntegrationOut"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          }
+        },
+        "required": [
+          "integration"
+        ],
+        "title": "AttendanceIntegrationCreated",
+        "type": "object"
+      },
+      "AttendanceIntegrationOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inbound": {
+            "title": "Inbound",
+            "type": "boolean"
+          },
+          "last_inbound_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Inbound At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "secret_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "secret_name",
+          "enabled",
+          "inbound",
+          "created_at",
+          "last_inbound_at"
+        ],
+        "title": "AttendanceIntegrationOut",
+        "type": "object"
+      },
+      "AttendanceIntegrationUpdate": {
+        "additionalProperties": false,
+        "description": "Only what is sent changes; url null stops sending (secret_name is then kept).",
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "secret_name": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "AttendanceIntegrationUpdate",
+        "type": "object"
+      },
+      "AttendanceLogOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "from_state_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From State Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source": {
+            "enum": [
+              "app",
+              "admin",
+              "integration",
+              "auto"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "to_state_id": {
+            "format": "uuid",
+            "title": "To State Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "from_state_id",
+          "to_state_id",
+          "note",
+          "at",
+          "source",
+          "actor_id",
+          "integration_id"
+        ],
+        "title": "AttendanceLogOut",
+        "type": "object"
+      },
+      "AttendanceLogPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceLogOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          }
+        },
+        "required": [
+          "items",
+          "next_before_id"
+        ],
+        "title": "AttendanceLogPage",
+        "type": "object"
+      },
+      "AttendanceSet": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "state_id": {
+            "format": "uuid",
+            "title": "State Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state_id"
+        ],
+        "title": "AttendanceSet",
+        "type": "object"
+      },
+      "AttendanceSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "log_retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Retention Days"
+          },
+          "personal_group_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Group Ids"
+          },
+          "personal_rule": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nobody",
+                  "everyone",
+                  "admins",
+                  "groups"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Rule"
+          }
+        },
+        "title": "AttendanceSettingsUpdate",
+        "type": "object"
+      },
+      "AttendanceStateCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "default": "gray",
+            "enum": [
+              "gray",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "blue",
+              "purple",
+              "pink"
+            ],
+            "title": "Color",
+            "type": "string"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "kind": {
+            "enum": [
+              "in_room",
+              "on_site",
+              "off_site",
+              "gone"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "kind"
+        ],
+        "title": "AttendanceStateCreate",
+        "type": "object"
+      },
+      "AttendanceStateOrder": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "AttendanceStateOrder",
+        "type": "object"
+      },
+      "AttendanceStateOut": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "color": {
+            "enum": [
+              "gray",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "blue",
+              "purple",
+              "pink"
+            ],
+            "title": "Color",
+            "type": "string"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "in_room",
+              "on_site",
+              "off_site",
+              "gone"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "label",
+          "emoji",
+          "color",
+          "kind",
+          "position",
+          "archived"
+        ],
+        "title": "AttendanceStateOut",
+        "type": "object"
+      },
+      "AttendanceStateUpdate": {
+        "additionalProperties": false,
+        "description": "Only what is sent changes; `emoji: null` removes the emoji.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gray",
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple",
+                  "pink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "in_room",
+                  "on_site",
+                  "off_site",
+                  "gone"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "title": "AttendanceStateUpdate",
+        "type": "object"
+      },
+      "AttendanceTestOut": {
+        "properties": {
+          "delivery": {
+            "$ref": "#/components/schemas/AttendanceDeliveryOut"
+          }
+        },
+        "required": [
+          "delivery"
+        ],
+        "title": "AttendanceTestOut",
+        "type": "object"
+      },
+      "AttendanceTokenOut": {
+        "properties": {
+          "integration": {
+            "$ref": "#/components/schemas/AttendanceIntegrationOut"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration",
+          "token"
+        ],
+        "title": "AttendanceTokenOut",
+        "type": "object"
+      },
       "AuthMethodsOut": {
         "description": "Which sign-in buttons the login screen shows (M48).",
         "properties": {
@@ -2846,6 +3874,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ActivitySummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attendance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceBoardOut"
               },
               {
                 "type": "null"
@@ -19230,6 +20268,710 @@
         ]
       }
     },
+    "/api/v1/admin/attendance/integrations": {
+      "get": {
+        "operationId": "list_integrations_api_v1_admin_attendance_integrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceIntegrationOut"
+                  },
+                  "title": "Response List Integrations Api V1 Admin Attendance Integrations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Integrations",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "`url` (https, public) needs `secret_name` (the signing key's file). `inbound: true`\nreturns the inbound token, this once.",
+        "operationId": "create_integration_api_v1_admin_attendance_integrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceIntegrationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceIntegrationCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Integration",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/integrations/{integration_id}": {
+      "delete": {
+        "operationId": "delete_integration_api_v1_admin_attendance_integrations__integration_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Integration",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_integration_api_v1_admin_attendance_integrations__integration_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceIntegrationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceIntegrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Integration",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/integrations/{integration_id}/deliveries": {
+      "get": {
+        "description": "The latest 50, newest first.",
+        "operationId": "list_deliveries_api_v1_admin_attendance_integrations__integration_id__deliveries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceDeliveryOut"
+                  },
+                  "title": "Response List Deliveries Api V1 Admin Attendance Integrations  Integration Id  Deliveries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Deliveries",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/integrations/{integration_id}/test": {
+      "post": {
+        "description": "「テスト送信」: sends an `attendance.test` now and returns the recorded delivery.",
+        "operationId": "test_integration_api_v1_admin_attendance_integrations__integration_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Integration",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/integrations/{integration_id}/token": {
+      "delete": {
+        "operationId": "revoke_token_api_v1_admin_attendance_integrations__integration_id__token_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceIntegrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Token",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "A new inbound token (shown this once); the previous one stops working at once.",
+        "operationId": "rotate_token_api_v1_admin_attendance_integrations__integration_id__token_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceTokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rotate Token",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/settings": {
+      "get": {
+        "operationId": "get_settings_api_v1_admin_attendance_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceAdminSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "Turning the board on the first time makes the four default states (in the\nadministrator's language) when there are none.",
+        "operationId": "update_settings_api_v1_admin_attendance_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceAdminSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Settings",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/states": {
+      "post": {
+        "operationId": "create_state_api_v1_admin_attendance_states_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceStateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create State",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/states/order": {
+      "put": {
+        "operationId": "reorder_states_api_v1_admin_attendance_states_order_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceStateOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceAdminSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reorder States",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/states/{state_id}": {
+      "delete": {
+        "description": "Archived (people in it stay until their next change). 409 for the last one.",
+        "operationId": "delete_state_api_v1_admin_attendance_states__state_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "state_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "State Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete State",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_state_api_v1_admin_attendance_states__state_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "state_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "State Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceStateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update State",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/attendance/users/{user_id}": {
+      "put": {
+        "description": "Someone else's state (audited, source `admin`).",
+        "operationId": "set_for_user_api_v1_admin_attendance_users__user_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceEntryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set For User",
+        "tags": [
+          "attendance",
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/canvas-templates": {
       "get": {
         "description": "All templates, hidden ones too (administrators).",
@@ -21264,6 +23006,309 @@
         "summary": "Thumbnail",
         "tags": [
           "attachments"
+        ]
+      }
+    },
+    "/api/v1/attendance": {
+      "get": {
+        "description": "The board: states (the workspace's and everyone's own), one entry per person who has set\none, and whether I may add my own states. `enabled: false` while off; 403 for guests.",
+        "operationId": "get_board_api_v1_attendance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceBoardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Board",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/log": {
+      "get": {
+        "description": "Newest first. Mine for anyone; another person's (or everyone's) for administrators.",
+        "operationId": "get_log_api_v1_attendance_log_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceLogPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Log",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/me": {
+      "put": {
+        "description": "My state (a workspace state or one of mine) and note. The same state and note again\nchanges nothing (no event). 409 attendance_disabled while off.",
+        "operationId": "set_mine_api_v1_attendance_me_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceEntryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Mine",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/my-states": {
+      "post": {
+        "description": "A personal state (when the administrator's rule allows me; at most 10).",
+        "operationId": "create_my_state_api_v1_attendance_my_states_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceStateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create My State",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/my-states/{state_id}": {
+      "delete": {
+        "description": "Archived: if I am in it, I stay until my next change.",
+        "operationId": "delete_my_state_api_v1_attendance_my_states__state_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "state_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "State Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete My State",
+        "tags": [
+          "attendance"
+        ]
+      },
+      "patch": {
+        "operationId": "update_my_state_api_v1_attendance_my_states__state_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "state_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "State Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceStateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update My State",
+        "tags": [
+          "attendance"
         ]
       }
     },
@@ -26911,6 +28956,54 @@
         "summary": "Post To Webhook",
         "tags": [
           "webhooks"
+        ]
+      }
+    },
+    "/api/v1/integrations/attendance": {
+      "post": {
+        "description": "An outside system reports a change (docs/PRESENCE.md §6), with an integration's token as\nthe Bearer token. The state is matched by id or name (workspace states first, then the\nperson's own); unknown is 422 attendance_state_unknown. Never echoed back to the same\nintegration.",
+        "operationId": "inbound_api_v1_integrations_attendance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceInbound"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceInboundOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inbound",
+        "tags": [
+          "attendance",
+          "integrations"
         ]
       }
     },

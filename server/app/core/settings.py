@@ -169,6 +169,17 @@ class Settings(BaseSettings):
     feed_max_posts_per_fetch: int = 5
     feed_failure_notify_after: int = 6
     feed_user_agent: str = "Taylis-Feeds/1.0 (+https://github.com/chikuwachat)"
+    # 在室状況 (M140, docs/PRESENCE.md §5): outgoing webhooks. The signing keys are files in this
+    # folder, named by the integration's secret_name (never in the DB). Private targets (and http)
+    # only with the dev flag, and never when ENVIRONMENT=production.
+    attendance_webhook_secrets_dir: str = "/run/secrets/attendance"
+    attendance_webhook_allow_private: bool = False
+    attendance_webhook_timeout_seconds: float = 10.0
+    attendance_webhook_interval_seconds: float = 5.0
+    attendance_delivery_retention_days: int = 30
+    # Changes per person per minute from the app; per integration per minute from outside.
+    attendance_rate_limit_per_user: int = 30
+    attendance_inbound_rate_limit_per_integration: int = 60
     session_retention_days: int = 30
     device_retention_days: int = 90
     # M116 (docs/ANALYTICS.md): users.last_active_at and the hourly activity rows are written at
