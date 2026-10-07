@@ -11,7 +11,7 @@
  * M85 (docs/DEADLINES.md): a deadline's card has ⏰; 「＋ 締切を追加」 above the columns opens the dialog as a 締切.
  */
 import { AlarmClock, CalendarDays, CheckSquare, FileText, MessageSquareText, MoreHorizontal, Plus, Repeat, StickyNote } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { describeError } from "../api/errors";
 
@@ -228,33 +228,55 @@ export function dropSlot(container: HTMLElement, clientY: number): number {
   return cards.length;
 }
 
-/** 「＋ 追加」: a title field at the bottom of a column; Enter adds and keeps it open for the next one, Esc closes it. */
+/**
+ * 「＋ 追加」: a title field at the bottom of a column; Enter adds and keeps it open, focused and empty, for the next one
+ * (quick add), Esc closes it. Shift+Enter and the Enter of an IME conversion add nothing; a failed add keeps the text.
+ * While the add is in flight the field is read-only, not disabled: disabling it dropped the focus to the page, and the
+ * focus() after the add ran before React had enabled it again, so the next title could not be typed.
+ */
 export function InlineAdd({ label = t("common.add"), placeholder = t("tasks.board.inlinePlaceholder"), onAdd }: { label?: string; placeholder?: string; onAdd: (title: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
+  /** The field has the focus and the user has not moved it elsewhere (a press outside, Tab): keep it there. */
+  const keepFocus = useRef(false);
   const close = () => {
+    keepFocus.current = false;
     setOpen(false);
     setTitle("");
   };
+  /** Back into the field when the focus fell to the page (the list re-rendering around the new card), never away from what the user chose. */
+  const restoreFocus = () => {
+    const field = input.current;
+    const active = document.activeElement;
+    if (!keepFocus.current || !field || active === field) return;
+    if (!active || active === document.body || !active.isConnected) field.focus();
+  };
+  useLayoutEffect(restoreFocus);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target !== input.current) keepFocus.current = false;
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [open]);
   const submit = async () => {
     const text = cleanTitle(title);
     if (!text || busy) return;
     setBusy(true);
     const ok = await onAdd(text);
     setBusy(false);
-    if (ok) {
-      setTitle("");
-      input.current?.focus();
-    }
+    if (ok) setTitle("");
+    restoreFocus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (composing.current || event.nativeEvent.isComposing) return; // IME conversion (Japanese input)
+    if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return; // IME conversion (Japanese input)
     if (event.key === "Enter") {
       event.preventDefault();
-      void submit();
+      if (!event.shiftKey) void submit();
     } else if (event.key === "Escape") {
       // Not the screen's Esc (back to 「メッセージ」).
       event.preventDefault();
@@ -275,15 +297,25 @@ export function InlineAdd({ label = t("common.add"), placeholder = t("tasks.boar
       autoFocus
       value={title}
       maxLength={MAX_TASK_TITLE}
-      disabled={busy}
+      readOnly={busy}
+      aria-busy={busy || undefined}
       aria-label={t("tasks.board.newTaskTitle")}
       placeholder={placeholder}
-      className="w-full rounded-lg border border-accent bg-canvas px-2.5 py-1.5 text-sm text-ink outline-none ring-2 ring-accent/30 placeholder:text-muted"
+      className={cn("w-full rounded-lg border border-accent bg-canvas px-2.5 py-1.5 text-sm text-ink outline-none ring-2 ring-accent/30 placeholder:text-muted", busy && "opacity-60")}
       onChange={(e) => setTitle(e.target.value)}
       onCompositionStart={() => { composing.current = true; }}
       onCompositionEnd={() => { composing.current = false; }}
       onKeyDown={onKeyDown}
-      onBlur={() => { if (!cleanTitle(title)) close(); }}
+      onFocus={() => { keepFocus.current = true; }}
+      onBlur={(e) => {
+        if (e.relatedTarget) keepFocus.current = false; // Tab, or a press on something focusable
+        if (keepFocus.current) {
+          // Not the user's doing (the list re-rendering, the window losing the focus): back in if the page took it.
+          requestAnimationFrame(restoreFocus);
+          return;
+        }
+        if (!cleanTitle(title)) close();
+      }}
     />
   );
 }
