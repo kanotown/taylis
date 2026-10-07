@@ -2773,7 +2773,8 @@
               "pending",
               "delivered",
               "failed",
-              "superseded"
+              "superseded",
+              "cancelled"
             ],
             "title": "Status",
             "type": "string"

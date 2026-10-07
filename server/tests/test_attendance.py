@@ -712,6 +712,91 @@ async def test_older_delivery_is_superseded_by_a_newer_delivered_one(
     assert list(statuses) == ["superseded", "delivered"]
 
 
+async def test_turning_the_board_off_cancels_pending_deliveries(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    tmp_path: Path,
+) -> None:
+    """Review v0.1.43 #3: nothing is sent once the board is off, at any stage, and what was
+    pending is cancelled (not sent after re-enabling: its state would be stale)."""
+    root = await make_user(db, "root", role="admin")
+    as_user(root)
+    settings = await _enable(client)
+    site_id = (await _integration(client, "site"))["integration"]["id"]
+    await _integration(client, "other")
+    factory = app.state.db.session_factory
+    with_key = _with_secrets(app.state.settings, tmp_path)
+    in_room, gone = _state_id(settings, "in_room"), _state_id(settings, "gone")
+
+    async def statuses() -> list[tuple[str, str | None]]:
+        rows = await db.execute(
+            select(AttendanceDelivery.status, AttendanceDelivery.last_error).order_by(
+                AttendanceDelivery.created_at, AttendanceDelivery.id
+            )
+        )
+        return [(r[0], r[1]) for r in rows.all()]
+
+    async def switch(on: bool) -> None:
+        response = await client.patch("/api/v1/admin/attendance/settings", json={"enabled": on})
+        assert response.status_code == 200, response.text
+
+    # 1. Waiting for the first send.
+    await client.put("/api/v1/attendance/me", json={"state_id": in_room})
+    await _drain(app)
+    assert [s for s, _ in await statuses()] == ["pending", "pending"]
+    await switch(False)
+    await switch(True)
+    sender = FakeSender()
+    assert await webhooks.process_due(factory, with_key, sender) == 0
+    assert sender.calls == []
+    assert await statuses() == [("cancelled", "attendance_disabled")] * 2
+
+    # 2. Waiting for a retry.
+    await db.execute(update(AttendanceDelivery).values(status="delivered"))
+    await db.commit()
+    await client.put("/api/v1/attendance/me", json={"state_id": gone})
+    await _drain(app)
+    assert await webhooks.process_due(factory, with_key, FakeSender(500, 500)) == 2
+    await switch(False)
+    await db.execute(update(AttendanceDelivery).values(next_attempt_at=utcnow()))
+    await db.commit()
+    sender = FakeSender()
+    assert await webhooks.process_due(factory, with_key, sender) == 0
+    assert sender.calls == []
+    assert [s for s, _ in await statuses()][2:] == ["cancelled", "cancelled"]
+    await switch(True)
+    await db.execute(update(AttendanceDelivery).values(next_attempt_at=utcnow()))
+    await db.commit()
+    assert await webhooks.process_due(factory, with_key, sender) == 0
+    assert sender.calls == []
+
+    # 3. Turned off after the worker claimed the batch, while it sends the first of two.
+    await client.put("/api/v1/attendance/me", json={"state_id": in_room})
+    await _drain(app)
+    turned_off: list[bytes] = []
+
+    async def turning_off(url: str, headers: dict[str, str], body: bytes) -> webhooks.SendResult:
+        turned_off.append(body)
+        as_user(root)
+        await switch(False)
+        return webhooks.SendResult(503, "busy")  # the first fails: not retried either
+
+    assert await webhooks.process_due(factory, with_key, turning_off) == 2
+    assert len(turned_off) == 1
+    assert [s for s, _ in await statuses()][4:] == ["cancelled", "cancelled"]
+    await switch(True)
+    await db.execute(update(AttendanceDelivery).values(next_attempt_at=utcnow()))
+    await db.commit()
+    sender = FakeSender()
+    assert await webhooks.process_due(factory, with_key, sender) == 0
+    assert sender.calls == []
+    deliveries_url = f"/api/v1/admin/attendance/integrations/{site_id}/deliveries"
+    listed = (await client.get(deliveries_url)).json()
+    assert listed[0]["status"] == "cancelled" and listed[0]["next_attempt_at"] is None
+
+
 async def test_test_send_records_a_delivery(
     app: FastAPI,
     client: AsyncClient,

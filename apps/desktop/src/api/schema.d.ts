@@ -6417,7 +6417,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "pending" | "delivered" | "failed" | "superseded";
+            status: "pending" | "delivered" | "failed" | "superseded" | "cancelled";
             /** To Label */
             to_label: string | null;
             /** User Id */

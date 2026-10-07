@@ -7,7 +7,8 @@ integration) so a replayed row sends nothing twice. The worker claims due delive
 next_attempt_at on and committing first), sends outside any transaction, and records the result:
 2xx delivered, 408 / 429 / 5xx / network errors retried with backoff, other answers failed. A
 delivery whose person already has a newer delivered change for the same integration is
-superseded instead of sent.
+superseded instead of sent. While the board is turned off nothing is sent: the switch cancels
+the pending deliveries, and the worker checks it again right before each send (§5.1).
 
 Signing: X-Taylis-Signature: sha256=hex(HMAC-SHA256(key, timestamp + "." + body)), the key read
 from ATTENDANCE_WEBHOOK_SECRETS_DIR/<secret_name> at each send (never stored in the DB).
@@ -70,6 +71,8 @@ MAX_ATTEMPTS = len(BACKOFF)
 LEASE = timedelta(minutes=2)
 SECRET_MIN_BYTES = 16
 RESPONSE_SNIPPET = 200
+# What a delivery that was never sent because the board was turned off records.
+DISABLED_ERROR = "attendance_disabled"
 
 
 # --- signing -------------------------------------------------------------------------------
@@ -114,7 +117,12 @@ class SendResult:
         if self.ok:
             return False
         if self.status_code is None:
-            return self.error not in ("url_not_allowed", "secret_missing", "integration_disabled")
+            return self.error not in (
+                "url_not_allowed",
+                "secret_missing",
+                "integration_disabled",
+                DISABLED_ERROR,
+            )
         return self.status_code in (408, 429) or self.status_code >= 500
 
 
@@ -302,8 +310,21 @@ async def _record(
         values.update(status="pending", next_attempt_at=now + BACKOFF[attempts - 1])
     else:
         values.update(status="failed")
+    stmt = update(AttendanceDelivery).where(AttendanceDelivery.id == delivery_id)
+    if not result.ok:
+        # Turned off while this was sending: it stays cancelled (not retried after re-enabling).
+        stmt = stmt.where(AttendanceDelivery.status == "pending")
+    await db.execute(stmt.values(**values))
+
+
+async def _cancel(db: AsyncSession, delivery_ids: list[uuid.UUID]) -> None:
+    """Never sent: the board is off (docs/PRESENCE.md §5.1)."""
+    if not delivery_ids:
+        return
     await db.execute(
-        update(AttendanceDelivery).where(AttendanceDelivery.id == delivery_id).values(**values)
+        update(AttendanceDelivery)
+        .where(AttendanceDelivery.id.in_(delivery_ids), AttendanceDelivery.status == "pending")
+        .values(status="cancelled", last_error=DISABLED_ERROR)
     )
 
 
@@ -314,6 +335,11 @@ async def _send_one(
     send: Sender,
 ) -> SendResult:
     async with factory() as db:
+        # Right before the send: the board may have been turned off since the batch was claimed.
+        if not await service.is_enabled(db):
+            await _cancel(db, [claimed.id])
+            await db.commit()
+            return SendResult(None, DISABLED_ERROR)
         integration = await db.get(AttendanceIntegration, claimed.integration_id)
         url = integration.url if integration is not None else None
         enabled = integration is not None and integration.enabled
@@ -364,6 +390,10 @@ async def process_due(
             .scalars()
             .all()
         )
+        if rows and not await service.is_enabled(db):
+            await _cancel(db, [row.id for row in rows])
+            await db.commit()
+            return 0
         for row in rows:
             if row.log_id is not None and row.user_id is not None:
                 newer = await db.scalar(

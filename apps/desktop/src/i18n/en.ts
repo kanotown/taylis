@@ -475,6 +475,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "attendanceAdmin.status.delivered": "Delivered",
   "attendanceAdmin.status.failed": "Failed",
   "attendanceAdmin.status.superseded": "Superseded",
+  "attendanceAdmin.status.cancelled": "Cancelled (turned off)",
   "attendanceAdmin.noDeliveries": "Nothing sent yet.",
   "attendanceAdmin.attempts": "{count, plural, one {# attempt} other {# attempts}}",
   "attendanceAdmin.source.app": "Self",

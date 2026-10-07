@@ -171,7 +171,7 @@ class AttendanceDelivery(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     event: Mapped[str] = mapped_column(Text)  # attendance.changed | attendance.test
     body: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    # pending | delivered | failed | superseded
+    # pending | delivered | failed | superseded | cancelled (the board was turned off)
     status: Mapped[str] = mapped_column(Text, default="pending", server_default="pending")
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(

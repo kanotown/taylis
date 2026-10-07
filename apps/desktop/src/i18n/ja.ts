@@ -474,6 +474,7 @@ export const ja = {
   "attendanceAdmin.status.delivered": "届いた",
   "attendanceAdmin.status.failed": "失敗",
   "attendanceAdmin.status.superseded": "新しい変更が先に届いた",
+  "attendanceAdmin.status.cancelled": "在室状況をオフにしたので送らなかった",
   "attendanceAdmin.noDeliveries": "まだ送っていません",
   "attendanceAdmin.attempts": "{count} 回",
   "attendanceAdmin.source.app": "本人",

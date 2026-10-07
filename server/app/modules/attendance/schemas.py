@@ -360,7 +360,7 @@ class AttendanceTokenOut(BaseModel):
     token: str
 
 
-DeliveryStatus = Literal["pending", "delivered", "failed", "superseded"]
+DeliveryStatus = Literal["pending", "delivered", "failed", "superseded", "cancelled"]
 
 
 class AttendanceDeliveryOut(BaseModel):

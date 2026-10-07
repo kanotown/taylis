@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import i18n
@@ -578,6 +578,13 @@ async def update_settings(
         row.enabled = data.enabled
         if data.enabled and not await workspace_states(db):
             await _seed_defaults(db, actor.locale)
+        if not data.enabled:
+            # Not sent later either: after re-enabling, those states would be stale (§5.1).
+            await db.execute(
+                update(AttendanceDelivery)
+                .where(AttendanceDelivery.status == "pending")
+                .values(status="cancelled", last_error="attendance_disabled")
+            )
     if changes:
         row.updated_at = utcnow()
         row.updated_by = actor.id
