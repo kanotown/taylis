@@ -293,13 +293,23 @@ private fun PersonRow(
     }
 }
 
-/** The light or dark (background, text) pair of a text emoji colour, as the theme is. */
+/**
+ * The solid badge's (background, text) pair (§2.2): the colour key's shade (AttendanceBadgeColors) and white, the same in
+ * light and dark.
+ */
+internal fun attendanceColors(color: String): Pair<Color, Color> =
+    Color(0xFF000000L or AttendanceBadgeColors.solid(color)) to Color(0xFF000000L or AttendanceBadgeColors.FG)
+
+/**
+ * Only the state's colour, for an icon on the page's background (an unpressed state button): the shade in light, the text
+ * emoji palette's light text colour in dark (the shades are too dark on a dark page).
+ */
 @Composable
-internal fun attendanceColors(color: String): Pair<Color, Color> {
-    val palette = TextEmojiPill.PALETTE[color] ?: TextEmojiPill.PALETTE.getValue("gray")
+internal fun attendanceTint(color: String): Color {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val (bg, fg) = if (dark) palette.second else palette.first
-    return Color(0xFF000000L or bg) to Color(0xFF000000L or fg)
+    if (!dark) return Color(0xFF000000L or AttendanceBadgeColors.solid(color))
+    val palette = TextEmojiPill.PALETTE[color] ?: TextEmojiPill.PALETTE.getValue("gray")
+    return Color(0xFF000000L or palette.second.second)
 }
 
 /**
@@ -316,7 +326,7 @@ fun StateGlyph(controller: AppController, icon: String?, emoji: String?, version
 }
 
 /**
- * A state's badge (§2.1): its icon (or emoji) and name, in the palette's dark colour on its light one, rounded (the board's
+ * A state's badge (§2.2): its icon (or emoji) and name in white on the state's solid shade, rounded (the board's
  * headings, my own states, the form's preview; the chip next to a name when [small]).
  */
 @Composable
@@ -345,14 +355,16 @@ fun StatePill(controller: AppController, state: AttendanceStateOut, version: Int
  */
 @Composable
 private fun StateButton(controller: AppController, state: AttendanceStateOut, selected: Boolean, enabled: Boolean, version: Int, onClick: () -> Unit) {
+    // Pressed: the solid badge (white on the shade). Not pressed: outlined, only the icon in the state's colour.
     val (bg, fg) = attendanceColors(state.color)
+    val tint = attendanceTint(state.color)
     val personal = if (state.ownerId != null) " " + stringResource(R.string.attendance_personal) else ""
     val shape = RoundedCornerShape(10.dp)
     // One node: the role, the selected state and the name (the emoji and label inside are drawn only).
     Row(
         Modifier.heightIn(min = TouchTarget.MIN).clip(shape)
             .background(if (selected) bg else MaterialTheme.colorScheme.surface, shape)
-            .border(if (selected) 2.dp else 1.dp, if (selected) fg else MaterialTheme.colorScheme.outlineVariant, shape)
+            .border(1.dp, if (selected) bg else MaterialTheme.colorScheme.outlineVariant, shape)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = state.label + personal },
         verticalAlignment = Alignment.CenterVertically,
@@ -360,7 +372,7 @@ private fun StateButton(controller: AppController, state: AttendanceStateOut, se
         Row(Modifier.padding(horizontal = 14.dp).clearAndSetSemantics {}, verticalAlignment = Alignment.CenterVertically) {
             if (AttendanceIcons.glyph(state) != AttendanceIcons.Glyph.None) {
                 // The icon in the state's colour even when not pressed: the colour tells the states apart at a glance.
-                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = fg)
+                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = if (selected) fg else tint)
                 Spacer(Modifier.size(6.dp))
             }
             Text(
@@ -452,10 +464,13 @@ private fun OwnStateDialog(
                             contentAlignment = Alignment.Center,
                         ) {
                             Box(
-                                Modifier.size(30.dp).background(bg, CircleShape)
-                                    .border(if (color == key) 3.dp else 1.dp, if (color == key) fg else MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                                Modifier.size(36.dp).border(2.dp, if (color == key) bg else Color.Transparent, CircleShape),
                                 contentAlignment = Alignment.Center,
-                            ) { Box(Modifier.size(12.dp).background(fg, CircleShape)) }
+                            ) {
+                                Box(Modifier.size(28.dp).background(bg, CircleShape), contentAlignment = Alignment.Center) {
+                                    if (color == key) Box(Modifier.size(10.dp).background(fg, CircleShape))
+                                }
+                            }
                         }
                     }
                 }
@@ -470,7 +485,7 @@ private fun OwnStateDialog(
                         Box(
                             Modifier.size(TouchTarget.MIN).padding(2.dp).clip(shape)
                                 .background(if (selected) selectedBg else Color.Transparent, shape)
-                                .border(if (selected) 2.dp else 1.dp, if (selected) selectedFg else MaterialTheme.colorScheme.outlineVariant, shape)
+                                .border(1.dp, if (selected) selectedBg else MaterialTheme.colorScheme.outlineVariant, shape)
                                 .selectable(selected = selected, role = Role.RadioButton) { picked = key; pickedYet = true }
                                 .semantics { contentDescription = name },
                             contentAlignment = Alignment.Center,
