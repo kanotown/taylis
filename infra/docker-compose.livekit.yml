@@ -1,0 +1,47 @@
+# In-app calls on a server (docs/CALLS.md §8.3 (a)/(b), M130): LiveKit next to the app. Added with
+# EXTRA_COMPOSE_FILES="docker-compose.behind-proxy.yml docker-compose.livekit.yml" in infra/deploy.conf, after the
+# administrator's steps in docs/CALLS.md §8.6 (DNS, firewall, nginx site and certificate, the secret, infra/.env).
+#
+# infra/.env:  LIVEKIT_URL=wss://livekit.<domain>   LIVEKIT_API_KEY=taylis   LIVEKIT_NODE_IP=<the server's public IPv4>
+#              LIVEKIT_DOMAIN=livekit.<domain>       (certbot's certificate: /etc/letsencrypt/live/livekit.<domain>/)
+# infra/secrets/livekit_api_secret: the API secret (32+ random bytes, one line). deploy.sh writes secrets/livekit.env
+# (LIVEKIT_KEYS, mode 600) from it for LiveKit, which refuses a key file others can read.
+services:
+  app:
+    environment:
+      LIVEKIT_API_URL: http://livekit:7880
+      LIVEKIT_API_SECRET_FILE: /run/secrets/livekit_api_secret
+    volumes:
+      - ./secrets/livekit_api_secret:/run/secrets/livekit_api_secret:ro
+
+  livekit:
+    image: livekit/livekit-server:v1.13.8
+    command: ["--config", "/etc/livekit.yaml"]
+    env_file: ./secrets/livekit.env
+    environment:
+      NODE_IP: ${LIVEKIT_NODE_IP:?set LIVEKIT_NODE_IP (the server's public IPv4) in infra/.env}
+      LIVEKIT_TURN_DOMAIN: ${LIVEKIT_DOMAIN:?set LIVEKIT_DOMAIN in infra/.env}
+      LIVEKIT_WEBHOOK_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in infra/.env}
+      # TURN/TLS uses certbot's certificate for livekit.<domain> (the live/ links follow renewals; a renew_hook
+      # restarts LiveKit so that it reads the new one, docs/CALLS.md §8.6).
+      LIVEKIT_TURN_CERT_FILE: /etc/letsencrypt/live/${LIVEKIT_DOMAIN}/fullchain.pem
+      LIVEKIT_TURN_KEY_FILE: /etc/letsencrypt/live/${LIVEKIT_DOMAIN}/privkey.pem
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      # The whole of certbot's folder: live/ holds links into archive/.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      # Signalling and RoomService: the host only (nginx's livekit.<domain> site passes wss to it; nobody outside
+      # reaches RoomService).
+      - "127.0.0.1:7880:7880"
+      # Media: ICE/TCP, ICE/UDP (one port), TURN/UDP, TURN/TLS. Opened in the firewall.
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+    # A shared server: LiveKit never takes more than this (docs/CALLS.md §8.5).
+    mem_limit: 1g
+    cpus: 2.0
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

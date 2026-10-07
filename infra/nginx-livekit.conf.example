@@ -1,0 +1,40 @@
+# LiveKit's signalling behind the host's nginx (docs/CALLS.md §8.3, §8.6; M130): clients connect to
+# wss://livekit.example.com, nginx terminates TLS and passes the WebSocket to LiveKit on 127.0.0.1:7880
+# (docker-compose.livekit.yml). Media do not pass through nginx (UDP 7882 / TCP 7881 / TURN 3478 and 5349 go to
+# LiveKit directly). Replace livekit.example.com, then as root:
+#   cp nginx-livekit.conf.example /etc/nginx/sites-available/taylis-livekit
+#   ln -s /etc/nginx/sites-available/taylis-livekit /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx
+#   certbot --nginx -d livekit.example.com --redirect
+#   # LiveKit's TURN/TLS reads the same certificate: restart it after each renewal of this certificate only
+#   # (/etc/letsencrypt/renewal/livekit.example.com.conf, under [renewalparams]):
+#   #   renew_hook = docker compose -f /srv/taylis/infra/docker-compose.yml ... restart livekit
+#   # (docs/CALLS.md §8.6 has the exact line for each server).
+
+map $http_upgrade $taylis_livekit_connection {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name livekit.example.com;
+
+    # RoomService (/twirp/*) is for the app, which reaches LiveKit inside the compose network: never from outside.
+    location /twirp/ {
+        return 404;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:7880;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # The signalling WebSocket stays open for the whole call.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $taylis_livekit_connection;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_buffering off;
+    }
+}

@@ -37,6 +37,19 @@ for optional in anthropic_api_key openai_api_key; do
   fi
 done
 
+# In-app calls (docs/CALLS.md §8.3, M130), when deploy.conf adds docker-compose.livekit.yml: the app reads the API
+# secret from secrets/livekit_api_secret (mode 644 like the AI keys); LiveKit takes it as LIVEKIT_KEYS from
+# secrets/livekit.env, written here (mode 600: compose reads it as deploy, LiveKit refuses key files others can read).
+if [[ " ${EXTRA_COMPOSE_FILES:-} " == *" docker-compose.livekit.yml "* ]]; then
+  [ -f secrets/livekit_api_secret ] && [ -s secrets/livekit_api_secret ] \
+    || die "docker-compose.livekit.yml needs secrets/livekit_api_secret (docs/CALLS.md §8.6)"
+  chmod 644 secrets/livekit_api_secret
+  livekit_key="$(sed -n 's/^LIVEKIT_API_KEY=//p' .env | tail -n 1)"
+  [ -n "$livekit_key" ] || die "docker-compose.livekit.yml needs LIVEKIT_API_KEY in infra/.env"
+  (umask 077 && printf 'LIVEKIT_KEYS=%s: %s\n' "$livekit_key" "$(tr -d '\r\n' < secrets/livekit_api_secret)" \
+    > secrets/livekit.env.tmp && mv secrets/livekit.env.tmp secrets/livekit.env)
+fi
+
 # Preset emoji packs (docs/EMOJI.md §8): compose mounts this folder read-only into the app. Made here, owned by
 # deploy, so that Docker never creates it as an empty root-owned directory. Releases never touch what is inside.
 [ -d emoji-presets ] || install -d -m 755 emoji-presets

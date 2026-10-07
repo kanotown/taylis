@@ -12,6 +12,12 @@
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	header X-Content-Type-Options nosniff
 
+	# LiveKit's webhook (M130, docs/CALLS.md §7.4) comes from inside the compose network only (http://app:8000);
+	# from outside it does not exist. The app checks its signature anyway.
+	handle /api/v1/livekit/* {
+		respond 404
+	}
+
 	@uploads path /api/v1/attachments*
 	handle @uploads {
 		request_body {
