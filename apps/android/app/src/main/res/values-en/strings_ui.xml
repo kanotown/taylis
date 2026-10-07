@@ -1474,6 +1474,11 @@
     <string name="threads_pane_open_channel">Open channel</string>
     <string name="threads_pane_open_conversation">Open conversation</string>
     <string name="threads_pane_open_named">Open %1$s</string>
+    <plurals name="threads_pane_more_replies">
+        <item quantity="one">%1$d more reply</item>
+        <item quantity="other">%1$d more replies</item>
+    </plurals>
+    <string name="threads_pane_reply_from">Reply from %1$s, open in thread</string>
     <string name="threads_pane_show_more">Show more</string>
     <string name="threads_pane_threads_you_posted_in_replied_to">Threads you posted in, replied to or were mentioned in show up here.</string>
     <string name="threads_pane_unread">" · %1$s unread"</string>

@@ -763,11 +763,17 @@ class FakeServer {
         return ThreadSummary(states.count { it.unreadCount > 0 }, states.count { it.mentionCount > 0 })
     }
 
+    /** false: GET /threads answers as a server before the reply previews did (no latest_replies). */
+    var threadPreviews = true
+
     fun threads(userId: String, filter: String, cursor: String?, limit: Int): ThreadListOut {
         var items = threadFollows.values.filter { it.userId == userId && it.following }.mapNotNull { row ->
             val (_, parent) = runCatching { threadParent(row.parentId) }.getOrNull() ?: return@mapNotNull null
             if (parent.deleted || parent.replyCount == 0) return@mapNotNull null
-            ThreadItem(parent, threadState(userId, row.parentId))
+            // THREADS.md §5: the newest two live replies, oldest first; none from a server before the previews.
+            val record = threadParent(row.parentId).first
+            val latest = record.messages.filter { it.parentId == parent.id && !it.deleted }.sortedBy { it.seq }.takeLast(2)
+            ThreadItem(parent, threadState(userId, row.parentId), latest.takeIf { threadPreviews })
         }.sortedWith(compareByDescending<ThreadItem> { it.parent.lastReplyAt ?: "" }.thenByDescending { it.parent.seq })
         if (cursor != null) items = items.filter { (it.parent.lastReplyAt ?: "") < cursor }
         if (filter == "unread") items = items.filter { it.state.unreadCount > 0 }

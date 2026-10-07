@@ -264,7 +264,7 @@ fun ActivityScreen(
     readAllRequested: Boolean,
     onReadAllHandled: () -> Unit,
     onOpenMessage: (MessageOut) -> Unit,
-    onOpenThread: (ThreadEntry) -> Unit,
+    onOpenThread: (ThreadEntry, jp.chikuwachat.android.sync.MessageState?) -> Unit,
     onOpenCanvas: (channelId: String, canvasId: String) -> Unit,
     /** A followed thread's conversation header: the conversation around the thread's parent. */
     onOpenThreadConversation: (ThreadEntry) -> Unit = {},
@@ -530,7 +530,7 @@ private fun StageA(
     mentionsState: LazyListState,
     threadsState: LazyListState,
     onOpenMessage: (MessageOut) -> Unit,
-    onOpenThread: (ThreadEntry) -> Unit,
+    onOpenThread: (ThreadEntry, jp.chikuwachat.android.sync.MessageState?) -> Unit,
     onOpenThreadConversation: (ThreadEntry) -> Unit,
 ) {
     val shown = if (segment == ActivitySegment.THREADS) ActivitySegment.THREADS else ActivitySegment.MENTIONS

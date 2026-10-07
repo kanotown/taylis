@@ -471,6 +471,24 @@ fun MainScreen(controller: AppController) {
      * thread's parent (as a search result lands); back returns to the list. Without the parent's context (offline) the
      * conversation still opens, at its usual position.
      */
+    /**
+     * A threads-list card (THREADS.md §5) opens its thread on this tab's stack; a reply under the card lands on that reply:
+     * the focus is set first (the thread places itself once, on the focus), as an activity reply's. Without it (offline)
+     * the thread still opens, at its usual position.
+     */
+    fun openThreadFromList(entry: jp.chikuwachat.android.sync.ThreadEntry, reply: jp.chikuwachat.android.sync.MessageState?) {
+        val channelId = entry.state.channelId
+        controller.messageFocus = null
+        if (reply == null) {
+            stack = MainNav.openFromThreadList(stack, channelId, entry.parent.id)
+            return
+        }
+        scope.launch {
+            controller.revealMessage(reply.id, channelId, entry.parent.id)
+            stack = MainNav.openFromThreadList(stack, channelId, entry.parent.id)
+        }
+    }
+
     fun openThreadConversation(entry: jp.chikuwachat.android.sync.ThreadEntry) {
         val channelId = entry.state.channelId
         controller.messageFocus = null
@@ -1075,10 +1093,7 @@ fun MainScreen(controller: AppController) {
                         },
                     )
                 } else if (pane == Route.Threads) {
-                    ThreadsPane(controller, version, onOpen = { entry ->
-                        controller.messageFocus = null
-                        stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
-                    }, onOpenConversation = ::openThreadConversation)
+                    ThreadsPane(controller, version, onOpen = ::openThreadFromList, onOpenConversation = ::openThreadConversation)
                 } else if (top == Route.DmList) {
                     DmListScreen(
                         controller, version, dmListState,
@@ -1100,10 +1115,7 @@ fun MainScreen(controller: AppController) {
                         readAllRequested = activityReadAll,
                         onReadAllHandled = { activityReadAll = false },
                         onOpenMessage = ::reveal,
-                        onOpenThread = { entry ->
-                            controller.messageFocus = null
-                            stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
-                        },
+                        onOpenThread = ::openThreadFromList,
                         onOpenThreadConversation = ::openThreadConversation,
                         // M77 (CANVAS.md §20.7): a canvas row opens its conversation's 「キャンバス」 tab on this tab's
                         // stack, like the message rows (back returns here). A conversation the store does not know yet

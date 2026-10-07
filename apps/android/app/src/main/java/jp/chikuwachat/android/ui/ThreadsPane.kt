@@ -5,10 +5,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.ThreadEntry
 import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
@@ -62,7 +67,8 @@ import androidx.compose.ui.res.pluralStringResource
 fun ThreadsPane(
     controller: AppController,
     version: Int,
-    onOpen: (ThreadEntry) -> Unit,
+    /** The thread; with a reply (one under a card), landing on that reply. */
+    onOpen: (ThreadEntry, MessageState?) -> Unit,
     listState: LazyListState = rememberLazyListState(),
     onOpenConversation: (ThreadEntry) -> Unit = {},
 ) {
@@ -118,7 +124,10 @@ fun ThreadsPane(
             }
         } else {
             items(rows, key = { it.id }) { entry ->
-                ThreadRow(entry, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(entry) }, onOpenConversation = { onOpenConversation(entry) })
+                ThreadRow(
+                    entry, controller, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(entry, null) },
+                    onOpenConversation = { onOpenConversation(entry) }, onOpenReply = { onOpen(entry, it) },
+                )
                 HorizontalDivider()
             }
             if (store.threadsHasMore) {
@@ -132,12 +141,14 @@ fun ThreadsPane(
 @Composable
 private fun ThreadRow(
     entry: ThreadEntry,
-    store: Store,
+    controller: AppController,
     version: Int,
     onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit,
     onClick: () -> Unit,
     onOpenConversation: () -> Unit,
+    onOpenReply: (MessageState) -> Unit,
 ) {
+    val store = controller.store
     val parent = entry.parent
     val state = entry.state
     val unread = state.unreadCount > 0
@@ -208,11 +219,107 @@ private fun ThreadRow(
                         )
                     }
                 }
+                val card = ThreadCardRules.replies(entry, store.me?.id) { store.isBlocked(it) }
+                if (card != null && card.replies.isNotEmpty()) {
+                    Column(Modifier.padding(top = 6.dp).fillMaxWidth()) {
+                        if (card.more > 0) {
+                            Text(
+                                pluralStringResource(R.plurals.threads_pane_more_replies, card.more, card.more),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier
+                                    .heightIn(min = 32.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable(role = Role.Button, onClick = onClick)
+                                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                            )
+                        }
+                        // The replies hang off a thin line, like the thread they belong to.
+                        val line = MaterialTheme.colorScheme.outlineVariant
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .drawBehind { drawRect(line, size = Size(2.dp.toPx(), size.height)) }
+                                .padding(start = 8.dp),
+                        ) {
+                            card.replies.forEach { reply ->
+                                ThreadPreviewReply(reply, controller, version, onClick = { onOpenReply(reply.message) })
+                            }
+                        }
+                    }
+                }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.common_open_thread)) }, onClick = { menu = false; onClick() })
             DropdownMenuItem(text = { Text(openLabel) }, enabled = channel != null, onClick = { menu = false; onOpenConversation() })
+        }
+    }
+}
+
+/** The replies part of a threads-list card (THREADS.md §5). */
+object ThreadCardRules {
+    /** [unread]: someone else's reply after my read position in the thread (marked as the thread view marks it). */
+    data class Reply(val message: MessageState, val unread: Boolean)
+
+    /** [more] is 「他 n 件の返信」 (0: every reply is in the card). */
+    data class Card(val replies: List<Reply>, val more: Int)
+
+    /** null when the server sent no previews (the card is the parent only, as before). */
+    fun replies(entry: ThreadEntry, me: String?, isBlocked: (String) -> Boolean): Card? {
+        val latest = entry.latestReplies ?: return null
+        // Someone blocked after the list came: their replies leave the card at once (the server leaves them out too).
+        val shown = latest.filter { !it.deleted && !isBlocked(it.senderId) }
+            .map { Reply(it, it.senderId != me && (it.seq ?: 0) > entry.state.lastReadSeq) }
+        return Card(shown, maxOf(0, entry.state.replyCount - shown.size))
+    }
+}
+
+/** A reply under a card: compact, the body in the message renderer cut to four lines' height. */
+@Composable
+private fun ThreadPreviewReply(reply: ThreadCardRules.Reply, controller: AppController, version: Int, onClick: () -> Unit) {
+    val store = controller.store
+    val message = reply.message
+    val name = store.users[message.senderId]?.displayName ?: "…"
+    val label = stringResource(R.string.threads_pane_reply_from, name)
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Avatar(message.senderId, name, size = 22.dp)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (reply.unread) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (reply.unread) {
+                    val unreadLabel = stringResource(R.string.common_unread)
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = unreadLabel })
+                }
+            }
+            if (message.body.isBlank()) {
+                Text(messageLine(message.body, message.attachments, store), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Box(Modifier.heightIn(max = 84.dp).clipToBounds()) {
+                    MessageBody(
+                        message.body, store.users, groups = store.groups, internalBase = controller.serverBase,
+                        customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
+                        onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
+                    )
+                }
+            }
         }
     }
 }

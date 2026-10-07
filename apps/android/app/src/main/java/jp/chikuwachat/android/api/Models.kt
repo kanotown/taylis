@@ -943,7 +943,12 @@ data class ThreadState(
 )
 
 @Serializable
-data class ThreadItem(val parent: MessageOut, val state: ThreadState)
+data class ThreadItem(
+    val parent: MessageOut,
+    val state: ThreadState,
+    /** The newest live replies, oldest first (THREADS.md §5); null from a server before the previews. */
+    val latestReplies: List<MessageOut>? = null,
+)
 
 @Serializable
 data class ThreadSummary(val unreadCount: Int = 0, val mentionCount: Int = 0)
