@@ -188,6 +188,12 @@ class Settings(BaseSettings):
     action_timeout_seconds: float = 10.0
     # One press per person per button every this many seconds.
     action_invoke_min_interval_seconds: float = 3.0
+    # The state a status button's relay reports (docs/ACTIONS.md §12): kept this long per button
+    # (however many people look, the relay is asked once per period), a refresh that skips it at
+    # most once per person every this many seconds, and asked again this long after a press.
+    action_status_cache_seconds: float = 30.0
+    action_status_refresh_min_interval_seconds: float = 5.0
+    action_status_after_invoke_seconds: float = 4.0
     session_retention_days: int = 30
     device_retention_days: int = 90
     # M116 (docs/ANALYTICS.md): users.last_active_at and the hourly activity rows are written at

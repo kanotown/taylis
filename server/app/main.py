@@ -21,6 +21,7 @@ from app.core.time import utcnow
 from app.events.in_memory import InMemoryEventBus
 from app.events.outbox import OutboxRelay, asyncpg_dsn, purge_processed
 from app.modules.actions import service as actions_service
+from app.modules.actions import status as actions_status
 from app.modules.actions.router import router as actions_router
 from app.modules.activity.router import router as activity_router
 from app.modules.admin.router import router as admin_router
@@ -522,6 +523,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         stop.set()
+        app.state.action_status.cancel()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -682,6 +684,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             60 / max(settings.action_invoke_min_interval_seconds, 0.001), burst=1
         ),
         "action_test": RateLimiter(6),
+        # §12: a refresh of the buttons' state that skips the cache, per person.
+        "action_status_refresh": RateLimiter(
+            60 / max(settings.action_status_refresh_min_interval_seconds, 0.001), burst=1
+        ),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
@@ -707,6 +713,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.attendance_wake = asyncio.Event()
     # M143 (docs/ACTIONS.md §5): the relay sender (SSRF-checked, bounded, never retried).
     app.state.action_poster = actions_service.build_poster(settings)
+    # §12: the last state per status button (per process) and the re-reads after presses.
+    app.state.action_status = actions_status.StatusCache()
     app.state.bus = InMemoryEventBus()
     app.state.hub = RealtimeHub(
         queue_size=settings.ws_send_queue_size, away_seconds=settings.presence_away_seconds
@@ -731,7 +739,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db,
         app.state.bus,
         # M120: the wiki's audience `page` (who can read it when sent), then the channels'.
-        wiki_events.audience_resolver(channels_service.resolve_event_audience),
+        # M143: `action` (who may press a button of a status button's group).
+        actions_status.audience_resolver(
+            wiki_events.audience_resolver(channels_service.resolve_event_audience)
+        ),
         handlers=[
             planner,
             calendar.CalendarLeaveHandler(),

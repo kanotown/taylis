@@ -5,6 +5,148 @@
     "session_revoked": 4003
   },
   "events": {
+    "actions.status_updated": {
+      "audience": "users who may press a button of the group",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "ActionStatusDetail": {
+            "properties": {
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "value"
+            ],
+            "title": "ActionStatusDetail",
+            "type": "object"
+          },
+          "ActionStatusValue": {
+            "description": "The relay's answer, cleaned: plain text only.",
+            "properties": {
+              "details": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ActionStatusDetail"
+                },
+                "title": "Details",
+                "type": "array"
+              },
+              "state": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "State"
+              },
+              "text": {
+                "title": "Text",
+                "type": "string"
+              },
+              "tone": {
+                "enum": [
+                  "ok",
+                  "warn",
+                  "alert",
+                  "neutral"
+                ],
+                "title": "Tone",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "tone"
+            ],
+            "title": "ActionStatusValue",
+            "type": "object"
+          }
+        },
+        "description": "`actions.status_updated` (audience: who may press something in the group): a group's\nstate, fetched again a few seconds after a press or found changed.",
+        "properties": {
+          "action_id": {
+            "format": "uuid",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "group_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ActionStatusValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action_id",
+          "group_label",
+          "ok",
+          "status",
+          "error",
+          "message",
+          "fetched_at"
+        ],
+        "title": "ActionStatusUpdatedData",
+        "type": "object"
+      }
+    },
     "actions.updated": {
       "audience": "all (not guests)",
       "consumes_seq": false,

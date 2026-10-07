@@ -60,6 +60,8 @@ class ActionOut(BaseModel):
     # Ask before sending; confirm_text null = the client's own sentence.
     confirm: bool
     confirm_text: str | None
+    # This button's relay is asked for the state of its group (docs/ACTIONS.md §12).
+    provides_status: bool = False
     position: int
 
 
@@ -80,6 +82,7 @@ def to_action_out(row: Action) -> ActionOut:
         emoji=row.emoji,
         confirm=row.confirm,
         confirm_text=row.confirm_text,
+        provides_status=row.provides_status,
         position=row.position,
     )
 
@@ -195,6 +198,8 @@ class ActionCreate(_ActionFields):
     allowed_user_ids: list[UUID] = Field(default_factory=list, max_length=MAX_ALLOWED)
     notice_channel_id: UUID | None = None
     enabled: bool = True
+    # Ask this button's relay for the state of its group (at most one per group).
+    provides_status: bool = False
 
     @field_validator("name")
     @classmethod
@@ -226,6 +231,7 @@ class ActionUpdate(_ActionFields):
     allowed_user_ids: list[UUID] | None = Field(default=None, max_length=MAX_ALLOWED)
     notice_channel_id: UUID | None = None
     enabled: bool | None = None
+    provides_status: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -278,3 +284,61 @@ def to_invocation_out(row: ActionInvocation) -> ActionInvocationOut:
 class ActionsUpdatedData(BaseModel):
     """`actions.updated` (audience all but guests): the settings or a button changed. What I may
     press differs per person, so nothing is carried: GET /actions again."""
+
+
+# --- the state of what the buttons operate (docs/ACTIONS.md §12) -------------------------------
+
+StatusTone = Literal["ok", "warn", "alert", "neutral"]
+STATUS_TEXT_MAX = 80
+STATUS_STATE_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,31}$"
+STATUS_DETAILS_MAX = 6
+STATUS_DETAIL_LABEL_MAX = 40
+STATUS_DETAIL_VALUE_MAX = 80
+
+
+class ActionStatusDetail(BaseModel):
+    label: str
+    value: str
+
+
+class ActionStatusValue(BaseModel):
+    """The relay's answer, cleaned: plain text only."""
+
+    # 「施錠中・ドア閉・電池 85%」 (at most 80 characters).
+    text: str
+    # How to colour it: ok (as it should be), warn, alert, neutral (unknown / nothing to say).
+    tone: StatusTone
+    # A short machine word for the state (`locked`, `unlocked`, `jammed`, `unknown`…), or null.
+    state: str | None = None
+    # At most 6 label / value pairs (「電池」「85%」).
+    details: list[ActionStatusDetail] = []
+
+
+class ActionStatusOut(BaseModel):
+    """The state of one group, as its status button's relay last told it."""
+
+    # The button that provides the state (it may be one I cannot press myself).
+    action_id: UUID
+    # The group it is the state of (null: the button has no group and is its own).
+    group_label: str | None
+    ok: bool
+    # Null when the relay could not be asked or gave no usable answer.
+    status: ActionStatusValue | None
+    # Why it failed: timeout | network | relay_error | invalid_answer | url_not_allowed |
+    # secret_missing (null when ok).
+    error: str | None
+    # The relay's own `message` on a failure (plain text, at most 200 characters).
+    message: str | None
+    # When the relay answered (or failed); the answer may come from the server's short cache.
+    fetched_at: datetime
+
+
+class ActionStatusListOut(BaseModel):
+    enabled: bool
+    # One per group I may press something in whose state is provided, in the buttons' order.
+    statuses: list[ActionStatusOut] = []
+
+
+class ActionStatusUpdatedData(ActionStatusOut):
+    """`actions.status_updated` (audience: who may press something in the group): a group's
+    state, fetched again a few seconds after a press or found changed."""

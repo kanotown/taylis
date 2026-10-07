@@ -134,6 +134,7 @@ async def test_off_by_default(
         "emoji",
         "confirm",
         "confirm_text",
+        "provides_status",
         "position",
     }
     booted = (await client.get("/api/v1/sync/bootstrap")).json()["actions"]

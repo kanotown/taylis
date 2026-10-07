@@ -305,7 +305,32 @@ def _audit_details(row: Action) -> dict[str, Any]:
         "allowed_user_ids": [str(u) for u in row.allowed_user_ids],
         "notice_channel_id": str(row.notice_channel_id) if row.notice_channel_id else None,
         "enabled": row.enabled,
+        "provides_status": row.provides_status,
     }
+
+
+def group_key(action: Action) -> str:
+    """The group a button belongs to: its label, or the button itself when it has none."""
+    return f"g:{action.group_label}" if action.group_label else f"a:{action.id}"
+
+
+async def _check_status_source(db: AsyncSession, row: Action) -> None:
+    """At most one button per group provides the group's state (docs/ACTIONS.md §12). Call under
+    the advisory lock."""
+    if not row.provides_status or not row.group_label:
+        return
+    taken = await db.execute(
+        select(Action.id).where(
+            Action.id != row.id,
+            Action.provides_status.is_(True),
+            Action.group_label == row.group_label,
+        )
+    )
+    if taken.first() is not None:
+        raise conflict(
+            "action_status_source_taken",
+            "Another button of this group already provides its state",
+        )
 
 
 async def create_action(
@@ -338,11 +363,13 @@ async def create_action(
         allowed_user_ids=list(data.allowed_user_ids),
         notice_channel_id=data.notice_channel_id,
         enabled=data.enabled,
+        provides_status=data.provides_status,
         position=max((r.position for r in rows), default=-1) + 1,
         created_by=actor.id,
         created_at=now,
         updated_at=now,
     )
+    await _check_status_source(db, row)
     db.add(row)
     await db.flush()
     await audit.record_in_tx(
@@ -393,6 +420,7 @@ async def update_action(
         "allowed_group_ids",
         "allowed_user_ids",
         "enabled",
+        "provides_status",
     ):
         value = getattr(data, field)
         if value is not None:
@@ -401,6 +429,9 @@ async def update_action(
     for field in ("group_label", "icon", "emoji", "confirm_text", "notice_channel_id"):
         if field in sent:
             setattr(row, field, getattr(data, field))
+    if row.provides_status and ("provides_status" in sent or "group_label" in sent):
+        await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('actions'))"))
+        await _check_status_source(db, row)
     row.updated_at = utcnow()
     await audit.record_in_tx(
         db,

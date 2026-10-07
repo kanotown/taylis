@@ -347,6 +347,11 @@
             "title": "Position",
             "type": "integer"
           },
+          "provides_status": {
+            "default": false,
+            "title": "Provides Status",
+            "type": "boolean"
+          },
           "secret_name": {
             "title": "Secret Name",
             "type": "string"
@@ -502,6 +507,11 @@
               }
             ],
             "title": "Notice Channel Id"
+          },
+          "provides_status": {
+            "default": false,
+            "title": "Provides Status",
+            "type": "boolean"
           },
           "secret_name": {
             "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
@@ -841,6 +851,11 @@
           "position": {
             "title": "Position",
             "type": "integer"
+          },
+          "provides_status": {
+            "default": false,
+            "title": "Provides Status",
+            "type": "boolean"
           }
         },
         "required": [
@@ -919,6 +934,162 @@
           }
         },
         "title": "ActionSettingsUpdate",
+        "type": "object"
+      },
+      "ActionStatusDetail": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "ActionStatusDetail",
+        "type": "object"
+      },
+      "ActionStatusListOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "statuses": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ActionStatusOut"
+            },
+            "title": "Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ActionStatusListOut",
+        "type": "object"
+      },
+      "ActionStatusOut": {
+        "description": "The state of one group, as its status button's relay last told it.",
+        "properties": {
+          "action_id": {
+            "format": "uuid",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "group_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionStatusValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action_id",
+          "group_label",
+          "ok",
+          "status",
+          "error",
+          "message",
+          "fetched_at"
+        ],
+        "title": "ActionStatusOut",
+        "type": "object"
+      },
+      "ActionStatusValue": {
+        "description": "The relay's answer, cleaned: plain text only.",
+        "properties": {
+          "details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ActionStatusDetail"
+            },
+            "title": "Details",
+            "type": "array"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "ok",
+              "warn",
+              "alert",
+              "neutral"
+            ],
+            "title": "Tone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "tone"
+        ],
+        "title": "ActionStatusValue",
         "type": "object"
       },
       "ActionUpdate": {
@@ -1082,6 +1253,17 @@
               }
             ],
             "title": "Notice Channel Id"
+          },
+          "provides_status": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provides Status"
           },
           "secret_name": {
             "anyOf": [
@@ -20449,6 +20631,55 @@
         ]
       }
     },
+    "/api/v1/actions/status": {
+      "get": {
+        "description": "The state of what the buttons operate (docs/ACTIONS.md §12): one entry per group I may press\nsomething in whose state a button provides. Answers come from a short server-side cache\n(ACTION_STATUS_CACHE_SECONDS); `refresh=true` asks the relays now (429 more than once every\nfew seconds per person). A relay failure is an entry with `ok: false`, not an HTTP error.",
+        "operationId": "action_statuses_api_v1_actions_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionStatusListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Action Statuses",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
     "/api/v1/actions/{action_id}/invoke": {
       "post": {
         "description": "Calls the button's relay once, now, and returns its answer (docs/ACTIONS.md §4). A relay\nfailure is 200 with `ok: false`. The same client_invoke_id again returns the earlier result\nwithout calling the relay. Never retried. 409 actions_disabled / action_disabled, 403\naction_not_allowed, 429 (one press per button every few seconds).",
@@ -20821,7 +21052,7 @@
         ]
       },
       "post": {
-        "description": "`url` must be https and public; `secret_name` names the signing key's file in\nACTION_SECRETS_DIR. At most 50 buttons.",
+        "description": "`url` must be https and public; `secret_name` names the signing key's file in\nACTION_SECRETS_DIR. At most 50 buttons. At most one button per group may have\n`provides_status` (409 action_status_source_taken).",
         "operationId": "create_action_api_v1_admin_actions_post",
         "requestBody": {
           "content": {
@@ -21032,6 +21263,7 @@
         ]
       },
       "patch": {
+        "description": "409 action_status_source_taken: another button of the group already provides its\nstate.",
         "operationId": "update_action_api_v1_admin_actions__action_id__patch",
         "parameters": [
           {
@@ -21149,6 +21381,56 @@
           }
         ],
         "summary": "List Invocations",
+        "tags": [
+          "actions",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/actions/{action_id}/status": {
+      "post": {
+        "description": "「状態を確認」: an `action.status` to this button's relay now (whether or not it provides\nits group's state, and while it or the feature is off); not cached, not recorded.",
+        "operationId": "check_status_api_v1_admin_actions__action_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Check Status",
         "tags": [
           "actions",
           "admin"
