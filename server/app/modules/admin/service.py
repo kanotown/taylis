@@ -9,7 +9,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import conflict, not_found
+from app.core.errors import conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.security import generate_temporary_password, hash_password
 from app.core.time import utcnow
 from app.modules.admin.schemas import AdminUserCreate, AdminUserUpdate
@@ -210,6 +211,16 @@ async def list_users(db: AsyncSession) -> list[User]:
 async def update_user(
     db: AsyncSession, actor: User, user_id: uuid.UUID, data: AdminUserUpdate
 ) -> User:
+    if not has_capability(actor, "users.manage"):
+        # M142 (docs/ROLES.md §5): a manager edits only the display name and title of members
+        # and guests; roles, deactivation and usernames stay with administrators.
+        if data.role is not None or data.deactivated is not None or data.username is not None:
+            raise forbidden("admin_required", "Only an administrator changes roles and accounts")
+        if user_id == actor.id:
+            raise conflict("cannot_modify_self", "Change your own profile via /users/me")
+        target = await _get_user(db, user_id)
+        if target.role not in ("member", "guest"):
+            raise forbidden("admin_required", "Only an administrator edits this account")
     if user_id == actor.id and (data.role is not None or data.deactivated is not None):
         raise conflict("cannot_modify_self", "Administrators cannot change their own account")
     lowers_admins = data.role not in (None, "admin") or data.deactivated is True
@@ -227,6 +238,10 @@ async def update_user(
         locked = await db.get(User, user_id, with_for_update=True, populate_existing=True)
         await usernames.rename_in_tx(db, locked or user, data.username, actor=actor)
     now = utcnow()
+    if data.display_name is not None:
+        user.display_name = data.display_name.strip() or user.display_name
+    if "title" in data.model_fields_set:
+        user.title = (data.title or "").strip() or None
     if data.role is not None:
         user.role = data.role
     if data.deactivated is True and user.is_active:
@@ -243,7 +258,7 @@ async def update_user(
         action="admin.user_updated",
         target_type="user",
         target_id=user.id,
-        details=data.model_dump(exclude_none=True, mode="json"),
+        details=data.model_dump(exclude_unset=True, mode="json"),
     )
     try:
         await db.commit()

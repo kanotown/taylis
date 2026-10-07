@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.activity.events import ACTIVITY_UPDATED, ActivityUpdatedData
@@ -182,7 +183,11 @@ class _Audience:
     def sees(self, user: User) -> bool:
         if not user.is_active or user.role == "bot":
             return False
-        if user.is_admin or user.id == self.pool.created_by or user.id in self.pool.operator_ids:
+        if (
+            has_capability(user, "reservations.manage")
+            or user.id == self.pool.created_by
+            or user.id in self.pool.operator_ids
+        ):
             return True
         if user.is_guest:
             return False
@@ -859,7 +864,7 @@ def _require_manager(allowed: bool) -> None:
     if not allowed:
         raise forbidden(
             "reservation_manage_restricted",
-            "Only administrators (and a pool's creator) can change reservation pools",
+            "Only administrators, managers (and a pool's creator) can change reservation pools",
         )
 
 
@@ -917,7 +922,7 @@ async def _check_visibility(
 
 
 async def create_pool(db: AsyncSession, actor: User, data: PoolCreate) -> PoolOut:
-    _require_manager(actor.is_admin)
+    _require_manager(has_capability(actor, "reservations.manage"))
     if len(await repo.all_pools(db)) >= MAX_POOLS:
         raise conflict("too_many_reservation_pools", f"At most {MAX_POOLS} pools")
     await _check_operators(db, data.operator_ids)

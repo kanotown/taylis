@@ -104,6 +104,9 @@ class AdminReportOut(BaseModel):
     # The body when it was reported (the message may have changed or gone since); "" without a
     # message.
     body_snapshot: str
+    # M142 (docs/ROLES.md §4.3): true when the snapshot (and the channel name) is withheld from a
+    # manager who cannot read that conversation; clients say only administrators can see it.
+    snapshot_hidden: bool = False
     # The reported message is gone; false for a report without a message.
     message_deleted: bool
     status: ReportStatus

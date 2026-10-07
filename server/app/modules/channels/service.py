@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import ensure_capability, has_capability, roles_with
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
@@ -329,7 +330,9 @@ async def manager_ids_of(db: AsyncSession, channel_id: uuid.UUID) -> set[uuid.UU
     others = [m.user_id for m in members if m.role != "owner"]
     if not others:
         return owners
-    admins = await db.execute(select(User.id).where(User.id.in_(others), User.role == "admin"))
+    admins = await db.execute(
+        select(User.id).where(User.id.in_(others), User.role.in_(roles_with("channels.moderate")))
+    )
     return owners | set(admins.scalars().all())
 
 
@@ -395,10 +398,20 @@ def _require_not_dm(channel: Channel) -> None:
 async def _load_for_manage(
     db: AsyncSession, actor: User, channel_id: uuid.UUID
 ) -> tuple[Channel, ChannelMember | None]:
-    """Owner or administrator. Administrators may manage channels they are not a member of."""
-    if actor.is_admin:
+    """Owner, or channels.manage (docs/ROLES.md §2): administrators and managers manage public
+    channels and those they belong to; only channels.manage_any (administrators) reaches a
+    private channel without being a member of it (a manager is told 403 not_a_member, as any
+    non-member)."""
+    if has_capability(actor, "channels.manage"):
         channel = await require_channel(db, channel_id)
-        return channel, await repo.get_membership(db, channel_id, actor.id)
+        membership = await repo.get_membership(db, channel_id, actor.id)
+        if (
+            channel.type != "public"
+            and membership is None
+            and not has_capability(actor, "channels.manage_any")
+        ):
+            raise forbidden("not_a_member", "Not a member of this channel")
+        return channel, membership
     channel, membership = await require_member(db, actor.id, channel_id)
     if membership.role != "owner":
         raise forbidden("forbidden", "Channel owner or administrator required")
@@ -502,7 +515,7 @@ async def update_channel(
     if converted:
         # Making a private channel public exposes its whole history: administrators only, and (L4,
         # LAB.md J) only one who is a member, so a staff admin cannot open a students' channel.
-        if data.type == "public" and not actor.is_admin:
+        if data.type == "public" and not has_capability(actor, "channels.make_public"):
             raise forbidden("admin_required", "Only an administrator can make a channel public")
         if data.type == "public" and membership is None:
             raise forbidden(
@@ -521,6 +534,16 @@ async def update_channel(
             await workspace.drop_default_channel_in_tx(
                 db, channel.id, actor.id, "channel_made_private"
             )
+    if membership is None or membership.role != "owner":
+        # M142 (docs/ROLES.md §6): a change made by right (channels.manage), not as an owner.
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="channel.updated",
+            target_type="channel",
+            target_id=channel.id,
+            details=data.model_dump(exclude_unset=True, mode="json"),
+        )
     channel.updated_at = utcnow()
     try:
         await db.flush()
@@ -713,8 +736,7 @@ async def _set_times_owner(
 ) -> None:
     """An administrator marks a channel as someone's times (a Mattermost import's, say) or unmarks
     it; the owner becomes a channel owner, so they can switch it to threads only."""
-    if not actor.is_admin:
-        raise forbidden("admin_required", "Only an administrator can mark a channel as times")
+    ensure_capability(actor, "channels.manage")  # M142: managers too
     if owner_id is not None:
         owners = await load_users(db, [owner_id])
         if owners[0].is_guest:
@@ -983,11 +1005,21 @@ async def remove_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.
 async def remove_member(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, target_user_id: uuid.UUID
 ) -> None:
-    channel, _ = await _load_for_manage(db, actor, channel_id)
+    channel, own = await _load_for_manage(db, actor, channel_id)
     _require_not_dm(channel)
     membership = await repo.get_membership(db, channel_id, target_user_id)
     if membership is None:
         raise not_found("member_not_found", "User is not a member of this channel")
+    if target_user_id != actor.id and (own is None or own.role != "owner"):
+        # M142 (docs/ROLES.md §6): removed by right (channels.manage), not as an owner.
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="channel.member_removed",
+            target_type="channel",
+            target_id=channel.id,
+            details={"user_id": str(target_user_id)},
+        )
     await _emit_member(
         db, events.CHANNEL_MEMBER_REMOVED, channel.id, target_user_id, audience_type="channel"
     )

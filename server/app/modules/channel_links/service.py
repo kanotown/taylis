@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.channel_links import repository as repo
@@ -43,7 +44,11 @@ async def _require_editor(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
     channels.require_not_guest(actor)
     channel, membership = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
-    if channel.posting_policy == "owners" and not actor.is_admin and membership.role != "owner":
+    if (
+        channel.posting_policy == "owners"
+        and not has_capability(actor, "channels.moderate")
+        and membership.role != "owner"
+    ):
         raise forbidden(
             "posting_restricted", "Only owners and administrators can change links here"
         )

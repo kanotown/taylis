@@ -681,6 +681,11 @@
       "en": "Link not found.",
       "zh-Hans": "找不到链接。"
     },
+    "manager_required": {
+      "ja": "管理者または運営だけが行える操作です",
+      "en": "Only admins and managers can do this.",
+      "zh-Hans": "只有管理员或运营可以执行此操作。"
+    },
     "meeting_links_retired": {
       "ja": "会議リンクの通話は終了しました。アプリ内の通話（🎧）をお使いください",
       "en": "Calls by meeting link have ended. Use in-app calls (🎧) instead.",
@@ -927,9 +932,9 @@
       "zh-Hans": "只有频道可以作为记录频道（不能是私信）。"
     },
     "reservation_manage_restricted": {
-      "ja": "予約の枠を作る・変えるのは、管理者（と枠を作った人）だけです",
-      "en": "Only admins (and the person who created the slot) can create or change reservation slots.",
-      "zh-Hans": "只有管理员（以及创建该名额的人）可以创建或修改预约名额。"
+      "ja": "予約の枠を作る・変えるのは、管理者・運営（と枠を作った人）だけです",
+      "en": "Only admins, managers (and the person who created the slot) can create or change reservation slots.",
+      "zh-Hans": "只有管理员、运营（以及创建该名额的人）可以创建或修改预约名额。"
     },
     "reservation_not_found": {
       "ja": "予約が見つかりません",

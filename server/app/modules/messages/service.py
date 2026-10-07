@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.activity.events import REACTION_ADDED
@@ -155,7 +156,7 @@ async def create_message(
     if (
         channel.posting_policy == "owners"  # M15a: an announcement channel
         and (data.parent_id is None or data.also_in_channel)  # M15c: that posts to the channel too
-        and not actor.is_admin
+        and not has_capability(actor, "channels.moderate")
         and actor.role != "bot"
         and membership.role != "owner"
     ):
@@ -578,9 +579,10 @@ async def edit_message(
 async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
     """Tombstone (author or admin): the body is cleared, the row stays for delta sync."""
     message = await _require_live_message(db, actor, message_id)
-    if message.sender_id != actor.id and actor.role != "admin":
+    if message.sender_id != actor.id and not has_capability(actor, "channels.moderate"):
         raise forbidden("not_message_owner", "Only the author or an admin can delete a message")
-    if message.type != "user" and actor.role != "admin":  # M88: the actor of a join line too
+    # M88: the actor of a join line too.
+    if message.type != "user" and not has_capability(actor, "channels.moderate"):
         raise forbidden("not_message_owner", "Only an admin can delete a system message")
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
     message.deleted_at = utcnow()
@@ -864,7 +866,7 @@ async def set_answers(
 
 async def _require_decider(db: AsyncSession, actor: User, message: Message) -> None:
     """The poll's author, the channel's owners and administrators (SCHEDULING.md §1)."""
-    if message.sender_id == actor.id or actor.is_admin:
+    if message.sender_id == actor.id or has_capability(actor, "channels.moderate"):
         return
     membership = await channels.membership_of(db, actor.id, message.channel_id)
     if membership is None or membership.role != "owner":

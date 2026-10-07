@@ -30,7 +30,12 @@ from app.modules.attendance.schemas import (
     AttendanceTestOut,
     AttendanceTokenOut,
 )
-from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.auth.deps import (
+    AttendanceConfigurer,
+    AttendanceManager,
+    CurrentUser,
+    IntegrationsManager,
+)
 
 router = APIRouter(tags=["attendance"])
 _bearer = HTTPBearer(auto_error=False)
@@ -99,7 +104,7 @@ async def delete_my_state(state_id: UUID, user: CurrentUser, db: Db) -> None:
 
 
 @router.get("/admin/attendance/settings", response_model=AttendanceAdminSettingsOut, tags=["admin"])
-async def get_settings(_: CurrentAdmin, db: Db) -> AttendanceAdminSettingsOut:
+async def get_settings(_: AttendanceManager, db: Db) -> AttendanceAdminSettingsOut:
     return await service.admin_settings(db)
 
 
@@ -107,7 +112,7 @@ async def get_settings(_: CurrentAdmin, db: Db) -> AttendanceAdminSettingsOut:
     "/admin/attendance/settings", response_model=AttendanceAdminSettingsOut, tags=["admin"]
 )
 async def update_settings(
-    body: AttendanceSettingsUpdate, actor: CurrentAdmin, db: Db
+    body: AttendanceSettingsUpdate, actor: AttendanceConfigurer, db: Db
 ) -> AttendanceAdminSettingsOut:
     """Turning the board on the first time makes the four default states (in the
     administrator's language) when there are none."""
@@ -118,7 +123,7 @@ async def update_settings(
     "/admin/attendance/states", response_model=AttendanceStateOut, status_code=201, tags=["admin"]
 )
 async def create_state(
-    body: AttendanceStateCreate, actor: CurrentAdmin, db: Db
+    body: AttendanceStateCreate, actor: AttendanceManager, db: Db
 ) -> AttendanceStateOut:
     return await service.create_state(db, actor, body)
 
@@ -127,7 +132,7 @@ async def create_state(
     "/admin/attendance/states/order", response_model=AttendanceAdminSettingsOut, tags=["admin"]
 )
 async def reorder_states(
-    body: AttendanceStateOrder, actor: CurrentAdmin, db: Db
+    body: AttendanceStateOrder, actor: AttendanceManager, db: Db
 ) -> AttendanceAdminSettingsOut:
     return await service.reorder_states(db, actor, body)
 
@@ -136,20 +141,20 @@ async def reorder_states(
     "/admin/attendance/states/{state_id}", response_model=AttendanceStateOut, tags=["admin"]
 )
 async def update_state(
-    state_id: UUID, body: AttendanceStateUpdate, actor: CurrentAdmin, db: Db
+    state_id: UUID, body: AttendanceStateUpdate, actor: AttendanceManager, db: Db
 ) -> AttendanceStateOut:
     return await service.update_state(db, actor, state_id, body)
 
 
 @router.delete("/admin/attendance/states/{state_id}", status_code=204, tags=["admin"])
-async def delete_state(state_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+async def delete_state(state_id: UUID, actor: AttendanceManager, db: Db) -> None:
     """Archived (people in it stay until their next change). 409 for the last one."""
     await service.delete_state(db, actor, state_id)
 
 
 @router.put("/admin/attendance/users/{user_id}", response_model=AttendanceEntryOut, tags=["admin"])
 async def set_for_user(
-    user_id: UUID, body: AttendanceSet, actor: CurrentAdmin, db: Db
+    user_id: UUID, body: AttendanceSet, actor: AttendanceManager, db: Db
 ) -> AttendanceEntryOut:
     """Someone else's state (audited, source `admin`)."""
     return await service.set_for(db, actor, user_id, body)
@@ -160,7 +165,7 @@ async def set_for_user(
     response_model=list[AttendanceIntegrationOut],
     tags=["admin"],
 )
-async def list_integrations(_: CurrentAdmin, db: Db) -> list[AttendanceIntegrationOut]:
+async def list_integrations(_: IntegrationsManager, db: Db) -> list[AttendanceIntegrationOut]:
     return await service.list_integrations(db)
 
 
@@ -171,7 +176,7 @@ async def list_integrations(_: CurrentAdmin, db: Db) -> list[AttendanceIntegrati
     tags=["admin"],
 )
 async def create_integration(
-    body: AttendanceIntegrationCreate, actor: CurrentAdmin, db: Db, request: Request
+    body: AttendanceIntegrationCreate, actor: IntegrationsManager, db: Db, request: Request
 ) -> AttendanceIntegrationCreated:
     """`url` (https, public) needs `secret_name` (the signing key's file). `inbound: true`
     returns the inbound token, this once."""
@@ -186,7 +191,7 @@ async def create_integration(
 async def update_integration(
     integration_id: UUID,
     body: AttendanceIntegrationUpdate,
-    actor: CurrentAdmin,
+    actor: IntegrationsManager,
     db: Db,
     request: Request,
 ) -> AttendanceIntegrationOut:
@@ -196,7 +201,7 @@ async def update_integration(
 
 
 @router.delete("/admin/attendance/integrations/{integration_id}", status_code=204, tags=["admin"])
-async def delete_integration(integration_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+async def delete_integration(integration_id: UUID, actor: IntegrationsManager, db: Db) -> None:
     await service.delete_integration(db, actor, integration_id)
 
 
@@ -205,7 +210,9 @@ async def delete_integration(integration_id: UUID, actor: CurrentAdmin, db: Db) 
     response_model=AttendanceTokenOut,
     tags=["admin"],
 )
-async def rotate_token(integration_id: UUID, actor: CurrentAdmin, db: Db) -> AttendanceTokenOut:
+async def rotate_token(
+    integration_id: UUID, actor: IntegrationsManager, db: Db
+) -> AttendanceTokenOut:
     """A new inbound token (shown this once); the previous one stops working at once."""
     return await service.rotate_token(db, actor, integration_id)
 
@@ -216,7 +223,7 @@ async def rotate_token(integration_id: UUID, actor: CurrentAdmin, db: Db) -> Att
     tags=["admin"],
 )
 async def revoke_token(
-    integration_id: UUID, actor: CurrentAdmin, db: Db
+    integration_id: UUID, actor: IntegrationsManager, db: Db
 ) -> AttendanceIntegrationOut:
     return await service.revoke_token(db, actor, integration_id)
 
@@ -227,7 +234,7 @@ async def revoke_token(
     tags=["admin"],
 )
 async def test_integration(
-    integration_id: UUID, actor: CurrentAdmin, request: Request
+    integration_id: UUID, actor: IntegrationsManager, request: Request
 ) -> AttendanceTestOut:
     """「テスト送信」: sends an `attendance.test` now and returns the recorded delivery."""
     _limit(request, "attendance_test", str(actor.id))
@@ -247,7 +254,7 @@ async def test_integration(
     tags=["admin"],
 )
 async def list_deliveries(
-    integration_id: UUID, _: CurrentAdmin, db: Db
+    integration_id: UUID, _: IntegrationsManager, db: Db
 ) -> list[AttendanceDeliveryOut]:
     """The latest 50, newest first."""
     return await webhooks.recent_deliveries(db, integration_id)

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found, unauthorized
+from app.core.roles import PERSON_ROLES, ensure_capability, has_capability
 from app.core.security import hash_token
 from app.core.settings import Settings
 from app.core.time import utcnow
@@ -102,7 +103,7 @@ async def _require_enabled(db: AsyncSession) -> AttendanceSettings:
 
 def _on_board(user: User) -> bool:
     """Who has a place on the board (and may see it): active people, not guests, not bots."""
-    return user.is_active and user.role in ("admin", "member")
+    return user.is_active and user.role in PERSON_ROLES
 
 
 def _require_board_user(user: User) -> None:
@@ -196,7 +197,7 @@ async def _seed_defaults(db: AsyncSession, locale: str | None) -> None:
 
 async def _board_users(db: AsyncSession) -> dict[uuid.UUID, User]:
     rows = await db.execute(
-        select(User).where(User.role.in_(("admin", "member")), User.deactivated_at.is_(None))
+        select(User).where(User.role.in_(PERSON_ROLES), User.deactivated_at.is_(None))
     )
     return {u.id: u for u in rows.scalars().all()}
 
@@ -403,9 +404,10 @@ async def log_page(
 ) -> AttendanceLogPage:
     """Mine for anyone; everyone's (or one other person's) for administrators."""
     _require_board_user(actor)
-    if user_id is not None and user_id != actor.id and not actor.is_admin:
-        raise forbidden("admin_required", "Administrator role required")
-    if user_id is None and not actor.is_admin:
+    # Someone else's log is attendance.configure (administrators; docs/ROLES.md §2).
+    if user_id is not None and user_id != actor.id:
+        ensure_capability(actor, "attendance.configure")
+    if user_id is None and not has_capability(actor, "attendance.configure"):
         user_id = actor.id
     stmt = select(AttendanceLog).order_by(AttendanceLog.id.desc()).limit(limit + 1)
     if user_id is not None:

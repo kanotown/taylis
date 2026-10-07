@@ -6,7 +6,7 @@ from app.core.db import Db
 from app.core.errors import rate_limited
 from app.core.ratelimit import RateLimiter
 from app.modules.auth import web_session
-from app.modules.auth.deps import CurrentAdmin
+from app.modules.auth.deps import InviteManager
 from app.modules.auth.schemas import TokenResponse
 from app.modules.invites import service
 from app.modules.invites.schemas import (
@@ -32,19 +32,19 @@ def _throttle(request: Request) -> None:
 
 
 @router.post("/admin/invites", response_model=InviteCreated, status_code=201)
-async def create_invite(actor: CurrentAdmin, body: InviteCreate, db: Db) -> InviteCreated:
+async def create_invite(actor: InviteManager, body: InviteCreate, db: Db) -> InviteCreated:
     """Issue an invite link (M12h). The token appears only in this response."""
     invite, token = await service.create(db, actor, body)
     return InviteCreated(invite=invite, token=token)
 
 
 @router.get("/admin/invites", response_model=list[InviteOut])
-async def list_invites(_: CurrentAdmin, db: Db) -> list[InviteOut]:
+async def list_invites(_: InviteManager, db: Db) -> list[InviteOut]:
     return await service.list_invites(db)
 
 
 @router.delete("/admin/invites/{invite_id}", status_code=204)
-async def revoke_invite(invite_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+async def revoke_invite(invite_id: UUID, actor: InviteManager, db: Db) -> None:
     await service.revoke(db, actor, invite_id)
 
 

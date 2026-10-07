@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.roles import PERSON_ROLES
 from app.modules.audit import service as audit
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
@@ -22,7 +23,7 @@ log = logging.getLogger("app.workspace")
 
 # Who gets the default channels: people, not guests (they see only what they are added to) nor
 # bots (webhooks, recurring posts, the AI: plumbing, not people).
-JOINING_ROLES = ("admin", "member")
+JOINING_ROLES = PERSON_ROLES
 
 
 async def _legacy_channels(db: AsyncSession, names: Sequence[str]) -> list[Channel]:

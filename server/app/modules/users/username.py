@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, conflict
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.modules.audit import service as audit
 from app.modules.audit.models import AuditLog
@@ -102,7 +103,7 @@ async def rename_in_tx(db: AsyncSession, user: User, new_username: str, *, actor
     if await groups.name_in_use(db, new_username):  # `@name` must stay unambiguous (M12k)
         raise conflict("username_taken", "A group has that name")
     by_self = actor.id == user.id
-    if by_self and not actor.is_admin:
+    if by_self and not has_capability(actor, "users.manage"):
         now = utcnow()
         recent = await _self_renames_since(db, user.id, now - SELF_RENAME_WINDOW)
         if len(recent) >= SELF_RENAMES_PER_WINDOW:

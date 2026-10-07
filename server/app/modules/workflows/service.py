@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.modules.audit import service as audit
 from app.modules.channels import service as channels
@@ -68,7 +69,10 @@ async def _can_manage(db: AsyncSession, actor: User, channel: Channel) -> bool:
     membership = await channels.membership_of(db, actor.id, channel.id)
     if membership is not None and membership.role == "owner":
         return True
-    return actor.is_admin and await _readable(db, actor, channel.id) is not None
+    return (
+        has_capability(actor, "channels.moderate")
+        and await _readable(db, actor, channel.id) is not None
+    )
 
 
 async def _run_blocked(db: AsyncSession, actor: User, row: Workflow) -> RunBlocked | None:
@@ -81,7 +85,11 @@ async def _run_blocked(db: AsyncSession, actor: User, row: Workflow) -> RunBlock
     membership = await channels.membership_of(db, actor.id, channel.id)
     if membership is None:
         return "not_a_member"
-    if channel.posting_policy == "owners" and not actor.is_admin and membership.role != "owner":
+    if (
+        channel.posting_policy == "owners"
+        and not has_capability(actor, "channels.moderate")
+        and membership.role != "owner"
+    ):
         return "posting_restricted"
     return None
 
@@ -123,7 +131,8 @@ async def _offered(
         channel = await channels.find_channel(db, channel_id)
         member = await channels.membership_of(db, actor.id, channel_id)
         readable = member is not None or (
-            actor.is_admin and await _readable(db, actor, channel_id) is not None
+            has_capability(actor, "channels.moderate")
+            and await _readable(db, actor, channel_id) is not None
         )
         if channel is None or not readable:
             raise not_found("channel_not_found", "Channel not found")

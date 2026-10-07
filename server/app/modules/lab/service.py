@@ -13,7 +13,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, not_found
+from app.core.errors import AppError, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.audit import service as audit
@@ -88,10 +89,24 @@ async def roster(db: AsyncSession, visible: set[uuid.UUID] | None) -> list[LabPr
     return sorted(rows, key=lambda r: roster_key(r, people.get(r.user_id)))
 
 
+async def _check_target(db: AsyncSession, actor: User, user_id: uuid.UUID) -> None:
+    """M142 (docs/ROLES.md §4.2): a manager (roster.manage without users.manage) changes neither
+    their own line (the managed groups would let them read what is shared with, say, @faculty)
+    nor an administrator's."""
+    if has_capability(actor, "users.manage"):
+        return
+    if user_id == actor.id:
+        raise conflict("cannot_modify_self", "Ask an administrator to change your own line")
+    target = await users.get_user(db, user_id)
+    if target is not None and target.is_admin:
+        raise forbidden("admin_required", "Only an administrator changes an administrator's line")
+
+
 async def put(
     db: AsyncSession, actor: User, user_id: uuid.UUID, data: LabProfilePut
 ) -> LabProfileOut:
-    """An administrator puts someone on the roster or changes their line."""
+    """An administrator or a manager puts someone on the roster or changes their line."""
+    await _check_target(db, actor, user_id)
     out = await put_in_tx(db, actor, user_id, data)
     await db.commit()
     return out
@@ -156,7 +171,8 @@ async def update_mine(db: AsyncSession, actor: User, data: MyLabProfileUpdate) -
 
 
 async def remove(db: AsyncSession, actor: User, user_id: uuid.UUID) -> None:
-    """An administrator takes someone off the roster (the account stays)."""
+    """An administrator or a manager takes someone off the roster (the account stays)."""
+    await _check_target(db, actor, user_id)
     await repo.lock_roster(db)
     if not await repo.remove(db, user_id):
         raise not_found("roster_entry_not_found", "Not on the roster")

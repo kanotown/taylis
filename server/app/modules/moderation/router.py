@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Request, Response
 
 from app.core.db import Db
 from app.core.errors import rate_limited
-from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.auth.deps import CurrentUser, ReportsManager
 from app.modules.messages.router import public_base_url
 from app.modules.moderation import service
 from app.modules.moderation.schemas import (
@@ -106,20 +106,20 @@ async def delete_account(
 
 @router.get("/admin/reports", response_model=list[AdminReportOut])
 async def list_reports(
-    _: CurrentAdmin,
+    actor: ReportsManager,
     db: Db,
     status: Literal["open", "resolved", "all"] = Query(default="open"),
 ) -> list[AdminReportOut]:
     """Reports, newest first (administrators): of messages, and since M119 of people and
     general reports / feedback (`kind`; those have no message or channel)."""
-    return await service.list_reports(db, None if status == "all" else status)
+    return await service.list_reports(db, actor, None if status == "all" else status)
 
 
 @router.post("/admin/reports/{report_id}/resolve", response_model=AdminReportOut)
-async def resolve_report(report_id: UUID, actor: CurrentAdmin, db: Db) -> AdminReportOut:
+async def resolve_report(report_id: UUID, actor: ReportsManager, db: Db) -> AdminReportOut:
     return await service.set_report_status(db, actor, report_id, "resolved")
 
 
 @router.post("/admin/reports/{report_id}/reopen", response_model=AdminReportOut)
-async def reopen_report(report_id: UUID, actor: CurrentAdmin, db: Db) -> AdminReportOut:
+async def reopen_report(report_id: UUID, actor: ReportsManager, db: Db) -> AdminReportOut:
     return await service.set_report_status(db, actor, report_id, "open")

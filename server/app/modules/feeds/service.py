@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import ensure_capability, has_capability
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.admin import service as admin
@@ -86,7 +87,7 @@ _BACKLOG_MARGIN = timedelta(days=1)
 
 
 async def _can_manage(db: AsyncSession, actor: User, row: ChannelFeed) -> bool:
-    if actor.id == row.owner_id or actor.is_admin:
+    if actor.id == row.owner_id or has_capability(actor, "channels.moderate"):
         return True
     membership = await channels.membership_of(db, actor.id, row.channel_id)
     return membership is not None and membership.role == "owner"
@@ -369,7 +370,7 @@ async def delete(db: AsyncSession, actor: User, feed_id: uuid.UUID) -> None:
 
 
 async def _can_rename_bot(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> bool:
-    if actor.is_admin:
+    if has_capability(actor, "channels.moderate"):
         return True
     membership = await channels.membership_of(db, actor.id, channel_id)
     return membership is not None and membership.role == "owner"
@@ -379,7 +380,7 @@ async def _bot_out(db: AsyncSession, actor: User, channel: Channel) -> FeedBotOu
     kept = await repo.feed_bot_row(db, channel.id)
     bot = await users.get_user(db, kept.bot_user_id) if kept is not None else None
     candidates: list[FeedBotCandidate] = []
-    if actor.is_admin and not channel.is_dm:
+    if has_capability(actor, "integrations.manage") and not channel.is_dm:
         candidates = [
             FeedBotCandidate(
                 id=u.id, username=u.username, display_name=u.display_name, active=u.is_active
@@ -391,7 +392,7 @@ async def _bot_out(db: AsyncSession, actor: User, channel: Channel) -> FeedBotOu
         display_name=bot.display_name if bot is not None else None,
         adopted=kept.adopted if kept is not None else False,
         can_rename=bot is not None and await _can_rename_bot(db, actor, channel.id),
-        can_adopt=actor.is_admin and not channel.is_dm,
+        can_adopt=has_capability(actor, "integrations.manage") and not channel.is_dm,
         candidates=candidates,
     )
 
@@ -406,8 +407,7 @@ async def _adopt(db: AsyncSession, actor: User, channel: Channel, bot_id: uuid.U
     """An existing bot (one of the candidates) becomes the channel's feed bot: the feeds post as
     it from now on, and it is never deactivated by them. A bot the feeds made is retired
     (deactivated, out of the channel); one adopted earlier just stops being used."""
-    if not actor.is_admin:
-        raise forbidden("admin_required", "Administrator role required")
+    ensure_capability(actor, "integrations.manage")
     if channel.is_dm:
         raise bad_request("feed_channel_unsupported", "Feeds are for channels, not DMs")
     channels.require_writable(channel)

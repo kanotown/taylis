@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
@@ -275,7 +276,11 @@ async def huddle(
     running = await open_call_in(db, channel_id)
     if running is not None:
         return await _join_running(db, rt, actor, running, platform)
-    if channel.posting_policy == "owners" and not actor.is_admin and membership.role != "owner":
+    if (
+        channel.posting_policy == "owners"
+        and not has_capability(actor, "channels.moderate")
+        and membership.role != "owner"
+    ):
         # An announcement channel: its owners and administrators start calls, everyone joins.
         raise forbidden("posting_restricted", "Only owners and administrators can post here")
 

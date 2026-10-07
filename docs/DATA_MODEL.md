@@ -78,7 +78,7 @@ CREATE TABLE users (
   email                 citext UNIQUE,                    -- 任意
   password_hash         text,                             -- argon2id。NULL = Google でログインする人 (M48、パスワードでは入れない)
   must_change_password  boolean NOT NULL DEFAULT true,    -- 管理者が設定した仮パスワードの間は true
-  role                  text NOT NULL DEFAULT 'member',   -- 'admin' | 'member'
+  role                  text NOT NULL DEFAULT 'member',   -- 'admin' | 'manager' (M142 「運営」、docs/ROLES.md) | 'member' | 'guest' | 'bot'。CHECK 制約なし (値は API で検査)
   timezone              text,
   title                 text,                             -- M11d: 肩書 (プロフィールカード)
   status_text           text,                             -- M11d: カスタムステータス。期限切れは無いものとして返す
@@ -2202,6 +2202,7 @@ CREATE TABLE link_previews (
 CREATE TABLE audit_logs (
   id           bigserial PRIMARY KEY,
   actor_id     uuid REFERENCES users(id),
+  actor_role   varchar(16),        -- M142 (移行 0103): 記録した時点の actor のロール (actor なしは NULL)
   action       text NOT NULL,      -- 'user.create' | 'user.deactivate' | 'user.reset_password' | 'session.revoke' | ...
   target_type  text,
   target_id    uuid,

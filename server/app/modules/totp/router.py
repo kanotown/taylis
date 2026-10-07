@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request, Response
 
 from app.core.db import Db
-from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.auth.deps import CurrentUser, UsersManager
 from app.modules.totp import service
 from app.modules.totp.schemas import (
     TotpEnabledOut,
@@ -47,6 +47,6 @@ async def totp_disable(user: CurrentUser, body: TotpSetupRequest, db: Db) -> Non
 
 
 @router.delete("/admin/users/{user_id}/totp", status_code=204)
-async def admin_reset_totp(user_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+async def admin_reset_totp(user_id: UUID, actor: UsersManager, db: Db) -> None:
     """Turn 2FA off for a member who lost the authenticator (audited)."""
     await service.admin_reset(db, actor, user_id)

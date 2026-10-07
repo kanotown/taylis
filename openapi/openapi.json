@@ -963,6 +963,11 @@
             ],
             "title": "Resolved By"
           },
+          "snapshot_hidden": {
+            "default": false,
+            "title": "Snapshot Hidden",
+            "type": "boolean"
+          },
           "status": {
             "enum": [
               "open",
@@ -1017,6 +1022,7 @@
             "default": "member",
             "enum": [
               "admin",
+              "manager",
               "member",
               "guest"
             ],
@@ -1124,6 +1130,17 @@
             "title": "Role",
             "type": "string"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
           "totp_enabled": {
             "default": false,
             "title": "Totp Enabled",
@@ -1166,11 +1183,25 @@
             ],
             "title": "Deactivated"
           },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
           "role": {
             "anyOf": [
               {
                 "enum": [
                   "admin",
+                  "manager",
                   "member",
                   "guest"
                 ],
@@ -1181,6 +1212,18 @@
               }
             ],
             "title": "Role"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "username": {
             "anyOf": [
@@ -8740,6 +8783,7 @@
             "default": "member",
             "enum": [
               "admin",
+              "manager",
               "member",
               "guest"
             ],
@@ -17857,6 +17901,14 @@
             ],
             "title": "Bot Kind"
           },
+          "capabilities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "composer_mode": {
             "anyOf": [
               {
@@ -21711,6 +21763,7 @@
     },
     "/api/v1/admin/users/{user_id}": {
       "patch": {
+        "description": "`role` / `deactivated` / `username`: administrators. `display_name` / `title` (M142):\nmanagers too, for members and guests (docs/ROLES.md §5).",
         "operationId": "update_user_api_v1_admin_users__user_id__patch",
         "parameters": [
           {

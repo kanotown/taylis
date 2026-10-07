@@ -421,7 +421,7 @@ async def test_admin_permissions_are_read_from_database(
     user = await make_user(db, "alice", password=PASSWORD)
     tokens = await login(client, "alice")
     denied = await client.get("/api/v1/admin/users", headers=bearer(tokens))
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "admin_required"
+    assert denied.status_code == 403 and denied.json()["error"]["code"] == "manager_required"
     user.role = "admin"
     await db.commit()
     assert (await client.get("/api/v1/admin/users", headers=bearer(tokens))).status_code == 200

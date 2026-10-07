@@ -35,7 +35,7 @@ async def test_invite_creates_a_member_of_the_chosen_channels(
 
     as_user(member)
     denied = await client.post("/api/v1/admin/invites", json={})
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "admin_required"
+    assert denied.status_code == 403 and denied.json()["error"]["code"] == "manager_required"
 
     as_user(root)
     created = await client.post(

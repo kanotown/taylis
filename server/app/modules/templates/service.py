@@ -13,9 +13,11 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.errors import bad_request, conflict, not_found
+from app.core.roles import ensure_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.audit import service as audit
 from app.modules.templates import repository as repo
 from app.modules.templates.events import TEMPLATE_UPDATED, TemplateUpdatedData
 from app.modules.templates.models import MessageTemplate
@@ -79,8 +81,8 @@ def _check_can_edit(actor: User, row: MessageTemplate) -> None:
     if row.scope == "user" and row.owner_id != actor.id:
         # Someone else's own templates are not visible at all.
         raise not_found("template_not_found", "Template not found")
-    if row.scope == "workspace" and not actor.is_admin:
-        raise forbidden("admin_required", "Only an administrator edits the workspace's templates")
+    if row.scope == "workspace":
+        ensure_capability(actor, "templates.manage")  # M142: managers too
 
 
 async def require_editable(
@@ -94,8 +96,8 @@ async def require_editable(
 
 
 async def create(db: AsyncSession, actor: User, data: TemplateCreate) -> TemplateOut:
-    if data.scope == "workspace" and not actor.is_admin:
-        raise forbidden("admin_required", "Only an administrator adds workspace templates")
+    if data.scope == "workspace":
+        ensure_capability(actor, "templates.manage")  # M142: managers too
     owner = None if data.scope == "workspace" else actor.id
     name = clean_name(data.name)
     body = _clean_body(data.body)
@@ -119,6 +121,7 @@ async def create(db: AsyncSession, actor: User, data: TemplateCreate) -> Templat
     )
     db.add(row)
     await _flush(db)
+    await _audit(db, actor, "created", to_template_out(row))
     await _emit(db, row, deleted=False)
     await db.commit()
     return to_template_out(row)
@@ -141,6 +144,7 @@ async def update(
         row.position = data.position
     row.updated_at = utcnow()
     await _flush(db)
+    await _audit(db, actor, "updated", to_template_out(row))
     await _emit(db, row, deleted=False)
     await db.commit()
     return to_template_out(row)
@@ -149,10 +153,25 @@ async def update(
 async def delete(db: AsyncSession, actor: User, template_id: uuid.UUID) -> None:
     row = await require_editable(db, actor, template_id)
     out = to_template_out(row)
+    await _audit(db, actor, "deleted", out)
     await db.delete(row)
     await db.flush()
     await _emit_out(db, out, deleted=True)
     await db.commit()
+
+
+async def _audit(db: AsyncSession, actor: User, action: str, out: TemplateOut) -> None:
+    """M142 (docs/ROLES.md §6): the workspace's templates (templates.manage) are audited."""
+    if out.scope != "workspace":
+        return
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action=f"template.{action}",
+        target_type="message_template",
+        target_id=out.id,
+        details={"name": out.name},
+    )
 
 
 async def _flush(db: AsyncSession) -> None:

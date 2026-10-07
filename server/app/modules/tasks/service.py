@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
@@ -202,7 +203,7 @@ def _can_delete(actor: User, seen: _Seen, assignee_ids: list[uuid.UUID]) -> bool
         seen.task.owner_id == actor.id
         or actor.id in assignee_ids
         or seen.role == "owner"
-        or actor.is_admin
+        or has_capability(actor, "channels.moderate")
     )
 
 
@@ -368,7 +369,11 @@ async def _load(db: AsyncSession, actor: User, task_id: uuid.UUID, *, lock: bool
 def _require_poster(actor: User, channel: Channel, role: str | None) -> None:
     """Adding, changing, moving and completing a board's tasks: like posting there."""
     channels.require_writable(channel)
-    if channel.posting_policy == "owners" and not actor.is_admin and role != "owner":
+    if (
+        channel.posting_policy == "owners"
+        and not has_capability(actor, "channels.moderate")
+        and role != "owner"
+    ):
         raise forbidden(
             "posting_restricted", "Only owners and administrators can change tasks here"
         )
@@ -1487,7 +1492,11 @@ async def _editable(db: AsyncSession, actor: User, task: Task) -> _Seen | None:
     channel = await channels.require_channel(db, task.channel_id)
     if channel.is_archived:
         return None
-    if channel.posting_policy == "owners" and not actor.is_admin and membership.role != "owner":
+    if (
+        channel.posting_policy == "owners"
+        and not has_capability(actor, "channels.moderate")
+        and membership.role != "owner"
+    ):
         return None
     return _Seen(task, channel, membership.role)
 
