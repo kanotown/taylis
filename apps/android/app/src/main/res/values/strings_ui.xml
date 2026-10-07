@@ -15,6 +15,11 @@
     <string name="activity_screen_reservation">" · 予約"</string>
     <string name="activity_screen_someone">誰か</string>
     <string name="activity_screen_unread">"未読 "</string>
+    <string name="activity_screen_unread_count">未読 %1$s 件</string>
+    <string name="activity_screen_no_unread">未読はありません</string>
+    <string name="activity_screen_mark_all_read">すべて既読にする</string>
+    <string name="activity_screen_unread_only">未読のみ</string>
+    <string name="activity_screen_no_unread_activity">未読のアクティビティはありません</string>
     <string name="activity_screen_when_someone_reacts_to_your_post">自分の投稿にほかの人がリアクションすると、ここに出ます。</string>
     <string name="activity_screen_when_someone_replies_in_a_thread">フォロー中のスレッドにほかの人が返信すると、ここに出ます。</string>
     <string name="ai_ai_is_not_available_right_now">AI は今使えません。管理者に確認してください</string>
@@ -864,7 +869,6 @@
     <string name="main_screen_following">フォロー中</string>
     <string name="main_screen_group_unread">未読をまとめる</string>
     <string name="main_screen_mark_all_as_read">すべて既読にする</string>
-    <string name="main_screen_mark_all_read">すべて既読</string>
     <string name="main_screen_mark_everything_as_read">すべて既読にしますか？</string>
     <string name="main_screen_marks_all_your_channels_and_dms">参加中のすべてのチャンネルと DM を既読にします。</string>
     <string name="main_screen_marks_the_times_in_the_feed">フィードに出ている times（参加中でミュートしていないもの）を既読にします。</string>

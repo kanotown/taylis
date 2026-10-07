@@ -2,7 +2,7 @@ package jp.chikuwachat.android.ui
 
 /** A row of the app bar's ⋮ (outside the home, which has its own menu). */
 enum class BarMenuItem {
-    READ_ALL_ACTIVITY, FAVORITE, NOTIFICATIONS, DETAILS, ADD_MEMBER,
+    FAVORITE, NOTIFICATIONS, DETAILS, ADD_MEMBER,
     /** L8 (TIMES_FEED.md §7): the Times feed's 「すべて既読にする」 and 「自分の times に書く」 / 「自分の times を作る」. */
     READ_ALL_TIMES, MY_TIMES,
     /** M66 (docs/AI.md §6): 「要約」 (未読 / 直近 1 日 / 直近 7 日) in a conversation, 「このスレッドを要約」 in a thread. */
@@ -13,7 +13,7 @@ enum class BarMenuItem {
 
 /**
  * 仕上げ A (MOBILE_POLISH.md C6): the ⋮ lists only what belongs to the screen it is on. A conversation: お気に入り,
- * 通知, チャンネル情報 and (a channel I can add people to) メンバーを追加; the activity tab: its own 「すべて既読」.
+ * 通知, チャンネル情報 and (a channel I can add people to) メンバーを追加 (the activity tab has none since 2026-10-07: its header holds 「すべて既読にする」).
  * The app-wide actions (DM, メンバー一覧, チャンネルを作成 / 探す, 新しいセクション, すべて既読にする, 設定, ログアウト)
  * are the home's ⋮ and the 自分 tab's; elsewhere (a thread, the details page, the DM tab, the home's lists) the ⋮ has
  * nothing and is not shown. M66: 「要約」 joins a conversation's ⋮ and 「このスレッドを要約」 makes a thread's, while the server
@@ -40,7 +40,7 @@ object BarMenu {
             if (channel && !archived) add(BarMenuItem.ADD_MEMBER)
         }
         thread -> listOfNotNull(BarMenuItem.SUMMARIZE_THREAD.takeIf { summaries })
-        activityFeed -> listOf(BarMenuItem.READ_ALL_ACTIVITY)
+        activityFeed -> emptyList() // 2026-10-07 (MOBILE_UI.md §6.4): 「すべて既読にする」 is the feed's own header button now
         timesFeed -> listOfNotNull(BarMenuItem.READ_ALL_TIMES, BarMenuItem.MY_TIMES.takeIf { myTimes })
         else -> emptyList()
     }

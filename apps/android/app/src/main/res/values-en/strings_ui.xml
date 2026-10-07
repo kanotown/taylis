@@ -15,6 +15,11 @@
     <string name="activity_screen_reservation">" · Reservation"</string>
     <string name="activity_screen_someone">Someone</string>
     <string name="activity_screen_unread">"Unread "</string>
+    <string name="activity_screen_unread_count">%1$s unread</string>
+    <string name="activity_screen_no_unread">All caught up</string>
+    <string name="activity_screen_mark_all_read">Mark all as read</string>
+    <string name="activity_screen_unread_only">Unread only</string>
+    <string name="activity_screen_no_unread_activity">No unread activity</string>
     <string name="activity_screen_when_someone_reacts_to_your_post">When someone reacts to your post, it shows up here.</string>
     <string name="activity_screen_when_someone_replies_in_a_thread">When someone replies in a thread you follow, it shows up here.</string>
     <string name="ai_ai_is_not_available_right_now">AI is not available right now. Ask your administrator.</string>
@@ -868,7 +873,6 @@
     <string name="main_screen_following">Following</string>
     <string name="main_screen_group_unread">Group unread</string>
     <string name="main_screen_mark_all_as_read">Mark all as read</string>
-    <string name="main_screen_mark_all_read">Mark all read</string>
     <string name="main_screen_mark_everything_as_read">Mark everything as read?</string>
     <string name="main_screen_marks_all_your_channels_and_dms">Marks all your channels and DMs as read.</string>
     <string name="main_screen_marks_the_times_in_the_feed">Marks the times in the feed (joined and not muted) as read.</string>

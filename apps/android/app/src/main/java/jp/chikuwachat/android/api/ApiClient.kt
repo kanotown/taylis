@@ -586,8 +586,14 @@ class ApiClient(
     override suspend fun activitySummary(): ActivitySummaryOut = request("GET", "/api/v1/activity/summary?" + ActivityInclude.query("include"))
 
     /** PUT /activity/read: everything up to `readAt` is read (the server only moves it forward, never past now). */
-    suspend fun markActivityRead(readAt: String): ActivitySummaryOut =
+    override suspend fun markActivityRead(readAt: String): ActivitySummaryOut =
         request("PUT", "/api/v1/activity/read?" + ActivityInclude.query("include"), buildJsonObject { put("read_at", readAt) })
+
+    /** PUT /activity/items/read (2026-10-07, MOBILE_UI.md §6.4): I opened these items (1–100 ids); the answer is the new badge. */
+    override suspend fun markActivityItemsRead(itemIds: List<String>): ActivitySummaryOut =
+        request("PUT", "/api/v1/activity/items/read?" + ActivityInclude.query("include"), buildJsonObject {
+            put("item_ids", kotlinx.serialization.json.JsonArray(itemIds.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        })
 
     /**
      * GET /times/feed (L8, TIMES_FEED.md §3): the timeline rows of my unmuted times, newest first; `cursor` is the

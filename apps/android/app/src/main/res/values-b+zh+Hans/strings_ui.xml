@@ -15,6 +15,11 @@
     <string name="activity_screen_reservation">" · 预约"</string>
     <string name="activity_screen_someone">某人</string>
     <string name="activity_screen_unread">未读</string>
+    <string name="activity_screen_unread_count">%1$s 条未读</string>
+    <string name="activity_screen_no_unread">没有未读</string>
+    <string name="activity_screen_mark_all_read">全部标为已读</string>
+    <string name="activity_screen_unread_only">仅未读</string>
+    <string name="activity_screen_no_unread_activity">没有未读动态</string>
     <string name="activity_screen_when_someone_reacts_to_your_post">有人对你的帖子做出表情回应时，会显示在这里。</string>
     <string name="activity_screen_when_someone_replies_in_a_thread">有人在你关注的话题中回复时，会显示在这里。</string>
     <string name="ai_ai_is_not_available_right_now">AI 当前不可用。请联系管理员。</string>
@@ -864,7 +869,6 @@
     <string name="main_screen_following">已关注</string>
     <string name="main_screen_group_unread">集中显示未读</string>
     <string name="main_screen_mark_all_as_read">全部标为已读</string>
-    <string name="main_screen_mark_all_read">全部已读</string>
     <string name="main_screen_mark_everything_as_read">全部标为已读？</string>
     <string name="main_screen_marks_all_your_channels_and_dms">将你加入的所有频道和私信标为已读。</string>
     <string name="main_screen_marks_the_times_in_the_feed">将动态流中显示的 times (已加入且未静音的) 标为已读。</string>

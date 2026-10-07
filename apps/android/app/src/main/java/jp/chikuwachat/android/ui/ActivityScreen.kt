@@ -22,6 +22,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -60,7 +63,6 @@ import jp.chikuwachat.android.sync.ActivityRules
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ThreadEntry
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
@@ -125,7 +127,12 @@ object ActivityText {
     fun headline(item: ActivityItem, name: (String) -> String?): String =
         if (item.kind == "reaction") lead(item, name) + " " + item.emojis.joinToString("") else lead(item, name)
 
-    /** The newest item's time: how far looking at the list reads the activity. */
+    /** The header's count (MOBILE_UI.md §6.4): 「未読 3 件」, 「未読 99+ 件」 from 99, 「未読はありません」 at 0. */
+    fun unreadLabel(count: Int): String =
+        if (count <= 0) L10n.str(R.string.activity_screen_no_unread)
+        else L10n.str(R.string.activity_screen_unread_count, if (count >= 99) "99+" else count.toString())
+
+    /** The newest item's time (「すべて既読にする」 reads at least this far: [ActivityRules.markAllAt]). */
     fun newestAt(items: List<ActivityItem>): String? =
         items.mapNotNull { item -> ActivityRules.parse(item.at)?.let { item.at to it } }.maxByOrNull { it.second }?.first
 
@@ -164,23 +171,49 @@ sealed interface ActivityTarget {
     data class Page(val pageId: String) : ActivityTarget
 }
 
-/** The activity tab's list on screen: its rows, where the next page starts, and which rows have the unread dot. */
-private class ActivityFeed(var trigger: Any?) {
+/**
+ * The activity tab's list on screen: its rows, where the next page starts, and which rows show as unread. `list` reads a
+ * page (GET /activity: filter, cursor); `onError` reports a failure. Loading the list never reads anything (MOBILE_UI.md
+ * §6.4, 2026-10-07 「開いたら既読」): an item is read when opened ([unread]).
+ */
+internal class ActivityFeed(
+    var trigger: Any?,
+    private val list: suspend (filter: String, cursor: String?) -> Result<ActivityListOut>,
+    private val onError: (Throwable) -> Unit = {},
+) {
     var filter by mutableStateOf<String?>(null)
     var items by mutableStateOf<List<ActivityItem>?>(null)
     var cursor by mutableStateOf<String?>(null)
     var loading by mutableStateOf(false)
     var failed by mutableStateOf(false)
-    /**
-     * The read position the dots are drawn against: the one the list first came with. Looking at the list moves the
-     * server's (the badge clears) but not this (the dots stay while the reader looks, like Slack); pull to refresh and
-     * 「すべて既読」 move it.
-     */
-    var baseline by mutableStateOf<String?>(null)
-    /** §6.4: the server sends `read` (since 2026-10-06), so items read in their conversation lose the dot. */
+    /** 「未読のみ」: the rows held, less the read ones (on this device only; a row opened goes from the list). */
+    var unreadOnly by mutableStateOf(false)
+    /** §6.4: the server sends `read` (since 2026-10-06), so items read in their conversation (or opened) lose the dot. */
     var conversationRule by mutableStateOf(false)
-    /** Rows the server said were read in their conversation when their page came ([ActivityRules.readByServerInConversation]). */
+    /**
+     * Rows the server said were read although newer than the page's read position (read in their conversation, or
+     * opened) when their page came ([ActivityRules.readByServerInConversation]).
+     */
     var readInConversation by mutableStateOf<Set<String>>(emptySet())
+
+    /**
+     * Whether the row shows as unread (bold, a dot, a tint): newer than the read position held now (the store's, which
+     * 「すべて既読にする」 here or on another device moves), not opened since (here, or activity.items_read), not read in
+     * its conversation (the server's flag, or the positions held here), and not a reservation to-do that is done.
+     */
+    fun unread(item: ActivityItem, store: Store): Boolean {
+        val reservation = item.reservation
+        if (reservation != null && (reservation.done || reservation.itemId in store.blankedActivityItems)) return false
+        return ActivityRules.showsUnread(
+            item, store.activity?.readAt, conversationRule,
+            serverRead = item.key in readInConversation,
+            readHere = ActivityRules.readInConversation(item, { store.channel(it)?.lastReadSeq }, { store.threadReadSeqs[it] }),
+            openedAt = item.id?.let { store.openedActivityItems[it] },
+        )
+    }
+
+    /** The rows to draw: all of them, or under 「未読のみ」 the unread ones. */
+    fun shown(store: Store): List<ActivityItem>? = items?.let { rows -> if (unreadOnly) rows.filter { unread(it, store) } else rows }
 
     /** Takes a page's `read` flags, replacing those of its rows (of every row when [whole]). */
     private fun takeReads(page: ActivityListOut, whole: Boolean) {
@@ -190,32 +223,31 @@ private class ActivityFeed(var trigger: Any?) {
         readInConversation = (if (whole) emptySet() else readInConversation - keys) + read
     }
 
-    suspend fun load(controller: AppController, filter: String, resetBaseline: Boolean = false) {
+    suspend fun load(filter: String) {
         if (this.filter != filter) {
             this.filter = filter
             items = null
             cursor = null
         }
         loading = true
-        controller.listActivity(filter).onSuccess { page ->
+        list(filter, null).onSuccess { page ->
             if (this.filter != filter) return@onSuccess
             items = page.items
             cursor = page.nextCursor
             failed = false
             takeReads(page, whole = true)
-            if (baseline == null || resetBaseline) baseline = page.readAt
         }.onFailure {
             if (this.filter == filter && items == null) failed = true
-            controller.error = controller.describe(it)
+            onError(it)
         }
         loading = false
     }
 
     /** New rows on top of those shown (an event or a reconnect); quiet on failure (the rows shown stay). */
-    suspend fun refresh(controller: AppController) {
+    suspend fun refresh() {
         val filter = filter ?: return
         val shown = items ?: return
-        controller.listActivity(filter).onSuccess { page ->
+        list(filter, null).onSuccess { page ->
             if (this.filter != filter) return@onSuccess
             val whole = page.nextCursor == null
             items = ActivityText.merge(items ?: shown, page.items, whole)
@@ -224,30 +256,28 @@ private class ActivityFeed(var trigger: Any?) {
         }
     }
 
-    suspend fun more(controller: AppController) {
+    suspend fun more() {
         val filter = filter ?: return
         val from = cursor ?: return
         if (loading) return
         loading = true
-        controller.listActivity(filter, from).onSuccess { page ->
+        list(filter, from).onSuccess { page ->
             if (this.filter != filter || cursor != from) return@onSuccess
             val keys = (items ?: emptyList()).map { it.key }.toSet()
             items = (items ?: emptyList()) + page.items.filter { it.key !in keys }
             cursor = page.nextCursor
             takeReads(page, whole = false)
-        }.onFailure { controller.error = controller.describe(it) }
+        }.onFailure(onError)
         loading = false
     }
 }
 
-/** How long the list is on screen before the activity counts as read (the badge clears; the dots stay). */
-private const val MARK_READ_DELAY_MS = 1_500L
-
 /**
  * The activity tab (MOBILE_UI.md §6.4). M39, stage B: the filter chips over GET /activity, newest first, paged as the
- * list scrolls, pull to refresh; a row shows who did what where and when, with an unread dot when it is newer than the
- * read position, and opens its message (a reply in its thread). While the list is on screen the activity is read up
- * to its newest row after [MARK_READ_DELAY_MS]; ⋮ 「すべて既読」 ([readAllRequested]) reads everything.
+ * list scrolls, pull to refresh; a row shows who did what where and when, and opens its message (a reply in its thread).
+ * Since 2026-10-07 (「開いたら既読」, like Slack) looking at the list reads nothing: an item stays unread (bold, a dot, a
+ * tint; counted in the header's 「未読 n 件」 and the badge) until it is opened (a tap: PUT /activity/items/read), read
+ * in its conversation (a mention, a reply), done (a reservation to-do), or the header's 「すべて既読にする」.
  *
  * M34, stage A, against a server before M39 (no `activity` in bootstrap): [メンション | スレッド] over the 「メンション」
  * and 「スレッド」 lists. A row opens its message or thread on this tab's stack.
@@ -261,8 +291,6 @@ fun ActivityScreen(
     listState: LazyListState,
     mentionsState: LazyListState,
     threadsState: LazyListState,
-    readAllRequested: Boolean,
-    onReadAllHandled: () -> Unit,
     onOpenMessage: (MessageOut) -> Unit,
     onOpenThread: (ThreadEntry, jp.chikuwachat.android.sync.MessageState?) -> Unit,
     onOpenCanvas: (channelId: String, canvasId: String) -> Unit,
@@ -281,17 +309,19 @@ fun ActivityScreen(
     val online = controller.engineStatus == EngineStatus.ONLINE
     // A new item (an event) or a reconnect reads the first page again.
     val trigger = store.activityRevision to online
-    val feed = remember { ActivityFeed(trigger) }
+    val feed = remember {
+        ActivityFeed(trigger, list = { filter, cursor -> controller.listActivity(filter, cursor) }, onError = { controller.error = controller.describe(it) })
+    }
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
-    LaunchedEffect(segment) { feed.load(controller, segment.filter) }
+    LaunchedEffect(segment) { feed.load(segment.filter) }
     LaunchedEffect(trigger) {
         if (feed.trigger == trigger) return@LaunchedEffect
         feed.trigger = trigger
         if (!online || feed.filter != segment.filter) return@LaunchedEffect
         // The list keeps its first row in place when rows arrive above it; at the top, the new ones show instead.
         val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        feed.refresh(controller)
+        feed.refresh()
         if (atTop) listState.requestScrollToItem(0)
     }
     // §6.4: a read position moved back (read.updated "set"): items read in that conversation may be unread again.
@@ -300,27 +330,7 @@ fun ActivityScreen(
     LaunchedEffect(reloads) {
         if (shownReloads.intValue == reloads) return@LaunchedEffect
         shownReloads.intValue = reloads
-        if (online && feed.filter == segment.filter) feed.load(controller, segment.filter)
-    }
-    // Looked at: the activity is read up to the newest row shown (the badge clears), not while the app is away, and
-    // only under 「すべて」: one read position covers every kind, so a filtered list would mark unseen items of the
-    // other kinds read (「すべて既読」 is there for that).
-    val newest = feed.items?.let { ActivityText.newestAt(it) }
-    val foreground = controller.appForeground
-    val everything = segment.filter == "all"
-    LaunchedEffect(newest, foreground, everything) {
-        if (!everything || !foreground || newest == null || !ActivityRules.isUnread(newest, store.activity?.readAt)) return@LaunchedEffect
-        delay(MARK_READ_DELAY_MS)
-        controller.markActivityRead(newest, quiet = true)
-    }
-    // ⋮ 「すべて既読」: everything up to now, and the dots go.
-    LaunchedEffect(readAllRequested) {
-        if (!readAllRequested) return@LaunchedEffect
-        // In the screen's scope: handing the request back changes this effect's key, which would cancel it.
-        scope.launch {
-            controller.markActivityRead(Instant.now().toString())?.let { feed.baseline = ActivityRules.later(feed.baseline, it.readAt) }
-        }
-        onReadAllHandled()
+        if (online && feed.filter == segment.filter) feed.load(segment.filter)
     }
     // The next page as the end of the list comes near.
     val nearEnd by remember(listState) {
@@ -330,10 +340,31 @@ fun ActivityScreen(
             last >= info.totalItemsCount - 4
         }
     }
-    LaunchedEffect(nearEnd, feed.cursor) { if (nearEnd && feed.cursor != null) feed.more(controller) }
+    LaunchedEffect(nearEnd, feed.cursor) { if (nearEnd && feed.cursor != null) feed.more() }
 
     val now = remember(version) { ZonedDateTime.now() }
+    val unreadCount = store.activity?.unreadCount ?: 0
     Column(Modifier.fillMaxSize()) {
+        // 2026-10-07 (§6.4): 「未読 n 件」 and 「すべて既読にする」 (it replaced ⋮ 「すべて既読」).
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                ActivityText.unreadLabel(unreadCount), style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                enabled = unreadCount > 0,
+                onClick = {
+                    val at = ActivityRules.markAllAt(feed.items ?: emptyList(), Instant.now())
+                    controller.scope.launch { controller.markActivityRead(at) }
+                },
+            ) {
+                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.activity_screen_mark_all_read))
+            }
+        }
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -341,6 +372,15 @@ fun ActivityScreen(
             ActivitySegment.entries.forEach { value ->
                 FilterChip(selected = value == segment, onClick = { if (value != segment) onSegment(value) }, label = { Text(value.label) })
             }
+            // 「未読のみ」: the rows held, less the read ones (this device only).
+            FilterChip(
+                selected = feed.unreadOnly,
+                onClick = { feed.unreadOnly = !feed.unreadOnly },
+                label = { Text(stringResource(R.string.activity_screen_unread_only)) },
+                leadingIcon = {
+                    Box(Modifier.size(8.dp).background(if (feed.unreadOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape))
+                },
+            )
         }
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -348,35 +388,39 @@ fun ActivityScreen(
                 refreshing = true
                 scope.launch {
                     try {
-                        feed.load(controller, segment.filter, resetBaseline = true)
+                        feed.load(segment.filter)
                         controller.refreshActivity()
                     } finally { refreshing = false }
                 }
             },
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
-            val list = feed.items
+            val list = feed.shown(store)
             LazyColumn(Modifier.fillMaxSize(), state = listState) {
                 when {
                     list == null && feed.failed -> item(key = "failed") {
                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(L10n.str(R.string.common_couldnt_load), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(onClick = { scope.launch { feed.load(controller, segment.filter) } }) { Text(L10n.str(R.string.common_reload)) }
+                            TextButton(onClick = { scope.launch { feed.load(segment.filter) } }) { Text(L10n.str(R.string.common_reload)) }
                         }
                     }
                     list == null -> item(key = "loading") { Text(L10n.str(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    list.isEmpty() -> item(key = "empty") { EmptyActivity(segment) }
+                    list.isEmpty() && feed.unreadOnly && feed.cursor == null -> item(key = "empty-unread") {
+                        Text(
+                            stringResource(R.string.activity_screen_no_unread_activity), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+                        )
+                    }
+                    list.isEmpty() && !feed.unreadOnly -> item(key = "empty") { EmptyActivity(segment) }
                     else -> {
                         items(list, key = { it.key }) { item ->
                             ActivityRow(
                                 item, store, version, now,
-                                unread = ActivityRules.showsUnread(
-                                    item, feed.baseline, feed.conversationRule,
-                                    serverRead = item.key in feed.readInConversation,
-                                    readHere = ActivityRules.readInConversation(item, { store.channel(it)?.lastReadSeq }, { store.threadReadSeqs[it] }),
-                                ),
+                                unread = feed.unread(item, store),
                                 onNeedEmojiImage = { controller.loadEmojiImage(it) },
                                 onClick = {
+                                    // §6.4: a row opened is read (until it happens again); then its item opens.
+                                    controller.markActivityItemsRead(item)
                                     when (val target = ActivityText.target(item)) {
                                         is ActivityTarget.Message -> onOpenMessage(target.message)
                                         is ActivityTarget.Canvas -> onOpenCanvas(target.channelId, target.canvasId)
@@ -439,9 +483,12 @@ private fun ActivityRow(
     // M77: a canvas row reads as one sentence (CANVAS.md §20.5); the others keep their parts.
     val spoken = if (page != null) ActivityText.spokenCanvas(item, name, where, unread) else canvas?.let { ActivityText.spokenCanvas(item, name, conversation, unread) }
     val tap = onClick
+    // §6.4 (2026-10-07): an unread row is tinted, bold, with a dot; a read one plain (name medium, the line muted).
+    val shownUnread = unread && !done
     Row(
         Modifier.fillMaxWidth()
             .then(if (spoken != null) Modifier.clearAndSetSemantics { contentDescription = spoken; this.onClick(label = null, action = { tap(); true }) } else Modifier)
+            .then(if (shownUnread) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)) else Modifier)
             .clickable(onClick = onClick)
             .alpha(if (done) 0.6f else 1f)
             .padding(start = 6.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
@@ -472,7 +519,8 @@ private fun ActivityRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        lead, style = MaterialTheme.typography.labelLarge, fontWeight = if (unread) FontWeight.Bold else FontWeight.SemiBold,
+                        lead, style = MaterialTheme.typography.labelLarge, fontWeight = if (shownUnread) FontWeight.Bold else FontWeight.Medium,
+                        color = if (shownUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
                     )
                     if (item.kind == "reaction") item.emojis.forEach { emoji -> ReactionGlyph(emoji, store, onNeedEmojiImage) }
@@ -486,7 +534,8 @@ private fun ActivityRow(
             if (excerpt.isNotEmpty()) {
                 // Custom emoji as their pictures and `:shortcode:`s as glyphs, as in the message (2026-10-05: `:ckw-yay:`).
                 EmojiLineText(
-                    excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium, androidx.compose.ui.graphics.Color.Unspecified,
+                    excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium,
+                    if (shownUnread) androidx.compose.ui.graphics.Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant,
                     Modifier.padding(top = 2.dp), maxLines = if (canvas != null || page != null) 2 else 3,
                 )
             }

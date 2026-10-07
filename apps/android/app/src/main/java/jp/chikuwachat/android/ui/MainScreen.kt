@@ -146,8 +146,6 @@ fun MainScreen(controller: AppController) {
     var docsOpenRows by rememberSaveable { mutableStateOf("") }
     var docsQuery by rememberSaveable { mutableStateOf("") }
     var confirmReadTimes by remember { mutableStateOf(false) }
-    // M39: the activity tab's ⋮ 「すべて既読」, handed to its list (which also clears its dots).
-    var activityReadAll by remember { mutableStateOf(false) }
     val youScrollState = rememberScrollState()
     // M16b: the search screen (its route: the bar expanded = suggestions, the search on screen). The results stay while
     // a result's conversation is open, so going back shows them as they were.
@@ -812,11 +810,6 @@ fun MainScreen(controller: AppController) {
                     DropdownMenu(expanded = menuOpen && menuItems.isNotEmpty(), onDismissRequest = { menuOpen = false }) {
                         menuItems.forEach { item ->
                             when (item) {
-                                // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4).
-                                BarMenuItem.READ_ALL_ACTIVITY -> DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.main_screen_mark_all_read)) }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
-                                    onClick = { menuOpen = false; activityReadAll = true },
-                                )
                                 // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
                                 BarMenuItem.FAVORITE -> selectedChannel?.let { open ->
                                     val starred = store.isFavorite(open.id)
@@ -1112,8 +1105,6 @@ fun MainScreen(controller: AppController) {
                         listState = activityListState,
                         mentionsState = mentionsListState,
                         threadsState = threadsListState,
-                        readAllRequested = activityReadAll,
-                        onReadAllHandled = { activityReadAll = false },
                         onOpenMessage = ::reveal,
                         onOpenThread = ::openThreadFromList,
                         onOpenThreadConversation = ::openThreadConversation,

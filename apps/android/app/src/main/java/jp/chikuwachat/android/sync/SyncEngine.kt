@@ -12,6 +12,8 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.nullable
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
+import jp.chikuwachat.android.api.ActivityItem
+import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelReadStateOut
 import jp.chikuwachat.android.api.BootstrapOut
@@ -971,7 +973,19 @@ class SyncEngine(
                 store.noteActivity()
                 scheduleActivityRefresh()
             }
-            "activity.read" -> scheduleActivityRefresh()
+            "activity.read" -> {
+                // 2026-10-07 (§6.4): 「すべて既読にする」 on one of my devices: the dots go at once, the count follows.
+                frame.data.str("read_at")?.let(store::advanceActivityReadAt)
+                scheduleActivityRefresh()
+            }
+            // 2026-10-07 (MOBILE_UI.md §6.4): I opened these items on one of my devices (this one too): their dots go,
+            // the badge follows.
+            "activity.items_read" -> {
+                val ids = (frame.data["item_ids"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                val readAt = frame.data.str("read_at")
+                if (ids != null && readAt != null) store.noteActivityItemsRead(ids, readAt)
+                scheduleActivityRefresh()
+            }
             // Review v0.1.22 (CANVAS.md §20.8): items I may hold changed in place (an erased canvas version blanked their
             // excerpts). The badge does not change: the rows shown drop the excerpt and the list reads its first page again.
             "activity.updated" -> {
@@ -1452,6 +1466,34 @@ class SyncEngine(
     suspend fun refreshActivity() {
         val activityApi = api as? ActivityApi ?: return
         runCatching { activityApi.activitySummary() }.onSuccess { store.setActivity(it) }
+    }
+
+    /**
+     * 2026-10-07 (MOBILE_UI.md §6.4, 「開いたら既読」): I opened these activity items. Their dots go at once — read as
+     * they were shown (up to their own `at`, not this device's clock, which may be ahead of the server's);
+     * activity.items_read brings the server's time. The server's answer is the new badge. Items without an `id` (a
+     * server before 2026-10-07) are not sent: they stay unread until the read position passes them or (a mention, a
+     * reply) they are read in their conversation. False when nothing was sent. A failed request throws (the dots stay
+     * gone on this device until the list loads again).
+     */
+    suspend fun markActivityItemsRead(items: List<ActivityItem>): Boolean {
+        val activityApi = api as? ActivityApi ?: return false
+        val opened = items.filter { it.id != null }
+        if (opened.isEmpty()) return false
+        for (item in opened) store.noteActivityItemsRead(listOf(item.id!!), item.at)
+        val answer = activityApi.markActivityItemsRead(opened.map { it.id!! }.distinct())
+        activityRefresh?.cancel() // the answer is newer than a summary still on its way
+        store.setActivity(answer)
+        return true
+    }
+
+    /** 「すべて既読にする」 (PUT /activity/read): everything up to `readAt` is read; the dots and the badge take the answer. */
+    suspend fun markActivityRead(readAt: String): ActivitySummaryOut? {
+        val activityApi = api as? ActivityApi ?: return null
+        val answer = activityApi.markActivityRead(readAt)
+        activityRefresh?.cancel()
+        store.setActivity(answer)
+        return answer
     }
 
     /** Waits for the debounced activity refresh (tests). */
