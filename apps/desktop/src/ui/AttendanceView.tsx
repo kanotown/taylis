@@ -9,12 +9,12 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import type { AttendanceColor, AttendanceKind, AttendanceStateOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { ATTENDANCE_COLORS, ATTENDANCE_KINDS, boardGroups, entryOf, inRoomCount, kindLabel, myChoices, myOwnStates, sinceLabel } from "./attendance";
-import { ATTENDANCE_ICONS, attendanceColorStyle, attendanceIconLabel, StateBadge, StateGlyph } from "./attendanceIcons";
+import { ATTENDANCE_ICONS, attendanceBadgeColor, attendanceColorStyle, attendanceIconLabel, attendanceTintStyle, StateBadge, StateGlyph } from "./attendanceIcons";
 import { Avatar } from "./Avatar";
 import { BackButton } from "./compact";
 import { useStoreUpdates } from "./hooks";
 import { Button, cn, Field, Input, Modal } from "./primitives";
-import { TEXT_EMOJI_COLOR_NAMES, textEmojiColors } from "./textEmoji";
+import { TEXT_EMOJI_COLOR_NAMES } from "./textEmoji";
 import { UserPopover } from "./UserPopover";
 import { t } from "../i18n";
 
@@ -105,10 +105,16 @@ export function AttendanceView({ controller }: { controller: AppController }) {
                     data-current={current || undefined}
                     className={cn(
                       "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60",
-                      current ? "text-emoji border-transparent shadow-sm" : "border-line bg-canvas hover:bg-panel-2",
+                      current ? "border-transparent shadow-sm hover:brightness-110" : "border-line bg-canvas hover:bg-panel-2",
                     )}
                   >
-                    <StateGlyph state={state} size={16} className={current ? undefined : "opacity-80"} />
+                    {current ? (
+                      <StateGlyph state={state} size={16} />
+                    ) : (
+                      <span className="attendance-tint inline-flex" style={attendanceTintStyle(state.color)}>
+                        <StateGlyph state={state} size={16} />
+                      </span>
+                    )}
                     {state.label}
                     {state.owner_id && <span className="sr-only"> {t("attendance.personal")}</span>}
                   </button>
@@ -254,7 +260,7 @@ export function StateForm({ initial, busy, submitLabel, onCancel, onSubmit }: {
         options={ATTENDANCE_COLORS.map((c) => ({ value: c, label: TEXT_EMOJI_COLOR_NAMES[c] }))}
         value={color}
         onChange={(value) => setColor(value as AttendanceColor)}
-        render={(value) => <span aria-hidden className="block h-5 w-5 rounded-full border border-black/10" style={{ background: textEmojiColors(value).light.fg }} />}
+        render={(value) => <span aria-hidden className="block h-5 w-5 rounded-full border border-black/10" style={{ background: attendanceBadgeColor(value) }} />}
       />
       <ChoiceGrid
         label={t("attendance.form.icon")}

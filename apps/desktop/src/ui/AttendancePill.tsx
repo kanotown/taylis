@@ -160,7 +160,7 @@ export function AttendancePill({ controller, onOpenBoard, placement, collapsed, 
             className={cn(
               shape,
               "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70",
-              state ? "text-emoji border border-transparent hover:brightness-95" : outline,
+              state ? "border border-transparent hover:brightness-110" : outline,
               iconOnly ? "w-7 justify-center px-0" : "px-2.5",
             )}
           >
@@ -249,7 +249,7 @@ function PillMenu({ controller, onDone, onOpenBoard }: { controller: AppControll
                 current && "font-semibold",
               )}
             >
-              <span aria-hidden className="text-emoji inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md" style={attendanceColorStyle(state.color)}>
+              <span aria-hidden className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md" style={attendanceColorStyle(state.color)}>
                 <StateGlyph state={state} size={14} />
               </span>
               <span className="min-w-0 flex-1 truncate">{state.label}</span>

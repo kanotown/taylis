@@ -14,7 +14,8 @@ import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { type MessageKey, tIn, type UiLocale, UI_LOCALES } from "../src/i18n";
 import { boardGroups, inRoomCount, myChoices, sinceLabel, stateText } from "../src/ui/attendance";
-import { ATTENDANCE_ICONS, StateBadge } from "../src/ui/attendanceIcons";
+import { ATTENDANCE_BADGE_COLORS, ATTENDANCE_BADGE_FG, ATTENDANCE_ICONS, attendanceBadgeColor, StateBadge } from "../src/ui/attendanceIcons";
+import { ATTENDANCE_COLORS } from "../src/ui/attendance";
 import { AttendancePill, pillMode } from "../src/ui/AttendancePill";
 import { AttendanceAdminTab } from "../src/ui/AttendanceAdminTab";
 import { AttendanceChip } from "../src/ui/AttendanceChip";
@@ -339,6 +340,60 @@ describe("the icons", () => {
   });
 });
 
+// --- the solid badge palette (apps/shared/attendance-badge-colors.json, docs/PRESENCE.md §2.2) ------------------------
+
+interface BadgePalette { fg: string; min_text_contrast: number; min_icon_contrast: number; colors: Record<string, string> }
+const badgePalette = JSON.parse(readFileSync(join(process.cwd(), "..", "shared", "attendance-badge-colors.json"), "utf8")) as BadgePalette;
+
+/** WCAG 2.x relative luminance and contrast ratio of two #RRGGBB colours. */
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+describe("the badge palette", () => {
+  it("this copy is the shared palette, with a shade for every colour key", () => {
+    expect(ATTENDANCE_BADGE_FG).toBe(badgePalette.fg);
+    expect(ATTENDANCE_BADGE_COLORS).toEqual(badgePalette.colors);
+    expect(Object.keys(badgePalette.colors)).toEqual([...ATTENDANCE_COLORS]);
+    expect(attendanceBadgeColor("nonsense")).toBe(badgePalette.colors.gray);
+  });
+
+  it("white on every shade meets WCAG AA (text 4.5:1, icons 3:1)", () => {
+    expect(contrast("#FFFFFF", "#000000")).toBeCloseTo(21, 5);
+    expect(badgePalette.min_text_contrast).toBeGreaterThanOrEqual(4.5);
+    expect(badgePalette.min_icon_contrast).toBeGreaterThanOrEqual(3);
+    for (const [key, shade] of Object.entries(ATTENDANCE_BADGE_COLORS)) {
+      const ratio = contrast(ATTENDANCE_BADGE_FG, shade);
+      expect(ratio, key).toBeGreaterThanOrEqual(badgePalette.min_text_contrast);
+      expect(ratio, key).toBeGreaterThanOrEqual(badgePalette.min_icon_contrast);
+    }
+  });
+
+  it("the badge, the selected button and the chip are solid with white; an unselected button only tints its icon", () => {
+    const { container } = render(<StateBadge state={{ ...OUT, color: "yellow", emoji: "🚶" }} />);
+    const badge = container.querySelector("[data-attendance-badge]") as HTMLElement;
+    expect(badge.style.background).toBe("rgb(161, 98, 7)");
+    expect(badge.style.color).toBe("rgb(255, 255, 255)");
+    expect(badge.className).not.toContain("text-emoji");
+    // The emoji fallback sits on the solid badge too.
+    expect(badge.querySelector("[data-attendance-emoji]")!.textContent).toBe("🚶");
+    cleanup();
+    const mine = { ...board(), entries: [...board().entries, { user_id: ME, state_id: IN.id, since: "2026-10-07T00:00:00Z", note: null, source: "app" as const }] };
+    render(<AttendanceView controller={controllerFor(storeWith(mine), {})} />);
+    const selected = screen.getByRole("button", { name: "在室", pressed: true });
+    expect(selected.style.background).not.toBe("");
+    expect(selected.style.color).toBe("rgb(255, 255, 255)");
+    const unselected = screen.getAllByRole("button", { pressed: false })[0]!;
+    expect(unselected.style.background).toBe("");
+    expect(unselected.querySelector(".attendance-tint")).toBeTruthy();
+  });
+});
+
 describe("the quick switch", () => {
   const withIcons = () => board({ states: board().states.map((s) => (s.id === OUT.id ? { ...s, icon: "off_site", color: "purple" as const } : s)) });
   const mineIn = (b: AttendanceBoardOut, stateId: string, note: string | null = null): AttendanceBoardOut => ({
@@ -353,7 +408,9 @@ describe("the quick switch", () => {
     expect(pill.textContent).toBe("学外");
     expect(pill.querySelector("svg[data-attendance-icon='off_site']")).toBeTruthy();
     expect(pill.getAttribute("aria-label")).toBe("在室状況：学外");
-    expect(pill.className).toContain("text-emoji");
+    // The solid badge: the purple shade with white (docs/PRESENCE.md §2.2).
+    expect(pill.style.background).toBe("rgb(124, 58, 237)");
+    expect(pill.style.color).toBe("rgb(255, 255, 255)");
     unmount();
     render(<AttendancePill controller={controllerFor(storeWith(withIcons()), {})} placement="sidebar" />);
     const none = screen.getByRole("button", { name: "在室状況を変える" });

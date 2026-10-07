@@ -1,0 +1,16 @@
+{
+  "_comment": "在室状況 (M140, docs/PRESENCE.md §2.2): the solid badge every client draws a state in — the state's colour key (attendance_states.color, the 8 text emoji keys of apps/shared/text-emoji.json) as a solid background with white text and icon, the same in the light and the dark theme. Every shade keeps `fg` at WCAG AA against it: at least `min_text_contrast` for the name (small text) and `min_icon_contrast` for the icon. Each client keeps a copy and a test compares it with this file and checks the contrast.",
+  "fg": "#FFFFFF",
+  "min_text_contrast": 4.5,
+  "min_icon_contrast": 3.0,
+  "colors": {
+    "gray": "#4B5563",
+    "red": "#DC2626",
+    "orange": "#C2410C",
+    "yellow": "#A16207",
+    "green": "#15803D",
+    "blue": "#2563EB",
+    "purple": "#7C3AED",
+    "pink": "#BE185D"
+  }
+}
