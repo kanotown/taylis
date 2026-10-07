@@ -16,4 +16,18 @@
     <string name="actions_error_pending">まだ処理中です。少し待ってから状態を確かめてください</string>
     <string name="actions_error_failed">実行できませんでした</string>
     <string name="actions_error_too_fast">少し待ってからもう一度押してください</string>
+    <!-- §12: the state of what the buttons operate. -->
+    <string name="actions_status_loading">状態を確認中…</string>
+    <string name="actions_status_failed">状態を取得できませんでした：%1$s</string>
+    <string name="actions_status_error_timeout">中継から応答がありませんでした</string>
+    <string name="actions_status_error_unreachable">中継に接続できませんでした</string>
+    <string name="actions_status_error_relay">中継がエラーを返しました</string>
+    <string name="actions_status_error_invalid">中継の答えを読めませんでした</string>
+    <string name="actions_status_error_setup">ボタンの設定に問題があります。管理者に連絡してください</string>
+    <string name="actions_status_error_failed">原因はわかりません</string>
+    <string name="actions_status_checked_now">たった今確認</string>
+    <string name="actions_status_checked_minutes">%1$s 分前に確認</string>
+    <string name="actions_status_checked_at">%1$s に確認</string>
+    <string name="actions_status_refresh">状態を更新</string>
+    <string name="actions_status_label">%1$s：</string>
 </resources>

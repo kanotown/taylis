@@ -2,6 +2,15 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,15 +74,19 @@ fun ActionsPane(controller: AppController, version: Int) {
         Text(stringResource(R.string.actions_page_none), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
+    val feed = rememberActionStatusFeed(controller, active = true)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp)) {
-        ActionButtons(controller, actions, version)
+        ActionButtons(controller, actions, version, feed = feed)
     }
 }
 
 /** The grouped buttons (the 「操作」 page, the top of 在室状況), with the confirmation they share. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ActionButtons(controller: AppController, actions: List<ActionOut>, version: Int, modifier: Modifier = Modifier, compact: Boolean = false) {
+fun ActionButtons(
+    controller: AppController, actions: List<ActionOut>, version: Int, modifier: Modifier = Modifier, compact: Boolean = false,
+    feed: ActionStatusFeed? = null,
+) {
     val groups = remember(actions) { ActionRules.groups(actions) }
     if (groups.isEmpty()) return
     val press = rememberActionPress(controller)
@@ -86,6 +99,11 @@ fun ActionButtons(controller: AppController, actions: List<ActionOut>, version: 
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 6.dp).semantics { heading() },
                     )
+                }
+                if (feed != null) {
+                    ActionRules.statusLines(group, controller.store.actionStatuses, feed.loading, feed.error).forEach { line ->
+                        StatusLineRow(line, feed)
+                    }
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     group.actions.forEach { action ->
@@ -186,6 +204,93 @@ fun ActionSheetRows(controller: AppController, actions: List<ActionOut>, version
                 ActionRules.title(action), modifier = Modifier.weight(1f).padding(start = 14.dp).clearAndSetSemantics {},
                 style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+/**
+ * §12.4: the state of the groups on a page: read when it opens, every minute while the app is in front (and on coming
+ * back, when the last read is that old), replaced by actions.status_updated (the store). [ActionStatusFeed.refresh] asks
+ * the relays now (`refresh=true`; a 429 says 「少し待って…」).
+ */
+class ActionStatusFeed {
+    /** The first read is under way (「状態を確認中…」). */
+    var loading by mutableStateOf(true)
+    var refreshing by mutableStateOf(false)
+    /** Why the last read failed as a whole (no answer from our server, 429 …), or null. */
+    var error by mutableStateOf<String?>(null)
+    /** Moves every half minute, for 「◯分前に確認」. */
+    var now by mutableStateOf(java.time.Instant.now())
+    var refresh: () -> Unit = {}
+}
+
+@Composable
+fun rememberActionStatusFeed(controller: AppController, active: Boolean): ActionStatusFeed {
+    val feed = remember { ActionStatusFeed() }
+    val scope = rememberCoroutineScope()
+    var lastRead by remember { mutableStateOf(0L) }
+    suspend fun read(refresh: Boolean) {
+        lastRead = System.currentTimeMillis()
+        if (refresh) feed.refreshing = true
+        try {
+            controller.engine?.loadActionStatuses(refresh)
+            feed.error = null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            feed.error = ActionRules.refusalText(e)
+        } finally {
+            feed.loading = false
+            if (refresh) feed.refreshing = false
+            feed.now = java.time.Instant.now()
+        }
+    }
+    feed.refresh = { if (!feed.refreshing) scope.launch { read(true) } }
+    val foreground = controller.appForeground
+    LaunchedEffect(active, foreground) {
+        if (!active || !foreground) return@LaunchedEffect
+        while (true) {
+            if (System.currentTimeMillis() - lastRead >= ActionRules.STATUS_POLL_MS) read(false)
+            feed.now = java.time.Instant.now()
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    return feed
+}
+
+private fun toneColor(tone: String): Color = when (tone) {
+    "ok" -> Color(0xFF10B981)
+    "warn" -> Color(0xFFF59E0B)
+    "alert" -> Color(0xFFF43F5E)
+    else -> Color(0xFFA1A1AA)
+}
+
+/** One state line: a tone dot, 「名前：」 for an ungrouped button, the text, the details, 「◯分前に確認」 and 更新. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StatusLineRow(line: ActionRules.StatusLine, feed: ActionStatusFeed) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val small = MaterialTheme.typography.bodySmall
+    FlowRow(
+        Modifier.fillMaxWidth().padding(bottom = 6.dp).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        horizontalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        val dot = if (line is ActionRules.StatusLine.Known) toneColor(line.tone) else MaterialTheme.colorScheme.outlineVariant
+        Box(Modifier.size(10.dp).background(dot, CircleShape))
+        line.label?.let { Text(stringResource(R.string.actions_status_label, it), style = small, color = muted) }
+        when (line) {
+            is ActionRules.StatusLine.Known -> {
+                Text(line.status.status!!.text, style = small, fontWeight = FontWeight.Medium)
+                if (line.details.isNotEmpty()) Text(line.details, style = small, color = muted)
+            }
+            is ActionRules.StatusLine.Failed -> Text(line.text, style = small, color = MaterialTheme.colorScheme.error)
+            is ActionRules.StatusLine.Loading -> Text(stringResource(R.string.actions_status_loading), style = small, color = muted)
+        }
+        val status = (line as? ActionRules.StatusLine.Known)?.status ?: (line as? ActionRules.StatusLine.Failed)?.status
+        status?.let { Text(ActionRules.checkedLabel(it.fetchedAt, feed.now), style = MaterialTheme.typography.labelSmall, color = muted) }
+        IconButton(onClick = feed.refresh, enabled = !feed.refreshing, modifier = Modifier.size(TouchTarget.MIN)) {
+            if (feed.refreshing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            else Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.actions_status_refresh), tint = muted, modifier = Modifier.size(18.dp))
         }
     }
 }

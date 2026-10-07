@@ -1,9 +1,15 @@
 package jp.chikuwachat.android
 
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneId
 import jp.chikuwachat.android.api.ActionInvokeOut
 import jp.chikuwachat.android.api.ActionListOut
 import jp.chikuwachat.android.api.ActionOut
+import jp.chikuwachat.android.api.ActionStatusDetail
+import jp.chikuwachat.android.api.ActionStatusListOut
+import jp.chikuwachat.android.api.ActionStatusOut
+import jp.chikuwachat.android.api.ActionStatusValue
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.NavItem
@@ -235,6 +241,137 @@ class ActionsTest {
         assertNull(store.actions)
         engine.loadActions()  // not even asked
         assertEquals(0, server.actionsReads)
+        engine.stop(); scope.cancel()
+    }
+
+    // --- the state of what the buttons operate (docs/ACTIONS.md §12) ------------------------------------------------
+
+    private fun status(actionId: String, group: String?, text: String = "施錠中・ドア閉", tone: String = "ok", at: String = "2026-10-08T00:00:00Z", ok: Boolean = true, error: String? = null, message: String? = null) =
+        ActionStatusOut(
+            actionId = actionId, groupLabel = group, ok = ok, error = error, message = message, fetchedAt = at,
+            status = if (ok) ActionStatusValue(text, tone, "locked", listOf(ActionStatusDetail("電池", "85%"), ActionStatusDetail("ドア", "閉"))) else null,
+        )
+
+    @Test fun decodesTheStateShapes() {
+        val json = """
+            {"enabled": true, "statuses": [
+              {"action_id": "a1", "group_label": "研究室の鍵", "ok": true, "error": null, "message": null, "fetched_at": "2026-10-08T00:00:00.123456Z",
+               "status": {"text": "施錠中・ドア閉", "tone": "ok", "state": "locked", "details": [{"label": "電池", "value": "85%"}]}},
+              {"action_id": "a3", "group_label": null, "ok": false, "status": null, "error": "timeout", "message": null, "fetched_at": "2026-10-08T00:00:00Z"}]}
+        """.trimIndent()
+        val decoded = Codec.snake.decodeFromString(ActionStatusListOut.serializer(), json)
+        assertEquals("locked", decoded.statuses[0].status?.state)
+        assertEquals("85%", decoded.statuses[0].status?.details?.single()?.value)
+        assertEquals("timeout", decoded.statuses[1].error)
+        assertNull(decoded.statuses[1].groupLabel)
+        val withFlag = Codec.snake.decodeFromString(ActionOut.serializer(),
+            """{"id": "a1", "name": "開ける", "group_label": null, "icon": null, "emoji": null, "confirm": true, "confirm_text": null, "position": 0, "provides_status": true}""")
+        assertTrue(withFlag.providesStatus)
+        // From a server before the state: no flag.
+        assertFalse(Codec.snake.decodeFromString(ActionOut.serializer(),
+            """{"id": "a1", "name": "開ける", "group_label": null, "icon": null, "emoji": null, "confirm": true, "confirm_text": null, "position": 0}""").providesStatus)
+    }
+
+    @Test fun keysMatchGroupsByLabelAndLooseButtonsById() {
+        assertEquals("g:研究室の鍵", ActionRules.statusKey(" 研究室の鍵 ", "x"))
+        assertEquals("a:a3", ActionRules.statusKey(null, "a3"))
+        assertEquals("a:a3", ActionRules.statusKey("  ", "a3"))
+    }
+
+    @Test fun theLinesOfAGroup() {
+        val groups = ActionRules.groups(list.actions.map { if (it.id == "a3") it.copy(providesStatus = true) else it })
+        val lab = groups.first { it.label == "研究室の鍵" }
+        val loose = groups.first { it.label == null }
+        // A group whose state comes from a button I may not press (a2 is not in my list): matched by the label.
+        val statuses = mapOf("g:研究室の鍵" to status("hidden-status-button", "研究室の鍵"))
+        val known = ActionRules.statusLines(lab, statuses, loading = false, readError = null).single() as ActionRules.StatusLine.Known
+        assertEquals("ok", known.tone)
+        assertEquals("電池 85% · ドア 閉", known.details)
+        assertNull(known.label)
+        // Before the first answer: 「状態を確認中…」 only where a button says it gives the state.
+        assertTrue(ActionRules.statusLines(lab, emptyMap(), loading = true, readError = null).isEmpty())
+        assertEquals(listOf<ActionRules.StatusLine>(ActionRules.StatusLine.Loading("照明")), ActionRules.statusLines(loose, emptyMap(), loading = true, readError = null))
+        // The read failed as a whole.
+        val failed = ActionRules.statusLines(loose, emptyMap(), loading = false, readError = "少し待ってからもう一度押してください").single() as ActionRules.StatusLine.Failed
+        assertEquals("状態を取得できませんでした：少し待ってからもう一度押してください", failed.text)
+        // The relay failed: its message, else the reason.
+        val relay = ActionRules.statusLines(loose, mapOf("a:a3" to status("a3", null, ok = false, error = "timeout")), false, null).single() as ActionRules.StatusLine.Failed
+        assertEquals("状態を取得できませんでした：中継から応答がありませんでした", relay.text)
+        assertEquals("照明", relay.label)
+        assertEquals("状態を取得できませんでした：電池切れ", ActionRules.statusFailureText("relay_error", "電池切れ"))
+        assertEquals("状態を取得できませんでした：ボタンの設定に問題があります。管理者に連絡してください", ActionRules.statusFailureText("secret_missing", null))
+        assertEquals("状態を取得できませんでした：中継の答えを読めませんでした", ActionRules.statusFailureText("invalid_answer", null))
+        assertEquals("状態を取得できませんでした：原因はわかりません", ActionRules.statusFailureText("brand_new", null))
+        assertEquals("neutral", ActionRules.tone("purple"))
+    }
+
+    @Test fun whenItWasChecked() {
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        val now = Instant.parse("2026-10-08T01:00:00Z")
+        assertEquals("たった今確認", ActionRules.checkedLabel("2026-10-08T00:59:30Z", now, tokyo))
+        assertEquals("2 分前に確認", ActionRules.checkedLabel("2026-10-08T00:57:00.5Z", now, tokyo))  // whole minutes, rounded down
+        assertEquals("8:15 に確認", ActionRules.checkedLabel("2026-10-07T23:15:00Z", now, tokyo))
+        assertEquals("10/7 18:02 に確認", ActionRules.checkedLabel("2026-10-07T09:02:00Z", now, tokyo))
+        assertEquals("たった今確認", ActionRules.checkedLabel("2026-10-08T01:00:30Z", now, tokyo))  // a clock a little ahead
+    }
+
+    @Test fun theStoreKeepsTheNewestAndForgetsWhenOff() {
+        val store = Store()
+        store.setActions(list)
+        store.setActionStatuses(ActionStatusListOut(true, listOf(status("a1", "研究室の鍵", at = "2026-10-08T00:00:10Z"), status("a3", null))))
+        assertEquals(setOf("g:研究室の鍵", "a:a3"), store.actionStatuses.keys)
+        // An older event is ignored, a newer one replaces.
+        store.applyActionStatus(status("a1", "研究室の鍵", text = "解錠中", tone = "warn", at = "2026-10-08T00:00:05Z"))
+        assertEquals("施錠中・ドア閉", store.actionStatuses["g:研究室の鍵"]?.status?.text)
+        store.applyActionStatus(status("a1", "研究室の鍵", text = "解錠中", tone = "warn", at = "2026-10-08T00:00:20.5Z"))
+        assertEquals("解錠中", store.actionStatuses["g:研究室の鍵"]?.status?.text)
+        // A whole answer drops groups no longer in it.
+        store.setActionStatuses(ActionStatusListOut(true, listOf(status("a3", null))))
+        assertEquals(setOf("a:a3"), store.actionStatuses.keys)
+        // Turned off: nothing kept, and events are not taken.
+        store.setActions(list.copy(enabled = false))
+        assertTrue(store.actionStatuses.isEmpty())
+        store.applyActionStatus(status("a3", null))
+        assertTrue(store.actionStatuses.isEmpty())
+    }
+
+    @Test fun statesAreReadOnDemandFollowTheEventAndAreReadAgainAfterAReconnect() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        server.createChannel("general", alice.id)
+        server.actionList = list
+        server.actionStatusList = listOf(status("a1", "研究室の鍵"))
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(bob.id), server.connector(bob.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); engine.idle()
+        // Nothing is asked until a page shows the states.
+        assertTrue(server.statusReads.isEmpty())
+        engine.loadActionStatuses()
+        engine.loadActionStatuses(refresh = true)
+        assertEquals(listOf(false, true), server.statusReads)
+        assertEquals("ok", store.actionStatuses["g:研究室の鍵"]?.status?.tone)
+        // A 429 on a refresh reaches the page (which says 「少し待って…」).
+        server.statusFailures.add(ApiException.Api(429, "rate_limited", "slow"))
+        try { engine.loadActionStatuses(refresh = true); fail("expected the 429") } catch (e: ApiException.Api) {
+            assertEquals("少し待ってからもう一度押してください", ActionRules.refusalText(e))
+        }
+        // actions.status_updated replaces the group's state.
+        server.announceActionStatus(status("a1", "研究室の鍵", text = "解錠中", tone = "warn", at = "2026-10-08T00:01:00Z"))
+        engine.idle()
+        assertEquals("解錠中", store.actionStatuses["g:研究室の鍵"]?.status?.text)
+        // After a reconnect the states shown are read again (an event may have been missed).
+        server.actionStatusList = listOf(status("a1", "研究室の鍵", text = "施錠中", at = "2026-10-08T00:02:00Z"))
+        val before = server.statusReads.size
+        engine.stop(); engine.start(); engine.idle()
+        delay(100)
+        assertEquals(before + 1, server.statusReads.size)
+        assertEquals("施錠中", store.actionStatuses["g:研究室の鍵"]?.status?.text)
+        // Turned off: the states go with the buttons.
+        server.configureActions(list.copy(enabled = false))
+        engine.idle()
+        delay(500)
+        assertTrue(store.actionStatuses.isEmpty())
         engine.stop(); scope.cancel()
     }
 }

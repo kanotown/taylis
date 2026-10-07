@@ -16,4 +16,18 @@
     <string name="actions_error_pending">Still in progress. Check the state in a moment.</string>
     <string name="actions_error_failed">Could not run it.</string>
     <string name="actions_error_too_fast">Wait a moment before pressing it again.</string>
+    <!-- §12: the state of what the buttons operate. -->
+    <string name="actions_status_loading">Checking the state…</string>
+    <string name="actions_status_failed">Could not get the state: %1$s</string>
+    <string name="actions_status_error_timeout">the relay did not answer</string>
+    <string name="actions_status_error_unreachable">could not connect to the relay</string>
+    <string name="actions_status_error_relay">the relay returned an error</string>
+    <string name="actions_status_error_invalid">the relay\'s answer could not be read</string>
+    <string name="actions_status_error_setup">this button is not set up correctly. Contact an admin</string>
+    <string name="actions_status_error_failed">unknown error</string>
+    <string name="actions_status_checked_now">Checked just now</string>
+    <string name="actions_status_checked_minutes">Checked %1$s min ago</string>
+    <string name="actions_status_checked_at">Checked %1$s</string>
+    <string name="actions_status_refresh">Refresh the state</string>
+    <string name="actions_status_label">%1$s:</string>
 </resources>

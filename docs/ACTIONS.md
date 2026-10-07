@@ -264,7 +264,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
   離れても答えは残る）→ スナックバーに中継の `message` か理由（文は Desktop / Web と同じ。押せなかった理由は共通のエラー表）。
   `show_on_attendance` のときは在室状況の画面の一番上と、ピルのシートの「操作」の欄（行は「組：名前」）にも。bootstrap の
   `actions` と `actions.updated`（300 ms でまとめて `GET /actions`）、ページを開いたときも読み直す。
-  `ui/Actions.kt`（規則）・`ui/ActionsPane.kt`、テスト `ActionsTest.kt`（11）。
+  `ui/Actions.kt`（規則）・`ui/ActionsPane.kt`、テスト `ActionsTest.kt`（17）。機器の状態は §12.4。
 
 ## 10. やらないこと（今は）
 
@@ -354,7 +354,11 @@ Taylis は汎用のまま：Taylis が知るのは「中継が返した短い文
   （中継の `message` があればそれ）。画面を開いたときに読み、見えている間は 60 秒ごと（隠れている間は止め、戻ったら古ければすぐ）、
   `actions.status_updated` で置き換える。ピルのメニューには出さない（狭い）。管理のフォームに「状態の取得に使う」、一覧に「状態」の印と「状態を確認」。
 - **iOS（2026-10-08 実装）**：同じ規則（§9.2）。更新の失敗は赤いバナーにも出す。
-- **Android（後の作業）**：同じ規則。
+- **Android（2026-10-08 実装）**：同じ規則。「操作」の画面と（`show_on_attendance` のとき）在室状況の画面の上で、組の見出しの下に
+  色の点・文・details・「◯分前に確認」（1 時間以上前は時刻）・更新のボタン（送っている間はスピナー）。組の無いボタンは「名前：」を添えて。
+  画面を開いたとき、アプリが前にある間は 60 秒ごと（バックグラウンドから戻ったら古ければすぐ）、`actions.status_updated` で置き換え
+  （`fetched_at` が古いものは捨てる）、再接続の後は見ていた状態を読み直す、機能がオフになったら消す。ピルのシートには出さない。
+  `ActionRules.statusLines`・`rememberActionStatusFeed`、テスト `ActionsTest.kt`。
 
 ### 12.5 中継の例（研究室の SwitchBot の鍵）
 
