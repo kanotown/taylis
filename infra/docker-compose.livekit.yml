@@ -16,6 +16,9 @@ services:
 
   livekit:
     image: livekit/livekit-server:v1.13.8
+    # docker-compose.yml has a dev-only livekit (profile "calls", ports on 127.0.0.1): on a server the service always
+    # runs, and its ports replace the dev ones instead of being added to them (both lists would bind 7882/udp, M131).
+    profiles: !reset []
     command: ["--config", "/etc/livekit.yaml"]
     env_file: ./secrets/livekit.env
     environment:
@@ -30,7 +33,7 @@ services:
       - ./livekit.yaml:/etc/livekit.yaml:ro
       # The whole of certbot's folder: live/ holds links into archive/.
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    ports:
+    ports: !override
       # Signalling and RoomService: the host only (nginx's livekit.<domain> site passes wss to it; nobody outside
       # reaches RoomService).
       - "127.0.0.1:7880:7880"
