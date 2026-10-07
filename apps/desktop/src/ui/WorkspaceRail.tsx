@@ -7,6 +7,7 @@ import type { AppController } from "../state/app";
 import { dropIndex, gapForPointer, hostLabel, signInName, type WorkspaceEntry } from "../state/workspaces";
 import { overlayTitleBar, RAIL_WIDTH, TITLE_ROW_HEIGHT } from "../platform/env";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
+import { useDismissOutside } from "./dismissOutside";
 import { useMediaQuery } from "./hooks";
 import { WorkspaceIcon } from "./workspaceIcons";
 import { t } from "../i18n";
@@ -429,17 +430,22 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
 export function WorkspaceMenu({ controller }: { controller: AppController }) {
   const entry = controller.activeEntry;
   const name = controller.workspaceName;
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  // As the 在室状況 quick switch beside it: closes on any press outside, the title bar's included (dismissOutside).
+  useDismissOutside(open, () => setOpen(false), [trigger, content]);
   return (
-    <Menu>
+    <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger asChild>
-        <button type="button" className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-semibold text-sidebar-strong hover:bg-sidebar-strong/10">
+        <button ref={trigger} type="button" className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-semibold text-sidebar-strong hover:bg-sidebar-strong/10">
           {/* With the rail on screen (two or more workspaces) its tiles already show the icon. */}
           {!controller.showsRail && <WorkspaceIcon serverUrl={entry?.serverUrl} version={entry?.iconVersion} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-6 w-6 rounded-md text-[11px]" />}
           <span data-title-name className="truncate">{name}</span>
           <ChevronDown size={14} className="shrink-0 opacity-70" />
         </button>
       </MenuTrigger>
-      <MenuContent align="start" className="min-w-60">
+      <MenuContent ref={content} align="start" className="min-w-60">
         {entry && <div className="px-2.5 pb-1 pt-1.5 text-xs text-muted">{signInName(entry)} @ {hostLabel(entry.serverUrl)}</div>}
         {controller.multiWorkspace && (
           <MenuItem onSelect={() => controller.beginAddWorkspace()}>
