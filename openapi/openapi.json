@@ -16180,6 +16180,14 @@
       },
       "ThreadItem": {
         "properties": {
+          "latest_replies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Latest Replies",
+            "type": "array"
+          },
           "parent": {
             "$ref": "#/components/schemas/MessageOut"
           },

@@ -16,6 +16,9 @@ from app.modules.threads.schemas import ThreadItem, ThreadListOut, ThreadState, 
 
 Reason = Literal["reply", "deleted", "read", "follow"]
 
+# How many of each thread's newest replies GET /threads previews (THREADS.md §5).
+LATEST_REPLIES = 2
+
 
 def _state(
     parent: Message,
@@ -162,6 +165,7 @@ async def list_threads(
     user_id: uuid.UUID,
     parents_out: list[MessageOut],
     rows: list[tuple[Message, ThreadFollow]],
+    latest_replies: dict[uuid.UUID, list[MessageOut]] | None = None,
 ) -> ThreadListOut:
     """Assemble the list from rows the router fetched (it owns the MessageOut mapping)."""
     parent_ids = [parent.id for parent, _ in rows]
@@ -171,6 +175,7 @@ async def list_threads(
         ThreadItem(
             parent=out,
             state=_state(parent, row, counts.get(parent.id, (0, 0)), followers.get(parent.id, [])),
+            latest_replies=(latest_replies or {}).get(parent.id, []),
         )
         for out, (parent, row) in zip(parents_out, rows, strict=True)
     ]

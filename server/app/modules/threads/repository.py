@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, any_, exists, func, or_, select
+from sqlalchemy import ColumnElement, and_, any_, bindparam, exists, func, or_, select, true
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -12,6 +13,7 @@ from app.modules.messages.models import (  # read-only (ARCHITECTURE.md §5 exce
     Message,
     mentions_of,
 )
+from app.modules.moderation.blocks import not_blocked_by  # read-only: blocked people's replies
 from app.modules.threads.models import ThreadFollow
 
 
@@ -314,3 +316,41 @@ async def summary(db: AsyncSession, user_id: uuid.UUID) -> tuple[int, int]:
     return int((await db.execute(unread)).scalar_one()), int(
         (await db.execute(mentions)).scalar_one()
     )
+
+
+async def latest_replies(
+    db: AsyncSession, viewer_id: uuid.UUID, parent_ids: list[uuid.UUID], per_thread: int
+) -> dict[uuid.UUID, list[Message]]:
+    """The newest `per_thread` live replies of each thread (oldest first within each), for the
+    list's preview (THREADS.md §5): one LATERAL query for the whole page, each side a short
+    backward scan of messages_parent_idx (parent_id, seq). Replies of people the viewer blocked
+    are left out, like the activity lists (MODERATION.md §4)."""
+    if not parent_ids or per_thread <= 0:
+        return {}
+    id_array = bindparam(
+        "parent_ids", list(dict.fromkeys(parent_ids)), type_=ARRAY(UUID(as_uuid=True))
+    )
+    ids = select(func.unnest(id_array).label("pid")).subquery("ids")
+    newest = (
+        select(Message)
+        .where(
+            Message.parent_id == ids.c.pid,
+            Message.deleted_at.is_(None),
+            not_blocked_by(viewer_id, Message.sender_id),
+        )
+        .order_by(Message.seq.desc())
+        .limit(per_thread)
+        .lateral("newest")
+    )
+    reply_row = aliased(Message, newest)
+    stmt = (
+        select(reply_row)
+        .select_from(ids)
+        .join(newest, true())
+        .order_by(reply_row.parent_id, reply_row.seq.asc())
+    )
+    out: dict[uuid.UUID, list[Message]] = {}
+    for reply in (await db.execute(stmt)).scalars().all():
+        assert reply.parent_id is not None
+        out.setdefault(reply.parent_id, []).append(reply)
+    return out

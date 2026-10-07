@@ -9,6 +9,7 @@ from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
 from app.modules.messages import service as messages
 from app.modules.messages.models import Message
+from app.modules.messages.schemas import MessageOut
 from app.modules.threads import repository as repo
 from app.modules.threads import service
 from app.modules.threads.schemas import ThreadFollowIn, ThreadListOut, ThreadRead, ThreadState
@@ -38,8 +39,18 @@ async def list_threads(
     rows = await repo.list_followed(
         db, user.id, unread_only=filter == "unread", before=cursor, limit=limit
     )
-    parents = await messages.messages_out(db, [parent for parent, _ in rows], user.id)
-    return await service.list_threads(db, user.id, parents, rows)
+    latest = await repo.latest_replies(
+        db, user.id, [parent.id for parent, _ in rows], service.LATEST_REPLIES
+    )
+    # One messages_out for the parents and their previews: its lookups run once for the page.
+    replies = [reply for parent, _ in rows for reply in latest.get(parent.id, [])]
+    outs = await messages.messages_out(db, [parent for parent, _ in rows] + replies, user.id)
+    parents, reply_outs = outs[: len(rows)], outs[len(rows) :]
+    by_parent: dict[UUID, list[MessageOut]] = {}
+    for out in reply_outs:
+        assert out.parent_id is not None
+        by_parent.setdefault(out.parent_id, []).append(out)
+    return await service.list_threads(db, user.id, parents, rows, by_parent)
 
 
 @router.get("/messages/{message_id}/thread", response_model=ThreadState)
