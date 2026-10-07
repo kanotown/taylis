@@ -80,7 +80,10 @@ class WikiPageSource(val id: String, private val api: WikiApi, private val onPag
 
     /** A copy kept on this device, shown before the server answers. */
     fun seed(copy: PageOut) {
-        if (_page.value == null) _page.value = copy
+        if (_page.value == null) {
+            _page.value = copy
+            onPage(copy)
+        }
     }
 
     private fun take(next: PageOut) {
@@ -384,6 +387,10 @@ class WikiHub(
                     pages = pages + (page.id to page.item.copy(parentId = known.parentId, position = known.position.ifEmpty { page.position }))
                     emit()
                 }
+            } else if (openTitles[page.id] != page.title) {
+                // M124: a page outside the tree (a row): the bar's title and icon come from here.
+                openTitles[page.id] = page.title
+                emit()
             }
         }
         val loop = CanvasSaver(
@@ -422,6 +429,11 @@ class WikiHub(
     }
 
     fun current(pageId: String): CanvasSaver? = savers[pageId]
+
+    /** M124: an open page as last read (a row is not in the tree: its title, icon and kind are here). */
+    fun openPage(pageId: String): PageOut? = sources[pageId]?.page?.value
+
+    private val openTitles = HashMap<String, String>()
 
     private fun dropIfIdle(pageId: String) {
         val saver = savers[pageId] ?: return

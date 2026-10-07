@@ -25,7 +25,6 @@
     <string name="docs_db_properties">Properties</string>
     <string name="docs_db_no_properties">No properties yet</string>
     <string name="docs_db_referenced_by">%2$s in %1$s</string>
-    <string name="docs_db_view_only">View only — you can\'t change the values</string>
     <string name="docs_db_edit_cell">Edit %1$s</string>
     <string name="docs_db_empty_value">Empty</string>
     <string name="docs_db_empty_value_edit">Empty (tap to fill in)</string>
@@ -33,6 +32,7 @@
     <string name="docs_db_done">Done</string>
     <string name="docs_db_start_date">Start</string>
     <string name="docs_db_end_date">End date</string>
+    <string name="docs_db_end">End</string>
     <string name="docs_db_include_time">Include time</string>
     <string name="docs_db_find_person">Find a person</string>
     <string name="docs_db_find_row">Find a row</string>

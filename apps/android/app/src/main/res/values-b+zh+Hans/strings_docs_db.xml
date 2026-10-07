@@ -24,7 +24,6 @@
     <string name="docs_db_properties">属性</string>
     <string name="docs_db_no_properties">暂无属性</string>
     <string name="docs_db_referenced_by">%1$s 的 %2$s</string>
-    <string name="docs_db_view_only">仅查看 — 您没有更改值的权限</string>
     <string name="docs_db_edit_cell">编辑%1$s</string>
     <string name="docs_db_empty_value">空</string>
     <string name="docs_db_empty_value_edit">空（点按以填写）</string>
@@ -32,6 +31,7 @@
     <string name="docs_db_done">完成</string>
     <string name="docs_db_start_date">开始</string>
     <string name="docs_db_end_date">结束日期</string>
+    <string name="docs_db_end">结束</string>
     <string name="docs_db_include_time">包含时间</string>
     <string name="docs_db_find_person">查找成员</string>
     <string name="docs_db_find_row">查找行</string>
