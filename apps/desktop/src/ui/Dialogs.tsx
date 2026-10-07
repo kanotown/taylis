@@ -9,6 +9,7 @@ import { Avatar, presenceLabel } from "./Avatar";
 import { myName, selfNotesHint } from "./channels";
 import { pickerPeople } from "./home";
 import { StatusEmoji, UserPopover } from "./UserPopover";
+import { AttendanceChip } from "./AttendanceChip";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 import { type MessageKey, t } from "../i18n";
@@ -304,6 +305,7 @@ export function MemberList({ controller, channel, members, onChange, className }
                     </span>
                   </UserPopover>
                   <StatusEmoji controller={controller} userId={member.user_id} />
+                  <AttendanceChip controller={controller} userId={member.user_id} />
                   {controller.store.presenceOf(member.user_id) !== "offline" && (
                     <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
                   )}

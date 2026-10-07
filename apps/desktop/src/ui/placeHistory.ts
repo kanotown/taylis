@@ -8,7 +8,7 @@ import type { SearchParams } from "./search";
  * Pure: MainScreen records the place on screen with `visit` and moves with `go`.
  */
 
-export type PlaceView = "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs";
+export type PlaceView = "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance";
 
 export type Place<F = unknown> =
   | { kind: "channel"; channelId: string; /** The reveal it was left at (the controller's message focus), or none. */ focus: F | null }

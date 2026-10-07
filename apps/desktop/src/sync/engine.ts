@@ -15,7 +15,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
-import type { NotificationTest, ReservationNotice } from "../api/types";
+import type { AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
@@ -71,6 +71,8 @@ export interface SyncApi {
   channelLinks?(channelId: string): Promise<ChannelLinkOut[]>;
   /** M112: the workspace's reservation pools. Optional (older fakes). */
   reservationPools?(): Promise<PoolOut[]>;
+  /** M140: the 在室状況 board (docs/PRESENCE.md §3.1). Optional (older fakes). */
+  attendance?(): Promise<AttendanceBoardOut>;
   /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
   listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
   getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
@@ -264,6 +266,8 @@ export class SyncEngine {
   private activityRefreshCancel: (() => void) | null = null;
   /** M112: reservation.updated arrives once per change (and a press brings several): one read for a burst. */
   private reservationReload: ReturnType<typeof setTimeout> | null = null;
+  /** M140: attendance.config_updated comes in bursts (a reorder, several edits): one read for them. */
+  private attendanceReload: ReturnType<typeof setTimeout> | null = null;
   /** Review v0.1.37 #6: the newest reservation read started, and the one whose answer is shown. */
   private reservationReadSeq = 0;
   private reservationShownSeq = 0;
@@ -786,6 +790,7 @@ export class SyncEngine {
     store.replaceSidebarDefaults(bootstrap.sidebar_defaults ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
+    store.setAttendance(bootstrap.attendance ?? null); // M140: null for guests, while off, before M140
     this.wiki.applyBootstrap(bootstrap.wiki); // M121: the Docs tree (read, or caught up from its feed)
     void this.loadScheduled();
     void this.loadReminders();
@@ -982,6 +987,16 @@ export class SyncEngine {
         this.scheduleReservationReload();
         return;
       }
+      case "attendance.updated": {
+        // M140: one person's row; a state this client does not know yet (someone's new own state): read the board.
+        const data = frame.data as unknown as AttendanceEntryOut;
+        if (!store.applyAttendanceEntry(data)) this.scheduleAttendanceReload();
+        return;
+      }
+      case "attendance.config_updated":
+        // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
+        this.scheduleAttendanceReload();
+        return;
       case "reservation.notice":
         // M112: an activity item for me (an operator's to-do, or news of my own reservation): the badge, a banner.
         this.scheduleActivityRefresh();
@@ -1345,6 +1360,24 @@ export class SyncEngine {
     if (!channel || !channel.isMember) return;
     if (effectiveNotificationLevel(channel, me.id, overallLevel(me)) === "none" || isMutedChannel(channel)) return;
     this.deps.onCanvasMention?.(mention, channel);
+  }
+
+  /** M140 (docs/PRESENCE.md §4): GET /attendance; `enabled: false` (turned off) clears the board. */
+  async loadAttendance(): Promise<void> {
+    if (!this.deps.api.attendance) return;
+    try {
+      this.deps.store.setAttendance(await this.deps.api.attendance());
+    } catch (err) {
+      console.warn("could not load the attendance board", err);
+    }
+  }
+
+  private scheduleAttendanceReload(): void {
+    if (this.attendanceReload !== null) return;
+    this.attendanceReload = setTimeout(() => {
+      this.attendanceReload = null;
+      if (this.status === "online") void this.loadAttendance();
+    }, 300);
   }
 
   private scheduleReservationReload(): void {

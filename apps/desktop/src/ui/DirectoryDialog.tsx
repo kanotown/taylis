@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import type { UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
+import { AttendanceChip } from "./AttendanceChip";
 import { Avatar } from "./Avatar";
 import { Badge, Button, Input, Modal } from "./primitives";
 import { compareByRoster, rosterLabel, rosterSection, titleExtra } from "./roster";
@@ -69,6 +70,7 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       {user.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                       {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
                       {user.dnd_until && <span title={t("popover.paused")}>🔕</span>}
+                      <AttendanceChip controller={controller} userId={user.id} />
                       {user.id === me && <span className="text-xs text-muted">{t("calendar.me")}</span>}
                     </div>
                     <div className="truncate text-xs text-muted">
