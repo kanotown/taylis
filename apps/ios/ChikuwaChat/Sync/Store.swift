@@ -1224,8 +1224,8 @@ final class Store {
     /// A refused tap undone (its rollback): the conversation back where it was in the pins (`place`), or out of them;
     /// the other pins stay as events may have changed them meanwhile.
     func restoreDmPin(_ channelId: String, at place: Int?) {
-        dmPins.removeAll { $0 == channelId }
-        if let place { dmPins.insert(channelId, at: min(place, dmPins.count)) }
+        let next = DmCloseRules.restoredPins(dmPins, channelId: channelId, place: place)
+        if dmPins != next { dmPins = next }
     }
 
     // MARK: closed DMs (M141)
@@ -1235,6 +1235,16 @@ final class Store {
     /// dm_close.updated, a new timeline message, my own close and open.
     func setDmClosed(_ channelId: String, closed: Bool) {
         if closed { closedDms.insert(channelId) } else if closedDms.contains(channelId) { closedDms.remove(channelId) }
+    }
+
+    /// Review v0.1.43 #7: the server's read state, asked again after a refused close, taken as it is (downwards too).
+    func setReadState(_ channelId: String, _ state: ReadStateOut) {
+        updateChannel(channelId) { row in
+            row.lastReadSeq = state.lastReadSeq
+            row.unreadCount = state.unreadCount
+            row.mentionCount = state.mentionCount
+            row.firstUnreadAt = state.firstUnreadAt
+        }
     }
 
     /// bootstrap's `closed_dms`; nil from a server before M141, which then offers no closing.
@@ -1579,4 +1589,36 @@ final class ChannelMessages {
     }
     /// The ordered timeline for a floor (the oldest loaded seq), dropped whenever a row changes.
     @ObservationIgnored var timeline: (floor: Int, rows: [MessageState])?
+}
+
+/// M141 「会話を閉じる」 (SYNC_PROTOCOL.md §7.9): the rules the three clients share (apps/shared/dm-close-rules.json).
+enum DmCloseRules {
+    /// The read marks a close sets and compares against (Review v0.1.43 #7, `read_fallback`).
+    struct ReadMark: Equatable {
+        var lastSeq: Int
+        var lastReadSeq: Int
+        var unreadCount: Int
+        var mentionCount: Int
+    }
+
+    /// Review v0.1.43 #6 (`close_event`): whether a dm_close.updated is taken. An open always is; a close is not when this
+    /// device already holds a timeline message newer than where it was closed (`lastMessageSeq`, the §7.8 last_message):
+    /// that message reopened the conversation on the server too, it only reached this device first. No `closedSeq` (an
+    /// older server): taken.
+    static func takesEvent(closed: Bool, closedSeq: Int?, lastMessageSeq: Int?) -> Bool {
+        guard closed, let closedSeq, let lastMessageSeq else { return true }
+        return lastMessageSeq <= closedSeq
+    }
+
+    /// Review v0.1.43 #7 (`restore_pin`): a refused close puts back only its own pin, at `place` (its index before,
+    /// clamped to the list as it is now), or leaves it out when it was not pinned; the other pins stay as events left them.
+    static func restoredPins(_ pins: [String], channelId: String, place: Int?) -> [String] {
+        var next = pins.filter { $0 != channelId }
+        if let place { next.insert(channelId, at: min(place, next.count)) }
+        return next
+    }
+
+    /// Review v0.1.43 #7 (`read_fallback`): when the read state could not be asked again either, the snapshot goes back
+    /// only if nothing changed it since the close set it; otherwise what came meanwhile is kept for the next bootstrap.
+    static func readFallbackTakesSnapshot(optimistic: ReadMark, now: ReadMark) -> Bool { optimistic == now }
 }

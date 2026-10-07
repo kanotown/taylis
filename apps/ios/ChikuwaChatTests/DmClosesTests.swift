@@ -223,4 +223,133 @@ final class DmClosesTests: XCTestCase {
         XCTAssertFalse(store.isDmClosed(dmId))
         engine.stop()
     }
+
+    // MARK: Review v0.1.43 #6 / #7: the shared rules (apps/shared/dm-close-rules.json) and the races they settle
+
+    private struct Mark: Decodable { let lastSeq, lastReadSeq, unreadCount, mentionCount: Int }
+    private struct Rules: Decodable {
+        struct CloseEvent: Decodable { let name: String; let closed: Bool; let closedSeq: Int?; let lastMessageSeq: Int?; let apply: Bool }
+        struct RestorePin: Decodable { let name: String; let pinsBefore: [String]; let pinsNow: [String]; let channel: String; let expect: [String] }
+        struct ReadFallback: Decodable { let name: String; let optimistic: Mark; let now: Mark; let expect: String }
+        let closeEvent: [CloseEvent]
+        let restorePin: [RestorePin]
+        let readFallback: [ReadFallback]
+    }
+
+    private func rules() throws -> Rules {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/dm-close-rules.json")
+        return try JSON.snakeDecoder.decode(Rules.self, from: Data(contentsOf: url))
+    }
+
+    private func mark(_ m: Mark) -> DmCloseRules.ReadMark {
+        DmCloseRules.ReadMark(lastSeq: m.lastSeq, lastReadSeq: m.lastReadSeq, unreadCount: m.unreadCount, mentionCount: m.mentionCount)
+    }
+
+    func testTheSharedRules() throws {
+        let rules = try rules()
+        XCTAssertFalse(rules.closeEvent.isEmpty)
+        for c in rules.closeEvent {
+            XCTAssertEqual(DmCloseRules.takesEvent(closed: c.closed, closedSeq: c.closedSeq, lastMessageSeq: c.lastMessageSeq), c.apply, c.name)
+        }
+        for c in rules.restorePin {
+            XCTAssertEqual(DmCloseRules.restoredPins(c.pinsNow, channelId: c.channel, place: c.pinsBefore.firstIndex(of: c.channel)), c.expect, c.name)
+        }
+        for c in rules.readFallback {
+            XCTAssertEqual(DmCloseRules.readFallbackTakesSnapshot(optimistic: mark(c.optimistic), now: mark(c.now)), c.expect == "snapshot", c.name)
+        }
+    }
+
+    func testACloseOlderThanAMessageHeldHereLeavesItOpen() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let dmId = server.createChannel("", ownerId: alice.id, type: "dm").id
+        server.join(dmId, bob.id)
+        _ = try server.post(channelId: dmId, senderId: alice.id, body: "earlier")
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        options.reconnectMin = 0
+        let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "token" }, options: options)
+        engine.isActive = { false }
+        await engine.start()
+        await settle(engine)
+        let stale = try XCTUnwrap(store.channel(dmId)?.lastSeq)
+        let close = { (closed: Bool, seq: Int?) in
+            server.emitEvent([bob.id], "dm_close.updated", channelId: nil,
+                             data: .object(["channel_id": .string(dmId), "closed": .bool(closed), "at": .string("2026-10-07T00:00:00Z"),
+                                            "closed_seq": seq.map { .number(Double($0)) } ?? .null]))
+        }
+
+        // The close read `stale`; alice's message committed meanwhile and its event came first.
+        let (fresh, _) = try server.post(channelId: dmId, senderId: alice.id, body: "while you were closing")
+        await settle(engine)
+        close(true, stale)
+        await settle(engine)
+        XCTAssertFalse(store.isDmClosed(dmId))
+        XCTAssertEqual(store.channel(dmId)?.unreadCount, 2)
+
+        // A close that includes the newest message is taken; one from an older server (no closed_seq) as before.
+        close(true, fresh.seq)
+        await settle(engine)
+        XCTAssertTrue(store.isDmClosed(dmId))
+        close(false, nil)
+        close(true, nil)
+        await settle(engine)
+        XCTAssertTrue(store.isDmClosed(dmId))
+        engine.stop()
+    }
+
+    /// The close is held at the server (its handler waits) while another device pins d and a message comes to c (seq 6,
+    /// unread); then it is refused with 503. `read` answers PUT /channels/c/read (nil: unreachable too).
+    private func refusedWhileUpdatesArrive(read: String?) async -> AppController {
+        let controller = controller(with: [dm("c", day: 3), dm("d", day: 4)])
+        controller.store.replaceDmPins(["b", "c", "e"])
+        let reached = expectation(description: "the close reached the server")
+        let release = DispatchSemaphore(value: 0)
+        controller.api = client { request in
+            if request.url!.path.hasSuffix("/close") {
+                reached.fulfill()
+                release.wait()
+                return (503, #"{"error":{"code":"unavailable","message":"busy"}}"#)
+            }
+            guard let read else { return (-1, "") }
+            return (200, read)
+        }
+        let closing = Task { await controller.closeDm("c") }
+        await fulfillment(of: [reached], timeout: 5)
+        XCTAssertEqual(controller.store.dmPins, ["b", "e"])
+        controller.store.setDmPin("d", on: true)
+        controller.store.updateChannel("c") { state in
+            state.lastSeq = 6
+            state.unreadCount += 1
+            state.firstUnreadAt = "2026-10-07T00:00:00Z"
+        }
+        release.signal()
+        await closing.value
+        return controller
+    }
+
+    func testARefusedCloseKeepsWhatCameMeanwhile() async {
+        let controller = await refusedWhileUpdatesArrive(
+            read: #"{"last_read_seq":5,"unread_count":1,"mention_count":0,"first_unread_at":"2026-10-07T00:00:00Z"}"#)
+        XCTAssertFalse(controller.store.isDmClosed("c"))
+        XCTAssertEqual(controller.store.dmPins, ["b", "c", "e", "d"])  // d's pin stays, c back in its own place
+        let state = controller.store.channel("c")
+        XCTAssertEqual(state?.lastSeq, 6)
+        XCTAssertEqual(state?.lastReadSeq, 5)
+        XCTAssertEqual(state?.unreadCount, 1)
+        XCTAssertEqual(state?.firstUnreadAt, "2026-10-07T00:00:00Z")
+        XCTAssertNotNil(controller.error)
+    }
+
+    func testTheReadStateUnreachableTooKeepsWhatCameMeanwhile() async {
+        let controller = await refusedWhileUpdatesArrive(read: nil)
+        let state = controller.store.channel("c")
+        XCTAssertEqual(state?.lastSeq, 6)
+        XCTAssertEqual(state?.unreadCount, 1)
+        XCTAssertEqual(controller.store.dmPins, ["b", "c", "e", "d"])
+    }
 }

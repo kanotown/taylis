@@ -1118,6 +1118,11 @@ final class AppController {
 
     /// M141 「会話を閉じる」 (SYNC_PROTOCOL.md §7.9): at once hidden from the DM lists, unpinned and read (as the server
     /// does), and taken off the screens it is on (`chikuwaCloseConversation`); all three go back if the server refuses.
+    ///
+    /// Review v0.1.43 #7: the rollback puts back only what the close touched (apps/shared/dm-close-rules.json): its own
+    /// pin in its place (pins changed meanwhile stay), and the read state as the server has it (asked again with PUT read
+    /// 0, which moves nothing; the snapshot only when that fails too and nothing changed it since), so a message or
+    /// another device's read that came meanwhile stays.
     func closeDm(_ channelId: String) async {
         guard let api, let before = store.channel(channelId), before.channel.isDm else { return }
         let pinPlace = store.dmPins.firstIndex(of: channelId)
@@ -1129,6 +1134,7 @@ final class AppController {
             state.mentionCount = 0
             state.firstUnreadAt = nil
         }
+        let optimistic = store.channel(channelId).map(Self.readMark)
         engine?.onBadge?(store.badgeCount)
         NotificationCenter.default.post(name: .chikuwaCloseConversation, object: nil, userInfo: ["id": channelId])
         do {
@@ -1136,15 +1142,28 @@ final class AppController {
         } catch {
             store.setDmClosed(channelId, closed: false)
             if pinPlace != nil { store.restoreDmPin(channelId, at: pinPlace) }
-            store.updateChannel(channelId) { state in
-                state.lastReadSeq = before.lastReadSeq
-                state.unreadCount = before.unreadCount
-                state.mentionCount = before.mentionCount
-                state.firstUnreadAt = before.firstUnreadAt
+            self.error = describe(error)
+            do {
+                store.setReadState(channelId, try await api.markRead(channelId: channelId, lastReadSeq: 0))
+            } catch {
+                print("could not read the read state back after a refused close: \(error)")
+                if let optimistic, let now = store.channel(channelId),
+                   DmCloseRules.readFallbackTakesSnapshot(optimistic: optimistic, now: Self.readMark(now)) {
+                    store.updateChannel(channelId) { state in
+                        state.lastReadSeq = before.lastReadSeq
+                        state.unreadCount = before.unreadCount
+                        state.mentionCount = before.mentionCount
+                        state.firstUnreadAt = before.firstUnreadAt
+                    }
+                }
             }
             engine?.onBadge?(store.badgeCount)
-            self.error = describe(error)
         }
+    }
+
+    private static func readMark(_ state: ChannelState) -> DmCloseRules.ReadMark {
+        DmCloseRules.ReadMark(lastSeq: state.lastSeq, lastReadSeq: state.lastReadSeq, unreadCount: state.unreadCount,
+                              mentionCount: state.mentionCount)
     }
 
     /// M141 (§7.9): a closed DM opened explicitly (a search result, a profile's 「メッセージを送る」, a link, a
