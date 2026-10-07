@@ -74,7 +74,7 @@ describe("notification clicks", () => {
     const alice = server.addUser("alice");
     const channel = server.createChannel("general", alice.id);
     const body = "📞 通話を始めました\nhttps://meet.jit.si/taylis-abc";
-    const call: MessageOut = { ...server.post(channel.id, alice.id, body).message, call: { url: "https://meet.jit.si/taylis-abc", started_by: alice.id } };
+    const call: MessageOut = { ...server.post(channel.id, alice.id, body).message, call: { kind: "link", url: "https://meet.jit.si/taylis-abc", started_by: alice.id } };
     const store = (deps as unknown as { store: Store }).store;
     store.upsertUser(alice);
     deps.onNotify!(call, { ...channel, type: "public", name: "general" } as unknown as ChannelState);

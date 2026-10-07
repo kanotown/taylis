@@ -93,22 +93,3 @@ export function CallCard({ controller, call, createdAt }: { controller: AppContr
     </div>
   );
 }
-
-const MEETING_REASONS: Record<string, () => string> = {
-  characters: () => t("workspace.meetingReason.characters"),
-  malformed: () => t("workspace.meetingReason.malformed"),
-  host: () => t("workspace.meetingReason.host"),
-  scheme: () => t("workspace.meetingReason.scheme"),
-  credentials: () => t("workspace.meetingReason.credentials"),
-  query: () => t("workspace.meetingReason.query"),
-  length: () => t("workspace.meetingReason.length"),
-};
-
-/** The admin form's error under the URL field: for 422 meeting_url_invalid the reason (`details.reason`) when known. */
-export function meetingUrlErrorText(error: unknown): string {
-  if (error instanceof ApiError && error.code === "meeting_url_invalid") {
-    const reason = (error.details as { reason?: unknown } | undefined)?.reason;
-    if (typeof reason === "string" && MEETING_REASONS[reason]) return MEETING_REASONS[reason]();
-  }
-  return describeError(error);
-}

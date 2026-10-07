@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import type { AdminWorkspaceSettingsOut, ChannelOut, DefaultChannelsApplyOut, WorkspaceSettingsUpdate } from "../api/types";
 import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
-import { meetingUrlErrorText } from "./Calls";
 import { Button, cn, Input } from "./primitives";
 import { WorkspaceIcon } from "./workspaceIcons";
 import { t } from "../i18n";
@@ -96,7 +95,6 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
         />
       </label>
       <DefaultChannelsSection controller={controller} settings={settings} onSaved={setSettings} />
-      <MeetingServiceSection controller={controller} settings={settings} onSaved={setSettings} />
       {settings.updated_at && changedBy && (
         <p className="text-xs text-muted">
           {t("workspace.lastChanged", { who: changedBy, at: fullTimestamp(settings.updated_at) })}
@@ -413,100 +411,6 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
           </p>
         )}
       </div>
-    </section>
-  );
-}
-
-/** The server's default meeting service (docs/CALLS.md §3). */
-export const DEFAULT_MEETING_BASE_URL = "https://meet.jit.si/";
-
-/**
- * M117 (docs/CALLS.md §3) 「通話の会議サービス」: where 📞 makes its rooms. Saved with 保存 (or Enter); empty turns calls off.
- * The server checks the URL: 422 meeting_url_invalid shows its reason under the field. A server before M117 has no
- * `calls_enabled` in the settings: the section is not shown.
- */
-export function MeetingServiceSection({ controller, settings, onSaved }: {
-  controller: AppController;
-  settings: AdminWorkspaceSettingsOut;
-  onSaved: (row: AdminWorkspaceSettingsOut) => void;
-}) {
-  const saved = settings.meeting_base_url ?? "";
-  const [draft, setDraft] = useState(saved);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => setDraft(saved), [saved]);
-  if (settings.calls_enabled === undefined) return null;
-
-  const save = async (value: string) => {
-    const api = controller.api;
-    if (!api || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const row = await api.adminUpdateWorkspaceSettings({ meeting_base_url: value.trim() || null });
-      onSaved(row);
-      setDraft(row.meeting_base_url ?? "");
-      // This device follows at once (the others through workspace.settings_updated).
-      controller.store.setWorkspaceSettings({ ...controller.store.workspaceSettings, calls_enabled: row.calls_enabled, meeting_base_url: row.meeting_base_url });
-    } catch (err) {
-      setError(meetingUrlErrorText(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const host = (draft.trim() || saved).toLowerCase();
-  const publicJitsi = host.startsWith(DEFAULT_MEETING_BASE_URL);
-  return (
-    <section aria-label={t("workspace.meeting")} className="rounded-xl border border-line px-3 py-2">
-      <div className="flex items-center gap-3">
-        <Phone size={18} className="shrink-0 text-muted" />
-        <span className="min-w-0 flex-1 text-sm">
-          {t("workspace.meeting")}
-          <span className="block text-xs text-muted">{t("workspace.meetingNote")}</span>
-        </span>
-      </div>
-      <form
-        className="mt-2 flex flex-wrap items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save(draft);
-        }}
-      >
-        <Input
-          // text, not url: the server's check (and its reason) speaks, not the browser's own bubble.
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          aria-label={t("workspace.meetingUrl")}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? "meeting-url-error" : undefined}
-          placeholder={DEFAULT_MEETING_BASE_URL}
-          className="h-8 min-w-0 flex-1 text-sm"
-          value={draft}
-          maxLength={400}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setError(null);
-          }}
-        />
-        <Button size="sm" type="submit" disabled={busy || draft.trim() === saved}>
-          {t("common.save")}
-        </Button>
-        {saved !== DEFAULT_MEETING_BASE_URL && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => void save(DEFAULT_MEETING_BASE_URL)}>
-            {t("workspace.meetingDefault")}
-          </Button>
-        )}
-      </form>
-      {error && (
-        <p id="meeting-url-error" role="alert" className="mt-1 text-xs text-danger">
-          {error}
-        </p>
-      )}
-      {!settings.calls_enabled && <p className="mt-1 text-xs text-muted">{t("workspace.meetingOff")}</p>}
-      {publicJitsi && <p className="mt-1 text-xs text-muted">{t("workspace.meetingJitsiNote")}</p>}
     </section>
   );
 }

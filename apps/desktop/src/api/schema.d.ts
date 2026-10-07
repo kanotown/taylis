@@ -623,7 +623,8 @@ export interface paths {
         head?: never;
         /**
          * Update Workspace Settings
-         * @description M117 (docs/CALLS.md): also the meeting service for calls (`meeting_base_url`).
+         * @description M130 (docs/CALLS.md §5.1): also 「アプリ内通話」 (`in_app_calls_enabled`). M117's
+         *     `meeting_base_url` is refused with 409 meeting_links_retired.
          */
         patch: operations["update_workspace_settings_api_v1_admin_workspace_settings_patch"];
         trace?: never;
@@ -1374,6 +1375,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Calls
+         * @description The calls in progress in my conversations (what a client reads after reconnecting: the
+         *     call.* events have no seq).
+         */
+        get: operations["list_calls_api_v1_calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Call
+         * @description A call and who is in it. Members of its conversation only (403 not_a_member).
+         */
+        get: operations["get_call_api_v1_calls__call_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join Call
+         * @description A token to join or reconnect (after the 10 minutes of the last one). 404 call_not_found,
+         *     403 not_a_member / dm_unavailable / forbidden, 409 call_ended / call_full / channel_archived
+         *     / calls_disabled (no LiveKit on this server), 429 rate_limited (30 a minute).
+         */
+        post: operations["join_call_api_v1_calls__call_id__join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave Call
+         * @description Hung up: LiveKit drops this person's connection (in case the client could not) and the
+         *     call shows them gone (call.updated). Idempotent; an ended call is fine.
+         */
+        post: operations["leave_call_api_v1_calls__call_id__leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/canvas-templates": {
         parameters: {
             query?: never;
@@ -1654,13 +1739,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start Call
-         * @description M117 (docs/CALLS.md): start a call — a message 「📞 通話を始めました」 with a new meeting
-         *     room's link (`message.call`). 201 when created, 200 for a retry with the same `client_msg_id`.
-         *     403 not_a_member / posting_restricted / dm_unavailable, 409 channel_archived /
-         *     calls_disabled / idempotency_conflict.
+         * Legacy Start Call
+         * @deprecated
+         * @description M117's calls by meeting link, retired by M130 (docs/CALLS.md §11): always 409
+         *     calls_disabled, so that the released M117 clients hide their 📞.
          */
-        post: operations["start_call_api_v1_channels__channel_id__calls_post"];
+        post: operations["legacy_start_call_api_v1_channels__channel_id__calls_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1787,6 +1871,34 @@ export interface paths {
          *     20 per channel (409 too_many_channel_feeds) and 20 per person (409 too_many_feeds).
          */
         post: operations["create_feed_api_v1_channels__channel_id__feeds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/huddle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Or Join
+         * @description Start the conversation's call, or join the one in progress (docs/CALLS.md §5.2). 201 when
+         *     a call was started (its message is posted: message.created, push, call.started); 200 for a
+         *     retry with the same `client_msg_id` or when a call was already in progress (no new message,
+         *     `message` is that call's). `join` = the LiveKit URL and a 10-minute token for this call only.
+         *     403 not_a_member / posting_restricted (an announcement channel: owners and administrators
+         *     start, everyone joins) / dm_unavailable (a 1:1 DM with a block either way) / forbidden
+         *     (bots), 409 channel_archived / calls_disabled / call_full / call_ended (a retry of an ended
+         *     call) / idempotency_conflict, 503 calls_unavailable (LiveKit cannot be reached: nothing is
+         *     posted), 429 rate_limited (10 starts a minute).
+         */
+        post: operations["start_or_join_api_v1_channels__channel_id__huddle_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5111,7 +5223,7 @@ export interface components {
         AdminWorkspaceSettingsOut: {
             /**
              * Calls Enabled
-             * @default true
+             * @default false
              */
             calls_enabled: boolean;
             /**
@@ -5132,15 +5244,25 @@ export interface components {
             /** Icon Version */
             icon_version?: string | null;
             /**
+             * @default {
+             *       "enabled": false,
+             *       "screen_share": false,
+             *       "video": false
+             *     }
+             */
+            in_app_calls: components["schemas"]["InAppCallsOut"];
+            /**
+             * In App Calls Enabled
+             * @default true
+             */
+            in_app_calls_enabled: boolean;
+            /**
              * Legacy Sso Default Channels
              * @default []
              */
             legacy_sso_default_channels: string[];
-            /**
-             * Meeting Base Url
-             * @default https://meet.jit.si/
-             */
-            meeting_base_url: string | null;
+            /** Meeting Base Url */
+            meeting_base_url?: string | null;
             /**
              * Preview Before Join
              * @default true
@@ -5731,6 +5853,11 @@ export interface components {
         };
         /** BootstrapOut */
         BootstrapOut: {
+            /**
+             * Active Calls
+             * @default []
+             */
+            active_calls: components["schemas"]["CallOut"][];
             activity?: components["schemas"]["ActivitySummaryOut"] | null;
             /**
              * Blocked User Ids
@@ -5818,8 +5945,12 @@ export interface components {
             wiki?: components["schemas"]["WikiBootstrap"] | null;
             /**
              * @default {
-             *       "calls_enabled": true,
-             *       "meeting_base_url": "https://meet.jit.si/",
+             *       "calls_enabled": false,
+             *       "in_app_calls": {
+             *         "enabled": false,
+             *         "screen_share": false,
+             *         "video": false
+             *       },
              *       "preview_before_join": true,
              *       "show_membership_messages": true
              *     }
@@ -6043,22 +6174,93 @@ export interface components {
             tz?: string | null;
         };
         /**
-         * CallCreate
-         * @description POST /channels/{id}/calls. `client_msg_id` is the message's idempotency key, as for any
-         *     post: a retry gets the same call back.
+         * CallJoinOut
+         * @description What a client connects to LiveKit with (docs/CALLS.md §7.1): `url` is LIVEKIT_URL, `token`
+         *     an access token for this call's room only, good until `expires_at` (10 minutes; needed only to
+         *     connect). Never logged, never cached.
          */
-        CallCreate: {
+        CallJoinOut: {
             /**
-             * Client Msg Id
-             * Format: uuid
+             * Expires At
+             * Format: date-time
              */
-            client_msg_id: string;
-        };
-        /** CallOut */
-        CallOut: {
-            message: components["schemas"]["MessageOut"];
+            expires_at: string;
+            /** Token */
+            token: string;
             /** Url */
             url: string;
+        };
+        /** CallJoinedOut */
+        CallJoinedOut: {
+            call: components["schemas"]["CallOut"];
+            join: components["schemas"]["CallJoinOut"];
+        };
+        /** CallListOut */
+        CallListOut: {
+            /** Calls */
+            calls: components["schemas"]["CallOut"][];
+        };
+        /**
+         * CallOut
+         * @description An in-app call (M130, docs/CALLS.md §5.2).
+         */
+        CallOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message Id */
+            message_id: string | null;
+            /**
+             * Participant Count
+             * @default 0
+             */
+            participant_count: number;
+            /**
+             * Participants
+             * @default []
+             */
+            participants: components["schemas"]["CallParticipantOut"][];
+            /**
+             * Peak Participants
+             * @default 0
+             */
+            peak_participants: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Started By
+             * Format: uuid
+             */
+            started_by: string;
+        };
+        /** CallParticipantOut */
+        CallParticipantOut: {
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** CallStateOut */
+        CallStateOut: {
+            call: components["schemas"]["CallOut"];
         };
         /** CanvasConflictDetails */
         CanvasConflictDetails: {
@@ -7302,6 +7504,47 @@ export interface components {
             /** Messages */
             messages: components["schemas"]["MessageOut"][];
         };
+        /**
+         * HuddleCreate
+         * @description POST /channels/{id}/huddle. `client_msg_id` is the call message's idempotency key: a retry
+         *     gets the same call and message back (with a fresh token).
+         */
+        HuddleCreate: {
+            /**
+             * Client Msg Id
+             * Format: uuid
+             */
+            client_msg_id: string;
+        };
+        /** HuddleOut */
+        HuddleOut: {
+            call: components["schemas"]["CallOut"];
+            join: components["schemas"]["CallJoinOut"];
+            message: components["schemas"]["MessageOut"];
+        };
+        /**
+         * InAppCallsOut
+         * @description M130 (docs/CALLS.md §5.1). `enabled`: the administrator's switch is on and this server has
+         *     LiveKit configured. `video` / `screen_share` follow `enabled` in v1 (kept apart so that an
+         *     administrator can turn them off later).
+         */
+        InAppCallsOut: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Screen Share
+             * @default false
+             */
+            screen_share: boolean;
+            /**
+             * Video
+             * @default false
+             */
+            video: boolean;
+        };
         /** InviteAccept */
         InviteAccept: {
             device: components["schemas"]["DeviceCreate"];
@@ -7682,11 +7925,33 @@ export interface components {
         };
         /**
          * MessageCallOut
-         * @description M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button
-         *     that opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what
-         *     clients before M117 show.
+         * @description This message announces a call (docs/CALLS.md §5.4). M117's shape `{url, started_by}` is
+         *     kept (the released M117 clients read only those two and show a card whose 「参加する」 opens
+         *     `url`), and widened:
+         *
+         *     - `kind = "livekit"` (M130): an in-app call. `url` is its page `<PUBLIC_BASE_URL>/call/<id>`
+         *       (the path `/call/<id>` on a server without PUBLIC_BASE_URL; never null, an M117 Android
+         *       client cannot read a null `url`). The other fields describe the call; `ended_at`,
+         *       `duration_seconds` are null while it is on.
+         *     - `kind = "link"`: an M117 meeting link (history); only `url` and `started_by`.
          */
         MessageCallOut: {
+            /** Call Id */
+            call_id?: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Kind
+             * @default link
+             * @enum {string}
+             */
+            kind: "livekit" | "link";
+            /** Participant Count */
+            participant_count?: number | null;
+            /** Started At */
+            started_at?: string | null;
             /**
              * Started By
              * Format: uuid
@@ -10909,16 +11174,21 @@ export interface components {
         WorkspaceSettingsOut: {
             /**
              * Calls Enabled
-             * @default true
+             * @default false
              */
             calls_enabled: boolean;
             /** Icon Version */
             icon_version?: string | null;
             /**
-             * Meeting Base Url
-             * @default https://meet.jit.si/
+             * @default {
+             *       "enabled": false,
+             *       "screen_share": false,
+             *       "video": false
+             *     }
              */
-            meeting_base_url: string | null;
+            in_app_calls: components["schemas"]["InAppCallsOut"];
+            /** Meeting Base Url */
+            meeting_base_url?: string | null;
             /**
              * Preview Before Join
              * @default true
@@ -10937,6 +11207,8 @@ export interface components {
         WorkspaceSettingsUpdate: {
             /** Default Channel Ids */
             default_channel_ids?: string[] | null;
+            /** In App Calls Enabled */
+            in_app_calls_enabled?: boolean | null;
             /** Meeting Base Url */
             meeting_base_url?: string | null;
             /** Preview Before Join */
@@ -13523,6 +13795,129 @@ export interface operations {
             };
         };
     };
+    list_calls_api_v1_calls_get: {
+        parameters: {
+            query?: {
+                /** @description Only true is supported */
+                active?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_call_api_v1_calls__call_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_call_api_v1_calls__call_id__join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallJoinedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leave_call_api_v1_calls__call_id__leave_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_canvas_templates_api_v1_canvas_templates_get: {
         parameters: {
             query?: never;
@@ -14149,7 +14544,7 @@ export interface operations {
             };
         };
     };
-    start_call_api_v1_channels__channel_id__calls_post: {
+    legacy_start_call_api_v1_channels__channel_id__calls_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14158,19 +14553,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CallCreate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CallOut"];
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -14505,6 +14896,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_or_join_api_v1_channels__channel_id__huddle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HuddleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HuddleOut"];
                 };
             };
             /** @description Validation Error */
