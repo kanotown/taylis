@@ -507,6 +507,29 @@ class Store(private val persistence: Persistence? = null) {
         private set
     fun setActions(list: jp.chikuwachat.android.api.ActionListOut?) {
         actions = list?.takeIf { it.enabled && me?.role != "guest" }
+        if (actions == null) actionStatuses = emptyMap()
+        emit()
+    }
+    /**
+     * M143 (docs/ACTIONS.md §12): the state of each group's devices, by [jp.chikuwachat.android.ui.ActionRules.statusKey]
+     * ("g:<label>", or "a:<id>" for a button without a group). From GET /actions/status and actions.status_updated; not
+     * persisted; cleared while the buttons are off.
+     */
+    var actionStatuses: Map<String, jp.chikuwachat.android.api.ActionStatusOut> = emptyMap()
+        private set
+    /** A whole answer of GET /actions/status (groups no longer in it are dropped). */
+    fun setActionStatuses(list: jp.chikuwachat.android.api.ActionStatusListOut) {
+        actionStatuses = if (!list.enabled || actions == null) emptyMap()
+            else list.statuses.associateBy { jp.chikuwachat.android.ui.ActionRules.statusKey(it.groupLabel, it.actionId) }
+        emit()
+    }
+    /** One group's state (actions.status_updated): an answer older than the one held is ignored. */
+    fun applyActionStatus(status: jp.chikuwachat.android.api.ActionStatusOut) {
+        if (actions == null) return
+        val key = jp.chikuwachat.android.ui.ActionRules.statusKey(status.groupLabel, status.actionId)
+        val held = actionStatuses[key]
+        if (held != null && jp.chikuwachat.android.ui.ActionRules.isOlder(status.fetchedAt, held.fetchedAt)) return
+        actionStatuses = actionStatuses + (key to status)
         emit()
     }
 

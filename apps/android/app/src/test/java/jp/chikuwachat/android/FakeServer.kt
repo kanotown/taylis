@@ -319,6 +319,14 @@ class FakeServer {
             return out
         }
 
+        /** M143 §12.3: the groups' states (empty while off and for guests); failures from [statusFailures] first. */
+        override suspend fun actionStatuses(refresh: Boolean): jp.chikuwachat.android.api.ActionStatusListOut {
+            statusReads += refresh
+            statusFailures.removeFirstOrNull()?.let { throw it }
+            if (users.getValue(userId).role == "guest" || !actionList.enabled) return jp.chikuwachat.android.api.ActionStatusListOut(enabled = actionList.enabled)
+            return jp.chikuwachat.android.api.ActionStatusListOut(enabled = true, statuses = actionStatusList)
+        }
+
         /** Review v0.1.37 #6: when set, the next GET /reservation-pools answers as the server was then, but only once released. */
         var poolsHold: Hold? = null
         override suspend fun reservationPools(): List<PoolOut> {
@@ -715,6 +723,16 @@ class FakeServer {
     fun actionListFor(userId: String): jp.chikuwachat.android.api.ActionListOut =
         if (users.getValue(userId).role == "guest") actionList.copy(actions = emptyList())
         else if (actionList.enabled) actionList else actionList.copy(actions = emptyList())
+
+    /** M143 §12: what GET /actions/status answers, each read (`refresh` or not), and failures thrown before answering. */
+    var actionStatusList: List<jp.chikuwachat.android.api.ActionStatusOut> = emptyList()
+    val statusReads = ArrayList<Boolean>()
+    val statusFailures = ArrayDeque<Throwable>()
+
+    /** actions.status_updated to the people who may press something (here: everyone but guests). */
+    fun announceActionStatus(status: jp.chikuwachat.android.api.ActionStatusOut) {
+        emit(nonGuests(), event("actions.status_updated", null, null, Codec.snake.encodeToJsonElement(jp.chikuwachat.android.api.ActionStatusOut.serializer(), status) as JsonObject))
+    }
 
     fun configureActions(list: jp.chikuwachat.android.api.ActionListOut) {
         actionList = list

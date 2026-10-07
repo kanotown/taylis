@@ -17,6 +17,8 @@ data class ActionOut(
     val confirm: Boolean = true,
     val confirmText: String? = null,
     val position: Int = 0,
+    /** §12: this button gives its group's state (one per group); "状態を確認中…" until the first answer. */
+    val providesStatus: Boolean = false,
 )
 
 /**
@@ -47,4 +49,40 @@ data class ActionInvokeOut(
     val message: String? = null,
     val at: String,
     val repeated: Boolean = false,
+)
+
+/** §12.2: one line of a state's details (「電池」「85%」). */
+@Serializable
+data class ActionStatusDetail(val label: String, val value: String)
+
+/** §12.2: what the relay said: `tone` ok / warn / alert / neutral (unknown = neutral), `state` a short word, ≤ 6 details. */
+@Serializable
+data class ActionStatusValue(
+    val text: String,
+    val tone: String = "neutral",
+    val state: String? = null,
+    val details: List<ActionStatusDetail> = emptyList(),
+)
+
+/**
+ * §12.3: a group's state. `actionId` is the button that gives it (maybe one I may not press: match by `groupLabel`, or by
+ * `actionId` for a button without a group). `ok: false` with `error` (timeout / network / relay_error / invalid_answer /
+ * url_not_allowed / secret_missing) and the relay's `message`. Also `actions.status_updated`'s data.
+ */
+@Serializable
+data class ActionStatusOut(
+    val actionId: String,
+    val groupLabel: String? = null,
+    val ok: Boolean,
+    val status: ActionStatusValue? = null,
+    val error: String? = null,
+    val message: String? = null,
+    val fetchedAt: String,
+)
+
+/** §12.3: GET /actions/status (`enabled: false` while off; empty for guests). */
+@Serializable
+data class ActionStatusListOut(
+    val enabled: Boolean,
+    val statuses: List<ActionStatusOut> = emptyList(),
 )

@@ -721,6 +721,10 @@ class ApiClient(
     override suspend fun invokeAction(actionId: String, clientInvokeId: String): ActionInvokeOut =
         request("POST", "/api/v1/actions/$actionId/invoke", buildJsonObject { put("client_invoke_id", clientInvokeId) })
 
+    /** M143 §12.3: the state of what the buttons operate; `refresh` skips the server's cache (429 rate_limited). */
+    override suspend fun actionStatuses(refresh: Boolean): ActionStatusListOut =
+        request("GET", "/api/v1/actions/status" + if (refresh) "?refresh=true" else "")
+
     /** My state (a workspace state or one of mine) and note (null = none); 422 attendance_state_invalid. */
     suspend fun setMyAttendance(stateId: String, note: String?): AttendanceEntryOut =
         request("PUT", "/api/v1/attendance/me", buildJsonObject {

@@ -336,6 +336,16 @@ class SyncEngine(
         }.onFailure { Log.w("SyncEngine", "could not read the action buttons", it) }
     }
 
+    /**
+     * M143 (docs/ACTIONS.md §12.3): GET /actions/status into the store. Throws (the page shows why: a 429 on [refresh], no
+     * answer from our server); nothing while the buttons are off or for guests.
+     */
+    suspend fun loadActionStatuses(refresh: Boolean = false) {
+        val actionsApi = api as? ActionsApi ?: return
+        if (store.me?.role == "guest" || store.actions == null) return
+        store.setActionStatuses(actionsApi.actionStatuses(refresh))
+    }
+
     private var actionsReads = 0
     private var actionsKept = 0
     private var actionsReload: Job? = null
@@ -768,6 +778,8 @@ class SyncEngine(
         applyWorkspaceSettings(bootstrap.workspaceSettings, live = false) // the reconnect's openChannel loads a preview again
         store.setAttendance(bootstrap.attendance) // M140: null for guests, while off, before M140
         store.setActions(bootstrap.actions) // M143: null for guests, while off, before M143
+        // M143 §12.3: states shown before the reconnect are read again (an event may have been missed).
+        if (store.actionStatuses.isNotEmpty()) scope.launch { runCatching { loadActionStatuses() } }
         drafts.applyBootstrap(bootstrap.drafts)
         wiki.applyBootstrap(bootstrap.wiki) // M122: the tree read, or caught up from the feed
         scope.launch { loadScheduled() }
@@ -903,6 +915,10 @@ class SyncEngine(
             "attendance.config_updated" -> scheduleAttendanceReload()
             // M143: the settings or a button changed; what I may press differs per person, so the event is empty.
             "actions.updated" -> scheduleActionsReload()
+            // M143 §12.3: a group's state, read again after a press or found changed (older than the one held: ignored).
+            "actions.status_updated" -> runCatching {
+                Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.ActionStatusOut.serializer(), frame.data)
+            }.getOrNull()?.let(store::applyActionStatus)
             "reservation.notice" -> {
                 // M112: an activity item for me (an operator's to-do, or news of my own reservation).
                 scheduleActivityRefresh()

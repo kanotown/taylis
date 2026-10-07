@@ -111,6 +111,8 @@ fun AttendancePane(controller: AppController, version: Int) {
     val choices = AttendanceRules.choices(board, meId)
     val own = AttendanceRules.myOwnStates(board, meId)
     val onAttendance = remember(version) { ActionRules.onAttendance(store.actions, store.me?.role) }
+    // M143 §12.4: the groups' states over the buttons (read while this page is open).
+    val actionFeed = rememberActionStatusFeed(controller, active = onAttendance.isNotEmpty())
     fun saveNote() {
         val current = mine ?: return
         val cleaned = AttendanceRules.cleanNote(note)
@@ -122,7 +124,7 @@ fun AttendancePane(controller: AppController, version: Int) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             // M143 (docs/ACTIONS.md §9): the 操作ボタン on top, when the workspace puts them here (show_on_attendance).
             if (onAttendance.isNotEmpty()) item(key = "actions") {
-                ActionButtons(controller, onAttendance, version, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), compact = true)
+                ActionButtons(controller, onAttendance, version, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), compact = true, feed = actionFeed)
             }
             item(key = "count") {
                 Text(

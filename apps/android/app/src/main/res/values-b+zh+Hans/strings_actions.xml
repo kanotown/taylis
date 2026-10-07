@@ -16,4 +16,18 @@
     <string name="actions_error_pending">仍在处理中。请稍后确认状态。</string>
     <string name="actions_error_failed">无法执行。</string>
     <string name="actions_error_too_fast">请稍等片刻再按。</string>
+    <!-- §12: the state of what the buttons operate. -->
+    <string name="actions_status_loading">正在确认状态…</string>
+    <string name="actions_status_failed">无法获取状态：%1$s</string>
+    <string name="actions_status_error_timeout">中继没有响应</string>
+    <string name="actions_status_error_unreachable">无法连接到中继</string>
+    <string name="actions_status_error_relay">中继返回了错误</string>
+    <string name="actions_status_error_invalid">无法读取中继的回答</string>
+    <string name="actions_status_error_setup">此按钮的设置有问题。请联系管理员</string>
+    <string name="actions_status_error_failed">原因不明</string>
+    <string name="actions_status_checked_now">刚刚确认</string>
+    <string name="actions_status_checked_minutes">%1$s 分钟前确认</string>
+    <string name="actions_status_checked_at">%1$s 确认</string>
+    <string name="actions_status_refresh">刷新状态</string>
+    <string name="actions_status_label">%1$s：</string>
 </resources>
