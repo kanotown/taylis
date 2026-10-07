@@ -97,7 +97,8 @@
 - `dm_pins` (M118) は自分が先頭に固定した DM・グループ DM の id (`channels` に含まれるものだけ、固定の古い順。この順で DM の一覧の先頭に並べる。DATA_MODEL.md conversation_pins)。M118 より前のサーバは送らない (固定なしとみなし、固定の操作を出さない)。変化は `dm_pin.updated` で届く。
 - `blocked_user_ids` (M104、docs/MODERATION.md §4) は自分がブロックした人の id (古い順)。その人のメッセージは折りたたんで
   表示し、通知しない (未読の数え方は変えない)。M104 より前のサーバは送らない (空とみなす)。変化は `block.updated` で届く。
-- `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join, icon_version, calls_enabled, meeting_base_url }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。`calls_enabled` / `meeting_base_url` (M117、docs/CALLS.md) が無いサーバ (M117 より前) では通話の 📞 を出さない。
+- `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。`in_app_calls` (M130、docs/CALLS.md §5.1) は `{ enabled, video, screen_share }` (`enabled` = 管理者のスイッチ かつ サーバに LiveKit の設定がある)。無いサーバ (M130 より前) では通話のボタンを出さない。M117 の `calls_enabled` / `meeting_base_url` は M130 からいつも false / null (公開済みの M117 のクライアントが 📞 を出さないように)。
+- `active_calls` (M130) は自分が入れる会話の通話中の通話 (`[CallOut]`、下の `call.started`)。変化は `call.*` で届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -230,7 +231,7 @@
 | type | audience | seq | data |
 | --- | --- | --- | --- |
 | `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, reply_user_ids, updated_seq, participant_ids }`。`participant_ids` はスレッドのフォロワー (THREADS.md §2) で、プッシュ対象の判定に使う。`reply_user_ids` は親の `MessageOut.reply_user_ids` と同じ値 (C3、返信した人の最近順・最大 5。古いサーバは送らないので、クライアントは無ければ手元の値を残す)) |
-| `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b。M53 の日程調整の回答・コメント・決定も) / `ack` (M15e: `acks` の変化) / `collection` (L6、M59: 回収のある投稿の `collection` の変化。対象者の最初の返信・最後の返信の削除、締切後の催促 (`reminded_at`)、投稿直後に回収が付いたとき。返信の `message.created` / `message.deleted` の後に、親が別の seq を取って出す。RECURRING.md §3) / `tasks` (L9、M63: `MessageOut.tasks` の変化。そのメッセージから作った共有のタスクの作成・削除・状態・期限・担当。REVIEWS.md §2.2) / `attachments` (M79: 添付の動画の縦横・長さ・ポスターをサーバが後から埋めた。`app.cli probe-videos` の backfill が出す。SECURITY.md §4 「動画」。M108: 添付の文書のプレビューが `ready` / `failed` になった。preview loop と `app.cli generate-previews` が出す。docs/PREVIEWS.md §3) |
+| `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b。M53 の日程調整の回答・コメント・決定も) / `ack` (M15e: `acks` の変化) / `collection` (L6、M59: 回収のある投稿の `collection` の変化。対象者の最初の返信・最後の返信の削除、締切後の催促 (`reminded_at`)、投稿直後に回収が付いたとき。返信の `message.created` / `message.deleted` の後に、親が別の seq を取って出す。RECURRING.md §3) / `tasks` (L9、M63: `MessageOut.tasks` の変化。そのメッセージから作った共有のタスクの作成・削除・状態・期限・担当。REVIEWS.md §2.2) / `call` (M130: 知らせた通話が終わり `message.call` が変わった。docs/CALLS.md §5.4) / `attachments` (M79: 添付の動画の縦横・長さ・ポスターをサーバが後から埋めた。`app.cli probe-videos` の backfill が出す。SECURITY.md §4 「動画」。M108: 添付の文書のプレビューが `ready` / `failed` になった。preview loop と `app.cli generate-previews` が出す。docs/PREVIEWS.md §3) |
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }`。アクティビティのバッジも取り直す (その会話のメンションが既読になる、MOBILE_UI.md §6.4) |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
@@ -280,12 +281,13 @@
 | `channel.member_updated` | channel | — | `{ channel_id, user_id, role }` (L4、M31)。オーナーの追加・解除 (`PATCH /channels/{id}/members/{user_id}`)。自分なら `membership.role` を変え、開いているメンバー一覧を読み直す |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` (UserPublic)。本人だけの設定 (UserMe の `notify_keywords`・`notification_default`・`notify_reactions`・`quick_reactions`・`nav_items`・`locale`・`composer_mode` など) は載らない。`PATCH /users/me` はどの項目でも `updated_at` を進めて `user.updated` を出すので、**自分についての `user.updated` の `updated_at` が手元の `me` より新しければ、別の端末が設定を変えた**: クライアントは `GET /users/me` を読み直して `me` を置き換える (M50。iOS・Android も M111 から読み直す。読み直さない端末も次の bootstrap の `me` で揃う) |
 | `session.revoked` | session | — | `{ reason }` |
-| `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join, icon_version, calls_enabled, meeting_base_url } }` (M88、docs/MEMBERSHIP.md §3。M117 の通話は docs/CALLS.md)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
+| `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url } }` (M88、docs/MEMBERSHIP.md §3。`in_app_calls` は M130、`calls_enabled` / `meeting_base_url` はいつも false / null。docs/CALLS.md)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
+| `call.started` / `call.updated` / `call.ended` | channel | — | `{ call: CallOut }` (M130、docs/CALLS.md §5.3)。`CallOut` = `{ id, channel_id, message_id, started_by, started_at, ended_at, participants: [{ user_id, joined_at }], participant_count, peak_participants }`。通話が始まった / 人が入った・抜けた / 終わった。会話の「通話中 (n)」を id で置き換える (ended なら外す)。seq は無く取りこぼしうるので、再接続のあとは bootstrap の `active_calls` か `GET /calls?active=true` で置き換える。通話の記録はメッセージの側 (終わると `message.updated` の change `call`) |
 
 `message.created` の `message.type` が `"system"` の行 (M88 の参加・退出の一言。`system_event` に `{kind, actor_id, user_ids}`) も
 seq を 1 つ取り、ふつうの行と同じに差分・マージする。未読・通知・メンションには数えない (§10.1 12.、docs/MEMBERSHIP.md §1)。
 
-`message.call` が null でない行 (M117、`{url, started_by}`) は通話を始めたメッセージ (docs/CALLS.md §5)。ふつうの
+`message.call` が null でない行 (M130: `{kind: "livekit" | "link", url, started_by, call_id, started_at, ended_at, duration_seconds, participant_count}`。M117 の会議リンクは `kind: "link"` で `url` / `started_by` だけ) は通話を始めたメッセージ (docs/CALLS.md §5.4)。LiveKit の通話の `url` は `<PUBLIC_BASE_URL>/call/<id>`。通話が終わると `message.updated` (change `call`、新しい seq) で終わった時刻・長さ・人数が入る。ふつうの
 `type = "user"` の行なので、未読・通知・検索も同じに扱う。
 
 `message` オブジェクトの形は REST と同一 (`openapi/openapi.json` の `MessageOut` スキーマ)。フレームと各イベントの

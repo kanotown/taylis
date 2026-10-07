@@ -1737,7 +1737,8 @@ CREATE TABLE messages (
   system_event        jsonb,                               -- M88: type = 'system' の中身 {kind, actor_id, user_ids} (0071)。人の投稿は NULL
   workflow_id         uuid REFERENCES workflows(id),       -- M94: ワークフローのフォームから投稿した (0075)。ほかは NULL
   workflow_name       varchar(40),                         -- M94: その時のワークフローの名前 (MessageOut.workflow = {id, name})
-  call_url            text,                                -- M117 (0091): 通話を始めたメッセージの会議の部屋の URL (MessageOut.call = {url, started_by}、docs/CALLS.md)。ほかは NULL
+  call_url            text,                                -- M117 (0091): 通話を始めたメッセージの会議の部屋の URL。M130 からは LiveKit の通話の `/call/<id>` のページ (MessageOut.call、docs/CALLS.md)。ほかは NULL
+  call_id             uuid REFERENCES calls(id) ON DELETE SET NULL, -- M130 (0097): このメッセージが知らせる通話 (MessageOut.call.kind = 'livekit')。ほかは NULL
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
@@ -2138,6 +2139,38 @@ CREATE TABLE audit_logs (
 );
 ```
 
+### calls / call_participants (アプリ内通話、M130、docs/CALLS.md)
+
+```sql
+CREATE TABLE calls (
+  id                 uuid PRIMARY KEY,                    -- UUIDv4。LiveKit の部屋の名前 (推測されても入れない。入るのはトークン)
+  channel_id         uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  message_id         uuid UNIQUE REFERENCES messages(id) ON DELETE SET NULL, -- 「🎧 通話を始めました」のメッセージ (始めたトランザクションで入れる)
+  started_by         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at         timestamptz NOT NULL DEFAULT now(),
+  ended_at           timestamptz,                         -- NULL = 通話中
+  end_reason         text,                                -- 'empty' (LiveKit が部屋を閉じた) | 'reconciled' (突き合わせで無かった) | 'archived' | 'admin'
+  peak_participants  integer NOT NULL DEFAULT 0,          -- 同時に居た最大の人数
+  participant_count  integer NOT NULL DEFAULT 0           -- 一度でも入った人の数 (重複なし)
+);
+CREATE UNIQUE INDEX calls_channel_open_uidx ON calls (channel_id) WHERE ended_at IS NULL;  -- 会話ごとに通話中は 1 つ
+CREATE INDEX calls_open_idx ON calls (started_at) WHERE ended_at IS NULL;
+
+CREATE TABLE call_participants (
+  id           uuid PRIMARY KEY,                          -- UUIDv7
+  call_id      uuid NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  livekit_sid  text NOT NULL UNIQUE,                      -- LiveKit の参加者の sid。webhook の重複・順序の入れ替わりを吸収する
+  joined_at    timestamptz NOT NULL,
+  left_at      timestamptz                                -- NULL = 通話の中
+);
+CREATE INDEX call_participants_open_idx ON call_participants (call_id) WHERE left_at IS NULL;
+CREATE INDEX call_participants_call_idx ON call_participants (call_id, user_id);
+```
+
+`call_participants` は LiveKit の接続ごとに 1 行 (同じ人が抜けて戻ると 2 行)。通話が終わると、通話のメッセージに
+`message.updated` (change `call`、新しい seq) で終わった時刻・長さ・人数が載る。
+
 ### workspace_identity (デプロイの識別子、WORKSPACES.md)
 
 ```sql
@@ -2160,7 +2193,8 @@ CREATE TABLE workspace_settings (
   preview_before_join       boolean NOT NULL DEFAULT true,   -- 「参加前にチャンネルの中を見られる」(M27 のプレビュー)
   default_channel_ids       uuid[],                          -- M90 (0073) 「既定のチャンネル」、順序付き。NULL = 一度も保存していない
   icon_key                  text,                            -- M93 (0074) ワークスペースのアイコン (オブジェクトストアの `workspace-icon/<uuid7>`、256 px の PNG)。NULL = 無し (頭文字のタイル)
-  meeting_base_url          text DEFAULT 'https://meet.jit.si/', -- M117 (0091) 通話の会議サービス (部屋の名前を後ろに付ける、末尾は「/」)。NULL = 通話はオフ (docs/CALLS.md)
+  meeting_base_url          text,                            -- M117 (0091) 通話の会議サービス。M130 (0097) で既定を外し、値をすべて NULL にした (使わない。M136 で列を消す)
+  in_app_calls_enabled      boolean NOT NULL DEFAULT true,   -- M130 (0097) 「アプリ内通話」。サーバに LiveKit の設定がある時だけ効く (docs/CALLS.md)
   updated_at                timestamptz NOT NULL DEFAULT now(),
   updated_by                uuid REFERENCES users(id) ON DELETE SET NULL
 );
@@ -2172,8 +2206,9 @@ CREATE TABLE workspace_settings (
 公開・未アーカイブでないものを飛ばす (MEMBERSHIP.md §6)。
 `icon_key` はキーの最後の部分 (アップロードごとの uuid7) を版 `icon_version` として、`GET /server` (認証不要)・bootstrap・
 イベントに出す。画像は `GET /server/icon` (認証不要。WORKSPACES.md §3.4)。
-`meeting_base_url` (M117) は bootstrap・イベントの `workspace_settings` に `calls_enabled` (NULL でない) と一緒に出す。
-行が無ければ既定の `https://meet.jit.si/` として読む (docs/CALLS.md §3)。
+`in_app_calls_enabled` (M130) は bootstrap・イベントの `workspace_settings` に `in_app_calls: {enabled, video, screen_share}`
+として出す (`enabled` = この値 かつ サーバに LiveKit の設定がある)。M117 の `calls_enabled` はいつも false、
+`meeting_base_url` はいつも null で出す (公開済みの M117 のクライアントのため。docs/CALLS.md §11)。
 
 ### import_refs (移行元の対応、M18・M87)
 
