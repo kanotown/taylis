@@ -555,7 +555,8 @@ CSV の書き出し：ビューの今の並べ替え・絞り込み・列で、U
 - 通知（PushPlanner、PUSH_NOTIFICATIONS.md に追加）：
   - `page_mention`：ページで新しくメンションされた（読める人だけ。キャンバスの §18.1 と同じ規則、1 ページ 1 項目（未読の間））。
   - `page_shared`：名前を挙げて共有された（§4.8）。
-  - アクティビティの項目（`include=page_mention,page_shared`。知らない端末には出ない）。
+  - アクティビティの項目（`include=page_mention,page_shared`。知らない端末には出ない）。開けば既読（2026-10-07、MOBILE_UI.md §6.4。
+    開いた後のメンションは新しい項目）。
 - ページの「フォロー」（変更の通知）は後（§13 Q13）。
 
 ## 10. 同期

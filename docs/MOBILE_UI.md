@@ -229,8 +229,9 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
 
 ### 6.4 アクティビティ
 ```
-│ アクティビティ                            ⋯ │ ← ⋯: すべて既読
+│ アクティビティ 未読 3 件   [✓✓ すべて既読にする] │ ← 2026-10-07: 見出しに数とボタン（⋯ のメニューはやめた）
 │ [すべて][メンション][スレッド][リアクション]       │
+│                                  (● 未読のみ) │
 │ ● (av) 山田先生 · #輪講 · 10:05             │
 │        @あなた 来週の発表順を…                │
 │ ● 💬 「学会の締切」 3 件の新しい返信 · #m2-進捗   │
@@ -253,9 +254,42 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
        - 「チャンネルにも送信」した返信はどちらか一方で読めば既読（上の 2 つの両方がまだのときだけ未読）
        - 既読位置は自分のものだけを見る（他の人が読んでも変わらない）。「ここから未読にする」（`mode: "set"`）で位置が戻れば、`activity_read_at` より新しい項目はまた未読になる
     - `reaction`・`canvas_mention` は 1 だけ（メッセージの既読位置とは関係しない）。`reservation` は 1 かつ「対応済み」でない（M112 のまま）
-    - サーバは `GET /activity/summary`・bootstrap の `activity`・`PUT /activity/read` の応答の `unread_count` / `mention_unread` をこの規則で数え、`GET /activity` の各項目に `read: bool` を付ける（同じ規則。null・無しはこの規則より前のサーバなので `at` と `read_at` を比べる）。項目ごとの既読の行は作らない（既読位置から求める）
+    - サーバは `GET /activity/summary`・bootstrap の `activity`・`PUT /activity/read` の応答の `unread_count` / `mention_unread` をこの規則で数え、`GET /activity` の各項目に `read: bool` を付ける（同じ規則。null・無しはこの規則より前のサーバなので `at` と `read_at` を比べる）。2026-10-07 からは下の「開いたら既読」も加わる
     - クライアント：未読の点は `read` で出す。接続中に `read.updated`（自分の会話の既読位置）と `thread.updated`（`reason: "read"`、自分のスレッドの既読位置）を受けたら、今のメンション・返信の `message.created` と同じくまとめて（デバウンスして）`GET /activity/summary` を取り直す。一覧を表示・保持していれば、上の 2 の規則でその場で項目の `read` を true にしてよい（`channel_id` と `last_read_seq`、または `parent_id` と `last_read_seq` で該当する項目）。`reason: "set"` で位置が戻ったときは一覧を読み直す
     - アプリのアイコンのバッジ（プッシュの `badge`）はアクティビティの数を含まない（PUSH_NOTIFICATIONS.md §4.2）ので、この規則で変わらない
+  - **開いたら既読（2026-10-07、Slack と同じ）**。利用者の声：「アクティビティの通知がいつ消える（既読になる）のかわかりにくい」。それまでは
+    タブを開いて約 1.5 秒で `activity_read_at` が進み（「すべて」のとき）、見ただけで全部が既読になっていた。これをやめる。
+    **項目は次のどれかまで未読**（太字・点・「未読 n 件」とバッジに数える）：
+    1. **その項目を開いた**（一覧の行をクリック・タップ）。`PUT /activity/items/read` `{item_ids}`
+    2. メンション・スレッドの返信は、そのメッセージを会話・スレッドで読んだ（上の 2026-10-06 の規則のまま）
+    3. **「すべて既読にする」**を押した（見出しのボタン。`PUT /activity/read`、`read_at` は今。既読位置より前は全部既読）
+    4. 予約の担当者の作業は「対応済み」になった（RESERVATIONS.md §5 のまま）
+
+    **一覧を表示する・スクロールするだけでは何も既読にしない**（`PUT /activity/read` を自動で送らない）。
+    - **項目の id**：`GET /activity` の各項目の `id`（uuid）。`mention`・`thread_reply`・`reaction` はそのメッセージの id、
+      `canvas_mention`・`page_mention`・`page_shared`・`reservation` はその項目の `item_id`（`canvas.item_id` など）。
+      `id` の無い項目はこれより前のサーバのもの（開いても送らない。既読位置で既読になるのを待つ）
+    - **開いた項目の既読**：サーバは `activity_item_reads(user_id, item_id, read_at)` に開いた時刻を残す（DATA_MODEL.md）。
+      項目は `at` ≦ その時刻のあいだ既読。**リアクションの項目は、あとで誰かがリアクションすると `at` が進むので未読に戻る**
+      （Slack と同じ。キャンバス・ドキュメントのメンションは開いた後のメンションが新しい項目になる）
+    - `PUT /activity/items/read`：`{item_ids: [uuid]}`（1〜100 件）、`include` は他と同じ。冪等。自分の項目でない id は黙って捨てる。
+      応答は `ActivitySummaryOut`（新しいバッジ）。自分の全端末に `activity.items_read` `{item_ids, read_at}`（user 宛て、seq なし）
+    - `PUT /activity/read`（すべて既読にする）はそのまま。既読位置を進めたとき、その位置以前の `activity_item_reads` を消す（表が育たない）
+    - `GET /activity` の `read`・summary の数・bootstrap の `activity` は 1〜4 の全部で求める
+    - **クライアントの規則**（Web は実装済み。iOS・Android は次にこれに合わせる）：
+      - 行の点と太字：`read == false` かつ `at` > 今持っている `read_at`（store の `activity.read_at`。他端末の「すべて既読にする」で
+        `activity.read` が来たら進む）かつ「開いた項目」（下）で既読でない かつ（メンション・返信は）会話で読んでいない。
+        `read == null` のサーバは `at` と `read_at` だけ
+      - 行を開いたら：その場で「開いた項目」に `id → at`（その行の `at`。端末の時計は使わない）を入れて点を消し、
+        `PUT /activity/items/read` を送り、応答をバッジにする。それから行の中身（会話・スレッド・キャンバス・ページ・予約）を開く。
+        メンション・返信は会話を開けば読めるが、すぐ消えるようにこれも送る
+      - `activity.items_read` を受けたら「開いた項目」に `id → read_at`（進むときだけ）を入れ、まとめて `GET /activity/summary` を取り直す
+      - 見出し：「未読 n 件」（`unread_count`、99 は「99+」。0 なら「未読はありません」）と「すべて既読にする」（0 のときは押せない）。
+        「すべて既読にする」は `read_at` = max(今, 持っている行の一番新しい `at`)
+      - 既読の行はふつうの字（名前は medium、本文は薄い色）、未読の行は太字・左の点・薄い色の背景
+      - 「未読のみ」：持っている行から既読の行を除く（端末の中だけ。開いた行は一覧から消える）。空なら「未読のアクティビティはありません」
+    - **互換**：これより前のクライアント（iOS・Android の今の版）は今までどおり表示すると `PUT /activity/read` を送るので、その端末で
+      開けば全部既読になる（`activity.read` で他の端末も既読になる）。これは受け入れる（それらの版が新しい規則に合わせるまで）
 - 研究室向けの候補: 「確認依頼」フィルタ。確認を求められていて自分がまだ確認していない投稿 (M15e の ack) を出す (決定事項 3)。
 
 ### 6.5 自分 (You)
@@ -396,6 +430,9 @@ Aa → 書式バー [B][I][S][`][```][🔗][•][1.][❝] (選択範囲を記法
 - 保存するのは `users.activity_read_at timestamptz` の 1 列だけ (マイグレーション 1 本)。
   - 項目ごとに既読の行は作らない (CLAUDE.md の ReadState と同じ考え方)
   - 2026-10-06：メンションとスレッドの返信は、会話・スレッドの既読位置で読んだものも既読（§6.4）。数える問い合わせは既読位置を主キーで 1 回ずつ引くだけで、メンションは GIN と `messages_mention_all_idx` で引く（`mention_all` の条件を部分インデックスの述語 `mention_all AND deleted_at IS NULL` の形で書く）。40 万件・既読位置 200 日前の合成データでメンション 2〜5 ms、返信はフォロー中のスレッド数に比例（1.2 万スレッドで約 25 ms、数百なら 1〜5 ms）。マイグレーション不要
+  - 2026-10-07：開いた項目だけは `activity_item_reads` に行を作る（§6.4「開いたら既読」、マイグレーション 0099）。CLAUDE.md の
+    「読んだメッセージごとに行を作らない」に反しないよう、行は利用者が一覧で開いた通知の分だけ・既読位置より後の項目だけで、
+    「すべて既読にする」で位置を進めるとその位置以前の行を消す（メッセージの既読は今までどおり read_states の位置）
 - 接続中の件数:
   - クライアントがイベントから数える。メンションの `message.created`、自分の投稿への `message.updated change=reaction`、`thread.updated`
   - 再接続したら bootstrap の値で直す (WS だけに頼らない)
