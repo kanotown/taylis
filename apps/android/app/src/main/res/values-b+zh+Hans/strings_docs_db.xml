@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="docs_db_title_prop">名称</string>
+    <string name="docs_db_table">表格</string>
+    <string name="docs_db_calendar">日历</string>
+    <string name="docs_db_views">视图</string>
+    <string name="docs_db_new_row">新建</string>
+    <string name="docs_db_new_row_title">新建行</string>
+    <plurals name="docs_db_count">
+        <item quantity="other">%1$d 行</item>
+    </plurals>
+    <string name="docs_db_load_more">加载更多</string>
+    <string name="docs_db_load_failed">无法加载数据库</string>
+    <string name="docs_db_empty">暂无行</string>
+    <string name="docs_db_agenda_empty">本月没有行</string>
+    <string name="docs_db_prev_month">上个月</string>
+    <string name="docs_db_next_month">下个月</string>
+    <string name="docs_db_need_date_prop">日历需要日期属性（请在电脑上添加）</string>
+    <string name="docs_db_month_pattern">y年M月</string>
+    <string name="docs_db_day_pattern">M月d日（E）</string>
+    <string name="docs_db_date_pattern">y/MM/dd</string>
+    <string name="docs_db_hidden_rows">无法访问的页面</string>
+    <string name="docs_db_hidden_rows_hint">有指向您无法读取的行的链接（更改后仍会保留）</string>
+    <string name="docs_db_properties">属性</string>
+    <string name="docs_db_no_properties">暂无属性</string>
+    <string name="docs_db_referenced_by">%1$s 的 %2$s</string>
+    <string name="docs_db_view_only">仅查看 — 您没有更改值的权限</string>
+    <string name="docs_db_edit_cell">编辑%1$s</string>
+    <string name="docs_db_empty_value">空</string>
+    <string name="docs_db_empty_value_edit">空（点按以填写）</string>
+    <string name="docs_db_clear">清除</string>
+    <string name="docs_db_done">完成</string>
+    <string name="docs_db_start_date">开始</string>
+    <string name="docs_db_end_date">结束日期</string>
+    <string name="docs_db_include_time">包含时间</string>
+    <string name="docs_db_find_person">查找成员</string>
+    <string name="docs_db_find_row">查找行</string>
+    <string name="docs_db_no_rows_found">没有可读取的行</string>
+    <string name="docs_db_no_options">暂无选项（拥有完全访问权限的人可在电脑上添加）</string>
+    <string name="docs_db_invalid_number">请输入数字</string>
+    <string name="docs_db_invalid_url">请输入以 http:// 或 https:// 开头的网址</string>
+    <string name="docs_db_remove">移除</string>
+    <string name="docs_db_add">添加</string>
+    <string name="docs_db_open_row">打开行</string>
+    <string name="docs_db_open_link">打开链接</string>
+    <string name="docs_db_select_row">请从列表中选择一行</string>
+</resources>
