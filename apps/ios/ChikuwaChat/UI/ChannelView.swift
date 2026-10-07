@@ -1926,6 +1926,11 @@ struct ComposerView: View {
         .animation(.easeOut(duration: 0.15), value: canSend)
         .animation(.easeOut(duration: 0.2), value: typing)
         .background(Color(.systemBackground))
+        // Sized before the conversation above it: a VStack offers its flexible children equal shares, so with the
+        // keyboard up the composer got half of what was left and the input shrank to fit it — to ~1.2 lines once the
+        // attachment strip took its 78 pt of that half (build 106). Now the input grows to its six lines whenever the
+        // screen has the room, the conversation takes the rest, and only a screen too short for both scrolls inside.
+        .layoutPriority(1)
         // On the composer itself: on the attachments strip (nothing drawn without attachments) the dialog never showed
         // and 「後で送信」 did nothing (tester, 2026-09-30).
         .confirmationDialog("後で送信", isPresented: $showSchedule, titleVisibility: .visible) {
