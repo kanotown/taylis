@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Publish a desktop release (installers + in-app update) to the public, binaries-only repository
-# kanotown/taylis-releases, from this Mac. docs/DEVELOPMENT.md 「デスクトップ版のリリース」.
+# Publish a desktop release (installers + in-app update) as the GitHub Release of the tag in the public source repository
+# kanotown/taylis, from this Mac, and mirror its latest.json to the legacy binaries-only repository
+# kanotown/taylis-releases (apps before v0.1.42 check there). docs/DEVELOPMENT.md 「デスクトップ版のリリース」.
 #
 #   apps/desktop/scripts/release-desktop.sh vX.Y.Z [--notes FILE] [--rebuild-windows] [--dry-run]
 #
@@ -11,12 +12,19 @@
 #    bundle (.app.tar.gz) with the same key. Developer ID signing and notarisation when APPLE_SIGNING_IDENTITY /
 #    TAYLIS_NOTARY_PROFILE are set, else ad-hoc as before.
 # 3. latest.json: windows-x86_64 (NSIS), darwin-aarch64 and darwin-x86_64 (the same universal .app.tar.gz).
-# 4. The GitHub Release vX.Y.Z on kanotown/taylis-releases with every file (re-running uploads with --clobber).
+# 4. The GitHub Release vX.Y.Z on kanotown/taylis (the tag is already there: the server release pushed it; the release
+#    workflow makes no GitHub Release). It is created as a draft, gets every file (latest.json last), and only then is
+#    published and marked latest, so "latest" never points at a release without latest.json. Re-running replaces the
+#    files (--clobber). A tag older than the current latest release is published without taking "latest" from it.
+# 5. The legacy repository: a release vX.Y.Z with only latest.json (the same file: its URLs point at kanotown/taylis),
+#    marked latest, so that apps built before the move find the update too.
 #
 # Environment:
 #   TAYLIS_UPDATER_KEY       the updater's private key (default ~/.tauri/taylis-updater.key, no password). Losing it
 #                            means the installed apps can no longer be updated: keep a backup.
-#   TAYLIS_RELEASES_REPO     where releases go (default kanotown/taylis-releases)
+#   TAYLIS_RELEASES_REPO     where releases go (default kanotown/taylis)
+#   TAYLIS_LEGACY_RELEASES_REPO  where latest.json is mirrored for apps before v0.1.42 (default kanotown/taylis-releases;
+#                            set it empty to stop mirroring once that repository is archived)
 #   APPLE_SIGNING_IDENTITY   "Developer ID Application: … (TEAMID)" — sign the Mac app with it (else ad-hoc "-")
 #   TAYLIS_NOTARY_PROFILE    a `xcrun notarytool store-credentials` keychain profile — notarise and staple the app and
 #                            the .dmg (needs APPLE_SIGNING_IDENTITY)
@@ -66,7 +74,9 @@ if [ -f "$RELEASE_ENV" ]; then
 fi
 
 KEY="${TAYLIS_UPDATER_KEY:-$HOME/.tauri/taylis-updater.key}"
-RELEASES_REPO="${TAYLIS_RELEASES_REPO:-kanotown/taylis-releases}"
+RELEASES_REPO="${TAYLIS_RELEASES_REPO:-kanotown/taylis}"
+LEGACY_REPO="${TAYLIS_LEGACY_RELEASES_REPO-kanotown/taylis-releases}"
+[[ "$LEGACY_REPO" != "$RELEASES_REPO" ]] || LEGACY_REPO=""
 SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${TAYLIS_NOTARY_PROFILE:-}"
 CACHE="${TAYLIS_RELEASE_CACHE:-$HOME/Library/Caches/taylis-release}"
@@ -94,7 +104,7 @@ require() {
 
 # --- checks ------------------------------------------------------------------------------------------
 
-step "Checks: $TAG (version $VERSION) → $RELEASES_REPO"
+step "Checks: $TAG (version $VERSION) → $RELEASES_REPO${LEGACY_REPO:+ (latest.json mirrored to $LEGACY_REPO)}"
 for tool in git gh node npm cargo rustup; do command -v "$tool" >/dev/null || fail "$tool is not installed"; done
 [[ "$(uname -s)" == "Darwin" ]] || fail "run this on a Mac (the macOS build is local)"
 require "tag $TAG does not exist here (git fetch --tags)" git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$TAG"
@@ -295,23 +305,67 @@ fi
 
 # --- 4. the release -------------------------------------------------------------------------------------
 
+# Whether the release of $TAG in a repository may become "latest": not when that repository's latest release is a
+# newer version (a re-run of an older tag must not send new installs, or the updater, back to it).
+latest_flag() {
+  local current
+  current="$(gh release view -R "$1" --json tagName -q .tagName 2>/dev/null || true)"
+  if [[ -n "$current" && "$current" != "$TAG" \
+        && "$(printf '%s\n%s\n' "${current#v}" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]]; then
+    echo "  (warning) $1's latest release is $current, newer than $TAG: $TAG is not marked latest" >&2
+    echo "--latest=false"
+  else
+    echo "--latest"
+  fi
+}
+release_exists() { gh release view "$TAG" -R "$1" >/dev/null 2>&1; }
+
 step "GitHub Release $TAG on $RELEASES_REPO"
 if ((DRY_RUN)); then
-  FILES=("$ASSETS/$WIN_SETUP" "$ASSETS/$WIN_SETUP.sig" "$ASSETS/Taylis_${VERSION}_x64_en-US.msi" "$DMG" "$ASSETS/$MAC_UPDATE" "$ASSETS/$MAC_UPDATE.sig" "$ASSETS/latest.json")
+  BINARIES=("$ASSETS/$WIN_SETUP" "$ASSETS/$WIN_SETUP.sig" "$ASSETS/Taylis_${VERSION}_x64_en-US.msi" "$DMG" "$ASSETS/$MAC_UPDATE" "$ASSETS/$MAC_UPDATE.sig")
 else
-  FILES=("$ASSETS"/*)
+  BINARIES=()
+  for file in "$ASSETS"/*; do [[ "$(basename "$file")" == latest.json ]] || BINARIES+=("$file"); done
 fi
-if ((!DRY_RUN)) && gh release view "$TAG" -R "$RELEASES_REPO" >/dev/null 2>&1; then
+LATEST="$(latest_flag "$RELEASES_REPO")"
+if release_exists "$RELEASES_REPO"; then
   echo "  the release exists: replacing its files"
-  run gh release upload "$TAG" -R "$RELEASES_REPO" --clobber "${FILES[@]}"
-  run gh release edit "$TAG" -R "$RELEASES_REPO" --notes-file "$NOTES"
 else
-  run gh release create "$TAG" -R "$RELEASES_REPO" --title "Taylis $TAG" --notes-file "$NOTES" --latest "${FILES[@]}"
+  # A draft first: nobody (and no updater) sees it until every file is there.
+  run gh release create "$TAG" -R "$RELEASES_REPO" --verify-tag --draft --title "Taylis $TAG" --notes-file "$NOTES"
 fi
+run gh release upload "$TAG" -R "$RELEASES_REPO" --clobber "${BINARIES[@]}"
+# latest.json last, once everything it names is there.
+run gh release upload "$TAG" -R "$RELEASES_REPO" --clobber "$ASSETS/latest.json"
+run gh release edit "$TAG" -R "$RELEASES_REPO" --title "Taylis $TAG" --notes-file "$NOTES" \
+  --draft=false --prerelease=false "$LATEST"
+
+# --- 5. the legacy repository ------------------------------------------------------------------------------
+
+if [[ -n "$LEGACY_REPO" ]]; then
+  step "latest.json mirrored to $LEGACY_REPO (for apps before v0.1.42)"
+  # The same latest.json (its URLs already point at $RELEASES_REPO); the page says where the installers are.
+  LEGACY_NOTES="$WORK/legacy-notes.md"
+  { cat "$NOTES"; printf '\n\n---\nDownloads: https://github.com/%s/releases/tag/%s\n' "$RELEASES_REPO" "$TAG"; } > "$LEGACY_NOTES"
+  LEGACY_LATEST="$(latest_flag "$LEGACY_REPO")"
+  if release_exists "$LEGACY_REPO"; then
+    echo "  the release exists: replacing latest.json"
+    run gh release upload "$TAG" -R "$LEGACY_REPO" --clobber "$ASSETS/latest.json"
+    run gh release edit "$TAG" -R "$LEGACY_REPO" --title "Taylis $TAG" --notes-file "$LEGACY_NOTES" \
+      --draft=false --prerelease=false "$LEGACY_LATEST"
+  else
+    # The legacy repository has no tags of its own: the release makes one on its default branch.
+    run gh release create "$TAG" -R "$LEGACY_REPO" --title "Taylis $TAG" --notes-file "$LEGACY_NOTES" \
+      "$LEGACY_LATEST" "$ASSETS/latest.json"
+  fi
+fi
+
 if ((DRY_RUN)); then
   echo
   echo "dry run: nothing was built or published. Release URL would be https://github.com/$RELEASES_REPO/releases/tag/$TAG"
+  [[ -z "$LEGACY_REPO" ]] || echo "  and latest.json mirrored at https://github.com/$LEGACY_REPO/releases/tag/$TAG"
 else
   echo
   echo "released: $(gh release view "$TAG" -R "$RELEASES_REPO" --json url -q .url)"
+  [[ -z "$LEGACY_REPO" ]] || echo "mirrored: $(gh release view "$TAG" -R "$LEGACY_REPO" --json url -q .url)"
 fi

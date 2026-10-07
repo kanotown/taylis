@@ -47,7 +47,7 @@ git tag v1.2.3 && git push origin v1.2.3
 
 公式のデスクトップ版は、起動のときと 6 時間ごとに新しい版を確かめ、右下に「新しい版があります」と出します。
 「更新して再起動」で更新できます。設定の「このアプリについて」からも確かめられます。
-配布物は [kanotown/taylis-releases](https://github.com/kanotown/taylis-releases/releases/latest) にあります。
+配布物は [GitHub のリリース（kanotown/taylis）](https://github.com/kanotown/taylis/releases/latest) にあります。
 
 ブラウザ版は、サーバーを更新すると新しい版になります。スマートフォンのアプリは、ストアから更新します（準備中）。
 

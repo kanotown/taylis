@@ -92,7 +92,7 @@ public sign-up in the apps.
 
 | App | How to get it |
 | --- | --- |
-| Windows / macOS | Download the installer from [the GitHub releases (taylis-releases)](https://github.com/kanotown/taylis-releases/releases/latest). New versions can be installed from within the app. |
+| Windows / macOS | Download the installer from [the GitHub releases](https://github.com/kanotown/taylis/releases/latest). New versions can be installed from within the app. |
 | iOS / iPadOS | Coming soon (App Store) |
 | Android | Coming soon (Google Play) |
 | Browser | Nothing to install: open your server's URL (for example `https://chat.example.com/`). |

@@ -15,7 +15,7 @@ npm run tauri:build    # バンドル作成 (macOS: .app / .dmg、Windows: .msi 
 ```
 
 `npm run tauri build` は更新用のファイル (`.app.tar.gz` と `.sig`) も作り、その署名に更新の秘密鍵
-(`TAURI_SIGNING_PRIVATE_KEY`) を求める。リリース (kanotown/taylis-releases、アプリ内の「更新して再起動」) は
+(`TAURI_SIGNING_PRIVATE_KEY`) を求める。リリース (kanotown/taylis の GitHub Release、アプリ内の「更新して再起動」) は
 `scripts/release-desktop.sh vX.Y.Z` で作る: docs/DEVELOPMENT.md §6「デスクトップ版のリリース」。
 
 同じ Mac で 2 人分のクライアントを動かすには、2 つ目をビルド済みアプリ

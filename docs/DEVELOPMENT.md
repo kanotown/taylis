@@ -92,10 +92,11 @@ TestFlight / App Store と Google Play への配信 (版の番号、署名、ス
 
 デスクトップ版 (Windows / macOS) はアプリの中で更新できる (「新しい版 (vX) があります」→「更新して再起動」、
 設定の「このアプリについて」→「アップデートを確認」。起動時と 6 時間ごとに確認し、Web 版は確認しない)。
-配る場所は公開の、バイナリだけのリポジトリ **kanotown/taylis-releases**。各リリース `vX.Y.Z` に
-インストーラ、更新用のファイル (Windows は NSIS の `.exe`、macOS は universal の `Taylis.app.tar.gz`)、その `.sig`、
-`latest.json` を置く。アプリは `https://github.com/kanotown/taylis-releases/releases/latest/download/latest.json` を見る
-(tauri.conf.json の `plugins.updater`)。
+配る場所はソースのリポジトリ **kanotown/taylis** の GitHub Release（2026-10-07 から公開。v0.1.42 から）。タグ `vX.Y.Z` の
+リリースに、インストーラ、更新用のファイル（Windows は NSIS の `.exe`、macOS は universal の `Taylis.app.tar.gz`）、その `.sig`、
+`latest.json` を置く。アプリは `https://github.com/kanotown/taylis/releases/latest/download/latest.json` を見る
+（tauri.conf.json の `plugins.updater`）。v0.1.41 までのアプリは前の配布先 **kanotown/taylis-releases** を見るので、
+そちらには同じ `latest.json` だけを置き続ける（下の「配布先の移行」）。
 
 手順 (タグを付けて push し、main の CI が通ったあと。この Mac で):
 
@@ -116,8 +117,13 @@ apps/desktop/scripts/sync-release-notes.sh v0.1.30                  # GitHub で
 2. macOS: タグの一時的な worktree で `npm ci` → universal (Apple silicon + Intel) をビルド。`Taylis.app.tar.gz` は tauri が
    同じ鍵で署名する。cargo の target は `~/Library/Caches/taylis-release` に残して次回を速くする。
 3. `latest.json` を作る (`windows-x86_64` は NSIS、`darwin-aarch64` と `darwin-x86_64` は同じ universal の tar.gz)。
-4. `gh release create` で kanotown/taylis-releases にリリースを作り、全部を添付する。リリースが既にあれば
-   `--clobber` で上書きする (やり直してよい)。最後にリリースの URL を表示する。
+4. kanotown/taylis のタグ `vX.Y.Z` に GitHub Release を作る（`TAYLIS_RELEASES_REPO`）。まず下書き（draft）で作り、
+   バイナリ → `latest.json` の順に添付してから、公開して「Latest」にする。リリースが既にあれば `--clobber` で上書きし、
+   本文とタイトルも差し替える（やり直してよい）。そのリポジトリの Latest がこのタグより新しい版なら、Latest は動かさない
+   （古いタグのやり直しで、更新の確認と新しいインストールが古い版に戻らないように）。
+5. 前の配布先 kanotown/taylis-releases（`TAYLIS_LEGACY_RELEASES_REPO`、空にすると何もしない）に、同じ `latest.json`
+   だけを添付したリリース `vX.Y.Z` を作って Latest にする。中の URL は kanotown/taylis の添付ファイルを指す。本文は同じ
+   リリースノートに、kanotown/taylis のリリースへのリンクを足したもの。最後に両方の URL を表示する。
 
 **更新の前の保存** (review v0.1.30 #3): 「更新して再起動」はダウンロードの後、全ワークスペース (表示していないものも) の
 下書き・キャンバス・送信待ちをサーバへ送り (最大 8 秒。届かなかった分は端末に残り、再起動後に送る)、続けて端末の保存
@@ -150,6 +156,41 @@ tauri.conf.json を揃える)。公証する場合はステープルしたアプ
 
 手元で `npm run tauri build` すると、更新用のファイルの署名に秘密鍵を求めて最後に失敗する (アプリ自体はできている)。
 鍵なしで作るときは `npm run tauri:build` (`--config src-tauri/tauri.no-updater.conf.json`)。
+
+### リリースの順番と「Latest」
+
+1. サーバーのリリース：タグ `vX.Y.Z` を push すると release.yml がイメージを作って本番へデプロイする。release.yml は
+   GitHub Release を**作らない**（タグだけ）。
+2. デスクトップ版のリリース：そのあと（main の CI が通ったあと）にこの Mac で `release-desktop.sh vX.Y.Z`。
+   GitHub Release はここで初めてでき、全部の添付が済んでから Latest になる。
+
+そのため kanotown/taylis の Latest は、いつも `latest.json` のあるリリース（直前のデスクトップ版）を指す。サーバーのタグから
+デスクトップ版のリリースまでの間、またはデスクトップ版を出さないタグでは、アプリは前の版のままで「最新の版です」と出し、
+ダウンロードのページ（`…/releases/latest`）も前の版を出す。タグのページ（Tags）には新しいタグが見えるが、リリースはない。
+**GitHub の画面や `gh release create` で、`latest.json` のないリリースを手で作らない**（Latest になると、どのアプリの
+更新の確認も 404 になる）。サーバーだけのリリースノートを書きたいときは、Pre-release にするか「Set as the latest release」
+を外して作る。
+
+### 配布先の移行（kanotown/taylis-releases → kanotown/taylis、2026-10-07 決定）
+
+ソースのリポジトリが公開になったので、配布先をソースのリポジトリの GitHub Release に移す。入っているアプリが更新できなく
+ならないように、段階的に移す。
+
+- **v0.1.42 から**：新しいアプリ（tauri.conf.json の `plugins.updater.endpoints`）は kanotown/taylis を見る。
+  ダウンロードの案内（website/、README）も kanotown/taylis のリリースを指す。
+- **移行の間**：`release-desktop.sh` は毎回 kanotown/taylis-releases にも `latest.json` だけのリリースを作り、Latest にする。
+  v0.1.41 までのアプリはそれを読み、kanotown/taylis の添付ファイルをダウンロードする（更新の署名はファイルの中身だけに
+  かかるので、URL がどこを指してもよい。Tauri の updater（reqwest）は GitHub の添付ファイルの URL からの
+  リダイレクト（`objects.githubusercontent.com` など）をたどり、ホストの制限もない）。v0.1.42 に更新したアプリは、
+  次の確認から kanotown/taylis を見る。
+- **終わらせる時期**：早くても 2026-11-30。その前に、本番のサーバーで 30 日以内に動いた v0.1.41 以前のデスクトップ版が
+  無いことを確かめる：
+  `SELECT app_version, count(*) FROM devices WHERE platform = 'desktop' AND enabled AND last_seen_at > now() - interval '30 days' GROUP BY 1 ORDER BY 1;`
+  （`app_version` は版の文字列なので、0.1.9 と 0.1.10 の並びに注意して目で見る）。残っている人には、kanotown/taylis から
+  入れ直すよう個別に伝える。
+- **終わらせ方（持ち主の作業）**：kanotown/taylis-releases の README に移転先を書き、最後のリリースを残したまま
+  リポジトリを Archive する（消さない：古いアプリは Latest の `latest.json` を読み続け、最後に案内した版へは更新できる）。
+  そのあとのリリースは `TAYLIS_LEGACY_RELEASES_REPO=` （空）で実行するか、スクリプトの既定を空にする。
 
 ## 7. 公開リポジトリの CI
 
