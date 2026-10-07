@@ -142,6 +142,9 @@ ThreadState
     iOS `UI/ThreadsListView.swift`（`ThreadCardRules`）・`Sync/Store.swift`、Android `ui/ThreadsPane.kt`
     （`ThreadCardRules`）・`sync/Store.kt`。
 - 既読: チャンネルと同じく「表示できた返信の `seq`」で送る。開いただけでは既読にしない。
+- スレッドのスクロール（iOS、2026-10-07）：チャンネルと同じ規則（MOBILE_UI.md 6.6「iOS の新しい行」）。最新の返信に
+  いるとき来た返信は見え、上から自分が返信すると最新の端へ飛び（途中をくぐるアニメーションはしない）、古い返信を
+  読んでいるとき他人の返信が来ても読んでいる行は動かない。そのときは右下に「新着 N 件」/ ↓（チャンネルと同じボタン）。
 - Store はスレッド状態を `thread_follows` の形で保持し、`thread.updated` で置き換える。
   ローカル永続化はチャンネルと同じ JSON 行。
 - 「チャンネルにも送信」(M15c): スレッドの入力欄のチェックで返信に `also_in_channel` を付ける。その返信は
