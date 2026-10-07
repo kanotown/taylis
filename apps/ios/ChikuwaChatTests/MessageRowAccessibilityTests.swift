@@ -206,4 +206,25 @@ final class MessageRowAccessibilityTests: XCTestCase {
         for element in elements { XCTAssertEqual(element.accessibilityCustomActions?.map(\.name) ?? [], [], element.accessibilityLabel ?? "") }
         XCTAssertFalse(elements.contains { $0.accessibilityLabel == "リアクションを追加" })
     }
+
+    /// docs/EMOJI.md §9.3: the picker is one list; a category's tab jumps to its section (and is the selected one), a
+    /// header per section, each emoji by its shortcode.
+    func testEmojiPickerTabJumpsToItsSection() throws {
+        let host = render(EmojiPickerView { _ in }, height: 852)
+        func scrollViews(_ view: UIView) -> [UIScrollView] { ((view as? UIScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews) }
+        let list = try XCTUnwrap(scrollViews(host.view).first { $0.contentSize.height > 2000 }, "the list")
+        XCTAssertEqual(list.contentOffset.y, 0, accuracy: 1, "opens at the top")
+        var found = accessibilityElements(host.view, depth: 60)
+        XCTAssertTrue(found.contains { $0.accessibilityLabel == "顔" && $0.accessibilityTraits.contains(.header) })
+        XCTAssertTrue(found.contains { $0.accessibilityLabel == ":grinning:" })
+        let food = try XCTUnwrap(found.first { $0.accessibilityLabel == "食べ物" && $0.accessibilityTraits.contains(.button) })
+        XCTAssertTrue(food.accessibilityActivate())
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        XCTAssertGreaterThan(list.contentOffset.y, 1000)
+        found = accessibilityElements(host.view, depth: 60)
+        XCTAssertTrue(found.contains { $0.accessibilityLabel == "食べ物" && $0.accessibilityTraits.contains(.header) })
+        XCTAssertTrue(found.contains { $0.accessibilityLabel == ":grapes:" })
+        let tab = try XCTUnwrap(found.first { $0.accessibilityLabel == "食べ物" && $0.accessibilityTraits.contains(.button) })
+        XCTAssertTrue(tab.accessibilityTraits.contains(.selected))
+    }
 }
