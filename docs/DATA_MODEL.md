@@ -765,7 +765,11 @@ CREATE TABLE conversation_closes (
 - 明示的に開く：クライアントは閉じた会話を開いたとき（検索・ジャンプ・プロフィールの「メッセージを送る」・リンク・
   通知）に `DELETE` を呼ぶ。サーバも `POST /dms` が既にある DM を返すとき（その人と DM を始め直した）に呼んだ本人の
   行を消す（channels は dm_closes に依存しないので、dm_closes が import 時に `channels.set_dm_resolved_hook` で登録する）。
-- 端末間は `dm_close.updated`（audience=user、`{channel_id, closed, at}`。閉じた / 開いた状態が変わったときだけ）で
+- 閉じる位置は、メッセージの採番と同じチャンネル行のロック（`messages.lock_last_seq_in_tx`）の中でコミット済みの
+  `last_seq` を読み直して決め、既読・固定の解除・通知までコミットまで持つ（Review v0.1.43 #6）。閉じる間に送られた
+  メッセージはロックを待ってその後の seq を取るので、閉じた会話を開き、その `message.created` は閉じた通知の後になる。
+- 端末間は `dm_close.updated`（audience=user、`{channel_id, closed, at, closed_seq}`。`closed_seq` は閉じた位置、開いた
+  ときは null。閉じた / 開いた状態が変わったときだけ）で
   揃え、bootstrap には閉じている会話の id の一覧（`closed_dms`、閉じた古い順）を入れる。新しいメッセージで開いたことは
   知らせない（どの端末にも `message.created` が届く）。
 - メンバーでなくなっても行は残すが、bootstrap は現在のメンバーシップと結合して返すので出ない（固定と同じ）。

@@ -249,7 +249,7 @@
 | `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く。会話を自分のセクションへ入れたときも `favorite: false` で届く (DATA_MODEL.md sidebar_sections「1 つの会話は 1 か所」、2026-10-07) |
 | `dm_pin.updated` | user | — | `{ channel_id, pinned, at }` (M118)。自分が DM・グループ DM を先頭に固定した / 外した (変わったときだけ。自分の全端末)。固定なら手元の `dm_pins` の最後に足し (すでにあれば動かさない)、外したなら取り除く。`at` は変えた時刻 |
-| `dm_close.updated` | user | — | `{ channel_id, closed, at }` (M141)。自分が DM・グループ DM を閉じた / 開いた (`PUT` / `DELETE /channels/{id}/close`、既にある DM を返す `POST /dms`。閉じている状態が変わったときだけ。自分の全端末)。閉じたなら手元の `closed_dms` に足し、開いたなら取り除く。新しいメッセージで開いたときは送らない (§7.9) |
+| `dm_close.updated` | user | — | `{ channel_id, closed, at, closed_seq }` (M141)。自分が DM・グループ DM を閉じた / 開いた (`PUT` / `DELETE /channels/{id}/close`、既にある DM を返す `POST /dms`。閉じている状態が変わったときだけ。自分の全端末)。閉じたなら手元の `closed_dms` に足し、開いたなら取り除く。`closed_seq` は閉じた位置 (閉じたときの `last_seq`。開いたときと古いサーバは null)。手元の `last_message` の seq がそれより大きければ、その閉じたは取らない (§7.9、Review v0.1.43 #6)。新しいメッセージで開いたときは送らない (§7.9) |
 | `block.updated` | user | — | `{ user_id, blocked }` (M104、docs/MODERATION.md §4)。自分がブロック / 解除したとき自分の全端末に届く。ブロックされた人には届かない |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える。M100: 表示名・キーワード・色・セットの変更でも出る (文字の絵文字のピルは描き直す) |
@@ -502,12 +502,21 @@ DATA_MODEL.md conversation_closes。3 端末共通の規則:
 
 ```
 状態: closed_dms (集合)。bootstrap の値で置き換える (再接続のたび。取りこぼしはここで直る)
-on dm_close.updated {channel_id, closed}: closed なら足し、そうでなければ取り除く
+on dm_close.updated {channel_id, closed, closed_seq}: closed なら足し、そうでなければ取り除く。ただし closed で、
+    closed_seq があり、手元の last_message (§7.8) の seq が closed_seq より大きいときは何もしない (その新しい行で
+    サーバでも開いている。この端末に先に届いただけ。Review v0.1.43 #6)
 on message.created (m): m がタイムラインの行 (parent_id が無いか also_in_channel) で、m.channel_id が closed_dms に
     あれば取り除く (API は呼ばない。サーバも同じ規則で開いたとみなす)
 閉じる (DM の行のメニュー・会話の見出しの「…」): その場で closed_dms に足し、dm_pins から外し、未読を 0 にする
-    → PUT /channels/{id}/close。失敗したら 3 つとも元に戻してエラーを出す。開いている会話を閉じたら、Desktop / Web は
-    ホームへ、スマホは一覧へ戻る
+    → PUT /channels/{id}/close。失敗したら、この操作が変えたものだけを戻してエラーを出す (Review v0.1.43 #7):
+      - closed_dms から取り除く
+      - 固定していたなら、その会話だけを閉じる前の位置へ戻す (今の一覧で範囲に収める)。待つ間に他の端末で変わった
+        ほかの固定はそのまま
+      - 既読はサーバに聞き直す (PUT /channels/{id}/read {last_read_seq: 0}。何も動かさず今の状態を返す) 値をそのまま
+        取る (下がることもある)。聞き直しも失敗したら、閉じたときに置いた値 (last_seq・last_read_seq・未読数・
+        メンション数) から何も変わっていないときだけ閉じる前の値を書き戻し、変わっていれば (新着・他端末の既読) その
+        まま次の bootstrap に任せる
+    開いている会話を閉じたら、Desktop / Web はホームへ、スマホは一覧へ戻る
 開く (検索・ジャンプ・プロフィールの「メッセージを送る」・リンク・通知・Desktop の「元に戻す」で、closed_dms にある
     会話を開いた): その場で取り除き DELETE /channels/{id}/close (失敗はログだけ。次の bootstrap で閉じた状態に戻る)
 ```
@@ -516,6 +525,11 @@ on message.created (m): m がタイムラインの行 (parent_id が無いか al
   ホームの「ダイレクトメッセージ」、iPad / タブレットの一覧、Alt+↑/↓ の移動。自分だけの DM が閉じているときは、まだ
   無いときの仮の行も出さない。隠さない所: 検索、ジャンプ (⌘K)、メンバー・プロフィール、通知、アクティビティ。
 - 閉じた会話は既読になっており、新しいメッセージが来れば開くので、バッジの数え方は変えない。
+- サーバは閉じる位置をメッセージの採番と同じチャンネル行のロックの中で読み、コミットまで持つ (Review v0.1.43 #6)。
+  閉じる前にコミットされたメッセージは閉じた位置の内側 (既読) に入り、閉じる間に送られたメッセージは待ってからその
+  後の seq を取るので会話を開き、その `message.created` は `dm_close.updated` の後に届く。
+- 上の規則 (閉じたを取るか、固定の戻し方、既読の書き戻し) の例は `apps/shared/dm-close-rules.json` にあり、3 端末とも
+  これでテストする。
 - Desktop / Web は閉じたあと「会話を閉じました」と「元に戻す」を数秒出す。元に戻すと開き (DELETE)、固定していた
   なら固定し直す (固定の最後に付く)。既読は戻さない。
 
