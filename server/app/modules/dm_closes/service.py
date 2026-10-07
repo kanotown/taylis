@@ -23,22 +23,28 @@ from app.modules.dm_closes import repository as repo
 from app.modules.dm_closes.events import DM_CLOSE_UPDATED, DmCloseUpdatedData
 from app.modules.dm_closes.schemas import DmCloseStateOut
 from app.modules.dm_pins import service as dm_pins
+from app.modules.messages import service as messages
 from app.modules.reads import service as reads
 from app.modules.users.models import User
 
 
 async def _announce(
-    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, closed: bool
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    closed: bool,
+    closed_seq: int | None = None,
 ) -> None:
+    data = DmCloseUpdatedData(
+        channel_id=channel_id, closed=closed, at=utcnow(), closed_seq=closed_seq
+    )
     await write_outbox(
         db,
         event_type=DM_CLOSE_UPDATED,
         audience_type="user",
         audience_id=user_id,
         channel_id=channel_id,
-        payload=DmCloseUpdatedData(channel_id=channel_id, closed=closed, at=utcnow()).model_dump(
-            mode="json"
-        ),
+        payload=data.model_dump(mode="json"),
     )
 
 
@@ -51,16 +57,23 @@ async def _require_dm(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> C
 
 async def close(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> DmCloseStateOut:
     """Idempotent: closing a closed conversation moves the closing point to now; only a change
-    is announced."""
+    is announced.
+
+    Review v0.1.43 #6: the closing point is read under the channel row lock that message
+    sequencing takes, and held until commit. A message committed before it is behind the closing
+    point (and read); one sent meanwhile waits and comes after it, so it reopens the conversation
+    and its message.created follows this dm_close.updated. The event carries `closed_seq` so a
+    device that already holds a newer timeline message keeps the conversation open."""
     channel = await _require_dm(db, actor, channel_id)
+    last_seq = await messages.lock_last_seq_in_tx(db, channel.id)
     was_closed = await repo.is_closed(db, actor.id, channel.id)
     at = utcnow()
-    await repo.upsert(db, actor.id, channel.id, channel.last_seq, at)
+    await repo.upsert(db, actor.id, channel.id, last_seq, at)
     # Read to its end (Slack), so no badge counts a hidden conversation.
-    await reads.advance_in_tx(db, actor.id, channel.id, channel.last_seq, last_seq=channel.last_seq)
+    await reads.advance_in_tx(db, actor.id, channel.id, last_seq, last_seq=last_seq)
     await dm_pins.unpin_in_tx(db, actor.id, channel.id)
     if not was_closed:
-        await _announce(db, actor.id, channel.id, True)
+        await _announce(db, actor.id, channel.id, True, last_seq)
     await db.commit()
     return DmCloseStateOut(channel_id=channel.id, closed=True, closed_at=at)
 

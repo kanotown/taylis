@@ -51,6 +51,13 @@ async def lock_channel(db: AsyncSession, channel_id: uuid.UUID) -> None:
     await db.execute(select(Channel.id).where(Channel.id == channel_id).with_for_update())
 
 
+async def lock_channel_last_seq(db: AsyncSession, channel_id: uuid.UUID) -> int:
+    """`lock_channel`, returning the channel's committed last_seq read under the lock: no write
+    to the channel can commit a newer seq until this transaction ends."""
+    stmt = select(Channel.last_seq).where(Channel.id == channel_id).with_for_update()
+    return int((await db.execute(stmt)).scalar_one())
+
+
 async def get_channel_last_seq(db: AsyncSession, channel_id: uuid.UUID) -> int:
     result = await db.execute(select(Channel.last_seq).where(Channel.id == channel_id))
     return int(result.scalar_one())

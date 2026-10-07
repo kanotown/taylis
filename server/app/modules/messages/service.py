@@ -305,6 +305,13 @@ async def list_delta(
     )
 
 
+async def lock_last_seq_in_tx(db: AsyncSession, channel_id: uuid.UUID) -> int:
+    """Hold the channel row (the lock message sequencing takes) and return its last_seq as
+    committed: a per-user mark taken against the channel's sequence (M141 closing a DM) cannot
+    interleave with a new message. Held until the caller's commit."""
+    return await repo.lock_channel_last_seq(db, channel_id)
+
+
 async def keyword_user_ids(db: AsyncSession, message_id: uuid.UUID) -> set[uuid.UUID]:
     """M12g keyword hits: private, so events leave them out and pushes read them here."""
     message = await repo.get_message(db, message_id)

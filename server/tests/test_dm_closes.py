@@ -1,16 +1,26 @@
 """Closed DMs (M141, 「会話を閉じる」): personal, DMs and group DMs only; a new message or an
 explicit open brings the conversation back."""
 
+import asyncio
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
+import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy import text as sql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.models import OutboxEvent
 from app.modules.channels.models import ChannelMember
+from app.modules.dm_closes import repository as close_repo
+from app.modules.dm_closes import service as closes
+from app.modules.dm_closes.schemas import DmCloseStateOut
+from app.modules.messages import service as messages
+from app.modules.messages.schemas import MessageCreate
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -93,6 +103,8 @@ async def test_close_is_personal_idempotent_and_announced(
         (group["id"], False),
     ]
     assert all(e.payload["at"] for e in events)
+    # A close says where it closed (Review v0.1.43 #6); an open says nothing.
+    assert [e.payload["closed_seq"] for e in events] == [0, 0, 0, None]
     # No channel seq is consumed.
     assert (await client.get(f"{API}/channels/{group['id']}")).json()["last_seq"] == 0
 
@@ -228,3 +240,108 @@ async def test_a_close_outside_my_conversations_is_hidden(
     await db.delete(member)
     await db.commit()
     assert await _closed(client) == []
+
+
+async def test_a_message_racing_a_close_comes_after_it_and_keeps_the_dm_open(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review v0.1.43 #6: the close is held after it read the closing point and before saving
+    it, while bob posts. The post waits for the channel row lock (seen in pg_locks), so it gets
+    the next seq after the closing point and its message.created follows the close's event: the
+    API, the bootstrap and a device applying the outbox in order all say "open, 1 unread"."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    dm = await _dm(client, bob)
+    as_user(bob)
+    await _post(client, dm["id"], "before the close")
+    await db.commit()
+    dm_id, alice_id, bob_id = uuid.UUID(dm["id"]), alice.id, bob.id
+
+    reached, release = asyncio.Event(), asyncio.Event()
+    original = close_repo.upsert
+
+    async def held(
+        session: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, seq: int, at: datetime
+    ) -> None:
+        reached.set()
+        await asyncio.wait_for(release.wait(), timeout=10)
+        await original(session, user_id, channel_id, seq, at)
+
+    monkeypatch.setattr(close_repo, "upsert", held)
+    factory = app.state.db.session_factory
+
+    async def close() -> DmCloseStateOut:
+        async with factory() as session:
+            actor = await session.get(User, alice_id)
+            assert actor is not None
+            return await closes.close(session, actor, dm_id)
+
+    async def post() -> int:
+        async with factory() as session:
+            actor = await session.get(User, bob_id)
+            assert actor is not None
+            data = MessageCreate(client_msg_id=uuid.uuid4(), body="during the close")
+            message, _ = await messages.create_message(session, actor, dm_id, data)
+            return int(message.seq)
+
+    closing = asyncio.create_task(close())
+    await asyncio.wait_for(reached.wait(), timeout=10)
+    posting = asyncio.create_task(post())
+    waited = False
+    for _ in range(200):
+        if await db.scalar(sql("SELECT count(*) FROM pg_locks WHERE NOT granted")):
+            waited = True
+            break
+        if posting.done():
+            break
+        await asyncio.sleep(0.02)
+    await db.rollback()
+    release.set()
+    closed = await closing
+    seq = await posting
+
+    assert waited, "the post did not wait for the close's channel lock"
+    assert closed.closed is True
+    events = await _events(db)
+    assert [(e.payload["closed"], e.payload["closed_seq"]) for e in events] == [(True, seq - 1)]
+    # The outbox: the close first, then the message that reopens it.
+    order = await db.execute(
+        select(OutboxEvent.event_type)
+        .where(OutboxEvent.event_type.in_(["dm_close.updated", "message.created"]))
+        .where(OutboxEvent.channel_id == dm_id)
+        .order_by(OutboxEvent.id)
+    )
+    assert list(order.scalars().all())[-2:] == ["dm_close.updated", "message.created"]
+    await db.refresh(alice)  # expired by the rollback above
+    as_user(alice)
+    boot = await _boot(client)
+    assert boot["closed_dms"] == []
+    row = next(c for c in boot["channels"] if c["id"] == dm["id"])
+    assert row["last_seq"] == seq
+    assert row["read_state"]["last_read_seq"] == seq - 1
+    assert row["read_state"]["unread_count"] == 1
+
+
+async def test_a_message_committed_before_the_close_is_behind_it(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """The closing point is the channel's committed last_seq read under the lock, not the value
+    loaded with the membership check: a message just before the close is read and hidden."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    dm = await _dm(client, bob)
+    as_user(bob)
+    last = await _post(client, dm["id"], "just before")
+    as_user(alice)
+    assert (await client.put(f"{API}/channels/{dm['id']}/close")).status_code == 200
+    assert [e.payload["closed_seq"] for e in await _events(db)] == [last["seq"]]
+    boot = await _boot(client)
+    assert boot["closed_dms"] == [dm["id"]]
+    row = next(c for c in boot["channels"] if c["id"] == dm["id"])
+    assert row["read_state"]["unread_count"] == 0

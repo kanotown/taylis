@@ -2662,6 +2662,18 @@
           "closed": {
             "title": "Closed",
             "type": "boolean"
+          },
+          "closed_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Closed Seq"
           }
         },
         "required": [
