@@ -308,15 +308,15 @@ internal fun attendanceColors(color: String): Pair<Color, Color> =
     Color(0xFF000000L or AttendanceBadgeColors.solid(color)) to Color(0xFF000000L or AttendanceBadgeColors.FG)
 
 /**
- * Only the state's colour, for an icon on the page's background (an unpressed state button): the shade in light, the text
- * emoji palette's light text colour in dark (the shades are too dark on a dark page).
+ * A state icon's colour (AttendanceBadgeColors.glyphTint): white on a solid badge ([solid]) in light and dark alike;
+ * on the page's background (an unpressed state button) the state's colour — the shade in light, the text emoji palette's
+ * light text colour in dark (the shades are too dark on a dark page). Every badge takes its icon's colour from here,
+ * never from LocalContentColor.
  */
 @Composable
-internal fun attendanceTint(color: String): Color {
+internal fun attendanceTint(color: String, solid: Boolean = false): Color {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    if (!dark) return Color(0xFF000000L or AttendanceBadgeColors.solid(color))
-    val palette = TextEmojiPill.PALETTE[color] ?: TextEmojiPill.PALETTE.getValue("gray")
-    return Color(0xFF000000L or palette.second.second)
+    return Color(0xFF000000L or AttendanceBadgeColors.glyphTint(color, solid, dark))
 }
 
 /**
@@ -346,7 +346,7 @@ fun StatePill(controller: AppController, state: AttendanceStateOut, version: Int
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (AttendanceIcons.glyph(state) != AttendanceIcons.Glyph.None) {
-            StateGlyph(controller, state.icon, state.emoji, version, size = if (small) 12.dp else 16.dp, tint = fg)
+            StateGlyph(controller, state.icon, state.emoji, version, size = if (small) 12.dp else 16.dp, tint = attendanceTint(state.color, solid = true))
             Spacer(Modifier.size(if (small) 3.dp else 5.dp))
         }
         Text(
@@ -364,7 +364,7 @@ fun StatePill(controller: AppController, state: AttendanceStateOut, version: Int
 private fun StateButton(controller: AppController, state: AttendanceStateOut, selected: Boolean, enabled: Boolean, version: Int, onClick: () -> Unit) {
     // Pressed: the solid badge (white on the shade). Not pressed: outlined, only the icon in the state's colour.
     val (bg, fg) = attendanceColors(state.color)
-    val tint = attendanceTint(state.color)
+    val tint = attendanceTint(state.color, solid = selected)
     val personal = if (state.ownerId != null) " " + stringResource(R.string.attendance_personal) else ""
     val shape = RoundedCornerShape(10.dp)
     // One node: the role, the selected state and the name (the emoji and label inside are drawn only).
@@ -379,7 +379,7 @@ private fun StateButton(controller: AppController, state: AttendanceStateOut, se
         Row(Modifier.padding(horizontal = 14.dp).clearAndSetSemantics {}, verticalAlignment = Alignment.CenterVertically) {
             if (AttendanceIcons.glyph(state) != AttendanceIcons.Glyph.None) {
                 // The icon in the state's colour even when not pressed: the colour tells the states apart at a glance.
-                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = if (selected) fg else tint)
+                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = tint)
                 Spacer(Modifier.size(6.dp))
             }
             Text(

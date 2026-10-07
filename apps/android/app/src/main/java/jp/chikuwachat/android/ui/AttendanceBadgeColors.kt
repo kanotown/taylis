@@ -27,6 +27,18 @@ object AttendanceBadgeColors {
     /** A colour key's shade (an unknown key = gray). */
     fun solid(color: String?): Long = COLORS[color ?: "gray"] ?: COLORS.getValue("gray")
 
+    /**
+     * A state icon's colour (0xRRGGBB): on a solid badge ([solid]: the board's headings, chips, the pressed button, the
+     * header chip, the sheet's squares) always white like the name, in light and dark; on the page's background (an
+     * unpressed button) the state's colour — the shade in light, the text emoji palette's light text colour in dark (the
+     * shades are too dark on a dark page).
+     */
+    fun glyphTint(color: String?, solid: Boolean, dark: Boolean): Long = when {
+        solid -> FG
+        !dark -> solid(color)
+        else -> (TextEmojiPill.PALETTE[color ?: "gray"] ?: TextEmojiPill.PALETTE.getValue("gray")).second.second
+    }
+
     /** WCAG 2.x contrast ratio of two 0xRRGGBB colours (1…21). */
     fun contrast(a: Long, b: Long): Double {
         fun linear(channel: Long): Double {

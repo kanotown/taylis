@@ -93,7 +93,7 @@ fun AttendanceQuickSwitch(
         if (state != null) {
             val (bg, fg) = attendanceColors(state.color)
             Row(face.background(bg, shape).padding(horizontal = if (iconOnly) 7.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                StateGlyph(controller, state.icon, state.emoji, version, size = 16.dp, tint = fg)
+                StateGlyph(controller, state.icon, state.emoji, version, size = 16.dp, tint = attendanceTint(state.color, solid = true))
                 if (!iconOnly) {
                     if (AttendanceIcons.glyph(state) != AttendanceIcons.Glyph.None) Spacer(Modifier.size(5.dp))
                     Text(
@@ -177,7 +177,7 @@ fun AttendanceQuickSheet(controller: AppController, version: Int, onDismiss: () 
             Column(Modifier.selectableGroup()) {
                 AttendanceRules.choices(board, meId).forEach { choice ->
                     val state = choice.state
-                    val (bg, fg) = attendanceColors(state.color)
+                    val bg = attendanceColors(state.color).first
                     val personal = if (state.ownerId != null) " " + stringResource(R.string.attendance_personal) else ""
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 52.dp)
@@ -190,7 +190,7 @@ fun AttendanceQuickSheet(controller: AppController, version: Int, onDismiss: () 
                     ) {
                         Row(Modifier.weight(1f).clearAndSetSemantics {}, verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(30.dp).background(bg, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = fg)
+                                StateGlyph(controller, state.icon, state.emoji, version, size = 18.dp, tint = attendanceTint(state.color, solid = true))
                             }
                             Text(
                                 state.label, modifier = Modifier.weight(1f).padding(start = 14.dp),

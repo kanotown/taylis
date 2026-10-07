@@ -35,6 +35,23 @@ class AttendanceBadgeColorsTest {
         assertEquals(colors.getValue("gray"), AttendanceBadgeColors.solid(null))
     }
 
+    /**
+     * 2026-10-08: a solid badge's icon must be white like its name (it read as black on the phone). Every badge (the
+     * board's headings, chips, the pressed button, the header chip, the sheet's squares) takes the icon's colour from
+     * glyphTint(solid = true): white in light and dark, for every colour key and an unknown one. Off the badge (an
+     * unpressed button) the icon has the state's colour, never white nor black.
+     */
+    @Test fun aSolidBadgesIconIsWhiteInBothThemes() {
+        val keys = AttendanceBadgeColors.COLORS.keys + listOf("nonsense", null)
+        for (key in keys) for (dark in listOf(false, true)) {
+            assertEquals("$key dark=$dark", 0xFFFFFFL, AttendanceBadgeColors.glyphTint(key, solid = true, dark = dark))
+            val tint = AttendanceBadgeColors.glyphTint(key, solid = false, dark = dark)
+            assertTrue("$key dark=$dark: $tint", tint != 0xFFFFFFL && tint != 0x000000L)
+        }
+        assertEquals(AttendanceBadgeColors.solid("green"), AttendanceBadgeColors.glyphTint("green", solid = false, dark = false))
+        assertEquals(TextEmojiPill.PALETTE.getValue("green").second.second, AttendanceBadgeColors.glyphTint("green", solid = false, dark = true))
+    }
+
     @Test fun whiteOnEveryShadeMeetsWcagAA() {
         val minText = shared.getValue("min_text_contrast").jsonPrimitive.double
         val minIcon = shared.getValue("min_icon_contrast").jsonPrimitive.double
