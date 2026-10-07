@@ -183,6 +183,7 @@ export function listGroups(items: readonly ListItem[]): ListGroup[] {
 }
 
 const ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"] as const;
+/** Bullets are drawn by styles.css (`.md-ul`, 2026-10-08): a dot, a ring, a small square by level. */
 const BULLET_STYLES = ["disc", "circle", "square"] as const;
 
 function ListView({ groups, users, options, top = false }: { groups: ListGroup[]; users: Map<string, UserPublic>; options?: InlineOptions; top?: boolean }) {
@@ -198,9 +199,9 @@ function ListView({ groups, users, options, top = false }: { groups: ListGroup[]
         ));
         const className = cn("pl-6", top && "my-0.5");
         return group.ordered ? (
-          <ol key={g} start={group.start} className={className} style={{ listStyleType: ORDERED_STYLES[level] }}>{children}</ol>
+          <ol key={g} start={group.start} className={cn("md-ol", className)} style={{ listStyleType: ORDERED_STYLES[level] }}>{children}</ol>
         ) : (
-          <ul key={g} className={className} style={{ listStyleType: BULLET_STYLES[level] }}>{children}</ul>
+          <ul key={g} className={cn("md-ul", className)} data-marker={BULLET_STYLES[level]}>{children}</ul>
         );
       })}
     </>

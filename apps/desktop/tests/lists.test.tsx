@@ -55,7 +55,7 @@ describe("lists (apps/shared/lists.json)", () => {
           expect(n).toBe(block.items[i]!.number);
           expect(list.style.listStyleType).toBe(["decimal", "lower-alpha", "lower-roman"][block.items[i]!.level]);
         } else {
-          expect(list.style.listStyleType).toBe(["disc", "circle", "square"][block.items[i]!.level]);
+          expect(list.dataset.marker).toBe(["disc", "circle", "square"][block.items[i]!.level]);
         }
       });
     }

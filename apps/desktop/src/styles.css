@@ -301,6 +301,26 @@ body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important
 .body code.math-source[data-math="error"] { color: var(--muted); text-decoration: underline dotted; text-underline-offset: 3px; }
 .body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .body .mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; font-weight: 500; }
+/* List bullets (2026-10-08): the browser's markers are glyphs of the font, their size and height differ by font and
+   engine, and testers found them small and hard to see. Ours are drawn, as Slack draws them: a solid dot for the first
+   level, a ring for the second, a small square for the third, in the text's colour, centred on the first line's
+   x-height (vertical-align: middle), so a line with a tall emoji keeps its dot by the text. The mark is inline at the
+   line's start, pulled into the list's padding (net width 0), so wrapped lines hang under the text. The composer
+   draws the same (its items hold a paragraph). Numbers keep the browser's markers, with tabular figures. */
+.md-ul, .rich-editor ul { list-style: none; }
+.md-ul > li::before, .rich-editor ul > li > p:first-child::before {
+  content: ""; display: inline-block; box-sizing: border-box; width: 0.4em; height: 0.4em;
+  margin-left: -0.95em; margin-right: 0.55em; vertical-align: middle; position: relative; top: -0.04em;
+  border-radius: 50%; background: currentColor;
+}
+.md-ul[data-marker="circle"] > li::before, .rich-editor :is(ul, ol) ul > li > p:first-child::before {
+  width: 0.42em; height: 0.42em; margin-left: -0.96em; margin-right: 0.54em;
+  background: transparent; border: max(1.5px, 0.1em) solid currentColor;
+}
+.md-ul[data-marker="square"] > li::before, .rich-editor :is(ul, ol) :is(ul, ol) ul > li > p:first-child::before {
+  width: 0.36em; height: 0.36em; margin-left: -0.93em; margin-right: 0.57em; border: 0; border-radius: 1px; background: currentColor;
+}
+.md-ol > li::marker, .rich-editor ol > li::marker { font-variant-numeric: tabular-nums; }
 mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
 
 /* The rich composer (RichEditor.tsx): drawn as the message will be (MessageBody), one paragraph per line. */
@@ -312,9 +332,6 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .rich-editor h3 { font-size: 1.125rem; }
 .rich-editor blockquote { margin: 4px 0; border-left: 3px solid var(--line); padding-left: 12px; color: var(--muted-fg); }
 .rich-editor ul, .rich-editor ol { margin: 2px 0; padding-left: 1.5rem; }
-.rich-editor ul { list-style-type: disc; }
-.rich-editor ul ul { list-style-type: circle; }
-.rich-editor ul ul ul { list-style-type: square; }
 .rich-editor ol { list-style-type: decimal; }
 .rich-editor ol ol { list-style-type: lower-alpha; }
 .rich-editor ol ol ol { list-style-type: lower-roman; }
