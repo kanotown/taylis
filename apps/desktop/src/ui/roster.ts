@@ -17,6 +17,21 @@ export const RANKS: ReadonlyArray<[FacultyRank, string]> = [
   labelled("lecturer", "roster.lecturer"),
   labelled("assistant_professor", "roster.assistantProfessor"),
 ];
+/**
+ * REVIEW-v0.1.43 #1 (ROLES.md §4.2): the affiliations someone may give on the roster and in an invite preset. With
+ * users.manage (an admin): all. Otherwise (a manager): "other" (no group) and their own affiliation (a student
+ * manager: students of any grade), as the server checks (403 roster_group_not_held).
+ */
+export function grantableAffiliations(canManageUsers: boolean, own: Pick<LabProfileOut, "affiliation"> | undefined): ReadonlySet<Affiliation> {
+  if (canManageUsers) return new Set(AFFILIATIONS.map(([value]) => value));
+  return new Set<Affiliation>(own ? ["other", own.affiliation] : ["other"]);
+}
+
+/** Whether someone who may give `grantable` may move this line out of its groups (another affiliation or grade, or off the roster). */
+export function lineMovable(line: Pick<LabProfileOut, "affiliation"> | undefined, grantable: ReadonlySet<Affiliation>): boolean {
+  return !line || grantable.has(line.affiliation);
+}
+
 /** Roster order: from D3 down to B3. */
 export const GRADES: readonly Grade[] = ["D3", "D2", "D1", "M2", "M1", "B4", "B3"];
 

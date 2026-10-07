@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { LabProfileOut, UserPublic } from "../src/api/types";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { byCodePoint, compareByRoster, rosterLabel, rosterSection, rosterSummary } from "../src/ui/roster";
+import { byCodePoint, compareByRoster, grantableAffiliations, lineMovable, rosterLabel, rosterSection, rosterSummary } from "../src/ui/roster";
 import { FakeServer } from "./fakeServer";
 
 function person(id: string, name: string): UserPublic {
@@ -74,5 +74,22 @@ describe("the lab roster (M23)", () => {
     await engine.idle();
     expect(store.roster.has(bob.id)).toBe(false);
     engine.stop();
+  });
+});
+
+describe("what a manager may give on the roster (REVIEW-v0.1.43 #1, ROLES.md §4.2)", () => {
+  it("an admin gives every affiliation; a manager their own and other", () => {
+    expect([...grantableAffiliations(true, undefined)].sort()).toEqual(["alumni", "faculty", "other", "student"]);
+    expect([...grantableAffiliations(false, { affiliation: "student" })].sort()).toEqual(["other", "student"]);
+    expect([...grantableAffiliations(false, undefined)]).toEqual(["other"]);
+  });
+
+  it("a line in a group the manager is not in cannot be moved or removed", () => {
+    const student = grantableAffiliations(false, { affiliation: "student" });
+    expect(lineMovable({ affiliation: "faculty" }, student)).toBe(false);
+    expect(lineMovable({ affiliation: "alumni" }, student)).toBe(false);
+    expect(lineMovable({ affiliation: "student" }, student)).toBe(true);
+    expect(lineMovable({ affiliation: "other" }, student)).toBe(true);
+    expect(lineMovable(undefined, student)).toBe(true);
   });
 });

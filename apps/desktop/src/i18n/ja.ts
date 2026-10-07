@@ -1913,6 +1913,7 @@ export const ja = {
   "roster.view": "名簿の表示",
   "roster.rollover": "年度更新",
   "roster.note": "名簿は表示の並び順とグループ分けにだけ使います（権限は変わりません）。名簿に合わせて @faculty @students @alumni @b4 @m1 @m2 @d が自動で保たれます。",
+  "roster.grantHint": "自分の所属にない区分（教員・卒業生など）は管理者が設定します",
   "roster.notInRoster": "名簿外",
   "roster.add": "名簿に載せる",
   "roster.removeTitle": "名簿から外す（アカウントは残ります）",

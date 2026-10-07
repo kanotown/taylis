@@ -5,7 +5,7 @@ import type { Affiliation, FacultyRank, Grade, LabProfileOut, UserPublic } from 
 import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { Badge, Button, Field, Input, Modal } from "./primitives";
-import { AFFILIATIONS, compareByRoster, GRADES, RANKS, rosterLabel, supervisorLabel } from "./roster";
+import { AFFILIATIONS, compareByRoster, GRADES, grantableAffiliations, lineMovable, RANKS, rosterLabel, supervisorLabel } from "./roster";
 import { RolloverView } from "./RolloverView";
 import { t } from "../i18n";
 
@@ -17,6 +17,8 @@ const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm"
  */
 export function RosterTab({ controller }: { controller: AppController }) {
   const store = controller.store;
+  // REVIEW-v0.1.43 #1 (ROLES.md §4.2): what I may give on the roster (a manager: my own affiliation and "other").
+  const grantable = grantableAffiliations(controller.can("users.manage"), store.me ? store.roster.get(store.me.id) : undefined);
   const people = [...store.users.values()].filter((u) => !u.deactivated_at && u.role !== "bot").sort((a, b) => compareByRoster(a, b, store.roster));
   const [editing, setEditing] = useState<UserPublic | null>(null);
   const [removing, setRemoving] = useState<UserPublic | null>(null);
@@ -64,6 +66,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
       <ul className="divide-y divide-line rounded-xl border border-line">
         {people.map((user) => {
           const line = store.roster.get(user.id);
+          const movable = lineMovable(line, grantable);
           return (
             <li key={user.id} className="flex items-center gap-3 px-3 py-2 text-sm">
               <Avatar id={user.id} name={user.display_name} size={28} />
@@ -83,7 +86,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
                 {line ? <><Pencil size={14} /> {t("canvas.edit")}</> : <><UserPlus size={14} /> {t("roster.add")}</>}
               </Button>
               {line && (
-                <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setRemoving(user)} title={t("roster.removeTitle")}>
+                <Button size="sm" variant="ghost" className="text-danger" disabled={busy || !movable} onClick={() => setRemoving(user)} title={movable ? t("roster.removeTitle") : t("roster.grantHint")}>
                   <UserMinus size={14} />
                 </Button>
               )}
@@ -94,6 +97,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
       {editing && (
         <RosterEditor
           controller={controller}
+          grantable={grantable}
           user={editing}
           line={store.roster.get(editing.id)}
           busy={busy}
@@ -138,8 +142,9 @@ interface RosterForm {
   reading: string | null;
 }
 
-function RosterEditor({ controller, user, line, busy, onClose, onSave }: {
+function RosterEditor({ controller, grantable, user, line, busy, onClose, onSave }: {
   controller: AppController;
+  grantable: ReadonlySet<Affiliation>;
   user: UserPublic;
   line: LabProfileOut | undefined;
   busy: boolean;
@@ -147,7 +152,10 @@ function RosterEditor({ controller, user, line, busy, onClose, onSave }: {
   onSave: (body: RosterForm) => void;
 }) {
   const store = controller.store;
-  const [affiliation, setAffiliation] = useState<Affiliation>(line?.affiliation ?? "student");
+  const [affiliation, setAffiliation] = useState<Affiliation>(line?.affiliation ?? (grantable.has("student") ? "student" : "other"));
+  // REVIEW-v0.1.43 #1: a line in a group I may not give keeps its affiliation and grade (the reading, topic… stay editable).
+  const movable = lineMovable(line, grantable);
+  const limited = grantable.size < AFFILIATIONS.length;
   const [rank, setRank] = useState<FacultyRank | "">(line?.rank ?? "");
   const [grade, setGrade] = useState<Grade | "">(line?.grade ?? "");
   const [supervisor, setSupervisor] = useState(line?.supervisor_id ?? "");
@@ -171,9 +179,9 @@ function RosterEditor({ controller, user, line, busy, onClose, onSave }: {
   return (
     <Modal onClose={onClose} title={t("roster.of", { name: user.display_name })} className="w-[480px]">
       <form className="mt-4 space-y-3" onSubmit={submit}>
-        <Field label={t("roster.affiliation")}>
-          <select value={affiliation} onChange={(e) => setAffiliation(e.target.value as Affiliation)} className={SELECT}>
-            {AFFILIATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        <Field label={t("roster.affiliation")} hint={limited ? t("roster.grantHint") : undefined}>
+          <select value={affiliation} onChange={(e) => setAffiliation(e.target.value as Affiliation)} className={SELECT} disabled={!movable}>
+            {AFFILIATIONS.map(([value, label]) => <option key={value} value={value} disabled={value !== line?.affiliation && !grantable.has(value)}>{label}</option>)}
           </select>
         </Field>
         {affiliation === "faculty" && (
@@ -186,7 +194,7 @@ function RosterEditor({ controller, user, line, busy, onClose, onSave }: {
         )}
         {affiliation === "student" && (
           <Field label={t("roster.grade")}>
-            <select value={grade} onChange={(e) => setGrade(e.target.value as Grade | "")} className={SELECT}>
+            <select value={grade} onChange={(e) => setGrade(e.target.value as Grade | "")} className={SELECT} disabled={!movable}>
               <option value="">{t("invites.unspecified")}</option>
               {[...GRADES].reverse().map((value) => <option key={value} value={value}>{value}</option>)}
             </select>

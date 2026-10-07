@@ -57,6 +57,57 @@ MANAGED_GROUPS = (
 )
 
 
+# The grade groups are parts of @students: a manager who is a student may place students in any
+# grade (onboarding the new B4s is a manager's job), REVIEW-v0.1.43 #1 / docs/ROLES.md §4.2.
+GRADE_GROUPS = frozenset(("b4", "m1", "m2", "d"))
+
+
+def groups_of(affiliation: str | None, grade: str | None) -> set[str]:
+    """The managed groups a roster line puts its person in (none without a line)."""
+    if affiliation is None:
+        return set()
+    probe = LabProfile(affiliation=affiliation, grade=grade)
+    return {g.key for g in MANAGED_GROUPS if g.includes(probe)}
+
+
+def grantable_groups(own: LabProfile | None) -> set[str]:
+    """The managed groups a manager may put people in or take them out of: the ones their own
+    line puts them in, and every grade group when they are a student."""
+    held = groups_of(own.affiliation, own.grade) if own is not None else set()
+    if "students" in held:
+        held |= GRADE_GROUPS
+    return held
+
+
+async def check_grant(
+    db: AsyncSession,
+    actor: User,
+    user_id: uuid.UUID | None,
+    line: LabProfilePut | None,
+) -> None:
+    """REVIEW-v0.1.43 #1 (docs/ROLES.md §4.2): the managed groups are share targets (documents,
+    reservation slots), so someone who manages the roster without users.manage (a manager) may
+    change a person's managed groups only within the groups they are in themselves: "you can't
+    grant what you don't have". Otherwise a manager could put an account they control (one made
+    with their own invite) in @faculty and read what is shared with it. Applies to roster edits,
+    removals (`line` None) and invite presets (`user_id` None: a new account).
+    403 roster_group_not_held with the groups in `details.groups`."""
+    if has_capability(actor, "users.manage"):
+        return
+    before = await repo.get(db, user_id) if user_id is not None else None
+    changed = groups_of(before.affiliation if before else None, before.grade if before else None)
+    changed ^= groups_of(line.affiliation if line else None, line.grade if line else None)
+    missing = changed - grantable_groups(await repo.get(db, actor.id))
+    if missing:
+        raise AppError(
+            403,
+            "roster_group_not_held",
+            "Only an administrator adds people to (or removes them from) a roster group you "
+            "are not in",
+            details={"groups": sorted(missing)},
+        )
+
+
 def _index(values: Sequence[str], value: str | None) -> int:
     return values.index(value) if value in values else len(values)
 
@@ -107,6 +158,7 @@ async def put(
 ) -> LabProfileOut:
     """An administrator or a manager puts someone on the roster or changes their line."""
     await _check_target(db, actor, user_id)
+    await check_grant(db, actor, user_id, data)
     out = await put_in_tx(db, actor, user_id, data)
     await db.commit()
     return out
@@ -173,6 +225,7 @@ async def update_mine(db: AsyncSession, actor: User, data: MyLabProfileUpdate) -
 async def remove(db: AsyncSession, actor: User, user_id: uuid.UUID) -> None:
     """An administrator or a manager takes someone off the roster (the account stays)."""
     await _check_target(db, actor, user_id)
+    await check_grant(db, actor, user_id, None)
     await repo.lock_roster(db)
     if not await repo.remove(db, user_id):
         raise not_found("roster_entry_not_found", "Not on the roster")

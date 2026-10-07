@@ -1031,6 +1031,11 @@
       "en": "Not in the roster.",
       "zh-Hans": "不在名册中。"
     },
+    "roster_group_not_held": {
+      "ja": "自分が入っていない名簿のグループ（教員など）に人を入れたり外したりできるのは管理者だけです",
+      "en": "Only admins can add people to (or remove them from) a roster group you aren't in, such as faculty.",
+      "zh-Hans": "只有管理员可以将他人加入或移出你不在其中的名册分组（如教员）。"
+    },
     "scheduled_not_found": {
       "ja": "予約送信が見つかりません",
       "en": "Scheduled message not found.",

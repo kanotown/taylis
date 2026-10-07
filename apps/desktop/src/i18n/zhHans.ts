@@ -1914,6 +1914,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "roster.view": "名册视图",
   "roster.rollover": "年度更新",
   "roster.note": "名册只用于显示顺序和分组（不改变权限）。@faculty @students @alumni @b4 @m1 @m2 @d 会根据名册自动维护。",
+  "roster.grantHint": "你自己不属于的类别（如教员、毕业生）由管理员设置。",
   "roster.notInRoster": "不在名册中",
   "roster.add": "加入名册",
   "roster.removeTitle": "从名册中移除（账号保留）",
