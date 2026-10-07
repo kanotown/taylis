@@ -25,6 +25,10 @@ class ThreadState(BaseModel):
 class ThreadItem(BaseModel):
     parent: MessageOut
     state: ThreadState
+    # The newest live replies (at most LATEST_REPLIES), oldest first, for the list's preview
+    # (THREADS.md §5). Replies of people I blocked are left out; `state.reply_count` still
+    # counts every live reply, so "n more replies" is reply_count - len(latest_replies).
+    latest_replies: list[MessageOut] = []
 
 
 class ThreadSummary(BaseModel):
