@@ -268,7 +268,8 @@ struct ChannelListView: View {
                                  }, docs: controller.wiki?.available == true,
                                  attendance: store.attendance.flatMap { board in
                                      controller.isGuest ? nil : AttendanceRules.inRoomCount(board, users: store.users.values)
-                                 })
+                                 },
+                                 actions: ActionRules.visible(store.actions, role: (store.me ?? controller.me)?.role))
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(row) { tile in

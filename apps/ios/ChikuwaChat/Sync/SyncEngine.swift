@@ -274,6 +274,38 @@ final class SyncEngine {
         }
     }
 
+    /// M143 (docs/ACTIONS.md §8): GET /actions; `enabled: false` (turned off) clears the buttons. Not for guests (they
+    /// may press none). A failure keeps what the store holds until the next bootstrap.
+    func loadActions() async {
+        guard let actionsApi = api as? ActionsApi, let role = store.me?.role, role != "guest", role != "bot" else { return }
+        actionReads += 1
+        let read = actionReads
+        do {
+            let list = try await actionsApi.actions()
+            guard read > actionsKept else { return }
+            actionsKept = read
+            store.setActions(list)
+        } catch {
+            print("could not load the action buttons: \(error)")
+        }
+    }
+
+    /// GET /actions started, and the latest one whose answer the store took (an older answer never overwrites).
+    private var actionReads = 0
+    private var actionsKept = 0
+
+    /// actions.updated comes in bursts (a reorder, several edits): one read for them, 300 ms after the first.
+    private var actionsReload: Task<Void, Never>?
+    private func scheduleActionsReload() {
+        guard actionsReload == nil else { return }
+        actionsReload = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            self.actionsReload = nil
+            await self.loadActions()
+        }
+    }
+
     /// GET /attendance started, and the latest one whose answer the store took (an older answer never overwrites).
     private var attendanceReads = 0
     private var attendanceKept = 0
@@ -630,6 +662,9 @@ final class SyncEngine {
         // M140: a bootstrap answer is newer than any board read that started before it.
         attendanceKept = attendanceReads
         store.setAttendance(bootstrap.attendance)
+        // M143: the same for the buttons (nil for guests, while off, before M143).
+        actionsKept = actionReads
+        store.setActions(bootstrap.actions)
         let wikiFeed = bootstrap.wiki
         Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
         onBadge?(store.badgeCount)
@@ -778,6 +813,10 @@ final class SyncEngine {
             // M140 (docs/PRESENCE.md §4): one person's row; a state not on the board held here (someone's new own
             // state): read the board.
             if !store.applyAttendanceEntry(try frame.data.decode(AttendanceEntryOut.self)) { scheduleAttendanceReload() }
+        case "actions.updated":
+            // M143 (docs/ACTIONS.md §8): the switch or a button changed; what I may press differs per person, so the
+            // event is empty.
+            scheduleActionsReload()
         case "attendance.config_updated":
             // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
             scheduleAttendanceReload()

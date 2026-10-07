@@ -301,7 +301,7 @@ enum SidebarOrder {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
-        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases, docs, attendance
+        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases, docs, attendance, actions
 
         /// M111: the key in apps/shared/nav-items.json (UserMe.nav_items).
         var navKey: String { self == .times ? "times-feed" : rawValue }
@@ -331,6 +331,7 @@ struct HomeTile: Identifiable, Equatable {
         case .canvases: tr("キャンバス")
         case .docs: tr("ドキュメント")
         case .attendance: tr("在室状況")
+        case .actions: actionsTitle
         }
     }
 
@@ -349,6 +350,7 @@ struct HomeTile: Identifiable, Equatable {
         case .canvases: "doc.text"
         case .docs: "book.closed"
         case .attendance: "door.left.hand.open"
+        case .actions: "bolt"
         }
     }
 
@@ -368,6 +370,7 @@ struct HomeTile: Identifiable, Equatable {
         case .canvases: CanvasesView.selectionId
         case .docs: DocsView.selectionId
         case .attendance: AttendanceView.selectionId
+        case .actions: ActionsView.selectionId
         }
     }
 
@@ -393,12 +396,14 @@ struct HomeTile: Identifiable, Equatable {
     /// M122: ドキュメント (key "docs", after キャンバス) while the server has the wiki (`docs`): no number.
     /// M140 (docs/PRESENCE.md §9): 在室状況 (key "attendance", last) only while the board is on for me (`attendance`, the
     /// 「在室 n 人」 number, never red; nil = off, a guest, an older server).
+    /// M143 (docs/ACTIONS.md §9.2): 操作 (key "actions", after 在室状況) only while the buttons are on and I may press one
+    /// (`actions`): no number.
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?,
-                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil) -> [HomeTile] {
+                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false) -> [HomeTile] {
         let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations, docs: docs,
-                        attendance: attendance)
+                        attendance: attendance, actions: actions)
         let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
-        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil)).compactMap { byKey[$0] }
+        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil, actions: actions)).compactMap { byKey[$0] }
     }
 
     struct ReservationTile: Equatable {
@@ -407,7 +412,7 @@ struct HomeTile: Identifiable, Equatable {
     }
 
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
-                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil) -> [HomeTile] {
+                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false) -> [HomeTile] {
         var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders)
         if docs, let at = row.firstIndex(where: { $0.kind == .canvases }) {
             row.insert(HomeTile(kind: .docs, count: nil, alert: false), at: at + 1)
@@ -417,6 +422,7 @@ struct HomeTile: Identifiable, Equatable {
                                 alert: reservations.todos > 0), at: at + 1)
         }
         if let attendance { row.append(HomeTile(kind: .attendance, count: attendance, alert: false)) }
+        if actions { row.append(HomeTile(kind: .actions, count: nil, alert: false)) }
         return row
     }
 

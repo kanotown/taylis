@@ -190,6 +190,8 @@ struct AttendanceQuickSheet: View {
     /// The sheet's height for its whole content (AttendanceRules.quickSheetHeight), measured once; nil until then.
     @State private var fitted: CGFloat?
     @State private var detent: PresentationDetent = .medium
+    /// M143: the 操作ボタン rows (when the workspace shows them here); the sheet closes once a press answered.
+    @State private var actionPresser = ActionPresser()
 
     private var meId: String? { controller.store.me?.id ?? controller.me?.id }
 
@@ -219,6 +221,11 @@ struct AttendanceQuickSheet: View {
                         }
                     }
                 }
+                // M143 (docs/ACTIONS.md D17): the 操作ボタン too, when the workspace says so.
+                let actions = board == nil ? [] : ActionRules.onAttendance(controller.store.actions)
+                if !actions.isEmpty {
+                    ActionQuickRows(controller: controller, actions: actions, presser: actionPresser)
+                }
                 Section {
                     Button("在室状況を開く", systemImage: "door.left.hand.open", action: onOpenBoard)
                 }
@@ -228,7 +235,11 @@ struct AttendanceQuickSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
             }
-            .onAppear { note = mine?.note ?? "" }
+            .actionConfirmation(actionPresser, controller: controller)
+            .onAppear {
+                note = mine?.note ?? ""
+                actionPresser.onFinished = { dismiss() }
+            }
             .onChange(of: board == nil) { _, off in if off { dismiss() } }  // turned off meanwhile
             .modifier(ContentHeightProbe { height in
                 // Once, as the sheet opens (a later change would move it under the reader's finger), and only with the

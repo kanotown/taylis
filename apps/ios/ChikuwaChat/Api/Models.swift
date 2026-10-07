@@ -1045,6 +1045,8 @@ struct BootstrapOut: Codable {
     var wiki: WikiBootstrap? = nil
     /// M140 (docs/PRESENCE.md §4): the 在室状況 board; nil for guests, while it is off and from a server before M140.
     var attendance: AttendanceBoardOut? = nil
+    /// M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press; nil for guests, while off and from a server before M143.
+    var actions: ActionListOut? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message

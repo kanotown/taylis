@@ -73,7 +73,23 @@ final class FakeServer {
     }
 
     @MainActor
-    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ReservationsApi, AttendanceApi {
+    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ReservationsApi, AttendanceApi, ActionsApi {
+        func actions() async throws -> ActionListOut {
+            try maybeFail("actions")
+            server.actionReads += 1
+            return server.actionList(for: userId)
+        }
+
+        func invokeAction(id: String, clientInvokeId: String) async throws -> ActionInvokeOut {
+            try maybeFail("invokeAction")
+            let out = try server.invokeAction(userId, actionId: id, clientInvokeId: clientInvokeId)
+            if server.actionAnswersLost > 0 {  // the server did it, the answer never came back
+                server.actionAnswersLost -= 1
+                throw ApiError.network(URLError(.networkConnectionLost))
+            }
+            return out
+        }
+
         func attendance() async throws -> AttendanceBoardOut {
             try maybeFail("attendance")
             server.attendanceReads += 1
@@ -603,6 +619,54 @@ final class FakeServer {
         emitEvent(attendanceAudience, "attendance.updated", channelId: nil, data: data)
     }
 
+    /// M143: the 操作ボタン as the server holds them (nil = off); everyone but guests and bots may press them all here.
+    var actions: ActionListOut?
+    /// How many times GET /actions was read, and the presses that reached the relay (their action ids).
+    var actionReads = 0
+    var relayCalls: [String] = []
+    /// What the relay answers (ok and its message).
+    var relayAnswer: (ok: Bool, message: String?) = (true, nil)
+    /// Presses whose answer is lost on the way back (the server did them): ApiError.network after the work.
+    var actionAnswersLost = 0
+    /// "user:client_invoke_id" → the first answer (docs/ACTIONS.md §4 2.).
+    private var invocations: [String: ActionInvokeOut] = [:]
+
+    private var actionsAudience: Set<String> { Set(users.values.filter { $0.role != "guest" }.map(\.id)) }
+
+    func actionList(for userId: String) -> ActionListOut {
+        guard let list = actions, list.enabled else { return ActionListOut(enabled: false) }
+        let role = users[userId]?.role
+        return role == "guest" || role == "bot" ? ActionListOut(enabled: true, showOnAttendance: list.showOnAttendance) : list
+    }
+
+    /// actions.updated (empty) after the switch or a button changed.
+    func setActionsConfig(_ list: ActionListOut?) {
+        actions = list
+        emitEvent(actionsAudience, "actions.updated", channelId: nil, data: .object([:]))
+    }
+
+    func invokeAction(_ userId: String, actionId: String, clientInvokeId: String) throws -> ActionInvokeOut {
+        guard let list = actions, list.enabled else { throw ApiError.api(status: 409, code: "actions_disabled", message: "Off") }
+        guard list.actions.contains(where: { $0.id == actionId }) else {
+            throw ApiError.api(status: 404, code: "action_not_found", message: "Not found")
+        }
+        let role = users[userId]?.role
+        guard role != "guest", role != "bot" else { throw ApiError.api(status: 403, code: "action_not_allowed", message: "No") }
+        let key = "\(userId):\(clientInvokeId)"
+        if let earlier = invocations[key] {
+            guard earlier.actionId == actionId else { throw ApiError.api(status: 409, code: "action_invoke_id_reused", message: "Reused") }
+            var again = earlier
+            again.repeated = true
+            return again
+        }
+        relayCalls.append(actionId)
+        let out = ActionInvokeOut(invokeId: "inv\(relayCalls.count)", actionId: actionId, ok: relayAnswer.ok,
+                                  status: relayAnswer.ok ? "succeeded" : "failed", statusCode: relayAnswer.ok ? 200 : 503,
+                                  error: relayAnswer.ok ? nil : "relay_error", message: relayAnswer.message, at: now())
+        invocations[key] = out
+        return out
+    }
+
     /// attendance.config_updated (empty) after the board's settings or states changed.
     func setAttendanceConfig(_ board: AttendanceBoardOut?) {
         attendance = board
@@ -1096,7 +1160,8 @@ final class FakeServer {
                             favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
                             customEmoji: Array(customEmoji.values), roster: Array(roster.values), drafts: drafts(of: userId),
                             activity: activity[userId], workspaceSettings: workspaceSettings,
-                            attendance: user.role == "guest" || attendance?.enabled != true ? nil : attendance)
+                            attendance: user.role == "guest" || attendance?.enabled != true ? nil : attendance,
+                            actions: user.role == "guest" || actions?.enabled != true ? nil : actionList(for: user.id))
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {
