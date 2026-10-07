@@ -25,7 +25,6 @@
     <string name="docs_db_properties">プロパティ</string>
     <string name="docs_db_no_properties">プロパティはまだありません</string>
     <string name="docs_db_referenced_by">%1$s の %2$s</string>
-    <string name="docs_db_view_only">閲覧のみ — 値を変更する権限がありません</string>
     <string name="docs_db_edit_cell">%1$s を編集</string>
     <string name="docs_db_empty_value">空</string>
     <string name="docs_db_empty_value_edit">空（タップで入力）</string>
@@ -33,6 +32,7 @@
     <string name="docs_db_done">完了</string>
     <string name="docs_db_start_date">開始</string>
     <string name="docs_db_end_date">終了日</string>
+    <string name="docs_db_end">終了</string>
     <string name="docs_db_include_time">時刻を含める</string>
     <string name="docs_db_find_person">人を探す</string>
     <string name="docs_db_find_row">行を探す</string>

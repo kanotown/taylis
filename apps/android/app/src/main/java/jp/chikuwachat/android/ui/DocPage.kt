@@ -522,7 +522,8 @@ fun DocPageBarTitle(controller: AppController, pageId: String) {
     val version by controller.store.version.collectAsState()
     val item = remember(wikiVersion, pageId) { hub?.pages?.get(pageId) }
     val held = remember(wikiVersion, pageId) { hub?.current(pageId) }
-    val title = item?.title ?: held?.canvas?.title
+    val open = remember(wikiVersion, pageId) { hub?.openPage(pageId) }
+    val title = item?.title ?: open?.title ?: held?.canvas?.title
     if (title == null) Text(stringResource(R.string.docs_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
-    else PageTitleText(controller, version, item?.icon, title, MaterialTheme.typography.titleLarge, kind = item?.kind ?: "page")
+    else PageTitleText(controller, version, item?.icon ?: open?.icon, title, MaterialTheme.typography.titleLarge, kind = item?.kind ?: open?.kind ?: "page")
 }

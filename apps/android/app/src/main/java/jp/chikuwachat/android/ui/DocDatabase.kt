@@ -400,9 +400,6 @@ fun RowPropertiesSection(controller: AppController, session: RowSession, version
         val editable = session.editable
         val refs = detail.refs.associateBy { it.id }
         val ctx = DbUi.context(controller, refs)
-        if (!editable) {
-            Text(stringResource(R.string.docs_db_view_only), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
-        }
         val props = detail.database.properties.filter { it.type != "title" }
         if (props.isEmpty()) MutedSmall(stringResource(R.string.docs_db_no_properties))
         props.forEach { prop ->
@@ -713,7 +710,7 @@ private fun DateDialog(prop: DbProperty, current: jp.chikuwachat.android.sync.Db
                     Text(stringResource(R.string.docs_db_end_date), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = end != null, onCheckedChange = { on -> end = if (on) start else null; if (!on) endTime = null })
                 }
-                end?.let { last -> DateLine(stringResource(R.string.docs_db_end_date), last.format(dayFormat), if (startTime != null) (endTime ?: startTime)?.format(timeFormat) else null, { picking = "end" }, { picking = "endTime" }) }
+                end?.let { last -> DateLine(stringResource(R.string.docs_db_end), last.format(dayFormat), if (startTime != null) (endTime ?: startTime)?.format(timeFormat) else null, { picking = "end" }, { picking = "endTime" }) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.docs_db_include_time), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = startTime != null, onCheckedChange = { on -> startTime = if (on) LocalTime.of(9, 0) else null; if (!on) endTime = null })
@@ -762,10 +759,12 @@ private fun DateDialog(prop: DbProperty, current: jp.chikuwachat.android.sync.Db
 
 @Composable
 private fun DateLine(label: String, day: String, time: String?, onDay: () -> Unit, onTime: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp))
-        OutlinedButton(onClick = onDay) { Text(day) }
-        if (time != null) OutlinedButton(onClick = onTime) { Text(time) }
+    Column {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = onDay) { Text(day, maxLines = 1) }
+            if (time != null) OutlinedButton(onClick = onTime) { Text(time, maxLines = 1) }
+        }
     }
 }
 
