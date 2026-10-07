@@ -5,6 +5,11 @@
   "member_fallback": {"ja": "メンバー", "en": "member", "zh-Hans": "成员"},
   "group_fallback": {"ja": "グループ", "en": "group", "zh-Hans": "用户组"},
 
+  "attendance.default.in_room": {"ja": "在室", "en": "In the room", "zh-Hans": "在室"},
+  "attendance.default.on_site": {"ja": "学内", "en": "On site", "zh-Hans": "校内"},
+  "attendance.default.off_site": {"ja": "学外", "en": "Off site", "zh-Hans": "校外"},
+  "attendance.default.gone": {"ja": "帰宅", "en": "Gone home", "zh-Hans": "已回家"},
+
   "push.new_message": {"ja": "新しいメッセージ", "en": "New message", "zh-Hans": "新消息"},
   "push.group_dm": {"ja": "グループ DM", "en": "Group DM", "zh-Hans": "群组私信"},
   "push.priority.important": {"ja": "[重要] ", "en": "[Important] ", "zh-Hans": "[重要] "},

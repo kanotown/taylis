@@ -332,6 +332,81 @@
         "type": "object"
       }
     },
+    "attendance.config_updated": {
+      "audience": "all (not guests)",
+      "consumes_seq": false,
+      "data": {
+        "description": "No content: what changed differs per person (can_personalize). Re-read GET /attendance.",
+        "properties": {},
+        "title": "AttendanceConfigUpdatedData",
+        "type": "object"
+      }
+    },
+    "attendance.updated": {
+      "audience": "all (not guests)",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "log_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Log Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "app",
+              "admin",
+              "integration",
+              "auto"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state_id": {
+            "format": "uuid",
+            "title": "State Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "state_id",
+          "since",
+          "note",
+          "source"
+        ],
+        "title": "AttendanceUpdatedData",
+        "type": "object"
+      }
+    },
     "block.updated": {
       "audience": "user",
       "consumes_seq": false,

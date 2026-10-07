@@ -243,6 +243,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/attendance/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Integrations */
+        get: operations["list_integrations_api_v1_admin_attendance_integrations_get"];
+        put?: never;
+        /**
+         * Create Integration
+         * @description `url` (https, public) needs `secret_name` (the signing key's file). `inbound: true`
+         *     returns the inbound token, this once.
+         */
+        post: operations["create_integration_api_v1_admin_attendance_integrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/integrations/{integration_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Integration */
+        delete: operations["delete_integration_api_v1_admin_attendance_integrations__integration_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Integration */
+        patch: operations["update_integration_api_v1_admin_attendance_integrations__integration_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/integrations/{integration_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Deliveries
+         * @description The latest 50, newest first.
+         */
+        get: operations["list_deliveries_api_v1_admin_attendance_integrations__integration_id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/integrations/{integration_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Integration
+         * @description 「テスト送信」: sends an `attendance.test` now and returns the recorded delivery.
+         */
+        post: operations["test_integration_api_v1_admin_attendance_integrations__integration_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/integrations/{integration_id}/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Token
+         * @description A new inbound token (shown this once); the previous one stops working at once.
+         */
+        post: operations["rotate_token_api_v1_admin_attendance_integrations__integration_id__token_post"];
+        /** Revoke Token */
+        delete: operations["revoke_token_api_v1_admin_attendance_integrations__integration_id__token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_admin_attendance_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Settings
+         * @description Turning the board on the first time makes the four default states (in the
+         *     administrator's language) when there are none.
+         */
+        patch: operations["update_settings_api_v1_admin_attendance_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create State */
+        post: operations["create_state_api_v1_admin_attendance_states_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/states/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder States */
+        put: operations["reorder_states_api_v1_admin_attendance_states_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/states/{state_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete State
+         * @description Archived (people in it stay until their next change). 409 for the last one.
+         */
+        delete: operations["delete_state_api_v1_admin_attendance_states__state_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update State */
+        patch: operations["update_state_api_v1_admin_attendance_states__state_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/attendance/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set For User
+         * @description Someone else's state (audited, source `admin`).
+         */
+        put: operations["set_for_user_api_v1_admin_attendance_users__user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/canvas-templates": {
         parameters: {
             query?: never;
@@ -953,6 +1151,109 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Board
+         * @description The board: states (the workspace's and everyone's own), one entry per person who has set
+         *     one, and whether I may add my own states. `enabled: false` while off; 403 for guests.
+         */
+        get: operations["get_board_api_v1_attendance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attendance/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Log
+         * @description Newest first. Mine for anyone; another person's (or everyone's) for administrators.
+         */
+        get: operations["get_log_api_v1_attendance_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attendance/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Mine
+         * @description My state (a workspace state or one of mine) and note. The same state and note again
+         *     changes nothing (no event). 409 attendance_disabled while off.
+         */
+        put: operations["set_mine_api_v1_attendance_me_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attendance/my-states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create My State
+         * @description A personal state (when the administrator's rule allows me; at most 10).
+         */
+        post: operations["create_my_state_api_v1_attendance_my_states_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attendance/my-states/{state_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete My State
+         * @description Archived: if I am in it, I stay until my next change.
+         */
+        delete: operations["delete_my_state_api_v1_attendance_my_states__state_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update My State */
+        patch: operations["update_my_state_api_v1_attendance_my_states__state_id__patch"];
         trace?: never;
     };
     "/api/v1/auth/login": {
@@ -2579,6 +2880,29 @@ export interface paths {
          * @description No login: the URL token is the credential. Posts as the webhook's bot user.
          */
         post: operations["post_to_webhook_api_v1_hooks__token__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inbound
+         * @description An outside system reports a change (docs/PRESENCE.md §6), with an integration's token as
+         *     the Bearer token. The state is matched by id or name (workspace states first, then the
+         *     person's own); unknown is 422 attendance_state_unknown. Never echoed back to the same
+         *     integration.
+         */
+        post: operations["inbound_api_v1_integrations_attendance_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5983,6 +6307,339 @@ export interface components {
             /** Width */
             width: number | null;
         };
+        /** AttendanceAdminSettingsOut */
+        AttendanceAdminSettingsOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Log Retention Days */
+            log_retention_days: number;
+            /** Personal Group Ids */
+            personal_group_ids: string[];
+            /**
+             * Personal Rule
+             * @enum {string}
+             */
+            personal_rule: "nobody" | "everyone" | "admins" | "groups";
+            /** States */
+            states: components["schemas"]["AttendanceStateOut"][];
+        };
+        /**
+         * AttendanceBoardOut
+         * @description GET /attendance and the bootstrap's `attendance` (null for guests and while off).
+         */
+        AttendanceBoardOut: {
+            /**
+             * Can Personalize
+             * @default false
+             */
+            can_personalize: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Entries
+             * @default []
+             */
+            entries: components["schemas"]["AttendanceEntryOut"][];
+            /**
+             * States
+             * @default []
+             */
+            states: components["schemas"]["AttendanceStateOut"][];
+        };
+        /** AttendanceDeliveryOut */
+        AttendanceDeliveryOut: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered At */
+            delivered_at: string | null;
+            /** Event */
+            event: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Status Code */
+            last_status_code: number | null;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "delivered" | "failed" | "superseded";
+            /** To Label */
+            to_label: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** AttendanceEntryOut */
+        AttendanceEntryOut: {
+            /** Note */
+            note: string | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "app" | "admin" | "integration" | "auto";
+            /**
+             * State Id
+             * Format: uuid
+             */
+            state_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * AttendanceInbound
+         * @description POST /integrations/attendance (docs/PRESENCE.md §6): one of user_id / email / username.
+         */
+        AttendanceInbound: {
+            /** At */
+            at?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Note */
+            note?: string | null;
+            /** State */
+            state: string;
+            /** User Id */
+            user_id?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /** AttendanceInboundOut */
+        AttendanceInboundOut: {
+            /** Applied */
+            applied: boolean;
+            /** Reason */
+            reason?: ("unchanged" | "stale") | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * State Id
+             * Format: uuid
+             */
+            state_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AttendanceIntegrationCreate */
+        AttendanceIntegrationCreate: {
+            /**
+             * Inbound
+             * @default false
+             */
+            inbound: boolean;
+            /** Name */
+            name: string;
+            /** Secret Name */
+            secret_name?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** AttendanceIntegrationCreated */
+        AttendanceIntegrationCreated: {
+            integration: components["schemas"]["AttendanceIntegrationOut"];
+            /** Token */
+            token?: string | null;
+        };
+        /** AttendanceIntegrationOut */
+        AttendanceIntegrationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inbound */
+            inbound: boolean;
+            /** Last Inbound At */
+            last_inbound_at: string | null;
+            /** Name */
+            name: string;
+            /** Secret Name */
+            secret_name: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * AttendanceIntegrationUpdate
+         * @description Only what is sent changes; url null stops sending (secret_name is then kept).
+         */
+        AttendanceIntegrationUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Secret Name */
+            secret_name?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** AttendanceLogOut */
+        AttendanceLogOut: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** From State Id */
+            from_state_id: string | null;
+            /** Id */
+            id: number;
+            /** Integration Id */
+            integration_id: string | null;
+            /** Note */
+            note: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "app" | "admin" | "integration" | "auto";
+            /**
+             * To State Id
+             * Format: uuid
+             */
+            to_state_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AttendanceLogPage */
+        AttendanceLogPage: {
+            /** Items */
+            items: components["schemas"]["AttendanceLogOut"][];
+            /** Next Before Id */
+            next_before_id: number | null;
+        };
+        /** AttendanceSet */
+        AttendanceSet: {
+            /** Note */
+            note?: string | null;
+            /**
+             * State Id
+             * Format: uuid
+             */
+            state_id: string;
+        };
+        /** AttendanceSettingsUpdate */
+        AttendanceSettingsUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Log Retention Days */
+            log_retention_days?: number | null;
+            /** Personal Group Ids */
+            personal_group_ids?: string[] | null;
+            /** Personal Rule */
+            personal_rule?: ("nobody" | "everyone" | "admins" | "groups") | null;
+        };
+        /** AttendanceStateCreate */
+        AttendanceStateCreate: {
+            /**
+             * Color
+             * @default gray
+             * @enum {string}
+             */
+            color: "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink";
+            /** Emoji */
+            emoji?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "in_room" | "on_site" | "off_site" | "gone";
+            /** Label */
+            label: string;
+        };
+        /** AttendanceStateOrder */
+        AttendanceStateOrder: {
+            /** Ids */
+            ids: string[];
+        };
+        /** AttendanceStateOut */
+        AttendanceStateOut: {
+            /** Archived */
+            archived: boolean;
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink";
+            /** Emoji */
+            emoji: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "in_room" | "on_site" | "off_site" | "gone";
+            /** Label */
+            label: string;
+            /** Owner Id */
+            owner_id: string | null;
+            /** Position */
+            position: number;
+        };
+        /**
+         * AttendanceStateUpdate
+         * @description Only what is sent changes; `emoji: null` removes the emoji.
+         */
+        AttendanceStateUpdate: {
+            /** Color */
+            color?: ("gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink") | null;
+            /** Emoji */
+            emoji?: string | null;
+            /** Kind */
+            kind?: ("in_room" | "on_site" | "off_site" | "gone") | null;
+            /** Label */
+            label?: string | null;
+        };
+        /** AttendanceTestOut */
+        AttendanceTestOut: {
+            delivery: components["schemas"]["AttendanceDeliveryOut"];
+        };
+        /** AttendanceTokenOut */
+        AttendanceTokenOut: {
+            integration: components["schemas"]["AttendanceIntegrationOut"];
+            /** Token */
+            token: string;
+        };
         /**
          * AuthMethodsOut
          * @description Which sign-in buttons the login screen shows (M48).
@@ -6105,6 +6762,7 @@ export interface components {
              */
             active_calls: components["schemas"]["CallOut"][];
             activity?: components["schemas"]["ActivitySummaryOut"] | null;
+            attendance?: components["schemas"]["AttendanceBoardOut"] | null;
             /**
              * Blocked User Ids
              * @default []
@@ -12392,6 +13050,465 @@ export interface operations {
             };
         };
     };
+    list_integrations_api_v1_admin_attendance_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceIntegrationOut"][];
+                };
+            };
+        };
+    };
+    create_integration_api_v1_admin_attendance_integrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceIntegrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceIntegrationCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_integration_api_v1_admin_attendance_integrations__integration_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_integration_api_v1_admin_attendance_integrations__integration_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceIntegrationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceIntegrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_api_v1_admin_attendance_integrations__integration_id__deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceDeliveryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_integration_api_v1_admin_attendance_integrations__integration_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_token_api_v1_admin_attendance_integrations__integration_id__token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceTokenOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_token_api_v1_admin_attendance_integrations__integration_id__token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceIntegrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_admin_attendance_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceAdminSettingsOut"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_admin_attendance_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceAdminSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_state_api_v1_admin_attendance_states_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceStateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_states_api_v1_admin_attendance_states_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceStateOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceAdminSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_state_api_v1_admin_attendance_states__state_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_state_api_v1_admin_attendance_states__state_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceStateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_for_user_api_v1_admin_attendance_users__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_list_canvas_templates_api_v1_admin_canvas_templates_get: {
         parameters: {
             query?: never;
@@ -13713,6 +14830,189 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_board_api_v1_attendance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceBoardOut"];
+                };
+            };
+        };
+    };
+    get_log_api_v1_attendance_log_get: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+                before_id?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceLogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_mine_api_v1_attendance_me_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_my_state_api_v1_attendance_my_states_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceStateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_state_api_v1_attendance_my_states__state_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_my_state_api_v1_attendance_my_states__state_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceStateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceStateOut"];
                 };
             };
             /** @description Validation Error */
@@ -17144,6 +18444,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookPosted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inbound_api_v1_integrations_attendance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceInbound"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceInboundOut"];
                 };
             };
             /** @description Validation Error */

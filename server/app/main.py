@@ -32,6 +32,9 @@ from app.modules.attachments import previews
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
+from app.modules.attendance import service as attendance_service
+from app.modules.attendance import webhooks as attendance_webhooks
+from app.modules.attendance.router import router as attendance_router
 from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
@@ -175,6 +178,20 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     pruned,
                     purged_pages,
                     released,
+                )
+            async with app.state.db.session_factory() as session:
+                # M140 (docs/PRESENCE.md §2, §5.1): the 在室状況 log past the administrator's
+                # retention, webhook deliveries past theirs.
+                purged_log, purged_deliveries = await attendance_service.purge(
+                    session,
+                    now=utcnow(),
+                    delivery_days=settings.attendance_delivery_retention_days,
+                )
+            if purged_log or purged_deliveries:
+                log.info(
+                    "attendance: purged %d log rows and %d webhook deliveries",
+                    purged_log,
+                    purged_deliveries,
                 )
             async with app.state.db.session_factory() as session:
                 # M48: sign-ins that were started or ticketed and never finished.
@@ -323,6 +340,35 @@ async def _feed_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 log.exception("feed polling failed")
 
 
+async def _attendance_webhook_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """在室状況 (docs/PRESENCE.md §5.1, M140): sends the webhook deliveries whose time has come,
+    again at once while there are more; woken by the planner or every
+    ATTENDANCE_WEBHOOK_INTERVAL_SECONDS (retries after their backoff)."""
+    settings: Settings = app.state.settings
+    wake: asyncio.Event = app.state.attendance_wake
+    while not stop.is_set():
+        wake.clear()
+        sent = 0
+        try:
+            sent = await attendance_webhooks.process_due(
+                app.state.db.session_factory, settings, app.state.attendance_sender
+            )
+        except Exception:
+            log.exception("attendance webhooks failed")
+        if sent:
+            continue
+        waits = [asyncio.ensure_future(stop.wait()), asyncio.ensure_future(wake.wait())]
+        try:
+            await asyncio.wait(
+                waits,
+                timeout=settings.attendance_webhook_interval_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for waiter in waits:
+                waiter.cancel()
+
+
 async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """AI runs (docs/AI.md §2.2-§2.3, M65): at most two at a time, again at once while there
     are more."""
@@ -456,6 +502,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_ai_loop(app, stop), name="ai-worker"))
         tasks.append(asyncio.create_task(_ai_typing_loop(app, stop), name="ai-typing"))
         tasks.append(asyncio.create_task(_feed_loop(app, stop), name="feeds"))
+        tasks.append(
+            asyncio.create_task(_attendance_webhook_loop(app, stop), name="attendance-webhooks")
+        )
         tasks.append(asyncio.create_task(_activity_loop(app, stop), name="activity"))
         if settings.previews_enabled:
             tasks.append(asyncio.create_task(_preview_loop(app, stop), name="previews"))
@@ -513,6 +562,7 @@ def build_api_router() -> APIRouter:
     api.include_router(templates_router)
     api.include_router(groups_router)
     api.include_router(lab_router)
+    api.include_router(attendance_router)
     api.include_router(webhooks_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
@@ -609,6 +659,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # M130 (docs/CALLS.md §5.2): starting calls and getting tokens, per person per minute.
         "call_start": RateLimiter(settings.call_start_rate_limit_per_user),
         "call_join": RateLimiter(settings.call_join_rate_limit_per_user),
+        # M140 (docs/PRESENCE.md §3, §6): changes from the app per person, from an integration per
+        # integration (30 in a burst), and the admin's test sends (6 a minute).
+        "attendance": RateLimiter(settings.attendance_rate_limit_per_user),
+        "attendance_inbound": RateLimiter(
+            settings.attendance_inbound_rate_limit_per_integration, burst=30
+        ),
+        "attendance_test": RateLimiter(6),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
@@ -629,6 +686,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_bytes=settings.feed_max_bytes,
         user_agent=settings.feed_user_agent,
     )
+    # M140 (docs/PRESENCE.md §5): the webhook sender (SSRF-checked) and the event that wakes it.
+    app.state.attendance_sender = attendance_webhooks.build_sender(settings)
+    app.state.attendance_wake = asyncio.Event()
     app.state.bus = InMemoryEventBus()
     app.state.hub = RealtimeHub(
         queue_size=settings.ws_send_queue_size, away_seconds=settings.presence_away_seconds
@@ -660,6 +720,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tasks_service.TaskLeaveHandler(),
             tasks_service.TaskSourceHandler(),
             ai_service.AiMentionHandler(app.state.ai),
+            # M140: a change of someone's 在室状況 becomes the webhook deliveries.
+            attendance_webhooks.AttendanceWebhookPlanner(
+                settings.workspace_display_name, wake=app.state.attendance_wake.set
+            ),
             # M130: an archive, a removal, a deactivation or a block wakes the calls' reconcile.
             *([calls_service.CallsWakeHandler(app.state.calls)] if app.state.calls else []),
         ],

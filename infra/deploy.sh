@@ -37,6 +37,10 @@ for optional in anthropic_api_key openai_api_key; do
   fi
 done
 
+# 在室状況 (docs/PRESENCE.md §5.3, M140): the signing keys of the outgoing webhooks, one file per integration
+# (named by its secret_name, mode 644). compose mounts the folder read-only; made here so Docker does not.
+[ -d secrets/attendance ] || install -d -m 755 secrets/attendance
+
 # In-app calls (docs/CALLS.md §8.3, M130), when deploy.conf adds docker-compose.livekit.yml: the app reads the API
 # secret from secrets/livekit_api_secret (mode 644 like the AI keys); LiveKit takes it as LIVEKIT_KEYS from
 # secrets/livekit.env, written here (mode 600: compose reads it as deploy, LiveKit refuses key files others can read).

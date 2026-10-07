@@ -96,6 +96,71 @@
       "en": "The file is too large.",
       "zh-Hans": "文件太大。"
     },
+    "attendance_change_too_old": {
+      "ja": "24 時間より前の変更は受け付けません",
+      "en": "Changes older than 24 hours aren't accepted.",
+      "zh-Hans": "不接受超过 24 小时的更改。"
+    },
+    "attendance_disabled": {
+      "ja": "在室状況はオフになっています",
+      "en": "The attendance board is turned off.",
+      "zh-Hans": "在室状况已关闭。"
+    },
+    "attendance_integration_no_url": {
+      "ja": "この連携には送信先がありません",
+      "en": "This integration has no webhook URL.",
+      "zh-Hans": "此集成没有发送地址。"
+    },
+    "attendance_integration_not_found": {
+      "ja": "連携が見つかりません",
+      "en": "Integration not found.",
+      "zh-Hans": "找不到该集成。"
+    },
+    "attendance_label_taken": {
+      "ja": "同じ名前の状態があります",
+      "en": "A state with this name already exists.",
+      "zh-Hans": "已存在同名状态。"
+    },
+    "attendance_last_state": {
+      "ja": "最後の状態は削除できません",
+      "en": "The last state can't be deleted.",
+      "zh-Hans": "无法删除最后一个状态。"
+    },
+    "attendance_personal_not_allowed": {
+      "ja": "自分用の状態を追加・変更する権限がありません",
+      "en": "You can't add or change your own states.",
+      "zh-Hans": "您无权添加或更改自己的状态。"
+    },
+    "attendance_state_invalid": {
+      "ja": "この状態は選べません",
+      "en": "This state can't be chosen.",
+      "zh-Hans": "无法选择此状态。"
+    },
+    "attendance_state_limit": {
+      "ja": "これ以上状態を追加できません",
+      "en": "You can't add any more states.",
+      "zh-Hans": "无法再添加状态。"
+    },
+    "attendance_state_not_found": {
+      "ja": "状態が見つかりません",
+      "en": "State not found.",
+      "zh-Hans": "找不到该状态。"
+    },
+    "attendance_state_unknown": {
+      "ja": "その名前か id の状態がありません",
+      "en": "No state with this id or name.",
+      "zh-Hans": "没有此 ID 或名称的状态。"
+    },
+    "attendance_url_not_allowed": {
+      "ja": "送信先には公開の https の URL だけを使えます",
+      "en": "Only public https URLs can be used.",
+      "zh-Hans": "只能使用公开的 https URL。"
+    },
+    "attendance_user_not_found": {
+      "ja": "在室状況の対象の人が見つかりません",
+      "en": "No such person on the attendance board.",
+      "zh-Hans": "在室状况中找不到此人。"
+    },
     "avatar_empty": {
       "ja": "画像が空です",
       "en": "The image is empty.",
