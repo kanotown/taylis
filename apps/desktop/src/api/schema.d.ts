@@ -26,6 +26,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/activity/items/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark Activity Items Read
+         * @description I opened these items (their `id` in GET /activity): each is read until it happens again (a
+         *     newer reaction to the message). Idempotent; ids that are not my items are ignored
+         *     (MOBILE_UI.md §6.4, 2026-10-07).
+         */
+        put: operations["mark_activity_items_read_api_v1_activity_items_read_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/activity/read": {
         parameters: {
             query?: never;
@@ -5131,6 +5153,11 @@ export interface components {
              */
             emojis: string[];
             /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
              * Kind
              * @enum {string}
              */
@@ -5140,6 +5167,11 @@ export interface components {
             /** Read */
             read?: boolean | null;
             reservation?: components["schemas"]["ActivityReservation"] | null;
+        };
+        /** ActivityItemsReadIn */
+        ActivityItemsReadIn: {
+            /** Item Ids */
+            item_ids: string[];
         };
         /** ActivityListOut */
         ActivityListOut: {
@@ -11971,6 +12003,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_activity_items_read_api_v1_activity_items_read_put: {
+        parameters: {
+            query?: {
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
+                include?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityItemsReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivitySummaryOut"];
                 };
             };
             /** @description Validation Error */

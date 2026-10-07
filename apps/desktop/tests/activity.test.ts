@@ -8,7 +8,7 @@ import type { ActivityItem, ActivitySummaryOut, MessageOut, ReactionAdded } from
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
-import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isReadInConversation, isShownActivity, movesActivityRead, newestActivityAt, type ReadPositions } from "../src/ui/activity";
+import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isReadInConversation, isShownActivity, newestActivityAt, type ReadPositions } from "../src/ui/activity";
 import { activityBadge } from "../src/ui/mobileTabs";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
@@ -33,7 +33,7 @@ describe("activity rows", () => {
     expect(activityEmptyText("reactions")).toBe("自分の投稿へのリアクションはまだありません");
   });
 
-  it("have a dot after the read position only, and mark read up to the newest one shown", () => {
+  it("have a dot after the read position only; the newest row's time (「すべて既読にする」 reads at least that)", () => {
     const readAt = "2026-09-30T01:00:00.000Z";
     expect(isActivityUnread(item("mention", "m1", "2026-09-30T01:00:00.001Z"), readAt)).toBe(true);
     expect(isActivityUnread(item("mention", "m1", readAt), readAt)).toBe(false);
@@ -41,9 +41,6 @@ describe("activity rows", () => {
     const rows = [item("mention", "a", "2026-09-30T01:00:00Z"), item("reaction", "b", "2026-09-30T03:00:00Z"), item("thread_reply", "c", "2026-09-30T02:00:00Z")];
     expect(newestActivityAt(rows)).toBe("2026-09-30T03:00:00Z");
     expect(newestActivityAt([])).toBeNull();
-    expect(movesActivityRead("2026-09-30T03:00:00Z", "2026-09-30T02:00:00Z")).toBe(true);
-    expect(movesActivityRead("2026-09-30T02:00:00Z", "2026-09-30T02:00:00Z")).toBe(false);
-    expect(movesActivityRead(null, "2026-09-30T02:00:00Z")).toBe(false);
   });
 
   it("2026-10-06 (§6.4): a mention or reply read in its conversation or thread has no dot; `read` null (an older server) is the time alone", () => {
@@ -64,10 +61,25 @@ describe("activity rows", () => {
     expect(isActivityUnread(row("mention", msg({}), false), readAt, { listReadAt: readAt, positions: pos(0, 0) })).toBe(true);
     expect(isActivityUnread(row("mention", msg({}), true), readAt, { listReadAt: readAt, positions: pos(0, 0) })).toBe(false);
     expect(isActivityUnread(row("mention", msg({}), false), readAt, { listReadAt: readAt, positions: pos(10, 0) })).toBe(false);
-    // `read` true only because it is behind the list's read position: the dot stays while looking (seen from earlier).
+    // `read` true only because it is behind the list's read position, while the position compared with is older: the time decides.
     expect(isActivityUnread(row("reaction", msg({}), true), readAt, { listReadAt: "2026-09-30T03:00:00.000Z" })).toBe(true);
     // An older server: no flag, the positions are not looked at.
     expect(isActivityUnread(row("mention", msg({}), null), readAt, { listReadAt: readAt, positions: pos(10, 10) })).toBe(true);
+  });
+
+  it("2026-10-07 (§6.4): an item opened (here or on another device) has no dot until it happens again", () => {
+    const readAt = "2026-09-30T01:00:00.000Z";
+    const row = { ...item("reaction", "m1", "2026-09-30T02:00:00.000Z"), id: "m1", read: false };
+    expect(isActivityUnread(row, readAt, { listReadAt: readAt })).toBe(true);
+    const opened = new Map([["m1", "2026-09-30T02:00:00.000Z"]]);
+    expect(isActivityUnread(row, readAt, { listReadAt: readAt, opened })).toBe(false);
+    // A newer reaction moved the item past the opening: unread again.
+    expect(isActivityUnread({ ...row, at: "2026-09-30T02:00:00.001Z" }, readAt, { listReadAt: readAt, opened })).toBe(true);
+    // Another item, or an item without an id (a server before it), is not affected.
+    expect(isActivityUnread({ ...row, id: "m2" }, readAt, { listReadAt: readAt, opened })).toBe(true);
+    expect(isActivityUnread({ ...row, id: undefined }, readAt, { listReadAt: readAt, opened })).toBe(true);
+    // The read position held now (「すべて既読にする」 on any device) reads everything up to it.
+    expect(isActivityUnread(row, "2026-09-30T02:00:00.000Z", { listReadAt: readAt })).toBe(false);
   });
 
   it("come in pages without listing a row twice (kind and message make a row)", () => {
@@ -124,6 +136,14 @@ describe("Store.setActivity", () => {
     store.setActivity(null);
     expect(store.activity).toBeNull();
   });
+
+  it("2026-10-07: items opened keep the latest time each (never earlier)", () => {
+    const store = new Store();
+    store.noteActivityItemsRead(["a", "b"], "2026-09-30T02:00:00.000Z");
+    store.noteActivityItemsRead(["a"], "2026-09-30T01:00:00.000Z");
+    store.noteActivityItemsRead(["b"], "2026-09-30T03:00:00.000Z");
+    expect([...store.openedActivityItems]).toEqual([["a", "2026-09-30T02:00:00.000Z"], ["b", "2026-09-30T03:00:00.000Z"]]);
+  });
 });
 
 /** Bob on this device, alice and carol posting in channel C; `reactions` collects the reaction banners. */
@@ -165,6 +185,27 @@ async function setup(options: { activity?: boolean; notifyReactions?: boolean; a
 }
 
 describe("SyncEngine and the activity (M39)", () => {
+  it("2026-10-07: opening items marks them read on the server (PUT /activity/items/read); another device's opening arrives as activity.items_read", async () => {
+    const w = await setup();
+    const first = w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 一つ目`).message;
+    const second = w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 二つ目`).message;
+    await w.settle();
+    expect(w.store.activity?.unread_count).toBe(2);
+    // This device: the dot goes at once (up to the item's time), the badge with the server's answer.
+    expect(await w.engine.markActivityItemsRead([{ id: first.id, at: first.created_at }])).toBe(true);
+    expect(w.store.openedActivityItems.get(first.id)).toBeDefined();
+    expect(w.store.activity?.unread_count).toBe(1);
+    expect(w.server.itemReadRequests).toEqual([{ userId: w.bob.id, itemIds: [first.id] }]);
+    // Another device of mine opens the second: the event marks it here and the badge is asked for again.
+    w.server.markActivityItemsRead(w.bob.id, [second.id]);
+    await w.settle();
+    expect(w.store.openedActivityItems.has(second.id)).toBe(true);
+    expect(w.store.activity?.unread_count).toBe(0);
+    // Nothing to open: nothing asked.
+    expect(await w.engine.markActivityItemsRead([])).toBe(false);
+    w.engine.stop();
+  });
+
   it("takes the badge from bootstrap; a server before M39 sends none and nothing is asked for", async () => {
     const old = await setup({ activity: false });
     expect(old.store.activity).toBeNull();

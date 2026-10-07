@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * M39 (Web): the activity, stage B, on the real MainScreen with a real SyncEngine and the fake server — the phone's
- * アクティビティ tab and the wide layout's 「アクティビティ」: filters, rows, dots, being on screen reads it, 「すべて既読」,
+ * アクティビティ tab and the wide layout's 「アクティビティ」: filters, rows, dots, nothing read by looking, opening a row reads it, 「すべて既読にする」,
  * paging, opening a row, the badges, and 「リアクションのバナー」 in the settings.
  */
 import { useSyncExternalStore } from "react";
@@ -11,7 +11,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ApiClient } from "../src/api/client";
 import type { UserMe, UserUpdate } from "../src/api/types";
 import { AppController } from "../src/state/app";
-import { ACTIVITY_READ_DELAY_MS } from "../src/ui/ActivityView";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { MainScreen } from "../src/ui/MainScreen";
 import { world, type World } from "./unreadWorld";
@@ -91,8 +90,8 @@ const settle = async (w: World) => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 };
-/** Long enough on screen for the view to read what it shows. */
-const look = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, ACTIVITY_READ_DELAY_MS + 100)); });
+/** Longer on screen than the views before 2026-10-07 took to read what they showed (1.5 s). */
+const look = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_600)); });
 const bar = () => screen.queryByRole("navigation", { name: "タブ" });
 const tabButton = (tab: string) => bar()!.querySelector<HTMLButtonElement>(`[data-tab="${tab}"]`)!;
 const tap = async (tab: string) => {
@@ -104,8 +103,9 @@ const rows = (scope: HTMLElement = document.body) => [...scope.querySelectorAll<
 const labels = (scope?: HTMLElement) => rows(scope).map((row) => row.getAttribute("aria-label"));
 const dots = (scope?: HTMLElement) => rows(scope).filter((row) => row.dataset["unread"] !== undefined).length;
 
-it("the phone's activity tab: [すべて | メンション | スレッド | リアクション], rows newest first with their dots; on screen a moment, the badge clears and the dots stay until it is left", async () => {
+it("the phone's activity tab: [すべて | メンション | スレッド | リアクション], rows newest first with their dots; looking reads nothing (2026-10-07): the dots and the badge stay", async () => {
   const { w, controller } = await setup();
+  const readAt = w.server.activityReadAt.get(w.bob.id);
   expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 3）");
   expect(tabButton("activity").querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("danger");
   await tap("activity");
@@ -120,27 +120,29 @@ it("the phone's activity tab: [すべて | メンション | スレッド | リ�
   expect(within(activity).getByText("「スライド v2 です」")).toBeTruthy(); // my message, under its reactions
   expect(within(activity).getByText("#c のスレッド")).toBeTruthy();
   expect(within(activity).getByText("@Bob 来週の発表順を決めましょう")).toBeTruthy();
+  // The header says how many are unread, and offers 「すべて既読にする」.
+  expect(activity.querySelector("[data-activity-unread]")?.textContent).toBe("未読 3 件");
+  expect((within(activity).getByRole("button", { name: "すべて既読にする" }) as HTMLButtonElement).disabled).toBe(false);
 
   await look();
   await settle(w);
-  // Read up to the newest row (the reaction): the badge is gone, the dots stay while looking.
-  const newest = w.server.activityItems(w.bob.id)[0]!.at;
-  expect(w.server.activityReadAt.get(w.bob.id)).toBe(newest);
-  expect(w.store.activity).toMatchObject({ read_at: newest, unread_count: 0 });
+  // Nothing was read by looking: the read position, the badge and the dots stay.
+  expect(w.server.activityReadAt.get(w.bob.id)).toBe(readAt);
+  expect(w.server.itemReadRequests).toEqual([]);
+  expect(w.store.activity?.unread_count).toBe(3);
   expect(dots(activity)).toBe(3);
-  // Left and back: what was seen is read.
+  // Left and back: still unread.
   await tap("home");
-  expect(bar()!.querySelector('[data-tab="activity"] [data-badge]')).toBeNull();
-  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ");
+  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 3）");
   await tap("activity");
   await settle(w);
-  expect(dots(root("activity"))).toBe(0);
+  expect(dots(root("activity"))).toBe(3);
   expect(controller.error).toBeNull();
   w.engine.stop();
 });
 
-it("filters list one kind each (GET /activity?filter=…); new activity while looking comes in with its dot and is read in turn", async () => {
-  const { w, carol, mine } = await setup();
+it("filters list one kind each (GET /activity?filter=…); an opened reaction item is unread again when someone reacts again", async () => {
+  const { w, controller, carol, mine } = await setup();
   await tap("activity");
   const activity = root("activity");
   fireEvent.click(within(activity).getByRole("radio", { name: "リアクション" }));
@@ -156,33 +158,92 @@ it("filters list one kind each (GET /activity?filter=…); new activity while lo
 
   fireEvent.click(within(activity).getByRole("radio", { name: "すべて" }));
   await settle(w);
-  await look();
+  // The reaction item opened (as a click does): read, the badge 2.
+  const reaction = w.server.activityItems(w.bob.id).find((item) => item.kind === "reaction")!;
+  await act(async () => {
+    await controller.markActivityItemsRead([reaction]);
+  });
   await settle(w);
-  expect(w.store.activity?.unread_count).toBe(0);
-  // Carol reacts again (🙏): the badge rises, the list comes again with that row on top, then it is read.
+  expect(labels(activity)[0]).toBe("Alice ほか 1 人が 🎉👍 · #c");
+  expect(w.store.activity?.unread_count).toBe(2);
+  // Carol reacts again (🙏): the badge rises, the list comes again with that row on top, unread again.
   await act(async () => {
     w.server.react(w.channelId, carol.id, mine.id, "🙏", true);
   });
   await settle(w);
   await settle(w);
   expect(labels(activity)[0]).toBe("未読 Alice ほか 1 人が 🎉👍🙏 · #c");
-  await look();
-  await settle(w);
-  expect(w.store.activity?.unread_count).toBe(0);
+  expect(w.store.activity?.unread_count).toBe(3);
   w.engine.stop();
 });
 
-it("⋯ → 「すべて既読」 clears the dots and the badge at once (PUT /activity/read)", async () => {
+it("「すべて既読にする」 in the header clears the dots and the badge at once (PUT /activity/read)", async () => {
   const { w } = await setup();
   await tap("activity");
   const activity = root("activity");
   expect(dots(activity)).toBe(3);
-  fireEvent.keyDown(within(activity).getByRole("button", { name: "アクティビティのメニュー" }), { key: "Enter" });
-  fireEvent.click(await screen.findByRole("menuitem", { name: "すべて既読" }));
+  fireEvent.click(within(activity).getByRole("button", { name: "すべて既読にする" }));
   await settle(w);
   expect(dots(activity)).toBe(0);
   expect(w.store.activity?.unread_count).toBe(0);
   expect(w.server.activitySummary(w.bob.id).unread_count).toBe(0);
+  expect(activity.querySelector("[data-activity-unread]")?.textContent).toBe("未読はありません");
+  expect((within(activity).getByRole("button", { name: "すべて既読にする" }) as HTMLButtonElement).disabled).toBe(true);
+  w.engine.stop();
+});
+
+it("2026-10-07: clicking a row reads that item only (PUT /activity/items/read); another device's opening and 「すべて既読にする」 reach this one; 「未読のみ」", async () => {
+  const { w, m1 } = await setup();
+  const reply = w.server.channels.get(w.channelId)!.messages.find((m) => m.parent_id === m1.id && m.sender_id === w.alice.id)!;
+  const mention = w.server.activityItems(w.bob.id).find((item) => item.kind === "mention")!;
+  await tap("activity");
+  const activity = root("activity");
+  fireEvent.click(rows(activity)[1]!); // the mention: it opens its conversation
+  await settle(w);
+  expect(w.server.itemReadRequests).toEqual([{ userId: w.bob.id, itemIds: [mention.id] }]);
+  fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "戻る" }));
+  await flush();
+  await settle(w);
+  expect(labels(activity)).toEqual(["未読 Alice ほか 1 人が 🎉👍 · #c", "Alice がメンション · #c", "未読 Alice がスレッドに返信 · #c"]);
+  expect(w.store.activity).toMatchObject({ unread_count: 2, mention_unread: false });
+  expect(activity.querySelector("[data-activity-unread]")?.textContent).toBe("未読 2 件");
+
+  // 「未読のみ」: the read row leaves the list (and comes back when it is off).
+  fireEvent.click(within(activity).getByRole("button", { name: "未読のみ" }));
+  expect(labels(activity)).toEqual(["未読 Alice ほか 1 人が 🎉👍 · #c", "未読 Alice がスレッドに返信 · #c"]);
+
+  // My other device opens the reply: activity.items_read takes its dot here, the badge follows.
+  await act(async () => {
+    w.server.markActivityItemsRead(w.bob.id, [reply.id]);
+  });
+  await settle(w);
+  expect(labels(activity)).toEqual(["未読 Alice ほか 1 人が 🎉👍 · #c"]);
+  expect(w.store.activity?.unread_count).toBe(1);
+  fireEvent.click(within(activity).getByRole("button", { name: "未読のみ" }));
+  expect(dots(activity)).toBe(1);
+
+  // … and marks everything read there: activity.read clears the last dot here.
+  await act(async () => {
+    w.server.markActivityRead(w.bob.id, new Date().toISOString());
+  });
+  await settle(w);
+  expect(dots(activity)).toBe(0);
+  expect(w.store.activity?.unread_count).toBe(0);
+  expect(w.server.openedItems.size).toBe(0); // the per-item reads at or below the position are gone
+  w.engine.stop();
+});
+
+it("a server before 2026-10-07 (no item ids): a click opens the item but asks nothing; the dot stays until 「すべて既読にする」", async () => {
+  const { w } = await setup();
+  w.server.activityItemReads = false;
+  await tap("activity");
+  const activity = root("activity");
+  fireEvent.click(rows(activity)[1]!);
+  await settle(w);
+  expect(w.server.itemReadRequests).toEqual([]);
+  fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "戻る" }));
+  await flush();
+  expect(dots(activity)).toBe(3);
   w.engine.stop();
 });
 

@@ -164,6 +164,11 @@ export class Store {
   /** M112: reservation activity items marked done since the list was read (activity.updated). */
   doneActivityItems: ReadonlySet<string> = new Set();
   /**
+   * 2026-10-07 (MOBILE_UI.md §6.4): activity items I opened since the list was read (here, or on another device:
+   * activity.items_read), by id: when. An item is read while its `at` is not after that time.
+   */
+  openedActivityItems: ReadonlyMap<string, string> = new Map();
+  /**
    * M43 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.
    * Loaded when a conversation opens and after reconnecting; canvas.* events keep them current (the larger version wins).
    * Not persisted.
@@ -777,6 +782,21 @@ export class Store {
   noteThreadRead(parentId: string, seq: number): void {
     if (seq <= (this.threadReadSeqs.get(parentId) ?? 0)) return;
     this.threadReadSeqs.set(parentId, seq);
+    this.emit();
+  }
+
+  /** Activity items opened at `readAt` (a time only moves forward). */
+  noteActivityItemsRead(itemIds: readonly string[], readAt: string): void {
+    const next = new Map(this.openedActivityItems);
+    let changed = false;
+    for (const id of itemIds) {
+      const held = next.get(id);
+      if (held && Date.parse(held) >= Date.parse(readAt)) continue;
+      next.set(id, readAt);
+      changed = true;
+    }
+    if (!changed) return;
+    this.openedActivityItems = next;
     this.emit();
   }
 

@@ -1,10 +1,10 @@
-import { AtSign, Bell, MessagesSquare, MoreHorizontal, SmilePlus } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { AtSign, Bell, CheckCheck, MessagesSquare, SmilePlus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ActivityFilter, ActivityItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { MessageState, ThreadEntry } from "../sync/types";
-import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt, type ReadPositions } from "./activity";
+import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, newestActivityAt, type ReadPositions } from "./activity";
 import { Avatar } from "./Avatar";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { fullTimestamp } from "./format";
@@ -13,7 +13,7 @@ import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { MentionsView } from "./MentionsView";
 import { dmTimeLabel } from "./mobileTabs";
-import { Button, cn, Menu, MenuContent, MenuItem, MenuTrigger } from "./primitives";
+import { Button, cn } from "./primitives";
 import { ThreadsView } from "./ThreadsView";
 import { EmojiText } from "./UserPopover";
 import { t } from "../i18n";
@@ -22,8 +22,6 @@ export type ActivitySegment = "mentions" | "threads";
 
 /** Rows per GET /activity page. */
 export const ACTIVITY_PAGE = 50;
-/** How long the rows stay on screen before the activity counts as read up to the newest of them. */
-export const ACTIVITY_READ_DELAY_MS = 1_500;
 
 /**
  * The activity: the phone's アクティビティ tab and the wide layout's 「アクティビティ」 view. With a server of M39 or later
@@ -32,7 +30,7 @@ export const ACTIVITY_READ_DELAY_MS = 1_500;
  */
 export function ActivityView({ controller, active, onOpen, onOpenMessage, onOpenThread }: {
   controller: AppController;
-  /** On screen now (the selected tab's root, or the wide layout's centre view): the rows count as seen. */
+  /** On screen now (the selected tab's root, or the wide layout's centre view): the list loads (nothing is read by it). */
   active: boolean;
   /** Stage B: a row opens its message (in its conversation, or its thread). */
   onOpen: (item: ActivityItem) => void;
@@ -52,21 +50,11 @@ interface ActivityList {
   readAt?: string | null;
 }
 
-/** Whether the page itself is on screen (not a background browser tab or a hidden window). */
-function usePageVisible(): boolean {
-  return useSyncExternalStore(
-    (listener) => {
-      document.addEventListener("visibilitychange", listener);
-      return () => document.removeEventListener("visibilitychange", listener);
-    },
-    () => document.visibilityState !== "hidden",
-  );
-}
-
 /**
- * Stage B (M39). The dots compare with the read position when the view came on screen, so they stay while looking;
- * the badge clears once the newest row shown has been on screen for a moment (PUT /activity/read). New activity while
- * on screen (the badge rises) brings the first page again.
+ * Stage B (M39). Since 2026-10-07 (MOBILE_UI.md §6.4, like Slack) looking reads nothing: an item stays unread (bold,
+ * a dot, counted in 「未読 n 件」 and the badge) until it is opened (a click: PUT /activity/items/read), read in its
+ * conversation (a mention, a reply), done (a reservation to-do), or 「すべて既読にする」 (PUT /activity/read). New
+ * activity while on screen (the badge rises) brings the first page again.
  */
 function ActivityFeed({ controller, active, onOpen }: { controller: AppController; active: boolean; onOpen: (item: ActivityItem) => void }) {
   const store = controller.store;
@@ -74,11 +62,9 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [lists, setLists] = useState<Partial<Record<ActivityFilter, ActivityList>>>({});
   const [failed, setFailed] = useState(false);
-  /** The read position the dots compare with: taken when the view comes on screen, and by 「すべて既読」. */
-  const [seenFrom, setSeenFrom] = useState<string | null>(() => summary?.read_at ?? null);
+  /** 「未読のみ」: the rows held, less the read ones (a row opened goes from the list). */
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const requests = useRef<Partial<Record<ActivityFilter, number>>>({});
-  const visible = usePageVisible();
-  const onScreen = active && visible;
   const list = lists[filter];
   const status = controller.engine?.status;
   const unread = summary?.unread_count ?? 0;
@@ -97,7 +83,6 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
       const page = { ...answer, items: answer.items.filter(isShownActivity) };
       if (requests.current[which] !== request) return; // a newer load of this list answers instead
       setFailed(false);
-      setSeenFrom((current) => current ?? page.read_at);
       setLists((current) => ({
         ...current,
         [which]: { items: more ? appendActivityPage(current[which]?.items ?? [], page.items) : page.items, cursor: page.next_cursor ?? null, loading: false, readAt: more ? current[which]?.readAt ?? page.read_at : page.read_at },
@@ -109,13 +94,6 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
       controller.setError(error);
     }
   };
-
-  // On screen again: the dots start from the read position now (what was seen last time is read).
-  const wasActive = useRef(false);
-  useEffect(() => {
-    if (active && !wasActive.current) setSeenFrom(store.activity?.read_at ?? null);
-    wasActive.current = active;
-  }, [active]);
 
   // The first page of the list on screen: when it comes on screen, on another filter and after reconnecting …
   useEffect(() => {
@@ -143,40 +121,35 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloads]);
 
-  // Being on screen reads the activity up to the newest row shown (the rows' dots stay until the view is left) — only
-  // under 「すべて」: one read position covers every kind, so a filtered list would mark unseen items of the other kinds
-  // read (「すべて既読」 is there for that).
-  const newest = newestActivityAt(list?.items ?? []);
-  const readAt = summary?.read_at ?? null;
-  useEffect(() => {
-    if (!onScreen || filter !== "all" || !movesActivityRead(newest, readAt)) return;
-    const timer = setTimeout(() => void controller.markActivityRead(newest!), ACTIVITY_READ_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [onScreen, filter, newest, readAt, controller]);
-
-  const markAllRead = async () => {
+  // 「すべて既読にする」: everything up to now (or the newest row held, should this device's clock be behind) is read.
+  const markAllRead = () => {
     const at = Math.max(Date.now(), Date.parse(newestActivityAt(Object.values(lists).flatMap((l) => l?.items ?? [])) ?? "") || 0);
-    if (await controller.markActivityRead(new Date(at).toISOString())) setSeenFrom(controller.store.activity?.read_at ?? new Date(at).toISOString());
+    void controller.markActivityRead(new Date(at).toISOString());
+  };
+  // A row opened is read (until it happens again), then it opens its message, canvas, page or reservations.
+  const open = (item: ActivityItem) => {
+    void controller.markActivityItemsRead([item]);
+    onOpen(item);
   };
 
-  const items = list?.items ?? [];
-  // §6.4: what I read in its conversation or thread (here or on another device) loses its dot at once.
+  // §6.4: the read position held now (「すべて既読にする」 here or on another device), the items opened (here or on
+  // another device), and what I read in its conversation or thread (here or on another device) take the dot at once.
+  const readAt = summary?.read_at ?? null;
   const positions: ReadPositions = { channel: (id) => store.getChannel(id)?.lastReadSeq, thread: (id) => store.threadReadSeqs.get(id) };
+  const unreadOf = (item: ActivityItem) => isActivityUnread(item, readAt, { listReadAt: list?.readAt, positions, opened: store.openedActivityItems }) && !(item.reservation && (item.reservation.done || store.doneActivityItems.has(item.reservation.item_id)));
+  const items = (list?.items ?? []).filter((item) => !unreadOnly || unreadOf(item));
   return (
     <section aria-label={t("nav.activity")} className="flex min-h-0 flex-1 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 max-md:pr-2">
         <span className="text-muted max-md:hidden"><Bell size={18} /></span>
-        <strong className="min-w-0 flex-1 truncate text-[17px] md:text-[15px]">{t("nav.activity")}</strong>
-        <Menu>
-          <MenuTrigger asChild>
-            <button type="button" aria-label={t("activity.menu")} title={t("activity.menu")} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
-              <MoreHorizontal size={18} />
-            </button>
-          </MenuTrigger>
-          <MenuContent align="end">
-            <MenuItem onSelect={() => void markAllRead()}>{t("activity.markAllRead")}</MenuItem>
-          </MenuContent>
-        </Menu>
+        <strong className="min-w-0 truncate text-[17px] md:text-[15px]">{t("nav.activity")}</strong>
+        <span data-activity-unread={unread} className={cn("min-w-0 flex-1 truncate text-[13px]", unread > 0 ? "font-semibold text-accent" : "text-muted")}>
+          {unread > 0 ? t("activity.unreadCount", { count: unread >= 99 ? "99+" : unread }) : t("activity.noUnread")}
+        </span>
+        <Button variant="secondary" size="sm" className="shrink-0" aria-label={t("activity.markAllRead")} title={t("activity.markAllRead")} disabled={unread === 0} onClick={markAllRead}>
+          <CheckCheck size={14} />
+          <span className="max-md:hidden">{t("activity.markAllRead")}</span>
+        </Button>
       </header>
       <div className="shrink-0 px-3 py-2">
         <div className="mx-auto flex max-w-3xl rounded-xl bg-panel p-1 text-[13px] font-medium md:text-sm" role="radiogroup" aria-label={t("activity.show")}>
@@ -193,24 +166,35 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
             </button>
           ))}
         </div>
+        <div className="mx-auto mt-1.5 flex max-w-3xl justify-end">
+          <button
+            type="button"
+            aria-pressed={unreadOnly}
+            onClick={() => setUnreadOnly((v) => !v)}
+            className={cn("inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] font-medium transition-colors", unreadOnly ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-ink")}
+          >
+            <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", unreadOnly ? "bg-accent" : "bg-muted")} />
+            {t("activity.unreadOnly")}
+          </button>
+        </div>
       </div>
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto pb-3">
         {list === undefined || (list.loading && items.length === 0 && !failed) ? (
           <div className="py-8 text-center text-sm text-muted">{t("common.loading")}</div>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && !(unreadOnly && list.cursor) ? (
           failed ? (
             <div className="flex flex-col items-center gap-3 py-16 text-sm text-muted">
               {t("common.loadFailed")}
               <Button variant="secondary" size="sm" onClick={() => void load(filter)}>{t("common.reload")}</Button>
             </div>
           ) : (
-            <div className="py-16 text-center text-sm text-muted">{activityEmptyText(filter)}</div>
+            <div className="py-16 text-center text-sm text-muted">{unreadOnly ? t("activity.empty.unread") : activityEmptyText(filter)}</div>
           )
         ) : (
           <ul className="mx-auto max-w-3xl" aria-label={t("activity.listLabel", { filter: ACTIVITY_FILTER_LABELS[filter] })}>
             {items.map((item) => (
               <li key={activityKey(item)} data-row-key={activityKey(item)}>
-                <ActivityRow controller={controller} item={item} unread={isActivityUnread(item, seenFrom, { listReadAt: list.readAt, positions })} onOpen={() => onOpen(item)} />
+                <ActivityRow controller={controller} item={item} unread={unreadOf(item)} onOpen={() => open(item)} />
               </li>
             ))}
             {list.cursor && (
@@ -243,7 +227,10 @@ function activityExcerpt(item: ActivityItem, controller: AppController): string 
   return message.deleted ? t("activity.deletedMessage") : plainText(mentionsToNames(message.body, store.users, store.groups), 200) || message.attachments.map((a) => a.filename).join(", ");
 }
 
-/** One item: who (their pictures) did what, where and when, and the message's opening words. */
+/**
+ * One item: who (their pictures) did what, where and when, and the message's opening words. Unread (§6.4): a tinted
+ * row, bold, with a dot; read: plain.
+ */
 function ActivityRow({ controller, item, unread, onOpen }: { controller: AppController; item: ActivityItem; unread: boolean; onOpen: () => void }) {
   const store = controller.store;
   const nameOf = (id: string) => store.users.get(id)?.display_name ?? t("common.member");
@@ -267,7 +254,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
         data-unread={unread || undefined}
         data-done={done || undefined}
         aria-label={`${unread ? `${t("sidebar.unread")} ` : ""}${activityHeadlineText(item, nameOf)}${done ? ` · ${t("activity.done")}` : ""}`}
-        className={cn("flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl", done && "opacity-60")}
+        className={cn("flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl", unread && !done && "bg-accent-soft/40", done && "opacity-60")}
       >
         <span className="flex w-2.5 shrink-0 justify-center pt-4" aria-hidden="true">
           {unread && !done && <span className="h-2 w-2 rounded-full bg-accent" />}
@@ -275,11 +262,11 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
         <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-[20px]">🎫</span>
         <span className="min-w-0 flex-1 pl-1">
           <span className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 truncate text-[14px] text-ink"><strong className="font-semibold">{who}</strong>{what}</span>
+            <span className={cn("min-w-0 flex-1 truncate text-[14px]", unread && !done ? "font-semibold text-ink" : "text-ink/75")}><strong className={unread && !done ? "font-bold" : "font-medium"}>{who}</strong>{what}</span>
             {done && <span className="shrink-0 text-xs text-muted">{t("activity.done")}</span>}
             <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
           </span>
-          <span className={cn("mt-0.5 line-clamp-3 text-[13.5px] leading-snug text-ink/80", done && "line-through decoration-ink/30")}>{excerpt}</span>
+          <span className={cn("mt-0.5 line-clamp-3 text-[13.5px] leading-snug", unread && !done ? "text-ink/85" : "text-muted", done && "line-through decoration-ink/30")}>{excerpt}</span>
         </span>
       </button>
     );
@@ -291,7 +278,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
       data-activity={item.kind}
       data-unread={unread || undefined}
       aria-label={`${unread ? `${t("sidebar.unread")} ` : ""}${activityHeadlineText(item, nameOf)}${where ? ` · ${where}` : ""}`}
-      className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl"
+      className={cn("flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl", unread && "bg-accent-soft/40")}
     >
       <span className="flex w-2.5 shrink-0 justify-center pt-4" aria-hidden="true">
         {unread && <span className="h-2 w-2 rounded-full bg-accent" />}
@@ -316,8 +303,8 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
       </span>
       <span className="min-w-0 flex-1 pl-1">
         <span className="flex items-baseline gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-[14px]", unread ? "text-ink" : "text-ink/90")}>
-            <strong className="font-semibold">{who}</strong>{what}
+          <span className={cn("min-w-0 flex-1 truncate text-[14px]", unread ? "font-semibold text-ink" : "text-ink/75")}>
+            <strong className={unread ? "font-bold" : "font-medium"}>{who}</strong>{what}
             {item.kind === "reaction" && (
               <span className="ml-1 inline-flex items-center gap-0.5 align-middle">
                 {(item.emojis ?? []).map((emoji) => {
@@ -331,7 +318,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
           <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
         </span>
         {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? t("activity.threadIn", { where }) : item.kind === "canvas_mention" ? t("activity.canvasIn", { where }) : where}</span>}
-        {excerpt && <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80"><EmojiText controller={controller} text={item.kind === "reaction" ? t("common.quoted", { text: excerpt }) : excerpt} /></span>}
+        {excerpt && <span className={cn("mt-0.5 line-clamp-2 text-[13.5px] leading-snug", unread ? "text-ink/85" : "text-muted")}><EmojiText controller={controller} text={item.kind === "reaction" ? t("common.quoted", { text: excerpt }) : excerpt} /></span>}
       </span>
     </button>
   );

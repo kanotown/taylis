@@ -1,6 +1,7 @@
 /**
  * M39, the activity (MOBILE_UI.md §6.4 stage B, §7.2): pure rules of its rows — what a row says, when its dot shows,
- * the newest time a screen of rows marks read, and pages put together.
+ * and pages put together. Since 2026-10-07 nothing is read by being on screen: an item is read when opened, read in its
+ * conversation (a mention, a reply), behind the read position (「すべて既読にする」), or done (a reservation to-do).
  */
 import type { ActivityFilter, ActivityItem } from "../api/types";
 import { t } from "../i18n";
@@ -50,32 +51,31 @@ export function isReadInConversation(item: Pick<ActivityItem, "kind" | "message"
 }
 
 /**
- * The row's dot: it happened after the read position (items at the position itself are read) — `readAt` is the one the
- * view compares with (so the dots stay while looking). With a server of 2026-10-06 or later (`read` not null), a mention
- * or reply read in its conversation has none either: the server said so (`read` true for an item newer than the list's
- * `read_at`), or this device has read it since (`positions`). `read` null (an older server): the time alone, as before.
+ * The row's dot (MOBILE_UI.md §6.4): it happened after the read position `readAt` (the one held now: 「すべて既読にする」
+ * here or on another device moves it; items at the position itself are read), and I have not opened it since
+ * (`opened`: this device's clicks and activity.items_read, by item id: when — a reaction item with a newer reaction is
+ * unread again). With a server of 2026-10-06 or later (`read` not null), an item the server says is read has none (read
+ * in its conversation, or opened, after the list's `read_at`), nor a mention or reply this device has read in its
+ * conversation since (`positions`). `read` null (an older server): the time alone, as before.
  */
 export function isActivityUnread(
-  item: Pick<ActivityItem, "at"> & Partial<Pick<ActivityItem, "kind" | "message" | "read">>,
+  item: Pick<ActivityItem, "at"> & Partial<Pick<ActivityItem, "id" | "kind" | "message" | "read">>,
   readAt: string | null | undefined,
-  options: { listReadAt?: string | null; positions?: ReadPositions } = {},
+  options: { listReadAt?: string | null; positions?: ReadPositions; opened?: ReadonlyMap<string, string> } = {},
 ): boolean {
   if (!readAt || time(item.at) <= time(readAt)) return false;
+  const opened = item.id ? options.opened?.get(item.id) : undefined;
+  if (opened && time(item.at) <= time(opened)) return false;
   if (item.read === null || item.read === undefined) return true;
   if (item.read && time(item.at) > time(options.listReadAt ?? readAt)) return false;
   return !(options.positions && item.kind && isReadInConversation({ kind: item.kind, message: item.message }, options.positions));
 }
 
-/** The newest `at` of the rows (what being on screen marks read); null without rows. */
+/** The newest `at` of the rows (what 「すべて既読にする」 reads at least, should the device's clock be behind); null without rows. */
 export function newestActivityAt(items: readonly Pick<ActivityItem, "at">[]): string | null {
   let newest: string | null = null;
   for (const item of items) if (newest === null || time(item.at) > time(newest)) newest = item.at;
   return newest;
-}
-
-/** Whether marking `at` read moves the position (the server only moves it forward). */
-export function movesActivityRead(at: string | null, readAt: string | null | undefined): boolean {
-  return !!at && (!readAt || time(at) > time(readAt));
 }
 
 /**

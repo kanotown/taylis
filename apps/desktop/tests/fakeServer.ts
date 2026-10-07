@@ -409,7 +409,7 @@ export class FakeServer {
     const at = now();
     const held = this.canvasMentions.get(userId) ?? [];
     const readAt = this.activityReadAt.get(userId)!;
-    const unread = held.find((item) => item.canvas?.canvas_id === canvas.id && item.at > readAt);
+    const unread = held.find((item) => item.canvas?.canvas_id === canvas.id && item.at > readAt && !this.openedSince(userId, item));
     const revId = `rev-${++this.eventId}`;
     const fields = { canvas_id: canvas.id, channel_id: canvas.channel_id, title: canvas.title, excerpt, rev_id: revId };
     let item: ActivityItem;
@@ -417,7 +417,8 @@ export class FakeServer {
       Object.assign(unread, { at, actor_ids: [by], canvas: { ...unread.canvas!, ...fields } });
       item = unread;
     } else {
-      item = { kind: "canvas_mention", at, message: null, actor_ids: [by], emojis: [], canvas: { item_id: `cm-${held.length + 1}-${userId}`, ...fields } };
+      const itemId = `cm-${held.length + 1}-${userId}`;
+      item = { id: itemId, kind: "canvas_mention", at, message: null, actor_ids: [by], emojis: [], canvas: { item_id: itemId, ...fields } };
       this.canvasMentions.set(userId, [...held, item]);
     }
     this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "canvas.mentioned", ts: at, channel_id: canvas.channel_id, seq: null, data: { canvas_id: canvas.id, channel_id: canvas.channel_id, rev_id: revId, title: canvas.title, by_user_id: by } } as EventFrame);
@@ -437,15 +438,15 @@ export class FakeServer {
         if (message.deleted) continue;
         const view = this.viewAs(message, userId);
         if (message.sender_id !== userId && this.mentions(message, userId)) {
-          if (filter === "all" || filter === "mentions") items.push({ kind: "mention", at: message.created_at, message: view, actor_ids: [message.sender_id], emojis: [] });
+          if (filter === "all" || filter === "mentions") items.push({ id: message.id, kind: "mention", at: message.created_at, message: view, actor_ids: [message.sender_id], emojis: [] });
         } else if (message.sender_id !== userId && message.parent_id && this.threadFollows.get(`${message.parent_id}:${userId}`)?.following) {
-          if (filter === "all" || filter === "threads") items.push({ kind: "thread_reply", at: message.created_at, message: view, actor_ids: [message.sender_id], emojis: [] });
+          if (filter === "all" || filter === "threads") items.push({ id: message.id, kind: "thread_reply", at: message.created_at, message: view, actor_ids: [message.sender_id], emojis: [] });
         }
         if (message.sender_id === userId && (filter === "all" || filter === "reactions")) {
           const others = (message.reactions ?? []).flatMap((r) => r.user_ids.filter((id) => id !== userId).map((id) => ({ id, emoji: r.emoji, at: this.reactionTimes.get(`${message.id}:${id}:${r.emoji}`) ?? message.created_at })));
           if (others.length === 0) continue;
           const at = others.map((o) => o.at).sort().at(-1)!;
-          items.push({ kind: "reaction", at, message: view, actor_ids: [...new Set(others.map((o) => o.id))], emojis: [...new Set(others.map((o) => o.emoji))].sort() });
+          items.push({ id: message.id, kind: "reaction", at, message: view, actor_ids: [...new Set(others.map((o) => o.id))], emojis: [...new Set(others.map((o) => o.emoji))].sort() });
         }
       }
     }
@@ -455,13 +456,36 @@ export class FakeServer {
     // 2026-10-06 (MOBILE_UI.md §6.4): `read` — behind the read position, or a mention / reply read in its conversation.
     // A server before it (activityReadFlag false) sends none.
     const readAt = this.activityReadAt.get(userId)!;
-    if (this.activityReadFlag) for (const item of items) item.read = item.at <= readAt || this.readInConversation(item, userId);
+    if (this.activityReadFlag) for (const item of items) item.read = item.at <= readAt || this.readInConversation(item, userId) || this.openedSince(userId, item);
+    if (!this.activityItemReads) for (const item of items) delete item.id;
     const ref = (item: ActivityItem) => item.message?.id ?? item.canvas?.item_id ?? "";
     return items.sort((a, b) => b.at.localeCompare(a.at) || b.kind.localeCompare(a.kind) || ref(b).localeCompare(ref(a)));
   }
 
   /** A server before 2026-10-06: no `read` on the items, and the counts compare with the read position only. */
   activityReadFlag = true;
+  /** A server before 2026-10-07: no item `id`, no PUT /activity/items/read. */
+  activityItemReads = true;
+  /** activity_item_reads: `${userId}:${itemId}` → when opened. */
+  readonly openedItems = new Map<string, string>();
+  /** PUT /activity/items/read requests (the ids) by user. */
+  readonly itemReadRequests: Array<{ userId: string; itemIds: string[] }> = [];
+
+  /** 2026-10-07 (§6.4): the item was opened since it happened. */
+  private openedSince(userId: string, item: ActivityItem): boolean {
+    const id = item.id ?? item.message?.id ?? item.canvas?.item_id;
+    const at = id ? this.openedItems.get(`${userId}:${id}`) : undefined;
+    return !!at && item.at <= at;
+  }
+
+  /** PUT /activity/items/read: each item opened now (idempotent); activity.items_read to the user's devices. */
+  markActivityItemsRead(userId: string, itemIds: string[]): ActivitySummaryOut {
+    this.itemReadRequests.push({ userId, itemIds });
+    const at = now();
+    for (const id of itemIds) this.openedItems.set(`${userId}:${id}`, at);
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "activity.items_read", ts: at, channel_id: null, seq: null, data: { item_ids: itemIds, read_at: at } } as EventFrame);
+    return this.activitySummary(userId);
+  }
 
   /** §6.4 rule 2: a mention or a thread reply I read in its conversation (timeline row) or its thread (a reply). */
   private readInConversation(item: ActivityItem, userId: string): boolean {
@@ -481,7 +505,7 @@ export class FakeServer {
 
   activitySummary(userId: string): ActivitySummaryOut {
     const readAt = this.activityReadAt.get(userId)!;
-    const unread = this.activityItems(userId).filter((item) => item.at > readAt && !(this.activityReadFlag && this.readInConversation(item, userId)));
+    const unread = this.activityItems(userId).filter((item) => item.at > readAt && !(this.activityReadFlag && this.readInConversation(item, userId)) && !this.openedSince(userId, item));
     return { read_at: readAt, unread_count: Math.min(unread.length, 99), mention_unread: unread.some((item) => item.kind === "mention" || item.kind === "canvas_mention") };
   }
 
@@ -490,6 +514,7 @@ export class FakeServer {
     const target = readAt < now() ? readAt : now();
     if (target > this.activityReadAt.get(userId)!) {
       this.activityReadAt.set(userId, target);
+      for (const [key, at] of this.openedItems) if (key.startsWith(`${userId}:`) && at <= target) this.openedItems.delete(key);
       this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "activity.read", ts: now(), channel_id: null, seq: null, data: { read_at: target } });
     }
     return this.activitySummary(userId);
@@ -1572,6 +1597,14 @@ export class FakeServer {
               maybeFail();
               return this.markActivityRead(userId, readAt);
             },
+            ...(this.activityItemReads
+              ? {
+                  markActivityItemsRead: async (itemIds: string[]) => {
+                    maybeFail();
+                    return this.markActivityItemsRead(userId, itemIds);
+                  },
+                }
+              : {}),
           }
         : {
             listActivity: async () => {

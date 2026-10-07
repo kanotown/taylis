@@ -105,6 +105,8 @@ export interface SyncApi {
   /** M39: the activity badge (GET /activity/summary) and read position (PUT /activity/read). Optional (older fakes). */
   activitySummary?(): Promise<ActivitySummaryOut>;
   markActivityRead?(readAt: string): Promise<ActivitySummaryOut>;
+  /** 2026-10-07: items opened one by one (PUT /activity/items/read). Optional (older fakes; a server before it has none). */
+  markActivityItemsRead?(itemIds: string[]): Promise<ActivitySummaryOut>;
   /** M121: 「ドキュメント」 (WIKI.md §14.2). Optional (older fakes). */
   wikiTree?: WikiApi["wikiTree"];
   wikiChanges?: WikiApi["wikiChanges"];
@@ -1084,6 +1086,13 @@ export class SyncEngine {
         this.scheduleActivityRefresh();
         return;
       }
+      case "activity.items_read": {
+        // 2026-10-07 (MOBILE_UI.md §6.4): I opened these items on a device (this one too): their dots go; the badge follows.
+        const data = frame.data as { item_ids?: string[]; read_at?: string };
+        if (data.read_at) store.noteActivityItemsRead(data.item_ids ?? [], data.read_at);
+        this.scheduleActivityRefresh();
+        return;
+      }
       case "reaction.added": {
         const data = frame.data as unknown as ReactionAdded;
         this.scheduleActivityRefresh();
@@ -1410,6 +1419,21 @@ export class SyncEngine {
     if (!api.markActivityRead) return;
     this.activityRefreshCancel?.();
     this.deps.store.setActivity(await api.markActivityRead(readAt));
+  }
+
+  /**
+   * 2026-10-07 (MOBILE_UI.md §6.4): I opened these activity items. Their dots go at once — read as they were shown (up
+   * to their `at`, not this device's clock, which may be ahead of the server's); activity.items_read brings the server's
+   * time. The server's answer is the new badge. False: this server has no such call (before 2026-10-07): the items
+   * stay unread until the read position passes them.
+   */
+  async markActivityItemsRead(items: readonly { id: string; at: string }[]): Promise<boolean> {
+    const api = this.deps.api;
+    if (!api.markActivityItemsRead || items.length === 0) return false;
+    for (const item of items) this.deps.store.noteActivityItemsRead([item.id], item.at);
+    this.activityRefreshCancel?.();
+    this.deps.store.setActivity(await api.markActivityItemsRead(items.map((item) => item.id)));
+    return true;
   }
 
   // --- §7.3 catch_up ----------------------------------------------------------------------

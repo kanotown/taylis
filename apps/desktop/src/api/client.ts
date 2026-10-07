@@ -1014,6 +1014,14 @@ export class ApiClient {
     return this.request("PUT", `/api/v1/activity/read?${includeQuery("include")}`, { read_at: readAt });
   }
 
+  /**
+   * 2026-10-07 (MOBILE_UI.md §6.4): I opened these items (their `id`): each is read until it happens again (a newer
+   * reaction). Idempotent; my other devices get activity.items_read.
+   */
+  markActivityItemsRead(itemIds: string[]): Promise<ActivitySummaryOut> {
+    return this.request("PUT", `/api/v1/activity/items/read?${includeQuery("include")}`, { item_ids: itemIds });
+  }
+
   // --- files (M11i) ----------------------------------------------------------------------
 
   listFiles(options: { channelId?: string | null; q?: string | null; cursor?: string | null; limit?: number } = {}): Promise<FileListOut> {
