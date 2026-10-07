@@ -118,4 +118,95 @@ final class EmojiTests: XCTestCase {
         XCTAssertTrue(Emoji.search("").count > 200)
         XCTAssertTrue(Emoji.search("乾杯").map(\.glyph).contains("🍻"))
     }
+
+    // MARK: - The picker's one scrolling list (docs/EMOJI.md §9)
+
+    private func emoji(_ id: String, _ name: String, pack: String? = nil, position: Int? = nil, text: Bool = false) -> CustomEmojiOut {
+        CustomEmojiOut(id: id, name: name, contentType: text ? "" : "image/png", width: 32, height: 32, createdBy: "u", createdAt: "",
+                       kind: text ? "text" : "image", label: text ? name : nil, packId: pack, position: position)
+    }
+
+    private func pack(_ id: String, _ name: String) -> EmojiPackOut {
+        EmojiPackOut(id: id, name: name, position: 0, createdAt: "", updatedAt: "")
+    }
+
+    /// 「よく使う」, 「カスタム」, the packs, then the standard categories; empty ones left out; rows of 8 (a pack's of 4).
+    func testPickerSectionsOrderAndRows() {
+        let custom = [emoji("c2", "zeta"), emoji("c1", "alpha"), emoji("t1", "thanks", text: true),
+                      emoji("p2", "bow", pack: "P", position: 2), emoji("p1", "hi", pack: "P", position: 1),
+                      emoji("o1", "orphan", pack: "gone")]
+        let sections = EmojiPickerLayout.sections(frequent: ["👍", ":alpha:", "🎉"], custom: custom,
+                                                  packs: [pack("P", "はんぺん"), pack("E", "空")])
+        let standard = EmojiData.categories.map(\.key)
+        XCTAssertEqual(sections.map(\.id), ["frequent", "custom", "pack:P"] + standard)
+        XCTAssertEqual(sections[0].rows.flatMap(\.items),
+                       [.glyph("👍", shortcode: "+1"), .custom(custom[1]), .glyph("🎉", shortcode: "tada")])
+        // 「カスタム」: the text one as a row of pills, then the images by name (an unknown pack's too).
+        XCTAssertEqual(sections[1].rows.map(\.style), [.chips, .cells])
+        XCTAssertEqual(sections[1].rows[0].items, [.custom(custom[2])])
+        XCTAssertEqual(sections[1].rows[1].items, [.custom(custom[1]), .custom(custom[5]), .custom(custom[0])])
+        XCTAssertEqual(sections[2].pack?.id, "P")
+        XCTAssertEqual(sections[2].rows.map(\.style), [.big])
+        XCTAssertEqual(sections[2].rows[0].items, [.custom(custom[4]), .custom(custom[3])])
+        // Every standard emoji once, in its category, 8 to a row; row ids unique.
+        let smileys = sections[3]
+        let count = EmojiData.all.filter { $0.category == "smileys" }.count
+        XCTAssertEqual(smileys.rows.count, (count + 7) / 8)
+        XCTAssertTrue(smileys.rows.dropLast().allSatisfy { $0.items.count == 8 })
+        let rows = sections.flatMap(\.rows)
+        XCTAssertEqual(rows.count, Set(rows.map(\.id)).count)
+        XCTAssertEqual(sections.dropFirst(3).flatMap(\.rows).flatMap(\.items).count, EmojiData.all.count)
+        // Nothing used, no custom emoji: the standard categories alone, starting with 顔.
+        XCTAssertEqual(EmojiPickerLayout.sections(frequent: [], custom: [], packs: []).map(\.id), standard)
+        // A pack row holds 4.
+        let many = (0..<9).map { emoji("q\($0)", "q\($0)", pack: "P", position: $0) }
+        XCTAssertEqual(EmojiPickerLayout.sections(frequent: [], custom: many, packs: [pack("P", "P")])[0].rows.map(\.items.count), [4, 4, 1])
+    }
+
+    /// The highlighted section is that of the first row showing below the pinned header.
+    func testPickerActiveSectionFollowsTheTopRow() {
+        typealias F = EmojiPickerLayout.RowFrame
+        let frames = [F(section: "people", minY: 108, maxY: 148), F(section: "smileys", minY: -12, maxY: 28),
+                      F(section: "smileys", minY: 28, maxY: 68), F(section: "people", minY: 68, maxY: 108)]
+        XCTAssertEqual(EmojiPickerLayout.activeSection(frames, top: 28), "smileys")
+        // The last 顔 row has gone under the header: 人・手.
+        XCTAssertEqual(EmojiPickerLayout.activeSection([F(section: "smileys", minY: -12, maxY: 28), frames[3], frames[0]], top: 28), "people")
+        XCTAssertNil(EmojiPickerLayout.activeSection([], top: 28))
+    }
+
+    /// A tap highlights its section at once; the sections passed on the way do not flicker; scrolling follows again.
+    func testPickerHighlightDuringAJump() {
+        var highlight = EmojiPickerHighlight(active: nil)
+        highlight.observe("frequent")
+        XCTAssertEqual(highlight.active, "frequent")
+        highlight.jump(to: "food")
+        XCTAssertEqual(highlight.active, "food")
+        for passing in ["smileys", "people", "nature"] {
+            highlight.observe(passing)
+            XCTAssertEqual(highlight.active, "food")
+        }
+        highlight.observe("food") // arrived
+        highlight.settle()
+        highlight.observe("travel")
+        XCTAssertEqual(highlight.active, "travel")
+
+        // 旗 is too short to reach the top: the list stops in 記号; 旗 stays highlighted until the list moves on.
+        highlight.jump(to: "flags")
+        highlight.observe("objects")
+        highlight.observe("symbols")
+        highlight.settle()
+        XCTAssertEqual(highlight.active, "flags")
+        highlight.observe("symbols")
+        XCTAssertEqual(highlight.active, "flags")
+        highlight.observe("objects")
+        XCTAssertEqual(highlight.active, "objects")
+
+        // The person scrolls during a jump: follow the list.
+        highlight.jump(to: "smileys")
+        highlight.observe("activities")
+        highlight.userScrolled()
+        XCTAssertEqual(highlight.active, "activities")
+        highlight.observe("travel")
+        XCTAssertEqual(highlight.active, "travel")
+    }
 }
