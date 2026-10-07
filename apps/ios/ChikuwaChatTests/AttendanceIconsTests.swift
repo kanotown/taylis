@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import ChikuwaChat
@@ -221,5 +222,96 @@ final class AttendanceIconsTests: XCTestCase {
         XCTAssertFalse(ok)
         XCTAssertNotNil(controller.error)
         XCTAssertEqual(AttendanceRules.myState(controller.store.attendance, "me")?.id, "room")
+    }
+
+    // MARK: the solid badge (PRESENCE.md §2.2, apps/shared/attendance-badge-colors.json)
+
+    private struct BadgePalette: Decodable {
+        let fg: String
+        let min_text_contrast: Double
+        let min_icon_contrast: Double
+        let colors: [String: String]
+    }
+
+    private func badgePalette() throws -> (BadgePalette, [String]) {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/attendance-badge-colors.json")
+        let data = try Data(contentsOf: url)
+        // The keys in the file's order (a Swift dictionary has none).
+        let text = String(decoding: data, as: UTF8.self)
+        let colorsPart = text.components(separatedBy: "\"colors\"").last ?? ""
+        let keys = try NSRegularExpression(pattern: #""(\w+)"\s*:"#).matches(in: colorsPart, range: NSRange(colorsPart.startIndex..., in: colorsPart))
+            .map { String(colorsPart[Range($0.range(at: 1), in: colorsPart)!]) }
+        return (try JSONDecoder().decode(BadgePalette.self, from: data), keys)
+    }
+
+    private func rgb(_ hex: String) -> UInt32 { UInt32(hex.dropFirst(), radix: 16)! }
+
+    func testTheBadgePaletteIsTheSharedOne() throws {
+        let (shared, order) = try badgePalette()
+        XCTAssertEqual(AttendancePalette.badgeForeground, rgb(shared.fg))
+        XCTAssertEqual(AttendancePalette.badgeColors, shared.colors.mapValues(rgb))
+        // Every colour key a state may have (the text emoji palette's), in the swatches' order.
+        XCTAssertEqual(order, SectionLetterIcon.colors.map(\.key))
+        XCTAssertEqual(Set(order), Set(CustomEmoji.textPalette.keys))
+        XCTAssertEqual(AttendancePalette.solidRGB("nonsense"), rgb(shared.colors["gray"]!))
+    }
+
+    func testWhiteOnEveryShadeMeetsWCAGAA() throws {
+        let (shared, _) = try badgePalette()
+        XCTAssertEqual(AttendancePalette.contrast(0xFFFFFF, 0x000000), 21, accuracy: 0.0001)
+        XCTAssertGreaterThanOrEqual(shared.min_text_contrast, 4.5)
+        XCTAssertGreaterThanOrEqual(shared.min_icon_contrast, 3)
+        for (key, shade) in AttendancePalette.badgeColors {
+            let ratio = AttendancePalette.contrast(AttendancePalette.badgeForeground, shade)
+            XCTAssertGreaterThanOrEqual(ratio, shared.min_text_contrast, key)
+            XCTAssertGreaterThanOrEqual(ratio, shared.min_icon_contrast, key)
+        }
+    }
+
+    /// The chip draws as the solid shade in light and dark alike.
+    func testTheChipIsSolidInBothThemes() throws {
+        let yellow = state("y", "学内", icon: "on_site", color: "yellow")
+        for scheme in [ColorScheme.light, .dark] {
+            let renderer = ImageRenderer(content: AttendanceChip(controller: AppController(), state: yellow, large: true).environment(\.colorScheme, scheme))
+            renderer.scale = 1
+            let image = try XCTUnwrap(renderer.cgImage)
+            let pixel = try XCTUnwrap(Self.pixel(image, x: 3, y: image.height / 2))
+            let shade = AttendancePalette.solidRGB("yellow")
+            XCTAssertEqual(Double(pixel.r), Double((shade >> 16) & 0xFF), accuracy: 3, "\(scheme)")
+            XCTAssertEqual(Double(pixel.g), Double((shade >> 8) & 0xFF), accuracy: 3, "\(scheme)")
+            XCTAssertEqual(Double(pixel.b), Double(shade & 0xFF), accuracy: 3, "\(scheme)")
+        }
+    }
+
+    /// Switching between states whose names are as long must not move the home header's pill (2026-10-07): each symbol
+    /// sits in the same box, so the pill's size is the same for all of them.
+    func testThePillKeepsItsSizeAcrossSameLengthStates() {
+        let controller = AppController()
+        let states = [
+            state("a", "在室", kind: "in_room", icon: "in_room", color: "green"),
+            state("b", "学内", kind: "on_site", icon: "on_site", color: "blue"),
+            state("c", "学外", kind: "off_site", icon: "off_site", color: "purple"),
+            state("d", "帰宅", kind: "gone", icon: "gone", color: "red"),
+            state("e", "会議", icon: "meeting", color: "orange"),
+            state("f", "授業", icon: "class", color: "pink"),
+        ]
+        for iconOnly in [false, true] {
+            let sizes = states.map { state in
+                UIHostingController(rootView: AttendancePillFace(controller: controller, state: state, iconOnly: iconOnly))
+                    .sizeThatFits(in: CGSize(width: 1000, height: 200))
+            }
+            XCTAssertEqual(Set(sizes.map(\.width)).count, 1, "iconOnly \(iconOnly): \(sizes)")
+            XCTAssertEqual(Set(sizes.map(\.height)).count, 1, "iconOnly \(iconOnly): \(sizes)")
+        }
+    }
+
+    private static func pixel(_ image: CGImage, x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8)? {
+        var data = [UInt8](repeating: 0, count: 4)
+        guard let context = CGContext(data: &data, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.draw(image, in: CGRect(x: -x, y: -(image.height - 1 - y), width: image.width, height: image.height))
+        return (data[0], data[1], data[2])
     }
 }

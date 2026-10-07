@@ -139,14 +139,16 @@ struct AttendanceView: View {
         return Button {
             choose(state.id, note: AttendanceRules.noteForChoice(state, mine: mine))
         } label: {
+            // Selected: the solid badge (white on the state's shade). Unselected: outlined, only the icon in the colour.
             AttendanceStateLabel(controller: controller, state: state, glyphSize: 17, iconColor: !selected)
                 .font(.body.weight(selected ? .semibold : .regular))
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .padding(.horizontal, 8)
-                .background(AttendancePalette.background(state.color, selected: selected), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(selected ? AttendancePalette.solid(state.color) : Color(.secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(selected ? AttendancePalette.foreground(state.color) : Color(.separator), lineWidth: selected ? 2 : 1))
-                .foregroundStyle(selected ? AttendancePalette.foreground(state.color) : Color.primary)
+                    .strokeBorder(selected ? Color.clear : Color(.separator), lineWidth: 1))
+                .foregroundStyle(selected ? AttendancePalette.onSolid : Color.primary)
                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -206,28 +208,61 @@ struct AttendanceStateLabel: View {
     var body: some View {
         HStack(spacing: glyphSize < 14 ? 3 : 5) {
             AttendanceGlyph(controller: controller, state: state, size: glyphSize)
-                .foregroundStyle(iconColor ? AnyShapeStyle(AttendancePalette.foreground(state.color)) : AnyShapeStyle(.foreground))
+                .foregroundStyle(iconColor ? AnyShapeStyle(AttendancePalette.tint(state.color)) : AnyShapeStyle(.foreground))
             Text(state.label).lineLimit(1)
         }
     }
 }
 
-/// The text emoji palette's colours (apps/shared/text-emoji.json, CustomEmoji.textPalette), light and dark.
+/// The states' colours (PRESENCE.md §2.2). A badge is solid: the colour key's shade (apps/shared/attendance-badge-colors.json,
+/// the same in light and dark) with white text and icon. `tint` is only for an icon on the page's background (an unselected
+/// button): the shade in light, the text emoji palette's light foreground in dark (the shades are too dark there).
 enum AttendancePalette {
-    static func background(_ color: String, selected: Bool) -> Color {
-        selected ? pair(color, \.bg) : Color(.secondarySystemGroupedBackground)
+    /// The copy of apps/shared/attendance-badge-colors.json (AttendanceBadgePaletteTests compares it and the contrast).
+    static let badgeColors: [String: UInt32] = [
+        "gray": 0x4B5563,
+        "red": 0xDC2626,
+        "orange": 0xC2410C,
+        "yellow": 0xA16207,
+        "green": 0x15803D,
+        "blue": 0x2563EB,
+        "purple": 0x7C3AED,
+        "pink": 0xBE185D,
+    ]
+    static let badgeForeground: UInt32 = 0xFFFFFF
+
+    /// A colour key's solid shade (an unknown key = gray).
+    static func solidRGB(_ color: String) -> UInt32 { badgeColors[color] ?? badgeColors["gray"]! }
+
+    static func solid(_ color: String) -> Color { Color(uiColor(solidRGB(color))) }
+
+    /// The text and icon on a solid badge.
+    static let onSolid = Color(uiColor(badgeForeground))
+
+    static func tint(_ color: String) -> Color {
+        let shade = solidRGB(color)
+        let dark = (CustomEmoji.textPalette[color] ?? CustomEmoji.textPalette["gray"]!).dark.fg
+        return Color(UIColor { traits in uiColor(traits.userInterfaceStyle == .dark ? dark : shade) })
     }
 
-    static func chipBackground(_ color: String) -> Color { pair(color, \.bg) }
+    /// WCAG 2.x contrast ratio of two 0xRRGGBB colours (1…21).
+    static func contrast(_ a: UInt32, _ b: UInt32) -> Double {
+        func linear(_ channel: UInt32) -> Double {
+            let c = Double(channel & 0xFF) / 255
+            return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        func luminance(_ rgb: UInt32) -> Double {
+            let r: Double = linear(rgb >> 16)
+            let g: Double = linear(rgb >> 8)
+            let b: Double = linear(rgb)
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+        let (x, y) = (luminance(a), luminance(b))
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+    }
 
-    static func foreground(_ color: String) -> Color { pair(color, \.fg) }
-
-    private static func pair(_ color: String, _ part: KeyPath<(bg: UInt32, fg: UInt32), UInt32>) -> Color {
-        let colors = CustomEmoji.textPalette[color] ?? CustomEmoji.textPalette["gray"]!
-        return Color(UIColor { traits in
-            let rgb = (traits.userInterfaceStyle == .dark ? colors.dark : colors.light)[keyPath: part]
-            return UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
-        })
+    private static func uiColor(_ rgb: UInt32) -> UIColor {
+        UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
     }
 }
 
@@ -244,8 +279,8 @@ struct AttendanceChip: View {
             .font(large ? .subheadline.weight(.semibold) : .caption2.weight(.medium))
             .padding(.horizontal, large ? 8 : 5)
             .padding(.vertical, large ? 3 : 1.5)
-            .foregroundStyle(AttendancePalette.foreground(state.color))
-            .background(AttendancePalette.chipBackground(state.color), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .foregroundStyle(AttendancePalette.onSolid)
+            .background(AttendancePalette.solid(state.color), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .fixedSize()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(tr("在室状況：") + AttendanceRules.stateText(state) + (note.map { " · " + $0 } ?? ""))
