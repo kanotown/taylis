@@ -27,18 +27,32 @@ export interface ParentThread {
 }
 export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
-/** M117 (docs/CALLS.md §3): the calls fields; a server before M117 sends none (calls off). */
-type CallSettingsFields = "calls_enabled" | "meeting_base_url";
+/**
+ * The calls fields; a server before M117 sends none of them, one before M130 no `in_app_calls` (calls off). M117's
+ * `calls_enabled` / `meeting_base_url` are always false / null since M130 (docs/CALLS.md §11).
+ */
+type CallSettingsFields = "calls_enabled" | "meeting_base_url" | "in_app_calls";
 type ServerWorkspaceSettings = components["schemas"]["WorkspaceSettingsOut"];
 type ServerAdminWorkspaceSettings = components["schemas"]["AdminWorkspaceSettingsOut"];
 /** M88 (docs/MEMBERSHIP.md §3): the workspace switches every client follows; the admin form adds who changed them. */
 export type WorkspaceSettingsOut = Omit<ServerWorkspaceSettings, CallSettingsFields> & Partial<Pick<ServerWorkspaceSettings, CallSettingsFields>>;
-export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallSettingsFields> & Partial<Pick<ServerAdminWorkspaceSettings, CallSettingsFields>>;
-/** M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered). */
-export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "workspace_settings"> & { dm_pins?: string[]; workspace_settings?: WorkspaceSettingsOut | null };
-/** M117 (docs/CALLS.md §4): POST /channels/{id}/calls; `message.call` is the call's link and who started it. */
+export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallSettingsFields | "in_app_calls_enabled"> &
+  Partial<Pick<ServerAdminWorkspaceSettings, CallSettingsFields | "in_app_calls_enabled">>;
+/**
+ * M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered); M130: one before it no
+ * `active_calls`.
+ */
+export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "workspace_settings" | "active_calls"> & {
+  dm_pins?: string[];
+  workspace_settings?: WorkspaceSettingsOut | null;
+  active_calls?: CallOut[];
+};
+/** M130 (docs/CALLS.md §5.2): an in-app call and who is in it. */
 export type CallOut = components["schemas"]["CallOut"];
-export type MessageCallOut = components["schemas"]["MessageCallOut"];
+/** M117's POST /channels/{id}/calls answer (retired by M130: the server now always answers 409 calls_disabled). */
+export type LegacyCallOut = { url: string; message: MessageOut };
+/** `message.call`: an M117 server sends no `kind` (a meeting link, as `kind: "link"`). */
+export type MessageCallOut = Omit<components["schemas"]["MessageCallOut"], "kind"> & { kind?: "livekit" | "link" };
 export type WorkspaceSettingsUpdate = components["schemas"]["WorkspaceSettingsUpdate"];
 /** M90 (docs/MEMBERSHIP.md §6): 「今いる人も全員入れる」, counted (dry run) or done. */
 export type DefaultChannelsApplyOut = components["schemas"]["DefaultChannelsApplyOut"];

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Calls by meeting link (M117, docs/CALLS.md §7): 📞 in the header when the workspace has calls on and I may post, the
- * confirm dialog and its retry-safe id, the call card in the timeline, and the administrator's meeting service field.
+ * confirm dialog and its retry-safe id, and the call card in the timeline. M130 retired the administrator's meeting
+ * service field (docs/CALLS.md §11): its test checks that the settings screen no longer shows it.
  */
 import { useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -12,9 +13,9 @@ import type { AdminWorkspaceSettingsOut, LinkPreviewOut, MessageOut, UserMe } fr
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
-import { CallButton, callHidesBody, canStartCall, meetingUrlErrorText } from "../src/ui/Calls";
+import { CallButton, callHidesBody, canStartCall } from "../src/ui/Calls";
 import { Timeline } from "../src/ui/Timeline";
-import { MeetingServiceSection } from "../src/ui/WorkspaceSettingsTab";
+import { WorkspaceSettingsTab } from "../src/ui/WorkspaceSettingsTab";
 import { FakeServer } from "./fakeServer";
 
 afterEach(() => {
@@ -138,7 +139,7 @@ describe("a call message in the timeline", () => {
     render(<View />);
     return { controller, bob };
   }
-  const call = (server: FakeServer, channelId: string, senderId: string, body = BODY): MessageOut => ({ ...server.post(channelId, senderId, body).message, call: { url: URL_, started_by: senderId } });
+  const call = (server: FakeServer, channelId: string, senderId: string, body = BODY): MessageOut => ({ ...server.post(channelId, senderId, body).message, call: { kind: "link", url: URL_, started_by: senderId } });
 
   it("shows the card (who, when, 参加する) instead of the server's body, and fetches no preview for the room", () => {
     const { controller } = world((server, id, bob) => [call(server, id, bob)]);
@@ -165,56 +166,26 @@ describe("a call message in the timeline", () => {
   });
 });
 
-describe("管理 → 設定 「通話の会議サービス」", () => {
-  const base = { show_membership_messages: true, preview_before_join: true, calls_enabled: true, meeting_base_url: "https://meet.jit.si/", updated_at: null, updated_by: null } as unknown as AdminWorkspaceSettingsOut;
-
-  function form(update: (patch: { meeting_base_url?: string | null }) => Promise<AdminWorkspaceSettingsOut>, settings = base) {
+describe("管理 → 設定 (M130: the meeting service field is gone)", () => {
+  it("does not show 「通話の会議サービス」 even though the server still sends calls_enabled", async () => {
+    const settings = {
+      show_membership_messages: true,
+      preview_before_join: true,
+      calls_enabled: false,
+      meeting_base_url: null,
+      in_app_calls: { enabled: false, video: false, screen_share: false },
+      updated_at: null,
+      updated_by: null,
+      default_channel_ids: [],
+      default_channels: [],
+      default_channels_set: true,
+      legacy_sso_default_channels: [],
+    } as unknown as AdminWorkspaceSettingsOut;
     const store = new Store();
-    const onSaved = vi.fn();
-    const controller = { api: { adminUpdateWorkspaceSettings: vi.fn(update) }, store, setError: vi.fn() } as unknown as AppController;
-    render(<MeetingServiceSection controller={controller} settings={settings} onSaved={onSaved} />);
-    return { controller, onSaved, store, input: screen.getByRole("textbox", { name: "会議サービスの URL" }) as HTMLInputElement };
-  }
-
-  it("shows the server's reason inline for 422 meeting_url_invalid", async () => {
-    const { input, onSaved } = form(async () => { throw new ApiError(422, "meeting_url_invalid", "Invalid meeting service URL", { reason: "scheme" }); });
-    expect(input.value).toBe("https://meet.jit.si/");
-    expect(screen.getByText(/meet\.jit\.si では、部屋に最初に入る人/)).toBeTruthy();
-    fireEvent.change(input, { target: { value: "http://jitsi.example.org" } });
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "保存" })));
-    expect(screen.getByRole("alert").textContent).toBe("https:// で始まる URL にしてください");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(onSaved).not.toHaveBeenCalled();
-    fireEvent.change(input, { target: { value: "https://jitsi.example.org" } });
-    expect(screen.queryByRole("alert")).toBeNull(); // typing clears it
-  });
-
-  it("empty saves null (calls off) and this device follows at once; 既定に戻す puts meet.jit.si back", async () => {
-    const off = { ...base, calls_enabled: false, meeting_base_url: null } as AdminWorkspaceSettingsOut;
-    const { controller, input, onSaved, store } = form(async () => off);
-    fireEvent.change(input, { target: { value: "  " } });
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "保存" })));
-    expect((controller.api as unknown as { adminUpdateWorkspaceSettings: ReturnType<typeof vi.fn> }).adminUpdateWorkspaceSettings).toHaveBeenCalledWith({ meeting_base_url: null });
-    expect(onSaved).toHaveBeenCalledWith(off);
-    expect(store.workspaceSettings.calls_enabled).toBe(false);
-    cleanup();
-
-    const again = form(async () => base, off);
-    expect(screen.getByText("通話はオフです")).toBeTruthy();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "既定（meet.jit.si）に戻す" })));
-    expect((again.controller.api as unknown as { adminUpdateWorkspaceSettings: ReturnType<typeof vi.fn> }).adminUpdateWorkspaceSettings).toHaveBeenCalledWith({ meeting_base_url: "https://meet.jit.si/" });
-    await waitFor(() => expect(again.store.workspaceSettings.calls_enabled).toBe(true));
-  });
-
-  it("is not shown by a server before M117", () => {
-    const { calls_enabled: _c, meeting_base_url: _m, ...older } = base;
-    const controller = { api: {}, store: new Store(), setError: vi.fn() } as unknown as AppController;
-    const view = render(<MeetingServiceSection controller={controller} settings={older as AdminWorkspaceSettingsOut} onSaved={vi.fn()} />);
-    expect(view.container.textContent).toBe("");
-  });
-
-  it("meetingUrlErrorText: an unknown reason or another error falls back to the error text", () => {
-    expect(meetingUrlErrorText(new ApiError(422, "meeting_url_invalid", "x", { reason: "length" }))).toBe("200 文字までにしてください");
-    expect(meetingUrlErrorText(new ApiError(422, "meeting_url_invalid", "x", { reason: "new" }))).toContain("会議サービスの URL が正しくありません");
+    const controller = { api: { adminWorkspaceSettings: vi.fn(async () => settings), channels: vi.fn(async () => []) }, store, setError: vi.fn() } as unknown as AppController;
+    render(<WorkspaceSettingsTab controller={controller} />);
+    await waitFor(() => expect(screen.queryAllByRole("checkbox").length + screen.queryAllByRole("switch").length).toBeGreaterThan(0));
+    expect(screen.queryByText("通話の会議サービス")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "会議サービスの URL" })).toBeNull();
   });
 });
