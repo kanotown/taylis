@@ -107,6 +107,8 @@
 - `attendance`（M140、docs/PRESENCE.md §3.1・§4）は在室状況のボード `{ enabled, states, entries, can_personalize }`。
   ゲスト・ボットと、管理者がオフにしているときは null（M140 より前のサーバは送らない：無いものとみなす）。変化は
   `attendance.updated`（1 人の行）と `attendance.config_updated`（`GET /attendance` を読み直す）で届く。
+- `actions`（M143、docs/ACTIONS.md §7.1）は自分が押せる操作ボタン `{ enabled, show_on_attendance, actions: [ActionOut] }`。
+  ゲスト・ボットと、管理者がオフにしているときは null（M143 より前のサーバは送らない）。変化は `actions.updated`（`GET /actions` を読み直す）で届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -294,6 +296,7 @@
 | `session.revoked` | session | — | `{ reason }` |
 | `attendance.updated` | all（guest を除く） | — | `{ user_id, state_id, since, note, source, log_id }`（M140、docs/PRESENCE.md §4）。ある人の在室状況が変わった。`user_id` の行を置き換える。`state_id` を知らなければ `GET /attendance` を読み直す。`log_id` は端末では使わない |
 | `attendance.config_updated` | all（guest を除く） | — | `{}`（M140）。在室状況の有効・無効、自分用の状態の規則、状態（ワークスペース・個人）が変わった。人ごとに違う（`can_personalize`）ので中身は無い。`GET /attendance` を読み直す（300 ms でまとめる。`enabled: false` ならボードを消す） |
+| `actions.updated` | all（guest を除く） | — | `{}`（M143、docs/ACTIONS.md §8）。操作ボタンの設定かボタンが変わった。押せるボタンは人ごとに違うので中身は無い。`GET /actions` を読み直す（続けて届いたものは 300 ms でまとめる） |
 | `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url } }` (M88、docs/MEMBERSHIP.md §3。`in_app_calls` は M130、`calls_enabled` / `meeting_base_url` はいつも false / null。docs/CALLS.md)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
 | `call.started` / `call.updated` / `call.ended` | channel | — | `{ call: CallOut }` (M130、docs/CALLS.md §5.3)。`CallOut` = `{ id, channel_id, message_id, started_by, started_at, ended_at, participants: [{ user_id, joined_at }], participant_count, peak_participants }`。通話が始まった / 人が入った・抜けた / 終わった。会話の「通話中 (n)」を id で置き換える (ended なら外す)。seq は無く取りこぼしうるので、再接続のあとは bootstrap の `active_calls` か `GET /calls?active=true` で置き換える。通話の記録はメッセージの側 (終わると `message.updated` の change `call`) |
 
