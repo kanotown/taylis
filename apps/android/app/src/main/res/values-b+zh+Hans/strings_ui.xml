@@ -771,6 +771,7 @@
     <string name="dialogs_topic">主题</string>
     <string name="dialogs_unarchive">取消归档</string>
     <string name="directory_dialog_admin">管理员</string>
+    <string name="directory_dialog_manager">运营</string>
     <string name="directory_dialog_guest">访客</string>
     <string name="directory_dialog_incoming_webhook">传入 Webhook</string>
     <string name="directory_dialog_members">成员 (%1$s)</string>
@@ -836,6 +837,7 @@
     <string name="invite_screen_the_invite_link_is_not_in">邀请链接格式不正确 (格式为 https://服务器/invite/…)</string>
     <string name="invite_screen_use_another_link">使用其他链接</string>
     <string name="invite_screen_you_will_join_as_an_administrator">你将以管理员身份加入</string>
+    <string name="invite_screen_you_will_join_as_a_manager">你将以运营身份加入</string>
     <string name="invite_supervisor">指导教师 %1$s</string>
     <string name="invite_this_invite_link_has_already_been">此邀请链接已被使用</string>
     <string name="invite_this_invite_link_has_been_revoked">此邀请链接已被撤销</string>

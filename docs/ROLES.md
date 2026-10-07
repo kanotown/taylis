@@ -181,14 +181,17 @@ AI のボットと利用量、連携（受信 Webhook・在室状況の連携・
 
 ## 8. iOS・Android（最小限）
 
-- ロールは文字列で持っているので `manager` で落ちない（確認済み）。管理画面は無い（「管理」は Desktop / Web）。
-- ロールを表示するところ（Android のディレクトリのバッジ、iOS・Android のプロフィール）に「運営」を出す。
+- ロールは文字列で持っているので `manager` で落ちない（iOS は Codable の `String`、Android は `String`。確認済み）。
+  管理画面は無い（「管理」は Desktop / Web。iOS の「自分 → 管理」は Web を開く案内で、運営にも出す）。
+- 「人」のロール（§1）：在室状況のボードに出る人・在室状況が見える人に運営を含める（iOS・Android の `AttendanceRules`。
+  含めないと運営に在室状況が出なかった）。
+- ロールを表示するところ（iOS・Android のディレクトリのバッジ、招待の受け入れ画面）に「運営」を出す。
 - 画面の出し分けは当面ロールのまま：運営は member と同じ扱い（チャンネルの名前の変更・アーカイブなどのメニューは出ないが、
-  サーバは許す。Desktop / Web で行う）。`capabilities` への移行は後で（BACKLOG）。
+  サーバは許す。Desktop / Web で行う）。`capabilities` への移行は後で。
 
 ## 9. テスト
 
 - `tests/test_roles.py`（90 件）：すべての管理の操作（79） × {admin, manager, member, guest} の許可・拒否の表（本書 §2 の表と同じ）を
   パラメータで確かめる。運営の操作の監査（`actor_role`）、ロールの変更は管理者だけ、運営が読めないもの（§4：非公開
   チャンネルの管理・報告の写し・ドキュメントの管理・ユーザーの個人情報）。
-- Desktop vitest：権限による管理画面のタブと操作の出し分け。
+- Desktop vitest（roles 8）：権限による管理画面のタブと操作の出し分け。iOS AttendanceTests・Android AttendanceTest：運営がボードに出ること。
