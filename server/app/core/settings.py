@@ -180,6 +180,14 @@ class Settings(BaseSettings):
     # Changes per person per minute from the app; per integration per minute from outside.
     attendance_rate_limit_per_user: int = 30
     attendance_inbound_rate_limit_per_integration: int = 60
+    # 操作ボタン (M143, docs/ACTIONS.md): the relays' signing keys are files in this folder, named
+    # by the button's secret_name (never in the DB). One call per press, bounded as a whole; no
+    # retries. Private targets (and http) only with the dev flag, never in production.
+    action_secrets_dir: str = "/run/secrets/actions"
+    action_allow_private: bool = False
+    action_timeout_seconds: float = 10.0
+    # One press per person per button every this many seconds.
+    action_invoke_min_interval_seconds: float = 3.0
     session_retention_days: int = 30
     device_retention_days: int = 90
     # M116 (docs/ANALYTICS.md): users.last_active_at and the hourly activity rows are written at

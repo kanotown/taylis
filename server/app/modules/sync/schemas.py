@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.modules.actions.schemas import ActionListOut
 from app.modules.activity.schemas import ActivitySummaryOut
 from app.modules.attendance.schemas import AttendanceBoardOut
 from app.modules.calls.schemas import CallOut
@@ -85,6 +86,9 @@ class BootstrapOut(BaseModel):
     # M140 (docs/PRESENCE.md §4): the 在室状況 board; null for guests and while it is off.
     # Changes arrive as attendance.updated / attendance.config_updated.
     attendance: AttendanceBoardOut | None = None
+    # M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press; null for guests, bots and while the
+    # feature is off. Changes arrive as actions.updated (then GET /actions).
+    actions: ActionListOut | None = None
 
 
 class UnreadSummaryOut(BaseModel):

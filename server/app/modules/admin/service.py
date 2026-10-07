@@ -13,6 +13,7 @@ from app.core.errors import conflict, forbidden, not_found
 from app.core.roles import has_capability
 from app.core.security import generate_temporary_password, hash_password
 from app.core.time import utcnow
+from app.modules.actions import service as actions
 from app.modules.admin.schemas import AdminUserCreate, AdminUserUpdate
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attendance import service as attendance
@@ -347,6 +348,7 @@ async def anonymize_in_tx(
     await totp.remove_in_tx(db, user.id)
     await sso_repo.forget_user_in_tx(db, user.id)  # M48: Google no longer signs in as it
     await lab.forget_in_tx(db, admin, user.id)  # the roster line, research topic included (M23)
+    await actions.forget_in_tx(db, user.id)  # M143: off every button's list of people
     await attendance.forget_in_tx(db, user.id)  # M140: 在室状況 row, log, own states, deliveries
     # M120 (docs/WIKI.md §4.5): pages shared with the person by name no longer name them.
     await wiki.remove_user_grants_in_tx(db, user.id)

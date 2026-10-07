@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.actions import service as actions
 from app.modules.activity import service as activity
 from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
 from app.modules.attendance import service as attendance
@@ -101,6 +102,7 @@ async def bootstrap(
         wiki=await wiki.bootstrap(db),
         active_calls=await calls.active_calls(db, actor),
         attendance=await attendance.bootstrap(db, actor),
+        actions=await actions.bootstrap(db, actor),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

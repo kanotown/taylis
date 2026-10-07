@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
+from app.modules.actions import events as actions_events
 from app.modules.activity import events as activity_events
 from app.modules.ai import events as ai_events
 from app.modules.attendance import events as attendance_events
@@ -173,6 +174,12 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     ),
     attendance_events.ATTENDANCE_CONFIG_UPDATED: (
         attendance_events.AttendanceConfigUpdatedData,
+        "all (not guests)",
+        False,
+    ),
+    # M143 (docs/ACTIONS.md §8): the 操作ボタン changed; GET /actions again. Not for guests.
+    actions_events.ACTIONS_UPDATED: (
+        actions_events.ActionsUpdatedData,
         "all (not guests)",
         False,
     ),

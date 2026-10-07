@@ -103,6 +103,7 @@ GROUP_UPDATED = "group.updated"  # member lists: not for guests
 ROSTER_UPDATED = "roster.updated"  # the lab roster (M23): not for guests either
 # 在室状況 (M140, docs/PRESENCE.md §4): who is in the room is not for guests.
 ATTENDANCE_EVENTS = ("attendance.updated", "attendance.config_updated")
+ACTIONS_UPDATED = "actions.updated"  # 操作ボタン (M143): guests never press
 RESERVATION_NOTICE = "reservation.notice"  # re-checked at delivery (review v0.1.37 #2)
 
 
@@ -129,6 +130,7 @@ async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audien
             GROUP_UPDATED,
             ROSTER_UPDATED,
             *ATTENDANCE_EVENTS,
+            ACTIONS_UPDATED,
         ):
             ids = await repo.non_guest_user_ids(db)
             if (

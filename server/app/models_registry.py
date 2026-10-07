@@ -2,6 +2,7 @@
 
 from app.core.base import Base
 from app.events import models as _event_models
+from app.modules.actions import models as _actions_models
 from app.modules.activity import models as _activity_models
 from app.modules.ai import models as _ai_models
 from app.modules.analytics import models as _analytics_models
@@ -37,6 +38,7 @@ from app.modules.workspace import models as _workspace_models
 
 __all__ = [
     "Base",
+    "_actions_models",
     "_activity_models",
     "_ai_models",
     "_analytics_models",

@@ -14,16 +14,11 @@ Signing: X-Taylis-Signature: sha256=hex(HMAC-SHA256(key, timestamp + "." + body)
 from ATTENDANCE_WEBHOOK_SECRETS_DIR/<secret_name> at each send (never stored in the DB).
 """
 
-import asyncio
-import hashlib
-import hmac
-import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -47,7 +42,10 @@ from app.modules.attendance.models import (
     AttendanceState,
 )
 from app.modules.attendance.schemas import AttendanceDeliveryOut, to_delivery_out
-from app.modules.link_previews.fetcher import PreviewError, validate_public_url
+from app.modules.outbound import signed
+from app.modules.outbound.signed import SECRET_MIN_BYTES as SECRET_MIN_BYTES
+from app.modules.outbound.signed import body_bytes as body_bytes
+from app.modules.outbound.signed import signature as signature
 from app.modules.users.models import User
 from app.modules.workspace import service as workspace
 
@@ -70,7 +68,6 @@ BACKOFF = (
 MAX_ATTEMPTS = len(BACKOFF)
 # How long a claimed delivery stays out of the queue (a crash mid-send retries after it).
 LEASE = timedelta(minutes=2)
-SECRET_MIN_BYTES = 16
 RESPONSE_SNIPPET = 200
 # The most of an error answer's body read (enough for RESPONSE_SNIPPET characters of UTF-8).
 RESPONSE_PREFIX_BYTES = 4 * RESPONSE_SNIPPET
@@ -78,29 +75,12 @@ RESPONSE_PREFIX_BYTES = 4 * RESPONSE_SNIPPET
 DISABLED_ERROR = "attendance_disabled"
 
 
-# --- signing -------------------------------------------------------------------------------
-
-
-def body_bytes(body: dict[str, Any]) -> bytes:
-    """The exact bytes sent (and signed): compact JSON, keys sorted, UTF-8."""
-    return json.dumps(body, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
-
-
-def signature(secret: bytes, timestamp: int, body: bytes) -> str:
-    digest = hmac.new(secret, str(timestamp).encode() + b"." + body, hashlib.sha256).hexdigest()
-    return f"sha256={digest}"
+# --- signing (shared with the 操作ボタン, app/modules/outbound/signed.py) --------------------
 
 
 def read_secret(settings: Settings, name: str | None) -> bytes | None:
     """The signing key of an integration, or None when the file is missing or too short."""
-    if not name:
-        return None
-    path = Path(settings.attendance_webhook_secrets_dir) / name
-    try:
-        value = path.read_bytes().strip()
-    except OSError:
-        return None
-    return value if len(value) >= SECRET_MIN_BYTES else None
+    return signed.read_secret(settings.attendance_webhook_secrets_dir, name)
 
 
 # --- sending -------------------------------------------------------------------------------
@@ -134,66 +114,28 @@ Sender = Callable[[str, dict[str, str], bytes], Awaitable[SendResult]]
 
 
 def build_sender(settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> Sender:
-    """Posts with httpx. `attendance_webhook_timeout_seconds` bounds the whole send — the DNS
-    check, connecting, the request and the answer — not each read (httpx's own timeout is per
-    read, so an answer that trickles in a byte at a time would hold the worker for good). Only
-    the status and, for an error, a bounded prefix of the body are read (docs/PRESENCE.md §5.1)."""
-    allow_private = service.private_targets_allowed(settings)
-    timeout = settings.attendance_webhook_timeout_seconds
-
-    async def post(url: str, headers: dict[str, str], body: bytes) -> SendResult:
-        if not allow_private:
-            if not url.startswith("https://"):
-                return SendResult(None, "url_not_allowed")
-            try:
-                await validate_public_url(url)
-            except PreviewError as exc:
-                return SendResult(None, exc.code)
-        try:
-            async with (
-                httpx.AsyncClient(
-                    follow_redirects=False, timeout=httpx.Timeout(timeout), transport=transport
-                ) as client,
-                client.stream("POST", url, content=body, headers=headers) as response,
-            ):
-                if response.is_success:
-                    return SendResult(response.status_code, None)  # the body is not read
-                prefix = bytearray()
-                async for chunk in response.aiter_bytes():
-                    prefix += chunk
-                    if len(prefix) >= RESPONSE_PREFIX_BYTES:
-                        break
-                encoding = response.encoding or "utf-8"
-        except httpx.TimeoutException:
-            return SendResult(None, "timeout")
-        except httpx.HTTPError as exc:
-            return SendResult(None, f"network: {type(exc).__name__}")
-        try:
-            snippet = bytes(prefix[:RESPONSE_PREFIX_BYTES]).decode(encoding, errors="replace")
-        except LookupError:  # a charset Python does not know
-            snippet = bytes(prefix[:RESPONSE_PREFIX_BYTES]).decode("utf-8", errors="replace")
-        return SendResult(response.status_code, snippet[:RESPONSE_SNIPPET] or None)
+    """Posts with the shared signed sender: `attendance_webhook_timeout_seconds` bounds the whole
+    send; a success's body is not read, an error's only up to a bounded prefix (its first
+    RESPONSE_SNIPPET characters are recorded; docs/PRESENCE.md §5.1)."""
+    post = signed.build_poster(
+        timeout=settings.attendance_webhook_timeout_seconds,
+        allow_private=service.private_targets_allowed(settings),
+        success_body_bytes=0,
+        error_body_bytes=RESPONSE_PREFIX_BYTES,
+        transport=transport,
+    )
 
     async def send(url: str, headers: dict[str, str], body: bytes) -> SendResult:
-        try:
-            async with asyncio.timeout(timeout):
-                return await post(url, headers, body)
-        except TimeoutError:
-            return SendResult(None, "timeout")
+        answer = await post(url, headers, body)
+        if answer.status_code is None or answer.ok:
+            return SendResult(answer.status_code, answer.error)
+        return SendResult(answer.status_code, answer.text(RESPONSE_SNIPPET) or None)
 
     return send
 
 
 def _headers(event: str, delivery_id: uuid.UUID, secret: bytes, body: bytes) -> dict[str, str]:
-    timestamp = int(utcnow().timestamp())
-    return {
-        "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": USER_AGENT,
-        "X-Taylis-Event": event,
-        "X-Taylis-Delivery": str(delivery_id),
-        "X-Taylis-Timestamp": str(timestamp),
-        "X-Taylis-Signature": signature(secret, timestamp, body),
-    }
+    return signed.signed_headers(event, delivery_id, secret, body, user_agent=USER_AGENT)
 
 
 # --- the payload ---------------------------------------------------------------------------
