@@ -4,12 +4,12 @@
  * relay's URL, action_key, the key file's name, the confirmation, who may press, the notice's conversation), 「テスト送信」
  * and the latest presses. Administrators only (integrations.manage).
  */
-import { ArrowDown, ArrowUp, History, KeyRound, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, History, KeyRound, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import type { ActionAdminOut, ActionCreate, ActionInvocationOut, ActionInvokeOut, ActionPressRole, ActionSettingsOut } from "../api/types";
+import type { ActionAdminOut, ActionCreate, ActionInvocationOut, ActionInvokeOut, ActionPressRole, ActionSettingsOut, ActionStatusOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { actionTitle, resultText } from "./actions";
+import { actionTitle, resultText, statusDetails, statusFailureText } from "./actions";
 import { ActionGlyph } from "./ActionButtons";
 import { ATTENDANCE_ICONS, attendanceIconLabel } from "./attendanceIcons";
 import { fullTimestamp } from "./format";
@@ -30,6 +30,7 @@ export function ActionsAdminTab({ controller }: { controller: AppController }) {
   const [editing, setEditing] = useState<ActionAdminOut | "new" | null>(null);
   const [history, setHistory] = useState<ActionAdminOut | null>(null);
   const [tested, setTested] = useState<{ id: string; out: ActionInvokeOut } | null>(null);
+  const [checked, setChecked] = useState<{ id: string; out: ActionStatusOut } | null>(null);
 
   const load = async () => {
     if (!controller.api) return;
@@ -71,6 +72,17 @@ export function ActionsAdminTab({ controller }: { controller: AppController }) {
     setBusy(true);
     try {
       setTested({ id: row.id, out: await api.adminTestAction(row.id) });
+    } catch (error) {
+      controller.setError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const checkStatus = async (row: ActionAdminOut) => {
+    setBusy(true);
+    try {
+      setChecked({ id: row.id, out: await api.adminCheckActionStatus(row.id) });
     } catch (error) {
       controller.setError(error);
     } finally {
@@ -121,6 +133,7 @@ export function ActionsAdminTab({ controller }: { controller: AppController }) {
                 <ActionGlyph action={row} />
                 <span className="min-w-0 flex-1 truncate font-medium">{actionTitle(row)}</span>
                 {!row.enabled && <Badge>{t("actionsAdmin.off")}</Badge>}
+                {row.provides_status && <Badge tone="accent">{t("actionsAdmin.statusBadge")}</Badge>}
                 {!row.secret_present && (
                   <Badge tone="danger">
                     <KeyRound size={11} className="mr-0.5 inline" /> {t("actionsAdmin.noSecret")}
@@ -144,6 +157,9 @@ export function ActionsAdminTab({ controller }: { controller: AppController }) {
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => void test(row)} data-action-test={row.id}>
                   <Send size={14} /> {t("actionsAdmin.test")}
                 </Button>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => void checkStatus(row)} data-action-check-status={row.id}>
+                  <Activity size={14} /> {t("actionsAdmin.checkStatus")}
+                </Button>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => setHistory(row)}>
                   <History size={14} /> {t("actionsAdmin.history")}
                 </Button>
@@ -166,6 +182,13 @@ export function ActionsAdminTab({ controller }: { controller: AppController }) {
               {tested?.id === row.id && (
                 <p className={cn("text-xs", tested.out.ok ? "text-accent" : "text-danger")} data-action-test-result>
                   {t("actionsAdmin.testResult", { result: resultText(tested.out, row).text, status: String(tested.out.status_code ?? "—") })}
+                </p>
+              )}
+              {checked?.id === row.id && (
+                <p className={cn("text-xs", checked.out.ok ? "text-accent" : "text-danger")} data-action-status-result>
+                  {checked.out.ok && checked.out.status
+                    ? t("actionsAdmin.statusResult", { text: [checked.out.status.text, statusDetails(checked.out)].filter(Boolean).join(" · "), tone: checked.out.status.tone, state: checked.out.status.state ?? "—" })
+                    : statusFailureText(checked.out)}
                 </p>
               )}
             </li>
@@ -243,6 +266,7 @@ export function ActionEditor({ controller, row, busy, onClose, onSave }: {
   const [userIds, setUserIds] = useState<string[]>(row?.allowed_user_ids ?? []);
   const [channelId, setChannelId] = useState(row?.notice_channel_id ?? "");
   const [enabled, setEnabled] = useState(row?.enabled ?? true);
+  const [providesStatus, setProvidesStatus] = useState(row?.provides_status ?? false);
   const [filter, setFilter] = useState("");
 
   const groups = [...store.groups.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -274,6 +298,7 @@ export function ActionEditor({ controller, row, busy, onClose, onSave }: {
       allowed_user_ids: userIds,
       notice_channel_id: channelId || null,
       enabled,
+      provides_status: providesStatus,
     });
   };
 
@@ -370,6 +395,13 @@ export function ActionEditor({ controller, row, busy, onClose, onSave }: {
             {channels.map((c) => <option key={c.id} value={c.id}>{c.type === "private" ? "🔒" : "#"}{c.name}</option>)}
           </select>
         </Field>
+        <div className="space-y-0.5">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={providesStatus} data-provides-status onChange={(e) => setProvidesStatus(e.target.checked)} />
+            {t("actionsAdmin.providesStatus")}
+          </label>
+          <p className="pl-6 text-xs text-muted">{t("actionsAdmin.providesStatusHint")}</p>
+        </div>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           {t("actionsAdmin.enabledOne")}

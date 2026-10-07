@@ -9,7 +9,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import type { AttendanceColor, AttendanceKind, AttendanceStateOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { onAttendance } from "./actions";
-import { ActionButtons } from "./ActionButtons";
+import { ActionButtons, useActionStatuses } from "./ActionButtons";
 import { ATTENDANCE_COLORS, ATTENDANCE_KINDS, boardGroups, entryOf, inRoomCount, kindLabel, myChoices, myOwnStates, sinceLabel } from "./attendance";
 import { ATTENDANCE_ICONS, attendanceBadgeColor, attendanceColorStyle, attendanceIconLabel, attendanceTintStyle, StateBadge, StateGlyph } from "./attendanceIcons";
 import { Avatar } from "./Avatar";
@@ -47,6 +47,9 @@ export function AttendanceView({ controller }: { controller: AppController }) {
   const board = store.attendance;
   const meId = store.me?.id ?? null;
   const mine = entryOf(board, meId ?? "");
+  // M143 (docs/ACTIONS.md D17, §12): the 操作ボタン here too when the workspace says so, with their state.
+  const actions = board ? onAttendance(store.actions) : [];
+  const feed = useActionStatuses(controller, actions);
   const [note, setNote] = useState(mine?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<AttendanceStateOut | "new" | null>(null);
@@ -84,7 +87,6 @@ export function AttendanceView({ controller }: { controller: AppController }) {
   const groups = boardGroups(board, store.users.values());
   const own = myOwnStates(board, meId);
   const count = inRoomCount(board, store.users.values());
-  const actions = onAttendance(store.actions);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-attendance-page>
@@ -95,7 +97,7 @@ export function AttendanceView({ controller }: { controller: AppController }) {
           {actions.length > 0 && (
             <section aria-label={t("nav.actions")} className="space-y-3" data-attendance-actions>
               <h2 className="text-[13px] font-semibold text-muted">{t("nav.actions")}</h2>
-              <ActionButtons controller={controller} actions={actions} compact />
+              <ActionButtons controller={controller} actions={actions} compact feed={feed} />
             </section>
           )}
           <section aria-label={t("attendance.mine")} className="space-y-3">

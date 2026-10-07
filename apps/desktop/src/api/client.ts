@@ -1,6 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import { acceptLanguage } from "../i18n";
-import type { ActionAdminOut, ActionCreate, ActionInvocationOut, ActionInvokeOut, ActionListOut, ActionSettingsOut, ActionSettingsUpdate, ActionUpdate } from "./types";
+import type { ActionAdminOut, ActionCreate, ActionInvocationOut, ActionInvokeOut, ActionListOut, ActionSettingsOut, ActionSettingsUpdate, ActionStatusListOut, ActionStatusOut, ActionUpdate } from "./types";
 import type { AttendanceAdminSettingsOut, AttendanceBoardOut, AttendanceDeliveryOut, AttendanceEntryOut, AttendanceIntegrationCreate, AttendanceIntegrationCreated, AttendanceIntegrationOut, AttendanceIntegrationUpdate, AttendanceLogPage, AttendanceSettingsUpdate, AttendanceStateCreate, AttendanceStateOut, AttendanceStateUpdate, AttendanceTokenOut } from "./types";
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, LegacyCallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmCloseStateOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate, AdminPageOut, PageCreate, PageItem, PageMeta, PageMove, PageOut, PageRef, PageRevisionMeta, PageRevisionOut, PageRevisionPage, PageSaveIn, PageSaveOut, PageSearchOut, PageUpdate, WikiAccessOut, WikiAccessUpdate, WikiChangesOut, WikiMoveOut, WikiTreeOut, DatabaseOut, DbSchemaChange, DbViewIn, DbRowQuery, DbRowQueryOut, DbRowCreate, DbRowWithRefs, DbRowDetail, DbRowRef } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
@@ -1410,6 +1410,19 @@ export class ApiClient {
   /** Calls the button's relay once. The same clientInvokeId again returns the earlier result (the relay is not called). */
   invokeAction(actionId: string, clientInvokeId: string): Promise<ActionInvokeOut> {
     return this.request("POST", `/api/v1/actions/${actionId}/invoke`, { client_invoke_id: clientInvokeId });
+  }
+
+  /**
+   * The state of what the buttons operate (docs/ACTIONS.md §12), one entry per group I may press something in. From the
+   * server's short cache unless `refresh` (429 more than once every few seconds).
+   */
+  actionStatuses(refresh = false): Promise<ActionStatusListOut> {
+    return this.request("GET", `/api/v1/actions/status${refresh ? "?refresh=true" : ""}`);
+  }
+
+  /** 「状態を確認」: asks this button's relay for the state now (admin; not cached). */
+  adminCheckActionStatus(actionId: string): Promise<ActionStatusOut> {
+    return this.request("POST", `/api/v1/admin/actions/${actionId}/status`);
   }
 
   adminActionSettings(): Promise<ActionSettingsOut> {

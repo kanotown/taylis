@@ -296,6 +296,10 @@ export type ActionSettingsOut = components["schemas"]["ActionSettingsOut"];
 export type ActionSettingsUpdate = components["schemas"]["ActionSettingsUpdate"];
 export type ActionInvocationOut = components["schemas"]["ActionInvocationOut"];
 export type ActionPressRole = ActionAdminOut["allowed_roles"][number];
+export type ActionStatusOut = components["schemas"]["ActionStatusOut"];
+export type ActionStatusListOut = components["schemas"]["ActionStatusListOut"];
+export type ActionStatusValue = components["schemas"]["ActionStatusValue"];
+export type ActionStatusTone = ActionStatusValue["tone"];
 
 /** Workspace roles (M13e adds guest). */
 export type Role = components["schemas"]["AdminUserCreate"]["role"];

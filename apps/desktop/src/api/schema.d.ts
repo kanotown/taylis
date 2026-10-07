@@ -25,6 +25,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/actions/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Action Statuses
+         * @description The state of what the buttons operate (docs/ACTIONS.md §12): one entry per group I may press
+         *     something in whose state a button provides. Answers come from a short server-side cache
+         *     (ACTION_STATUS_CACHE_SECONDS); `refresh=true` asks the relays now (429 more than once every
+         *     few seconds per person). A relay failure is an entry with `ok: false`, not an HTTP error.
+         */
+        get: operations["action_statuses_api_v1_actions_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/actions/{action_id}/invoke": {
         parameters: {
             query?: never;
@@ -150,7 +173,8 @@ export interface paths {
         /**
          * Create Action
          * @description `url` must be https and public; `secret_name` names the signing key's file in
-         *     ACTION_SECRETS_DIR. At most 50 buttons.
+         *     ACTION_SECRETS_DIR. At most 50 buttons. At most one button per group may have
+         *     `provides_status` (409 action_status_source_taken).
          */
         post: operations["create_action_api_v1_admin_actions_post"];
         delete?: never;
@@ -208,7 +232,11 @@ export interface paths {
         delete: operations["delete_action_api_v1_admin_actions__action_id__delete"];
         options?: never;
         head?: never;
-        /** Update Action */
+        /**
+         * Update Action
+         * @description 409 action_status_source_taken: another button of the group already provides its
+         *     state.
+         */
         patch: operations["update_action_api_v1_admin_actions__action_id__patch"];
         trace?: never;
     };
@@ -226,6 +254,27 @@ export interface paths {
         get: operations["list_invocations_api_v1_admin_actions__action_id__invocations_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/actions/{action_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Status
+         * @description 「状態を確認」: an `action.status` to this button's relay now (whether or not it provides
+         *     its group's state, and while it or the feature is off); not cached, not recorded.
+         */
+        post: operations["check_status_api_v1_admin_actions__action_id__status_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5666,6 +5715,11 @@ export interface components {
             notice_channel_id: string | null;
             /** Position */
             position: number;
+            /**
+             * Provides Status
+             * @default false
+             */
+            provides_status: boolean;
             /** Secret Name */
             secret_name: string;
             /** Secret Present */
@@ -5710,6 +5764,11 @@ export interface components {
             name: string;
             /** Notice Channel Id */
             notice_channel_id?: string | null;
+            /**
+             * Provides Status
+             * @default false
+             */
+            provides_status: boolean;
             /** Secret Name */
             secret_name: string;
             /** Url */
@@ -5846,6 +5905,11 @@ export interface components {
             name: string;
             /** Position */
             position: number;
+            /**
+             * Provides Status
+             * @default false
+             */
+            provides_status: boolean;
         };
         /** ActionSettingsOut */
         ActionSettingsOut: {
@@ -5864,6 +5928,68 @@ export interface components {
             log_retention_days?: number | null;
             /** Show On Attendance */
             show_on_attendance?: boolean | null;
+        };
+        /** ActionStatusDetail */
+        ActionStatusDetail: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /** ActionStatusListOut */
+        ActionStatusListOut: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Statuses
+             * @default []
+             */
+            statuses: components["schemas"]["ActionStatusOut"][];
+        };
+        /**
+         * ActionStatusOut
+         * @description The state of one group, as its status button's relay last told it.
+         */
+        ActionStatusOut: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /** Error */
+            error: string | null;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Group Label */
+            group_label: string | null;
+            /** Message */
+            message: string | null;
+            /** Ok */
+            ok: boolean;
+            status: components["schemas"]["ActionStatusValue"] | null;
+        };
+        /**
+         * ActionStatusValue
+         * @description The relay's answer, cleaned: plain text only.
+         */
+        ActionStatusValue: {
+            /**
+             * Details
+             * @default []
+             */
+            details: components["schemas"]["ActionStatusDetail"][];
+            /** State */
+            state?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Tone
+             * @enum {string}
+             */
+            tone: "ok" | "warn" | "alert" | "neutral";
         };
         /**
          * ActionUpdate
@@ -5895,6 +6021,8 @@ export interface components {
             name?: string | null;
             /** Notice Channel Id */
             notice_channel_id?: string | null;
+            /** Provides Status */
+            provides_status?: boolean | null;
             /** Secret Name */
             secret_name?: string | null;
             /** Url */
@@ -13173,6 +13301,37 @@ export interface operations {
             };
         };
     };
+    action_statuses_api_v1_actions_status_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionStatusListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     invoke_api_v1_actions__action_id__invoke_post: {
         parameters: {
             query?: never;
@@ -13570,6 +13729,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionInvocationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_status_api_v1_admin_actions__action_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionStatusOut"];
                 };
             };
             /** @description Validation Error */

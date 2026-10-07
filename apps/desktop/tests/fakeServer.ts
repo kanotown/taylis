@@ -5,7 +5,7 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
-import type { ActionListOut, AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
+import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
@@ -994,6 +994,11 @@ export class FakeServer {
   /** M143: actions.updated to everyone. */
   emitActionsUpdated(): void {
     this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "actions.updated", ts: now(), channel_id: null, seq: null, data: {} });
+  }
+
+  /** M143 §12: a group's state to everyone (the real server: who may press a button of the group). */
+  emitActionStatus(status: ActionStatusOut): void {
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "actions.status_updated", ts: now(), channel_id: null, seq: null, data: status as unknown as Record<string, unknown> });
   }
 
   /** M23: the lab roster by user id (bootstrap `roster`, roster.updated). */
