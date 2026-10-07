@@ -38,6 +38,8 @@ enum HomeSections {
         var favorites: Set<String> = []
         /// M118: the pinned DMs, oldest pin first; first in every section they are in.
         var dmPins: [String] = []
+        /// M141 (SYNC_PROTOCOL.md §7.9): the closed DMs, in no section at all (favorites and my own sections included).
+        var closedDms: Set<String> = []
         var sections: [SidebarSectionOut] = []
         /// 「未読をまとめる」.
         var groupUnread = false
@@ -62,7 +64,7 @@ enum HomeSections {
     static func build(_ input: Input) -> Layout {
         let meId = input.meId, now = input.now
         let unread = { (channel: ChannelState) in channel.hasUnread(meId: meId, now: now) }
-        let live = input.channels.filter { $0.isMember && !$0.channel.archived }
+        let live = input.channels.filter { $0.isMember && !$0.channel.archived && !input.closedDms.contains($0.id) }
         var layout = Layout()
         var pool = live
         if input.groupUnread {

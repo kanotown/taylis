@@ -648,6 +648,7 @@ struct ChannelView: View {
                             Task { await controller.toggleFavorite(channelId) }
                         }
                         NotificationMenu(controller: controller, channel: channel)
+                        DmCloseButton(controller: controller, channel: channel)  // M141
                     }
                     if controller.canSummarize(channelId) {  // M66
                         AiSummaryMenu(channelId: channelId, target: controller.aiHub?.target(channelId)) { request in aiSummary = request; controller.summarize(request) }
@@ -2047,6 +2048,8 @@ private struct OlderRowFrame: PreferenceKey {
 extension Notification.Name {
     /// A profile card asked to open a conversation (userInfo["id"] = channel id).
     static let chikuwaOpenChannel = Notification.Name("chikuwa.openChannel")
+    /// M141: I closed a DM (userInfo["id"] = channel id); its screens leave the stacks (back to the list).
+    static let chikuwaCloseConversation = Notification.Name("chikuwa.closeConversation")
 }
 
 

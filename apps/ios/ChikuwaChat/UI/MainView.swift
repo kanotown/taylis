@@ -194,6 +194,8 @@ struct MainView: View {
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
             // M37: 「最近の会話」 of 移動・検索, whichever tab it opened on.
             if let id { RecentConversations.push(id, key: controller.recentConversationKey) }
+            // M141 (SYNC_PROTOCOL.md §7.9): a closed DM opened (search, profile, link, notification) is open again.
+            if let id { controller.reopenDmIfClosed(id) }
             if let id, let engine = controller.engine {
                 Task { await engine.openChannel(id) }
             } else {
@@ -208,6 +210,10 @@ struct MainView: View {
                 previewMessageId = note.userInfo?["messageId"] as? String
                 land(id, parentId: note.userInfo?["parentId"] as? String)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .chikuwaCloseConversation)) { note in
+            // M141: the DM I closed leaves the stacks (the phone back to its list, the split's detail emptied).
+            if let id = note.userInfo?["id"] as? String { nav.dropChannels { $0 == id } }
         }
         .onReceive(NotificationCenter.default.publisher(for: KeyCommand.notification)) { note in
             guard let raw = note.userInfo?["command"] as? String, let command = KeyCommand(rawValue: raw) else { return }

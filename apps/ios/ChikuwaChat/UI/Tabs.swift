@@ -44,8 +44,9 @@ enum TabBadges {
 enum DMList {
     /// M118: the pinned ones first, oldest pin first (`pins`, bootstrap's `dm_pins`); then my DM with myself (unless
     /// pinned), then the newest conversation first.
-    static func ordered(_ channels: [ChannelState], meId: String?, pins: [String] = []) -> [ChannelState] {
-        let sorted = channels.filter { $0.isMember && $0.channel.isDm }.sorted { a, b in
+    /// M141: closed ones (`closed`, SYNC_PROTOCOL.md §7.9) are left out.
+    static func ordered(_ channels: [ChannelState], meId: String?, pins: [String] = [], closed: Set<String> = []) -> [ChannelState] {
+        let sorted = channels.filter { $0.isMember && $0.channel.isDm && !closed.contains($0.id) }.sorted { a, b in
             let selfA = isNotesToSelf(a, meId: meId), selfB = isNotesToSelf(b, meId: meId)
             if selfA != selfB { return selfA }
             return SidebarOrder.newestFirst(a, b)
@@ -133,7 +134,7 @@ struct DMListView: View {
     var body: some View {
         let meId = store.me?.id
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        let all = DMList.ordered(Array(store.channels.values), meId: meId, pins: store.dmPins)
+        let all = DMList.ordered(Array(store.channels.values), meId: meId, pins: store.dmPins, closed: store.closedDms)
         let rows = all.filter { query.isEmpty || channelTitle($0, store: store).lowercased().contains(query) }
         // The DM with only me is always first, under my own name (as in Slack), made on its first open.
         let myName = store.me?.displayName ?? ""
@@ -156,7 +157,10 @@ struct DMListView: View {
                     .buttonStyle(.plain)
                     .listRowInsets(Self.rowInsets)
                     // M118: 「上に固定」/「固定を外す」 (MOBILE_UI.md §6.3), from a long press or a swipe.
-                    .contextMenu { DmPinButton(controller: controller, channel: channel) }
+                    .contextMenu {
+                        DmPinButton(controller: controller, channel: channel)
+                        DmCloseButton(controller: controller, channel: channel)  // M141
+                    }
                     .swipeActions(edge: .leading) {
                         if store.dmPinsSupported {
                             let pinned = store.isDmPinned(channel.id)
@@ -164,6 +168,15 @@ struct DMListView: View {
                                 Task { await controller.setDmPinned(channel.id, on: !pinned) }
                             }
                             .tint(.orange)
+                        }
+                    }
+                    // M141 (MOBILE_UI.md §6.3): 「会話を閉じる」 from right to left as well.
+                    .swipeActions(edge: .trailing) {
+                        if store.closedDmsSupported {
+                            Button("会話を閉じる", systemImage: "xmark.circle") {
+                                Task { await controller.closeDm(channel.id) }
+                            }
+                            .tint(.gray)
                         }
                     }
             }
@@ -344,6 +357,21 @@ private struct TabBarProbe: UIViewControllerRepresentable {
             // Back to the tab's first screen (not a thread or details pushed over this page, not another tab).
             guard let navigation = navigationController, navigation.viewControllers.count <= 1 else { return }
             tabBarController?.setTabBarHidden(false, animated: animated)
+        }
+    }
+}
+
+/// M141 (SYNC_PROTOCOL.md §7.9): 「会話を閉じる」 in a DM's menu (the rows', the conversation's ⋯); nothing for a
+/// channel or with a server before M141 (no `closed_dms`).
+struct DmCloseButton: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+
+    var body: some View {
+        if channel.channel.isDm && channel.isMember && controller.store.closedDmsSupported {
+            Button("会話を閉じる", systemImage: "xmark.circle") {
+                Task { await controller.closeDm(channel.id) }
+            }
         }
     }
 }

@@ -30455,6 +30455,22 @@
           }
         }
       }
+    },
+    "会話を閉じる" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close conversation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭对话"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

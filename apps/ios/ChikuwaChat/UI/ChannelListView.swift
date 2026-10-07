@@ -57,7 +57,8 @@ struct ChannelListView: View {
 
     private func input(editing: String?) -> HomeSections.Input {
         let store = controller.store
-        return HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, dmPins: store.dmPins, sections: store.sidebarSections,
+        return HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, dmPins: store.dmPins,
+                                  closedDms: store.closedDms, sections: store.sidebarSections,
                                   groupUnread: groupUnread, folded: folded, defaults: store.sidebarDefaults,
                                   title: { channelTitle($0, store: store) }, editing: editing)
     }
@@ -401,6 +402,7 @@ struct ChannelListView: View {
         // A starred conversation shows in お気に入り (a server before 2026-10-07 may still have it in a section too).
         let current = starred(channel) ? nil : controller.store.sectionOf(channel.id)
         DmPinButton(controller: controller, channel: channel)  // M118
+        DmCloseButton(controller: controller, channel: channel)  // M141
         Button(starred(channel) ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred(channel) ? "star.slash" : "star") {
             Task { await controller.toggleFavorite(channel.id) }
         }

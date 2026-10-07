@@ -89,6 +89,7 @@
 		A1400001C0FFEE0000000004 /* AttendanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000004 /* AttendanceTests.swift */; };
 		A1400001C0FFEE0000000006 /* AttendanceIconsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000006 /* AttendanceIconsTests.swift */; };
 		B1180001C0FFEE0000000001 /* DmPinsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1180002C0FFEE0000000001 /* DmPinsTests.swift */; };
+		B1410001C0FFEE0000000001 /* DmClosesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1410002C0FFEE0000000001 /* DmClosesTests.swift */; };
 		B1170001C0FFEE0000000002 /* CallsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1170002C0FFEE0000000002 /* CallsTests.swift */; };
 		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
 		A1BAD00000000000000000A1 /* MainNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BAD00000000000000000A2 /* MainNavigation.swift */; };
@@ -557,6 +558,7 @@
 		A1400002C0FFEE0000000004 /* AttendanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceTests.swift; sourceTree = "<group>"; };
 		A1400002C0FFEE0000000006 /* AttendanceIconsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceIconsTests.swift; sourceTree = "<group>"; };
 		B1180002C0FFEE0000000001 /* DmPinsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmPinsTests.swift; sourceTree = "<group>"; };
+		B1410002C0FFEE0000000001 /* DmClosesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmClosesTests.swift; sourceTree = "<group>"; };
 		B1170002C0FFEE0000000002 /* CallsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallsTests.swift; sourceTree = "<group>"; };
 		DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareMessageSheet.swift; sourceTree = "<group>"; };
 		DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverProbeTests.swift; sourceTree = "<group>"; };
@@ -754,6 +756,7 @@
 				A1400002C0FFEE0000000004 /* AttendanceTests.swift */,
 				A1400002C0FFEE0000000006 /* AttendanceIconsTests.swift */,
 				B1180002C0FFEE0000000001 /* DmPinsTests.swift */,
+				B1410002C0FFEE0000000001 /* DmClosesTests.swift */,
 				B1170002C0FFEE0000000002 /* CallsTests.swift */,
 				72879EA8557DCBD4F44B68E7 /* DMPreviewTests.swift */,
 				BC121C06BFAA7AB89AC54106 /* DNDTests.swift */,
@@ -1175,6 +1178,7 @@
 				A1400001C0FFEE0000000004 /* AttendanceTests.swift in Sources */,
 				A1400001C0FFEE0000000006 /* AttendanceIconsTests.swift in Sources */,
 				B1180001C0FFEE0000000001 /* DmPinsTests.swift in Sources */,
+				B1410001C0FFEE0000000001 /* DmClosesTests.swift in Sources */,
 				B1170001C0FFEE0000000002 /* CallsTests.swift in Sources */,
 				F6B0289DCC3A8F13206BE205 /* DraftSyncTests.swift in Sources */,
 				D0B2472E5BD47A5F644307EF /* DraftsTests.swift in Sources */,

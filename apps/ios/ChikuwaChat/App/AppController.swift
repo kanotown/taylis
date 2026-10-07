@@ -1116,6 +1116,48 @@ final class AppController {
         }
     }
 
+    /// M141 「会話を閉じる」 (SYNC_PROTOCOL.md §7.9): at once hidden from the DM lists, unpinned and read (as the server
+    /// does), and taken off the screens it is on (`chikuwaCloseConversation`); all three go back if the server refuses.
+    func closeDm(_ channelId: String) async {
+        guard let api, let before = store.channel(channelId), before.channel.isDm else { return }
+        let pinPlace = store.dmPins.firstIndex(of: channelId)
+        store.setDmClosed(channelId, closed: true)
+        store.setDmPin(channelId, on: false)
+        store.updateChannel(channelId) { state in
+            state.lastReadSeq = max(state.lastReadSeq, state.lastSeq)
+            state.unreadCount = 0
+            state.mentionCount = 0
+            state.firstUnreadAt = nil
+        }
+        engine?.onBadge?(store.badgeCount)
+        NotificationCenter.default.post(name: .chikuwaCloseConversation, object: nil, userInfo: ["id": channelId])
+        do {
+            _ = try await api.closeDm(id: channelId)
+        } catch {
+            store.setDmClosed(channelId, closed: false)
+            if pinPlace != nil { store.restoreDmPin(channelId, at: pinPlace) }
+            store.updateChannel(channelId) { state in
+                state.lastReadSeq = before.lastReadSeq
+                state.unreadCount = before.unreadCount
+                state.mentionCount = before.mentionCount
+                state.firstUnreadAt = before.firstUnreadAt
+            }
+            engine?.onBadge?(store.badgeCount)
+            self.error = describe(error)
+        }
+    }
+
+    /// M141 (§7.9): a closed DM opened explicitly (a search result, a profile's 「メッセージを送る」, a link, a
+    /// notification) is open again at once; a failure is only logged (the next bootstrap closes it again).
+    func reopenDmIfClosed(_ channelId: String) {
+        guard store.isDmClosed(channelId) else { return }
+        store.setDmClosed(channelId, closed: false)
+        guard let api else { return }
+        Task {
+            do { _ = try await api.reopenDm(id: channelId) } catch { print("could not reopen the conversation: \(error)") }
+        }
+    }
+
     /// M104 「ブロック」/「ブロックを解除」 (MODERATION.md §4): the store flag moves at once, block.updated brings my other
     /// devices along. The blocked person is not told.
     func setUserBlocked(_ userId: String, on: Bool) async {
