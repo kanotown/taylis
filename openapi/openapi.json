@@ -11760,7 +11760,10 @@
         "required": [
           "id",
           "name",
-          "type"
+          "type",
+          "options",
+          "number_format",
+          "relation"
         ],
         "title": "PropertyOut",
         "type": "object"

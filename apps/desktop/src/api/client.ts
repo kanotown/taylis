@@ -1,6 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import { acceptLanguage } from "../i18n";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, LegacyCallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate, AdminPageOut, PageCreate, PageItem, PageMeta, PageMove, PageOut, PageRef, PageRevisionMeta, PageRevisionOut, PageRevisionPage, PageSaveIn, PageSaveOut, PageSearchOut, PageUpdate, WikiAccessOut, WikiAccessUpdate, WikiChangesOut, WikiMoveOut, WikiTreeOut } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, LegacyCallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate, AdminPageOut, PageCreate, PageItem, PageMeta, PageMove, PageOut, PageRef, PageRevisionMeta, PageRevisionOut, PageRevisionPage, PageSaveIn, PageSaveOut, PageSearchOut, PageUpdate, WikiAccessOut, WikiAccessUpdate, WikiChangesOut, WikiMoveOut, WikiTreeOut, DatabaseOut, DbSchemaChange, DbViewIn, DbRowQuery, DbRowQueryOut, DbRowCreate, DbRowWithRefs, DbRowDetail, DbRowRef } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 import type { TestNotificationOut } from "./types";
@@ -833,6 +833,53 @@ export class ApiClient {
 
   eraseWikiRevision(pageId: string, revisionId: string): Promise<PageRevisionMeta> {
     return this.request("DELETE", `/api/v1/wiki/pages/${pageId}/revisions/${revisionId}`);
+  }
+
+  // --- databases (M123, WIKI.md §5) ---
+
+  wikiDatabase(databaseId: string): Promise<DatabaseOut> {
+    return this.request("GET", `/api/v1/wiki/databases/${databaseId}`);
+  }
+
+  changeWikiSchema(databaseId: string, body: DbSchemaChange): Promise<DatabaseOut> {
+    return this.request("PATCH", `/api/v1/wiki/databases/${databaseId}/schema`, body);
+  }
+
+  putWikiView(databaseId: string, viewId: string, body: DbViewIn): Promise<DatabaseOut> {
+    return this.request("PUT", `/api/v1/wiki/databases/${databaseId}/views/${viewId}`, body);
+  }
+
+  deleteWikiView(databaseId: string, viewId: string): Promise<DatabaseOut> {
+    return this.request("DELETE", `/api/v1/wiki/databases/${databaseId}/views/${viewId}`);
+  }
+
+  queryWikiRows(databaseId: string, body: DbRowQuery): Promise<DbRowQueryOut> {
+    return this.request("POST", `/api/v1/wiki/databases/${databaseId}/query`, body);
+  }
+
+  createWikiRow(databaseId: string, body: DbRowCreate): Promise<DbRowWithRefs> {
+    return this.request("POST", `/api/v1/wiki/databases/${databaseId}/rows`, body);
+  }
+
+  wikiRow(rowId: string): Promise<DbRowDetail> {
+    return this.request("GET", `/api/v1/wiki/rows/${rowId}`);
+  }
+
+  setWikiCells(rowId: string, values: Record<string, unknown>, clientOpId: string): Promise<DbRowWithRefs> {
+    return this.request("PATCH", `/api/v1/wiki/rows/${rowId}/props`, { set: values, client_op_id: clientOpId });
+  }
+
+  wikiRelationCandidates(databaseId: string, propId: string, q: string, limit = 20): Promise<DbRowRef[]> {
+    return this.request("GET", `/api/v1/wiki/databases/${databaseId}/properties/${propId}/candidates?${new URLSearchParams({ q, limit: String(limit) })}`);
+  }
+
+  /** The view's rows as CSV (UTF-8 with a BOM). */
+  async exportWikiDatabaseCsv(databaseId: string, viewId: string | null): Promise<Blob> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const query = viewId ? `?${new URLSearchParams({ view_id: viewId })}` : "";
+    const response = await this.rawFetch(`${this.baseUrl}/api/v1/wiki/databases/${databaseId}/export.csv${query}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
+    if (!response.ok) throw toApiError(response.status, parseJson(await response.text().catch(() => "")));
+    return response.blob();
   }
 
   /** The page as Markdown (text). */
