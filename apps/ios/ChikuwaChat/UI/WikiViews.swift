@@ -76,6 +76,8 @@ struct WikiIconView: View {
     let icon: String?
     @Bindable var controller: AppController
     var size: CGFloat = 17
+    /// M124: a database without an icon shows the table symbol.
+    var kind: String = "page"
 
     var body: some View {
         if let icon, !icon.isEmpty {
@@ -85,7 +87,8 @@ struct WikiIconView: View {
                 .font(.system(size: size))
                 .accessibilityHidden(true)
         } else {
-            Image(systemName: "doc.text").font(.system(size: size * 0.9)).foregroundStyle(.secondary).accessibilityHidden(true)
+            Image(systemName: kind == "database" ? "tablecells" : "doc.text")
+                .font(.system(size: size * 0.9)).foregroundStyle(.secondary).accessibilityHidden(true)
         }
     }
 }
@@ -157,7 +160,7 @@ struct DocsView: View {
                     ForEach(found) { page in
                         Button { onOpen(page.id) } label: {
                             HStack(spacing: 10) {
-                                WikiIconView(icon: page.icon, controller: controller)
+                                WikiIconView(icon: page.icon, controller: controller, kind: page.kind)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(page.displayTitle).lineLimit(1)
                                     Text(WikiText.place(page, tree: tree)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -241,7 +244,7 @@ struct WikiTreeRow: View {
             .padding(.leading, CGFloat(row.depth) * 16)
             Button(action: onOpen) {
                 HStack(spacing: 8) {
-                    WikiIconView(icon: row.page.icon, controller: controller)
+                    WikiIconView(icon: row.page.icon, controller: controller, kind: row.page.kind)
                     Text(row.page.displayTitle).lineLimit(1)
                     Spacer(minLength: 0)
                     if row.page.myLevel == .view {
@@ -331,7 +334,10 @@ struct WikiPageScreen: View {
 
     var body: some View {
         Group {
-            if let saver, let hub = controller.wiki {
+            if saver != nil, let hub = controller.wiki, hub.item(pageId)?.kind == "database" {
+                // M124: a database page is its rows (cards / an agenda), not a body.
+                WikiDatabaseScreen(controller: controller, hub: hub, databaseId: pageId, onOpenPage: onOpenPage)
+            } else if let saver, let hub = controller.wiki {
                 WikiPageDocument(controller: controller, hub: hub, saver: saver, pageId: pageId, onOpenPage: onOpenPage)
             } else if controller.wiki == nil {
                 ContentUnavailableView("ドキュメントを使えません", systemImage: "book.closed")
@@ -372,6 +378,8 @@ struct WikiPageDocument: View {
     @State private var newChild: WikiNewPageTarget?
     @State private var history = false
     @State private var backlinks: [WikiPageItem]?
+    /// M124: pull to refresh reads a row's cells again too.
+    @State private var rowRefresh = 0
 
     private var item: WikiPageItem? { hub.item(pageId) }
     private var page: WikiPageOut? { hub.pages[pageId] ?? hub.keptPage(pageId)?.page }
@@ -470,7 +478,7 @@ struct WikiPageDocument: View {
             if rights.rename, item != nil {
                 Button("題名とアイコンを変更…", systemImage: "pencil") { renaming = true }
             }
-            if rights.createChild {
+            if rights.createChild, item?.kind != "row" {
                 Button("子ページを作成", systemImage: "plus") { newChild = WikiNewPageTarget(parentId: pageId) }
             }
             Button("履歴", systemImage: "clock.arrow.circlepath") { history = true }
@@ -510,6 +518,10 @@ struct WikiPageDocument: View {
                         Text(item?.displayTitle ?? tr("ページ")).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
                     }
                     if let item { byline(item) }
+                    if item?.kind == "row" {
+                        WikiRowPropertiesView(controller: controller, hub: hub, rowId: pageId, refresh: rowRefresh, onOpenPage: onOpenPage)
+                            .padding(.top, 8)
+                    }
                     if saver.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HStack(spacing: 4) {
                             Text("まだ何も書かれていません。").foregroundStyle(.secondary)
@@ -532,6 +544,7 @@ struct WikiPageDocument: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable {
+                rowRefresh += 1
                 await saver.refresh()
                 await loadBacklinks()
             }
@@ -608,14 +621,15 @@ struct WikiPageDocument: View {
     @ViewBuilder
     private func children(rights: WikiRights, status: CanvasSaveStatus) -> some View {
         let listed = hub.tree?.page(pageId) != nil ? hub.tree?.children(of: pageId) ?? [] : page?.children ?? []
-        if !listed.isEmpty || (rights.createChild && status != .gone) {
+        // M124: a row has no child pages (its database is its parent).
+        if item?.kind != "row", !listed.isEmpty || (rights.createChild && status != .gone) {
             VStack(alignment: .leading, spacing: 4) {
                 Divider().padding(.vertical, 8)
                 Text("サブページ").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 ForEach(listed) { child in
                     Button { onOpenPage(child.id) } label: {
                         HStack(spacing: 8) {
-                            WikiIconView(icon: child.icon, controller: controller)
+                            WikiIconView(icon: child.icon, controller: controller, kind: child.kind)
                             Text(child.displayTitle).lineLimit(1)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
@@ -645,7 +659,7 @@ struct WikiPageDocument: View {
                 ForEach(backlinks) { source in
                     Button { onOpenPage(source.id) } label: {
                         HStack(spacing: 8) {
-                            WikiIconView(icon: source.icon, controller: controller)
+                            WikiIconView(icon: source.icon, controller: controller, kind: source.kind)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(source.displayTitle).lineLimit(1)
                                 Text(WikiText.place(source, tree: hub.tree)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
