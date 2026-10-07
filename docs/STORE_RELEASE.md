@@ -181,8 +181,8 @@ apps/android/scripts/release-android.sh --dry-run
 apps/android/scripts/release-android.sh
 ```
 
-- AAB は `~/Library/Caches/taylis-release/android/taylis-<versionName>-<versionCode>.aab`
-  (`TAYLIS_ANDROID_BUILD_DIR` で変えられる)。スクリプトは署名を `jarsigner` で確かめる。
+- AAB は `~/Downloads/Taylis release/android/taylis-<versionName>-<versionCode>.aab`（ダウンロードフォルダ。
+  `TAYLIS_ANDROID_BUILD_DIR` で変えられる）。でき上がると Finder でその AAB を選んだ状態で開く（Play Console へドラッグできる）。スクリプトは署名を `jarsigner` で確かめる。
 - Play Console へは手でアップロードする (Play Developer API での自動アップロードは作っていない)。
   トラックは **内部テスト** (100 人まで、審査はほぼ即時) → **クローズド テスト** (招いたメンバー。新しい個人の
   デベロッパー アカウントは製品版の前にクローズド テストで 12 人・14 日が要る) → **製品版** (段階的な公開を使える)。

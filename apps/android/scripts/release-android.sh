@@ -15,7 +15,8 @@
 # path) with storeFile / storePassword / keyAlias / keyPassword, or TAYLIS_ANDROID_STORE_FILE /
 # TAYLIS_ANDROID_STORE_PASSWORD / TAYLIS_ANDROID_KEY_ALIAS / TAYLIS_ANDROID_KEY_PASSWORD in the environment.
 #   ANDROID_HOME                the SDK (default ~/Library/Android/sdk)
-#   TAYLIS_ANDROID_BUILD_DIR    where the AAB is copied (default ~/Library/Caches/taylis-release/android)
+#   TAYLIS_ANDROID_BUILD_DIR    where the AAB is copied (default ~/Downloads/Taylis release/android: easy to find
+#                               for the Play Console upload; shown in Finder when the build is done)
 set -euo pipefail
 
 usage() {
@@ -86,7 +87,7 @@ require "the upload key is not set up ($SIGNING: storeFile / storePassword / key
 require "the upload keystore is missing: ${STORE_FILE:-<storeFile not set>}" test -s "$STORE_FILE"
 echo "  commit: $(git -C "$REPO_ROOT" rev-parse --short HEAD)   upload key: ${STORE_FILE:-<none>} (${KEY_ALIAS:-?})"
 
-OUT="${TAYLIS_ANDROID_BUILD_DIR:-$HOME/Library/Caches/taylis-release/android}"
+OUT="${TAYLIS_ANDROID_BUILD_DIR:-$HOME/Downloads/Taylis release/android}"
 OUT="${OUT/#\~/$HOME}"
 AAB="$ANDROID/app/build/outputs/bundle/release/app-release.aab"
 TARGET="$OUT/taylis-$VERSION_NAME-$VERSION_CODE.aab"
@@ -121,5 +122,7 @@ if ((DRY_RUN)); then
   echo "dry run: nothing was built (Taylis $VERSION_NAME, versionCode $VERSION_CODE)."
 else
   echo "built: $TARGET"
+  # Show the AAB in Finder, ready to drag into Play Console (macOS only; nothing happens elsewhere).
+  command -v open >/dev/null && open -R "$TARGET" || true
   echo "Upload it in Play Console (internal testing first). Next build: versionCode $((VERSION_CODE + 1)) in apps/android/app/build.gradle.kts."
 fi
