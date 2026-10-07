@@ -1,6 +1,7 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActionListOut, ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
+import type { ActionListOut, ActionStatusListOut, ActionStatusOut, ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
+import { statusKey } from "../ui/actions";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
@@ -184,6 +185,25 @@ export class Store {
   actions: ActionListOut | null = null;
   setActions(list: ActionListOut | null): void {
     this.actions = list && list.enabled ? list : null;
+    if (!this.actions) this.actionStatuses = new Map();
+    this.emit();
+  }
+  /**
+   * M143 (docs/ACTIONS.md §12): the state of each group's devices, by group key (`statusKey`: "g:<label>", or "a:<id>"
+   * for a button without a group). From GET /actions/status and actions.status_updated; not persisted.
+   */
+  actionStatuses: ReadonlyMap<string, ActionStatusOut> = new Map();
+  /** A whole answer of GET /actions/status (groups no longer in it are dropped). */
+  setActionStatuses(list: ActionStatusListOut): void {
+    this.actionStatuses = new Map(list.enabled ? list.statuses.map((s) => [statusKey(s.group_label, s.action_id), s] as const) : []);
+    this.emit();
+  }
+  /** One group's state (actions.status_updated): an older answer than the one held is ignored. */
+  applyActionStatus(status: ActionStatusOut): void {
+    const key = statusKey(status.group_label, status.action_id);
+    const held = this.actionStatuses.get(key);
+    if (held && held.fetched_at > status.fetched_at) return;
+    this.actionStatuses = new Map(this.actionStatuses).set(key, status);
     this.emit();
   }
   /** One person's row (attendance.updated, or my own change). False when the state is not known here (read again). */

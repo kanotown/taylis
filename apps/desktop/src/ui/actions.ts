@@ -3,7 +3,8 @@
  * through the server; a network failure sends the same request again with the same client_invoke_id (the server then
  * answers with the earlier result and never calls the relay twice).
  */
-import type { ActionInvokeOut, ActionListOut, ActionOut } from "../api/types";
+import type { ActionInvokeOut, ActionListOut, ActionOut, ActionStatusOut } from "../api/types";
+import { sinceLabel } from "./format";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { t } from "../i18n";
 
@@ -112,4 +113,42 @@ export async function invokeOnce(
       await wait(1000 * attempt);
     }
   }
+}
+
+// --- the state of what the buttons operate (docs/ACTIONS.md §12) ---------------------------------------------------------
+
+/** The key a group's state is held by: "g:<label>", or "a:<id>" for a button without a group (its own group). */
+export function statusKey(groupLabel: string | null | undefined, actionId: string): string {
+  const label = groupLabel?.trim();
+  return label ? `g:${label}` : `a:${actionId}`;
+}
+
+const STATUS_ERRORS = {
+  timeout: "actions.status.error.timeout",
+  network: "actions.status.error.unreachable",
+  relay_error: "actions.status.error.relay",
+  invalid_answer: "actions.status.error.invalid",
+  secret_missing: "actions.status.error.setup",
+  url_not_allowed: "actions.status.error.setup",
+} as const;
+
+/** 「状態を取得できませんでした：…」 with the relay's message, else a sentence for the reason. */
+export function statusFailureText(status: Pick<ActionStatusOut, "error" | "message">): string {
+  const key = STATUS_ERRORS[status.error as keyof typeof STATUS_ERRORS] ?? "actions.status.error.failed";
+  return t("actions.status.failed", { reason: status.message || t(key) });
+}
+
+/** 「たった今確認」「3 分前に確認」, or the time (「昨日 10:23 に確認」) an hour or more ago. */
+export function checkedLabel(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso).getTime();
+  if (Number.isNaN(at)) return "";
+  const minutes = Math.floor(Math.max(0, now.getTime() - at) / 60_000);
+  if (minutes < 1) return t("actions.status.checkedNow");
+  if (minutes < 60) return t("actions.status.checkedMinutes", { count: String(minutes) });
+  return t("actions.status.checkedAt", { at: sinceLabel(iso, now) });
+}
+
+/** The details as one line: 「電池 85% · ドア 閉」. */
+export function statusDetails(status: ActionStatusOut): string {
+  return (status.status?.details ?? []).map((d) => `${d.label} ${d.value}`).join(" · ");
 }

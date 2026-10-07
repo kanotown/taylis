@@ -5,11 +5,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, NetworkError } from "../src/api/errors";
-import type { ActionAdminOut, ActionInvokeOut, ActionListOut, ActionOut, AttendanceBoardOut, UserMe, UserPublic } from "../src/api/types";
+import type { ActionAdminOut, ActionInvokeOut, ActionListOut, ActionOut, ActionStatusOut, AttendanceBoardOut, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { actionTitle, confirmText, groupActions, invokeOnce, onAttendance, pressable, refusalText, resultText } from "../src/ui/actions";
+import { actionTitle, checkedLabel, confirmText, groupActions, invokeOnce, onAttendance, pressable, refusalText, resultText, statusFailureText, statusKey } from "../src/ui/actions";
+import { STATUS_POLL_MS } from "../src/ui/ActionButtons";
 import { ActionsAdminTab } from "../src/ui/ActionsAdminTab";
 import { ActionsView } from "../src/ui/ActionsView";
 import { AttendancePill } from "../src/ui/AttendancePill";
@@ -30,7 +31,7 @@ const people: UserPublic[] = [
 ];
 
 function action(id: string, name: string, over: Partial<ActionOut> = {}): ActionOut {
-  return { id, name, group_label: null, icon: null, emoji: null, confirm: true, confirm_text: null, position: 0, ...over };
+  return { id, name, group_label: null, icon: null, emoji: null, confirm: true, confirm_text: null, provides_status: false, position: 0, ...over };
 }
 
 const UNLOCK = action("a-unlock", "開ける", { group_label: "研究室の鍵", emoji: "🔓", position: 0 });
@@ -256,6 +257,7 @@ describe("the admin tab", () => {
       adminUpdateAction: vi.fn(async () => row),
       adminTestAction: vi.fn(async () => out({ message: "テスト OK", status_code: 204 })),
       adminActionInvocations: vi.fn(async () => []),
+      adminCheckActionStatus: vi.fn(async () => status()),
       ...over,
     };
   }
@@ -308,7 +310,128 @@ describe("the admin tab", () => {
         allowed_user_ids: [PROF],
         notice_channel_id: null,
         enabled: true,
+        provides_status: false,
       }),
     );
+  });
+
+  it("the 「状態の取得に使う」 toggle and 「状態を確認」", async () => {
+    const api = adminApi({
+      adminActions: vi.fn(async () => [{ ...row, provides_status: true }]),
+      adminCheckActionStatus: vi.fn(async () => status({ action_id: UNLOCK.id })),
+    });
+    render(<ActionsAdminTab controller={controllerFor(storeWith(null), api, true)} />);
+    const item = await waitFor(() => { const el = document.querySelector(`[data-admin-action="${UNLOCK.id}"]`); expect(el).toBeTruthy(); return el as HTMLElement; });
+    expect(within(item).getByText("状態")).toBeTruthy();
+    fireEvent.click(within(item).getByRole("button", { name: /状態を確認/ }));
+    await waitFor(() => expect(api.adminCheckActionStatus).toHaveBeenCalledWith(UNLOCK.id));
+    expect((await screen.findByText(/^状態：施錠中・ドア閉/)).textContent).toBe("状態：施錠中・ドア閉 · 電池 85%（ok、locked）");
+    fireEvent.click(within(item).getByRole("button", { name: "「開ける」を編集" }));
+    const form = document.querySelector("[data-action-form]") as HTMLFormElement;
+    const toggle = form.querySelector("[data-provides-status]") as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    fireEvent.click(within(form).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(api.adminUpdateAction).toHaveBeenCalledWith(UNLOCK.id, expect.objectContaining({ provides_status: false })));
+  });
+});
+
+function status(over: Partial<ActionStatusOut> = {}): ActionStatusOut {
+  return {
+    action_id: UNLOCK.id,
+    group_label: "研究室の鍵",
+    ok: true,
+    status: { text: "施錠中・ドア閉", tone: "ok", state: "locked", details: [{ label: "電池", value: "85%" }] },
+    error: null,
+    message: null,
+    fetched_at: new Date().toISOString(),
+    ...over,
+  };
+}
+
+describe("the state (§12)", () => {
+  const LOCKED_LIST = list({ actions: [{ ...UNLOCK, provides_status: true }, LOCK, LIGHT, ROOM] });
+
+  it("the rules: keys, failures and 「◯分前に確認」", () => {
+    expect(statusKey("研究室の鍵", "x")).toBe("g:研究室の鍵");
+    expect(statusKey(null, "x")).toBe("a:x");
+    expect(statusFailureText({ error: "timeout", message: null })).toBe("状態を取得できませんでした：中継から応答がありませんでした");
+    expect(statusFailureText({ error: "relay_error", message: "ハブがオフラインです" })).toBe("状態を取得できませんでした：ハブがオフラインです");
+    const now = new Date("2026-10-08T10:00:00Z");
+    expect(checkedLabel("2026-10-08T09:59:40Z", now)).toBe("たった今確認");
+    expect(checkedLabel("2026-10-08T09:57:00Z", now)).toBe("3 分前に確認");
+    expect(checkedLabel("2026-10-08T08:00:00Z", now)).toMatch(/に確認$/);
+  });
+
+  it("the page reads the state on open and shows it under the group, with a refresh", async () => {
+    const actionStatuses = vi.fn(async (refresh?: boolean) => ({
+      enabled: true,
+      statuses: [refresh ? status({ status: { text: "解錠中", tone: "warn", state: "unlocked", details: [] } }) : status()],
+    }));
+    const controller = controllerFor(storeWith(LOCKED_LIST), { actionStatuses });
+    render(<ActionsView controller={controller} />);
+    expect(actionStatuses).toHaveBeenCalledWith(false);
+    const group = screen.getByRole("region", { name: "研究室の鍵" });
+    await waitFor(() => expect(within(group).getByText("施錠中・ドア閉")).toBeTruthy());
+    const line = group.querySelector("[data-action-status]") as HTMLElement;
+    expect(line.getAttribute("data-tone")).toBe("ok");
+    expect(line.textContent).toContain("電池 85%");
+    expect(line.textContent).toContain("たった今確認");
+    // Other groups have no state.
+    expect(screen.getByRole("region", { name: "教授室" }).querySelector("[data-action-status]")).toBeNull();
+    fireEvent.click(within(group).getByRole("button", { name: "状態を更新" }));
+    await waitFor(() => expect(within(group).getByText("解錠中")).toBeTruthy());
+    expect(actionStatuses).toHaveBeenLastCalledWith(true);
+    expect((group.querySelector("[data-action-status]") as HTMLElement).getAttribute("data-tone")).toBe("warn");
+  });
+
+  it("loading, a relay failure, and a failed read", async () => {
+    let answer: (value: { enabled: boolean; statuses: ActionStatusOut[] }) => void = () => {};
+    const actionStatuses = vi.fn(() => new Promise<{ enabled: boolean; statuses: ActionStatusOut[] }>((resolve) => { answer = resolve; }));
+    render(<ActionsView controller={controllerFor(storeWith(LOCKED_LIST), { actionStatuses })} />);
+    expect(screen.getByText("状態を確認中…")).toBeTruthy();
+    await act(async () => answer({ enabled: true, statuses: [status({ ok: false, status: null, error: "timeout" })] }));
+    expect(screen.getByText("状態を取得できませんでした：中継から応答がありませんでした")).toBeTruthy();
+    cleanup();
+    const failing = vi.fn(async () => { throw new ApiError(429, "rate_limited", "x"); });
+    render(<ActionsView controller={controllerFor(storeWith(LOCKED_LIST), { actionStatuses: failing })} />);
+    await screen.findByText("状態を取得できませんでした：少し待ってからもう一度押してください");
+  });
+
+  it("reads again every minute while visible", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const actionStatuses = vi.fn(async () => ({ enabled: true, statuses: [status()] }));
+    render(<ActionsView controller={controllerFor(storeWith(LOCKED_LIST), { actionStatuses })} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(STATUS_POLL_MS + 10); });
+    expect(actionStatuses).toHaveBeenCalledTimes(2);
+  });
+
+  it("the store keeps the newest answer per group; actions.status_updated reaches it through the engine", async () => {
+    const store = storeWith(LOCKED_LIST);
+    store.setActionStatuses({ enabled: true, statuses: [status({ fetched_at: "2026-10-08T10:00:00Z" })] });
+    store.applyActionStatus(status({ fetched_at: "2026-10-08T09:00:00Z", status: { text: "古い", tone: "neutral", state: null, details: [] } }));
+    expect(store.actionStatuses.get("g:研究室の鍵")?.status?.text).toBe("施錠中・ドア閉");
+    store.setActions(null);
+    expect(store.actionStatuses.size).toBe(0);
+
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    server.createChannel("general", alice.id);
+    server.actions = LOCKED_LIST;
+    const synced = new Store();
+    const engine = new SyncEngine({ api: server.apiFor(alice.id), connect: server.connectorFor(alice.id), store: synced, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 50 });
+    await engine.start();
+    await engine.idle();
+    server.emitActionStatus(status({ status: { text: "解錠中", tone: "warn", state: "unlocked", details: [] } }));
+    await waitFor(() => expect(synced.actionStatuses.get("g:研究室の鍵")?.status?.state).toBe("unlocked"));
+    engine.stop();
+  });
+
+  it("on the 在室状況 page too", async () => {
+    const board: AttendanceBoardOut = { enabled: true, states: [], entries: [], can_personalize: false };
+    const actionStatuses = vi.fn(async () => ({ enabled: true, statuses: [status()] }));
+    render(<AttendanceView controller={controllerFor(storeWith({ ...LOCKED_LIST, show_on_attendance: true }, board), { actionStatuses })} />);
+    const section = document.querySelector("[data-attendance-actions]") as HTMLElement;
+    await waitFor(() => expect(within(section).getByText("施錠中・ドア閉")).toBeTruthy());
   });
 });

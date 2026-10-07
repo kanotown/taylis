@@ -15,7 +15,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
-import type { ActionListOut, AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
+import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
@@ -1003,6 +1003,10 @@ export class SyncEngine {
       case "actions.updated":
         // M143: the switch or a button changed; what I may press differs per person, so the event is empty.
         this.scheduleActionsReload();
+        return;
+      case "actions.status_updated":
+        // M143 (docs/ACTIONS.md §12): a group's state, read again after a press or found changed.
+        store.applyActionStatus(frame.data as unknown as ActionStatusOut);
         return;
       case "attendance.config_updated":
         // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
