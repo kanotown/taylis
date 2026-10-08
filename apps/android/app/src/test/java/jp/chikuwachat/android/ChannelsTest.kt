@@ -69,7 +69,9 @@ class ChannelsTest {
         assertEquals(listOf("dm", "random"), grouped.unread.map { it.id }) // DMs too, newest first
         assertEquals(listOf("general"), grouped.channels.map { it.id }) // nothing is hidden, the unread ones moved
         assertEquals(listOf("quietdm"), grouped.dms.map { it.id })
-        assertEquals(listOf("public"), grouped.browse.map { it.id })
+        // 2026-10-08: a channel I have not joined is in no section (「チャンネルを探す」 lists it).
+        val listed = grouped.unread + grouped.channels + grouped.dms + grouped.times + grouped.favorites
+        assertTrue(listed.none { it.id == "public" })
         // Off (the default): no 未読 section, every row in its own section.
         val plain = Channels.sections(all, now = now)
         assertEquals(emptyList<ChannelState>(), plain.unread)
@@ -166,7 +168,7 @@ class ChannelsTest {
         val sections = Channels.sections(all, now = now, meId = "me")
         assertEquals(listOf("general"), sections.channels.map { it.id })
         assertEquals(listOf("times-me", "times-amy", "times-zed"), sections.times.map { it.id })
-        assertEquals(listOf("times-bob"), sections.browse.map { it.id }) // one I am not in is joined from the browse list
+        assertTrue(sections.channels.none { it.id == "times-bob" }) // one I am not in is joined from 「チャンネルを探す」
         // Quiet unread stays in its section when unread is grouped; a mention moves it to 未読.
         val quiet = Channels.sections(all, groupUnread = true, now = now, meId = "me")
         assertEquals(emptyList<ChannelState>(), quiet.unread)

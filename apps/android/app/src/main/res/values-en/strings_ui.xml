@@ -77,6 +77,7 @@
     <string name="app_controller_status_updated">Status updated</string>
     <string name="app_controller_templates">" · Templates: "</string>
     <string name="app_controller_text_copied">Text copied</string>
+    <string name="common_copied">Copied</string>
     <string name="app_controller_text_copied_2">Text copied</string>
     <string name="app_controller_the_destination_channel">the destination channel</string>
     <string name="app_controller_the_file_is_too_large_limit">The file is too large (limit %1$s)</string>

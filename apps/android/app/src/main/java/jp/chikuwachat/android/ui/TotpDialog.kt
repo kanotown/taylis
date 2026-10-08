@@ -1,8 +1,5 @@
 package jp.chikuwachat.android.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,8 +62,8 @@ fun TotpSetupDialog(controller: AppController, onDismiss: () -> Unit, onEnabled:
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                         SelectionContainer { Column(Modifier.padding(top = 8.dp)) { codes.forEach { Text(it, fontFamily = FontFamily.Monospace) } } }
                         TextButton(onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("recovery codes", Totp.recoveryCodesText(codes)))
+                            // The button says 「コピーしました」 itself (the dialog covers the snackbar); a secret.
+                            CopyFeedback.copy(context, Totp.recoveryCodesText(codes), label = "recovery codes", sensitive = true)
                             copied = true
                         }) { Text(if (copied) stringResource(R.string.totp_dialog_copied) else stringResource(R.string.totp_dialog_copy_recovery_codes)) }
                     }

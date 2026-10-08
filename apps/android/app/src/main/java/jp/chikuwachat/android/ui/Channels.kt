@@ -50,7 +50,6 @@ object Channels {
     data class Sections(
         val channels: List<ChannelState>,
         val dms: List<ChannelState>,
-        val browse: List<ChannelState>,
         /** Starred conversations (M12a); left out of every other section. */
         val favorites: List<ChannelState> = emptyList(),
         /** My own sections (M14f), in order; their conversations are left out of `channels` / `dms`. */
@@ -69,8 +68,8 @@ object Channels {
 
     /**
      * List order: [unread (M37, with `groupUnread`)], favorites, channels by name, times (M24), DMs by recency (my own DM
-     * first), joinable channels by name. `meId` decides which times is mine (first, and never quiet) and which DM is my
-     * own. M37: 「未読をまとめる」 replaced the 「未読のみ」 filter: nothing is hidden, the unread rows move to the top.
+     * first). The channels I could join are in no section (2026-10-08: 「チャンネルを探す」 lists them). `meId` decides
+     * which times is mine (first, and never quiet) and which DM is my own. M37: 「未読をまとめる」 replaced the 「未読のみ」 filter: nothing is hidden, the unread rows move to the top.
      */
     fun sections(
         all: Collection<ChannelState>,
@@ -115,7 +114,6 @@ object Channels {
                 if (manualDms) ordered(dms, "dms")
                 else DmPins.first(dms, dmPins) { rest -> rest.partition { MainTabs.isSelfNotes(it, meId) }.let { (self, others) -> self + ordered(others, "dms") } }
             },
-            browse = all.filter { !it.isMember && !it.channel.archived }.sortedWith(SidebarOrder.byName),
         )
     }
 

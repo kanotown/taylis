@@ -23,8 +23,6 @@ import jp.chikuwachat.android.api.ScheduledOut
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import jp.chikuwachat.android.ui.Permalink
-import android.content.ClipboardManager
-import android.content.ClipData
 import android.content.Intent
 import android.app.Application
 import android.os.Build
@@ -1841,16 +1839,20 @@ class AppController(private val app: Application) {
 
     fun copyPermalink(messageId: String) {
         val base = serverBase ?: return
-        val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Permalink.url(base, messageId)))
-        notice = L10n.str(R.string.app_controller_link_copied)
+        copyToClipboard(Permalink.url(base, messageId), L10n.str(R.string.app_controller_link_copied))
     }
 
     /** 「テキストをコピー」: the body as it reads, mentions as @names. */
     fun copyText(message: MessageState) {
-        val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", jp.chikuwachat.android.ui.Mentions.decode(message.body, store.users, store.groups)))
-        notice = L10n.str(R.string.app_controller_text_copied)
+        copyToClipboard(jp.chikuwachat.android.ui.Mentions.decode(message.body, store.users, store.groups), L10n.str(R.string.app_controller_text_copied))
+    }
+
+    /**
+     * 2026-10-08: every copy button. The text onto the clipboard; the snackbar says [notice] only on Android 12L and
+     * earlier (13+ shows its own confirmation, CopyFeedback).
+     */
+    fun copyToClipboard(text: String, notice: String = L10n.str(R.string.common_copied), sensitive: Boolean = false) {
+        if (jp.chikuwachat.android.ui.CopyFeedback.copy(app, text, sensitive = sensitive)) this.notice = notice
     }
 
     /**
@@ -2088,9 +2090,7 @@ class AppController(private val app: Application) {
 
     /** A canvas's text to the clipboard (mentions as @names, M83: task markers left out), e.g. when saving it stopped. */
     fun copyCanvasText(stored: String) {
-        val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups)))
-        notice = L10n.str(R.string.app_controller_text_copied_2)
+        copyToClipboard(Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups), L10n.str(R.string.app_controller_text_copied_2))
     }
 
     // --- calls (M117, docs/CALLS.md §7) ---------------------------------------------------------
@@ -2426,9 +2426,7 @@ class AppController(private val app: Application) {
     /** 「リンクをコピー」: the page's `<server>/p/<id>` (WIKI.md §9.3). */
     fun copyPageLink(pageId: String) {
         val base = serverBase ?: return
-        val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", jp.chikuwachat.android.ui.Permalink.pageUrl(base, pageId)))
-        notice = L10n.str(R.string.docs_link_copied)
+        copyToClipboard(jp.chikuwachat.android.ui.Permalink.pageUrl(base, pageId), L10n.str(R.string.docs_link_copied))
     }
 
     /** The channels I may add events to: those I may post in, not archived (§3). */
