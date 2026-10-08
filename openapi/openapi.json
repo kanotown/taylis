@@ -19627,6 +19627,21 @@
             ],
             "title": "Dnd Until"
           },
+          "docs_editor_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wysiwyg",
+                  "markdown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs Editor Mode"
+          },
           "email": {
             "anyOf": [
               {
@@ -19998,6 +20013,21 @@
               }
             ],
             "title": "Dnd Until"
+          },
+          "docs_editor_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wysiwyg",
+                  "markdown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs Editor Mode"
           },
           "email": {
             "anyOf": [

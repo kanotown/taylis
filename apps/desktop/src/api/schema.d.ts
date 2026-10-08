@@ -13093,6 +13093,8 @@ export interface components {
             display_name: string;
             /** Dnd Until */
             dnd_until?: string | null;
+            /** Docs Editor Mode */
+            docs_editor_mode?: ("wysiwyg" | "markdown") | null;
             /** Email */
             email: string | null;
             /**
@@ -13207,6 +13209,8 @@ export interface components {
             display_name?: string | null;
             /** Dnd Until */
             dnd_until?: string | null;
+            /** Docs Editor Mode */
+            docs_editor_mode?: ("wysiwyg" | "markdown") | null;
             /** Email */
             email?: string | null;
             /** Locale */

@@ -64,6 +64,10 @@ class User(Base):
     # The desktop / Web composer: "rich" (WYSIWYG, writes the same Markdown) or "markdown";
     # NULL = never chosen, the clients' default ("rich"). The phones ignore it for now.
     composer_mode: Mapped[str | None] = mapped_column(String(16))
+    # M150 (docs/WIKI.md §22.6): how Desktop / Web edits Docs pages, "wysiwyg" (見たまま, writes
+    # the same Markdown) or "markdown"; NULL = never chosen, the clients' default ("wysiwyg").
+    # The phones ignore it.
+    docs_editor_mode: Mapped[str | None] = mapped_column(String(16))
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
