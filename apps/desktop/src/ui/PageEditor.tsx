@@ -19,7 +19,7 @@
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
-import { ArrowDown, ArrowUp, AtSign, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Columns3, Rows3, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
@@ -38,11 +38,11 @@ import { CustomEmojiImage } from "./customEmoji";
 import { type SlashKey, slashItems } from "./docEditor";
 import { emojiByShortcode, replaceShortcodes } from "./emoji";
 import { EmojiPicker } from "./EmojiPicker";
-import { parseBlocks } from "./markdown";
 import { MathView } from "./MathView";
 import { aiBotIds, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery, mentionsToNames } from "./mentions";
-import { BlockView, inline } from "./MessageBody";
+import { inline } from "./MessageBody";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
+import { cellPlace, editTable, type TableEdit } from "./pageEditorTable";
 import { blockPosAt, type BlockUnit, canPlace, deleteUnit, duplicateUnit, lineAfter, moveUnit, stepBlocks, unitAt } from "./pageEditorBlocks";
 import { applyMerge, caretLine, createPageDocument, placeCaretAtLine } from "./pageEditorDoc";
 import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "./pageEditorSchema";
@@ -100,6 +100,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const [dropLine, setDropLine] = useState<{ top: number; left: number; width: number } | null>(null);
   const [blockMenu, setBlockMenu] = useState<{ pos: number; rect: DOMRect } | null>(null);
   const dragging = useRef(false);
+  // M151: the table the caret is in and the caret's column (its tools above it; typing in it draws nothing more).
+  const [tableAt, setTableAt] = useState<{ pos: number; col: number; align: unknown } | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   useSyncExternalStore((listener) => portals.subscribe(listener), () => portals.version);
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
@@ -141,17 +143,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       },
       image: (attachmentId, alt) => <CanvasImage controller={live.current.controller} attachmentId={attachmentId} alt={alt} />,
       embed: (pageId, viewId) => <DatabaseEmbed controller={live.current.controller} pageId={pageId} viewId={viewId} />,
-      table: (markdown, edit) => <TableBlock controller={live.current.controller} markdown={markdown} onEdit={edit} />,
       math: (tex) => (tex.trim() ? <MathView tex={tex.trim()} display /> : <span className="text-xs text-muted">{t("docs.wysiwyg.mathEmpty")}</span>),
       calloutIcon: (icon) => (icon ? <span aria-hidden="true">{inline([{ kind: "text", text: icon }], store.users, { customEmoji: store.customEmoji, controller: live.current.controller })}</span> : <span className="text-muted" aria-hidden="true">＋</span>),
     },
     mentionLabel: (md) => mentionsToNames(md, store.users, store.groups),
     isEmoji: (name) => !!emojiByShortcode(name) || store.customEmoji.has(name),
-    openTable: (pos) => {
-      const node = editorRef.current?.state.doc.nodeAt(pos);
-      if (!node) return;
-      setTableEdit({ table: parseTable(String(node.attrs.markdown).split("\n")), isNew: false, pos });
-    },
     pickIcon: (pos, anchor) => setIconPick({ pos, rect: anchor.getBoundingClientRect() }),
     save: () => {
       commitRef.current();
@@ -187,8 +183,15 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         scrollThreshold: { top: 60, bottom: 120, left: 0, right: 0 },
         scrollMargin: { top: 60, bottom: 120, left: 0, right: 0 },
         handleKeyDown: (view, event) => keyDown(event, view.composing),
-        handlePaste: (_view, event) => {
+        handlePaste: (view, event) => {
           const files = Array.from(event.clipboardData?.files ?? []);
+          if (files.length === 0 && view.state.selection.$from.parent.type.name === "tableCell") {
+            // M151: a cell holds one line: what is pasted, its lines joined.
+            const text = (event.clipboardData?.getData("text/plain") ?? "").replace(/\s*\r?\n\s*/g, " ").trim();
+            const slice = markdownSlice(editorRef.current!, text, isEmoji);
+            view.dispatch((slice.openStart > 0 && slice.content.childCount === 1 ? view.state.tr.replaceSelection(slice) : view.state.tr.insertText(text)).scrollIntoView());
+            return true;
+          }
           if (files.length === 0) return false;
           void insertImages(files);
           return true;
@@ -230,6 +233,9 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         findMenu(current);
         // The block handle goes with any change (typing, a move); the pointer brings it back.
         if (transaction.docChanged) setHovered(null);
+        const place = cellPlace(current.state);
+        const align: unknown = place?.table.child(0).maybeChild(place.col)?.attrs.align ?? null;
+        setTableAt((was) => (!place ? null : was?.pos === place.tablePos && was.col === place.col && was.align === align ? was : { pos: place.tablePos, col: place.col, align }));
       },
     });
     sources.add(editor.state.doc);
@@ -280,13 +286,15 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       return;
     }
     const before = $from.parent.textBetween(0, $from.parentOffset, "\n", "￼");
+    const inCell = $from.parent.type.name === "tableCell";
     const link = LINK_AT.exec(before);
     if (link) {
       const length = link[0].length;
-      setMenu({ kind: "link", from: $from.pos - length, to: $from.pos, query: link[2] ?? "", embed: link[1] === "!" && !!links.lookupDatabases });
+      setMenu({ kind: "link", from: $from.pos - length, to: $from.pos, query: link[2] ?? "", embed: link[1] === "!" && !!links.lookupDatabases && !inCell });
       return;
     }
-    const slash = SLASH_AT.exec(before);
+    // A table's cell holds a line: no blocks there.
+    const slash = inCell ? null : SLASH_AT.exec(before);
     if (slash) {
       const length = (slash[1] ?? "").length + 1;
       setMenu({ kind: "slash", from: $from.pos - length, to: $from.pos, query: slash[1] ?? "" });
@@ -536,6 +544,15 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     });
   }
 
+  /** 「表を編集」: the caret's table in the table dialog (its cells as Markdown). */
+  function openTable() {
+    const editor = editorRef.current;
+    const place = editor ? cellPlace(editor.state) : null;
+    if (!editor || !place) return;
+    const markdown = editorMarkdown(editor.schema.topNodeType.create(null, place.table), new SourceMap()).text;
+    setTableEdit({ table: parseTable(markdown.split("\n")), isNew: false, pos: place.tablePos });
+  }
+
   function finishTable(table: Table | null) {
     const session = tableEdit;
     setTableEdit(null);
@@ -544,15 +561,16 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       editor?.commands.focus();
       return;
     }
-    const markdown = serializeTable(table).join("\n");
+    const fresh = markdownSlice(editor, serializeTable(table).join("\n"), isEmoji).content.firstChild;
+    if (!fresh || fresh.type.name !== "table") return;
     if (session.isNew) {
-      putBlock({ type: "table", attrs: { markdown } });
+      putBlock(fresh.toJSON() as JSONContent);
       return;
     }
     if (session.pos === null || sameTable(table, session.table)) return;
     const node = editor.state.doc.nodeAt(session.pos);
     if (!node || node.type.name !== "table") return;
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(session.pos, undefined, { ...node.attrs, markdown }));
+    editor.view.dispatch(editor.state.tr.replaceWith(session.pos, session.pos + node.nodeSize, fresh));
   }
 
   function openLink() {
@@ -789,6 +807,12 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
             </button>
           </div>
         )}
+        {tableAt && <TableTools editor={editorRef.current} pos={tableAt.pos} wrapper={wrapper.current} onEdit={(edit) => {
+          const editor = editorRef.current;
+          const tr = editor ? editTable(editor.state, edit) : null;
+          if (editor && tr) editor.view.dispatch(tr);
+          editor?.commands.focus();
+        }} onDialog={openTable} />}
         {dropLine && <div className="pointer-events-none absolute z-20 h-0.5 rounded bg-accent" style={{ top: dropLine.top - 1, left: dropLine.left, width: dropLine.width }} data-drop-line="" />}
       </div>
       {portals.entries().map(([key, { dom, node }]) => createPortal(node, dom, key))}
@@ -909,17 +933,43 @@ function FloatingBox({ rect, onClose, width, children }: { rect: DOMRect; onClos
   );
 }
 
-/** A table as the page draws it, with 「表を編集」 (the canvas table dialog). */
-function TableBlock({ controller, markdown, onEdit }: { controller: AppController; markdown: string; onEdit: (() => void) | null }) {
-  const block = parseBlocks(markdown, { canvas: true })[0];
+/** The tools of the table the caret is in, above it: rows, columns, a column's alignment, the table dialog. */
+function TableTools({ editor, pos, wrapper, onEdit, onDialog }: { editor: Editor | null; pos: number; wrapper: HTMLElement | null; onEdit: (edit: TableEdit) => void; onDialog: () => void }) {
+  const dom = editor?.view.nodeDOM(pos);
+  if (!editor || !wrapper || !(dom instanceof HTMLElement)) return null;
+  const box = wrapper.getBoundingClientRect();
+  const rect = dom.getBoundingClientRect();
+  const place = cellPlace(editor.state);
+  const align = place ? place.table.child(0).maybeChild(place.col)?.attrs.align ?? null : null;
+  const tools: Array<{ icon: ReactNode; label: string; edit?: TableEdit; pressed?: boolean; run?: () => void }> = [
+    { icon: <BetweenHorizontalStart size={15} />, label: t("table.addRowAbove"), edit: "rowAbove" },
+    { icon: <BetweenHorizontalEnd size={15} />, label: t("table.addRowBelow"), edit: "rowBelow" },
+    { icon: <Rows3 size={15} />, label: t("table.deleteRow"), edit: "deleteRow" },
+    { icon: <BetweenVerticalStart size={15} />, label: t("table.addColumnLeft"), edit: "columnLeft" },
+    { icon: <BetweenVerticalEnd size={15} />, label: t("table.addColumnRight"), edit: "columnRight" },
+    { icon: <Columns3 size={15} />, label: t("docs.wysiwyg.deleteColumn"), edit: "deleteColumn" },
+    { icon: <AlignLeft size={15} />, label: t("docs.wysiwyg.alignLeft"), edit: { align: align === "left" ? null : "left" }, pressed: align === "left" },
+    { icon: <AlignCenter size={15} />, label: t("docs.wysiwyg.alignCenter"), edit: { align: align === "center" ? null : "center" }, pressed: align === "center" },
+    { icon: <AlignRight size={15} />, label: t("docs.wysiwyg.alignRight"), edit: { align: align === "right" ? null : "right" }, pressed: align === "right" },
+    { icon: <Pencil size={14} />, label: t("docs.wysiwyg.editTable"), run: onDialog },
+  ];
   return (
-    <div className="group/table relative" data-table-block="">
-      {block && <BlockView block={block} users={controller.store.users} options={{ controller, customEmoji: controller.store.customEmoji, groups: controller.store.groups }} />}
-      {onEdit && (
-        <button type="button" onClick={onEdit} className="absolute right-1 top-1 inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2 py-0.5 text-xs text-muted opacity-0 shadow-sm transition-opacity hover:text-ink focus-visible:opacity-100 group-hover/table:opacity-100 pointer-coarse:opacity-100">
-          <Pencil size={12} /> {t("docs.wysiwyg.editTable")}
+    <div role="toolbar" aria-label={t("docs.wysiwyg.tableTools")} className="absolute z-10 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 shadow-sm" style={{ top: Math.max(0, rect.top - box.top - 34), left: Math.max(0, rect.left - box.left) }} data-table-tools="">
+      {tools.map((tool) => (
+        <button
+          key={tool.label}
+          type="button"
+          tabIndex={-1}
+          aria-label={tool.label}
+          title={tool.label}
+          aria-pressed={tool.pressed}
+          className={cn("grid h-7 w-7 place-items-center rounded-md text-muted hover:bg-panel hover:text-ink", tool.pressed && "bg-accent-soft text-ink")}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => (tool.edit !== undefined ? onEdit(tool.edit) : tool.run?.())}
+        >
+          {tool.icon}
         </button>
-      )}
+      ))}
     </div>
   );
 }

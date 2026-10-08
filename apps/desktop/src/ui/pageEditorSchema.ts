@@ -5,9 +5,11 @@
  * can build the editor without React; both are in the editor's lazy chunk.
  *
  * Drawn by the page (React, through portals the host renders: ui/PageEditor.tsx): page links, emoji, images, embedded
- * databases, tables (an atom: 「表を編集」 opens the canvas table dialog), display math's preview and callout icons.
- * Lists are flat lines (`listLine`: bullet / ordered / task, level 0–2) with their markers worked out as the renderer
- * does (pageMarkdown.listRun) and drawn by a decoration.
+ * databases, display math's preview and callout icons. Lists are flat lines (`listLine`: bullet / ordered / task, level
+ * 0–2) with their markers worked out as the renderer does (pageMarkdown.listRun) and put on their elements.
+ *
+ * M151 (WIKI.md §28): tables are rows of cells edited in place (ui/pageEditorTable.ts; 「表を編集」 still opens the
+ * table dialog), ⌘⇧↑ / ⌘⇧↓ move blocks (ui/pageEditorBlocks.ts).
  */
 import { Extension, InputRule, type JSONContent, Node, textblockTypeInputRule, wrappingInputRule, type Editor, type NodeViewRenderer } from "@tiptap/core";
 import { Blockquote } from "@tiptap/extension-blockquote";
@@ -25,6 +27,7 @@ import type { ReactNode } from "react";
 
 import { calloutTone, listMarker } from "./markdown";
 import { stepBlocks } from "./pageEditorBlocks";
+import { stepCell, tableShape, verticalCell } from "./pageEditorTable";
 import { listRun, pageToDoc, type RichNode, serializePage, type SourceView } from "./pageMarkdown";
 import { InlineCode, InlineMath, OnlyBold, OnlyItalic, OnlyLink, OnlyStrike } from "./RichEditor";
 
@@ -68,7 +71,6 @@ export interface PageEditorHost {
     emoji(md: string): ReactNode;
     image(attachmentId: string, alt: string): ReactNode;
     embed(pageId: string, viewId: string | null): ReactNode;
-    table(markdown: string, edit: (() => void) | null): ReactNode;
     math(tex: string): ReactNode;
     calloutIcon(icon: string | null): ReactNode;
   };
@@ -76,7 +78,6 @@ export interface PageEditorHost {
   mentionLabel(md: string): string;
   /** Whether `:name:` is an emoji the renderer draws. */
   isEmoji(name: string): boolean;
-  openTable(pos: number): void;
   pickIcon(pos: number, anchor: HTMLElement): void;
   /** ⌘S: save now. */
   save(): void;
@@ -353,24 +354,41 @@ export const PageEmbed = Node.create<{ host: PageEditorHost }>({
   },
 });
 
-/** A table: drawn as the page draws it, its Markdown edited in the table dialog (cells in place: M151). */
-export const PageTable = Node.create<{ host: PageEditorHost }>({
+/**
+ * M151: a table edited in place — rows of cells, each cell one line of inline content (GFM cells hold no line breaks),
+ * the first row the header. A column's alignment is on each of its cells (drawn by the cell itself, so a long table
+ * draws nothing more on a change); the header's cells say what is written. 「表を編集」 (the table dialog) still works.
+ */
+export const PageTable = Node.create({
   name: "table",
   group: "block",
-  atom: true,
-  selectable: true,
-  addOptions: () => ({ host: null as unknown as PageEditorHost }),
-  addAttributes: () => ({ markdown: { default: "" }, ...sourceAttrs() }),
-  parseHTML: () => [{ tag: "div[data-page-table]", getAttrs: (el) => ({ markdown: el.getAttribute("data-page-table") ?? "" }) }],
-  renderHTML: ({ node }) => ["div", { "data-page-table": node.attrs.markdown }],
-  renderText: ({ node }) => node.attrs.markdown,
-  addNodeView() {
-    const host = this.options.host;
-    return portalView(host, "div", "pe-atom pe-table", (node, getPos) => host.render.table(node.attrs.markdown, host.editable() ? () => {
-      const pos = getPos();
-      if (pos !== undefined) host.openTable(pos);
-    } : null));
-  },
+  content: "tableRow+",
+  isolating: true,
+  addAttributes: sourceAttrs,
+  parseHTML: () => [{ tag: "table" }],
+  renderHTML: () => ["div", { class: "pe-table", "data-page-table": "" }, ["table", ["tbody", 0]]],
+});
+
+export const TableRow = Node.create({
+  name: "tableRow",
+  content: "tableCell+",
+  parseHTML: () => [{ tag: "tr" }],
+  renderHTML: () => ["tr", 0],
+});
+
+export const TableCell = Node.create({
+  name: "tableCell",
+  content: "inline*",
+  isolating: true,
+  addAttributes: () => ({
+    align: {
+      default: null,
+      parseHTML: (el) => (["left", "center", "right"].includes(el.style.textAlign) ? el.style.textAlign : ["left", "center", "right"].includes(el.getAttribute("align") ?? "") ? el.getAttribute("align") : null),
+      renderHTML: (attrs) => (attrs.align ? { style: `text-align: ${attrs.align}` } : {}),
+    },
+  }),
+  parseHTML: () => [{ tag: "td" }, { tag: "th" }],
+  renderHTML: () => ["td", 0],
 });
 
 /** A callout (`::: callout 💡`): its icon (a button that changes it) and its blocks. */
@@ -566,6 +584,12 @@ export const Emoji = Node.create<{ host: PageEditorHost }>({
   },
 });
 
+/** M151: a table's rows kept as wide as its header (pageEditorTable.tableShape). */
+const TableShape = Extension.create({
+  name: "pageTableShape",
+  addProseMirrorPlugins: () => [tableShape()],
+});
+
 // --- list markers, keys and input rules -----------------------------------------------------------------------------------
 
 /** A list line's element: the list plugin tells it its marker and drawn level. */
@@ -706,6 +730,12 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
     };
     return {
       Enter: () => {
+        // M151: in a table, the cell below (a cell holds one line).
+        const below = verticalCell(editor.state, 1);
+        if (below) {
+          editor.view.dispatch(below);
+          return true;
+        }
         const { state } = editor;
         const { $from, empty } = state.selection;
         const node = $from.parent;
@@ -764,7 +794,17 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
         if (node.type.name === "heading") return editor.commands.setNode("paragraph");
         return false;
       },
+      "Shift-Enter": () => {
+        const above = verticalCell(editor.state, -1);
+        if (above) editor.view.dispatch(above);
+        return !!above || lineHere().type.name === "tableCell";
+      },
       Tab: () => {
+        const cell = stepCell(editor.state, 1);
+        if (cell) {
+          editor.view.dispatch(cell);
+          return true;
+        }
         const node = lineHere();
         if (node.type.name !== "listLine") return false;
         const max = maxLevel(editor, node.attrs.kind);
@@ -772,6 +812,11 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
         return true;
       },
       "Shift-Tab": () => {
+        const cell = stepCell(editor.state, -1);
+        if (cell) {
+          editor.view.dispatch(cell);
+          return true;
+        }
         const node = lineHere();
         if (node.type.name !== "listLine") return false;
         if (node.attrs.level > 0) editor.commands.updateAttributes("listLine", { level: node.attrs.level - 1 });
@@ -848,7 +893,10 @@ export function pageExtensions(host: PageEditorHost) {
     HorizontalRule,
     PageImage.configure({ host }),
     PageEmbed.configure({ host }),
-    PageTable.configure({ host }),
+    PageTable,
+    TableRow,
+    TableCell,
+    TableShape,
     Callout.configure({ host }),
     ToggleTitle,
     Toggle.configure({ host }),

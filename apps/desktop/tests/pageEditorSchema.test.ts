@@ -13,6 +13,7 @@ import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { blockPosAt, canPlace, deleteUnit, duplicateUnit, moveUnit, unitAt } from "../src/ui/pageEditorBlocks";
+import { cellPos, editTable } from "../src/ui/pageEditorTable";
 import { jsonView, readsAsShown, type RichNode } from "../src/ui/pageMarkdown";
 import { applyMerge, createPageDocument } from "../src/ui/pageEditorDoc";
 import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "../src/ui/pageEditorSchema";
@@ -36,10 +37,9 @@ export function fakeHost(): PageEditorHost {
   return {
     portals: new PortalRegistry(),
     sources: new SourceMap(),
-    render: { pageLink: () => null, emoji: () => null, image: () => null, embed: () => null, table: () => null, math: () => null, calloutIcon: () => null },
+    render: { pageLink: () => null, emoji: () => null, image: () => null, embed: () => null, math: () => null, calloutIcon: () => null },
     mentionLabel: (md) => `@${md.slice(2, 6)}`,
     isEmoji: (name) => name === "smile" || name === "party",
-    openTable: () => {},
     pickIcon: () => {},
     save: () => {},
     link: () => {},
@@ -246,14 +246,15 @@ describe("editing a block writes that block only", () => {
     expect(markdown()).toBe(replaced(20, "$$x^2+1$$"));
   });
 
-  it("a table replaced (as the table dialog does): only its lines", () => {
+  it("a table's cell edited in place: only the table's lines, in the canonical form", () => {
     const { editor, markdown } = open(BODY);
     let pos = 0;
     for (let k = 0; k < 19; k++) pos += editor.state.doc.child(k).nodeSize;
     const table = editor.state.doc.child(19);
     expect(table.type.name).toBe("table");
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...table.attrs, markdown: "| 名前 | 締切 |\n| --- | --- |\n| 本番 | 11/1 |" }));
-    expect(markdown()).toBe(BODY.replace("| 予稿 | 10/3 |", "| 本番 | 11/1 |").replace("| 名前 | 締切 |\r\n| --- | --- |\r\n| 本番", "| 名前 | 締切 |\n| --- | --- |\n| 本番"));
+    editor.commands.setTextSelection(cellPos(table, pos, 1, 1, true));
+    type(editor, "（延長）");
+    expect(markdown()).toBe(BODY.replace("| 予稿 | 10/3 |", "| 予稿 | 10/3（延長） |").replace("| 名前 | 締切 |\r\n| --- | --- |\r\n| 予稿", "| 名前 | 締切 |\n| --- | --- |\n| 予稿"));
   });
 
   it("a callout's line edited: the opener with its U+FE0F icon and the close stay", () => {
@@ -494,5 +495,74 @@ describe("M151: moving blocks", () => {
     expect(markdown()).toBe("- [ ] 予稿 <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [ ] 予稿\n後");
     editor.view.dispatch(deleteUnit(editor.state, unitAt(editor.state.doc, 0)));
     expect(markdown()).toBe("- [ ] 予稿\n後");
+  });
+});
+
+describe("M151: table cells edited in place", () => {
+  const BODY_TABLE = "前\n| 名前 | 締切 |\n|---|--:|\n| 予稿 | 10/3 |\n後";
+  const tableAt = (editor: Editor) => ({ pos: before(editor, 1), node: editor.state.doc.child(1) });
+  const caretIn = (editor: Editor, row: number, col: number) => {
+    const { pos, node } = tableAt(editor);
+    editor.commands.setTextSelection(cellPos(node, pos, row, col, true));
+  };
+
+  it("Tab / Shift+Tab move between cells; Tab in the last cell adds a row; Enter goes down (and adds a row at the end)", () => {
+    const { editor, markdown } = open(BODY_TABLE);
+    caretIn(editor, 0, 0);
+    press(editor, "Tab");
+    type(editor, "期限");
+    expect(markdown()).toBe("前\n| 名前 | 期限 |\n| --- | ---: |\n| 予稿 | 10/3 |\n後");
+    press(editor, "Tab", { shiftKey: true });
+    expect(editor.state.selection.$from.parent.textContent).toBe("名前");
+    caretIn(editor, 1, 1);
+    press(editor, "Tab");
+    type(editor, "本番");
+    press(editor, "Enter");
+    type(editor, "後日");
+    expect(markdown()).toBe("前\n| 名前 | 期限 |\n| --- | ---: |\n| 予稿 | 10/3 |\n| 本番 |  |\n| 後日 |  |\n後");
+    press(editor, "Enter", { shiftKey: true });
+    expect(editor.state.selection.$from.parent.textContent).toBe("本番");
+  });
+
+  it("rows and columns added and deleted, a column's alignment; undo gives the bytes back", () => {
+    const { editor, markdown } = open(BODY_TABLE);
+    caretIn(editor, 1, 0);
+    const run = (edit: Parameters<typeof editTable>[1]) => editor.view.dispatch(editTable(editor.state, edit)!);
+    run("columnRight");
+    type(editor, "新");
+    expect(markdown()).toBe("前\n| 名前 |  | 締切 |\n| --- | --- | ---: |\n| 予稿 | 新 | 10/3 |\n後");
+    run({ align: "center" });
+    run("rowAbove");
+    expect(markdown()).toBe("前\n| 名前 |  | 締切 |\n| --- | :---: | ---: |\n|  |  |  |\n| 予稿 | 新 | 10/3 |\n後");
+    run("deleteRow");
+    run("deleteColumn");
+    expect(markdown()).toBe(BODY_TABLE); // the same cells as read again: the table as it was written
+    for (let k = 0; k < 8; k++) editor.commands.undo();
+    expect(markdown()).toBe(BODY_TABLE);
+  });
+
+  it("a deletion across two cells keeps the row as wide as the header", () => {
+    const { editor, markdown } = open(BODY_TABLE);
+    const { pos, node } = tableAt(editor);
+    editor.view.dispatch(editor.state.tr.delete(cellPos(node, pos, 1, 0) + 1, cellPos(node, pos, 1, 1) + 2));
+    expect(editor.state.doc.child(1).child(1).childCount).toBe(2);
+    expect(markdown()).toBe("前\n| 名前 | 締切 |\n| --- | ---: |\n| 予/3 |  |\n後");
+  });
+
+  it("a 200 × 8 table: a key in a cell and the table written again stay fast", () => {
+    const rows = ["| " + Array.from({ length: 8 }, (_, k) => `列${k}`).join(" | ") + " |", "| " + Array(8).fill("---").join(" | ") + " |"];
+    for (let r = 0; r < 200; r++) rows.push("| " + Array.from({ length: 8 }, (_, k) => `値 ${r}-${k} **太**`).join(" | ") + " |");
+    const { editor, markdown } = open(rows.join("\n"));
+    const node = editor.state.doc.child(0);
+    editor.commands.setTextSelection(cellPos(node, 0, 101, 3, true)); // row 0 is the header
+    const started = performance.now();
+    type(editor, "追記");
+    const typed = performance.now();
+    const written = markdown();
+    const done = performance.now();
+    expect(written.split("\n")[102]).toContain("値 100-3 **太追記**"); // typing on at a bold end stays bold
+    // Measured on the development Mac (M5 Max, jsdom): see WIKI.md §28 (CI machines are slower).
+    expect((typed - started) / 2).toBeLessThan(100);
+    expect(done - typed).toBeLessThan(500);
   });
 });

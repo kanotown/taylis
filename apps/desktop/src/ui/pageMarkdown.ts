@@ -146,8 +146,9 @@ function blockNodes(c: ReadContext, block: Block, range: BlockLines): RichNode[]
     case "math":
       return [{ type: "mathBlock", attrs: whole(), ...withContent(block.tex ? [{ type: "text", text: block.tex }] : []) }];
     case "table": {
-      const attrs = whole();
-      return [{ type: "table", attrs: { ...attrs, markdown: stripTaskMarkers(attrs.src.replace(/\r\n?/g, "\n")) } }];
+      // M151: cells edited in place, each its inline content; a column's alignment on each of its cells.
+      const row = (cells: readonly Token[][]): RichNode => ({ type: "tableRow", content: cells.map((tokens, k) => ({ type: "tableCell", attrs: { align: block.align[k] ?? null }, ...withContent(inl(tokens, false)) })) });
+      return [{ type: "table", attrs: whole(), content: [row(block.header), ...block.rows.map(row)] }];
     }
     case "image":
       return [{ type: "image", attrs: { attachmentId: block.attachmentId, alt: block.alt, ...whole() } }];
@@ -170,7 +171,7 @@ function blockNodes(c: ReadContext, block: Block, range: BlockLines): RichNode[]
 /** Whether nodes written in the canonical form read back as the same nodes (else the block stays Markdown). */
 function roundTrips(nodes: RichNode[], atoms: InlineAtoms): boolean {
   // The atoms always do; a line of plain text without any sign the dialect reads does too.
-  if (nodes.every((node) => node.type === "image" || node.type === "embed" || node.type === "table" || node.type === "horizontalRule" || (node.type === "paragraph" && plainLine(node)))) return true;
+  if (nodes.every((node) => node.type === "image" || node.type === "embed" || node.type === "horizontalRule" || (node.type === "paragraph" && plainLine(node)) || (node.type === "table" && (node.content ?? []).every((row) => (row.content ?? []).every(plainLine))))) return true;
   const canonical = serializePage({ type: "doc", content: nodes }, jsonView(() => false), { edges: false }).text;
   const again = pageToDocUnchecked(canonical, atoms);
   return sameShape(again, nodes);
@@ -438,7 +439,7 @@ function canonicalBlock<N>(node: N, view: SourceView<N>): string {
     case "rawMarkdown":
       return view.text(node);
     case "table":
-      return String(attrs.markdown ?? "");
+      return tableText(node, view);
     case "image":
       return `![${cleanLabel(String(attrs.alt ?? ""))}](attachment:${String(attrs.attachmentId ?? "")})`;
     case "embed":
@@ -451,6 +452,32 @@ function canonicalBlock<N>(node: N, view: SourceView<N>): string {
     default:
       return view.text(node);
   }
+}
+
+const ALIGN_MARKS: Record<string, string> = { left: ":---", center: ":---:", right: "---:" };
+
+/**
+ * M151: a table written anew as GFM (`| a | b |`, the separator from the header's alignments, every row as many cells
+ * as the header). A cell is its line of inline Markdown with `|` written `\|` (the renderer splits the row on the pipes
+ * first, then reads each cell: `\|` in a code span or a formula is a pipe there too).
+ */
+function tableText<N>(node: N, view: SourceView<N>): string {
+  const rows = view.children(node);
+  const header = rows[0] ? view.children(rows[0]) : [];
+  const width = Math.max(1, header.length);
+  const cell = (cellNode: N | undefined) => {
+    if (cellNode === undefined) return "";
+    const inline = view.inline(cellNode);
+    // Most cells are plain words: written as they are (a 200-row table is written on every pause).
+    const text = inline.length === 1 && inline[0]!.type === "text" && !inline[0]!.marks?.length && !SIGNS.test(inline[0]!.text ?? "") ? (inline[0]!.text ?? "") : serializeLine(inline, true);
+    return text.replace(/\s*\n\s*/g, " ").trim().replace(/\|/g, "\\|");
+  };
+  const line = (row: N | undefined) => {
+    const cells = row ? view.children(row) : [];
+    return `| ${Array.from({ length: width }, (_, k) => cell(cells[k])).join(" | ")} |`;
+  };
+  const separator = `| ${Array.from({ length: width }, (_, k) => ALIGN_MARKS[String(header[k] ? view.attrs(header[k]!).align : "")] ?? "---").join(" | ")} |`;
+  return [line(rows[0]), separator, ...rows.slice(1).map(line)].join("\n");
 }
 
 const cleanLabel = (label: string) => label.replace(/[[\]\n]/g, (c) => (c === "[" ? "［" : c === "]" ? "］" : " "));

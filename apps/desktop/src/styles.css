@@ -396,6 +396,11 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .page-editor .rich-math[data-display]::before, .page-editor .rich-math[data-display]::after { content: "$$"; }
 .page-editor a { cursor: text; }
 .page-editor p.is-empty::before, .page-editor .pe-toggle-title.is-empty::before { content: attr(data-placeholder); color: var(--muted-fg); float: left; height: 0; pointer-events: none; }
+/* M151: tables edited in place, drawn as the page draws them (MessageBody's table): the first row is the header. */
+.page-editor .pe-table { margin: 4px 0; max-width: 100%; overflow-x: auto; }
+.page-editor .pe-table table { border-collapse: collapse; font-size: 13.5px; line-height: 1.25rem; }
+.page-editor .pe-table td { min-width: 4em; border: 1px solid var(--line); padding: 4px 10px; vertical-align: top; text-align: left; }
+.page-editor .pe-table tr:first-child > td { background: var(--panel); font-weight: 600; }
 
 /* The rich composer (RichEditor.tsx): drawn as the message will be (MessageBody), one paragraph per line. */
 .rich-editor { outline: none; min-height: 3rem; }
