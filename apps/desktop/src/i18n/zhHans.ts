@@ -2282,6 +2282,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "drafts.sendNow": "立即发送",
   "drafts.cancel": "删除",
   "drafts.none": "没有未发送的草稿",
+  "drafts.delete": "删除草稿",
   "reports.open": "未处理",
   "reports.noneOpen": "没有未处理的举报",
   "reports.none": "没有举报",

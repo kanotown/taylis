@@ -403,6 +403,14 @@ export class Store {
     if (edited) this.onDraftEdited?.(channelId, parentId);
   }
 
+  /**
+   * 「下書き」's 削除 (2026-10-09): the conversation's draft goes, as when its composer is emptied after sending — the engine
+   * deletes it on the server at once, so my other devices drop it too (M15d).
+   */
+  discardDraft(channelId: string, parentId: string | null): void {
+    this.setDraft(channelId, parentId, { text: "", attachments: [] });
+  }
+
   private writeDraft(key: string, draft: Draft): void {
     const keep = draft.text !== "" || draft.attachments.length > 0 || draft.dirty === true;
     if (keep) this.drafts.set(key, draft);

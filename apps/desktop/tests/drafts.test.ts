@@ -51,6 +51,25 @@ describe("drafts shared by my devices (M15d)", () => {
     b.stop();
   });
 
+  it("「下書き」's 削除 removes the draft here, on the server and on my other device (2026-10-09)", async () => {
+    const { server, bob, channel, laptop, phone, a, b } = await devices();
+    laptop.setDraft(channel.id, null, { text: "消す下書き" });
+    await a.flushDrafts();
+    await b.idle();
+    expect(phone.listDrafts().map((d) => d.draft.text)).toEqual(["消す下書き"]);
+
+    phone.discardDraft(channel.id, null);
+    expect(phone.listDrafts()).toEqual([]);
+    await tick();
+    await b.drafts.idle();
+    await a.idle();
+    expect(server.draftsOf(bob.id)).toEqual([]);
+    expect(laptop.listDrafts()).toEqual([]);
+    expect(phone.draftEntries()).toEqual([]);
+    a.stop();
+    b.stop();
+  });
+
   it("keeps this device's unsaved edits when another device saves an older idea", async () => {
     const { channel, laptop, phone, a, b } = await devices();
     phone.setDraft(channel.id, null, { text: "スマホで書いた" }); // not saved yet

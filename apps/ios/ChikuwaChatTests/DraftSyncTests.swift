@@ -68,6 +68,24 @@ final class DraftSyncTests: XCTestCase {
         d.b.stop()
     }
 
+    /// 2026-10-09: 「下書き」's 削除 deletes it on the server at once, so my other device drops it too.
+    func testADraftDeletedFromTheListGoesEverywhere() async throws {
+        let d = await devices()
+        d.laptop.setDraft(d.channel.id, parentId: nil) { $0.text = "消す下書き" }
+        await d.a.flushDrafts()
+        await settle(d.a, d.b)
+        XCTAssertEqual(d.phone.listDrafts().map(\.draft.text), ["消す下書き"])
+
+        d.phone.discardDraft(d.channel.id)
+        XCTAssertEqual(d.phone.listDrafts().count, 0)
+        for _ in 0..<5 { try await Task.sleep(nanoseconds: 20_000_000); await settle(d.a, d.b) }
+        XCTAssertEqual(d.server.drafts(of: d.bob.id), [])
+        XCTAssertEqual(d.laptop.listDrafts().count, 0)
+        XCTAssertTrue(d.phone.draftEntries().isEmpty)
+        d.a.stop()
+        d.b.stop()
+    }
+
     func testUnsavedEditsHereWinOverAnotherDevicesSave() async {
         let d = await devices()
         d.phone.setDraft(d.channel.id) { $0.text = "スマホで書いた" }

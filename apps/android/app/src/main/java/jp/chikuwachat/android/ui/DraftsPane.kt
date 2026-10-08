@@ -2,8 +2,22 @@ package jp.chikuwachat.android.ui
 
 import kotlinx.coroutines.launch
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,7 +88,7 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
         }
         items(drafts, key = { "${it.channelId}:${it.parentId ?: ""}" }) { entry ->
             val channel = store.channel(entry.channelId) ?: return@items
-            Column(Modifier.fillMaxWidth().clickable { onOpen(entry.channelId, entry.parentId) }.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            DraftRow(onDiscard = { store.discardDraft(entry.channelId, entry.parentId) }, onOpen = { onOpen(entry.channelId, entry.parentId) }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(channelTitle(channel, store), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     if (entry.parentId != null) Text(stringResource(R.string.drafts_pane_thread), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -83,6 +97,47 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
                 Text(entry.draft.text.ifBlank { stringResource(R.string.drafts_pane_no_text) }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
             }
             HorizontalDivider()
+        }
+    }
+}
+
+/**
+ * A draft's row (2026-10-09): a tap opens the conversation; a swipe to the left or the long press's 「削除」 deletes the draft
+ * (on the server too, so my other devices drop it).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DraftRow(onDiscard: () -> Unit, onOpen: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    val swipe = rememberSwipeToDismissBoxState()
+    val colors = MaterialTheme.colorScheme
+    SwipeToDismissBox(
+        state = swipe,
+        enableDismissFromStartToEnd = false,
+        onDismiss = { onDiscard() },
+        backgroundContent = {
+            Box(Modifier.fillMaxSize().background(colors.errorContainer).padding(horizontal = 20.dp), contentAlignment = Alignment.CenterEnd) {
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete), tint = colors.onErrorContainer)
+            }
+        },
+    ) {
+        Box {
+            Column(
+                Modifier.fillMaxWidth().background(colors.surface)
+                    .combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.common_menu))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                content = content,
+            )
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.common_delete), color = colors.error) },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = colors.error) },
+                    onClick = {
+                        menu = false
+                        onDiscard()
+                    },
+                )
+            }
         }
     }
 }
