@@ -111,6 +111,68 @@ final class ComposerFormatTests: XCTestCase {
         XCTAssertEqual(ComposerSelection.characterOffset(midSurrogate, in: "a👍b") ?? 1, 1)
     }
 
+    /// Every position the field could report (each UTF-8, UTF-16 and scalar index of its text, as a native and as a
+    /// bridged string), paired with a draft a step behind or ahead: Japanese IME composition (romaji turning into kana,
+    /// marked text growing and shrinking), emoji typed and deleted, the text replaced while the selection is held. None
+    /// may trap, and an offset that comes back is a position in the draft.
+    func testNoFieldPositionPairedWithAnotherDraftTraps() {
+        let steps: [(field: String, draft: String)] = [
+            ("k", ""), ("ky", "k"), ("きょ", "ky"), ("きょう", "きょ"), ("きょうは", "きょう"), ("今日は", "きょうは"),
+            ("今日は", "今日は"), ("今日は ", "今日は"), ("", "今日は"), ("今", "今日は"),
+            ("abc👍", "abc"), ("abc👍 ", "abc👍"), ("abc", "abc👍"), ("ab", "abc👍 "),
+            ("👨‍👩‍👧", "👨‍👩"), ("👨‍👩", "👨‍👩‍👧"), ("🇯🇵", "🇯"), ("が", "か\u{3099}"), ("か\u{3099}", "が"),
+            ("了解です👍 ", "了解です👍"), ("x", "了解です👍"), ("了解です👍", "x"),
+        ]
+        func positions(_ text: String) -> [String.Index] {
+            Array(text.utf8.indices) + Array(text.utf16.indices) + Array(text.unicodeScalars.indices) + Array(text.indices)
+                + [text.endIndex] + (0...text.utf16.count).map { String.Index(utf16Offset: $0, in: text) }
+        }
+        for (typed, behind) in steps {
+            let fields = [typed, NSString(string: typed) as String, String(decoding: Array(typed.utf8), as: UTF8.self)]
+            let drafts = [behind, NSString(string: behind) as String, String(decoding: Array(behind.utf8), as: UTF8.self)]
+            for field in fields {
+                let indices = positions(field)
+                for draft in drafts {
+                    for index in indices {
+                        if let offset = ComposerSelection.characterOffset(index, in: draft) {
+                            XCTAssertTrue((0...draft.count).contains(offset), "\(field) → \(draft)")
+                        }
+                    }
+                    for (lower, upper) in zip(indices, indices.reversed()) {
+                        if let range = ComposerSelection.offsets(lower..<max(lower, upper), in: draft) {
+                            XCTAssertTrue(range.lowerBound >= 0 && range.upperBound <= draft.count, "\(field) → \(draft)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The composer's own path: a selection stored by the field's setter, read back for the draft it was paired with,
+    /// while IME composition or a deletion leaves the draft a step behind. It is either dropped or a position in the draft.
+    @available(iOS 26.0, *)
+    func testAStoredSelectionHeldWhileTheTextChangesIsDroppedOrInRange() {
+        let steps: [(field: String, draft: String)] = [
+            ("きょう", "きょ"), ("今日は", "きょうは"), ("abc👍 ", "abc👍"), ("abc", "abc👍"), ("", "今日は"), ("👨‍👩‍👧", "👨‍👩"),
+        ]
+        for (typed, behind) in steps {
+            let field = NSString(string: typed) as String
+            let draft = String(decoding: Array(behind.utf8), as: UTF8.self)
+            let box = ComposerSelection()
+            for selection in [TextSelection(insertionPoint: field.endIndex), TextSelection(insertionPoint: field.startIndex),
+                              TextSelection(range: field.startIndex..<field.endIndex)] {
+                box.raw = selection
+                box.text = draft  // the setter ran before the draft caught up
+                guard let kept = box.selection(for: draft) else { continue }
+                guard case .selection(let range) = kept.indices,
+                      let offsets = ComposerSelection.offsets(range, in: draft) else { return XCTFail("\(typed) → \(behind)") }
+                XCTAssertTrue(offsets.upperBound <= draft.count, "\(typed) → \(behind)")
+                box.text = "別の文"  // replaced while the selection was held
+                XCTAssertNil(box.selection(for: draft))
+            }
+        }
+    }
+
     func testSelectionIndicesInTheirOwnTextGiveCharacterOffsets() {
         let text = "abc あいう😀x"
         func at(_ k: Int) -> String.Index { text.index(text.startIndex, offsetBy: k) }
