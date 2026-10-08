@@ -445,17 +445,18 @@ class DatabaseSession(
         job = scope.launch { refresh() }
     }
 
-    suspend fun refresh() {
+    /** Reads the schema and the view's first page again: true when the server's answer is what is shown now. */
+    suspend fun refresh(): Boolean {
         val mine = ++generation
         loading = true
         emit()
         try {
             val db = api.wikiDatabase(databaseId)
-            if (mine != generation) return
+            if (mine != generation) return false
             database = db
             val view = WikiDb.viewOf(db, viewId)
             val answer = query(db, view, null)
-            if (mine != generation) return
+            if (mine != generation) return false
             rows = answer.rows
             refs = answer.refs.associateBy { it.id }
             total = answer.total
@@ -465,12 +466,14 @@ class DatabaseSession(
             loadError = null
             offlineSince = null
             keep()
+            return true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (mine != generation) return
+            if (mine != generation) return false
             Log.w("WikiDb", "could not read the database", e)
             loadError = e
+            return false
         } finally {
             if (mine == generation) {
                 loading = false
@@ -595,8 +598,10 @@ class DatabaseSession(
 
     /**
      * M148: a board card from group `from` to `to` (§25.2's values; the server keeps its place). It moves at once; a
-     * failure on the network is sent again with the same client_op_id (the cells change once), a refusal puts it back
-     * and is thrown. The view is read again afterwards (the server's order and counts).
+     * failure on the network is sent again with the same client_op_id (the cells change once). A refusal reads the view
+     * again (the server's answer, other cards' moves made meanwhile included) and is thrown; when that read fails too,
+     * only this card goes back (another card's move that succeeded meanwhile stays). The view is read again afterwards
+     * (the server's order and counts).
      */
     suspend fun moveRow(rowId: String, from: String, to: String) {
         val db = database ?: return
@@ -605,7 +610,7 @@ class DatabaseSession(
         val prop = WikiDbViews.groupProp(db, view) ?: return
         val index = rows.indices.firstOrNull { rows[it].id == rowId && rowGroups?.getOrNull(it) == from } ?: return
         val set = WikiDbViews.moveSet(prop, rows[index], from, to) ?: return
-        val before = Triple(rows, rowGroups, groups)
+        val original = rows[index]
         // At once: the row's new cell everywhere it is shown, this card in its new group (once), the counts.
         val keys = rowGroups.orEmpty().toMutableList()
         val moved = WikiDb.applyLocal(rows[index], prop.id, set.getValue(prop.id), prop.type)
@@ -633,15 +638,44 @@ class DatabaseSession(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            rows = before.first
-            rowGroups = before.second
-            groups = before.third
+            // Not a snapshot put back: another card may have moved (and been read again) while this one waited.
+            if (!refresh()) putBack(rowId, original, moved, from, to, already)
             throw e
         } finally {
             moving = moving - rowId
             emit()
         }
         refresh()
+    }
+
+    /**
+     * A refused move whose read again failed: this card only goes back to `from` (its old cell, the counts), and only
+     * while the view still shows this move (a read since then has the server's answer already).
+     */
+    private fun putBack(rowId: String, original: DbRow, moved: DbRow, from: String, to: String, already: Boolean) {
+        val keys = rowGroups ?: return
+        if (keys.size != rows.size) return
+        val shown = rows.indices.filter { rows[it].id == rowId }
+        if (shown.isEmpty() || shown.any { rows[it] != moved } || shown.any { keys[it] == from }) return
+        val at = shown.firstOrNull { keys[it] == to } ?: return
+        val nextRows = rows.map { if (it.id == rowId) original else it }.toMutableList()
+        val nextKeys = keys.toMutableList()
+        if (already) {
+            // Its card in `from` was taken out: back after the last card of `from` (or where it was, at the end).
+            val after = nextKeys.indexOfLast { it == from }
+            val place = if (after >= 0) after + 1 else nextKeys.size
+            nextRows.add(place, original)
+            nextKeys.add(place, from)
+        } else nextKeys[at] = from
+        rows = nextRows
+        rowGroups = nextKeys
+        groups = groups?.map { g ->
+            when {
+                g.key == from -> g.copy(count = g.count + 1)
+                g.key == to && !already -> g.copy(count = (g.count - 1).coerceAtLeast(0))
+                else -> g
+            }
+        }
     }
 
     fun stop() {

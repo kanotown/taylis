@@ -9,6 +9,7 @@ import jp.chikuwachat.android.api.DbProperty
 import jp.chikuwachat.android.api.DbRow
 import jp.chikuwachat.android.api.DbRowGroup
 import jp.chikuwachat.android.api.DbRowQueryOut
+import jp.chikuwachat.android.api.DbRowWithRefs
 import jp.chikuwachat.android.api.DbView
 import jp.chikuwachat.android.sync.DatabaseSession
 import jp.chikuwachat.android.sync.DbCellContext
@@ -18,14 +19,18 @@ import jp.chikuwachat.android.sync.DbRange
 import jp.chikuwachat.android.sync.DbViewWords
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.WikiDb
+import jp.chikuwachat.android.sync.WikiDbApi
 import jp.chikuwachat.android.sync.WikiDbOptions
 import jp.chikuwachat.android.sync.WikiDbViews
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -79,6 +84,36 @@ private fun boardAnswer() = DbRowQueryOut(
     groups = listOf(DbRowGroup("o1", 1, false), DbRowGroup("o2", 2, false), DbRowGroup("o3", 5, true), DbRowGroup("", 1, false)),
     rowGroups = listOf("o1", "o2", "o2", ""),
 )
+
+/** A board server whose answers follow the moves it accepted; a row's move can be held, and reads can fail. */
+private class BoardServer(private val inner: FakeWikiDbApi = FakeWikiDbApi()) : WikiDbApi by inner {
+    val stages = linkedMapOf("r1" to "o1", "r2" to "o2", "r3" to "o2", "r4" to "")
+    val holds = HashMap<String, CompletableDeferred<Throwable?>>()
+    var readsFail = false
+
+    init {
+        inner.db = db()
+    }
+
+    override suspend fun queryRows(
+        databaseId: String, viewId: String?, range: DbRange?, cursor: String?, limit: Int, options: DbQueryOptions,
+    ): DbRowQueryOut {
+        if (readsFail) throw ApiException.Network(IOException("offline"))
+        val keys = stages.values.toList()
+        return DbRowQueryOut(
+            rows = stages.map { (id, s) -> if (s.isEmpty()) r(id) else r(id, mapOf("stage" to JsonPrimitive(s))) },
+            total = stages.size, schemaVersion = 4,
+            groups = listOf("o1", "o2", "").map { k -> DbRowGroup(k, keys.count { it == k }, false) },
+            rowGroups = keys,
+        )
+    }
+
+    override suspend fun moveRow(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs {
+        holds[rowId]?.await()?.let { throw it }
+        stages[rowId] = (set["stage"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+        return DbRowWithRefs(r(rowId))
+    }
+}
 
 /**
  * M148 (docs/WIKI.md §25.4): the view types on the phone — the shapes read (and an older server's), the names of
@@ -305,6 +340,62 @@ class WikiDbViewsTest {
         assertEquals("""{"who":["u2"]}""", api.moves.single().second.toString())
         assertEquals(listOf(emptyList(), listOf("r1")), during)
         assertEquals(listOf(0, 1), counts)
+    }
+
+    @Test
+    fun aRefusedMoveKeepsAnotherCardsMoveThatSucceededMeanwhile() = runBlocking {
+        val server = BoardServer().apply { holds["r1"] = CompletableDeferred() }
+        val session = DatabaseSession("db1", server, null, scope, options())
+        session.refresh()
+        // A (r1 → o2) waits for its answer; B (r4 → o1) is accepted and the view read again.
+        val a = scope.async { session.moveRow("r1", "o1", "o2") }
+        session.moveRow("r4", "", "o1")
+        assertEquals("o1", server.stages["r4"])
+        // A is refused, and the read after it fails too.
+        server.readsFail = true
+        server.holds.getValue("r1").complete(ApiException.Api(403, "page_edit_restricted", "no"))
+        try {
+            a.await()
+            fail("a refusal is thrown")
+        } catch (e: ApiException.Api) {
+            assertEquals("page_edit_restricted", e.code)
+        }
+        val shown = session.sections!!.associate { s -> s.key to s.rows.map { it.id }.sorted() }
+        assertEquals(listOf("r1", "r4"), shown["o1"])
+        assertEquals(listOf("r2", "r3"), shown["o2"])
+        assertEquals(mapOf("o1" to 2, "o2" to 2, "" to 0), session.groups!!.associate { it.key to it.count })
+        assertEquals(JsonPrimitive("o1"), session.rows.first { it.id == "r4" }.props["stage"])
+        assertEquals(JsonPrimitive("o1"), session.rows.first { it.id == "r1" }.props["stage"])
+        assertTrue(session.moving.isEmpty())
+    }
+
+    @Test
+    fun aRefusedMoveWhoseReadFailsPutsBackOnlyItsOwnCard() = runBlocking {
+        val server = BoardServer().apply { holds["r1"] = CompletableDeferred() }
+        val session = DatabaseSession("db1", server, null, scope, options())
+        session.refresh()
+        val a = scope.async { session.moveRow("r1", "o1", "o2") }
+        // B is accepted but nothing can be read again: both cards show where they were moved.
+        server.readsFail = true
+        session.moveRow("r4", "", "o1")
+        val during = session.sections!!.associate { s -> s.key to s.rows.map { it.id }.sorted() }
+        assertEquals(listOf("r4"), during["o1"])
+        assertEquals(listOf("r1", "r2", "r3"), during["o2"])
+        server.holds.getValue("r1").complete(ApiException.Api(403, "page_edit_restricted", "no"))
+        try {
+            a.await()
+            fail("a refusal is thrown")
+        } catch (e: ApiException.Api) {
+            assertEquals("page_edit_restricted", e.code)
+        }
+        // A goes back to o1; B stays in o1 (not a snapshot from before B).
+        val shown = session.sections!!.associate { s -> s.key to s.rows.map { it.id }.sorted() }
+        assertEquals(listOf("r1", "r4"), shown["o1"])
+        assertEquals(listOf("r2", "r3"), shown["o2"])
+        assertEquals(mapOf("o1" to 2, "o2" to 2, "" to 0), session.groups!!.associate { it.key to it.count })
+        assertEquals(JsonPrimitive("o1"), session.rows.first { it.id == "r1" }.props["stage"])
+        assertEquals(JsonPrimitive("o1"), session.rows.first { it.id == "r4" }.props["stage"])
+        assertTrue(session.moving.isEmpty())
     }
 
     // --- folding, paging, the copy kept -------------------------------------------------------------------------------
