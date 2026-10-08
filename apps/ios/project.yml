@@ -80,6 +80,7 @@ targets:
       - path: NotificationService
         excludes: ["Info.plist"]
       - path: ChikuwaChat/Platform/CommunicationNotification.swift
+      - path: ChikuwaChat/Platform/InitialsAvatar.swift
     info:
       path: NotificationService/Info.plist
       properties:

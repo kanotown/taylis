@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		973D167B25ACA0EFD91C908B /* CommunicationNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24279558FDF567CCB471AC23 /* CommunicationNotificationTests.swift */; };
+		1A7A1A0B0C0D0E0F10111202 /* InitialsAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7A1A0B0C0D0E0F10111201 /* InitialsAvatar.swift */; };
+		1A7A1A0B0C0D0E0F10111203 /* InitialsAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7A1A0B0C0D0E0F10111201 /* InitialsAvatar.swift */; };
 		01AFC9F20D76F313F66A1638 /* CommunicationNotification.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88CDEB6FCD3A86A6FCF05F3B /* CommunicationNotification.swift */; };
 		5CBD9DDD8EBC5F5B5A1BE180 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D8A4F50BC0B068CD23CCC7 /* NotificationService.swift */; };
 		8812AE486E56D7F495A0A602 /* CommunicationNotification.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88CDEB6FCD3A86A6FCF05F3B /* CommunicationNotification.swift */; };
@@ -331,6 +333,7 @@
 		24279558FDF567CCB471AC23 /* CommunicationNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunicationNotificationTests.swift; sourceTree = "<group>"; };
 		07D8A4F50BC0B068CD23CCC7 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		2630316BF17D4298DCD12AB9 /* NotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A7A1A0B0C0D0E0F10111201 /* InitialsAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialsAvatar.swift; sourceTree = "<group>"; };
 		88CDEB6FCD3A86A6FCF05F3B /* CommunicationNotification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunicationNotification.swift; sourceTree = "<group>"; };
 		00940C6C370264D5309F37EB /* TestNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestNotificationTests.swift; sourceTree = "<group>"; };
 		00D8D7E37A6EBA67685667F3 /* Timeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeline.swift; sourceTree = "<group>"; };
@@ -678,6 +681,7 @@
 			children = (
 				C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */,
 				88CDEB6FCD3A86A6FCF05F3B /* CommunicationNotification.swift */,
+				1A7A1A0B0C0D0E0F10111201 /* InitialsAvatar.swift */,
 				6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */,
 				B7A02E6942A8D6B822643B15 /* PushCenter.swift */,
 				39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */,
@@ -1280,6 +1284,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8812AE486E56D7F495A0A602 /* CommunicationNotification.swift in Sources */,
+				1A7A1A0B0C0D0E0F10111202 /* InitialsAvatar.swift in Sources */,
 				3BD9985864F4BA45C1EF91AA /* AppLanguage.swift in Sources */,
 				962AA13BC8E1FA6BB823D36D /* Activity.swift in Sources */,
 				A00D3D2574285DE0FEA21A2A /* ActivityFeedView.swift in Sources */,
@@ -1457,6 +1462,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				01AFC9F20D76F313F66A1638 /* CommunicationNotification.swift in Sources */,
+				1A7A1A0B0C0D0E0F10111203 /* InitialsAvatar.swift in Sources */,
 				5CBD9DDD8EBC5F5B5A1BE180 /* NotificationService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

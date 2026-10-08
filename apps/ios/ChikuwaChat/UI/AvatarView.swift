@@ -23,7 +23,8 @@ struct AvatarView: View {
             .accessibilityHidden(true)
     }
 
-    /// The profile picture (M14a) when it is cached, else initials on a colour derived from the id.
+    /// The profile picture (M14a) when it is cached, else initials on a colour derived from the id (InitialsAvatar, the
+    /// rule every client shares).
     @ViewBuilder
     private var face: some View {
         if let image = AvatarCache.shared.image(for: id) {
@@ -37,7 +38,7 @@ struct AvatarView: View {
                 .font(.system(size: size * 0.42, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: size, height: size)
-                .background(Color(hue: Timeline.hue(id), saturation: 0.55, brightness: 0.72), in: RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+                .background(Color(uiColor: InitialsAvatar.color(id)), in: RoundedRectangle(cornerRadius: size / 4, style: .continuous))
         }
     }
 }
