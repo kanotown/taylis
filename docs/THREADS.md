@@ -141,6 +141,26 @@ ThreadState
   - 実装：Desktop / Web `ui/ThreadsView.tsx`・`ui/threadCard.ts`・`sync/store.ts`（`applyThreadPreview`）、
     iOS `UI/ThreadsListView.swift`（`ThreadCardRules`）・`Sync/Store.swift`、Android `ui/ThreadsPane.kt`
     （`ThreadCardRules`）・`sync/Store.kt`。
+- 元のメッセージの削除（2026-10-09、3 端末）：開いているスレッドの親（元のメッセージ）が削除されたら、そのスレッドを閉じる。
+  - サーバ（変えていない）：親の削除は親だけを削除済みにする（本文は空、`message.deleted` をチャンネルへ。`thread.updated` は
+    出さない）。返信は DB に残るが、`GET /messages/{親}/replies` と `GET /messages/{親}` は 404 `message_not_found` を返し、
+    返信の投稿とその親への下書きの保存も 404 で断る。`GET /threads` は削除された親を出さず、`GET /drafts` もその親への
+    下書きを隠す。
+  - 削除を知る経路：`message.deleted`（自分の削除の応答・他の端末・他の人・管理者）、差分や取りこぼしの補完で届く削除済みの行、
+    再接続などで取り直した返信の 404 `message_not_found`（削除と同じに扱う）。タイムラインを持たない会話でも、「スレッド」の
+    一覧や開いたスレッドが持つ親なら削除を受け取る。
+  - 閉じるのは、その画面でスレッドを表示できていた（親があるうちに返信を取得できた）ときだけ。Desktop / Web は右のペインを
+    閉じ（✕ と同じ）、iOS / Android はスレッドの画面を開いた元へ戻す。下に会話が無い（通知から開いたなど）ときは、その会話を開く。
+  - 閉じたら「元のメッセージが削除されたため、スレッドを閉じました」を短く出す（操作を妨げない通知）。ただし、自分がその
+    スレッドの画面の親の行から削除したときは出さずに閉じるだけ。チャンネル側・他の端末からの自分の削除では出す。
+  - 親が削除済みのスレッドを開いたとき（古いリンク・アクティビティ・通知・パーマリンク）は閉じず、「元のメッセージは
+    削除されました」とだけ出す。親の行・返信・入力欄は出さず、返信の 404 はエラーとして出さない。
+  - 親が削除されたら、その行を「スレッド」の一覧からすぐに外し、その親への返信の下書きも端末から消す（サーバも隠し、
+    保存を断るため）。入力欄も残らない。
+  - 実装：Desktop / Web `sync/store.ts`（`wasDeleted`・`forgetThread`）・`sync/engine.ts`（`forgetDeletedRoot`）・
+    `ui/ThreadPane.tsx`・`state/app.ts`（`deleteMessage` の `fromThread`）。iOS `Sync/Store.swift`（`threadRootDeleted`）・
+    `UI/ThreadView.swift`（`ThreadRootWatch`）・`App/AppController.swift`。Android `sync/Store.kt`（`dropDeletedRoot`）・
+    `ui/ThreadRootWatch.kt`・`ui/MainNav.kt`（`threadGone`）・`app/AppController.kt`。
 - 既読: チャンネルと同じく「表示できた返信の `seq`」で送る。開いただけでは既読にしない。
 - スレッドのスクロール（iOS、2026-10-07）：チャンネルと同じ規則（MOBILE_UI.md 6.6「iOS の新しい行」）。最新の返信に
   いるとき来た返信は見え、上から自分が返信すると最新の端へ飛び（途中をくぐるアニメーションはしない）、古い返信を
