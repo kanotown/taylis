@@ -99,14 +99,17 @@ pub(crate) struct NotificationPerson {
 /// Show a notification (only called after the permission said it is not "unavailable").
 #[tauri::command]
 fn native_notification_send(app: AppHandle, id: String, title: String, body: String, person: Option<NotificationPerson>) -> Result<(), String> {
+    // The epoch it was asked in: a sign-out that comes before it is shown drops it (notify_avatar::while_current).
+    #[cfg(any(target_os = "macos", windows))]
+    let epoch = notify_avatar::current_epoch();
     #[cfg(target_os = "macos")]
     if mac_notify::available() {
-        mac_notify::send(&app, id, title, body, person);
+        mac_notify::send(&app, epoch, id, title, body, person);
         return Ok(());
     }
     #[cfg(windows)]
     {
-        win_notify::send(&app, Some(id), title, body, person);
+        win_notify::send(&app, epoch, Some(id), title, body, person);
         Ok(())
     }
     #[cfg(not(windows))]
@@ -118,15 +121,18 @@ fn native_notification_send(app: AppHandle, id: String, title: String, body: Str
 
 /// Sign-out: remove our delivered notifications (nothing to do where they are not native; on Windows the toasts stay in
 /// the Action Center, as with the plugin, and a click on one after sign-out only brings the window up) and the senders'
-/// pictures kept for them (notify_avatar.rs).
+/// pictures kept for them (notify_avatar.rs). Ends the notification epoch first: a send still on its way neither shows
+/// nor writes its picture afterwards.
 #[tauri::command]
 fn native_notification_clear(app: AppHandle) {
-    #[cfg(target_os = "macos")]
-    if mac_notify::available() {
-        mac_notify::clear();
-    }
     #[cfg(any(target_os = "macos", windows))]
-    notify_avatar::clear(&app);
+    notify_avatar::end_epoch(|| {
+        #[cfg(target_os = "macos")]
+        if mac_notify::available() {
+            mac_notify::clear();
+        }
+        notify_avatar::clear(&app);
+    });
     #[cfg(not(any(target_os = "macos", windows)))]
     let _ = app;
 }

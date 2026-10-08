@@ -6,9 +6,13 @@
 //! attachment too, so each picture is written once under the app's cache folder (`notification-avatars/`, the file
 //! named by a hash of the key) and reused. A toast left in the Action Center still points at its file, so files are not
 //! removed right after showing: the folder keeps the newest `KEEP` pictures and is emptied at sign-out.
+//!
+//! Sign-out also ends the notification epoch: a send still on its way (it runs off the command's thread) that started
+//! before the sign-out neither writes its picture nor shows (`while_current`), so nothing comes back after the clear.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use tauri::{AppHandle, Manager};
 
@@ -23,6 +27,39 @@ const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 /// Prefix of the one-use copies macOS' attachments move away (mac_notify.rs); swept when older than this.
 pub const ONE_USE_PREFIX: &str = "attach-";
 const ONE_USE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// The notification epoch: bumped at each sign-out (`end_epoch`). A send runs its last steps (the picture's file, showing)
+/// under this lock, and only while the epoch it started in is still the current one.
+static EPOCH: Mutex<u64> = Mutex::new(0);
+
+fn epoch_lock() -> MutexGuard<'static, u64> {
+    EPOCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The epoch a send starts in (read when the command arrives, before it moves off the command's thread).
+pub fn current_epoch() -> u64 {
+    *epoch_lock()
+}
+
+/// Run `f` (write the picture, show the notification) unless a sign-out came after `epoch`; None when it did. A
+/// sign-out waits for a running `f` and then removes what it showed / wrote.
+pub fn while_current<T>(epoch: u64, f: impl FnOnce() -> T) -> Option<T> {
+    let current = epoch_lock();
+    if *current != epoch {
+        return None;
+    }
+    let result = f();
+    drop(current);
+    Some(result)
+}
+
+/// Sign-out: end the epoch (sends started before it are dropped) and run `clear` (remove what was shown and written)
+/// while no send can show or write.
+pub fn end_epoch(clear: impl FnOnce()) {
+    let mut current = epoch_lock();
+    *current = current.wrapping_add(1);
+    clear();
+}
 
 fn dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_cache_dir().ok().map(|cache| cache.join(DIR))
@@ -125,5 +162,18 @@ mod tests {
         let mut big = PNG_SIGNATURE.to_vec();
         big.resize(MAX_BYTES + 1, 0);
         assert!(!acceptable_png(&big));
+    }
+
+    #[test]
+    fn a_send_started_before_sign_out_does_nothing() {
+        let before = current_epoch();
+        assert_eq!(while_current(before, || 1), Some(1));
+        let mut cleared = false;
+        end_epoch(|| cleared = true);
+        assert!(cleared);
+        let mut ran = false;
+        assert_eq!(while_current(before, || ran = true), None);
+        assert!(!ran);
+        assert_eq!(while_current(current_epoch(), || 2), Some(2));
     }
 }

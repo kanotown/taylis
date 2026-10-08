@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { setAvatarPainter } from "../src/platform/notificationAvatar";
-import { notificationPermission, notify, requestNotificationPermission } from "../src/platform/notify";
+import { clearNotifications, notificationPermission, notify, requestNotificationPermission } from "../src/platform/notify";
 import { Store } from "../src/sync/store";
 import { SettingsDialog } from "../src/ui/Settings";
 import { FakeServer } from "./fakeServer";
@@ -79,6 +79,41 @@ describe("browser notifications (M28b: the permission is asked for from the sett
       expect(fetched).toEqual(["/api/v1/users/alice/avatar?v=v1"]); // with the workspace's session
       expect(options[0]).toEqual({ body: "hi", icon: "data:image/png;base64,iVBORw0KGgoB" });
       expect(options[1]).toEqual({ body: "test" });
+    } finally {
+      setAvatarPainter(null);
+    }
+  });
+
+  it("a sign-out while a picture is fetched: neither it nor the queued ones appear, nor their clicks (review v0.1.48 #5)", async () => {
+    const created: Array<{ title: string; icon?: string; onclick: (() => void) | null }> = [];
+    class Tracked {
+      static get permission(): NotificationPermission { return "granted"; }
+      onclose: (() => void) | null = null;
+      onclick: (() => void) | null = null;
+      constructor(title: string, init?: NotificationOptions) { created.push(Object.assign(this, { title, icon: init?.icon })); }
+      close(): void {}
+    }
+    vi.stubGlobal("Notification", Tracked);
+    setAvatarPainter({ picture: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]), initials: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 2]) });
+    try {
+      let arrive: ((blob: Blob) => void) | null = null;
+      const opened: string[] = [];
+      const sender = { scope: "https://a.example.com", userId: "secret", name: "Secret", version: "v1", fetchBlob: () => new Promise<Blob>((resolve) => { arrive = resolve; }), conversationId: "c", groupName: null, text: "confidential" };
+      const first = notify("Secret", "confidential", () => opened.push("first"), { sender });
+      const second = notify("Secret", "more", () => opened.push("second"));
+      const third = notify("Secret", "and more", () => opened.push("third"));
+      await vi.waitFor(() => expect(arrive).not.toBeNull());
+      clearNotifications();
+      arrive!(new Blob(["x"]));
+      await Promise.all([first, second, third]);
+      expect(created).toEqual([]);
+      expect(opened).toEqual([]);
+      // The next session's one shows at once (not behind the old picture), alone, without the old picture.
+      await notify("Taylis", "after", () => opened.push("after"));
+      expect(created.map((n) => [n.title, n.icon])).toEqual([["Taylis", undefined]]);
+      vi.stubGlobal("focus", () => {});
+      created[0]?.onclick?.();
+      expect(opened).toEqual(["after"]);
     } finally {
       setAvatarPainter(null);
     }

@@ -42,10 +42,10 @@ fn app_id(app: &AppHandle) -> String {
 /// Show one toast now. `id` names it for the click (`notification-clicked`); `None` = a click only brings the window up.
 /// A message's toast shows its sender's picture (the profile picture or the initials avatar, notify_avatar.rs) in place
 /// of the large app logo (`appLogoOverride`, cropped to a circle), like Teams or Slack; the header keeps Taylis' name
-/// and icon.
-pub fn send(app: &AppHandle, id: Option<String>, title: String, body: String, person: Option<NotificationPerson>) {
+/// and icon. `epoch` (notify_avatar::current_epoch, read when asked): nothing is written or shown after a sign-out.
+pub fn send(app: &AppHandle, epoch: u64, id: Option<String>, title: String, body: String, person: Option<NotificationPerson>) {
     let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || notify_avatar::while_current(epoch, || {
         let on_click = app.clone();
         // Default sound (Toast::new's), like macOS' banner; the plugin's toasts were silent (notify-rust's `sound(None)`).
         let mut toast = Toast::new(&app_id(&app)).title(&title).text1(&body);
@@ -66,5 +66,5 @@ pub fn send(app: &AppHandle, id: Option<String>, title: String, body: String, pe
         if let Err(err) = toast.show() {
             eprintln!("could not show the notification: {err:?}");
         }
-    });
+    }));
 }

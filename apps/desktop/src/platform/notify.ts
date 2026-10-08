@@ -46,7 +46,7 @@ interface NativePerson {
   avatarPng: number[] | null;
 }
 
-async function sendNative(title: string, body: string, onClick?: () => void, person?: NativePerson): Promise<void> {
+async function sendNative(live: () => boolean, title: string, body: string, onClick?: () => void, person?: NativePerson): Promise<void> {
   const id = `taylis-${Date.now()}-${nextId++}`;
   if (onClick) {
     clickListener ??= import("@tauri-apps/api/event").then(({ listen }) =>
@@ -57,6 +57,7 @@ async function sendNative(title: string, body: string, onClick?: () => void, per
       }),
     );
     await clickListener;
+    if (!live()) return;
     clickActions.set(id, onClick);
     if (clickActions.size > MAX_CLICK_ACTIONS) clickActions.delete(clickActions.keys().next().value as string);
   }
@@ -80,6 +81,13 @@ export interface NotifyOptions {
 /** Shown one after another, in the order asked: a picture being fetched must not let a later notification pass it. */
 let queue: Promise<void> = Promise.resolve();
 
+/**
+ * The session's notifications: sign-out (`clearNotifications`) starts a new generation. A notification asked for in an
+ * earlier one is dropped wherever it is — still queued, waiting for the permission or its picture — and never shown,
+ * given a click action or its picture afterwards (docs/PUSH_NOTIFICATIONS.md §9.3).
+ */
+let generation = 0;
+
 async function senderAvatar(sender: NotificationSender | undefined): Promise<NotificationAvatar | null> {
   if (!sender) return null;
   try {
@@ -101,18 +109,23 @@ async function senderAvatar(sender: NotificationSender | undefined): Promise<Not
  * attachment; Windows as the toast's logo; the browser as the `icon`. The plugin shows none.
  */
 export function notify(title: string, body: string, onClick?: () => void, options: NotifyOptions = {}): Promise<void> {
-  const shown = queue.then(() => show(title, body, onClick, options));
+  const asked = generation;
+  const live = () => asked === generation;
+  const shown = queue.then(() => (live() ? show(live, title, body, onClick, options) : undefined));
   queue = shown.catch(() => {});
   return shown;
 }
 
-async function show(title: string, body: string, onClick: (() => void) | undefined, { sender }: NotifyOptions): Promise<void> {
+/** `live`: still the session it was asked in — checked after every wait and right before showing. */
+async function show(live: () => boolean, title: string, body: string, onClick: (() => void) | undefined, { sender }: NotifyOptions): Promise<void> {
   if (isTauri()) {
     const native = await nativePermission();
+    if (!live()) return;
     if (native !== "unavailable") {
       const granted = native === "granted" || (native === "default" && (await nativeRequest()) === "granted");
-      if (!granted) return;
+      if (!granted || !live()) return;
       const avatar = await senderAvatar(sender);
+      if (!live()) return;
       const person: NativePerson | undefined = sender && {
         id: sender.userId,
         name: sender.name,
@@ -122,19 +135,20 @@ async function show(title: string, body: string, onClick: (() => void) | undefin
         avatarKey: avatar?.key ?? null,
         avatarPng: avatar ? Array.from(avatar.png) : null,
       };
-      await sendNative(title, body, onClick, person).catch((err: unknown) => console.warn("could not show the notification", err));
+      await sendNative(live, title, body, onClick, person).catch((err: unknown) => console.warn("could not show the notification", err));
       return;
     }
     const plugin = await import("@tauri-apps/plugin-notification");
     let granted = await plugin.isPermissionGranted();
     if (!granted) granted = (await plugin.requestPermission()) === "granted";
-    if (granted) plugin.sendNotification({ title, body });
+    if (granted && live()) plugin.sendNotification({ title, body });
     return;
   }
   // Not asked for here: a browser takes the request only from the reader's own click (the settings' 「通知を許可」),
   // and one made when a message arrived was ignored.
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   const avatar = await senderAvatar(sender);
+  if (!live()) return;
   const notification = new Notification(title, avatar ? { body, icon: pngDataUrl(avatar.png) } : { body });
   shownInBrowser.add(notification);
   notification.onclose = () => shownInBrowser.delete(notification);
@@ -182,9 +196,12 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 /**
  * Sign-out (§11): take our notifications off the screen, and the senders' pictures out of memory (and, natively, off
  * the disk). Possible in a browser and in the macOS app (native); the desktop notification plugin cannot remove
- * delivered notifications (its removeAllActive is mobile only).
+ * delivered notifications (its removeAllActive is mobile only). Notifications asked for before it and not shown yet are
+ * dropped (a new generation; the queue starts afresh, not behind a picture still being fetched for the old session).
  */
 export function clearNotifications(): void {
+  generation += 1;
+  queue = Promise.resolve();
   if (isTauri()) {
     clickActions.clear();
     void invoke<void>("native_notification_clear").catch((err: unknown) => console.warn("could not clear notifications", err));

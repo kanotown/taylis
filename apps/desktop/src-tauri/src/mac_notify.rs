@@ -180,38 +180,48 @@ async fn wait(rx: mpsc::Receiver<&'static str>) -> Result<String, String> {
 /// Show one notification. `id` names it for the click (`notification-clicked`). A message's notification (`person`)
 /// shows its sender's picture: as a communication notification where Taylis is entitled to (the picture large, the app's
 /// icon small at its corner, like Messages or Slack), else as an attachment (a thumbnail at the right). Runs off the
-/// calling thread (a command handler): the donation is waited for briefly, the file written.
-pub fn send(app: &AppHandle, id: String, title: String, body: String, person: Option<NotificationPerson>) {
+/// calling thread (a command handler): the donation is waited for briefly, the file written. `epoch`
+/// (notify_avatar::current_epoch, read when asked): after a sign-out nothing is written or shown.
+pub fn send(app: &AppHandle, epoch: u64, id: String, title: String, body: String, person: Option<NotificationPerson>) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        if notify_avatar::current_epoch() != epoch {
+            return;
+        }
         let content = UNMutableNotificationContent::new();
         content.setTitle(&NSString::from_str(&title));
         content.setBody(&NSString::from_str(&body));
         content.setSound(Some(&UNNotificationSound::defaultSound()));
-        let mut shown: Retained<UNNotificationContent> = content.clone().into_super();
+        let mut shown: Option<Retained<UNNotificationContent>> = None;
         if let Some(person) = &person {
             match communication_content(&content, person) {
-                Some(updated) => shown = updated,
+                Some(updated) => shown = Some(updated),
                 None => {
-                    // As written (the body with 「名前: 」), the picture beside it.
+                    // As written (the body with 「名前: 」), the picture beside it (attached below).
                     content.setTitle(&NSString::from_str(&title));
                     content.setSubtitle(&NSString::from_str(""));
                     content.setBody(&NSString::from_str(&body));
-                    if let Some(attachment) = notify_avatar::file(&app, person).and_then(|file| attachment(&file, &id)) {
-                        content.setAttachments(&NSArray::from_retained_slice(&[attachment]));
-                    }
-                    shown = content.clone().into_super();
                 }
             }
         }
-        let request = UNNotificationRequest::requestWithIdentifier_content_trigger(&NSString::from_str(&id), &shown, None);
-        let done = RcBlock::new(|error: *mut NSError| {
-            if !error.is_null() {
-                // SAFETY: non-null, valid for the duration of the call.
-                eprintln!("could not show the notification: {}", unsafe { &*error }.localizedDescription());
-            }
+        // The picture's file and the request only while no sign-out came meanwhile (it waits for this, then clears).
+        notify_avatar::while_current(epoch, || {
+            let shown = shown.unwrap_or_else(|| {
+                let picture = person.as_ref().and_then(|person| notify_avatar::file(&app, person));
+                if let Some(attachment) = picture.and_then(|file| attachment(&file, &id)) {
+                    content.setAttachments(&NSArray::from_retained_slice(&[attachment]));
+                }
+                content.clone().into_super()
+            });
+            let request = UNNotificationRequest::requestWithIdentifier_content_trigger(&NSString::from_str(&id), &shown, None);
+            let done = RcBlock::new(|error: *mut NSError| {
+                if !error.is_null() {
+                    // SAFETY: non-null, valid for the duration of the call.
+                    eprintln!("could not show the notification: {}", unsafe { &*error }.localizedDescription());
+                }
+            });
+            UNUserNotificationCenter::currentNotificationCenter().addNotificationRequest_withCompletionHandler(&request, Some(&done));
         });
-        UNUserNotificationCenter::currentNotificationCenter().addNotificationRequest_withCompletionHandler(&request, Some(&done));
     });
 }
 
