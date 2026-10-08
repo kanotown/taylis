@@ -555,6 +555,13 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
         if data.access == "workspace":
             grants.insert(0, ("workspace", None, "edit"))
         await repo.replace_own_grants(db, page.id, grants, actor.id)
+    elif data.kind == "database" and await access.level_of(db, actor, parent.id) < 3:
+        # M144 (WIKI.md §22.2): whoever makes a database manages it (deletes and retypes its
+        # properties), added on top of what it inherits (nothing narrows, so the rule of the
+        # effective table is unchanged). Not when they already have full access from above, so
+        # the share dialog does not list them twice; not for pages (§22.2: an own entry outlives
+        # a change to guest, §4.4).
+        await repo.replace_own_grants(db, page.id, [("user", actor.id, "full")], actor.id)
     await db.flush()
     await access.recompute_subtree(db, page.id)
     await _after_body_change(db, actor, page, before="", revision_id=revision_id, notify=True)

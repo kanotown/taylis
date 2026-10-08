@@ -319,14 +319,18 @@ async def test_a_schema_change_on_an_old_version_is_refused(
         json={"base_schema_version": old, "ops": [{"op": "add", "name": "B", "type": "text"}]},
     )
     assert stale.status_code == 409 and stale.json()["error"]["code"] == "wiki_schema_conflict"
-    # Only full access changes the schema and views; edit adds and changes rows.
+    # Edit adds properties and views (M144) and adds and changes rows; deleting a property stays
+    # with full access (the whole table: tests/test_wiki_db_access.py).
     as_user(bob)
-    refused = await schema(client, database, {"op": "add", "name": "C", "type": "text"}, expect=403)
+    await schema(client, database, {"op": "add", "name": "C", "type": "text"})
+    refused = await schema(
+        client, database, {"op": "delete", "id": prop_id(database, "C")}, expect=403
+    )
     assert refused["error"]["code"] == "page_manage_restricted"
     view = await client.put(
         f"{API}/wiki/databases/{database['page_id']}/views/mine", json={"name": "Mine"}
     )
-    assert view.status_code == 403
+    assert view.status_code == 200
     row = await add_row(client, database, "bob's")
     await set_cells(client, row["id"], {prop_id(database, "A"): "ok"})
     trashed = await client.delete(f"{API}/wiki/pages/{row['id']}")
