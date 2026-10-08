@@ -131,7 +131,7 @@ struct ThreadView: View {
                 }
                 // Outside the flip: the replies' frames come out as they are on screen.
                 .coordinateSpace(name: "threadViewport")
-                .scrollDismissesKeyboard(.interactively)
+                .conversationDismissesKeyboard()
                 .onChange(of: replies.last?.rowKey) { _, _ in
                     // As in a channel (UpsideDown.arrival): at the newest reply a new one shows, my own reply from further
                     // up jumps to it, someone else's leaves the reader where they are (the jump button counts it).
