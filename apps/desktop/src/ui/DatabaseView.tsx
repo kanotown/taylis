@@ -11,15 +11,16 @@
  * - calendar: a month by a date property; a row with a range spans its days, a click on a day adds a row on that day,
  *   a row dragged to another day moves its date (and its end with it). On a narrow screen, the month as an agenda.
  */
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, Eye, EyeOff, FileText, LayoutTemplate, ListFilter, Loader2, Maximize2, MoreHorizontal, Pencil, Plus, Save, Star, Table2, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, Eye, EyeOff, FileText, LayoutTemplate, ListFilter, Loader2, Maximize2, MoreHorizontal, Pencil, Plus, Save, Star, Trash2, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/errors";
-import type { DatabaseOut, DbFilterCondition, DbFilterOp, DbProperty, DbRow, DbRowRef, DbSchemaOp, DbTemplateRef, DbView, DbViewIn } from "../api/types";
+import type { DatabaseOut, DbFilterCondition, DbFilterOp, DbGroupOut, DbProperty, DbRow, DbRowRef, DbSchemaOp, DbTemplateRef, DbView, DbViewIn, DbViewType } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { AppController } from "../state/app";
 import { getLocale, intlLocale, t, weekdayName, type MessageKey } from "../i18n";
 import { CellDisplay, CellEditor, type DbCtx, PropertyDialog, PropIcon, propName } from "./DbCells";
+import { BoardEmpty, BoardView, GalleryView, type Grouping, LayoutButton, ListView, SectionHeader, ViewFooter, viewIcon } from "./DbViews";
 import { localZone, pageTitle } from "./docsActions";
 import { useWikiHub } from "./DocsTree";
 import { Button, cn, Input, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
@@ -50,6 +51,15 @@ import {
   viewDiffers,
   asDate,
   isRestrictedValue,
+  boardValue,
+  firstBoardProp,
+  flattenSections,
+  groupableProps,
+  groupValue,
+  moveInSections,
+  placeIn,
+  type Section,
+  sectionsOf,
 } from "./wikiDb";
 
 const PAGE = 200;
@@ -70,8 +80,32 @@ function remember(databaseId: string, viewId: string): void {
   }
 }
 
+const VIEW_WORDS: Record<DbViewType, MessageKey> = {
+  table: "docs.db.table",
+  calendar: "docs.db.calendar",
+  board: "docs.db.board",
+  list: "docs.db.list",
+  gallery: "docs.db.gallery",
+};
+
 export function viewName(view: Pick<DbView, "name" | "type">): string {
-  return view.name || (view.type === "calendar" ? t("docs.db.calendar") : t("docs.db.table"));
+  return view.name || t(VIEW_WORDS[view.type] ?? "docs.db.table");
+}
+
+/** A new view of a type (M147): a board's columns by the first select / person / checkbox; a board, list or gallery
+ * shows the first three properties (not the board's own) on its cards. */
+export function newView(database: DatabaseOut, type: DbViewType): DbViewIn {
+  const base: DbViewIn = { name: "", type, columns: [], sort: [], filter: null, date_prop_id: null, group_by: null, cover: "body", card_size: "medium" };
+  if (type === "calendar") return { ...base, date_prop_id: firstDateProp(database)?.id ?? null };
+  if (type === "table") return base;
+  const board = type === "board" ? firstBoardProp(database) : null;
+  let shown = 0;
+  const columns = database.properties.map((p) => {
+    const show = p.type === "title" || (p.id !== board?.id && shown < 3);
+    if (p.type !== "title" && show) shown += 1;
+    return { prop_id: p.id, hidden: !show };
+  });
+  return { ...base, columns, group_by: board ? { prop_id: board.id, date_unit: null, hidden: [], hide_empty: false } : null };
 }
 
 export function DatabaseView({ controller, databaseId, compact, renderPeek, onOpenRowPage }: {
@@ -88,6 +122,10 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   const [viewId, setViewId] = useState<string | null>(() => readRemembered(databaseId));
   const [draft, setDraft] = useState<DbViewIn | null>(null);
   const [rows, setRows] = useState<DbRow[]>([]);
+  // M147: a grouped answer's groups and the group of each row (null: not grouped).
+  const [groups, setGroups] = useState<DbGroupOut[] | null>(null);
+  const [rowGroups, setRowGroups] = useState<string[]>([]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [refs, setRefs] = useState<Map<string, DbRowRef>>(new Map());
   const [total, setTotal] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -128,7 +166,10 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   const datePropId = draft?.type === "calendar" ? draft.date_prop_id ?? (database ? firstDateProp(database)?.id ?? null : null) : null;
   const grid = useMemo(() => monthGrid(month.year, month.month, 1), [month]);
   const range = draft?.type === "calendar" && datePropId ? { prop_id: datePropId, start: grid[0]![0]!, end: grid[5]![6]! } : null;
-  const queryKey = draft ? JSON.stringify({ s: draft.sort, f: readyConditions(draft.filter?.conditions ?? []), c: draft.filter?.combinator, r: range, type: draft.type }) : "";
+  // M147: every view but the calendar may be grouped (a board always is, once it has its property).
+  const grouped = !!draft && draft.type !== "calendar" && !!draft.group_by?.prop_id;
+  const covers = draft?.type === "gallery" && (draft.cover ?? "body") === "body";
+  const queryKey = draft ? JSON.stringify({ s: draft.sort, f: readyConditions(draft.filter?.conditions ?? []), c: draft.filter?.combinator, r: range, type: draft.type, g: grouped ? draft.group_by : null, cv: covers }) : "";
 
   const loadRows = useCallback(async (more = false) => {
     const api = controller.api;
@@ -148,10 +189,16 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
         filter: { combinator: draft.filter?.combinator ?? "and", conditions },
         range,
         cursor: more ? cursor : null,
-        limit: range ? 1000 : PAGE,
+        limit: range || grouped ? 1000 : PAGE,
+        grouped,
+        group_by: grouped ? draft.group_by : null,
+        covers,
+        tz: localZone(),
       });
       if (seq !== loadSeq.current) return;
       setRows((current) => (more ? [...current, ...out.rows] : out.rows));
+      setGroups(out.groups ?? null);
+      setRowGroups((current) => (more ? [...current, ...(out.row_groups ?? [])] : out.row_groups ?? []));
       setRefs((current) => {
         const next = new Map(more ? current : []);
         for (const ref of out.refs) next.set(ref.id, ref);
@@ -198,6 +245,8 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     try {
       const out = await api.setWikiCells(row.id, { [propId]: value }, crypto.randomUUID());
       setRows((current) => current.map((r) => (r.id === out.row.id ? out.row : r)));
+      // A value may move the row to another group: read the groups again.
+      if (grouped) void loadRows(false);
       setRefs((current) => {
         const next = new Map(current);
         for (const ref of out.refs) next.set(ref.id, ref);
@@ -207,7 +256,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
       controller.setError(error);
       void loadRows(false);
     }
-  }, [controller, database, loadRows]);
+  }, [controller, database, loadRows, grouped]);
 
   const changeSchema = useCallback(async (ops: DbSchemaOp[]) => {
     const api = controller.api;
@@ -248,8 +297,12 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
         void loadDatabase();
         return out.row;
       }
-      setRows((current) => [...current, out.row]);
-      setTotal((n) => n + 1);
+      if (grouped) {
+        void loadRows(false);
+      } else {
+        setRows((current) => [...current, out.row]);
+        setTotal((n) => n + 1);
+      }
       return out.row;
     } catch (error) {
       controller.setError(error);
@@ -264,6 +317,35 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     } catch (error) {
       controller.setError(error);
     }
+  };
+
+  /** M147: a board's card to another column (its value) and / or another place (the rows' order), in one write; shown at
+   * once, then the server's groups. */
+  const moveCard = async (row: DbRow, from: string, to: string, index: number) => {
+    const api = controller.api;
+    const prop = draft?.group_by ? database?.properties.find((p) => p.id === draft.group_by!.prop_id) : null;
+    if (!api || !prop || !groups) return;
+    const manual = (draft?.sort ?? []).length === 0;
+    const sections = sectionsOf(groups, rows, rowGroups);
+    const set: Record<string, unknown> = from === to ? {} : { [prop.id]: boardValue(prop, row, from, to) };
+    const place = manual ? placeIn(sections.find((s) => s.key === to)?.rows ?? [], row.id, index) : {};
+    if (Object.keys(set).length === 0 && !place.before_id && !place.after_id) return;
+    const props = { ...row.props } as Record<string, unknown>;
+    if (prop.id in set) {
+      if (set[prop.id] === null || set[prop.id] === false) delete props[prop.id];
+      else props[prop.id] = set[prop.id];
+    }
+    const moved: DbRow = { ...row, props: props as DbRow["props"] };
+    const next = flattenSections(moveInSections(sections, moved, from, to, manual ? index : Number.MAX_SAFE_INTEGER));
+    setRows(next.rows);
+    setRowGroups(next.rowGroups);
+    setGroups(groups.map((g) => ({ ...g, count: g.count + (from === to ? 0 : g.key === to ? 1 : g.key === from ? -1 : 0) })));
+    try {
+      await api.moveWikiRow(row.id, { set, ...place, client_op_id: crypto.randomUUID() });
+    } catch (error) {
+      controller.setError(error);
+    }
+    void loadRows(false);
   };
 
   const saveView = async (body: DbViewIn, id = view?.id) => {
@@ -310,6 +392,24 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   const columns = columnsOf(database.properties, draft.columns ?? []);
   const setColumns = (next: Column[]) => setDraft({ ...draft, columns: toViewColumns(next) });
   const differs = viewDiffers(view, draft);
+  const newMenu = (
+    <NewRowMenu templates={database.templates ?? []} defaultId={database.default_template_id ?? null}
+      onFrom={async (templateId) => { const row = await addRow({}, templateId ? { templateId } : { blank: true }); if (row) openRow(row.id); }}
+      onNewTemplate={async () => { const row = await addRow({}, { isTemplate: true }); if (row) openRow(row.id); }}
+      onEdit={openRow}
+      onDefault={(id) => void setDefaultTemplate(id)}
+    />
+  );
+  // M147: the groups of the answer (the board's columns, the table's / list's / gallery's sections).
+  const groupProp = draft.type !== "calendar" && draft.group_by ? database.properties.find((p) => p.id === draft.group_by!.prop_id) ?? null : null;
+  const sections: Section[] | null = groupProp && groups ? sectionsOf(groups, rows, rowGroups) : null;
+  const grouping = groupProp && sections && draft.type !== "board" ? {
+    prop: groupProp,
+    unit: draft.group_by?.date_unit ?? null,
+    sections,
+    collapsed,
+    onToggle: (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; }),
+  } : null;
   const databases = [...(hub?.pages.values() ?? [])].filter((p) => p.kind === "database").map((p) => ({ id: p.id, title: p.title }));
   if (!databases.some((d) => d.id === databaseId)) databases.unshift({ id: databaseId, title: hub?.page(databaseId)?.title ?? "" });
 
@@ -330,8 +430,15 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
                 <button type="button" aria-label={t("docs.db.addView")} title={t("docs.db.addView")} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-ink/6 hover:text-ink"><Plus size={15} /></button>
               </MenuTrigger>
               <MenuContent align="start">
-                <MenuItem onSelect={() => void saveView({ name: "", type: "table", columns: [], sort: [], filter: null, date_prop_id: null }, newViewId())}><Table2 size={14} /> {t("docs.db.table")}</MenuItem>
-                <MenuItem onSelect={() => void saveView({ name: "", type: "calendar", columns: [], sort: [], filter: null, date_prop_id: firstDateProp(database)?.id ?? null }, newViewId())} disabled={!firstDateProp(database)}><CalendarDays size={14} /> {t("docs.db.calendar")}</MenuItem>
+                {(["table", "board", "list", "gallery", "calendar"] as const).map((type) => {
+                  const Icon = viewIcon(type);
+                  const disabled = (type === "calendar" && !firstDateProp(database)) || (type === "board" && !firstBoardProp(database));
+                  return (
+                    <MenuItem key={type} disabled={disabled} title={type === "board" && disabled ? t("docs.db.needBoardProp") : undefined} onSelect={() => void saveView(newView(database, type), newViewId())}>
+                      <Icon size={14} /> {t(VIEW_WORDS[type])}
+                    </MenuItem>
+                  );
+                })}
               </MenuContent>
             </Menu>
           )}
@@ -340,7 +447,8 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
           {loading && <Loader2 size={14} className="mr-1 animate-spin text-muted" />}
           <SortButton database={database} draft={draft} onChange={(sort) => setDraft({ ...draft, sort })} />
           <FilterButton ctx={ctx} draft={draft} onChange={(filter) => setDraft({ ...draft, filter })} />
-          {draft.type === "table" && <ColumnsButton columns={columns} canShape={canShape} onChange={setColumns} onAdd={() => setPropDialog({ prop: null })} onEdit={(prop) => setPropDialog({ prop })} />}
+          {draft.type !== "calendar" && <ColumnsButton columns={columns} canShape={canShape} onChange={setColumns} onAdd={() => setPropDialog({ prop: null })} onEdit={(prop) => setPropDialog({ prop })} />}
+          {draft.type !== "calendar" && <LayoutButton ctx={ctx} draft={draft} groups={groups} onChange={setDraft} />}
           {differs && (
             <>
               <Button size="sm" variant="ghost" onClick={() => setDraft(viewBody(view))}>{t("docs.db.reset")}</Button>
@@ -363,17 +471,37 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
       )}
       <div className="flex min-w-0 gap-3">
         <div className="min-w-0 flex-1">
-          {draft.type === "table" ? (
-            <TableView ctx={ctx} columns={columns} rows={rows} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)}
-              onColumns={setColumns} onAddRow={() => void addRow()} onEditProp={canShape ? (prop) => setPropDialog({ prop }) : null}
-              newMenu={(
-                <NewRowMenu templates={database.templates ?? []} defaultId={database.default_template_id ?? null}
-                  onFrom={async (templateId) => { const row = await addRow({}, templateId ? { templateId } : { blank: true }); if (row) openRow(row.id); }}
-                  onNewTemplate={async () => { const row = await addRow({}, { isTemplate: true }); if (row) openRow(row.id); }}
-                  onEdit={openRow}
-                  onDefault={(id) => void setDefaultTemplate(id)}
+          {draft.type === "board" ? (
+            groupProp && groups ? (
+              <>
+                <BoardView ctx={ctx} columns={columns} prop={groupProp} unit={draft.group_by?.date_unit ?? null} sections={sections ?? []}
+                  manual={(draft.sort ?? []).length === 0}
+                  onMove={(row, from, to, index) => void moveCard(row, from, to, index)}
+                  onAddIn={async (key) => {
+                    const value = groupValue(groupProp, key, draft.group_by?.date_unit ?? null);
+                    const row = await addRow(value === undefined ? {} : { [groupProp.id]: value });
+                    if (row) openRow(row.id);
+                  }}
+                  onHidden={(key, hide) => setDraft({ ...draft, group_by: { ...draft.group_by!, hidden: hide ? [...(draft.group_by!.hidden ?? []), key] : (draft.group_by!.hidden ?? []).filter((k) => k !== key) } })}
                 />
+                <ViewFooter ctx={ctx} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)} onAddRow={() => void addRow()} newMenu={newMenu} />
+              </>
+            ) : groupProp ? null : (
+              <BoardEmpty hasProps={groupableProps(database.properties, "board").length > 0} />
+            )
+          ) : draft.type === "list" || draft.type === "gallery" ? (
+            <>
+              {draft.type === "list" ? (
+                <ListView ctx={ctx} columns={columns} rows={rows} grouping={grouping} />
+              ) : (
+                <GalleryView ctx={ctx} columns={columns} rows={rows} grouping={grouping} cover={draft.cover ?? "body"} size={draft.card_size ?? "medium"} />
               )}
+              <ViewFooter ctx={ctx} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)} onAddRow={() => void addRow()} newMenu={newMenu} />
+            </>
+          ) : draft.type === "table" ? (
+            <TableView ctx={ctx} columns={columns} rows={rows} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)} grouping={grouping}
+              onColumns={setColumns} onAddRow={() => void addRow()} onEditProp={canShape ? (prop) => setPropDialog({ prop }) : null}
+              newMenu={newMenu}
               onAddProp={canShape ? () => setPropDialog({ prop: null }) : null}
               onSort={(propId, direction) => setDraft({ ...draft, sort: [{ prop_id: propId, direction }] })}
             />
@@ -477,7 +605,7 @@ export function NewRowMenu({ templates, defaultId, onFrom, onNewTemplate, onEdit
 }
 
 function ViewTab({ view, active, canShape, last, onPick, onRename, onDelete }: { view: DbView; active: boolean; canShape: boolean; last: boolean; onPick: () => void; onRename: () => void; onDelete: () => void }) {
-  const Icon = view.type === "calendar" ? CalendarDays : Table2;
+  const Icon = viewIcon(view.type);
   return (
     <span className={cn("group inline-flex items-center rounded-md", active ? "bg-panel-2 text-ink" : "text-muted hover:bg-ink/6 hover:text-ink")}>
       <button type="button" role="tab" aria-selected={active} className="inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium" onClick={onPick}>
@@ -702,10 +830,12 @@ function ColumnsButton({ columns, canShape, onChange, onAdd, onEdit }: { columns
 
 const ADD_COLUMN_WIDTH = 36;
 
-function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAddRow, newMenu, onEditProp, onAddProp, onSort }: {
+function TableView({ ctx, columns, rows, grouping, total, hasMore, onMore, onColumns, onAddRow, newMenu, onEditProp, onAddProp, onSort }: {
   ctx: DbCtx;
   columns: Column[];
   rows: DbRow[];
+  /** M147: the groups (a header row each, closed here). */
+  grouping: Grouping | null;
   total: number;
   hasMore: boolean;
   onMore: () => void;
@@ -719,7 +849,19 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
   onSort: (propId: string, direction: "asc" | "desc") => void;
 }) {
   const shown = columns.filter((c) => !c.hidden);
-  const [editing, setEditing] = useState<{ rowId: string; propId: string } | null>(null);
+  // A row in several groups (a multi-select, people) is a line in each: the cell edited is the one of its group.
+  const [editing, setEditing] = useState<{ rowId: string; propId: string; group: string } | null>(null);
+  const renderRow = (row: DbRow, group: string) => (
+    <tr key={`${group}:${row.id}`} className="group border-b border-line/70 hover:bg-panel/50" data-row={row.id}>
+      {shown.map((column) => (
+        <Cell key={column.prop.id} ctx={ctx} prop={column.prop} row={row}
+          editing={editing?.rowId === row.id && editing.propId === column.prop.id && editing.group === group}
+          onEdit={(on) => setEditing(on ? { rowId: row.id, propId: column.prop.id, group } : null)}
+        />
+      ))}
+      {onAddProp && <td />}
+    </tr>
+  );
   const startResize = (event: React.PointerEvent, column: Column) => {
     event.preventDefault();
     event.stopPropagation();
@@ -783,17 +925,19 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="group border-b border-line/70 hover:bg-panel/50" data-row={row.id}>
-                {shown.map((column) => (
-                  <Cell key={column.prop.id} ctx={ctx} prop={column.prop} row={row}
-                    editing={editing?.rowId === row.id && editing.propId === column.prop.id}
-                    onEdit={(on) => setEditing(on ? { rowId: row.id, propId: column.prop.id } : null)}
-                  />
-                ))}
-                {onAddProp && <td />}
-              </tr>
-            ))}
+            {grouping
+              ? grouping.sections.filter((s) => !s.hidden).flatMap((section) => {
+                const closed = grouping.collapsed.has(section.key);
+                return [
+                  <tr key={`group:${section.key}`} className="border-b border-line/70 bg-panel/30" data-group-row={section.key}>
+                    <td colSpan={shown.length + (onAddProp ? 1 : 0)} className="px-1">
+                      <SectionHeader ctx={ctx} prop={grouping.prop} unit={grouping.unit} section={section} collapsed={closed} onToggle={() => grouping.onToggle(section.key)} />
+                    </td>
+                  </tr>,
+                  ...(closed ? [] : section.rows.map((row) => renderRow(row, section.key))),
+                ];
+              })
+              : rows.map((row) => renderRow(row, ""))}
           </tbody>
         </table>
       </div>

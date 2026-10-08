@@ -3,7 +3,7 @@
  * columns from a view, and the calendar's month grid with multi-day rows laid out in lanes (and the agenda list a
  * narrow screen shows instead). The server sorts and filters; nothing here reorders rows.
  */
-import type { DatabaseOut, DbDateValue, DbFilterOp, DbProperty, DbPropType, DbRow, DbRowRef, DbView, DbViewColumn, DbViewIn } from "../api/types";
+import type { DatabaseOut, DbDateValue, DbFilterOp, DbGroupBy, DbGroupOut, DbProperty, DbPropType, DbRow, DbRowRef, DbView, DbViewColumn, DbViewIn, DbViewType } from "../api/types";
 
 export const TITLE_ID = "title";
 
@@ -226,13 +226,131 @@ export function clampWidth(width: number): number {
 
 /** A view as saved (`PUT …/views/{id}`). */
 export function viewBody(view: DbView): DbViewIn {
-  return { name: view.name, type: view.type, columns: view.columns, sort: view.sort, filter: view.filter ?? null, date_prop_id: view.date_prop_id ?? null };
+  return {
+    name: view.name, type: view.type, columns: view.columns, sort: view.sort, filter: view.filter ?? null, date_prop_id: view.date_prop_id ?? null,
+    group_by: view.group_by ?? null, cover: view.cover ?? "body", card_size: view.card_size ?? "medium",
+  };
 }
 
-/** Whether the screen's sort / filter / columns differ from the saved view (「ビューを保存」). */
+/** Whether the screen's sort / filter / columns / groups / cards differ from the saved view (「ビューを保存」). */
 export function viewDiffers(saved: DbView, draft: DbViewIn): boolean {
-  const norm = (v: DbViewIn) => JSON.stringify({ c: v.columns ?? [], s: v.sort ?? [], f: v.filter?.conditions?.length ? v.filter : null, d: v.date_prop_id ?? null });
+  const group = (g: DbViewIn["group_by"]) => (g ? { p: g.prop_id, u: g.date_unit ?? null, h: g.hidden ?? [], e: !!g.hide_empty } : null);
+  const norm = (v: DbViewIn) => JSON.stringify({
+    c: v.columns ?? [], s: v.sort ?? [], f: v.filter?.conditions?.length ? v.filter : null, d: v.date_prop_id ?? null,
+    g: group(v.group_by), cv: v.cover ?? "body", cs: v.card_size ?? "medium",
+  });
   return norm(viewBody(saved)) !== norm(draft);
+}
+
+// --- groups, boards, lists and galleries (M147, WIKI.md §22.4) -----------------------------------------------------
+
+/** The group of rows with no value (「なし」). */
+export const NONE_GROUP = "";
+/** A board's columns: a card moves by setting the value. */
+export const BOARD_GROUP_TYPES: readonly DbPropType[] = ["select", "person", "checkbox"];
+/** Any other view's groups. */
+export const GROUP_TYPES: readonly DbPropType[] = ["select", "multi_select", "person", "checkbox", "date", "created_time", "updated_time", "created_by", "updated_by"];
+
+/** The properties a view of this type may group by (none for a calendar). */
+export function groupableProps(properties: readonly DbProperty[], viewType: DbViewType): DbProperty[] {
+  if (viewType === "calendar") return [];
+  const allowed = viewType === "board" ? BOARD_GROUP_TYPES : GROUP_TYPES;
+  return properties.filter((p) => allowed.includes(p.type));
+}
+
+/** A new board's columns: the first select, else a person, else a checkbox (null: none to group by). */
+export function firstBoardProp(database: Pick<DatabaseOut, "properties">): DbProperty | null {
+  for (const type of BOARD_GROUP_TYPES) {
+    const found = database.properties.find((p) => p.type === type);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The value a card gets when it moves from the column `from` to `to`: a select takes the option (none: cleared), a
+ * checkbox its state, a person value loses `from` and gains `to` (「なし」 clears it). */
+export function boardValue(prop: DbProperty, row: DbRow, from: string, to: string): unknown {
+  if (prop.type === "checkbox") return to === "true";
+  if (to === NONE_GROUP) return null;
+  if (prop.type === "person") {
+    const current = ((row.props[prop.id] as string[] | undefined) ?? []).filter((id) => id !== from);
+    return current.includes(to) ? current : [...current, to];
+  }
+  return to;
+}
+
+/** The value of a row made in a group (「＋ 新規」 under it); undefined: the group gives none (「なし」, a week, …). */
+export function groupValue(prop: DbProperty, key: string, unit: DbGroupBy["date_unit"]): unknown {
+  if (prop.type === "checkbox") return key === "true" ? true : undefined;
+  if (key === NONE_GROUP) return undefined;
+  switch (prop.type) {
+    case "select":
+      return key;
+    case "multi_select":
+    case "person":
+      return [key];
+    case "date":
+      return (unit ?? "day") === "day" ? { start: key, end: null, time: false } : undefined;
+    default:
+      return undefined;
+  }
+}
+
+export interface Section {
+  key: string;
+  count: number;
+  hidden: boolean;
+  rows: DbRow[];
+}
+
+/** The groups of an answer with their rows (`rowGroups[i]` is the group of `rows[i]`; a row may be in several). */
+export function sectionsOf(groups: readonly DbGroupOut[], rows: readonly DbRow[], rowGroups: readonly string[]): Section[] {
+  const out = groups.map((g) => ({ key: g.key, count: g.count, hidden: g.hidden, rows: [] as DbRow[] }));
+  const byKey = new Map(out.map((s) => [s.key, s]));
+  rows.forEach((row, index) => byKey.get(rowGroups[index] ?? NONE_GROUP)?.rows.push(row));
+  return out;
+}
+
+/** The neighbour a card dropped at `index` of a column (counted without the card itself) is placed next to. */
+export function placeIn(column: readonly DbRow[], movingId: string, index: number): { before_id?: string; after_id?: string } {
+  const others = column.filter((r) => r.id !== movingId);
+  if (others.length === 0) return {};
+  if (index < others.length) return { before_id: others[Math.max(0, index)]!.id };
+  return { after_id: others[others.length - 1]!.id };
+}
+
+/** The sections after a card moved (shown at once; the server's answer replaces it): out of `from`, into `to` at
+ * `index` (counted without it), the row's new value on every copy of it. */
+export function moveInSections(sections: readonly Section[], row: DbRow, from: string, to: string, index: number): Section[] {
+  return sections.map((section) => {
+    let rows = section.rows.map((r) => (r.id === row.id ? row : r));
+    let count = section.count;
+    if (section.key === from && from !== to) {
+      rows = rows.filter((r) => r.id !== row.id);
+      count = Math.max(0, count - 1);
+    }
+    if (section.key === to) {
+      const had = rows.some((r) => r.id === row.id);
+      rows = rows.filter((r) => r.id !== row.id);
+      rows.splice(Math.max(0, Math.min(rows.length, index)), 0, row);
+      if (!had) count += 1;
+    }
+    return { ...section, rows, count };
+  });
+}
+
+/** Sections back as the answer's parallel lists. */
+export function flattenSections(sections: readonly Section[]): { rows: DbRow[]; rowGroups: string[] } {
+  const rows: DbRow[] = [];
+  const rowGroups: string[] = [];
+  for (const section of sections) for (const row of section.rows) { rows.push(row); rowGroups.push(section.key); }
+  return { rows, rowGroups };
+}
+
+/** The date of a group "YYYY-MM-DD" / "YYYY-MM" as a local Date (labels). */
+export function groupDate(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y!, (m ?? 1) - 1, d ?? 1);
 }
 
 /** The first date property (a new calendar's). */
