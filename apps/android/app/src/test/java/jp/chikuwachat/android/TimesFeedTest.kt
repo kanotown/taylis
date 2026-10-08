@@ -88,6 +88,24 @@ class TimesFeedTest {
         assertTrue(TimesFeed.isFeedChannel(channel("a", times = me), now))
     }
 
+    /** 2026-10-09: the home's 「Times」 is bright only while a feed times has something unread. */
+    @Test
+    fun hasUnreadAsksTheFeedChannelsOnly() {
+        assertFalse(TimesFeed.hasUnread(listOf(channel("a"), channel("b")), now))
+        assertTrue(TimesFeed.hasUnread(listOf(channel("a"), channel("b").copy(unreadCount = 2)), now))
+        assertTrue(TimesFeed.hasUnread(listOf(channel("a", times = me).copy(unreadCount = 1)), now)) // a comment on mine
+        // Not a times, muted, not a member: their unread does not light it.
+        assertFalse(
+            TimesFeed.hasUnread(
+                listOf(
+                    channel("c", times = null).copy(unreadCount = 5), channel("a", level = "none").copy(unreadCount = 3),
+                    channel("b", member = false).copy(unreadCount = 1),
+                ),
+                now,
+            ),
+        )
+    }
+
     // --- order and paging ---
 
     @Test

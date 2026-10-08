@@ -164,6 +164,9 @@ it("the tiles replace the chips: スレッド with its unread count, a zero dimm
   expect(tile("drafts").hasAttribute("data-empty")).toBe(true);
   expect(tile("drafts").className).toContain("opacity-50");
   expect(tile("files").hasAttribute("data-empty")).toBe(false); // no count
+  // TIMES_FEED.md §4 (2026-10-09): 「Times」 is dimmed while no times I read has anything unread.
+  expect(tile("times").hasAttribute("data-empty")).toBe(true);
+  expect(tile("times").getAttribute("aria-label")).toBe("Times");
   fireEvent.click(tile("drafts"));
   await flush();
   expect(screen.getByText("送信していない下書きはありません")).toBeTruthy();

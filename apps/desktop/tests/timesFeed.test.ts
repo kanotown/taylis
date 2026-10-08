@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import type { PollOut } from "../src/api/types";
-import { appendFeed, applyFeedMessage, applyFeedMyVotes, applyFeedParentThread, EMPTY_FEED, feedOrder, feedRevealTarget, feedTimeKey, isFeedRow, isNewFeedRow, pruneFeed, replaceFeed, TimesFeedHub, type TimesFeedPage } from "../src/sync/timesFeed";
+import { appendFeed, applyFeedMessage, applyFeedMyVotes, applyFeedParentThread, EMPTY_FEED, feedOrder, feedRevealTarget, feedTimeKey, hasUnreadFeed, isFeedRow, isNewFeedRow, pruneFeed, replaceFeed, TimesFeedHub, type TimesFeedPage } from "../src/sync/timesFeed";
 import type { ChannelState, MessageState } from "../src/sync/types";
 import { FakeServer } from "./fakeServer";
 
@@ -56,6 +56,13 @@ describe("feed order and rows", () => {
     expect(isFeedRow(msg(), channel({ mutedUntil: "2026-10-01T00:00:00Z" }), NOW)).toBe(true); // the mute ran out
     expect(isFeedRow(msg(), channel({ archived: true }), NOW)).toBe(true); // a graduate's times stays readable
     expect(isFeedRow(msg(), undefined, NOW)).toBe(false);
+  });
+
+  it("hasUnreadFeed: the home's 「Times」 is bright only while a feed times has something unread (2026-10-09)", () => {
+    expect(hasUnreadFeed([channel(), channel({ id: "c2" })], NOW)).toBe(false);
+    expect(hasUnreadFeed([channel(), channel({ id: "c2", unreadCount: 2 })], NOW)).toBe(true);
+    // Not a times, muted, not a member: their unread does not light it.
+    expect(hasUnreadFeed([channel({ times_owner_id: null, unreadCount: 5 }), channel({ muted: true, unreadCount: 3 }), channel({ isMember: false, unreadCount: 1 })], NOW)).toBe(false);
   });
 
   it("the 「新しい」 dot: past the channel's read position, never on my own rows", () => {

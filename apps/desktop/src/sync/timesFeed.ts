@@ -88,6 +88,16 @@ export function isFeedChannel(channel: ChannelState | undefined, now: Date = new
   return !!channel && channel.isMember && !!channel.times_owner_id && !isMutedChannel(channel, now);
 }
 
+/**
+ * §4 (2026-10-09): whether any feed times has something unread — the narrow home's 「Times」 tile is dimmed otherwise,
+ * like an entry with nothing new (testers: it stayed bright with nothing left to read). The server's unread count, so my
+ * own posts and thread-only replies do not count.
+ */
+export function hasUnreadFeed(channels: Iterable<ChannelState>, now: Date = new Date()): boolean {
+  for (const channel of channels) if (isFeedChannel(channel, now) && channel.unreadCount > 0) return true;
+  return false;
+}
+
 /** §5 isFeedRow: a user's timeline row (top-level, or a reply also sent to the channel) of a feed channel, not deleted. */
 export function isFeedRow(message: MessageState, channel: ChannelState | undefined, now: Date = new Date()): boolean {
   return (

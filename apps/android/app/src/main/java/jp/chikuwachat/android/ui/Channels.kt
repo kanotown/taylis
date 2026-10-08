@@ -353,8 +353,9 @@ enum class HomeTile(private val labelRes: Int?) {
 }
 
 /** A tile's number (null: none shown), red when `alert`; a 0 is dimmed but still opens its list. */
-data class TileState(val tile: HomeTile, val count: Int?, val alert: Boolean = false) {
-    val dimmed: Boolean get() = count == 0
+/** `quiet`: dimmed without a number (「Times」 while no feed times has anything unread, TIMES_FEED.md §4). */
+data class TileState(val tile: HomeTile, val count: Int?, val alert: Boolean = false, val quiet: Boolean = false) {
+    val dimmed: Boolean get() = count == 0 || quiet
 }
 
 object HomeTiles {
@@ -365,9 +366,9 @@ object HomeTiles {
     /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?, reservations: ReservationTile? = null,
-        attendance: Boolean = false, actions: Boolean = false,
+        attendance: Boolean = false, actions: Boolean = false, timesUnread: Boolean = true,
     ): List<TileState> {
-        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions).associateBy { it.tile.navKey }
+        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions, timesUnread).associateBy { it.tile.navKey }
         return NavItems.tileKeys(navItems, NavItems.implemented(attendance, actions)).mapNotNull { byKey[it] }
     }
 
@@ -376,9 +377,9 @@ object HomeTiles {
 
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null, attendance: Boolean = false,
-        actions: Boolean = false,
+        actions: Boolean = false, timesUnread: Boolean = true,
     ): List<TileState> {
-        val row = base(threads, drafts, saved, firedReminders).toMutableList()
+        val row = base(threads, drafts, saved, firedReminders, timesUnread).toMutableList()
         if (attendance) row.add(TileState(HomeTile.ATTENDANCE, null)) // M140
         if (actions) row.add(TileState(HomeTile.ACTIONS, null)) // M143
         if (reservations != null) {
@@ -388,9 +389,9 @@ object HomeTiles {
         return row
     }
 
-    private fun base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int): List<TileState> = listOf(
+    private fun base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, timesUnread: Boolean): List<TileState> = listOf(
         TileState(HomeTile.THREADS, threads.unreadCount, alert = threads.unreadCount > 0 && threads.mentionCount > 0),
-        TileState(HomeTile.TIMES, null),
+        TileState(HomeTile.TIMES, null, quiet = !timesUnread),
         TileState(HomeTile.DRAFTS, drafts),
         TileState(HomeTile.SAVED, saved),
         TileState(HomeTile.REMINDERS, firedReminders, alert = firedReminders > 0),

@@ -269,7 +269,8 @@ struct ChannelListView: View {
                                  attendance: store.attendance.flatMap { board in
                                      controller.isGuest ? nil : AttendanceRules.inRoomCount(board, users: store.users.values)
                                  },
-                                 actions: ActionRules.visible(store.actions, role: (store.me ?? controller.me)?.role))
+                                 actions: ActionRules.visible(store.actions, role: (store.me ?? controller.me)?.role),
+                                 timesUnread: TimesFeedList.hasUnread(store.channels.values))
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(row) { tile in
