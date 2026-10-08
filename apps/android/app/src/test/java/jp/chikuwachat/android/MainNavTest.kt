@@ -135,6 +135,33 @@ class MainNavTest {
     }
 
     @Test
+    fun aThreadHeadersConversationLinkShowsTheConversationWhereTheThreadWas() {
+        // Opened from its conversation: back to it (no second copy); the tab goes back to 「メッセージ」.
+        val inChannel = MainNav.openThread(MainNav.openConversation(root, "c1"), "p1")
+        assertEquals(root + channel(), MainNav.openThreadConversation(inChannel))
+        // From the activity on a phone (ThreadFrom.LIST): the conversation in the thread's place, back to the activity.
+        val activity = listOf<Route>(Route.Activity())
+        val fromActivity = MainNav.openThreadConversation(MainNav.openFromThreadList(activity, "c1", "p1"))
+        assertEquals(activity + channel(), fromActivity)
+        assertEquals(activity, MainNav.back(fromActivity))
+        // From the 「スレッド」 list: the same, back to the list.
+        val list = MainNav.open(root, Route.Threads)
+        val fromList = MainNav.openThreadConversation(MainNav.openFromThreadList(list, "c1", "p1"))
+        assertEquals(list + channel(), fromList)
+        assertEquals(list, MainNav.back(fromList))
+        // From a search result: back to the results, as from the thread.
+        val results = searched()
+        val fromSearch = MainNav.openThreadConversation(MainNav.openFromSearch(results, "c1", "p1"))
+        assertEquals(MainNav.back(MainNav.openFromSearch(results, "c1", "p1")), MainNav.back(fromSearch))
+        assertEquals(channel(), MainNav.top(fromSearch))
+        // A thread with no conversation under it (a restored stack): its conversation takes its place.
+        assertEquals(root + channel(), MainNav.openThreadConversation(root + Route.Thread("c1", "p1")))
+        // No thread on top: nothing changes.
+        val plain = MainNav.openConversation(root, "c1")
+        assertEquals(plain, MainNav.openThreadConversation(plain))
+    }
+
+    @Test
     fun aNotificationOfAReplyOpensItsThreadOverItsConversation() {
         // M28c: back from the thread shows the conversation, then the channel list.
         val stack = MainNav.openConversation(root, "c1", "p1")

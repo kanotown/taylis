@@ -866,6 +866,7 @@
     <string name="main_screen_choose_a_channel_from_the_list">请从左侧列表中选择频道</string>
     <string name="main_screen_choose_a_dm_from_the_list">请从左侧列表中选择私信</string>
     <string name="main_screen_close_thread">关闭话题</string>
+    <string name="main_screen_open_conversation">打开 %1$s</string>
     <string name="main_screen_connecting_to_the_server">正在连接服务器…</string>
     <string name="main_screen_details">详情</string>
     <string name="main_screen_follow">关注</string>

@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -75,11 +76,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -540,6 +546,21 @@ fun MainScreen(controller: AppController) {
         }
     }
 
+    /**
+     * The thread header's conversation link (MOBILE_UI.md §6.7): the thread's parent revealed in its conversation's
+     * timeline, then the conversation in place of the thread (MainNav.openThreadConversation). `beside`: the thread's
+     * own pane next to the conversation (three panes), which stays open. Nothing moves when the parent cannot be had
+     * (the reveal reports why).
+     */
+    fun openConversationOfThread(channelId: String, parentId: String, beside: Boolean) {
+        scope.launch {
+            if (!controller.revealMessage(parentId, channelId, null) || beside) return@launch
+            if (MainNav.thread(stack)?.parentId != parentId) return@launch // moved on meanwhile
+            focusManager.clearFocus()
+            stack = MainNav.openThreadConversation(stack)
+        }
+    }
+
     val me = store.me
     val isChannel = selectedChannel != null && !selectedChannel.channel.isDm
     // M27 (SYNC_PROTOCOL.md §7.6.1): a public channel I have not joined opens read-only, until 「参加する」.
@@ -737,7 +758,13 @@ fun MainScreen(controller: AppController) {
                     when {
                         // D1: the page's own header shows the name large.
                         detailsOpen -> Text(if (isChannel) stringResource(R.string.main_screen_channel_details) else stringResource(R.string.main_screen_details), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        threadId != null -> TwoLineTitle(stringResource(R.string.common_thread), selectedChannel?.let { channelTitle(it, store) })
+                        threadId != null -> {
+                            val conversation = selectedChannel?.let { channelTitle(it, store) }
+                            // §6.7: the conversation line is a link to it (not while the thread shows its root deleted).
+                            val link = if (conversation == null || selectedChannel == null || store.isRootDeleted(threadId)) null
+                            else ({ openConversationOfThread(selectedChannel.id, threadId, beside = closes) })
+                            TwoLineTitle(stringResource(R.string.common_thread), conversation, subtitleLink = link)
+                        }
                         selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), stringResource(R.string.main_screen_preview_not_joined))
                         // M29: the title opens the details page.
                         selectedChannel != null -> Column(Modifier.clickable(onClickLabel = stringResource(R.string.main_screen_channel_details)) { openDetails() }) {
@@ -1496,13 +1523,29 @@ private fun CoveringPage(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun TwoLineTitle(title: String, subtitle: String?, emoji: Pair<AppController, Int>? = null) {
+private fun TwoLineTitle(title: String, subtitle: String?, emoji: Pair<AppController, Int>? = null, subtitleLink: (() -> Unit)? = null) {
     Column {
         Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (subtitle != null) {
             val style = MaterialTheme.typography.bodySmall
             val color = MaterialTheme.colorScheme.onSurfaceVariant
-            if (emoji != null) EmojiLineText(subtitle, emoji.first, emoji.second, style, color)
+            if (subtitleLink != null) {
+                // A link (the thread's conversation): the accent colour and a chevron, read as 「#general を開く」.
+                val label = stringResource(R.string.main_screen_open_conversation, subtitle)
+                Row(
+                    Modifier
+                        .clearAndSetSemantics {
+                            contentDescription = label
+                            role = Role.Button
+                            onClick(label) { subtitleLink(); true }
+                        }
+                        .clickable(onClick = subtitleLink),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(subtitle, style = style, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                }
+            } else if (emoji != null) EmojiLineText(subtitle, emoji.first, emoji.second, style, color)
             else Text(subtitle, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

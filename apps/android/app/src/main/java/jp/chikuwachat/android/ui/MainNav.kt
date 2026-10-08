@@ -228,6 +228,21 @@ object MainNav {
     fun openConversationFromThreadList(stack: List<Route>, channelId: String): List<Route> =
         openConversation(stack, channelId)
 
+    /**
+     * The thread header's conversation link (MOBILE_UI.md §6.7): the conversation in place of the thread on top, its
+     * timeline around the thread's parent (the caller focuses it), on 「メッセージ」. A thread always sits on its
+     * conversation, so the thread just leaves: back from the conversation then goes where the thread's back went (the
+     * conversation's own way back; the 「スレッド」 list or the activity it was opened from; the results). Nothing else on
+     * top: the stack stays.
+     */
+    fun openThreadConversation(stack: List<Route>): List<Route> {
+        val thread = top(stack) as? Route.Thread ?: return stack
+        val rest = stack.dropLast(1)
+        val channel = top(rest) as? Route.Channel
+        return if (channel?.id == thread.channelId) replaceTop(rest, channel.copy(tab = ConversationTab.MESSAGES, detailsOpen = false))
+        else rest.ifEmpty { listOf(rootOf(stack)) } + Route.Channel(thread.channelId)
+    }
+
     /** A draft row: the drafts list closes, its conversation (or thread) opens with the composer's text restored. */
     fun openDraft(stack: List<Route>, channelId: String, parentId: String?): List<Route> =
         openConversation(stack.filterNot { it is Route.Drafts }, channelId, parentId)
