@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from PIL import Image
@@ -23,7 +24,7 @@ from app.modules.canvases import service as canvases
 from app.modules.canvases import templates as tpl
 from app.modules.canvases.models import CanvasTemplate
 from app.modules.importer.models import ImportRef
-from app.modules.importer.notion_import import convert_notion_templates
+from app.modules.importer.notion_import import NotionImport, convert_notion_templates
 from app.modules.wiki.models import WikiDatabase, WikiNotice, WikiPage
 from tests.helpers import make_user
 from tests.test_notion_import import _page, _people, export_files, run_import, write_zip
@@ -37,6 +38,7 @@ from tests.wiki_helpers import (
     key,
     option_id,
     prop_id,
+    save,
     schema,
     set_access,
     set_cells,
@@ -896,6 +898,74 @@ async def test_the_cli_turns_rows_imported_before_into_templates_once(
     assert not (await _page(db, "Template", "row")).is_template
     record = await db.get(WikiDatabase, template.parent_id)
     assert record is not None
+
+
+async def test_the_cli_leaves_rows_changed_after_its_plan(
+    app: FastAPI,
+    db: AsyncSession,
+    tmp_path: Path,
+    client: AsyncClient,
+    as_user: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW-v0.1.48 #6: rows planned as unchanged that someone renames, writes in, makes a
+    template and a row again, or trashes before the conversion locks them stay rows (reported),
+    with no template entry; the untouched one is converted."""
+    people = await _people(db)
+    files = export_files()
+    for name, nid in (("Draft", "d"), ("Spare", "e"), ("Gone", "f"), ("Idle", "9")):
+        files[f"Home/Papers/{name} {nid * 32}.md"] = f"# {name}\n\nStage: draft\n"
+    path = write_zip(tmp_path / "e.zip", files)
+    await run_import(app, db, path)
+    await _as_before_m145(db)
+    ids = {
+        n: (await _page(db, n, "row")).id for n in ("Template", "Draft", "Spare", "Gone", "Idle")
+    }
+    papers_id = (await _page(db, "Papers", "database")).id
+    await db.refresh(people["bob"])
+    await db.commit()
+
+    real = NotionImport._convert_templates
+
+    async def edits_first(job: NotionImport) -> int:
+        assert len(job._plan_templates()) == 5  # all planned as unchanged
+        as_user(people["bob"])
+        await set_cells(client, str(ids["Template"]), {"title": "An actual research project"})
+        draft = (await client.get(f"{API}/wiki/pages/{ids['Draft']}")).json()
+        assert (await save(client, draft, "# Draft\n\nreal notes\n")).status_code == 200
+        for flag in (True, False):
+            response = await client.patch(
+                f"{API}/wiki/pages/{ids['Spare']}", json={"is_template": flag}
+            )
+            assert response.status_code == 200, response.text
+        assert (await client.delete(f"{API}/wiki/pages/{ids['Gone']}")).status_code == 204
+        return await real(job)
+
+    monkeypatch.setattr(NotionImport, "_convert_templates", edits_first)
+    report = await convert_notion_templates(
+        db, path, actor_username="admin", settings=app.state.settings, dry_run=False
+    )
+
+    assert len(report.templates) == 1 and "Idle" in report.templates[0]
+    assert report.counts["row templates: turned"] == 1
+    left = " ".join(report.templates_left)
+    assert all(n in left for n in ("Template", "Draft", "Spare")) and "Gone" not in left
+    db.expire_all()
+    for name in ("Template", "Draft", "Spare", "Gone"):
+        page = await db.get(WikiPage, ids[name])
+        assert page is not None and not page.is_template, name
+    idle = await db.get(WikiPage, ids["Idle"])
+    assert idle is not None and idle.is_template
+    refs = (
+        await db.execute(select(ImportRef.target_id).where(ImportRef.kind == "template"))
+    ).scalars()
+    assert set(refs) == {ids["Idle"]}
+    await db.refresh(people["bob"])
+    response = await client.post(f"{API}/wiki/databases/{papers_id}/query", json={"limit": 50})
+    assert response.status_code == 200, response.text
+    listed = {r["id"] for r in response.json()["rows"]}
+    assert {str(ids[n]) for n in ("Template", "Draft", "Spare")} <= listed
+    assert str(ids["Idle"]) not in listed
 
 
 async def test_cli_parses_wiki_notion_templates() -> None:

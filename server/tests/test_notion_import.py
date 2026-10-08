@@ -34,6 +34,7 @@ from app.modules.importer.notion_export import (
     read_tree,
 )
 from app.modules.importer.notion_import import (
+    NotionImport,
     NotionReport,
     Options,
     import_notion,
@@ -41,7 +42,7 @@ from app.modules.importer.notion_import import (
 )
 from app.modules.users.models import User
 from app.modules.wiki import access
-from app.modules.wiki.models import WikiDatabase, WikiPage, WikiPageRevision
+from app.modules.wiki.models import WikiDatabase, WikiLink, WikiPage, WikiPageRevision
 from tests.helpers import make_user
 from tests.wiki_helpers import API, Actor, key, save
 
@@ -817,3 +818,166 @@ async def test_cli_parses_import_notion() -> None:
     )
     assert args.func is cli.cmd_import_notion and args.access == "private" and args.dry_run
     assert cli._notion_user_map(["Taro Yamada=taro"], []) == {"Taro Yamada": "taro"}
+
+
+# --- someone saves between the plan and the write (REVIEW-v0.1.48 #8) ---------------------------
+
+
+async def _prop(db: AsyncSession, database: str, name: str) -> str:
+    page = await _page(db, database, "database")
+    record = await db.get(WikiDatabase, page.id)
+    assert record is not None
+    await db.refresh(record)
+    return str(next(p["id"] for p in record.schema_doc["properties"] if p["name"] == name))
+
+
+async def _relations(db: AsyncSession, row: Any, prop: str) -> list[Any]:
+    rows = await db.execute(
+        text(
+            "SELECT dst_page_id FROM wiki_relations WHERE src_page_id = :row AND prop_id = :p "
+            "ORDER BY position"
+        ),
+        {"row": row, "p": prop},
+    )
+    return [r[0] for r in rows.all()]
+
+
+async def test_a_page_saved_after_the_plan_is_not_overwritten(
+    app: FastAPI,
+    db: AsyncSession,
+    tmp_path: Path,
+    client: AsyncClient,
+    as_user: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    people = await _people(db)
+    await run_import(app, db, write_zip(tmp_path / "e.zip", export_files()))
+    note, authors = await _prop(db, "Papers", "Note"), await _prop(db, "Papers", "Authors")
+    ann_id = (await _page(db, "Ann", "row")).id
+    await db.refresh(people["bob"])
+    await db.commit()
+
+    # a newer export changes Home, Guide (and a new file there), Alpha, Beta and the row Bob
+    changed = export_files()
+    changed[f"Home {HOME}.md"] = str(changed[f"Home {HOME}.md"]).replace("Intro", "Introduction")
+    changed[f"Home/Guide {GUIDE}.md"] = (
+        str(changed[f"Home/Guide {GUIDE}.md"]) + "\nNew line.\n\n![](Guide/extra.png)\n"
+    )
+    changed["Home/Guide/extra.png"] = _png(8, 8)
+    changed[f"Home/Papers/Beta {ROW2}.md"] = "# Beta\n\nDone: No\nStage: draft\n\nNow with notes.\n"
+    changed[f"Home/People/Bob {P2}.md"] = "# Bob\n\nBob's notes.\n"
+    rows = list(csv.reader(io.StringIO(str(changed[f"Home/Papers {PAPERS}_all.csv"]))))
+    rows[1][rows[0].index("Note")] = "first one, revised"
+    changed[f"Home/Papers {PAPERS}_all.csv"] = csv_text(rows)
+    newer = write_zip(tmp_path / "newer.zip", changed)
+
+    real = NotionImport._write_pages
+    saved: dict[str, Any] = {}
+
+    async def edits_first(job: NotionImport) -> None:
+        """The plan is made (nothing locked yet): others save through the API, then it writes."""
+        assert job.report.counts["pages: update"] == 2  # Home, Guide
+        assert job.report.counts["rows: update"] == 3  # Alpha, Beta, Bob
+        as_user(people["bob"])
+        guide = (await client.get(f"{API}/wiki/pages/{(await _page(db, 'Guide')).id}")).json()
+        response = await save(client, guide, guide["body"] + "\nIMPORTANT NEW EDIT\n")
+        assert response.status_code == 200, response.text
+        beta = await _page(db, "Beta", "row")
+        response = await client.patch(
+            f"{API}/wiki/rows/{beta.id}/props",
+            json={"set": {note: "mine"}, "client_op_id": key()},
+        )
+        assert response.status_code == 200, response.text
+        alpha = await _page(db, "Alpha", "row")
+        response = await client.patch(
+            f"{API}/wiki/pages/{alpha.id}", json={"title": "Alpha renamed"}
+        )
+        assert response.status_code == 200, response.text
+        row_bob = await _page(db, "Bob", "row")
+        saved["bob"] = row_bob.id
+        assert (await client.delete(f"{API}/wiki/pages/{row_bob.id}")).status_code == 204
+        gamma = await _page(db, "Gamma", "row")  # the same in the export, its cell changed here
+        response = await client.patch(
+            f"{API}/wiki/rows/{gamma.id}/props",
+            json={"set": {authors: []}, "client_op_id": key()},
+        )
+        assert response.status_code == 200, response.text
+        saved["gamma"] = await _relations(db, gamma.id, authors)  # the trashed row stays linked
+        assert ann_id not in saved["gamma"]
+        await real(job)
+
+    monkeypatch.setattr(NotionImport, "_write_pages", edits_first)
+    report = await run_import(app, db, newer)
+
+    db.expire_all()
+    home = await _page(db, "Home")
+    assert "Introduction" in home.body  # nobody touched it: overwritten
+    guide = await _page(db, "Guide")
+    assert "IMPORTANT NEW EDIT" in guide.body and "New line." not in guide.body
+    extra = await db.scalar(
+        select(func.count())
+        .select_from(Attachment)
+        .where(Attachment.page_id == guide.id, Attachment.filename == "extra.png")
+    )
+    assert extra == 0  # its files are not written either
+    beta = await _page(db, "Beta", "row")
+    assert "Now with notes." not in beta.body and (beta.props or {})[note] == "mine"
+    alpha = await _page(db, "Alpha renamed", "row")
+    assert (alpha.props or {})[note] == "first one"
+    row_bob = await db.get(WikiPage, saved["bob"])
+    assert row_bob is not None and row_bob.is_deleted and "Bob's notes." not in row_bob.body
+    gamma = await _page(db, "Gamma", "row")
+    assert await _relations(db, gamma.id, authors) == saved["gamma"]
+    assert report.counts["pages: update"] == 1 and report.counts["pages: edited"] == 1
+    assert report.counts["rows: edited"] == 3, (report.counts, report.edited)
+    assert report.counts["rows: trashed"] == 1
+    assert "rows: update" not in report.counts
+    for name in ("Guide", "Beta", "Alpha", "Gamma"):
+        assert any(name in line for line in report.edited), (name, report.edited)
+    assert any("Bob" in w and "取り込みの途中" in w for w in report.warnings)
+    assert (await access.verify(db)) == []
+
+
+async def test_a_page_saved_before_its_links_keeps_its_own(
+    app: FastAPI,
+    db: AsyncSession,
+    tmp_path: Path,
+    client: AsyncClient,
+    as_user: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saved after its batch was committed, before the links and relations are written."""
+    people = await _people(db)
+    path = write_zip(tmp_path / "e.zip", export_files())
+    await run_import(app, db, path)
+    authors = await _prop(db, "Papers", "Authors")
+    ann_id = (await _page(db, "Ann", "row")).id
+    sub_id = (await _page(db, "Sub")).id
+    gamma_id = (await _page(db, "Gamma", "row")).id
+    links = select(func.count()).select_from(WikiLink).where(WikiLink.src_page_id == sub_id)
+    assert await db.scalar(links) == 1
+
+    real = NotionImport._write_links_and_relations
+
+    async def edits_first(job: NotionImport) -> None:
+        await job.db.refresh(people["bob"])
+        as_user(people["bob"])
+        page = (await client.get(f"{API}/wiki/pages/{sub_id}")).json()
+        assert (await save(client, page, "# Sub\n\nno links now\n")).status_code == 200
+        response = await client.patch(
+            f"{API}/wiki/rows/{gamma_id}/props",
+            json={"set": {authors: [str(ann_id)]}, "client_op_id": key()},
+        )
+        assert response.status_code == 200, response.text
+        await real(job)
+
+    monkeypatch.setattr(NotionImport, "_write_links_and_relations", edits_first)
+    # the same export: all "same", their links and relations written again as the export has them
+    report = await run_import(app, db, path)
+
+    db.expire_all()
+    assert await db.scalar(links) == 0
+    assert "no links now" in (await _page(db, "Sub")).body
+    assert await _relations(db, gamma_id, authors) == [ann_id]
+    assert any("Sub" in line for line in report.edited)
+    assert any("Gamma" in line for line in report.edited)
