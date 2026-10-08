@@ -102,6 +102,17 @@ struct MainNavigation: Equatable {
         paths[tab, default: []].append(.thread(channelId: channelId, parentId: parentId))
     }
 
+    /// The thread header's conversation link (MOBILE_UI.md §6.7): the conversation in place of the thread in front. A
+    /// thread pushed over its own conversation is popped back to it (not a second copy of it); one pushed alone (from
+    /// the activity) gives its place to the conversation, so Back from it goes where the thread's Back went. Anything
+    /// else in front gets the conversation pushed over it, unless it is that conversation already.
+    mutating func openThreadConversation(_ channelId: String, on tab: MainTab) {
+        var path = layout == .split ? split : paths[tab] ?? []
+        if case .thread(let id, _)? = path.last, id == channelId { path.removeLast() }
+        if path.last != .channel(channelId) { path.append(.channel(channelId)) }
+        if layout == .split { split = path } else { paths[tab] = path }
+    }
+
     /// A conversation's screens on a phone's stack: the conversation, and the thread over it.
     static func conversation(_ channelId: String, thread parentId: String?) -> [MainRoute] {
         [.channel(channelId)] + (parentId.map { [.thread(channelId: channelId, parentId: $0)] } ?? [])
