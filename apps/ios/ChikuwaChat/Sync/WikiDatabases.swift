@@ -10,6 +10,8 @@ protocol WikiDbApi: AnyObject {
     func wikiRow(id: String) async throws -> DbRowDetail
     func setRowCells(rowId: String, set: [String: JSONValue], clientOpId: String) async throws -> DbRowWithRefs
     func relationCandidates(databaseId: String, propId: String, q: String) async throws -> [DbRowRef]
+    /// M148: a board card's 「◯◯へ移動」 (POST /wiki/rows/{id}/move).
+    func moveRow(rowId: String, _ move: DbRowMove) async throws -> DbRowWithRefs
 }
 
 extension ApiClient: WikiDbApi {
@@ -33,6 +35,10 @@ extension ApiClient: WikiDbApi {
         try await requestJSON("GET", Self.pathWithQuery("/api/v1/wiki/databases/\(databaseId)/properties/\(propId)/candidates",
                                                          [URLQueryItem(name: "q", value: q), URLQueryItem(name: "limit", value: "30")]))
     }
+
+    func moveRow(rowId: String, _ move: DbRowMove) async throws -> DbRowWithRefs {
+        try await requestJSON("POST", "/api/v1/wiki/rows/\(rowId)/move", body: move.json)
+    }
 }
 
 /// A cell write (PATCH /wiki/rows/{id}/props, §5.3): one `client_op_id` for the edit, sent again with the same id after a
@@ -44,11 +50,21 @@ enum DbCellWriter {
 
     static func write(api: WikiDbApi, rowId: String, set: [String: JSONValue], opId: String = UUID().uuidString.lowercased(),
                       delays: [TimeInterval]? = nil) async throws -> DbRowWithRefs {
+        try await retrying(delays) { try await api.setRowCells(rowId: rowId, set: set, clientOpId: opId) }
+    }
+
+    /// M148: a board card's move (POST …/move with the column's value), retried with the same `client_op_id`.
+    static func move(api: WikiDbApi, rowId: String, set: [String: JSONValue], opId: String = UUID().uuidString.lowercased(),
+                     delays: [TimeInterval]? = nil) async throws -> DbRowWithRefs {
+        try await retrying(delays) { try await api.moveRow(rowId: rowId, DbRowMove(set: set, clientOpId: opId)) }
+    }
+
+    private static func retrying(_ delays: [TimeInterval]?, _ send: () async throws -> DbRowWithRefs) async throws -> DbRowWithRefs {
         let waits = delays ?? Self.delays
         var attempt = 0
         while true {
             do {
-                return try await api.setRowCells(rowId: rowId, set: set, clientOpId: opId)
+                return try await send()
             } catch {
                 guard CanvasSaver.retryable(error), attempt < waits.count else { throw error }
                 let wait = waits[attempt]
@@ -71,6 +87,9 @@ struct WikiDbKept: Codable, Equatable {
     var refs: [DbRowRef]
     var total: Int
     var savedAt: Date
+    /// M148: the grouped answer's groups and the group of each row (nil: not grouped).
+    var groups: [DbRowGroup]?
+    var rowGroups: [String]?
 
     @MainActor static func load(_ store: Store) -> WikiDbKept? {
         guard let raw = store.wikiValue(key) else { return nil }
@@ -100,6 +119,12 @@ final class WikiDatabaseModel {
     private(set) var offlineSince: Date?
     /// The calendar's month: its first day ("2026-10-01").
     private(set) var month: String
+    /// M148: the groups of a grouped answer (nil: the view has none) and the group of each of `rows` (a row with several
+    /// values comes once per group, so `rows` may hold one id more than once).
+    private(set) var groups: [DbRowGroup]?
+    private(set) var rowGroups: [String] = []
+    /// Board cards being moved (their ⋯ is off until the server answers).
+    private(set) var moving: Set<String> = []
 
     @ObservationIgnored private let api: WikiDbApi?
     @ObservationIgnored private let store: Store
@@ -122,6 +147,8 @@ final class WikiDatabaseModel {
             rows = kept.rows
             refs = Dictionary(kept.refs.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
             total = kept.total
+            groups = kept.groups
+            rowGroups = kept.rowGroups ?? []
         }
     }
 
@@ -130,6 +157,21 @@ final class WikiDatabaseModel {
     var datePropOfView: DbProperty? {
         guard let view, view.isCalendar else { return nil }
         return view.datePropId.flatMap { database?.property($0) }
+    }
+
+    /// M148: the property the view groups by (nil: not grouped).
+    var groupProp: DbProperty? { database.flatMap { WikiDb.groupProperty($0, view: view) } }
+
+    /// The sections of a grouped view (nil: show the rows as one list).
+    var sections: [WikiDb.GroupSection]? {
+        guard groupProp != nil, let groups else { return nil }
+        return WikiDb.sections(groups: groups, rows: rows, rowGroups: rowGroups)
+    }
+
+    /// A board's cards move between columns (§25.4): a board grouped by a select, a person or a checkbox, edit access
+    /// (M144), online.
+    var canMoveCards: Bool {
+        view?.isBoard == true && groupProp != nil && rights.editCells && offlineSince == nil
     }
 
     /// The schema (always) and the rows of the view.
@@ -163,7 +205,13 @@ final class WikiDatabaseModel {
             let bounds = WikiDb.monthBounds(month)
             q.range = (prop.id, bounds.start, bounds.end)
             q.limit = 1000
+        } else if groupProp != nil {
+            // M148 (§25.4): the view's groups, 1,000 rows at a time (as the desktop), dates on this device's days.
+            q.grouped = true
+            q.tz = zone.identifier
+            q.limit = 1000
         }
+        q.covers = view?.showsCovers ?? false
         return q
     }
 
@@ -174,6 +222,8 @@ final class WikiDatabaseModel {
         let out = try await api.queryRows(databaseId: databaseId, query(cursor: nil))
         guard mine == generation else { return }
         rows = out.rows
+        groups = out.groups
+        rowGroups = out.rowGroups ?? []
         refs = Dictionary(out.refs.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
         total = out.total
         nextCursor = out.nextCursor
@@ -187,7 +237,7 @@ final class WikiDatabaseModel {
     private func keep() {
         guard let database else { return }
         WikiDbKept(databaseId: databaseId, viewId: viewId, month: month, database: database, rows: rows, refs: Array(refs.values),
-                   total: total, savedAt: Date()).save(store)
+                   total: total, savedAt: Date(), groups: groups, rowGroups: rowGroups).save(store)
     }
 
     /// The next page of the view (cards: 100 at a time).
@@ -199,8 +249,15 @@ final class WikiDatabaseModel {
         do {
             let out = try await api.queryRows(databaseId: databaseId, query(cursor: cursor))
             guard mine == generation else { return }
-            let known = Set(rows.map(\.id))
-            rows += out.rows.filter { !known.contains($0.id) }
+            if let more = out.rowGroups, groups != nil {
+                // Grouped: the next rows in group order (a row may come again in another group).
+                rows += out.rows
+                rowGroups += more
+                if let next = out.groups { groups = next }
+            } else {
+                let known = Set(rows.map(\.id))
+                rows += out.rows.filter { !known.contains($0.id) }
+            }
             for ref in out.refs { refs[ref.id] = ref }
             total = out.total
             nextCursor = out.nextCursor
@@ -213,6 +270,8 @@ final class WikiDatabaseModel {
         guard id != viewId else { return }
         viewId = id
         rows = []
+        groups = nil
+        rowGroups = []
         nextCursor = nil
         await reloadRows()
     }
@@ -269,6 +328,49 @@ final class WikiDatabaseModel {
         }
         changed()
         return out.row
+    }
+
+    /// M148 (§25.2, §25.4): a board card's 「◯◯へ移動」 from the column `from` to `to` — the card moves at once, the
+    /// value is written with one `client_op_id` (the same on every retry), then the view is read again (the server's
+    /// order and counts). A refusal reads it again and throws (the screen shows the error).
+    func move(_ row: DbRow, from: String, to: String, opId: String = UUID().uuidString.lowercased(), delays: [TimeInterval]? = nil) async throws {
+        guard let api, let prop = groupProp, canMoveCards, from != to else { return }
+        let value = WikiDb.boardValue(prop, row, from: from, to: to)
+        let moved = WikiDb.applying(row, propId: prop.id, value: value, type: prop.type)
+        moving.insert(row.id)
+        defer { moving.remove(row.id) }
+        // At once: the card leaves `from` for `to` (a person already in `to` keeps one card there).
+        let alreadyThere = zip(rows, rowGroups).contains { $0.id == row.id && $1 == to }
+        var nextRows: [DbRow] = []
+        var nextGroups: [String] = []
+        for (index, current) in rows.enumerated() {
+            let key = index < rowGroups.count ? rowGroups[index] : WikiDb.noneGroup
+            guard current.id == row.id else {
+                nextRows.append(current)
+                nextGroups.append(key)
+                continue
+            }
+            if key == from && alreadyThere { continue }
+            nextRows.append(moved)
+            nextGroups.append(key == from ? to : key)
+        }
+        rows = nextRows
+        rowGroups = nextGroups
+        if var counted = groups {
+            for index in counted.indices {
+                if counted[index].key == from { counted[index].count = max(0, counted[index].count - 1) }
+                if counted[index].key == to && !alreadyThere { counted[index].count += 1 }
+            }
+            groups = counted
+        }
+        do {
+            let out = try await DbCellWriter.move(api: api, rowId: row.id, set: [prop.id: value], opId: opId, delays: delays)
+            for ref in out.refs { refs[ref.id] = ref }
+            changed()
+        } catch {
+            await reloadRows()
+            throw error
+        }
     }
 
     /// The props a new row starts with on a calendar: the shown day on the view's date property (today in this month,

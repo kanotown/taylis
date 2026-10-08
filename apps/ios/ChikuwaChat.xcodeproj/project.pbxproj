@@ -277,6 +277,7 @@
 		A8D1E50FF049ECF144F6890A /* WikiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F581A1AED9D88CE342FA0CA0 /* WikiTests.swift */; };
 		1E4C7A54680FCF5141807369 /* WikiDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747C2BC6D5CA08979BECA9E5 /* WikiDatabaseTests.swift */; };
 		A146C0DE00000000000000A1 /* WikiTemplateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A146C0DE00000000000000B1 /* WikiTemplateTests.swift */; };
+		A148C0DE00000000000000A1 /* WikiDbViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A148C0DE00000000000000B1 /* WikiDbViewTests.swift */; };
 		F1DF4502E645742E45499BC4 /* MessageCodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4A789666614090C341ED42 /* MessageCodingTests.swift */; };
 		F2230137BE87493D9D0FDC74 /* Emoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342A0B1BCD9379AB86C4B521 /* Emoji.swift */; };
 		F3CEE1B5F37D4646C4F23442 /* Templates.swift in Sources */ = {isa = PBXBuildFile; fileRef = B747AFDE44257CFE5ACB9705 /* Templates.swift */; };
@@ -602,6 +603,7 @@
 		F581A1AED9D88CE342FA0CA0 /* WikiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiTests.swift; sourceTree = "<group>"; };
 		747C2BC6D5CA08979BECA9E5 /* WikiDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiDatabaseTests.swift; sourceTree = "<group>"; };
 		A146C0DE00000000000000B1 /* WikiTemplateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiTemplateTests.swift; sourceTree = "<group>"; };
+		A148C0DE00000000000000B1 /* WikiDbViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiDbViewTests.swift; sourceTree = "<group>"; };
 		F4B2BB586E878AEEC2A31668 /* Share.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Share.swift; sourceTree = "<group>"; };
 		F6C06F2A75D6F2989EA46716 /* UpsideDownList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsideDownList.swift; sourceTree = "<group>"; };
 		F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasCatchUpTests.swift; sourceTree = "<group>"; };
@@ -759,6 +761,7 @@
 				F581A1AED9D88CE342FA0CA0 /* WikiTests.swift */,
 				747C2BC6D5CA08979BECA9E5 /* WikiDatabaseTests.swift */,
 				A146C0DE00000000000000B1 /* WikiTemplateTests.swift */,
+				A148C0DE00000000000000B1 /* WikiDbViewTests.swift */,
 				14E8109D6DDCA09126C31D19 /* CanvasMarkersTests.swift */,
 				C7803AED0EFDDC5E8FD472D2 /* CanvasOfflineTests.swift */,
 				41095FD838912D8AAB1FD7F3 /* CanvasPhase2Tests.swift */,
@@ -1191,6 +1194,7 @@
 				A8D1E50FF049ECF144F6890A /* WikiTests.swift in Sources */,
 				1E4C7A54680FCF5141807369 /* WikiDatabaseTests.swift in Sources */,
 				A146C0DE00000000000000A1 /* WikiTemplateTests.swift in Sources */,
+				A148C0DE00000000000000A1 /* WikiDbViewTests.swift in Sources */,
 				26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */,
 				34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */,
 				8613449A516B8C7EA5D701A8 /* CommandsTests.swift in Sources */,

@@ -260,11 +260,48 @@ final class FakeWikiDbApi: WikiDbApi {
         return database
     }
 
+    /// M148: a grouped answer (when the query asks for one): the groups and the rows by group, as the server makes them.
+    var grouping: ((DbRow) -> [String])?
+    var groupOrder: [String] = []
+    var hiddenGroups: Set<String> = []
+    var moves: [(rowId: String, move: DbRowMove)] = []
+    var moveFailures: [Error] = []
+    var appliedOps: Set<String> = []
+
     func queryRows(databaseId: String, _ query: DbQuery) async throws -> DbQueryOut {
         queries.append(query)
         if failNetwork { throw ApiError.network(URLError(.notConnectedToInternet)) }
-        return DbQueryOut(rows: rows, refs: [DbRowRef(id: "a", databaseId: "db2", title: "論文 A", icon: nil)], total: rows.count,
-                          nextCursor: nil, schemaVersion: database.schemaVersion)
+        let refs = [DbRowRef(id: "a", databaseId: "db2", title: "論文 A", icon: nil)]
+        if query.grouped == true, let grouping {
+            var outRows: [DbRow] = []
+            var keys: [String] = []
+            var counts: [String: Int] = [:]
+            for key in groupOrder {
+                for r in rows where grouping(r).contains(key) {
+                    counts[key, default: 0] += 1
+                    if hiddenGroups.contains(key) { continue }
+                    outRows.append(r)
+                    keys.append(key)
+                }
+            }
+            return DbQueryOut(rows: outRows, refs: refs, total: outRows.count, nextCursor: nil, schemaVersion: database.schemaVersion,
+                              groups: groupOrder.map { DbRowGroup(key: $0, count: counts[$0] ?? 0, hidden: hiddenGroups.contains($0)) },
+                              rowGroups: keys)
+        }
+        return DbQueryOut(rows: rows, refs: refs, total: rows.count, nextCursor: nil, schemaVersion: database.schemaVersion)
+    }
+
+    func moveRow(rowId: String, _ move: DbRowMove) async throws -> DbRowWithRefs {
+        moves.append((rowId, move))
+        if !moveFailures.isEmpty { throw moveFailures.removeFirst() }
+        guard let index = rows.firstIndex(where: { $0.id == rowId }) else { throw ApiError.api(status: 404, code: "page_not_found", message: "") }
+        // The same op id again changes nothing (the server's client_op_id).
+        guard appliedOps.insert(move.clientOpId).inserted else { return DbRowWithRefs(row: rows[index]) }
+        for (key, value) in move.set {
+            rows[index] = WikiDb.applying(rows[index], propId: key, value: value, type: database.property(key)?.type)
+        }
+        rows[index].version += 1
+        return DbRowWithRefs(row: rows[index])
     }
 
     var createBodies: [DbRowCreate] = []
