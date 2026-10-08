@@ -506,8 +506,27 @@ object TaskRules {
      */
     fun canShareInDm(channel: ChannelState?): Boolean = channel != null && channel.channel.isDm && channel.isMember && !channel.channel.archived
 
-    /** L9: 「レビューを依頼」 is offered where a shared task can be made: a board I may add to, or a DM I am in. */
-    fun canRequestReview(channel: ChannelState?, isAdmin: Boolean): Boolean = canEditBoard(channel, isAdmin) || canShareInDm(channel)
+    /**
+     * A DM with someone besides me: my own DM (only me in `dm_user_ids`) has nobody to share a task with or to ask for a
+     * review, so its tasks stay personal (2026-10-09). Unknown members (an older server) count as others.
+     */
+    fun hasOthers(channel: ChannelState?): Boolean {
+        val ids = channel?.channel?.dmUserIds
+        return channel == null || channel.channel.type != "dm" || ids == null || ids.toSet().size > 1
+    }
+
+    /** L9: 「レビューを依頼」 is offered where a shared task can be made: a board I may add to, or a DM with someone else I am in. */
+    fun canRequestReview(channel: ChannelState?, isAdmin: Boolean): Boolean =
+        canEditBoard(channel, isAdmin) || (canShareInDm(channel) && hasOthers(channel))
+
+    /** 「タスク」's ＋ (TASKS.md §6): 「自分のタスク」 to start with, the boards I may add to offered beside it (assignees need a board). */
+    fun newTaskInit(boards: List<String>): TaskCreateInit = TaskCreateInit(channelId = null, boardChoices = boards)
+
+    /** The boards I may add a task to, by name. */
+    fun editableBoards(channels: Collection<ChannelState>, isAdmin: Boolean): List<String> {
+        val collator = java.text.Collator.getInstance(java.util.Locale.JAPANESE)
+        return channels.filter { canEditBoard(it, isAdmin) }.sortedWith { a, b -> collator.compare(a.channel.name ?: "", b.channel.name ?: "") }.map { it.id }
+    }
 
     /** A task I may change: a personal one always (only I see it), a shared one when I may edit its board (or its DM's). */
     fun canEditTask(task: TaskOut, channel: ChannelState?, isAdmin: Boolean): Boolean =
@@ -715,7 +734,7 @@ object TaskRules {
         val board = channel?.takeIf { canEditBoard(it, isAdmin) }?.id
         return TaskCreateInit(
             channelId = board, title = title, sourceMessageId = messageId, sourceExcerpt = title.ifEmpty { null },
-            boardChoices = listOfNotNull(board), dmChannelId = channel?.takeIf { canShareInDm(it) }?.id,
+            boardChoices = listOfNotNull(board), dmChannelId = channel?.takeIf { canShareInDm(it) && hasOthers(it) }?.id,
         )
     }
 

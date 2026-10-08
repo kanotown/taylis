@@ -35,6 +35,13 @@ extension AppController {
             .map(\.id)
     }
 
+    /// 「タスク」's ＋: the boards a new task may go to besides 「自分のタスク」 (those I may add to), by name.
+    var taskBoards: [String] {
+        store.channels.values.filter { canEditBoard($0.id) }
+            .sorted { ($0.channel.name ?? "").localizedStandardCompare($1.channel.name ?? "") == .orderedAscending }
+            .map(\.id)
+    }
+
     /// M86: the app is back in the foreground — the deadlines window is read again (a reconnect reads it anyway).
     func refreshDeadlines() {
         guard engine?.status == .online, let hub = taskHub else { return }

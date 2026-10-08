@@ -17,6 +17,10 @@ struct TaskForm: View {
     @State private var error: String?
     @State private var confirmDelete = false
     @State private var members: [String]?
+    /// The members could not be read: the picker says so instead of 「読み込み中…」 for ever.
+    @State private var membersFailed = false
+    /// The conversation `members` were read (or are being read) for.
+    @State private var membersFor: String?
     /// The server's answer to 「対応を始める」 / 「完了にする」, for a task outside the hub's windows (opened from a chip).
     @State private var answered: TaskOut?
     /// The creation's idempotency key: a retry after a failure never makes a second task (SYNC_PROTOCOL.md §16).
@@ -331,7 +335,10 @@ struct TaskForm: View {
         if let channelId {
             Section {
                 NavigationLink {
-                    TaskAssigneePicker(controller: controller, memberIds: memberIds ?? members, selected: $draft.assigneeIds, title: assigneeLabel)
+                    // A new review request does not ask me (REVIEWS.md §9, as the desktop and Android).
+                    TaskAssigneePicker(controller: controller, memberIds: memberIds ?? members, selected: $draft.assigneeIds, title: assigneeLabel,
+                                       excludeMe: task == nil && isReview, failed: membersFailed,
+                                       membersHint: !(controller.store.channel(channelId)?.channel.isDm ?? false))
                 } label: {
                     HStack(spacing: 8) {
                         Text(assigneeSummary)
@@ -356,6 +363,32 @@ struct TaskForm: View {
                     }
                 }
             }
+        } else if task == nil && !isReview && !isDeadline {
+            personalAssigneeSection
+        }
+    }
+
+    /// A new task for 「自分のタスク」 has no assignees (TASKS.md §1): say so where they would be, and offer the boards
+    /// right there — choosing one brings its members (2026-10-09, testers looked for others and found only themselves).
+    private var personalAssigneeSection: some View {
+        Section {
+            if !boards.isEmpty {
+                Menu {
+                    ForEach(boards, id: \.self) { id in
+                        Button(boardName(id)) {
+                            draft.channelId = id
+                            draft.assigneeIds = []
+                        }
+                    }
+                } label: {
+                    Label("ボードを選ぶ", systemImage: "person.2")
+                }
+            }
+        } header: {
+            Text(assigneeLabel)
+        } footer: {
+            Text(boards.isEmpty ? "自分のタスクには担当者を付けられません。担当者を付けられるのは、チャンネルのボードのタスクです。"
+                 : "自分のタスクには担当者を付けられません。チャンネルのボードを選ぶと、そのメンバーから選べます。")
         }
     }
 
@@ -498,16 +531,33 @@ struct TaskForm: View {
     }
 
     private func loadMembers() async {
-        guard memberIds == nil, let channelId else { return }
+        guard memberIds == nil, let channelId else {
+            members = nil
+            membersFor = nil
+            return
+        }
+        // Read (or being read) for this conversation already: the form comes back from the picker it pushed.
+        if membersFor == channelId && !membersFailed { return }
+        // Another board chosen: not the previous board's people while its own are read.
+        members = nil
+        membersFailed = false
+        membersFor = channelId
         // A DM's members are known here (L9).
         if let state = controller.store.channel(channelId), state.channel.isDm, let ids = state.channel.dmUserIds, !ids.isEmpty {
             members = ids
             return
         }
         guard let api = controller.api else { return }
+        // Not tied to the form being on screen: the form disappears under the picker it pushes, which may cancel this
+        // `.task`; a read cancelled that way left the picker on 「読み込み中…」.
+        let read = Task { try await api.members(channelId: channelId).map(\.userId) }
         do {
-            members = try await api.members(channelId: channelId).map(\.userId)
+            let ids = try await read.value
+            guard membersFor == channelId else { return }
+            members = ids
         } catch {
+            guard membersFor == channelId else { return }
+            membersFailed = true
             self.error = controller.describe(error)
         }
     }
@@ -571,6 +621,12 @@ struct TaskAssigneePicker: View {
     var title = tr("担当者")
     /// M95: one person only (a workflow's 「人」 field without `multiple`): a pick replaces the one chosen.
     var single = false
+    /// A new review request: asking myself makes no sense (REVIEWS.md §9).
+    var excludeMe = false
+    /// The members could not be read.
+    var failed = false
+    /// A task's 担当者: when I am the only one to pick, say how others come in.
+    var membersHint = false
     @State private var query = ""
 
     private struct Row: Identifiable {
@@ -583,7 +639,7 @@ struct TaskAssigneePicker: View {
         let me = controller.store.me?.id
         // Someone already on the task who is not among the members read (yet): still shown, to take them off.
         let ids = (memberIds ?? []) + selected.filter { !(memberIds ?? []).contains($0) }
-        return ids.map { id in
+        return ids.filter { !excludeMe || $0 != me }.map { id in
             let user = controller.store.users[id]
             return Row(id: id, name: user?.displayName ?? "?", username: user?.username ?? "")
         }
@@ -596,9 +652,14 @@ struct TaskAssigneePicker: View {
     var body: some View {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let shown = q.isEmpty ? rows : rows.filter { $0.name.lowercased().contains(q) || $0.username.lowercased().contains(q) }
+        let me = controller.store.me?.id
         List {
-            if memberIds == nil && selected.isEmpty {
+            if failed && memberIds == nil {
+                Text("メンバーを読み込めませんでした").foregroundStyle(.secondary)
+            } else if memberIds == nil && selected.isEmpty {
                 ProgressView("読み込み中…").frame(maxWidth: .infinity)
+            } else if memberIds != nil && rows.isEmpty {
+                Text("選べる人がいません").foregroundStyle(.secondary)
             }
             ForEach(shown) { row in
                 Button {
@@ -617,6 +678,11 @@ struct TaskAssigneePicker: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected.contains(row.id) ? [.isSelected] : [])
+            }
+            // A conversation with nobody but me (a board I am alone in): where the others come from.
+            if membersHint && memberIds != nil && !rows.isEmpty && rows.allSatisfy({ $0.id == me }) {
+                Text("ほかの人を選ぶには、その人をこのチャンネルに追加してください").font(.footnote).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
             }
         }
         .modifier(SearchableWhenLong(enabled: rows.count > 8, query: $query))

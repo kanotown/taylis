@@ -320,6 +320,21 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             )}
             {!creatingReview && <SubtaskEditor items={draft.subtasks ?? []} onChange={(subtasks) => set({ subtasks })} onToggle={toggleSubtask} />}
             {!creatingReview && picker}
+            {!task && !review && !deadline && !init?.shareChannelId && board === "me" && (
+              // 「自分のタスク」 has no assignees (TASKS.md §1): say so, and offer the boards right here (2026-10-09).
+              <div className="space-y-1" data-task-personal-assignees>
+                <span className="text-xs font-medium text-muted">{assigneeLabel}</span>
+                <p className="text-xs text-muted">{boards.length > 0 ? t("tasks.dialog.personalPickBoard") : t("tasks.dialog.personalNoAssignees")}</p>
+                {boards.length > 0 && (
+                  <select className={SELECT} aria-label={t("tasks.dialog.chooseBoard")} value="" onChange={(e) => { if (e.target.value) { setBoard(e.target.value); set({ assigneeIds: [] }); } }}>
+                    <option value="">{t("tasks.dialog.chooseBoard")}</option>
+                    {boards.map((id) => (
+                      <option key={id} value={id}>{boardName(id)}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </>
         ) : (
           task && <ReadOnlyTask controller={controller} task={task} />
@@ -431,10 +446,19 @@ function AssigneePicker({ controller, channelId, label, excludeMe = false, selec
               </li>
             ))}
           </ul>
+          {/* A board with nobody but me: where the others come from. */}
+          {rows.every((r) => r.id === me) && hasBoardChannel(controller, channelId) && (
+            <p className="text-xs text-muted" data-task-alone>{t("tasks.dialog.addPeopleToChannel")}</p>
+          )}
         </>
       )}
     </div>
   );
+}
+
+function hasBoardChannel(controller: AppController, channelId: string): boolean {
+  const channel = controller.store.getChannel(channelId);
+  return !!channel && hasBoard(channel);
 }
 
 /** What someone who may not change the task sees of it. */

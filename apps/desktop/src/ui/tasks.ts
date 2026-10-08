@@ -275,6 +275,28 @@ export function canEditConversationTasks(channel: ChannelState | undefined, isAd
   return channel.isMember && !channel.archived;
 }
 
+/**
+ * A conversation with someone besides me: my own DM (only me in `dm_user_ids`) has nobody to share a task with or to ask
+ * for a review, so its tasks stay personal (2026-10-09). Unknown members (an older server) count as others.
+ */
+export function hasOthers(channel: Pick<ChannelState, "type" | "dm_user_ids"> | undefined): boolean {
+  const ids = channel?.dm_user_ids;
+  return !channel || channel.type !== "dm" || !ids || new Set(ids).size > 1;
+}
+
+/** Where a task can be shared from a message (L9): a board I may add to, or a DM / group DM with someone else in it. */
+export function canShareConversationTask(channel: ChannelState | undefined, isAdmin: boolean): boolean {
+  return canEditConversationTasks(channel, isAdmin) && hasOthers(channel);
+}
+
+/** 「自分のタスク」's ＋ (TASKS.md §6): the boards I may add a task to, by name — offered beside 「自分のタスク」. */
+export function taskBoardChoices(channels: Iterable<ChannelState>, isAdmin: boolean): string[] {
+  return [...channels]
+    .filter((c) => canEditBoard(c, isAdmin))
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ja"))
+    .map((c) => c.id);
+}
+
 /** A task I may change: a personal one always (only I see it), a shared one when I may edit its conversation's tasks. */
 export function canEditTask(task: Pick<TaskOut, "channel_id">, channel: ChannelState | undefined, isAdmin: boolean): boolean {
   return task.channel_id === null || canEditConversationTasks(channel, isAdmin);
@@ -625,7 +647,7 @@ export function messageTaskInit(
   const title = plainText(mentionsToNames(message.body, users, groups), MAX_TASK_TITLE) || attachmentText(message.attachments);
   const board = channel && canEditBoard(channel, isAdmin) ? channel.id : null;
   // L9: a DM's message may be shared with the DM's members (assignees chosen).
-  const share = channel && !hasBoard(channel) && canEditConversationTasks(channel, isAdmin) ? channel.id : null;
+  const share = channel && !hasBoard(channel) && canShareConversationTask(channel, isAdmin) ? channel.id : null;
   return { channelId: board, status: "todo", title, sourceMessageId: message.id, sourceExcerpt: title || null, boardChoices: board ? [board] : [], shareChannelId: share };
 }
 

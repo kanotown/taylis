@@ -31629,6 +31629,102 @@
           }
         }
       }
+    },
+    "ボードを選ぶ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a board"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择看板"
+          }
+        }
+      }
+    },
+    "自分のタスクには担当者を付けられません。担当者を付けられるのは、チャンネルのボードのタスクです。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tasks in My tasks have no assignees. Only tasks on a channel's board can be assigned."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的任务不能设置负责人。只有频道看板上的任务可以设置负责人。"
+          }
+        }
+      }
+    },
+    "自分のタスクには担当者を付けられません。チャンネルのボードを選ぶと、そのメンバーから選べます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tasks in My tasks have no assignees. Choose a channel's board to pick from its members."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的任务不能设置负责人。选择频道的看板后，即可从其成员中选择。"
+          }
+        }
+      }
+    },
+    "メンバーを読み込めませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load members"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载成员"
+          }
+        }
+      }
+    },
+    "選べる人がいません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nobody to choose"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可选择的人"
+          }
+        }
+      }
+    },
+    "ほかの人を選ぶには、その人をこのチャンネルに追加してください" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To choose someone else, add them to this channel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要选择其他人，请先将其添加到此频道"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

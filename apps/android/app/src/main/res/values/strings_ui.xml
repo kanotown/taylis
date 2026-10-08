@@ -1336,6 +1336,11 @@
     <string name="tab_screens_no_matching_dms">一致する DM はありません</string>
     <string name="task_form_screen_add_subtask">" サブタスクを追加"</string>
     <string name="task_form_screen_add_to">追加先</string>
+    <string name="task_form_screen_choose_board">ボードを選ぶ</string>
+    <string name="task_form_screen_personal_no_assignees">自分のタスクには担当者を付けられません。担当者を付けられるのは、チャンネルのボードのタスクです。</string>
+    <string name="task_form_screen_personal_pick_board">自分のタスクには担当者を付けられません。チャンネルのボードを選ぶと、そのメンバーから選べます。</string>
+    <string name="task_form_screen_nobody_to_choose">選べる人がいません</string>
+    <string name="task_form_screen_add_people_to_channel">ほかの人を選ぶには、その人をこのチャンネルに追加してください</string>
     <string name="task_form_screen_advance_notice">事前の通知</string>
     <string name="task_form_screen_advance_notice_2">事前の通知：</string>
     <string name="task_form_screen_assignee">担当者</string>

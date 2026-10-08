@@ -1341,6 +1341,11 @@
     <string name="tab_screens_no_matching_dms">No matching DMs</string>
     <string name="task_form_screen_add_subtask">" Add subtask"</string>
     <string name="task_form_screen_add_to">Add to</string>
+    <string name="task_form_screen_choose_board">Choose a board</string>
+    <string name="task_form_screen_personal_no_assignees">Tasks in My tasks have no assignees. Only tasks on a channel\'s board can be assigned.</string>
+    <string name="task_form_screen_personal_pick_board">Tasks in My tasks have no assignees. Choose a channel\'s board to pick from its members.</string>
+    <string name="task_form_screen_nobody_to_choose">Nobody to choose</string>
+    <string name="task_form_screen_add_people_to_channel">To choose someone else, add them to this channel</string>
     <string name="task_form_screen_advance_notice">Advance notice</string>
     <string name="task_form_screen_advance_notice_2">"Advance notice: "</string>
     <string name="task_form_screen_assignee">Assignee</string>

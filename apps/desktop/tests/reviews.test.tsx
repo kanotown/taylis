@@ -21,11 +21,14 @@ import { MessageRow } from "../src/ui/Timeline";
 import { chooseFromRowMenu, rowMenuLabels, tick } from "./rowMenu";
 import {
   canEditTask,
+  canShareConversationTask,
+  hasOthers,
   isRequestedByMe,
   messageReviewInit,
   messageTaskInit,
   sortRequested,
   taskChip,
+  taskBoardChoices,
   taskCreateBody,
   taskNoticeText,
   taskPlace,
@@ -90,6 +93,24 @@ describe("the rules (pure)", () => {
     expect(taskCreateBody({ ...draft, assigneeIds: ["u-kano", "u-kano"] }, init, "me", "k1", "Asia/Tokyo")).toMatchObject({ channel_id: "d1", assignee_ids: ["u-kano"] });
     // Archived: no sharing.
     expect(messageTaskInit({ id: "m1", body: "x" }, dmState("d1", ["u-me"], { archived: true }), users, new Map(), false).shareChannelId).toBeNull();
+  });
+
+  it("my own DM: a plain personal task, nobody to ask for a review (2026-10-09)", () => {
+    const notes = dmState("n1", ["u-me"]);
+    expect(hasOthers(notes)).toBe(false);
+    expect(hasOthers(dmState("d1", ["u-me", "u-kano"]))).toBe(true);
+    expect(hasOthers({ type: "public", dm_user_ids: null } as unknown as ChannelState)).toBe(true);
+    expect(messageTaskInit({ id: "m1", body: "あとで" }, notes, new Map(), new Map(), false).shareChannelId).toBeNull();
+    expect(canShareConversationTask(notes, false)).toBe(false);
+    expect(canShareConversationTask(dmState("g1", ["u-me", "u-kano", "u-ebi"], { type: "group_dm" } as Partial<ChannelState>), false)).toBe(true);
+    // A task already shared there stays mine to change.
+    expect(canEditTask({ channel_id: "n1" }, notes, false)).toBe(true);
+  });
+
+  it("「自分のタスク」's ＋ offers the boards I may add to, by name (2026-10-09)", () => {
+    const board = (id: string, extra: Partial<ChannelState> = {}) =>
+      ({ id, type: "public", name: id, archived: false, isMember: true, posting_policy: "everyone", membership: { role: "member" }, ...extra }) as unknown as ChannelState;
+    expect(taskBoardChoices([board("zeta"), board("alpha"), board("old", { archived: true }), board("news", { posting_policy: "owners" } as Partial<ChannelState>), dmState("d1", ["u-me", "u-kano"])], false)).toEqual(["alpha", "zeta"]);
   });
 
   it("「レビューを依頼」: 「レビュー：<one line>」 within 200 characters, kind review, in the message's conversation", () => {

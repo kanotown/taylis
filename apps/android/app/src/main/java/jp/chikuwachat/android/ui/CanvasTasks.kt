@@ -49,7 +49,7 @@ object CanvasTasks {
         val assignees = USER_TOKEN.findAll(item.text).map { it.groupValues[1] }.distinct().filter { it in users }.toList()
         val board = channel?.takeIf { TaskRules.canEditBoard(it, isAdmin) }?.id
         // A DM's (or group DM's) canvas: mine, shared in the DM once someone is assigned (L9).
-        val share = channel?.takeIf { !TaskRules.hasBoard(it.channel) && TaskRules.canShareInDm(it) }?.id
+        val share = channel?.takeIf { !TaskRules.hasBoard(it.channel) && TaskRules.canShareInDm(it) && TaskRules.hasOthers(it) }?.id
         return TaskCreateInit(
             channelId = board,
             title = title,
