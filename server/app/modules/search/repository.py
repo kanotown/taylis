@@ -24,8 +24,8 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.doctext import blocks as doc_blocks
 from app.modules.attachments.models import Attachment
-from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases.models import Canvas
 from app.modules.messages.models import Message, Reaction
 from app.modules.users.models import User
@@ -258,16 +258,18 @@ class CanvasScope:
 
 
 def canvas_document() -> Any:
-    """`ARRAY[title::text, body without the task markers]`: the expression canvases_search_idx is
-    built on (migration 0047; 0068 took the M80 markers out, so 「task」 finds no linked item).
+    """`ARRAY[title::text, body without the task markers and container lines]`: the expression
+    canvases_search_idx is built on (migration 0047; 0068 took the M80 markers out, so 「task」
+    finds no linked item; 0109 the M149 `::: callout` / `::: toggle` / `:::` lines, keeping the
+    icon and the title).
     One expression, one index: `title &@~ q OR body &@~ q` used no index at all (1,374 ms on 5,000
     canvases, CANVAS.md §7). The pattern is written as a constant, as in the index: a bound
     parameter would not match the index's expression."""
     body = func.regexp_replace(
         Canvas.body,
-        literal_column(f"'{canvas_markers.MARKER_SQL}'"),
+        literal_column(f"'{doc_blocks.BODY_SQL}'"),
         literal_column("''"),
-        literal_column("'g'"),
+        literal_column("'gn'"),
         type_=Text,
     )
     return postgresql.array([cast(Canvas.title, Text), body])
@@ -391,13 +393,14 @@ class PageScope:
 
 
 def page_document() -> Any:
-    """`ARRAY[title::text, body without task markers, props_text]`: the expression of
-    wiki_pages_search_idx (migration 0095), written the same way (see canvas_document)."""
+    """`ARRAY[title::text, body without task markers and container lines, props_text]`: the
+    expression of wiki_pages_search_idx (migrations 0095, 0109), written the same way (see
+    canvas_document)."""
     body = func.regexp_replace(
         WikiPage.body,
-        literal_column(f"'{canvas_markers.MARKER_SQL}'"),
+        literal_column(f"'{doc_blocks.BODY_SQL}'"),
         literal_column("''"),
-        literal_column("'g'"),
+        literal_column("'gn'"),
         type_=Text,
     )
     props = func.coalesce(WikiPage.props_text, literal_column("''"), type_=Text)

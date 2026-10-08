@@ -18,6 +18,10 @@
   before M145 into a template while nobody has changed it in Taylis (reported); once turned (an
   ``import_refs`` entry of kind ``template``), a row someone made a row again stays a row.
   ``convert_notion_templates`` (``app.cli wiki-notion-templates``) does only that step.
+- M149 (docs/WIKI.md §22.5): callouts become ``::: callout <icon>`` … ``:::`` and ``<details>``
+  toggles ``::: toggle <summary>`` … ``:::`` (two deep at most; before, a quote and a list item).
+  ``rewrite_callouts`` (``app.cli wiki-rewrite-callouts``) rewrites the quotes an earlier import
+  wrote in the pages nobody has changed since.
 
 No notification is sent for imported mentions or pages; the tree's change feed, the open
 tables and pages are told as for any change.
@@ -80,6 +84,7 @@ from app.modules.importer.notion_export import (
     read_csv,
     read_tree,
     resolve_path,
+    rewrite_quote_callouts,
     split_long,
     split_multi,
     split_page,
@@ -1549,3 +1554,139 @@ def parse_column_types(lines: Iterable[str]) -> dict[str, str]:
         key = " / ".join(parts) if len(parts) == 2 else parts[0]
         out[key] = kind.strip()
     return out
+
+
+# --- M149: callouts an earlier import wrote as quotes (app.cli wiki-rewrite-callouts) ----------
+
+
+@dataclass
+class CalloutReport:
+    dry_run: bool
+    changed: list[str] = field(default_factory=list)  # rewritten (or would be, in a dry run)
+    edited: list[str] = field(default_factory=list)  # would change, but edited since the import
+    trashed: list[str] = field(default_factory=list)  # would change, but in the trash (left)
+    too_long: list[str] = field(default_factory=list)  # the rewrite would pass the length limit
+    unchanged: int = 0  # pages and rows with nothing to rewrite
+
+
+def _callout_label(page: WikiPage) -> str:
+    return f"{page.title or '無題'} ({page.id})"
+
+
+async def rewrite_callouts(
+    db: AsyncSession, *, actor_username: str, dry_run: bool
+) -> CalloutReport:
+    """M149 (WIKI.md §22.5): in pages and rows (templates too), the callouts the M125 import
+    wrote as quotes (``> 💡 text``) become ``::: callout 💡`` … ``:::`` (rewrite_quote_callouts).
+    Only a page whose body is still what the import wrote is rewritten: its newest version that
+    is not a side one is of kind ``import``, is the head and has the page's title and body. A new
+    version of kind ``import`` (the history keeps the old body), the events _overwrite sends and
+    one audit entry for the run. Pages that would change but were edited since (or are in the
+    trash) are reported and left. Running it again changes nothing."""
+    actor = await active_admin(db, actor_username)
+    report = CalloutReport(dry_run=dry_run)
+    pages = (
+        (
+            await db.execute(
+                select(WikiPage)
+                .where(WikiPage.kind.in_(("page", "row")))
+                .order_by(WikiPage.created_at, WikiPage.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    candidates: list[WikiPage] = []
+    for page in pages:
+        if rewrite_quote_callouts(page.body) == page.body:
+            report.unchanged += 1
+        else:
+            candidates.append(page)
+    if not candidates:
+        await db.rollback()
+        return report
+    latest = await db.execute(
+        text(
+            "SELECT DISTINCT ON (page_id) page_id, id, kind, title, body FROM wiki_page_revisions "
+            "WHERE page_id = ANY(CAST(:ids AS uuid[])) AND kind <> 'side' "
+            "ORDER BY page_id, created_at DESC, id DESC"
+        ),
+        {"ids": [p.id for p in candidates]},
+    )
+    last = {row[0]: row for row in latest.all()}
+
+    def as_imported(page: WikiPage) -> bool:
+        rev = last.get(page.id)
+        return (
+            rev is not None
+            and rev[2] == "import"
+            and rev[1] == page.head_rev_id
+            and rev[3] == page.title
+            and rev[4] == page.body
+        )
+
+    todo: list[uuid.UUID] = []
+    for page in candidates:
+        if page.is_deleted:
+            report.trashed.append(_callout_label(page))
+        elif not as_imported(page):
+            report.edited.append(_callout_label(page))
+        elif len(rewrite_quote_callouts(page.body)) > MAX_BODY_LENGTH:
+            report.too_long.append(_callout_label(page))
+        else:
+            todo.append(page.id)
+    if dry_run:
+        report.changed = [_callout_label(p) for p in candidates if p.id in set(todo)]
+        await db.rollback()
+        return report
+    await access.lock_tree(db)
+    for page_id in todo:
+        locked = await access.load_page(db, page_id, lock=True)
+        if locked is None or locked.is_deleted:
+            continue
+        page = locked
+        before = page.body
+        if page.head_rev_id != last[page.id][1] or before != last[page.id][4]:
+            report.edited.append(_callout_label(page))  # saved while this ran
+            continue
+        body = rewrite_quote_callouts(before)
+        revision_id = uuid7()
+        added, removed = doc.line_changes(before, body)
+        page.version += 1
+        db.add(
+            WikiPageRevision(
+                id=revision_id,
+                page_id=page.id,
+                version=page.version,
+                kind="import",
+                parent_rev_id=page.head_rev_id,
+                author_id=actor.id,
+                title=page.title,
+                body=body,
+                lines_added=added,
+                lines_removed=removed,
+            )
+        )
+        await db.flush()
+        page.body = body
+        page.head_rev_id = revision_id
+        page.task_total, page.task_done = doc.count_tasks(body)
+        page.updated_by = actor.id
+        page.updated_at = utcnow()
+        await events.emit_page_updated(db, page, "content")
+        report.changed.append(_callout_label(page))
+    if report.changed:
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="wiki.callouts_rewritten",
+            target_type="wiki_page",
+            target_id=None,
+            details={
+                "pages": len(report.changed),
+                "edited": len(report.edited),
+                "trashed": len(report.trashed),
+            },
+        )
+    await db.commit()
+    return report

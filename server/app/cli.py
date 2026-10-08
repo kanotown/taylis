@@ -864,6 +864,51 @@ def cmd_wiki_notion_templates(args: argparse.Namespace) -> int:
     return asyncio.run(_notion_templates(args))
 
 
+async def _rewrite_callouts(args: argparse.Namespace) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.importer.core import ImportFailed
+    from app.modules.importer.notion_import import rewrite_callouts
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                report = await rewrite_callouts(
+                    session, actor_username=args.actor, dry_run=args.dry_run
+                )
+            except ImportFailed as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+    finally:
+        await db.dispose()
+    print("dry run: nothing was written" if report.dry_run else "done")
+    verb = "would rewrite" if report.dry_run else "rewritten"
+    print(f"pages {verb}: {len(report.changed)}")
+    for line in report.changed:
+        print(f"  {line}")
+    sections = (
+        ("left: changed in Taylis since the import (edit by hand)", report.edited),
+        ("left: in the trash", report.trashed),
+        ("left: the rewrite would pass the length limit", report.too_long),
+    )
+    for title, lines in sections:
+        if lines:
+            print(f"{title} ({len(lines)}):")
+            for line in lines:
+                print(f"  {line}")
+    print(f"pages with nothing to rewrite: {report.unchanged}")
+    return 0
+
+
+def cmd_wiki_rewrite_callouts(args: argparse.Namespace) -> int:
+    """M149 (docs/WIKI.md §22.5): rewrite the callouts an earlier Notion import wrote as quotes
+    (`> 💡 text`) as `::: callout 💡` … `:::`, in pages nobody has changed since the import.
+    Idempotent; --dry-run."""
+    return asyncio.run(_rewrite_callouts(args))
+
+
 def cmd_import_notion(args: argparse.Namespace) -> int:
     """Import a Notion export into Docs (M125, docs/WIKI.md §6). Safe to run again."""
     import uuid
@@ -1203,6 +1248,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="list the rows it would turn, write nothing"
     )
     notion_templates.set_defaults(func=cmd_wiki_notion_templates)
+
+    callouts = sub.add_parser(
+        "wiki-rewrite-callouts",
+        help="rewrite the callouts an earlier Notion import wrote as quotes (> 💡) as "
+        "::: callout blocks, in pages unchanged since the import (M149; idempotent)",
+    )
+    callouts.add_argument("--actor", required=True, help="an administrator (audit log)")
+    callouts.add_argument(
+        "--dry-run", action="store_true", help="list the pages it would rewrite, write nothing"
+    )
+    callouts.set_defaults(func=cmd_wiki_rewrite_callouts)
 
     presets = sub.add_parser(
         "import-emoji-presets",

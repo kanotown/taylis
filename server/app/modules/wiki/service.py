@@ -22,6 +22,7 @@ from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.doctext import blocks as doc_blocks
 from app.core.doctext import body as doc
 from app.core.doctext import markers, merge
 from app.core.doctext import revisions as doc_revisions
@@ -1058,7 +1059,9 @@ async def _excerpt(
         for gid in sorted(after_groups):
             if person.id in set(await groups.expand(db, [gid])):
                 groups_with_person.append(gid)
-    found = mention_text.find_mention(markers.strip(page.body), person.id, groups_with_person)
+    found = mention_text.find_mention(
+        doc_blocks.reading_text(page.body), person.id, groups_with_person
+    )
     if found is None:
         return ""
     line, position = found
