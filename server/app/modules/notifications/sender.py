@@ -73,6 +73,10 @@ class PushSender:
                 delivery.status, delivery.last_error = "skipped", "session_expired"
             elif await self._already_read(session, device.user_id, delivery):
                 delivery.status, delivery.last_error = "skipped", "already_read"
+            elif await self._message_deleted(session, delivery):
+                # 2026-10-09: deleted while the push waited (a retry's backoff): its text never
+                # goes out, and the app's counts already leave it out (SYNC_PROTOCOL.md §10.6).
+                delivery.status, delivery.last_error = "skipped", "message_deleted"
             else:
                 provider = self.providers.get(device.push_provider)
                 if provider is None:
@@ -118,6 +122,18 @@ class PushSender:
                 session, user_id, uuid.UUID(str(parent_id)), delivery.message_seq
             )
         return await reads.is_read(session, user_id, delivery.channel_id, delivery.message_seq)
+
+    @staticmethod
+    async def _message_deleted(session: AsyncSession, delivery: object) -> bool:
+        """The message the push is about was deleted since planning (PUSH_NOTIFICATIONS.md §7)."""
+        from app.modules.messages import repository as messages
+        from app.modules.notifications.models import PushDelivery
+
+        assert isinstance(delivery, PushDelivery)
+        if delivery.message_id is None:
+            return False
+        message = await messages.get_message(session, delivery.message_id)
+        return message is not None and message.deleted_at is not None
 
     def apply(self, delivery: object, device: object, result: object, now: datetime) -> None:
         from app.modules.auth.models import Device
