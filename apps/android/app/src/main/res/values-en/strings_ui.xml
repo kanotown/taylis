@@ -1481,6 +1481,8 @@
     <string name="thread_pane_message_not_found">Message not found</string>
     <string name="thread_pane_new_replies">"  New replies"</string>
     <string name="thread_pane_go_to_the_latest_reply">Go to the latest reply</string>
+    <string name="thread_pane_root_deleted">The original message was deleted.</string>
+    <string name="thread_pane_closed_root_deleted">The original message was deleted, so the thread was closed.</string>
     <string name="threads_pane_cant_load_threads_while_offline">Can\'t load threads while offline</string>
     <string name="threads_pane_couldnt_load_threads">Couldn\'t load threads</string>
     <string name="threads_pane_no_followed_threads">No followed threads</string>

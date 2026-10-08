@@ -1476,6 +1476,8 @@
     <string name="thread_pane_message_not_found">找不到消息</string>
     <string name="thread_pane_new_replies">"  新回复"</string>
     <string name="thread_pane_go_to_the_latest_reply">转到最新回复</string>
+    <string name="thread_pane_root_deleted">原消息已被删除。</string>
+    <string name="thread_pane_closed_root_deleted">原消息已被删除，话题已关闭。</string>
     <string name="threads_pane_cant_load_threads_while_offline">离线时无法加载话题</string>
     <string name="threads_pane_couldnt_load_threads">无法加载话题</string>
     <string name="threads_pane_no_followed_threads">没有关注的话题</string>

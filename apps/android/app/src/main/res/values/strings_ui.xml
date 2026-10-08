@@ -1476,6 +1476,8 @@
     <string name="thread_pane_message_not_found">メッセージが見つかりません</string>
     <string name="thread_pane_new_replies">"  新しい返信"</string>
     <string name="thread_pane_go_to_the_latest_reply">最新の返信へ</string>
+    <string name="thread_pane_root_deleted">元のメッセージは削除されました</string>
+    <string name="thread_pane_closed_root_deleted">元のメッセージが削除されたため、スレッドを閉じました</string>
     <string name="threads_pane_cant_load_threads_while_offline">オフラインのためスレッドを読み込めません</string>
     <string name="threads_pane_couldnt_load_threads">スレッドを読み込めませんでした</string>
     <string name="threads_pane_no_followed_threads">フォロー中のスレッドはありません</string>

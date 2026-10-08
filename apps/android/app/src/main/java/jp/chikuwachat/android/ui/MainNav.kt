@@ -393,6 +393,20 @@ object MainNav {
         return (below + above).ifEmpty { listOf(rootOf(stack)) }
     }
 
+    /**
+     * The thread's root was deleted while it was shown (ThreadRootWatch): the thread closes as back would (to the
+     * conversation, the 「スレッド」 list or the results it was opened from). With no conversation under it there is
+     * nothing to return to: its conversation opens instead. A thread not on top (a search over it) just leaves the stack.
+     */
+    fun threadGone(stack: List<Route>, parentId: String): List<Route> {
+        val index = stack.indexOfLast { it is Route.Thread && it.parentId == parentId }
+        if (index < 0) return stack
+        val thread = stack[index] as Route.Thread
+        val under = stack.take(index)
+        if (under.none { it is Route.Channel }) return under.ifEmpty { listOf(rootOf(stack)) } + Route.Channel(thread.channelId)
+        return if (index == stack.lastIndex) back(stack) else stack.filterIndexed { i, _ -> i != index }
+    }
+
     /** The tabs and the details belong to a joined conversation: left (or previewed), they go back to the timeline. */
     fun notMember(stack: List<Route>, channelId: String): List<Route> =
         if (stack.none { it is Route.Channel && it.id == channelId && (it.tab != ConversationTab.MESSAGES || it.detailsOpen) }) stack

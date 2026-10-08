@@ -368,6 +368,13 @@ class Store(private val persistence: Persistence? = null) {
     var threadSummary = ThreadSummary()
         private set
     /**
+     * Thread roots (top-level messages) known deleted on this device: a tombstone came (message.deleted, a catch-up or
+     * delta row, my own delete's answer) or GET replies / GET message for it answered 404 `message_not_found`
+     * (THREADS.md: a root's deletion only tombstones it). A thread screen on one closes or shows its deleted state
+     * (ThreadRootWatch). Not persisted: after a restart the next fetch says it again.
+     */
+    private val deletedRoots = HashSet<String>()
+    /**
      * M39: the activity tab's badge, from bootstrap (every connect) and GET /activity/summary. Null until a bootstrap
      * brought one, or from a server before M39: the tab then keeps its stage-A lists and badge (MainTabs.activityBadge).
      * Not persisted.
@@ -1127,6 +1134,32 @@ class Store(private val persistence: Persistence? = null) {
         noteActivity()
     }
 
+    /** Whether this thread's root is known deleted ([deletedRoots]). */
+    fun isRootDeleted(parentId: String): Boolean = parentId in deletedRoots
+
+    /**
+     * A thread root was deleted (its tombstone, or a 404 `message_not_found` for it): it is remembered, its row leaves
+     * the 「スレッド」 list (GET /threads omits it; no thread.updated comes for it) and the thread's local draft goes (the
+     * server hides and refuses it). Idempotent.
+     */
+    fun dropDeletedRoot(channelId: String, parentId: String, quiet: Boolean = false) {
+        var changed = deletedRoots.add(parentId)
+        threads.remove(parentId)?.let { entry ->
+            val state = entry.state
+            threadSummary = ThreadSummary(
+                maxOf(0, threadSummary.unreadCount - if (state.following && state.unreadCount > 0) 1 else 0),
+                maxOf(0, threadSummary.mentionCount - if (state.following && state.mentionCount > 0) 1 else 0),
+            )
+            changed = true
+        }
+        val key = draftKey(channelId, parentId)
+        if (drafts.containsKey(key)) {
+            writeDraft(key, Draft(), quiet = true)
+            changed = true
+        }
+        if (changed && !quiet) emit()
+    }
+
     /**
      * A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
      * refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
@@ -1142,7 +1175,7 @@ class Store(private val persistence: Persistence? = null) {
                     (entry.state.lastReplyAt ?: "") >= oldest
             }
         }
-        items.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state, it.latestReplies?.map { reply -> MessageState.from(reply) }) }
+        items.filter { it.parent.id !in deletedRoots }.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state, it.latestReplies?.map { reply -> MessageState.from(reply) }) }
         threadsFilter = filter
         threadsLoaded = true
         threadsCursor = cursor
@@ -1179,7 +1212,9 @@ class Store(private val persistence: Persistence? = null) {
         threadReadSeqs[state.parentId] = state.lastReadSeq
         val existing = threads[state.parentId]
         val before = existing?.state
-        if (existing != null) {
+        if (state.parentId in deletedRoots) {
+            // A deleted root's thread is listed nowhere (a late answer for it must not bring its row back).
+        } else if (existing != null) {
             threads[state.parentId] = existing.copy(parent = existing.parent.copy(replyCount = state.replyCount, lastReplyAt = state.lastReplyAt), state = state)
         } else {
             val known = parent ?: messagesByChannel[state.channelId]?.get(state.parentId)?.toOut()
@@ -1567,6 +1602,8 @@ class Store(private val persistence: Persistence? = null) {
             val placeholder = LOCAL_PREFIX + key
             if (bucket.remove(placeholder) != null) persist { it.deleteMessage(placeholder) }
         }
+        // A tombstone is final: an older copy of a deleted root (a cached list's parent, a reveal's context) never comes back.
+        if (!message.deleted && message.parentId == null && message.id in deletedRoots) return false
         val local = bucket[message.id]
         if (local != null && message.updatedSeq <= local.updatedSeq) {
             val merged = withMyVotes(local, message) ?: return false
@@ -1578,6 +1615,7 @@ class Store(private val persistence: Persistence? = null) {
         if (message.deleted) {
             bucket.remove(message.id)
             persist { it.deleteMessage(message.id) }
+            if (message.parentId == null && message.seq != null) dropDeletedRoot(message.channelId, message.id, quiet = true)
         } else {
             val stored = keepingMyVotes(message, local)
             bucket[message.id] = stored

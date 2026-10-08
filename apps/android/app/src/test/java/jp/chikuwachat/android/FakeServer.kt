@@ -403,6 +403,8 @@ class FakeServer {
         private fun repliesNow(messageId: String): List<MessageOut> {
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
             requireReadable(record.channel.id, userId)
+            // As the server: a deleted root's replies are no longer served.
+            if (record.messages.first { it.id == messageId }.deleted) throw ApiException.Api(404, "message_not_found", "not found")
             return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }.map { shaped(it, userId) }
         }
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut {
