@@ -1971,7 +1971,26 @@ Desktop：`tests/dbViews.test.tsx`（16）：ボード（問い合わせの形�
 
 ### 26.5 iOS
 
-（2026-10-08 の時点で作業中。別のエージェントの変更が作業ツリーに未コミットで残っている。終わったらここに書く）
+- `MessageBodyView.swift` の `BodyTokenizer`：`parseLinedBlocks` の中身を `linedBlocks(lines, from:, to:, canvas:, depth:)` に
+  分け、囲みの中は開きの次の行から閉じの前の行までを同じ関数で読む（行番号は本文全体のまま。コードブロックの閉じ・数式の
+  探索・表・リスト・引用も `to` の手前で止まる）。`BodyBlock` に `callout(icon, tone, blocks)`・`toggle(title, blocks)`・
+  `embed(label, pageId, viewId, line)`、中のブロックは行つきの `BodyLinedBlock`。`CalloutTone`（`tones` の表、U+FE0F を除いて
+  引く）。行内のリンクは `page:` / `attachment:` の後が 36 文字の id のときだけにした（Desktop と同じ。`[x](page:12345)` や
+  `#row=1` 付きは文字。以前は何でもリンクの形になり、押しても開けなかった）。メッセージの `page:` のリンクの扱いは今までどおり。
+- `CanvasBodyView.swift`：描き方を `CanvasBlocksView` に分け、囲みの中も同じもので描く（チェック・画像・「タスクにする」も中で
+  動く。中の見出しにはセクション編集のボタンを出さない）。コールアウトは色の淡い角丸の枠（`Color.yellow` などの不透明度で、
+  ライト / ダークとも同じ式）と左のアイコン（`:name:` はカスタム絵文字の画像）。トグルはシェブロンと見出しのボタン、閉じて
+  始まる。開閉は画面の `@State` だけ（本文にも端末の保存にも書かない）、VoiceOver はボタンで値は「展開中 / 折りたたみ中」。
+  目次で囲みの中の見出しを選ぶとその囲みへスクロール（`CanvasBodyView.anchorLine`。閉じたトグルの中は描かれないため）。
+- 埋め込み（`CanvasEmbedView`）：`wikiDatabase` → ビュー（無ければ最初）→ `queryRows(limit: 5)` のカード。題名は木の題名と
+  アイコン（`linkState`。表示名は描かない）、ビューの名前（名前の無いビューは種類の語）、最初の 5 行（行のアイコン・題名・
+  最初のカードのプロパティの値）、「開く」でデータベース、行を押すとその行のページ。401 / 429 以外の 4xx（`ApiError.isRefused`）と
+  木が読めないと言うページは「アクセスできないページ」だけ。通信の失敗は出ている行をそのまま、無ければ「データベースを
+  読み込めませんでした」と「開く」。読み込み中は 132pt の枠。
+- ツールバー（`CanvasEditor`）：チェックリストの後に「コールアウト」（電球）と「トグル」。`CanvasText.insertCallout` /
+  `insertToggle`（Android と同じ：選択の行を包む。無ければカーソルの行が空ならそこ、そうでなければその下。カーソルはコール
+  アウトなら中、トグルなら見出しの位置）。
+- 文字列（ja / en / zh-Hans）：「コールアウト」「トグル」「行がありません」「読み込み中」。
 
 ### 26.6 テスト
 
@@ -1992,3 +2011,8 @@ Desktop：`tests/dbViews.test.tsx`（16）：ボード（問い合わせの形�
   閉じていない囲み、ダーク、編集の `/` メニューを確かめた。
 - Android：`CanvasMarkdownTest`（`containers` の全ケース・色の表・ツールバーの挿入）。`:app:testDebugUnitTest` 1182、
   `:app:lintDebug` は新しい指摘なし、エミュレータ（ChikuwaChat_Pixel_9）で描画を確かめた。
+- iOS：`CanvasTests` の `testContainersAndEmbeds`（`containers` の全ケースを共通の JSON から）・`testCalloutTones`（色の表、
+  U+FE0F の有無）・`testTickingInsideContainers`（トグルの中のタスクが本文の行をチェック、目次の行き先）・`testEmbedFailures`
+  （拒否と通信の失敗）・`testCalloutAndToggleEdits`（ツールバーの挿入）。全体 1156（6 は skip）が通る。描画はライト / ダークの
+  使い捨てのスナップショット（色の 5 種類・入れ子・閉じたトグル・閉じていない囲み・埋め込みのカード / 読めない / 読み込めない）
+  で確かめた（テストには残していない）。
