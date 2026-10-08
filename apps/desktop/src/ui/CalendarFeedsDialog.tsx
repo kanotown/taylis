@@ -79,12 +79,7 @@ export function CalendarFeedsDialog({ controller, onClose }: { controller: AppCo
 
   const copy = async () => {
     if (!made) return;
-    try {
-      await navigator.clipboard?.writeText(made);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    setCopied(await controller.copyToClipboard(made));
   };
 
   return (

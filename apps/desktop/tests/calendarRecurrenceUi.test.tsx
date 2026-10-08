@@ -36,7 +36,9 @@ function setup() {
     })),
     deleteCalendarFeed: vi.fn(async () => {}),
   };
-  const controller = { store, engine: { calendar: hub as unknown as CalendarHub }, isAdmin: false, api } as unknown as AppController;
+  // The copy buttons go through copyToClipboard (its toast is tested in copyFeedback.test.tsx).
+  const copyToClipboard = async (text: string) => { await navigator.clipboard.writeText(text); return true; };
+  const controller = { store, engine: { calendar: hub as unknown as CalendarHub }, isAdmin: false, api, copyToClipboard } as unknown as AppController;
   return { hub, api, controller };
 }
 

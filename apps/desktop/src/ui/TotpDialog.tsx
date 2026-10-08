@@ -39,12 +39,7 @@ export function TotpSetupDialog({ controller, onClose, onEnabled }: { controller
 
   const copyCodes = async () => {
     if (!recovery) return;
-    try {
-      await navigator.clipboard.writeText(recoveryCodesText(recovery));
-      setCopied(true);
-    } catch (err) {
-      controller.setError(err);
-    }
+    setCopied(await controller.copyToClipboard(recoveryCodesText(recovery), t("totp.codesCopied")));
   };
 
   return (

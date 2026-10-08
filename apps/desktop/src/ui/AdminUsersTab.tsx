@@ -93,7 +93,7 @@ export function UsersTab({ controller }: { controller: AppController }) {
           <div className="font-medium [overflow-wrap:anywhere]">{t("admin.users.temporaryFor", { username: issued.username })}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <code className="rounded bg-canvas px-2 py-1 font-mono text-base [overflow-wrap:anywhere]">{issued.password}</code>
-            <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard?.writeText(issued.password)}>
+            <Button size="sm" variant="secondary" onClick={() => void controller.copyToClipboard(issued.password, t("admin.users.passwordCopied"))}>
               <Copy size={14} /> {t("common.copy")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>{t("common.close")}</Button>

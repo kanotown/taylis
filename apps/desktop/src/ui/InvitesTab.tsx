@@ -105,14 +105,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
     }
   };
 
-  const copy = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      controller.setNotice(t("invites.copied"));
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
+  const copy = (url: string) => controller.copyToClipboard(url, t("invites.copied"));
 
   const toggleChannel = (id: string) =>
     setForm((f) => {
