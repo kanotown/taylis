@@ -9,6 +9,7 @@ import {
   agenda,
   cellText,
   clampWidth,
+  databaseRights,
   columnsOf,
   formatNumber,
   isRestrictedValue,
@@ -169,5 +170,15 @@ describe("the calendar", () => {
     const moved = shiftDate({ start: "2026-10-07T09:30:00+09:00", end: null, time: true }, -1);
     expect(new Date(moved.start).getTime() - new Date("2026-10-07T09:30:00+09:00").getTime()).toBe(-86_400_000);
     expect(moved.end).toBeNull();
+  });
+});
+
+describe("who may do what with a database (M144)", () => {
+  it("edit shapes, full also deletes and retypes; guests only edit values", () => {
+    expect(databaseRights("view", false)).toEqual({ canEdit: false, canShape: false, canDestroy: false });
+    expect(databaseRights("edit", false)).toEqual({ canEdit: true, canShape: true, canDestroy: false });
+    expect(databaseRights("full", false)).toEqual({ canEdit: true, canShape: true, canDestroy: true });
+    expect(databaseRights("full", true)).toEqual({ canEdit: true, canShape: false, canDestroy: false });
+    expect(databaseRights(undefined, false)).toEqual({ canEdit: false, canShape: false, canDestroy: false });
   });
 });
