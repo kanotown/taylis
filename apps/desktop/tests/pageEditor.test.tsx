@@ -276,6 +276,44 @@ describe("the menus", () => {
   });
 });
 
+describe("M151: ⌘K", () => {
+  it("finds pages: the selected text becomes a link to the page chosen; the app's ⌘K does not see the key", async () => {
+    const { api, lookupWikiPages } = await openPage("設計を見る");
+    const editor = await edit();
+    const outside = vi.fn();
+    window.addEventListener("keydown", outside);
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1, 3)));
+    });
+    fireEvent.keyDown(editor.view.dom, { key: "k", ctrlKey: true }); // jsdom is not a Mac: Mod is Ctrl
+    expect(outside).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", outside);
+    const field = screen.getByRole("combobox", { name: "リンク先（URL またはページ）" });
+    fireEvent.change(field, { target: { value: "設計" } });
+    await settle(250);
+    expect(lookupWikiPages).toHaveBeenCalledWith("設計", 8);
+    expect(within(screen.getByRole("listbox", { name: "リンクするページ" })).getByText("設計メモ")).toBeTruthy();
+    fireEvent.submit(field.closest("form")!);
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe("[設計](page:0190a2b4-0000-7000-8000-0000000000c1)を見る");
+  });
+
+  it("with nothing selected a page is its chip with its title; a URL is a link as before", async () => {
+    const { api } = await openPage("");
+    const editor = await edit();
+    fireEvent.keyDown(editor.view.dom, { key: "k", ctrlKey: true });
+    await settle(250);
+    fireEvent.submit(screen.getByRole("combobox").closest("form")!);
+    type(editor, "と");
+    fireEvent.keyDown(editor.view.dom, { key: "k", ctrlKey: true });
+    const field = screen.getByRole("combobox");
+    fireEvent.change(field, { target: { value: "https://example.com/x" } });
+    fireEvent.submit(field.closest("form")!);
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe("[設計メモ](page:0190a2b4-0000-7000-8000-0000000000c1) とhttps://example.com/x");
+  });
+});
+
 describe("M151: inline math", () => {
   it("a click opens its TeX; Enter saves the change; emptied, the formula goes; TeX KaTeX cannot read shows in the error colour", async () => {
     const { api } = await openPage("式 $x$ です\n壊れた $\\frac{$ 式");

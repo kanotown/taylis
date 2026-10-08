@@ -341,6 +341,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   /** A key before the editor's own handling; true when a menu took it. Never during an IME composition. */
   function keyDown(event: KeyboardEvent, composing: boolean): boolean {
     if (composing || event.isComposing || event.keyCode === 229) return false;
+    // M151: ⌘K in the editor is its link box (pages too); the app's own ⌘K (the switcher) is for outside it.
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") event.stopPropagation();
     const current = state.current;
     if (current.listLength > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -632,6 +634,21 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   }
 
+  /**
+   * M151: ⌘K's page: the selected text as a link to it (`[text](page:id)`, the chip `[[` makes), or the page's title
+   * where nothing is selected.
+   */
+  function applyPageLink(page: PageRef) {
+    setLinkEdit(null);
+    const editor = editorRef.current;
+    if (!editor) return;
+    const { from, to, empty } = editor.state.selection;
+    const selected = empty ? "" : editor.state.doc.textBetween(from, to, " ", " ");
+    const chip = { type: "pageLink", attrs: { id: page.id, label: linkLabel(selected.trim() ? selected : page.title) } };
+    if (empty) editor.chain().focus().insertContent([chip, { type: "text", text: " " }]).run();
+    else editor.chain().focus().insertContentAt({ from, to }, chip).run();
+  }
+
   // --- block handles (M151) ---------------------------------------------------------------------------------------------------
 
   /** The block under a point of the window (its position), with the element that draws it. */
@@ -912,14 +929,72 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       )}
       {mathEdit && <MathBox key={mathEdit.pos} rect={mathEdit.rect} tex={mathEdit.tex} onClose={closeMath} />}
       {linkEdit && (
-        <FloatingBox rect={linkEdit.rect} onClose={() => { setLinkEdit(null); editorRef.current?.commands.focus(); }} width={320}>
-          <form className="flex gap-1.5 p-1" onSubmit={(event) => { event.preventDefault(); applyLink(new FormData(event.currentTarget).get("href")?.toString() ?? ""); }}>
-            <input name="href" autoFocus defaultValue={linkEdit.href} placeholder="https://" aria-label={t("docs.wysiwyg.linkUrl")} className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-2 py-1 text-sm outline-none focus:border-accent" />
-            <button type="submit" className="rounded-md bg-accent px-2.5 py-1 text-sm font-medium text-white">{t("docs.wysiwyg.linkApply")}</button>
-          </form>
+        <FloatingBox rect={linkEdit.rect} onClose={() => { setLinkEdit(null); editorRef.current?.commands.focus(); }} width={340}>
+          <LinkBox controller={controller} href={linkEdit.href} lookup={links.lookup} onUrl={applyLink} onPage={applyPageLink} />
         </FloatingBox>
       )}
     </div>
+  );
+}
+
+/**
+ * M151: ⌘K's box: one field that takes a URL (a link as before) or finds a page (the pages `[[` finds); ↑↓ and Enter
+ * pick a page, Enter on a URL links it, an empty field takes the link away.
+ */
+function LinkBox({ controller, href, lookup, onUrl, onPage }: { controller: AppController; href: string; lookup: (q: string) => Promise<PageRef[]>; onUrl: (href: string) => void; onPage: (page: PageRef) => void }) {
+  const [query, setQuery] = useState(href);
+  const [pages, setPages] = useState<PageRef[]>([]);
+  const [active, setActive] = useState(0);
+  const url = /^https?:\/\//i.test(query.trim());
+  useEffect(() => {
+    if (url) {
+      setPages([]);
+      return;
+    }
+    let live = true;
+    const timer = setTimeout(() => void lookup(query.trim()).then((found) => live && (setPages(found), setActive(0)), () => live && setPages([])), 120);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [query, url, lookup]);
+  return (
+    <form className="flex flex-col gap-1 p-1" onSubmit={(event) => {
+      event.preventDefault();
+      if (!url && pages[active]) onPage(pages[active]!);
+      else if (url || !query.trim()) onUrl(query);
+    }}>
+      <div className="flex gap-1.5">
+        <input
+          autoFocus
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.key === "ArrowDown" || event.key === "ArrowUp") && pages.length > 0) {
+              event.preventDefault();
+              setActive((active + (event.key === "ArrowDown" ? 1 : pages.length - 1)) % pages.length);
+            }
+          }}
+          placeholder={t("docs.wysiwyg.linkPlaceholder")}
+          aria-label={t("docs.wysiwyg.linkTarget")}
+          role="combobox"
+          aria-expanded={pages.length > 0}
+          aria-autocomplete="list"
+          className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-2 py-1 text-sm outline-none focus:border-accent"
+        />
+        <button type="submit" className="rounded-md bg-accent px-2.5 py-1 text-sm font-medium text-white">{t("docs.wysiwyg.linkApply")}</button>
+      </div>
+      {pages.length > 0 && (
+        <ul role="listbox" aria-label={t("docs.linkSuggestions")} className="max-h-60 overflow-y-auto">
+          {pages.map((page, index) => (
+            <MenuRow key={page.id} active={index === active} onPick={() => onPage(page)}>
+              <PageIcon controller={controller} icon={page.icon} size={14} />
+              <span className="truncate">{page.title || t("docs.untitled")}</span>
+            </MenuRow>
+          ))}
+        </ul>
+      )}
+    </form>
   );
 }
 
