@@ -337,14 +337,36 @@ it("a message revealed in a conversation is that conversation's entry: back land
   w.engine.stop();
 });
 
-it("a reply revealed in the conversation already on screen (a notification's click) opens its thread too", async () => {
+/** The thread pane's row of a reply (ThreadPane renders replies as `thread-<id>`), and whether it is highlighted. */
+const threadRow = (id: string) => document.getElementById(`thread-${id}`);
+
+it("a reply revealed in the conversation already on screen (a notification's click) opens its thread at the reply", async () => {
+  // 2026-10-08: the click on a thread reply's notification (macOS) showed only the thread's root in the timeline, when
+  // the reply's conversation was the one left on screen: the reveal returned early and never opened the thread.
+  const scrolled: string[] = [];
+  HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) { scrolled.push(this.id); };
   const { w, controller, reply } = await setup();
   expect(title()).toBe("c");
-  expect(screen.queryAllByText("返信")).toHaveLength(0);
+  expect(document.querySelector("aside")).toBeNull();
   await act(async () => { await controller.revealMessage(reply as MessageOut); });
   await settle(w);
   expect(title()).toBe("c");
-  expect(screen.getAllByText("返信").length).toBeGreaterThan(0); // the thread pane, beside the conversation
+  const row = threadRow(reply.id);
+  expect(row).not.toBeNull(); // the thread pane, beside the conversation
+  expect(row!.closest("aside")).not.toBeNull();
+  expect(row!.className).toContain("highlighted");
+  expect(scrolled).toContain(`thread-${reply.id}`);
+  w.engine.stop();
+});
+
+it("a reply revealed from another conversation (a notification's click) opens that conversation and the thread at the reply", async () => {
+  const { w, controller, reply } = await setup();
+  await openRow(w, "d");
+  expect(title()).toBe("d");
+  await act(async () => { await controller.revealMessage(reply as MessageOut); });
+  await settle(w);
+  expect(title()).toBe("c");
+  expect(threadRow(reply.id)?.className).toContain("highlighted");
   w.engine.stop();
 });
 

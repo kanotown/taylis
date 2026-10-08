@@ -423,7 +423,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const focus = controller.messageFocus;
     if (focus && threadListFocus.current === focus.messageId) return;
     if (focus) threadListFocus.current = null;
-    if (!focus || (compact && revealing.current === focus.messageId) || (focus.channelId === currentId && view === "channel" && (!compact || pane === "main"))) return;
+    if (!focus || (compact && revealing.current === focus.messageId)) return;
+    if (focus.channelId === currentId && view === "channel" && (!compact || pane === "main")) {
+      // Its conversation is already on screen (a notification's click while it was left open behind other apps, a
+      // permalink to a reply in it): a reply still opens its thread, scrolled to and highlighting the reply (ThreadPane).
+      // Before (2026-10-08), this returned at once and the timeline only showed the thread's root.
+      if (focus.parentId !== null && (threadId !== focus.parentId || threadChannelId !== focus.channelId)) {
+        setThreadChannelId(focus.channelId);
+        setThreadId(focus.parentId);
+      }
+      return;
+    }
     // M39: a reply opened from the activity tab: its thread is over that tab's root, and shows the reply itself.
     if (compact && mobileTab === "activity" && view === "threads" && pane === "main" && focus.parentId !== null && focus.parentId === threadId) return;
     if (compact) {
