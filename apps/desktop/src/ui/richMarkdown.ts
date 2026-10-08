@@ -43,6 +43,8 @@ const BLANK = /^[\s　]*$/;
 const PROTECTED = [/https?:\/\/[^\s<>]+/g, /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g, /¯\\_\(ツ\)_\/¯/g, /(?<![A-Za-z0-9._@<-])@[A-Za-z0-9._-]+/g];
 const MARKERS = /[_*~`$]/g;
 const SAFE_URL = /^https?:\/\/[^\s)]+$/;
+/** M150: what a link may go to in the canvas dialect (markdown.ts INLINE_CANVAS). */
+const CANVAS_URL = /^(?:https?:\/\/[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})$/;
 const BARE_URL = /https?:\/\/[^\s<>]+/g;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -112,8 +114,24 @@ function listNodes(items: readonly Item[], from: number, level: number): { nodes
   return { nodes, next: i };
 }
 
-/** Inline tokens as text nodes with marks; the zero-width spaces this module writes are left out again. */
-function inlineNodes(tokens: readonly Token[], lineStart: boolean): RichNode[] {
+/**
+ * M150: what the page editor (ui/pageMarkdown.ts, the canvas dialect) reads as inline atoms instead of text: mentions,
+ * `page:` links (chips with the page's current title) and the emoji `:name:` it knows. Each atom keeps its Markdown in
+ * `attrs.md` (a page link: `id` and `label`), so it is written back as it was read.
+ */
+export interface InlineAtoms {
+  /** Whether `:name:` is an emoji the renderer draws (a shortcode or a custom emoji). */
+  emoji?: (name: string) => boolean;
+}
+
+const EMOJI_CODE = /:([a-z0-9][a-z0-9_+-]{0,31}):/g;
+const PAGE_URL = /^page:([0-9a-fA-F-]{36})$/;
+
+/**
+ * Inline tokens as text nodes with marks; the zero-width spaces this module writes are left out again. `atoms` (the
+ * page editor): mentions, page links and emoji as inline atoms.
+ */
+export function inlineNodes(tokens: readonly Token[], lineStart: boolean, atoms?: InlineAtoms): RichNode[] {
   const nodes: RichNode[] = [];
   const marked = (text: string, type: string, attrs?: Record<string, unknown>): RichNode => ({ type: "text", text, marks: [attrs ? { type, attrs } : { type }] });
   for (const token of tokens) {
@@ -127,20 +145,23 @@ function inlineNodes(tokens: readonly Token[], lineStart: boolean): RichNode[] {
       case "code":
         nodes.push(marked(token.text, token.kind));
         break;
-      case "link":
-        nodes.push(marked(token.label || token.url, "link", { href: token.url }));
+      case "link": {
+        const page = atoms ? PAGE_URL.exec(token.url) : null;
+        if (page) nodes.push({ type: "pageLink", attrs: { id: page[1]!, label: token.label ?? "" } });
+        else nodes.push(marked(token.label || token.url, "link", { href: token.url }));
         break;
+      }
       case "math":
         nodes.push(marked(token.text, "math", token.display ? { display: true } : undefined));
         break;
       case "mention":
-        nodes.push({ type: "text", text: `<@${token.userId}>` });
+        nodes.push(atoms ? { type: "mention", attrs: { md: `<@${token.userId}>`, kind: "user", id: token.userId } } : { type: "text", text: `<@${token.userId}>` });
         break;
       case "mention_group":
-        nodes.push({ type: "text", text: `<@group:${token.groupId}>` });
+        nodes.push(atoms ? { type: "mention", attrs: { md: `<@group:${token.groupId}>`, kind: "group", id: token.groupId } } : { type: "text", text: `<@group:${token.groupId}>` });
         break;
       case "mention_all":
-        nodes.push({ type: "text", text: `<!${token.target}>` });
+        nodes.push(atoms ? { type: "mention", attrs: { md: `<!${token.target}>`, kind: "all", id: token.target } } : { type: "text", text: `<!${token.target}>` });
         break;
       default:
         break;
@@ -149,7 +170,7 @@ function inlineNodes(tokens: readonly Token[], lineStart: boolean): RichNode[] {
   const isItalic = (node: RichNode | undefined) => node?.marks?.[0]?.type === "italic";
   const isMath = (node: RichNode | undefined) => node?.marks?.[0]?.type === "math" && !node.marks[0].attrs?.display;
   nodes.forEach((node, index) => {
-    if (node.marks) return;
+    if (node.marks || node.type !== "text") return;
     let text = node.text ?? "";
     if ((index === 0 && lineStart) || isItalic(nodes[index - 1]) || isMath(nodes[index - 1])) text = text.startsWith(ZWSP) ? text.slice(1) : text;
     if (isItalic(nodes[index + 1]) && text.endsWith(ZWSP)) text = text.slice(0, -1);
@@ -158,12 +179,34 @@ function inlineNodes(tokens: readonly Token[], lineStart: boolean): RichNode[] {
   // Neighbouring plain texts (a mention token beside text) are one node, as the editor keeps them.
   const merged: RichNode[] = [];
   for (const node of nodes) {
+    if (node.type !== "text") {
+      merged.push(node);
+      continue;
+    }
     if (!node.text) continue;
     const previous = merged.at(-1);
-    if (previous && !previous.marks && !node.marks) previous.text += node.text;
+    if (previous && previous.type === "text" && !previous.marks && !node.marks) previous.text += node.text;
     else merged.push(node);
   }
-  return merged;
+  const emoji = atoms?.emoji;
+  if (!emoji) return merged;
+  // Emoji the renderer draws (in plain, bold, italic and struck text) are atoms that keep their `:name:`.
+  return merged.flatMap((node) => {
+    const mark = node.marks?.[0]?.type;
+    const text = node.text ?? "";
+    if (node.type !== "text" || !text.includes(":") || mark === "code" || mark === "math" || mark === "link") return [node];
+    const out: RichNode[] = [];
+    let last = 0;
+    for (const match of text.matchAll(EMOJI_CODE)) {
+      if (match.index! < last || !emoji(match[1]!)) continue;
+      if (match.index! > last) out.push({ ...node, text: text.slice(last, match.index) });
+      out.push(node.marks ? { type: "emoji", attrs: { md: match[0] }, marks: node.marks } : { type: "emoji", attrs: { md: match[0] } });
+      last = match.index! + match[0].length;
+    }
+    if (out.length === 0) return [node];
+    if (last < text.length) out.push({ ...node, text: text.slice(last) });
+    return out;
+  });
 }
 
 /** A table written back from its cells (the editor edits it as Markdown text). */
@@ -267,6 +310,7 @@ function joinLines(content: RichNode[] | undefined): RichNode[] {
 function plainOf(node: RichNode): string {
   if (node.type === "text") return node.text ?? "";
   if (node.type === "hardBreak") return "\n";
+  if (typeof node.attrs?.md === "string") return node.attrs.md; // M150: an inline atom's Markdown
   return (node.content ?? []).map(plainOf).join("");
 }
 
@@ -286,6 +330,12 @@ const MARK_ORDER: PieceKind[] = ["code", "math", "link", "bold", "italic", "stri
 function nodePieces(nodes: readonly RichNode[]): Piece[] {
   const pieces: Piece[] = [];
   for (const node of nodes) {
+    if (node.type === "pageLink") {
+      // M150: a page link's chip, written as the link it was read from (its label never empty).
+      const label = String(node.attrs?.label ?? "").replace(/\n/g, " ") || "page";
+      pieces.push({ kind: "link", text: label, href: `page:${String(node.attrs?.id ?? "")}` });
+      continue;
+    }
     const text = node.type === "text" ? node.text ?? "" : plainOf(node);
     if (!text) continue;
     const types = new Set((node.marks ?? []).map((mark) => mark.type));
@@ -313,12 +363,16 @@ function mergePieces(pieces: Piece[]): Piece[] {
 
 const lineCache = new Map<string, string>();
 
-function serializeLine(nodes: readonly RichNode[]): string {
+/**
+ * One line of inline nodes as Markdown that the renderer reads back as the same. `canvas` (M150, the page editor): the
+ * canvas dialect, whose links may also go to `page:` and `attachment:`.
+ */
+export function serializeLine(nodes: readonly RichNode[], canvas = false): string {
   if (nodes.length === 0) return "";
-  const key = JSON.stringify(nodes);
+  const key = (canvas ? "c" : "m") + JSON.stringify(nodes);
   const hit = lineCache.get(key);
   if (hit !== undefined) return hit;
-  const line = serializeInline(nodePieces(nodes));
+  const line = serializeInline(nodePieces(nodes), canvas);
   if (lineCache.size > 500) lineCache.clear();
   lineCache.set(key, line);
   return line;
@@ -340,7 +394,7 @@ interface Emitted {
   math?: boolean;
 }
 
-function emitPieces(pieces: readonly Piece[]): Emitted[] {
+function emitPieces(pieces: readonly Piece[], canvas = false): Emitted[] {
   const out: Emitted[] = [];
   const plain = (text: string) => {
     if (!text) return;
@@ -389,7 +443,7 @@ function emitPieces(pieces: readonly Piece[]): Emitted[] {
       }
       case "link": {
         const href = (piece.href ?? "").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29");
-        if (!SAFE_URL.test(href)) {
+        if (!(canvas ? CANVAS_URL : SAFE_URL).test(href)) {
           plain(piece.text);
           break;
         }
@@ -480,8 +534,8 @@ function signature(pieces: readonly Piece[]): string {
   return JSON.stringify(out);
 }
 
-function readBack(line: string): string {
-  const pieces: Piece[] = tokenizeInline(line).map((token): Piece => {
+function readBack(line: string, canvas = false): string {
+  const pieces: Piece[] = tokenizeInline(line, canvas).map((token): Piece => {
     switch (token.kind) {
       case "bold":
       case "italic":
@@ -515,25 +569,25 @@ const MAX_MINIMISED = 200;
  * none, else every marker in plain text escaped and then each escape left out again where the line still reads the
  * same.
  */
-function serializeInline(pieces: readonly Piece[]): string {
-  const parts = emitPieces(pieces);
+function serializeInline(pieces: readonly Piece[], canvas = false): string {
+  const parts = emitPieces(pieces, canvas);
   const expected = signature(parts.flatMap((part) => part.expect));
   const none = new Set<string>();
   const first = assemble(parts, none, true);
-  if (readBack(first) === expected) return first;
+  if (readBack(first, canvas) === expected) return first;
   const all = new Set<string>();
   parts.forEach((part, index) => (part.candidates ?? []).forEach((p) => all.add(`${index}:${p}`)));
   let bare = true;
-  if (readBack(assemble(parts, all, true)) !== expected) {
-    if (readBack(assemble(parts, all, false)) !== expected) return assemble(parts, all, false);
+  if (readBack(assemble(parts, all, true), canvas) !== expected) {
+    if (readBack(assemble(parts, all, false), canvas) !== expected) return assemble(parts, all, false);
     bare = false;
-    if (readBack(assemble(parts, none, false)) === expected) return assemble(parts, none, false);
+    if (readBack(assemble(parts, none, false), canvas) === expected) return assemble(parts, none, false);
   }
   if (all.size > MAX_MINIMISED) return assemble(parts, all, bare);
   const kept = new Set(all);
   for (const key of all) {
     kept.delete(key);
-    if (readBack(assemble(parts, kept, bare)) !== expected) kept.add(key);
+    if (readBack(assemble(parts, kept, bare), canvas) !== expected) kept.add(key);
   }
   return assemble(parts, kept, bare);
 }

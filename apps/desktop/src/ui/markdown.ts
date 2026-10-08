@@ -299,6 +299,12 @@ export interface BlockLines {
 }
 
 /**
+ * M150: the source lines of a container's blocks (`containerLines.get(callout)[k]` belongs to `callout.blocks[k]`,
+ * lines of the whole body), for the page editor's source map (ui/pageMarkdown.ts).
+ */
+export const containerLines = new WeakMap<Block, BlockLines[]>();
+
+/**
  * parseBlocks with each block's source lines beside it (`lines[k]` belongs to `blocks[k]`): the canvas editor's
  * scroll sync (ui/canvasScrollSync.ts) matches the preview's blocks to the editor's lines with them. Every line of the
  * body is in exactly one block, in order.
@@ -369,11 +375,13 @@ function readBlocks(lines: readonly string[], begin: number, depth: number, canv
     if (opensContainer(i)) {
       const open = CONTAINER_OPEN.exec(line)!;
       const close = containerCloseAfter(i);
-      const inner = readBlocks(lines.slice(0, close), i + 1, depth + 1, canvas).blocks;
+      const read = readBlocks(lines.slice(0, close), i + 1, depth + 1, canvas);
+      const inner = read.blocks;
       const rest = (open[2] ?? "").trim();
       i = close + 1;
-      if (open[1] === "callout") push({ kind: "callout", icon: rest || null, tone: calloutTone(rest || null), blocks: inner, line: start });
-      else push({ kind: "toggle", title: inl(rest), blocks: inner, line: start });
+      const block: Block = open[1] === "callout" ? { kind: "callout", icon: rest || null, tone: calloutTone(rest || null), blocks: inner, line: start } : { kind: "toggle", title: inl(rest), blocks: inner, line: start };
+      containerLines.set(block, read.lines);
+      push(block);
       continue;
     }
     if (isEmbed(i)) {
