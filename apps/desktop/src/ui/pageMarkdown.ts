@@ -282,6 +282,56 @@ export function serializePage<N>(doc: N, view: SourceView<N>, options: Serialize
   return joinEmitted(emitted, view, options.edges ?? true);
 }
 
+/**
+ * M151: whether blocks written as they are (untouched ones as their `src`) read back as what the editor shows, there
+ * (`depth`: inside that many callouts / toggles). Blocks moved keep their source only where this holds: a line's
+ * source can read differently beside other lines (a lone `:::` closes an opener lines above it). Compared as shown:
+ * each block's kind and text, list lines at the level and number the renderer gives them, blank lines left out.
+ */
+export function readsAsShown<N>(nodes: readonly N[], view: SourceView<N>, json: (node: N) => RichNode, depth: number, options: PageParseOptions = {}): boolean {
+  let text = joinEmitted(emitBlocks(nodes, view), view, false).text;
+  for (let k = 0; k < depth; k++) text = `::: callout\n${text}\n:::`;
+  let read = pageToDoc(text, options).content ?? [];
+  for (let k = 0; k < depth; k++) read = read.length === 1 && read[0]!.type === "callout" ? (read[0]!.content ?? []) : [];
+  return JSON.stringify(shownBlocks(read)) === JSON.stringify(shownBlocks(nodes.map(json)));
+}
+
+/** What blocks show (see readsAsShown): marks and how a line is spelled do not depend on the lines around it. */
+function shownBlocks(nodes: readonly RichNode[]): unknown[] {
+  const out: unknown[] = [];
+  const lists = new Map<RichNode, { level: number; number: number }>();
+  for (let k = 0; k < nodes.length; ) {
+    let end = k;
+    while (end < nodes.length && nodes[end]!.type === "listLine") end++;
+    if (end === k) {
+      k++;
+      continue;
+    }
+    const run = nodes.slice(k, end);
+    listRun(run.map((node) => ({ kind: String(node.attrs?.kind), level: Number(node.attrs?.level ?? 0), number: node.attrs?.number == null ? null : Number(node.attrs.number) }))).forEach((shown, i) => lists.set(run[i]!, shown));
+    k = end;
+  }
+  for (const node of nodes) {
+    if (node.type === "paragraph" && !node.content?.length) continue;
+    const attrs = node.attrs ?? {};
+    const list = lists.get(node);
+    const key = [node.type, attrs.kind ?? null, list?.level ?? attrs.level ?? null, list?.number ?? null, attrs.checked ?? null, typeof attrs.icon === "string" ? attrs.icon.trim() : null, attrs.language ?? null];
+    if (node.type === "callout" || node.type === "toggle" || node.type === "blockquote" || node.type === "table" || node.type === "tableRow") out.push([...key, shownBlocks(node.content ?? [])]);
+    else out.push([...key, shownText(node)]);
+  }
+  return out;
+}
+
+function shownText(node: RichNode): string {
+  if (node.type === "text") return node.text ?? "";
+  const attrs = node.attrs ?? {};
+  if (node.type === "pageLink") return `[${String(attrs.label ?? "")}](${String(attrs.id ?? "")})`;
+  if (typeof attrs.md === "string") return attrs.md;
+  if (typeof attrs.tex === "string") return `$${attrs.tex}$`;
+  if (node.type === "image" || node.type === "embed") return JSON.stringify([attrs.attachmentId ?? attrs.pageId, attrs.alt ?? attrs.label, attrs.viewId ?? null]);
+  return (node.content ?? []).map(shownText).join("");
+}
+
 /** Convenience for JSON documents (tests, the Markdown mode's checks): untouched = as `pageToDoc` returned it. */
 export function docToPage(doc: RichNode, original: (node: RichNode) => boolean = originalsOf(doc)): string {
   return serializePage(doc, jsonView(original)).text;
@@ -309,6 +359,8 @@ function joinEmitted<N>(emitted: readonly Emitted[], _view: SourceView<N>, edges
     if (previous) {
       // A table takes in the lines with a pipe after it; a rule needs blank lines around it.
       if (previous.kind === "table" && first.trim() !== "" && first.includes("|")) blankBefore = true;
+      // M151: a table whose header looks like a separator under a line with a pipe would make that line its header.
+      if (entry.kind === "table" && previousLast.includes("|") && TABLE_SEPARATOR.test(first) && splitTableRow(previousLast).length === splitTableRow(first).length) blankBefore = true;
       if (entry.kind === "hr" && previousLast.trim() !== "") blankBefore = true;
       if (previous.kind === "hr" && first.trim() !== "") blankBefore = true;
       let sep = previous.eol || "\n";

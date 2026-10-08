@@ -9,11 +9,13 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Editor, type JSONContent } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { blockPosAt, canPlace, deleteUnit, duplicateUnit, moveUnit, unitAt } from "../src/ui/pageEditorBlocks";
+import { jsonView, readsAsShown, type RichNode } from "../src/ui/pageMarkdown";
 import { applyMerge, createPageDocument } from "../src/ui/pageEditorDoc";
-import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap } from "../src/ui/pageEditorSchema";
+import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "../src/ui/pageEditorSchema";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const shared = join(root, "apps", "shared");
@@ -33,6 +35,7 @@ const corpus = readdirSync(docsDir).filter((n) => n.endsWith(".md") && statSync(
 export function fakeHost(): PageEditorHost {
   return {
     portals: new PortalRegistry(),
+    sources: new SourceMap(),
     render: { pageLink: () => null, emoji: () => null, image: () => null, embed: () => null, table: () => null, math: () => null, calloutIcon: () => null },
     mentionLabel: (md) => `@${md.slice(2, 6)}`,
     isEmoji: (name) => name === "smile" || name === "party",
@@ -55,7 +58,7 @@ function open(body: string) {
   const element = document.createElement("div");
   document.body.append(element);
   const host = fakeHost();
-  const sources = new SourceMap();
+  const sources = host.sources;
   const editor = new Editor({ element, extensions: pageExtensions(host), content: createPageDocument(body, host.isEmoji) as JSONContent });
   sources.add(editor.state.doc);
   editors.push(editor);
@@ -362,5 +365,134 @@ describe("pasting and merges", () => {
     expect(markdown()).toBe(merged);
     expect(editor.state.doc.child(0)).toBe(before);
     expect(editor.state.selection.$from.index(0)).toBe(2);
+  });
+});
+
+/** The position before the top-level block `index`. */
+const before = (editor: Editor, index: number) => {
+  let pos = 0;
+  for (let k = 0; k < index; k++) pos += editor.state.doc.child(k).nodeSize;
+  return pos;
+};
+
+describe("M151: moving blocks", () => {
+  const lines = BODY.split("\r\n");
+  const keys = (editor: Editor, direction: "ArrowUp" | "ArrowDown") => press(editor, direction, { ctrlKey: true, shiftKey: true }) // jsdom is not a Mac: Mod is Ctrl;
+
+  it("⌘⇧↓ moves a line past the next; both keep their bytes and line breaks; undo restores them exactly", () => {
+    const { editor, markdown } = open(BODY);
+    caretInBlock(editor, 2);
+    keys(editor, "ArrowDown");
+    expect(markdown()).toBe([...lines.slice(0, 2), lines[3], lines[2], ...lines.slice(4)].join("\r\n"));
+    expect(editor.state.selection.$from.parent.textContent).toBe("はじめに 大事 なこと。"); // the caret moved with it
+    editor.commands.undo();
+    expect(markdown()).toBe(BODY);
+  });
+
+  it("a list item moves with its children (`*   項目 B` and its four-space child keep their text)", () => {
+    const { editor, markdown } = open(BODY);
+    caretInBlock(editor, 4);
+    keys(editor, "ArrowUp");
+    expect(markdown()).toBe([...lines.slice(0, 3), "*   項目 B", "    * 入れ子", "* 項目 A", ...lines.slice(6)].join("\r\n"));
+    keys(editor, "ArrowUp");
+    expect(markdown()).toBe([...lines.slice(0, 2), "*   項目 B", "    * 入れ子", lines[2], "* 項目 A", ...lines.slice(6)].join("\r\n"));
+  });
+
+  it("a nested item moved away from its list is lifted to the top level (written anew)", () => {
+    const { editor, sources, markdown } = open(BODY);
+    editor.view.dispatch(moveUnit(editor.state, unitAt(editor.state.doc, before(editor, 5)), before(editor, 2), sources, {})!);
+    expect(markdown()).toBe([lines[0], lines[1], "- 入れ子", lines[2], lines[3], lines[4], ...lines.slice(6)].join("\r\n"));
+  });
+
+  it("numbered lines swapped keep `1.` (the renderer numbers them)", () => {
+    const { editor, markdown } = open("1. 一\n1. 二\n1. 三");
+    caretInBlock(editor, 2);
+    keys(editor, "ArrowUp");
+    expect(markdown()).toBe("1. 一\n1. 三\n1. 二");
+  });
+
+  it("a block moved into a callout, then out again at its first line (⌘⇧↑)", () => {
+    const { editor, sources, markdown } = open("前\n::: callout 💡\n中\n:::\n後");
+    // 「前」 into the callout, before 「中」.
+    editor.view.dispatch(moveUnit(editor.state, unitAt(editor.state.doc, 0), before(editor, 1) + 1, sources, {})!);
+    expect(markdown()).toBe("::: callout 💡\n前\n中\n:::\n後");
+    keys(editor, "ArrowUp");
+    expect(markdown()).toBe("前\n::: callout 💡\n中\n:::\n後");
+  });
+
+  it("a line that would read differently in its new place is written anew (`:::` into a callout)", () => {
+    const { editor, sources, markdown } = open(":::\n::: callout\nx\n:::");
+    expect(editor.state.doc.child(0).type.name).toBe("paragraph");
+    editor.view.dispatch(moveUnit(editor.state, unitAt(editor.state.doc, 0), before(editor, 1) + 1, sources, {})!);
+    expect(markdown()).toBe("::: callout\n​:::\nx\n:::");
+  });
+
+  it("the only block of a callout moved out leaves an empty line in it", () => {
+    const { editor, sources, markdown } = open("::: callout\nx\n:::\n後");
+    editor.view.dispatch(moveUnit(editor.state, unitAt(editor.state.doc, 1), editor.state.doc.content.size, sources, {})!);
+    expect(markdown()).toBe("::: callout\n:::\n後\nx");
+  });
+
+  it("containers go two deep at most: a toggle with a callout in it cannot go into a callout", () => {
+    const { editor, sources } = open("::: toggle t\n::: callout\nx\n:::\n:::\n::: callout\ny\n:::");
+    const unit = unitAt(editor.state.doc, 0);
+    expect(canPlace(editor.state.doc, unit, before(editor, 1) + 1)).toBe(false);
+    expect(moveUnit(editor.state, unit, before(editor, 1) + 1, sources, {})).toBeNull();
+    expect(canPlace(editor.state.doc, unitAt(editor.state.doc, before(editor, 1)), 0)).toBe(true);
+  });
+
+  it("a rule moved beside text gets the blank lines it needs", () => {
+    const { editor, markdown } = open("a\nb\n\n---\n\nc");
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, before(editor, 3))));
+    keys(editor, "ArrowUp");
+    expect(markdown()).toBe("a\nb\n\n---\n\n\nc"); // past the blank line (a block too)
+    keys(editor, "ArrowUp");
+    expect(markdown()).toBe("a\n\n---\n\nb\n\n\nc");
+  });
+
+  it("the selected lines move together", () => {
+    const { editor, markdown } = open("a\nb\nc\nd");
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, before(editor, 1) + 1, before(editor, 2) + 2)));
+    keys(editor, "ArrowDown");
+    expect(markdown()).toBe("a\nd\nb\nc");
+  });
+
+  it("random moves on random pages: the body always reads as the editor shows it, undo gives the bytes back", () => {
+    const pieces = ["# 見出し", "本文", "", "- a", "  - b", "    - c", "1. one", "1. one", "  1. inner", "- [ ] task", "  - [ ] sub", "> quote", "```", "code", "```", "$$x$$", "---", "| a | b |", "| --- | --- |", "| 1 | 2 |", "a | b", ":::", "$$", "::: callout 💡", "::: toggle t", ":::", "![](attachment:0190a2b4-0000-7000-8000-0000000000aa)", "* star", "*   wide"];
+    let seed = 151;
+    const next = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    let moved = 0;
+    for (let k = 0; k < 1000; k++) {
+      const body = Array.from({ length: 3 + Math.floor(next() * 12) }, () => pieces[Math.floor(next() * pieces.length)]!).join("\n");
+      editors.forEach((e) => e.destroy());
+      editors = [];
+      const { editor, sources, markdown } = open(body);
+      expect(markdown()).toBe(body);
+      const blocks: number[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (blockPosAt(editor.state.doc, pos) === pos && node.type.name !== "toggleTitle") blocks.push(pos);
+        return node.type.name === "doc" || node.type.name === "callout" || node.type.name === "toggle";
+      });
+      const unit = unitAt(editor.state.doc, blocks[Math.floor(next() * blocks.length)]!);
+      const targets = [...blocks, editor.state.doc.content.size].filter((pos) => canPlace(editor.state.doc, unit, pos));
+      if (targets.length === 0) continue;
+      const tr = moveUnit(editor.state, unit, targets[Math.floor(next() * targets.length)]!, sources, {});
+      editor.view.dispatch(tr!);
+      moved++;
+      const written = markdown();
+      const shown = editor.state.doc.toJSON() as RichNode;
+      expect(readsAsShown(shown.content ?? [], jsonView(() => false), (n) => n, 0) && readsAsShown([...Array(editor.state.doc.childCount).keys()].map((i) => editor.state.doc.child(i)), sources.view(), (n) => n.toJSON() as RichNode, 0), `${JSON.stringify(body)} → ${JSON.stringify(written)}`).toBe(true);
+      editor.commands.undo();
+      expect(markdown()).toBe(body);
+    }
+    expect(moved).toBeGreaterThan(700);
+  }, 60_000);
+
+  it("duplicate (written anew, a task's hidden link stays with the original) and delete", () => {
+    const { editor, markdown } = open("- [ ] 予稿 <!--task:0190a2b4-0000-7000-8000-000000000001-->\n後");
+    editor.view.dispatch(duplicateUnit(editor.state, unitAt(editor.state.doc, 0), untied));
+    expect(markdown()).toBe("- [ ] 予稿 <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [ ] 予稿\n後");
+    editor.view.dispatch(deleteUnit(editor.state, unitAt(editor.state.doc, 0)));
+    expect(markdown()).toBe("- [ ] 予稿\n後");
   });
 });
