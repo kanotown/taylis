@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M146 (docs/WIKI.md §24.3): templates and duplicating on the phone. -->
+<resources>
+    <string name="docs_tpl_blank">Blank page</string>
+    <string name="docs_tpl_blank_note">A page with nothing in it</string>
+    <string name="docs_tpl_builtin">Built-in</string>
+    <string name="docs_tpl_everyone">Everyone\'s templates</string>
+    <string name="docs_tpl_start_with">Start with</string>
+    <string name="docs_tpl_no_templates">No templates you can see yet (make one on a computer with “Save as template” in a page\'s ⋯ menu).</string>
+    <string name="docs_tpl_load_failed">Couldn\'t load the templates (a blank page still works).</string>
+    <string name="docs_tpl_loading">Loading templates…</string>
+    <string name="docs_tpl_start_from">Start from a template</string>
+    <string name="docs_tpl_apply_note">The template\'s body goes into this page (its title and icon only when the page has none).</string>
+    <string name="docs_tpl_apply">Use</string>
+    <string name="docs_tpl_duplicate">Duplicate</string>
+    <string name="docs_tpl_duplicated">Made “%1$s”</string>
+    <string name="docs_tpl_top_level_title">Duplicate at the top level?</string>
+    <string name="docs_tpl_top_level_note">The copy can\'t go next to the original (you can\'t edit that place). It will go at the top level of Docs.</string>
+    <string name="docs_tpl_top_level_confirm">Put at the top level</string>
+    <string name="docs_tpl_banner">This page is a template: what you change here is used for the pages made from it.</string>
+    <string name="docs_tpl_row_banner">This row is a template: its title, values and body are copied to the rows made from it.</string>
+    <string name="docs_tpl_use">New page from this template</string>
+    <string name="docs_tpl_use_row">New row from this template</string>
+    <string name="docs_tpl_new_page_from">New page from a template</string>
+    <string name="docs_tpl_row_template">Template</string>
+    <string name="docs_tpl_blank_row">Blank row</string>
+    <string name="docs_tpl_default">Default</string>
+    <string name="docs_tpl_open_template">Open “%1$s”</string>
+    <string name="docs_tpl_today">Today</string>
+    <string name="docs_tpl_me">Me</string>
+</resources>

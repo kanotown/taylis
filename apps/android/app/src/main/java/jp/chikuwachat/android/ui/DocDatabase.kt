@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -88,6 +90,7 @@ import jp.chikuwachat.android.sync.RelationChips
 import jp.chikuwachat.android.sync.RowSession
 import jp.chikuwachat.android.sync.WikiDb
 import jp.chikuwachat.android.sync.WikiHub
+import jp.chikuwachat.android.sync.WikiTemplates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -117,6 +120,8 @@ object DbUi {
         zone = ZoneId.systemDefault(),
         locale = L10n.locale,
         datePattern = L10n.str(R.string.docs_db_date_pattern),
+        todayWord = L10n.str(R.string.docs_tpl_today),
+        meWord = L10n.str(R.string.docs_tpl_me),
     )
 
     fun propName(prop: DbProperty): String = WikiDb.propName(prop, L10n.str(R.string.docs_db_title_prop))
@@ -339,27 +344,60 @@ private fun AgendaRow(controller: AppController, version: Int, row: DbRow, label
     }
 }
 
-/** 「＋ 新規」: the new row's title (empty: 「無題」); it opens once made. */
+/**
+ * 「＋ 新規」: the new row's title (empty: 「無題」, or the template's) and, when the database has row templates, what it
+ * starts from — the default one picked first (M146: sent as nothing), another template, or 白紙の行. ↗ beside a
+ * template opens it (its page shows the template banner). The row opens once made.
+ */
 @Composable
-fun NewRowDialog(controller: AppController, session: DatabaseSession, onDismiss: () -> Unit, onCreated: (DbRow) -> Unit) {
+fun NewRowDialog(
+    controller: AppController, session: DatabaseSession, onDismiss: () -> Unit, onCreated: (DbRow) -> Unit,
+    onOpenTemplate: (String) -> Unit = {},
+) {
     var title by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val database = session.database
+    val templates = remember(database) { WikiTemplates.rowTemplates(database) }
+    // "" stands for 白紙の行 (rememberSaveable keeps a String).
+    var selected by rememberSaveable { mutableStateOf(WikiTemplates.initialRowTemplate(database) ?: "") }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(stringResource(R.string.docs_db_new_row_title)) },
         text = {
-            OutlinedTextField(
-                title, { title = it.take(200) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.docs_title_label)) },
-            )
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    title, { title = it.take(200) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.docs_title_label)) },
+                )
+                if (templates.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.docs_tpl_row_template), style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp).semantics { heading() },
+                    )
+                    templates.forEach { tpl ->
+                        val label = tpl.title.ifBlank { L10n.str(R.string.docs_untitled) }
+                        ChoiceLine(
+                            selected = selected == tpl.id, onSelect = { selected = tpl.id },
+                            label = (tpl.icon?.takeIf { it.isNotBlank() }?.let { "$it " } ?: "") + label,
+                            note = if (tpl.id == database?.defaultTemplateId) stringResource(R.string.docs_tpl_default) else null,
+                        ) {
+                            IconButton(onClick = { onOpenTemplate(tpl.id) }) {
+                                Icon(Icons.AutoMirrored.Outlined.OpenInNew, stringResource(R.string.docs_tpl_open_template, label), Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    ChoiceLine(selected = selected == "", onSelect = { selected = "" }, label = stringResource(R.string.docs_tpl_blank_row), note = null)
+                }
+            }
         },
         confirmButton = {
             TextButton(enabled = !busy, onClick = {
                 busy = true
+                val choice = WikiTemplates.rowChoice(selected.ifEmpty { null }, database)
                 scope.launch {
                     try {
-                        onCreated(session.createRow(title.trim()))
+                        onCreated(session.createRow(title.trim(), choice))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -372,6 +410,22 @@ fun NewRowDialog(controller: AppController, session: DatabaseSession, onDismiss:
         },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
+}
+
+/** One choice of a sheet (a radio button, a label, a small note such as 「既定」, something at the end). */
+@Composable
+fun ChoiceLine(selected: Boolean, onSelect: () -> Unit, label: String, note: String?, trailing: (@Composable () -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().selectable(selected = selected, onClick = onSelect, role = Role.RadioButton).heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(horizontal = 8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        trailing?.invoke()
+    }
 }
 
 // --- a row's properties ---------------------------------------------------------------------------------------------

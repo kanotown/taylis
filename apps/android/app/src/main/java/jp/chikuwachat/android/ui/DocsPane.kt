@@ -16,6 +16,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -67,6 +73,8 @@ import jp.chikuwachat.android.sync.CanvasSaver
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.WikiLevels
 import jp.chikuwachat.android.sync.WikiTree
+import jp.chikuwachat.android.sync.PageTemplateChoice
+import jp.chikuwachat.android.sync.WikiTemplates
 import kotlinx.coroutines.launch
 
 /*
@@ -291,17 +299,131 @@ private fun PageRow(
     }
 }
 
-/** A new page's title (empty: 「無題」) and where it goes; creating it opens it. */
+/** A template choice kept across a rotation: "" blank, "b:<key>" built-in, "p:<id>" a template page. */
+object TemplatePick {
+    fun encode(choice: PageTemplateChoice?): String = when (choice) {
+        is PageTemplateChoice.Builtin -> "b:" + choice.key
+        is PageTemplateChoice.Page -> "p:" + choice.id
+        PageTemplateChoice.Blank, null -> ""
+    }
+
+    fun decode(raw: String): PageTemplateChoice = when {
+        raw.startsWith("b:") -> PageTemplateChoice.Builtin(raw.removePrefix("b:"))
+        raw.startsWith("p:") -> PageTemplateChoice.Page(raw.removePrefix("p:"))
+        else -> PageTemplateChoice.Blank
+    }
+}
+
+/**
+ * The gallery (M146, WIKI.md §24.3): 白紙のページ (unless `withBlank` is off: 「テンプレートから始める」), 組み込み and
+ * みんなのテンプレート, read from GET /wiki/templates when shown. A failed read leaves 白紙 usable.
+ */
 @Composable
-fun NewPageDialog(controller: AppController, target: NewPageTarget, onDismiss: () -> Unit, onCreated: (PageOut) -> Unit) {
+fun TemplateChoices(controller: AppController, selected: String, withBlank: Boolean, onSelect: (String) -> Unit) {
+    var gallery by remember { mutableStateOf<WikiTemplates.Gallery?>(null) }
+    var failed by remember { mutableStateOf<Throwable?>(null) }
+    val version by controller.store.version.collectAsState()
+    LaunchedEffect(Unit) {
+        controller.wikiTemplates().onSuccess { gallery = it; failed = null }.onFailure { failed = it }
+    }
+    Column(Modifier.semantics { contentDescription = L10n.str(R.string.docs_tpl_start_with) }) {
+        if (withBlank) ChoiceLine(selected == "", { onSelect("") }, stringResource(R.string.docs_tpl_blank), stringResource(R.string.docs_tpl_blank_note))
+        val shown = gallery
+        when {
+            failed != null -> Text(
+                stringResource(R.string.docs_tpl_load_failed) + "\n" + controller.describe(failed!!),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 6.dp),
+            )
+            shown == null -> Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.docs_tpl_loading), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            else -> {
+                if (shown.builtins.isNotEmpty()) {
+                    ChoicesHeading(stringResource(R.string.docs_tpl_builtin))
+                    shown.builtins.forEach { tpl ->
+                        val key = TemplatePick.encode(PageTemplateChoice.Builtin(tpl.key))
+                        ChoiceLine(selected == key, { onSelect(key) }, tpl.name.ifBlank { tpl.title }, tpl.description?.takeIf { it.isNotBlank() })
+                    }
+                }
+                ChoicesHeading(stringResource(R.string.docs_tpl_everyone))
+                if (shown.pages.isEmpty()) {
+                    Text(stringResource(R.string.docs_tpl_no_templates), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                shown.pages.forEach { page ->
+                    val key = TemplatePick.encode(PageTemplateChoice.Page(page.id))
+                    Row(
+                        Modifier.fillMaxWidth().selectable(selected == key, onClick = { onSelect(key) }, role = Role.RadioButton).heightIn(min = 44.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected == key, onClick = null, modifier = Modifier.padding(horizontal = 8.dp))
+                        PageTitleText(controller, version, page.icon, page.title, MaterialTheme.typography.bodyMedium, Modifier.weight(1f), maxLines = 2)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChoicesHeading(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp).semantics { heading() },
+    )
+}
+
+/** 「テンプレートから始める」 on an empty page: the gallery without 白紙; the page reads the new version once applied. */
+@Composable
+fun ApplyTemplateDialog(controller: AppController, pageId: String, onDismiss: () -> Unit) {
+    var selected by rememberSaveable(pageId) { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.docs_tpl_start_from)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.docs_tpl_apply_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TemplateChoices(controller, selected, withBlank = false) { selected = it }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && selected.isNotEmpty(), onClick = {
+                busy = true
+                scope.launch {
+                    val ok = controller.applyWikiTemplate(pageId, TemplatePick.decode(selected))
+                    busy = false
+                    if (ok) onDismiss()
+                }
+            }) {
+                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.docs_tpl_apply))
+            }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
+/**
+ * A new page's title (empty: 「無題」, or the template's) and where it goes; M146: what it starts from (the gallery, or a
+ * template given by the template banner). Creating it opens it.
+ */
+@Composable
+fun NewPageDialog(
+    controller: AppController, target: NewPageTarget, fixedTemplate: PageTemplateChoice? = null,
+    onDismiss: () -> Unit, onCreated: (PageOut) -> Unit,
+) {
     var title by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var selected by rememberSaveable { mutableStateOf(TemplatePick.encode(fixedTemplate)) }
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = {
             Text(
                 when {
+                    fixedTemplate != null -> stringResource(R.string.docs_tpl_new_page_from)
                     target.parentId != null -> stringResource(R.string.docs_new_subpage)
                     target.access == "private" -> stringResource(R.string.docs_new_private_page)
                     else -> stringResource(R.string.docs_new_shared_page)
@@ -309,7 +431,7 @@ fun NewPageDialog(controller: AppController, target: NewPageTarget, onDismiss: (
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     when {
                         target.parentId != null -> stringResource(R.string.docs_new_subpage_note, target.parentTitle?.ifBlank { null } ?: L10n.str(R.string.docs_untitled))
@@ -323,13 +445,15 @@ fun NewPageDialog(controller: AppController, target: NewPageTarget, onDismiss: (
                     label = { Text(stringResource(R.string.docs_title_label)) },
                     placeholder = { Text(stringResource(R.string.docs_title_placeholder)) },
                 )
+                if (fixedTemplate == null) TemplateChoices(controller, selected, withBlank = true) { selected = it }
             }
         },
         confirmButton = {
             TextButton(enabled = !busy, onClick = {
                 busy = true
                 scope.launch {
-                    val created = controller.createWikiPage(target.parentId, title.trim().ifEmpty { null }, target.access)
+                    val template = TemplatePick.decode(selected).takeIf { it != PageTemplateChoice.Blank }
+                    val created = controller.createWikiPage(target.parentId, title.trim().ifEmpty { null }, target.access, template)
                     busy = false
                     if (created != null) onCreated(created)
                 }

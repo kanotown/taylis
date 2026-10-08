@@ -48,8 +48,11 @@ interface WikiApi {
     /** The page with body, breadcrumbs and children; null when `etag` (`"v<version>-<level>"`) still matches. */
     suspend fun wikiPage(pageId: String, etag: String?): PageOut?
     suspend fun saveWikiPage(pageId: String, baseRevId: String, body: String, clientSaveId: String, onConflict: String): PageSaveOut
-    /** A new page: `parentId` null for a top-level one, whose access is "workspace" or "private" (§4.2). */
-    suspend fun createWikiPage(parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String): PageOut
+    /**
+     * A new page: `parentId` null for a top-level one, whose access is "workspace" or "private" (§4.2); M146: from a
+     * template (null or Blank: an empty page).
+     */
+    suspend fun createWikiPage(parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String, template: PageTemplateChoice? = null): PageOut
     suspend fun renameWikiPage(pageId: String, title: String): PageOut
     suspend fun resolveWikiPages(ids: List<String>): List<PageRef>
     suspend fun wikiBacklinks(pageId: String): List<PageItem>
@@ -361,7 +364,8 @@ class WikiHub(
 
     /** A page this device made or read (create's answer, a link opened): into the tree when it belongs there. */
     fun noteItem(item: PageItem) {
-        if (item.kind == "row" || cursor == null) return
+        // M146: templates never show in the tree (the server leaves them out too).
+        if (item.kind == "row" || item.isTemplate || cursor == null) return
         val known = pages[item.id]
         if (known != null && known.version > item.version) return
         // A page whose parent I cannot read comes with parent_id null; one I just made has its place already.
