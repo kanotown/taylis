@@ -1188,3 +1188,8 @@ base・送られた本文・head を 3-way マージする。
   `templates`・`default_template_id` にある。その変更（作成・解除・名前・ゴミ箱・既定）は `wiki.rows.changed` で知らせ、
   `schema_version` は進めない（端末は `templates` と `default_template_id` も比べて読み直す）。テンプレートから作る・複製・
   `apply-template` は `client_save_id` で冪等（再送は同じページを 200 で返す）。新しいイベントは無い。
+- **ビューの種類（M147、WIKI.md §22.4・§25）**：ボード・リスト・ギャラリーとグループは同じ問い合わせ（`grouped: true` で
+  `groups`・`row_groups` が付く）。ボードのカードの移動は `POST /wiki/rows/{id}/move {set, before_id | after_id, client_op_id}`
+  （値と行の並び（`position`）を 1 回で書く。値の変更は `client_op_id` で 1 回だけ効き、並びは送り直しても同じ所に置き直すだけ）。
+  知らせは今までと同じ `wiki.rows.changed`（と値が変われば `wiki.page.updated`、`change: "props"`）。新しいイベントは無い。
+  `grouped` を送らない古い端末には、ビューのグループの順で 1 行ずつ（隠したグループの行は除く）返す。

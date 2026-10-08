@@ -1458,7 +1458,9 @@ CREATE TABLE wiki_feed_state (id smallint PRIMARY KEY CHECK (id = 1), purged_thr
 CREATE TABLE wiki_databases (
   page_id uuid PRIMARY KEY REFERENCES wiki_pages(id) ON DELETE CASCADE,
   schema jsonb NOT NULL,          -- {"properties": [{"id","name","type","options":[{"id","name","color"}],"number_format","relation":{"database_id","pair_id","primary"}}]}
-  views jsonb NOT NULL,           -- [{"id","name","type": table | calendar,"columns","sort","filter","date_prop_id"}]
+  views jsonb NOT NULL,           -- [{"id","name","type": table | calendar | board | list | gallery,"columns","sort","filter","date_prop_id",
+                                  --   M147: "group_by": {"prop_id","date_unit","hidden":[group key],"hide_empty"} | null,"cover": body | none,"card_size"}]
+                                  -- M147: ボードのカードの手での並びは行の wiki_pages.position (列を足さない。移行なし)
   schema_version bigint NOT NULL DEFAULT 1,  -- スキーマ・ビューの変更ごとに +1 (古い版を元にした変更は 409)
   default_template_id uuid REFERENCES wiki_pages(id) ON DELETE SET NULL  -- M145：「新規」が使う行のテンプレート (ゴミ箱にあれば無いものとして扱う)
 );
