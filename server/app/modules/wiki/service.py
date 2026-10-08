@@ -508,7 +508,8 @@ def template_context(
 ) -> tpl.Context:
     """The placeholders of a Docs template (WIKI.md §22.3): {{date}} / {{week}} / {{time}} in the
     client's zone, {{me}} / {{me_name}}, {{parent}} (and a built-in's {{channel}}: the parent's
-    title too)."""
+    title too). `parent` must be one the actor can read (None otherwise: "" like the top level),
+    so a template never writes a hidden page's title (REVIEW-v0.1.48 #2)."""
     now = _now_in(tz)
     parent_title = parent.title if parent is not None else ""
     return tpl.Context(

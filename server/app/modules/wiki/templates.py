@@ -59,6 +59,17 @@ async def list_templates(db: AsyncSession, actor: User) -> TemplatesOut:
     )
 
 
+async def _readable_parent(db: AsyncSession, actor: User, page: WikiPage) -> WikiPage | None:
+    """The page's parent for {{parent}} / {{channel}}, only when the actor can read it
+    (REVIEW-v0.1.48 #2): an editor of a page under one they cannot read gets "" there, as at
+    the top level, never the hidden parent's title."""
+    if page.parent_id is None:
+        return None
+    if await access.level_of(db, actor, page.parent_id) < LEVELS["view"]:
+        return None
+    return await access.load_page(db, page.parent_id)
+
+
 async def apply_template(
     db: AsyncSession,
     actor: User,
@@ -85,7 +96,7 @@ async def apply_template(
         raise pages.template_invalid()
     if page.body.strip():
         raise conflict("wiki_page_not_empty", "Only an empty page starts from a template")
-    parent = await access.load_page(db, page.parent_id) if page.parent_id else None
+    parent = await _readable_parent(db, actor, page)
     found = await pages.resolve_template(
         db,
         actor,

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.attachments.models import Attachment
 from app.modules.canvases import service as canvases
 from app.modules.canvases import templates as tpl
+from app.modules.canvases.models import CanvasTemplate
 from app.modules.importer.models import ImportRef
 from app.modules.importer.notion_import import convert_notion_templates
 from app.modules.wiki.models import WikiDatabase, WikiNotice, WikiPage
@@ -366,6 +367,104 @@ async def test_an_empty_page_starts_from_a_template(
     as_user(bob)
     refused = await apply(blank["id"], template_key="minutes")
     assert refused.status_code == 403
+
+
+async def _shown_anywhere(client: AsyncClient, page_id: str) -> str:
+    """Everything the editor gets back about a page: the page, its history and each version."""
+    out = [(await client.get(f"{API}/wiki/pages/{page_id}")).text]
+    listed = await client.get(f"{API}/wiki/pages/{page_id}/revisions")
+    assert listed.status_code == 200, listed.text
+    out.append(listed.text)
+    for item in listed.json()["items"]:
+        one = await client.get(f"{API}/wiki/pages/{page_id}/revisions/{item['id']}")
+        assert one.status_code == 200, one.text
+        out.append(one.text)
+    return "\n".join(out)
+
+
+async def test_a_template_does_not_write_a_hidden_parents_title(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Actor
+) -> None:
+    """REVIEW-v0.1.48 #2: {{parent}} / {{channel}} on a page whose parent the actor cannot read
+    become "" (as at the top level), for a page template and a built-in one, and when the
+    parent's share is taken away just before."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    db.add(
+        CanvasTemplate(
+            key="leak-check",
+            name="Leak check",
+            title="{{channel}} memo",
+            body="parent=[{{parent}}] channel=[{{channel}}]\n",
+            position=99,
+        )
+    )
+    await db.commit()
+    secret = "CONFIDENTIAL acquisition target"
+    as_user(alice)
+    parent = await create_page(client, title=secret, access_="private")
+    children = [
+        await create_page(client, parent_id=parent["id"], title="", body="") for _ in range(3)
+    ]
+    for child in children:
+        await set_access(
+            client,
+            child["id"],
+            [("user", str(alice.id), "full"), ("user", str(bob.id), "edit")],
+            inherit=False,
+        )
+    as_user(bob)
+    assert (await client.get(f"{API}/wiki/pages/{parent['id']}")).status_code == 404
+    template = await create_page(
+        client,
+        title="{{parent}} notes",
+        body="parent=[{{parent}}] channel=[{{channel}}]\n",
+        is_template=True,
+    )
+
+    def apply(page_id: str, **body: Any) -> Any:
+        return client.post(
+            f"{API}/wiki/pages/{page_id}/apply-template",
+            json={"client_save_id": key(), "tz": "Asia/Tokyo", **body},
+        )
+
+    for child, how in zip(
+        children[:2],
+        [{"template_page_id": template["id"]}, {"template_key": "leak-check"}],
+        strict=True,
+    ):
+        response = await apply(child["id"], **how)
+        assert response.status_code == 200, response.text
+        page = response.json()
+        assert page["body"].startswith("parent=[] channel=[]"), page["body"]
+        assert page["title"] in ("notes", "memo")
+        assert secret not in response.text
+        assert secret not in await _shown_anywhere(client, child["id"])
+
+    # readable when applied: its title; the share taken away just before: ""
+    as_user(alice)
+    await set_access(
+        client, parent["id"], [("user", str(alice.id), "full"), ("user", str(bob.id), "view")]
+    )
+    readable = await create_page(client, parent_id=parent["id"], title="", body="")
+    await set_access(
+        client,
+        readable["id"],
+        [("user", str(alice.id), "full"), ("user", str(bob.id), "edit")],
+        inherit=False,
+    )
+    as_user(bob)
+    page = (await apply(readable["id"], template_page_id=template["id"])).json()
+    assert page["body"].startswith(f"parent=[{secret}]") and page["title"] == f"{secret} notes"
+    as_user(alice)
+    await set_access(client, parent["id"], [("user", str(alice.id), "full")])
+    as_user(bob)
+    assert (await client.get(f"{API}/wiki/pages/{parent['id']}")).status_code == 404
+    response = await apply(children[2]["id"], template_page_id=template["id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["body"].startswith("parent=[] channel=[]")
+    assert secret not in await _shown_anywhere(client, children[2]["id"])
+    await assert_acl_consistent(db)
 
 
 async def test_template_variables_keep_canvases_as_they_were() -> None:
