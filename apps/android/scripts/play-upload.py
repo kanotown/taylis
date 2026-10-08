@@ -106,6 +106,8 @@ def main() -> None:
     )
     if not os.path.isfile(key_path):
         sys.exit(f"play-upload: no service account key at {key_path}")
+    if args.mapping and not os.path.isfile(args.mapping):
+        sys.exit(f"play-upload: no mapping file at {args.mapping}")
     notes = []
     for lang, path in (("ja-JP", args.notes_ja), ("en-US", args.notes_en)):
         if path:
@@ -119,6 +121,7 @@ def main() -> None:
     token = access_token(key_path)
     edit = call(token, "POST", f"{API}/edits", {})
     edit_id = edit["id"]
+    committed = False
     try:
         if args.dry_run:
             track = call(token, "GET", f"{API}/edits/{edit_id}/tracks/{args.track}")
@@ -141,10 +144,15 @@ def main() -> None:
             release["releaseNotes"] = notes
         call(token, "PUT", f"{API}/edits/{edit_id}/tracks/{args.track}", {"track": args.track, "releases": [release]})
         call(token, "POST", f"{API}/edits/{edit_id}:commit")
+        committed = True
         print(f"  committed: versionCode {code} is on the {args.track} track")
     finally:
-        if args.dry_run:
-            call(token, "DELETE", f"{API}/edits/{edit_id}")
+        # A dry run, a failure or an interrupt leaves an uncommitted edit: delete it, without hiding the first error.
+        if not committed:
+            try:
+                call(token, "DELETE", f"{API}/edits/{edit_id}")
+            except BaseException as e:  # call() exits on HTTP errors; network errors raise
+                print(f"play-upload: could not delete edit {edit_id} ({e}); it expires on its own", file=sys.stderr)
 
 
 if __name__ == "__main__":
