@@ -9,6 +9,7 @@ import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel } from "./channels";
 import { jumpConversations } from "./home";
+import { isImeKeyEvent } from "./ime";
 import { channelTitle } from "./MainScreen";
 import { Badge, Kbd } from "./primitives";
 import { t } from "../i18n";
@@ -54,7 +55,9 @@ export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose }: {
         <Dialog.Content className="rx-drop fixed left-1/2 top-[14vh] z-50 w-[540px] max-w-[92vw] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-canvas text-ink shadow-2xl focus:outline-none">
           <Dialog.Title className="sr-only">{t("switcher.title")}</Dialog.Title>
           <Dialog.Description className="sr-only">{t("switcher.description")}</Dialog.Description>
-          <Command label={t("switcher.title")} loop shouldFilter={false}>
+          {/* cmdk skips keys with isComposing / 229 itself; the WebKit Enter that comes right after compositionend has
+              neither, so it is marked handled here (cmdk ignores a prevented key). */}
+          <Command label={t("switcher.title")} loop shouldFilter={false} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229 && isImeKeyEvent(e)) e.preventDefault(); }}>
             <div className="flex items-center gap-2.5 border-b border-line px-4">
               <Search size={16} className="shrink-0 text-muted" />
               <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder={onOpenCanvas ? t("switcher.placeholderCanvas") : t("switcher.placeholder")} className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />

@@ -1,12 +1,15 @@
 import { ArrowLeft, AtSign, Clock, Hash, Lock, Search, Users, X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
+import type { ChannelOut, MessageOut, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState, UserPublic } from "../sync/types";
 import { AiBadge } from "./ai";
 import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel } from "./channels";
 import { jumpConversations, jumpPeople } from "./home";
+import { isImeKeyEvent } from "./ime";
+import { LiveMessageRow, LiveStatus, useLiveSearch } from "./LiveSearch";
 import { channelTitle } from "./MainScreen";
 import { Badge, cn, IconButton } from "./primitives";
 import { describeSearch } from "./SearchBar";
@@ -19,14 +22,17 @@ type Row =
   | { kind: "person"; user: UserPublic }
   | { kind: "bot"; user: UserPublic }
   | { kind: "recent-search"; params: SearchParams }
+  /** A live message result (LiveSearch.tsx): the message in its conversation. */
+  | { kind: "message"; hit: SearchHit }
   | { kind: "search"; q: string };
 
 /**
  * M37, 「移動・検索」 (MOBILE_UI.md §6.2), over the whole phone screen. Empty: the recent conversations of this device and
  * the recent searches (M16b). Typing: the conversations (at most 20) and the people (at most 10) by the shared
- * jump-match rule, and last 「"語" をメッセージ検索」 (the search results screen). Esc or ← closes it.
+ * jump-match rule, the few best messages as you type (live results, LiveSearch.tsx), and last 「"語" をメッセージ検索」
+ * (the search results screen). Esc or ← closes it. The Enter confirming an IME conversion does nothing (ime.ts).
  */
-export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpenPerson, onSearch, onRemoveRecentSearch, onClose }: {
+export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpenPerson, onSearch, onOpenMessage, onRemoveRecentSearch, onClose }: {
   controller: AppController;
   /** Recent conversation ids, newest first (home.ts). */
   recentIds: readonly string[];
@@ -35,6 +41,8 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   /** A person: the DM with them (with me: my own DM). */
   onOpenPerson: (userId: string) => void;
   onSearch: (params: SearchParams) => void;
+  /** A live result: the message in its conversation (`other`: its channel when I am not a member; `q`: the words). */
+  onOpenMessage?: (message: MessageOut, other: ChannelOut | undefined, q: string) => void;
   onRemoveRecentSearch: (params: SearchParams) => void;
   onClose: () => void;
 }) {
@@ -42,7 +50,10 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   const meId = store.me?.id ?? controller.me?.id ?? null;
   const [text, setText] = useState("");
   const [active, setActive] = useState(0);
+  const [composing, setComposing] = useState(false);
+  const [moved, setMoved] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const live = useLiveSearch(controller, onOpenMessage ? text : "", composing);
   useEffect(() => {
     input.current?.focus();
   }, []);
@@ -58,9 +69,12 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
     ...conversations.map((channel) => ({ kind: "conversation", channel }) as const),
     ...people.map((user) => ({ kind: "person", user }) as const),
     ...bots.map((user) => ({ kind: "bot", user }) as const),
+    ...(query && onOpenMessage ? live.hits.map((hit) => ({ kind: "message", hit }) as const) : []),
     ...(query ? [{ kind: "search", q: query } as const] : recentSearches.map((params) => ({ kind: "recent-search", params }) as const)),
   ];
-  const current = Math.min(active, rows.length - 1);
+  // The first row is what Enter (Go) opens, except a live message: until ↑ / ↓ pick one, Enter searches the words.
+  const first = Math.min(active, rows.length - 1);
+  const current = !moved && rows[first]?.kind === "message" ? rows.findIndex((row) => row.kind === "search") : first;
 
   const choose = (row: Row) => {
     switch (row.kind) {
@@ -71,20 +85,24 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
         return onOpenPerson(row.user.id);
       case "recent-search":
         return onSearch(row.params);
+      case "message":
+        return onOpenMessage?.(row.hit.message, live.channels[row.hit.message.channel_id], query);
       case "search":
         return onSearch({ ...EMPTY_SEARCH, q: row.q });
     }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isImeKeyEvent(event)) return; // the IME's keys (and its confirming Enter): no moving or opening
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       onClose();
     } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && rows.length > 0) {
       event.preventDefault();
-      setActive((i) => (Math.max(0, Math.min(i, rows.length - 1)) + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length);
-    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+      setActive((Math.max(0, current) + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length);
+      setMoved(true);
+    } else if (event.key === "Enter") {
       event.preventDefault();
       const row = rows[current];
       if (row) choose(row);
@@ -92,9 +110,10 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   };
 
   const heading = (index: number): string | null => {
-    const group = (row: Row | undefined) => (!row ? null : row.kind === "conversation" ? "c" : row.kind === "person" ? "p" : row.kind === "bot" ? "b" : row.kind === "recent-search" ? "r" : "s");
+    const group = (row: Row | undefined) => (!row ? null : row.kind === "conversation" ? "c" : row.kind === "person" ? "p" : row.kind === "bot" ? "b" : row.kind === "recent-search" ? "r" : row.kind === "message" ? "m" : "s");
     const here = group(rows[index]);
     if (here === group(rows[index - 1])) return null;
+    if (here === "m") return t("searchBar.messages");
     if (here === "c") return query ? t("ask.conversation") : t("jump.recentConversations");
     if (here === "p") return t("jump.people");
     if (here === "b") return t("jump.bots");
@@ -103,7 +122,7 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   };
 
   return (
-    <section role="dialog" aria-label={t("home.jumpSearch")} className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+    <section role="dialog" aria-label={t("home.jumpSearch")} className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape" && !isImeKeyEvent(e)) { e.stopPropagation(); onClose(); } }}>
       <div className="flex h-[52px] shrink-0 items-center gap-1 border-b border-line pl-2 pr-3">
         <IconButton label={t("common.back")} className="h-11 w-11" onClick={onClose}>
           <ArrowLeft size={20} />
@@ -116,7 +135,10 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
             onChange={(e) => {
               setText(e.target.value);
               setActive(0);
+              setMoved(false);
             }}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
             onKeyDown={onKeyDown}
             placeholder={t("jump.placeholder")}
             aria-label={t("home.jumpSearch")}
@@ -133,12 +155,24 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
       <ul className="min-h-0 flex-1 overflow-y-auto py-1">
         {rows.map((row, index) => {
           const head = heading(index);
+          // Searching / nothing found / an error: a quiet line where the messages would be.
+          const status = row.kind === "search" && !!onOpenMessage && live.hits.length === 0 && live.status !== "idle";
           return (
             <li key={rowKey(row, index)}>
+              {status && (
+                <>
+                  <div className="px-4 pb-1 pt-3 text-[12px] font-semibold text-muted">{t("searchBar.messages")}</div>
+                  <div className="px-2"><LiveStatus live={live} /></div>
+                </>
+              )}
               {head && <div className="px-4 pb-1 pt-3 text-[12px] font-semibold text-muted">{head}</div>}
-              <div className={cn("group flex items-center", index === current && "bg-accent-soft/70")} onMouseEnter={() => setActive(index)}>
+              <div className={cn("group flex items-center", index === current && "bg-accent-soft/70")} onMouseEnter={() => { setActive(index); setMoved(true); }}>
                 <button type="button" data-jump-row={row.kind} onClick={() => choose(row)} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-4 py-1.5 text-left text-[15px]">
-                  <JumpRowBody controller={controller} row={row} meId={meId} />
+                  {row.kind === "message" ? (
+                    <LiveMessageRow controller={controller} message={row.hit.message} keywords={live.keywords} other={live.channels[row.hit.message.channel_id]} />
+                  ) : (
+                    <JumpRowBody controller={controller} row={row} meId={meId} />
+                  )}
                 </button>
                 {row.kind === "recent-search" && (
                   <button type="button" aria-label={t("searchBar.removeHistory")} className="mr-2 rounded p-2 text-muted hover:text-ink" onClick={() => onRemoveRecentSearch(row.params)}>
@@ -162,6 +196,8 @@ function rowKey(row: Row, index: number): string {
     case "person":
     case "bot":
       return `p:${row.user.id}`;
+    case "message":
+      return `m:${row.hit.message.id}`;
     default:
       return `${row.kind}:${index}`;
   }
@@ -189,6 +225,8 @@ function JumpRowBody({ controller, row, meId }: { controller: AppController; row
           <span className="min-w-0 truncate">{describeSearch(controller, row.params)}</span>
         </>
       );
+    case "message":
+      return null; // drawn by LiveMessageRow
     case "search":
       return (
         <>

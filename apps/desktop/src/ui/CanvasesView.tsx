@@ -8,6 +8,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import type { CanvasMeta } from "../api/types";
 import type { AppController } from "../state/app";
+import { isPlainEnter } from "./ime";
 import { taskProgress } from "./canvasText";
 import { BackButton } from "./compact";
 import { sinceLabel } from "./format";
@@ -73,7 +74,7 @@ export function CanvasesView({ controller, onOpen, onSearch }: {
             className="h-8 pl-8 text-sm"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && query.trim() && onSearch && !e.nativeEvent.isComposing) onSearch(query.trim());
+              if (isPlainEnter(e) && query.trim() && onSearch) onSearch(query.trim());
             }}
           />
         </div>

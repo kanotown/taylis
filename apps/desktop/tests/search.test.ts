@@ -78,12 +78,12 @@ describe("suggestions", () => {
     expect(rows.map((r) => r.kind)).toEqual(["recent", "has", "has", "has", "thread", "times"]);
   });
 
-  it("offers the words, then people, conversations and matching recent searches", () => {
+  it("offers people, conversations, matching recent searches and last all the results", () => {
     const rows = suggestions("田中", context());
-    expect(rows[0]).toEqual({ kind: "search", q: "田中" });
+    expect(rows.at(-1)).toEqual({ kind: "search", q: "田中" }); // 「すべての結果を見る」 comes last
     expect(rows.filter((r) => r.kind === "user").map((r) => (r.kind === "user" ? r.user.id : ""))).toEqual(["u1"]); // not the deactivated one
     expect(rows.some((r) => r.kind === "recent")).toBe(true);
     const byName = suggestions("@tanaka", context([]));
-    expect(byName.map((r) => (r.kind === "user" ? r.user.id : r.kind === "channel" ? r.channel.id : r.kind))).toEqual(["search", "u1", "c1"]);
+    expect(byName.map((r) => (r.kind === "user" ? r.user.id : r.kind === "channel" ? r.channel.id : r.kind))).toEqual(["u1", "c1", "search"]);
   });
 });

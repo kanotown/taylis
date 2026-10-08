@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, AtSign, Bell, BellOff, ChevronDown, Files, Hash,
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
-import type { ActivityItem, ChannelLinkOut, MessageOut } from "../api/types";
+import type { ActivityItem, ChannelLinkOut, ChannelOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, MessageState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
@@ -74,6 +74,7 @@ import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, resto
 import { scrollMemoryFor } from "./scrollMemory";
 import { useViewScrollMemory } from "./viewScrollMemory";
 import { historyStep, historyShortcutLabels, mouseHistoryStep } from "./historyShortcuts";
+import { isImeKeyEvent } from "./ime";
 import { focusChatRegion } from "./messageKeyboard";
 import { ActivityView } from "./ActivityView";
 import { DmListView } from "./DmListView";
@@ -691,6 +692,24 @@ export function MainScreen({ controller }: { controller: AppController }) {
     });
   };
 
+  /**
+   * A live result under the search box (or in a phone's 「移動・検索」): the message in its conversation, as a result of
+   * the results page opens, without 「検索結果に戻る」 (no results page was shown). The words go to the recent searches.
+   */
+  const openLiveResult = (message: MessageOut, other: ChannelOut | undefined, q: string) => {
+    // A channel I have not joined opens as its preview (M27): the store learns of it first.
+    if (other && !store.getChannel(message.channel_id)) store.upsertChannel(other, { isMember: false });
+    if (q) setRecent(pushRecent(recentStorageKey, { ...EMPTY_SEARCH, q }));
+    if (!compactRef.current) return revealFromList(message);
+    revealing.current = message.id;
+    void controller.revealMessage(message).then((ok) => {
+      revealing.current = null;
+      if (!ok) return;
+      setHomeOverlay(null);
+      land(message.channel_id, message.parent_id ?? null);
+    });
+  };
+
   /** M16b: run a search from the box; the results take the centre column. */
   const runSearch = (params: SearchParams) => {
     controller.clearMessageFocus();
@@ -966,6 +985,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const onKey = (event: KeyboardEvent) => {
       // An open menu or popover (Radix) has already used this Esc to close itself.
       if (event.key === "Escape" && event.defaultPrevented) return;
+      // Esc during an IME conversion cancels the conversion only (the search box stays open, nothing is marked read).
+      if (event.key === "Escape" && isImeKeyEvent(event)) return;
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       const s = state.current;
@@ -1110,6 +1131,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       open={searchOpen}
       onOpenChange={setSearchOpen}
       onSearch={runSearch}
+      onOpenMessage={openLiveResult}
       recent={recent}
       onRecentChange={setRecent}
       recentKey={recentStorageKey}
@@ -1774,6 +1796,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 setHomeOverlay(null);
                 runSearch(params);
               }}
+              onOpenMessage={openLiveResult}
               onRemoveRecentSearch={(params) => setRecent(removeRecent(recentStorageKey, params))}
               onClose={() => setHomeOverlay(null)}
             />

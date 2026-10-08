@@ -15,6 +15,7 @@ import { ApiError } from "../api/errors";
 import type { PageRef } from "../api/types";
 import type { CanvasSaver, SavedDoc } from "../sync/canvasSave";
 import { applySlash, insertEmbed, insertLinkAt, insertPageLink, isEmbedQuery, pageLinkQuery, type SlashKey, slashItems, slashQuery } from "./docEditor";
+import { isImeKeyEvent } from "./ime";
 import { PageIcon } from "./PageIcon";
 import type { AppController } from "../state/app";
 import { anchorLine, findTable, insertTable, lineOf, lineStart, newTable, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
@@ -454,7 +455,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const ime = event.nativeEvent.isComposing || composing.current || event.keyCode === 229;
+    const ime = composing.current || isImeKeyEvent(event);
     if (listLength > 0 && !ime) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -516,7 +517,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       if (edit((s) => indentListLine(s, event.shiftKey))) event.preventDefault();
       return;
     }
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !ime) {
       if (edit((s) => continueStructure(s))) event.preventDefault();
     }
   };

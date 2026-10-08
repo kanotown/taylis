@@ -16,6 +16,7 @@ import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef,
 import { describeError } from "../api/errors";
 
 import type { TaskOut, TaskStatus } from "../api/types";
+import { isImeKeyEvent } from "./ime";
 import { describeRrule } from "./calendarRecurrence";
 import type { AppController } from "../state/app";
 import type { TaskHub } from "../sync/tasks";
@@ -273,7 +274,7 @@ export function InlineAdd({ label = t("common.add"), placeholder = t("tasks.boar
     restoreFocus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return; // IME conversion (Japanese input)
+    if (composing.current || isImeKeyEvent(event)) return; // IME conversion (Japanese input)
     if (event.key === "Enter") {
       event.preventDefault();
       if (!event.shiftKey) void submit();

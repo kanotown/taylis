@@ -30,6 +30,7 @@ import type { PageRef } from "../api/types";
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import type { AppController } from "../state/app";
 import type { CanvasSaver, SavedDoc } from "../sync/canvasSave";
+import { isImeKeyEvent } from "./ime";
 import { DatabaseEmbed } from "./CanvasBody";
 import type { DocEditorLinks } from "./CanvasEditor";
 import { CanvasImage } from "./CanvasImage";
@@ -340,7 +341,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
 
   /** A key before the editor's own handling; true when a menu took it. Never during an IME composition. */
   function keyDown(event: KeyboardEvent, composing: boolean): boolean {
-    if (composing || event.isComposing || event.keyCode === 229) return false;
+    if (composing || isImeKeyEvent(event)) return false;
     // M151: ⌘K in the editor is its link box (pages too); the app's own ⌘K (the switcher) is for outside it.
     if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") event.stopPropagation();
     const current = state.current;
