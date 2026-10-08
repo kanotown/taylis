@@ -162,6 +162,9 @@ struct CanvasEditor: View {
                 .accessibilityLabel("見出し")
                 tool("list.bullet", tr("箇条書き")) { CanvasText.toggleLinePrefix($0, marker: "- ") }
                 tool("checklist", tr("チェックリスト")) { CanvasText.toggleTasks($0) }
+                // M149 (WIKI.md §22.7): the containers of the dialect.
+                tool("lightbulb", tr("コールアウト")) { CanvasText.insertCallout($0) }
+                tool("chevron.right.square", tr("トグル")) { CanvasText.insertToggle($0) }
                 tool("bold", tr("太字")) { CanvasText.toggleWrap($0, "**") }
                 tool("link", tr("リンク")) { CanvasText.insertLink($0) }
                 tool("at", tr("メンション")) { CanvasText.insertMentionMark($0) }

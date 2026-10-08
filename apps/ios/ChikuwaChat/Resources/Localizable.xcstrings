@@ -11208,6 +11208,22 @@
         }
       }
     },
+    "コールアウト" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Callout"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标注"
+          }
+        }
+      }
+    },
     "ゴミ箱" : {
       "localizations" : {
         "en" : {
@@ -13100,6 +13116,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "桌面版"
+          }
+        }
+      }
+    },
+    "トグル" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toggle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "折叠块"
           }
         }
       }
@@ -27460,6 +27492,22 @@
         }
       }
     },
+    "行がありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No rows"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有行"
+          }
+        }
+      }
+    },
     "行ごと" : {
       "localizations" : {
         "en" : {
@@ -28342,6 +28390,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "说明最多 %lld 个字符"
+          }
+        }
+      }
+    },
+    "読み込み中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载"
           }
         }
       }
