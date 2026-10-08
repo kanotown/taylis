@@ -1,0 +1,142 @@
+{
+  "_comment": "SYNC_PROTOCOL.md §10.6: what a message.deleted does to the conversation's unread and mention counts on every client (2026-10-09, a DM or a mention deleted before it was read kept its red badge). Applied before the tombstone replaces the held row. channel: the counts as held, counted_to = the channel's last_seq before the event (the counts cover every change up to it: the bootstrap's, read.updated's and the live events'). event_seq: the deletion's seq (the tombstone's updated_seq). message: the tombstone (the server clears its mentions, so whether it mentioned me is known only from the held row). held: the row this device holds for it before the event (null = not held), mentions_me with the live rule (mention_all, mentioned_user_ids, my notify_keywords). The deletion is subtracted when it was counted: event_seq > counted_to, someone else's, type user, in the timeline (no parent, or also_in_channel), seq > last_read_seq, not already deleted here, unread > 0. Then unread - 1; mentions - 1 when the held row mentions me (never below 0); not held: mentions stay and refetch when mentions > 0. unread 0: mentions 0, first_unread_at null, no refetch. The deleted row was the first unread (its created_at == first_unread_at) and some remain: first_unread_at stays and refetch. refetch: ask the server (PUT /channels/{id}/read {last_read_seq: 0}, a no-op answering the read state) and take its counts like read.updated. Hand-written; Desktop / Web, iOS and Android test against it.",
+  "me": "bob",
+  "cases": [
+    {
+      "name": "the only unread DM message, not held (the DM list was never opened)",
+      "channel": { "last_read_seq": 4, "counted_to": 5, "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 6,
+      "message": { "seq": 5, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:00:00Z" },
+      "held": null,
+      "expect": { "unread": 0, "mentions": 0, "first_unread_at": null, "refetch": false }
+    },
+    {
+      "name": "a later unread DM message: the first stays",
+      "channel": { "last_read_seq": 4, "counted_to": 6, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 7,
+      "message": { "seq": 6, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:05:00Z" },
+      "held": null,
+      "expect": { "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "the first of two unread: the next one's time is not known here",
+      "channel": { "last_read_seq": 4, "counted_to": 6, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 7,
+      "message": { "seq": 5, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:00:00Z" },
+      "held": { "deleted": false, "mentions_me": false },
+      "expect": { "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": true }
+    },
+    {
+      "name": "a held mention of me in a channel",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 3, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": { "deleted": false, "mentions_me": true },
+      "expect": { "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "a held plain message: the mention stays",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 3, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 13, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:02:00Z" },
+      "held": { "deleted": false, "mentions_me": false },
+      "expect": { "unread": 2, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "not held while mentions are counted: ask the server",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 3, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": null,
+      "expect": { "unread": 2, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": true }
+    },
+    {
+      "name": "not held, no mentions counted",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 3, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": null,
+      "expect": { "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "the last unread was a mention, not held: nothing is left to count",
+      "channel": { "last_read_seq": 10, "counted_to": 11, "unread": 1, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 12,
+      "message": { "seq": 11, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:00:00Z" },
+      "held": null,
+      "expect": { "unread": 0, "mentions": 0, "first_unread_at": null, "refetch": false }
+    },
+    {
+      "name": "a reply also sent to the channel counts",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 2, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 13, "sender_id": "alice", "type": "user", "parent_id": "root", "also_in_channel": true, "created_at": "2026-10-09T10:02:00Z" },
+      "held": { "deleted": false, "mentions_me": true },
+      "expect": { "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "a reply only in its thread was never counted (the thread's own counts come in thread.updated)",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 2, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 13, "sender_id": "alice", "type": "user", "parent_id": "root", "also_in_channel": false, "created_at": "2026-10-09T10:02:00Z" },
+      "held": { "deleted": false, "mentions_me": true },
+      "expect": { "unread": 2, "mentions": 1, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "already read",
+      "channel": { "last_read_seq": 12, "counted_to": 13, "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:02:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": null,
+      "expect": { "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:02:00Z", "refetch": false }
+    },
+    {
+      "name": "my own message was never unread",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 13, "sender_id": "bob", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:02:00Z" },
+      "held": null,
+      "expect": { "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "a system line was never unread",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 13, "sender_id": "alice", "type": "system", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:02:00Z" },
+      "held": null,
+      "expect": { "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "the counts already leave it out (a bootstrap or read.updated after the deletion)",
+      "channel": { "last_read_seq": 10, "counted_to": 14, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": null,
+      "expect": { "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "already deleted here",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": { "deleted": true, "mentions_me": false },
+      "expect": { "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    },
+    {
+      "name": "nothing counted: stays at 0",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 0, "mentions": 0, "first_unread_at": null },
+      "event_seq": 14,
+      "message": { "seq": 12, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:01:00Z" },
+      "held": null,
+      "expect": { "unread": 0, "mentions": 0, "first_unread_at": null, "refetch": false }
+    },
+    {
+      "name": "a held mention while the count says none: never below 0",
+      "channel": { "last_read_seq": 10, "counted_to": 13, "unread": 2, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z" },
+      "event_seq": 14,
+      "message": { "seq": 13, "sender_id": "alice", "type": "user", "parent_id": null, "also_in_channel": false, "created_at": "2026-10-09T10:02:00Z" },
+      "held": { "deleted": false, "mentions_me": true },
+      "expect": { "unread": 1, "mentions": 0, "first_unread_at": "2026-10-09T10:00:00Z", "refetch": false }
+    }
+  ]
+}
