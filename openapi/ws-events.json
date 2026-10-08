@@ -9200,6 +9200,11 @@
                 "title": "Inherit Access",
                 "type": "boolean"
               },
+              "is_template": {
+                "default": false,
+                "title": "Is Template",
+                "type": "boolean"
+              },
               "kind": {
                 "enum": [
                   "page",

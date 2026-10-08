@@ -12,7 +12,12 @@
 - every page, row and file is recorded in import_refs (source ``notion``), so running it again
   adds what is new, overwrites what nobody changed in Taylis since the last import (a new version
   of kind ``import``) and leaves (and reports) what someone changed;
-- ``--dry-run`` reads everything and writes nothing: the report says what would happen.
+- ``--dry-run`` reads everything and writes nothing: the report says what would happen;
+- M145 (docs/WIKI.md §22.3, decided 2026-10-08): a database's row pages no CSV row has (Notion's
+  templates and the like) become row templates. Running it again turns such a row imported
+  before M145 into a template while nobody has changed it in Taylis (reported); once turned (an
+  ``import_refs`` entry of kind ``template``), a row someone made a row again stays a row.
+  ``convert_notion_templates`` (``app.cli wiki-notion-templates``) does only that step.
 
 No notification is sent for imported mentions or pages; the tree's change feed, the open
 tables and pages are told as for any change.
@@ -47,7 +52,7 @@ from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments import service as attachments
 from app.modules.attachments import videos
-from app.modules.attachments.blobstore import BlobStore
+from app.modules.attachments.blobstore import BlobStore, MemoryBlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import queue_on_upload
@@ -121,7 +126,7 @@ class ColumnLine:
 class DatabaseLine:
     title: str
     rows: int = 0
-    extra_rows: int = 0  # row pages no CSV row has (templates?)
+    extra_rows: int = 0  # row pages no CSV row has: row templates (M145)
     csv_only: int = 0  # CSV rows without a page
     columns: list[ColumnLine] = field(default_factory=list)
     calendar: bool = False
@@ -136,6 +141,9 @@ class NotionReport:
     unsupported: Counter[str] = field(default_factory=Counter)
     failed_files: list[str] = field(default_factory=list)
     edited: list[str] = field(default_factory=list)  # left as they are (changed in Taylis)
+    # M145: rows imported before that became row templates now / were changed so stay rows.
+    templates: list[str] = field(default_factory=list)
+    templates_left: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     roots: list[uuid.UUID] = field(default_factory=list)
 
@@ -158,6 +166,7 @@ class Plan:
     base_dir: str = ""  # where its relative links start
     values: dict[str, str] = field(default_factory=dict)  # a row's cells by column
     database: "DatabasePlan | None" = None  # a row's database
+    template: bool = False  # M145: a row page no CSV row has → a row template
     target: uuid.UUID = field(default_factory=uuid7)
     state: str = "new"  # new | same | update | edited | trashed | gone | skipped
     body: str = ""
@@ -444,6 +453,7 @@ class NotionImport:
                 database=dbp,
                 label=row_item.path if row_item else f"{item.csv} の行 {match.values[0][:40]}",
             )
+            row.template = not match.from_csv
             dbp.rows.append(row)
             if match.nid:
                 self.by_nid[match.nid] = row
@@ -982,6 +992,8 @@ class NotionImport:
             if plan.state in ("trashed", "gone"):
                 where = "ゴミ箱にある" if plan.state == "trashed" else "削除された"
                 self.report.warn(f"{plan.label}: Taylis で{where}（触らない）")
+            if plan.template and plan.state == "new":
+                counts["row templates: new"] += 1
             if plan.writes:
                 for fp in plan.files:
                     counts["files: already imported" if fp.existing else "files: new"] += 1
@@ -990,6 +1002,61 @@ class NotionImport:
         for dbp in self.databases.values():
             if dbp.line is not None:
                 self.report.databases.append(dbp.line)
+        self._plan_templates()
+
+    def _plan_templates(self) -> list[Plan]:
+        """M145: rows imported before as rows that are row templates now: turned while nobody has
+        changed them in Taylis (else reported and left), once (an import_refs entry)."""
+        self.report.templates.clear()
+        self.report.templates_left.clear()
+        out: list[Plan] = []
+        for plan in self.plans:
+            if not plan.template or plan.kind != "row" or self._ref("template", plan.key):
+                continue
+            if plan.state in ("same", "update"):
+                out.append(plan)
+                self.report.templates.append(f"{plan.label}（{plan.title}）")
+            elif plan.state == "edited":
+                self.report.templates_left.append(f"{plan.label}（{plan.title}）")
+        if out:
+            self.report.counts["row templates: turned"] = len(out)
+        return out
+
+    async def _convert_templates(self) -> int:
+        """Turn the rows _plan_templates found into row templates (one transaction)."""
+        plans = self._plan_templates()
+        if not plans:
+            return 0
+        await access.lock_tree(self.db)
+        databases: set[uuid.UUID] = set()
+        turned = 0
+        for plan in plans:
+            page = await access.load_page(self.db, plan.target, lock=True)
+            if page is None or page.is_deleted or page.kind != "row":
+                continue
+            if not page.is_template:
+                page.is_template = True
+                page.version += 1
+                page.updated_at = utcnow()
+                turned += 1
+                if page.parent_id is not None:
+                    databases.add(page.parent_id)
+            self.db.add(
+                ImportRef(source=SOURCE, kind="template", source_id=plan.key, target_id=plan.target)
+            )
+        await self.db.flush()
+        if turned:
+            await audit.record_in_tx(
+                self.db,
+                actor_id=self.actor.id,
+                action="wiki.import_templates",
+                target_type="wiki_page",
+                target_id=None,
+                details={"rows": turned},
+            )
+        await events.emit_rows_changed(self.db, databases)
+        await self.db.commit()
+        return turned
 
     # ---- writing -----------------------------------------------------------------------------
 
@@ -1097,6 +1164,7 @@ class NotionImport:
                 inherit_access=True,
                 task_total=total,
                 task_done=done,
+                is_template=plan.template,
                 created_by=self.actor.id,
                 updated_by=self.actor.id,
             )
@@ -1107,6 +1175,10 @@ class NotionImport:
         self.db.add(
             ImportRef(source=SOURCE, kind=plan.ref_kind, source_id=plan.key, target_id=plan.target)
         )
+        if plan.template:
+            self.db.add(
+                ImportRef(source=SOURCE, kind="template", source_id=plan.key, target_id=plan.target)
+            )
         if plan.parent is None:
             self.report.roots.append(plan.target)
             grants = self._root_grants()
@@ -1407,12 +1479,60 @@ async def _run(job: NotionImport) -> NotionReport:
     try:
         await job._write_pages()
         await job._write_links_and_relations()
+        await job._convert_templates()
     except BaseException:
         await job.db.rollback()
         raise
     finally:
         job._tmp.cleanup()
     return job.report
+
+
+async def convert_notion_templates(
+    db: AsyncSession,
+    export_path: Path,
+    *,
+    actor_username: str,
+    settings: Settings,
+    dry_run: bool,
+) -> NotionReport:
+    """M145 (``app.cli wiki-notion-templates``): only the step that turns the rows imported
+    before as rows, which the export has as row pages no CSV row has, into row templates (rows
+    nobody has changed since the import; the others are reported). Nothing else is written.
+    Running it again changes nothing (an import_refs entry of kind ``template`` per row)."""
+    actor = await active_admin(db, actor_username)
+    try:
+        files = await run_in_threadpool(ExportFiles.open, export_path)
+    except ExportError as exc:
+        raise ImportFailed(str(exc)) from exc
+    try:
+        try:
+            tree = await run_in_threadpool(read_tree, files)
+        except ExportError as exc:
+            raise ImportFailed(str(exc)) from exc
+        if not tree.items:
+            raise ImportFailed(f"{export_path}: no Notion page or database in it")
+        job = NotionImport(
+            db,
+            tree,
+            actor=actor,
+            blobs=MemoryBlobStore(),
+            settings=settings,
+            options=Options(),
+            dry_run=dry_run,
+        )
+        await job._load_refs()
+        job._plan_tree()
+        await job._load_state()
+        job.report.warnings.clear()  # the import's own warnings are not this step's
+        if dry_run:
+            job._plan_templates()
+            await db.rollback()
+        else:
+            await job._convert_templates()
+        return job.report
+    finally:
+        files.close()
 
 
 def parse_column_types(lines: Iterable[str]) -> dict[str, str]:

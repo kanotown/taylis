@@ -13,6 +13,7 @@ import re
 import uuid
 import zipfile
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import NoReturn
 from zoneinfo import ZoneInfo
@@ -25,13 +26,15 @@ from app.core.doctext import body as doc
 from app.core.doctext import markers, merge
 from app.core.doctext import revisions as doc_revisions
 from app.core.doctext import save as doc_save
-from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.roles import PERSON_ROLES, ensure_capability
+from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.activity import canvas_mentions as mention_text
 from app.modules.activity.models import item_read
 from app.modules.attachments import service as attachments
+from app.modules.attachments.blobstore import BlobStore
 from app.modules.audit import service as audit
 from app.modules.canvases import repository as canvas_templates
 from app.modules.canvases import templates as tpl
@@ -192,9 +195,12 @@ async def _content(db: AsyncSession, actor: User, page: WikiPage, rank: int) -> 
 
 
 async def tree(db: AsyncSession, actor: User) -> TreeOut:
-    """Every live page the actor can read (not database rows), parents before children."""
+    """Every live page the actor can read (not database rows or templates), parents before
+    children."""
     cursor = await repo.feed_position(db)
-    stmt = repo.visible_pages(actor).where(WikiPage.deleted_at.is_(None), WikiPage.kind != "row")
+    stmt = repo.visible_pages(actor).where(
+        WikiPage.deleted_at.is_(None), WikiPage.kind != "row", WikiPage.is_template.is_(False)
+    )
     stmt = stmt.order_by(func.cardinality(WikiPage.path), WikiPage.position, WikiPage.id)
     rows = [(p, int(r), bool(pv)) for p, r, pv in (await db.execute(stmt)).all()]
     hidden = await _hidden_parents(db, actor, [p for p, _, _ in rows])
@@ -227,7 +233,12 @@ async def changes(db: AsyncSession, actor: User, since: int) -> ChangesOut:
     for page, rank in rows:
         rank = int(rank or 0)
         if page.deleted_at is None and rank >= 1:
-            readable.append((page, rank))
+            if page.is_template:
+                # M145: templates are not in the tree (GET /wiki/templates); one that was a page
+                # until now leaves it.
+                removed.append(page.id)
+            else:
+                readable.append((page, rank))
         elif page.deleted_at is not None:
             # In the trash: only for someone who could read it (the entries stay in the trash).
             if rank >= 1 and page.vis_seq > since:
@@ -274,6 +285,7 @@ async def _children(db: AsyncSession, actor: User, page_id: uuid.UUID) -> list[P
             WikiPage.parent_id == page_id,
             WikiPage.deleted_at.is_(None),
             WikiPage.kind != "row",
+            WikiPage.is_template.is_(False),
         )
         .order_by(WikiPage.position, WikiPage.id)
     )
@@ -328,7 +340,11 @@ async def find_by_title(db: AsyncSession, actor: User, title: str) -> WikiPage |
     """A live page the actor can read with this title (any case): search's in:<title>."""
     stmt = (
         repo.visible_pages(actor)
-        .where(WikiPage.deleted_at.is_(None), func.lower(WikiPage.title) == title.lower())
+        .where(
+            WikiPage.deleted_at.is_(None),
+            WikiPage.is_template.is_(False),
+            func.lower(WikiPage.title) == title.lower(),
+        )
         .order_by(func.cardinality(WikiPage.path), WikiPage.updated_at.desc())
         .limit(1)
     )
@@ -337,12 +353,17 @@ async def find_by_title(db: AsyncSession, actor: User, title: str) -> WikiPage |
 
 
 async def backlinks(db: AsyncSession, actor: User, page_id: uuid.UUID) -> list[PageItem]:
-    """WIKI.md §3.3: the live pages linking here that the actor can read (no other title)."""
+    """WIKI.md §3.3: the live pages linking here that the actor can read (no other title; not
+    templates, M145)."""
     await access.require_level(db, actor, page_id, "view")
     stmt = (
         repo.visible_pages(actor)
         .join(WikiLink, WikiLink.src_page_id == WikiPage.id)
-        .where(WikiLink.dst_page_id == page_id, WikiPage.deleted_at.is_(None))
+        .where(
+            WikiLink.dst_page_id == page_id,
+            WikiPage.deleted_at.is_(None),
+            WikiPage.is_template.is_(False),
+        )
         .order_by(WikiPage.title, WikiPage.id)
     )
     rows = [(p, int(r), bool(pv)) for p, r, pv in (await db.execute(stmt)).all()]
@@ -373,7 +394,9 @@ async def lookup(db: AsyncSession, actor: User, q: str, limit: int = MAX_LOOKUP)
     """The `[[` suggestions (WIKI.md §3.3): readable live pages whose title contains `q`, those
     starting with it first, then the most recently updated."""
     words = " ".join(q.split())
-    stmt = repo.visible_pages(actor).where(WikiPage.deleted_at.is_(None), WikiPage.kind != "row")
+    stmt = repo.visible_pages(actor).where(
+        WikiPage.deleted_at.is_(None), WikiPage.kind != "row", WikiPage.is_template.is_(False)
+    )
     if words:
         stmt = stmt.where(WikiPage.title.ilike(f"%{_like(words)}%", escape="\\"))
         starts = WikiPage.title.ilike(f"{_like(words)}%", escape="\\")
@@ -419,8 +442,9 @@ async def _position(
 
 async def _require_parent(db: AsyncSession, actor: User, parent_id: uuid.UUID) -> WikiPage:
     parent, _ = await access.require_level(db, actor, parent_id, "edit")
-    if parent.kind != "page":
-        raise bad_request("invalid_page_parent", "Pages go under pages")
+    if parent.kind != "page" or parent.is_template:
+        # M145: a template has no subpages (they would not be copied, WIKI.md §22.3).
+        raise bad_request("invalid_page_parent", "Pages go under pages (not under a template)")
     return parent
 
 
@@ -465,30 +489,169 @@ async def _existing_create(
     return await get_page(db, actor, revision.page_id)
 
 
+@dataclass(frozen=True)
+class FileStore:
+    """Where a template's or a duplicated page's files are copied (M145): the app's BlobStore
+    and settings (the router hands them over)."""
+
+    blobs: BlobStore
+    settings: Settings
+
+
+def _now_in(tz: str | None) -> datetime:
+    return utcnow().astimezone(ZoneInfo(tz or "UTC"))
+
+
+def template_context(
+    actor: User, *, tz: str | None, parent: WikiPage | None, channel: str | None = None
+) -> tpl.Context:
+    """The placeholders of a Docs template (WIKI.md §22.3): {{date}} / {{week}} / {{time}} in the
+    client's zone, {{me}} / {{me_name}}, {{parent}} (and a built-in's {{channel}}: the parent's
+    title too)."""
+    now = _now_in(tz)
+    parent_title = parent.title if parent is not None else ""
+    return tpl.Context(
+        today=now.date(),
+        me_id=actor.id,
+        me_name=actor.display_name,
+        channel=parent_title if channel is None else channel,
+        time=now.strftime("%H:%M"),
+        parent=parent_title,
+    )
+
+
+def expand_title(text_: str, ctx: tpl.Context) -> str:
+    return " ".join(tpl.expand(text_, ctx, title=True).split())[:200]
+
+
+def rewrite_files(body: str, copies: dict[uuid.UUID, uuid.UUID]) -> str:
+    """The body with each copied file's `attachment:<id>` pointing to the copy."""
+    if not copies:
+        return body
+
+    def swap(match: re.Match[str]) -> str:
+        new = copies.get(uuid.UUID(match.group(1)))
+        return f"attachment:{new}" if new is not None else match.group(0)
+
+    return doc.ATTACHMENT_REF.sub(swap, body)
+
+
+async def copy_files(
+    db: AsyncSession,
+    files: FileStore | None,
+    actor: User,
+    *,
+    source: WikiPage,
+    target: WikiPage,
+) -> dict[uuid.UUID, uuid.UUID]:
+    """M145: the source's own files its body refers to, copied for the target (already flushed)."""
+    refs = doc.attachment_refs(source.body)
+    if not refs:
+        return {}
+    if files is None:
+        raise RuntimeError("copying a page's files needs the BlobStore")
+    return await attachments.copy_page_files_in_tx(
+        db,
+        files.blobs,
+        files.settings,
+        actor.id,
+        source_page_id=source.id,
+        attachment_ids=refs,
+        page_id=target.id,
+    )
+
+
+async def _page_template(db: AsyncSession, actor: User, template_id: uuid.UUID) -> WikiPage:
+    """A page template the actor can read (404 template_not_found otherwise, the same for one
+    they cannot read)."""
+    page = await access.load_page(db, template_id)
+    if (
+        page is None
+        or page.is_deleted
+        or not page.is_template
+        or page.kind != "page"
+        or await access.level_of(db, actor, page.id) < LEVELS["view"]
+    ):
+        raise not_found("template_not_found", "Template not found")
+    return page
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """A template's title, body and icon as a new page gets them, and the page template whose
+    files the body refers to (None for a built-in one)."""
+
+    title: str
+    body: str
+    icon: str | None
+    source: WikiPage | None
+
+
+async def resolve_template(
+    db: AsyncSession,
+    actor: User,
+    *,
+    template_key: str | None,
+    template_page_id: uuid.UUID | None,
+    tz: str | None,
+    parent: WikiPage | None,
+    keep_placeholders: bool,
+) -> Resolved | None:
+    """A built-in template (`template_key`) or a page template the actor can read, with its
+    placeholders put in (unless `keep_placeholders`: a template made from a template, WIKI.md
+    §22.3). None when neither is given; 404 template_not_found."""
+    source: WikiPage | None = None
+    if template_page_id is not None:
+        source = await _page_template(db, actor, template_page_id)
+        title, body, icon = source.title, source.body, source.icon
+    elif template_key is not None:
+        template = await canvas_templates.template_by_key(db, template_key)
+        if template is None or template.hidden:
+            raise not_found("template_not_found", "Template not found")
+        title, body, icon = template.title, template.body, None
+    else:
+        return None
+    if not keep_placeholders:
+        ctx = template_context(actor, tz=tz, parent=parent)
+        title, body = expand_title(title, ctx), tpl.expand(body, ctx, title=False)
+    return Resolved(title=title, body=body, icon=icon, source=source)
+
+
 async def _template(
     db: AsyncSession, actor: User, data: PageCreate, parent: WikiPage | None
-) -> tuple[str | None, str | None]:
-    title, body = data.title, data.body
-    if data.template_key is None:
-        return title, body
-    template = await canvas_templates.template_by_key(db, data.template_key)
-    if template is None or template.hidden:
-        raise not_found("template_not_found", "Template not found")
-    if title is None or body is None:
-        ctx = tpl.Context(
-            today=utcnow().astimezone(ZoneInfo(data.tz or "UTC")).date(),
-            me_id=actor.id,
-            me_name=actor.display_name,
-            channel=parent.title if parent is not None else "",
-        )
-        if title is None:
-            title = " ".join(tpl.expand(template.title, ctx, title=True).split())
-        if body is None:
-            body = tpl.expand(template.body, ctx, title=False)
-    return title, body
+) -> tuple[str | None, str | None, str | None, WikiPage | None]:
+    """(title, body, icon, the page template whose files to copy): what is given wins."""
+    found = await resolve_template(
+        db,
+        actor,
+        template_key=data.template_key,
+        template_page_id=data.template_page_id,
+        tz=data.tz,
+        parent=parent,
+        keep_placeholders=data.is_template,
+    )
+    if found is None:
+        return data.title, data.body, data.icon, None
+    title = data.title if data.title is not None else found.title
+    body = data.body if data.body is not None else found.body
+    icon = data.icon if "icon" in data.model_fields_set else found.icon
+    return title, body, icon, found.source if data.body is None else None
 
 
-async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageOut, bool]:
+def _top_grants(
+    actor: User, choice: str, *, template: bool
+) -> list[tuple[str, uuid.UUID | None, str]]:
+    """A new top-level page's own entries (WIKI.md §4.2 / §13): 「共有」 → everyone edits (a
+    template: reads, §22.3) and I manage it; 「プライベート」 → me only."""
+    grants: list[tuple[str, uuid.UUID | None, str]] = [("user", actor.id, "full")]
+    if choice == "workspace":
+        grants.insert(0, ("workspace", None, "view" if template else "edit"))
+    return grants
+
+
+async def create(
+    db: AsyncSession, actor: User, data: PageCreate, *, files: FileStore | None = None
+) -> tuple[PageOut, bool]:
     """(page, created). A retry with the same client_save_id returns the first one."""
     await access.lock_tree(db)
     existing = await _existing_create(db, actor, data.client_save_id)
@@ -501,7 +664,7 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
             raise conflict("wiki_too_deep", f"Pages nest at most {MAX_DEPTH} deep")
     else:
         _require_member(actor)
-    title, body = await _template(db, actor, data, parent)
+    title, body, icon, source = await _template(db, actor, data, parent)
     title = (title if title is not None else DEFAULT_TITLE)[:200]
     body = clean_body(body or "")
     position = await _position(db, data.parent_id, before_id=data.before_id, after_id=data.after_id)
@@ -515,7 +678,7 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
         position=position,
         kind=data.kind,
         title=title,
-        icon=_clean_icon(data.icon),
+        icon=_clean_icon(icon),
         body=body,
         version=1,
         head_rev_id=revision_id,
@@ -525,11 +688,18 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
         inherit_access=True,
         task_total=total,
         task_done=done,
+        is_template=data.is_template,
         created_by=actor.id,
         updated_by=actor.id,
     )
     db.add(page)
     await db.flush()
+    if source is not None:
+        # M145 (WIKI.md §22.3): the template's images and files, copied in the object store.
+        page.body = rewrite_files(
+            page.body, await copy_files(db, files, actor, source=source, target=page)
+        )
+        body = page.body
     if data.kind == "database":
         # M123 (WIKI.md §5.1): the title property and one table view.
         db.add(
@@ -549,12 +719,9 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
         )
     )
     if parent is None:
-        # WIKI.md §4.2 / §13 (decided 2026-10-07): 「共有」 → everyone edits and I manage it;
-        # 「プライベート」 → me only.
-        grants: list[tuple[str, uuid.UUID | None, str]] = [("user", actor.id, "full")]
-        if data.access == "workspace":
-            grants.insert(0, ("workspace", None, "edit"))
-        await repo.replace_own_grants(db, page.id, grants, actor.id)
+        await repo.replace_own_grants(
+            db, page.id, _top_grants(actor, data.access, template=data.is_template), actor.id
+        )
     elif data.kind == "database" and await access.level_of(db, actor, parent.id) < 3:
         # M144 (WIKI.md §22.2): whoever makes a database manages it (deletes and retypes its
         # properties), added on top of what it inherits (nothing narrows, so the rule of the
@@ -759,10 +926,16 @@ async def save_content(
 
 
 async def update(db: AsyncSession, actor: User, page_id: uuid.UUID, data: PageUpdate) -> PageOut:
-    """Title and icon (edit)."""
+    """Title, icon and (M145) whether it is a template (edit)."""
     await access.lock_tree(db)
     page, rank = await access.require_level(db, actor, page_id, "edit", lock=True)
     changed = False
+    if data.is_template is not None and data.is_template != page.is_template:
+        await _check_template_place(db, page, data.is_template)
+        if not data.is_template and page.kind == "row" and page.parent_id is not None:
+            await _forget_default(db, page.parent_id, page.id)
+        page.is_template = data.is_template
+        changed = True
     if data.title is not None and data.title != page.title:
         page.title = data.title
         changed = True
@@ -785,6 +958,41 @@ async def update(db: AsyncSession, actor: User, page_id: uuid.UUID, data: PageUp
     out = await _page_out(db, actor, page, rank)
     await db.commit()
     return out
+
+
+def template_invalid() -> AppError:
+    return bad_request(
+        "wiki_template_invalid",
+        "A template is a top-level page without subpages, or a row of a database",
+    )
+
+
+async def _check_template_place(db: AsyncSession, page: WikiPage, making: bool) -> None:
+    """M145 (WIKI.md §22.3): a page template is a top-level page without subpages (they would
+    not be copied); a row template stays in its database. A database is never one."""
+    if page.kind == "database":
+        raise template_invalid()
+    if not making or page.kind == "row":
+        return
+    if page.parent_id is not None:
+        raise template_invalid()
+    child = await db.scalar(
+        select(WikiPage.id)
+        .where(WikiPage.parent_id == page.id, WikiPage.deleted_at.is_(None))
+        .limit(1)
+    )
+    if child is not None:
+        raise template_invalid()
+
+
+async def _forget_default(db: AsyncSession, database_id: uuid.UUID, row_id: uuid.UUID) -> None:
+    """A row that is no longer a template is no longer the database's default."""
+    await db.execute(
+        sql_update(WikiDatabase)
+        .where(WikiDatabase.page_id == database_id, WikiDatabase.default_template_id == row_id)
+        .values(default_template_id=None)
+        .execution_options(synchronize_session=False)
+    )
 
 
 # --- mentions and sharing: notices, events (WIKI.md §4.8, §9.3) ---------------------------------
@@ -869,7 +1077,10 @@ async def _notify_mentions(
     db: AsyncSession, page: WikiPage, actor: User, before: str, revision_id: uuid.UUID
 ) -> None:
     """wiki.mentioned and an activity item to whom this version newly mentions, among those who
-    can read the page (WIKI.md §4.7; the actor and bots are left out)."""
+    can read the page (WIKI.md §4.7; the actor and bots are left out). Not in a template (M145):
+    the mention is told in the page made from it."""
+    if page.is_template:
+        return
     after_users, after_groups = doc.mention_tokens(page.body)
     before_users, before_groups = doc.mention_tokens(before)
     if after_users <= before_users and after_groups <= before_groups:
@@ -1201,6 +1412,8 @@ async def move(db: AsyncSession, actor: User, page_id: uuid.UUID, data: PageMove
     page, _ = await access.require_level(db, actor, page_id, "full", lock=True)
     if page.kind == "row":
         raise bad_request("invalid_page_parent", "A row stays in its database")
+    if page.is_template and data.parent_id is not None:
+        raise template_invalid()  # M145: a page template stays at the top level
     parent: WikiPage | None = None
     if data.parent_id is not None:
         if data.parent_id == page.id:

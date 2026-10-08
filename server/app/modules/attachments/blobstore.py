@@ -25,6 +25,11 @@ class BlobStore(Protocol):
 
     async def delete(self, key: str) -> None: ...
 
+    async def copy(self, source: str, target: str) -> None:
+        """M145 (WIKI.md §22.3): a copy of an object inside the store (S3 CopyObject), for a
+        duplicated page's files."""
+        ...
+
 
 class MemoryBlobStore:
     """Tests and development without an object store."""
@@ -48,6 +53,9 @@ class MemoryBlobStore:
 
     async def delete(self, key: str) -> None:
         self.objects.pop(key, None)
+
+    async def copy(self, source: str, target: str) -> None:
+        self.objects[target] = self.objects[source]
 
 
 class S3BlobStore:
@@ -122,6 +130,13 @@ class S3BlobStore:
 
     async def delete(self, key: str) -> None:
         await run_in_threadpool(lambda: self.client.delete_object(Bucket=self.bucket, Key=key))
+
+    async def copy(self, source: str, target: str) -> None:
+        # Server side: the bytes never come through the app (boto3's managed copy also splits an
+        # object over 5 GB into parts; an upload is far smaller, it is still the safe call).
+        await run_in_threadpool(
+            lambda: self.client.copy({"Bucket": self.bucket, "Key": source}, self.bucket, target)
+        )
 
 
 def build_blobstore(settings: Any) -> BlobStore:

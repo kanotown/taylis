@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.modules.wiki.schemas import Level
+from app.modules.wiki.schemas import Level, PageOut, _valid_zone
 
 PropType = Literal[
     "title",
@@ -191,6 +191,14 @@ class DatabaseLimits(BaseModel):
     views: int
 
 
+class TemplateRef(BaseModel):
+    """A row template of the database (M145, WIKI.md §22.3): open it as a page to edit it."""
+
+    id: UUID
+    title: str
+    icon: str | None
+
+
 class DatabaseOut(BaseModel):
     """GET /wiki/databases/{id}. `properties` in display order; the title property first."""
 
@@ -199,8 +207,21 @@ class DatabaseOut(BaseModel):
     properties: list[PropertyOut]
     views: list[ViewOut]
     my_level: Level
+    # The rows (row templates are not rows: they are in `templates`).
     row_count: int
     limits: DatabaseLimits
+    # M145: the row templates (「新規 ▾」), oldest first, and the one 「新規」 starts from.
+    templates: list[TemplateRef] = Field(default_factory=list)
+    default_template_id: UUID | None = None
+
+
+class DefaultTemplateIn(BaseModel):
+    """PUT /wiki/databases/{id}/default-template (M145, edit): the row template a new row starts
+    from when POST …/rows names none (null: none)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: UUID | None
 
 
 class RelationIn(BaseModel):
@@ -372,12 +393,28 @@ class RowQueryOut(BaseModel):
 
 
 class RowCreate(BaseModel):
+    """POST /wiki/databases/{id}/rows. M145 (WIKI.md §22.3): a new row starts from `template_id`,
+    else (unless `blank`) from the database's default template: its title, icon, body
+    (placeholders put in with `tz`), values (a date's 「今日」 and a person's 「自分」 put in) and
+    files. The given `props` (and a title that is not empty, and a body) win over the
+    template's."""
+
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(default="", max_length=200)
     icon: str | None = Field(default=None, max_length=64)
+    # A date may be {"start": "@today"} and a person ["@me"] in a row template (put in when a
+    # row is made from it).
     props: dict[str, Any] = Field(default_factory=dict)
     body: str | None = None
+    # M145: a row template of this database (404 template_not_found otherwise).
+    template_id: UUID | None = None
+    # M145: start empty even when the database has a default template.
+    blank: bool = False
+    # M145: make a row template (never from the default template).
+    is_template: bool = False
+    # The client's IANA zone (a template's {{date}} and 「今日」); UTC when left out.
+    tz: str | None = Field(default=None, max_length=64)
     # Idempotency key: a retry returns the row made by the first request (200).
     client_save_id: UUID
 
@@ -385,6 +422,8 @@ class RowCreate(BaseModel):
     @classmethod
     def _title(cls, value: str) -> str:
         return " ".join(value.split())
+
+    _tz = field_validator("tz")(_valid_zone)
 
 
 class RowPropsUpdate(BaseModel):
@@ -401,6 +440,13 @@ class RowPropsUpdate(BaseModel):
 class RowWithRefs(BaseModel):
     row: RowOut
     refs: list[RowRef]
+
+
+class PageDuplicateOut(BaseModel):
+    """POST /wiki/pages/{id}/duplicate (M145): the copy; for a row also its cells."""
+
+    page: PageOut
+    row: RowWithRefs | None
 
 
 class ReferencedBy(BaseModel):

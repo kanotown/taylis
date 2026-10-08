@@ -10,7 +10,12 @@ client sends (`tz`). What they become (test vectors in tests/test_canvases.py):
 - ``{{channel}}`` → the channel's name; for a DM the other members' display names (joined by
   ``、``), for the DM with oneself one's own
 
-Other ``{{…}}`` stay as they are.
+Docs templates (M145, docs/WIKI.md §22.3) also have, when the context gives them:
+
+- ``{{time}}``    → ``09:30`` (the client's zone)
+- ``{{parent}}``  → the title of the page the new page goes under ("" at the top level)
+
+Other ``{{…}}`` stay as they are (a canvas leaves ``{{time}}`` / ``{{parent}}`` alone).
 """
 
 import re
@@ -19,7 +24,7 @@ from dataclasses import dataclass
 from datetime import date
 
 WEEKDAYS = "月火水木金土日"
-PLACEHOLDER = re.compile(r"\{\{(date|week|me|me_name|channel)\}\}")
+PLACEHOLDER = re.compile(r"\{\{(date|week|me|me_name|channel|time|parent)\}\}")
 
 
 @dataclass(frozen=True)
@@ -97,6 +102,9 @@ class Context:
     me_id: uuid.UUID
     me_name: str
     channel: str
+    # M145 (Docs only): "HH:MM" and the parent page's title; None leaves the placeholder.
+    time: str | None = None
+    parent: str | None = None
 
 
 def format_date(day: date) -> str:
@@ -121,6 +129,10 @@ def expand(text: str, ctx: Context, *, title: bool) -> str:
             return ctx.me_name if title else f"<@{ctx.me_id}>"
         if name == "me_name":
             return ctx.me_name
+        if name == "time":
+            return ctx.time if ctx.time is not None else match.group(0)
+        if name == "parent":
+            return ctx.parent if ctx.parent is not None else match.group(0)
         return ctx.channel
 
     return PLACEHOLDER.sub(value, text)

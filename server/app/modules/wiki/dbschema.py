@@ -262,6 +262,39 @@ def normalize_value(prop: Mapping[str, Any], raw: Any, *, known_users: set[str] 
     raise InvalidValue("This property cannot be set")
 
 
+# M145 (WIKI.md §22.3): a row template's dynamic values, put in when a row is made from it.
+TODAY = "@today"
+ME = "@me"
+
+
+def normalize_template_value(
+    prop: Mapping[str, Any], raw: Any, *, known_users: set[str] | None
+) -> Any:
+    """A row template's value: as normalize_value, and a date may be 「今日」
+    ({"start": "@today"} or "@today") and a person value may name 「自分」 ("@me")."""
+    kind = prop["type"]
+    if kind == "date" and (raw == TODAY or (isinstance(raw, dict) and raw.get("start") == TODAY)):
+        if isinstance(raw, dict) and (raw.get("end") is not None or raw.get("time")):
+            raise InvalidValue("「今日」 is a day without an end")
+        return {"start": TODAY, "end": None, "time": False}
+    if kind == "person" and isinstance(raw, list) and ME in raw:
+        rest = normalize_value(prop, [v for v in raw if v != ME], known_users=known_users) or []
+        return [ME, *rest][:50]
+    return normalize_value(prop, raw, known_users=known_users)
+
+
+def expand_dynamic(props: Mapping[str, Any], *, today: date, me: str) -> dict[str, Any]:
+    """A row template's values for a new row: 「今日」 → today, 「自分」 → me."""
+    out: dict[str, Any] = {}
+    for key, value in props.items():
+        if isinstance(value, dict) and value.get("start") == TODAY:
+            value = {"start": today.isoformat(), "end": None, "time": False}
+        elif isinstance(value, list) and ME in value:
+            value = list(dict.fromkeys(me if v == ME else v for v in value))
+        out[key] = value
+    return out
+
+
 # --- values as text (CSV, search, conversions) ---------------------------------------------------
 
 

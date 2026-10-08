@@ -299,6 +299,65 @@ async def bind_to_page_in_tx(
     return rows
 
 
+async def copy_page_files_in_tx(
+    db: AsyncSession,
+    blobs: BlobStore,
+    settings: Settings,
+    actor_id: uuid.UUID,
+    *,
+    source_page_id: uuid.UUID,
+    attachment_ids: list[uuid.UUID],
+    page_id: uuid.UUID,
+) -> dict[uuid.UUID, uuid.UUID]:
+    """M145 (docs/WIKI.md §22.3): a page made from a template or duplicated gets its own copy of
+    the files the original's body refers to (bound to the original), so trashing or editing one
+    never takes the other's files. The bytes are copied inside the object store (CopyObject);
+    the copy is attached to the new page at once and its uploader is the actor. A preview is made
+    again for the copy. Returns {original id: copy id} for rewriting the body. Files that are not
+    the original's (someone else's page, a message's) are left as they are.
+
+    The objects are written before the transaction commits: a rollback leaves unreferenced
+    objects behind, never a row without its bytes."""
+    wanted = list(dict.fromkeys(attachment_ids))
+    if not wanted:
+        return {}
+    rows = [
+        a
+        for a in await repo.get_many(db, wanted)
+        if a.page_id == source_page_id and a.status == "attached"
+    ]
+    copies: dict[uuid.UUID, uuid.UUID] = {}
+    now = utcnow()
+    for original in sorted(rows, key=lambda a: a.id):
+        new_id = uuid7()
+        copy = Attachment(
+            id=new_id,
+            uploader_id=actor_id,
+            page_id=page_id,
+            status="attached",
+            filename=original.filename,
+            content_type=original.content_type,
+            size_bytes=original.size_bytes,
+            sha256=original.sha256,
+            storage_key=storage_key(new_id),
+            width=original.width,
+            height=original.height,
+            duration_ms=original.duration_ms,
+            video_probed_at=original.video_probed_at,
+            created_at=now,
+            attached_at=now,
+        )
+        await blobs.copy(original.storage_key, copy.storage_key)
+        if original.thumbnail_key:
+            copy.thumbnail_key = thumbnail_key(new_id)
+            await blobs.copy(original.thumbnail_key, copy.thumbnail_key)
+        queue_on_upload(copy, settings)
+        db.add(copy)
+        copies[original.id] = new_id
+    await db.flush()
+    return copies
+
+
 async def mark_pages_deleted_in_tx(db: AsyncSession, page_ids: list[uuid.UUID]) -> int:
     """The wiki pages are purged: their images and files go with them."""
     rows = await repo.for_pages(db, page_ids)

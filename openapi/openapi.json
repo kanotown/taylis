@@ -7883,6 +7883,18 @@
       "DatabaseOut": {
         "description": "GET /wiki/databases/{id}. `properties` in display order; the title property first.",
         "properties": {
+          "default_template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Template Id"
+          },
           "limits": {
             "$ref": "#/components/schemas/DatabaseLimits"
           },
@@ -7914,6 +7926,13 @@
           "schema_version": {
             "title": "Schema Version",
             "type": "integer"
+          },
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateRef"
+            },
+            "title": "Templates",
+            "type": "array"
           },
           "views": {
             "items": {
@@ -8108,6 +8127,29 @@
           "channels"
         ],
         "title": "DefaultChannelsApplyOut",
+        "type": "object"
+      },
+      "DefaultTemplateIn": {
+        "additionalProperties": false,
+        "description": "PUT /wiki/databases/{id}/default-template (M145, edit): the row template a new row starts\nfrom when POST …/rows names none (null: none).",
+        "properties": {
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "template_id"
+        ],
+        "title": "DefaultTemplateIn",
         "type": "object"
       },
       "DeleteProperty": {
@@ -11818,6 +11860,11 @@
             "title": "Inherit Access",
             "type": "boolean"
           },
+          "is_template": {
+            "default": false,
+            "title": "Is Template",
+            "type": "boolean"
+          },
           "kind": {
             "enum": [
               "page",
@@ -12013,6 +12060,11 @@
             ],
             "title": "Icon"
           },
+          "is_template": {
+            "default": false,
+            "title": "Is Template",
+            "type": "boolean"
+          },
           "kind": {
             "default": "page",
             "enum": [
@@ -12046,6 +12098,18 @@
             ],
             "title": "Template Key"
           },
+          "template_page_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Page Id"
+          },
           "title": {
             "anyOf": [
               {
@@ -12075,6 +12139,120 @@
           "client_save_id"
         ],
         "title": "PageCreate",
+        "type": "object"
+      },
+      "PageDuplicate": {
+        "additionalProperties": false,
+        "description": "POST /wiki/pages/{id}/duplicate (M145, WIKI.md §22.3): 「複製」 and 「テンプレートとして\n保存」. The title, icon and body (placeholders as they are) and the images and files (copied)\ngo; a row's values too. Child pages do not.",
+        "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "enum": [
+                  "workspace",
+                  "private"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access"
+          },
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "as_template": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Template"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "PageDuplicate",
+        "type": "object"
+      },
+      "PageDuplicateOut": {
+        "description": "POST /wiki/pages/{id}/duplicate (M145): the copy; for a row also its cells.",
+        "properties": {
+          "page": {
+            "$ref": "#/components/schemas/PageOut"
+          },
+          "row": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RowWithRefs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "page",
+          "row"
+        ],
+        "title": "PageDuplicateOut",
         "type": "object"
       },
       "PageItem": {
@@ -12125,6 +12303,11 @@
           },
           "inherit_access": {
             "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "is_template": {
+            "default": false,
+            "title": "Is Template",
             "type": "boolean"
           },
           "kind": {
@@ -12267,6 +12450,11 @@
           },
           "inherit_access": {
             "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "is_template": {
+            "default": false,
+            "title": "Is Template",
             "type": "boolean"
           },
           "kind": {
@@ -12465,6 +12653,11 @@
           },
           "inherit_access": {
             "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "is_template": {
+            "default": false,
+            "title": "Is Template",
             "type": "boolean"
           },
           "kind": {
@@ -12981,6 +13174,17 @@
               }
             ],
             "title": "Icon"
+          },
+          "is_template": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Template"
           },
           "title": {
             "anyOf": [
@@ -15703,7 +15907,13 @@
       },
       "RowCreate": {
         "additionalProperties": false,
+        "description": "POST /wiki/databases/{id}/rows. M145 (WIKI.md §22.3): a new row starts from `template_id`,\nelse (unless `blank`) from the database's default template: its title, icon, body\n(placeholders put in with `tz`), values (a date's 「今日」 and a person's 「自分」 put in) and\nfiles. The given `props` (and a title that is not empty, and a body) win over the\ntemplate's.",
         "properties": {
+          "blank": {
+            "default": false,
+            "title": "Blank",
+            "type": "boolean"
+          },
           "body": {
             "anyOf": [
               {
@@ -15732,16 +15942,45 @@
             ],
             "title": "Icon"
           },
+          "is_template": {
+            "default": false,
+            "title": "Is Template",
+            "type": "boolean"
+          },
           "props": {
             "additionalProperties": true,
             "title": "Props",
             "type": "object"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
           },
           "title": {
             "default": "",
             "maxLength": 200,
             "title": "Title",
             "type": "string"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
           }
         },
         "required": [
@@ -18070,6 +18309,58 @@
         "title": "TaskUpdate",
         "type": "object"
       },
+      "TemplateApply": {
+        "additionalProperties": false,
+        "description": "POST /wiki/pages/{id}/apply-template (M145): an empty page starts from a template\n(「テンプレートから始める」): its body (placeholders put in with `tz`, files copied), and its\ntitle and icon when the page has none. One of template_key and template_page_id.",
+        "properties": {
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "template_page_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Page Id"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "TemplateApply",
+        "type": "object"
+      },
       "TemplateCreate": {
         "additionalProperties": false,
         "properties": {
@@ -18196,6 +18487,38 @@
         "title": "TemplateOut",
         "type": "object"
       },
+      "TemplateRef": {
+        "description": "A row template of the database (M145, WIKI.md §22.3): open it as a page to edit it.",
+        "properties": {
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "icon"
+        ],
+        "title": "TemplateRef",
+        "type": "object"
+      },
       "TemplateUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -18255,6 +18578,31 @@
           }
         },
         "title": "TemplateUpdate",
+        "type": "object"
+      },
+      "TemplatesOut": {
+        "description": "GET /wiki/templates (M145): the page templates I can read (newest first) and the built-in\ntemplates (CANVAS.md §4.12; create a page from one with `template_key`).",
+        "properties": {
+          "builtins": {
+            "items": {
+              "$ref": "#/components/schemas/CanvasTemplateOut"
+            },
+            "title": "Builtins",
+            "type": "array"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageItem"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages",
+          "builtins"
+        ],
+        "title": "TemplatesOut",
         "type": "object"
       },
       "TemporaryPasswordOut": {
@@ -36854,6 +37202,65 @@
         ]
       }
     },
+    "/api/v1/wiki/databases/{database_id}/default-template": {
+      "put": {
+        "description": "M145: the row template a new row starts from (edit access; null: none).",
+        "operationId": "set_default_template_api_v1_wiki_databases__database_id__default_template_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefaultTemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Default Template",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
     "/api/v1/wiki/databases/{database_id}/export.csv": {
       "get": {
         "description": "The view's rows and columns as CSV (WIKI.md §5.6).",
@@ -37062,7 +37469,7 @@
     },
     "/api/v1/wiki/databases/{database_id}/rows": {
       "post": {
-        "description": "A new row at the end (edit access). 409 wiki_too_many_rows past 5,000.",
+        "description": "A new row at the end (edit access). 409 wiki_too_many_rows past 5,000. M145: from\n`template_id` (404 template_not_found), else unless `blank` from the database's default\ntemplate; `is_template` makes a row template.",
         "operationId": "create_row_api_v1_wiki_databases__database_id__rows_post",
         "parameters": [
           {
@@ -37314,7 +37721,7 @@
     },
     "/api/v1/wiki/pages": {
       "post": {
-        "description": "A new page: under a page I can edit, or (not guests) at the top level with `access`.",
+        "description": "A new page: under a page I can edit, or (not guests) at the top level with `access`.\nFrom a built-in template (`template_key`) or a page template I can read (`template_page_id`,\n404 template_not_found): the placeholders are put in with `tz`, the files copied.\n`is_template`: a page template (top level, not guests).",
         "operationId": "create_page_api_v1_wiki_pages_post",
         "requestBody": {
           "content": {
@@ -37594,7 +38001,7 @@
         ]
       },
       "patch": {
-        "description": "Title and icon (edit level).",
+        "description": "Title, icon and (M145) `is_template` (edit level). 400 wiki_template_invalid: a page\ntemplate is a top-level page without subpages, a row template a row of its database.",
         "operationId": "update_page_api_v1_wiki_pages__page_id__patch",
         "parameters": [
           {
@@ -37757,6 +38164,65 @@
         ]
       }
     },
+    "/api/v1/wiki/pages/{page_id}/apply-template": {
+      "post": {
+        "description": "M145: 「テンプレートから始める」 on an empty page (edit): the template's body (placeholders\nput in, files copied), and its title and icon when the page has none. 409\nwiki_page_not_empty.",
+        "operationId": "apply_page_template_api_v1_wiki_pages__page_id__apply_template_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateApply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apply Page Template",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
     "/api/v1/wiki/pages/{page_id}/backlinks": {
       "get": {
         "description": "Pages I can read whose body links here.",
@@ -37874,6 +38340,75 @@
           }
         ],
         "summary": "Save Page Content",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/duplicate": {
+      "post": {
+        "description": "M145: 「複製」 (beside the original) and 「テンプレートとして保存」 (`as_template`): the\ntitle, icon, body, files (copied) and a row's values; not the subpages. Read the original,\nedit where the copy goes. 400 wiki_cannot_duplicate for a database.",
+        "operationId": "duplicate_page_api_v1_wiki_pages__page_id__duplicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageDuplicate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageDuplicateOut"
+                }
+              }
+            },
+            "description": "A retry: the copy made before"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageDuplicateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Duplicate Page",
         "tags": [
           "wiki"
         ]
@@ -38473,6 +39008,33 @@
           }
         ],
         "summary": "Update Row Props",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/templates": {
+      "get": {
+        "description": "M145 (WIKI.md §22.3): the page templates I can read (not in the tree) and the built-in\ntemplates, for the gallery and the sidebar's 「テンプレート」.",
+        "operationId": "wiki_templates_api_v1_wiki_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki Templates",
         "tags": [
           "wiki"
         ]

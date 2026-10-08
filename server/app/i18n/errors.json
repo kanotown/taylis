@@ -1406,6 +1406,11 @@
    "en": "Webhook not found.",
    "zh-Hans": "找不到 Webhook。"
   },
+  "wiki_cannot_duplicate": {
+   "ja": "データベースはまだ複製できません",
+   "en": "Databases can't be duplicated yet.",
+   "zh-Hans": "数据库暂时无法复制。"
+  },
   "wiki_invalid_property_value": {
    "ja": "この値はこのプロパティに入れられません",
    "en": "This value doesn't fit the property.",
@@ -1426,6 +1431,11 @@
    "en": "A page can't be moved under itself or its own subpages.",
    "zh-Hans": "不能将页面移动到其自身或其子页面之下。"
   },
+  "wiki_page_not_empty": {
+   "ja": "テンプレートから始められるのは空のページだけです",
+   "en": "Only an empty page can start from a template.",
+   "zh-Hans": "只有空白页面才能从模板开始。"
+  },
   "wiki_property_not_found": {
    "ja": "プロパティが見つかりません（削除されたかもしれません）",
    "en": "Property not found (it may have been deleted).",
@@ -1445,6 +1455,11 @@
    "ja": "ほかの人がプロパティを変えました。読み直してからもう一度お試しください",
    "en": "Someone else changed the properties. Reload and try again.",
    "zh-Hans": "其他人修改了属性。请重新加载后再试。"
+  },
+  "wiki_template_invalid": {
+   "ja": "テンプレートにできるのは、子ページの無い最上位のページか、データベースの行だけです",
+   "en": "Only a top-level page without subpages, or a database row, can be a template.",
+   "zh-Hans": "只有没有子页面的顶层页面或数据库的行才能成为模板。"
   },
   "wiki_title_property": {
    "ja": "タイトルのプロパティは消したり種類を変えたりできません",
