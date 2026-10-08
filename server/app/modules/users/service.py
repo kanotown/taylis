@@ -108,6 +108,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.locale = data.locale
     if "composer_mode" in data.model_fields_set:  # null = the clients' default ("rich")
         user.composer_mode = data.composer_mode
+    if "docs_editor_mode" in data.model_fields_set:  # M150: null = the clients' default ("wysiwyg")
+        user.docs_editor_mode = data.docs_editor_mode
     user.updated_at = utcnow()
     try:
         await db.flush()

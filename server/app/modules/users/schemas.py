@@ -145,6 +145,9 @@ class UserMe(UserPublic):
     locale: Literal["ja", "en", "zh-Hans"] | None = None
     # The desktop / Web composer's mode; null = never chosen, the clients' default ("rich").
     composer_mode: Literal["rich", "markdown"] | None = None
+    # M150: how Desktop / Web edits Docs pages; null = never chosen, the clients' default
+    # ("wysiwyg").
+    docs_editor_mode: Literal["wysiwyg", "markdown"] | None = None
     # M142 (docs/ROLES.md §2.1): what my role lets me do (app/core/roles.py), sorted. Clients
     # gate administration screens by these, not by `role`; the server checks every call anyway.
     # Clients ignore names they do not know.
@@ -188,6 +191,9 @@ class UserUpdate(BaseModel):
     locale: Literal["ja", "en", "zh-Hans"] | None = None
     # The desktop / Web composer: "rich" or "markdown"; null = back to the clients' default.
     composer_mode: Literal["rich", "markdown"] | None = None
+    # M150: Docs pages on Desktop / Web, "wysiwyg" or "markdown"; null = back to the clients'
+    # default.
+    docs_editor_mode: Literal["wysiwyg", "markdown"] | None = None
 
     @field_validator("nav_items")
     @classmethod
@@ -283,6 +289,9 @@ def to_user_me(user: User) -> UserMe:
         locale=user.locale if user.locale in ("ja", "en", "zh-Hans") else None,  # type: ignore[arg-type]
         composer_mode=(
             user.composer_mode if user.composer_mode in ("rich", "markdown") else None  # type: ignore[arg-type]
+        ),
+        docs_editor_mode=(
+            user.docs_editor_mode if user.docs_editor_mode in ("wysiwyg", "markdown") else None  # type: ignore[arg-type]
         ),
         capabilities=sorted(capabilities_of(user.role)),
     )
