@@ -5468,6 +5468,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wiki/rows/{row_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Row
+         * @description M147: a board's drag (edit access): set cells (the column's value) and place the row just
+         *     after `after_id` or before `before_id` in the rows' own order, in one write. 400
+         *     wiki_invalid_move for a neighbour that is not a live row of the same database.
+         */
+        post: operations["move_row_api_v1_wiki_rows__row_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wiki/rows/{row_id}/props": {
         parameters: {
             query?: never;
@@ -9178,6 +9200,27 @@ export interface components {
              */
             principal_type: "workspace" | "group" | "user";
         };
+        /**
+         * GroupBy
+         * @description M147 (WIKI.md §22.4): rows in groups by one property. A group's key is a select option id,
+         *     a user id, "true" / "false" (checkbox), a day "YYYY-MM-DD" (a week by its Monday) or a month
+         *     "YYYY-MM"; "" is the group of rows with no value (「なし」). A board groups by a select, a
+         *     person or a checkbox; a table, list or gallery also by a multi-select, a date or who made /
+         *     changed the row. A row with several values (multi-select, people) is in each of their groups.
+         */
+        GroupBy: {
+            /** Date Unit */
+            date_unit?: ("day" | "week" | "month") | null;
+            /** Hidden */
+            hidden?: string[];
+            /**
+             * Hide Empty
+             * @default false
+             */
+            hide_empty: boolean;
+            /** Prop Id */
+            prop_id: string;
+        };
         /** GroupCreate */
         GroupCreate: {
             /** Description */
@@ -11667,6 +11710,24 @@ export interface components {
             items: components["schemas"]["RolloverPreviewItem"][];
         };
         /**
+         * RowCover
+         * @description M147: a gallery card's picture, the first image of the row's body (an image attached to
+         *     the row): GET /attachments/{attachment_id}/thumbnail when `thumbnail`, else …/content.
+         */
+        RowCover: {
+            /**
+             * Attachment Id
+             * Format: uuid
+             */
+            attachment_id: string;
+            /** Height */
+            height: number | null;
+            /** Thumbnail */
+            thumbnail: boolean;
+            /** Width */
+            width: number | null;
+        };
+        /**
          * RowCreate
          * @description POST /wiki/databases/{id}/rows. M145 (WIKI.md §22.3): a new row starts from `template_id`,
          *     else (unless `blank`) from the database's default template: its title, icon, body
@@ -11724,10 +11785,45 @@ export interface components {
             row: components["schemas"]["RowOut"];
         };
         /**
+         * RowGroup
+         * @description A group of the answer (clients name it: the option, the person, 「なし」 for "").
+         */
+        RowGroup: {
+            /** Count */
+            count: number;
+            /** Hidden */
+            hidden: boolean;
+            /** Key */
+            key: string;
+        };
+        /**
+         * RowMove
+         * @description POST /wiki/rows/{id}/move (M147, a board's drag; edit access): set cells (as PATCH …/props,
+         *     e.g. the column's value) and place the row just after `after_id` or just before `before_id`
+         *     (rows of the same database), in one write. The place is the rows' own order, which every view
+         *     without a sort shows. A retry with the same client_op_id changes no cell again.
+         */
+        RowMove: {
+            /** After Id */
+            after_id?: string | null;
+            /** Before Id */
+            before_id?: string | null;
+            /**
+             * Client Op Id
+             * Format: uuid
+             */
+            client_op_id: string;
+            /** Set */
+            set?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * RowOut
          * @description A row without its body (GET /wiki/pages/{id} has the body).
          */
         RowOut: {
+            cover?: components["schemas"]["RowCover"] | null;
             /**
              * Created At
              * Format: date-time
@@ -11803,11 +11899,25 @@ export interface components {
          * RowQuery
          * @description POST /wiki/databases/{id}/query. A saved view's sort and filter, unless `sort` / `filter`
          *     are given (a sort or filter not saved: WIKI.md §5.4).
+         *
+         *     M147 groups (WIKI.md §22.4): `grouped: true` answers in groups (the view's `group_by`, or the
+         *     given one): `rows` group after group (a row with several values once in each of its groups),
+         *     `row_groups` the group of each, `groups` every group with its count. `grouped: false`: no
+         *     groups at all. Left out (clients before M147): one list of rows, in the order of the view's
+         *     groups, without the rows of its hidden groups.
          */
         RowQuery: {
+            /**
+             * Covers
+             * @default false
+             */
+            covers: boolean;
             /** Cursor */
             cursor?: string | null;
             filter?: components["schemas"]["FilterGroup"] | null;
+            group_by?: components["schemas"]["GroupBy"] | null;
+            /** Grouped */
+            grouped?: boolean | null;
             /**
              * Limit
              * @default 100
@@ -11816,15 +11926,21 @@ export interface components {
             range?: components["schemas"]["DateRange"] | null;
             /** Sort */
             sort?: components["schemas"]["SortKey"][] | null;
+            /** Tz */
+            tz?: string | null;
             /** View Id */
             view_id?: string | null;
         };
         /** RowQueryOut */
         RowQueryOut: {
+            /** Groups */
+            groups?: components["schemas"]["RowGroup"][] | null;
             /** Next Cursor */
             next_cursor: string | null;
             /** Refs */
             refs: components["schemas"]["RowRef"][];
+            /** Row Groups */
+            row_groups?: string[] | null;
             /** Rows */
             rows: components["schemas"]["RowOut"][];
             /** Schema Version */
@@ -13149,14 +13265,29 @@ export interface components {
         /**
          * ViewIn
          * @description PUT /wiki/databases/{id}/views/{view_id}: a saved view (shared by everyone who reads the
-         *     database). Board views come later: `type` grows a value, the rest stays.
+         *     database). M147: board, list and gallery; group_by for every type but the calendar. The
+         *     properties a card, a list line or a phone's card shows are the visible `columns` (title
+         *     first wherever it is).
          */
         ViewIn: {
+            /**
+             * Card Size
+             * @default medium
+             * @enum {string}
+             */
+            card_size: "small" | "medium" | "large";
             /** Columns */
             columns?: components["schemas"]["ViewColumn"][];
+            /**
+             * Cover
+             * @default body
+             * @enum {string}
+             */
+            cover: "body" | "none";
             /** Date Prop Id */
             date_prop_id?: string | null;
             filter?: components["schemas"]["FilterGroup"] | null;
+            group_by?: components["schemas"]["GroupBy"] | null;
             /**
              * Name
              * @default
@@ -13169,15 +13300,28 @@ export interface components {
              * @default table
              * @enum {string}
              */
-            type: "table" | "calendar";
+            type: "table" | "calendar" | "board" | "list" | "gallery";
         };
         /** ViewOut */
         ViewOut: {
+            /**
+             * Card Size
+             * @default medium
+             * @enum {string}
+             */
+            card_size: "small" | "medium" | "large";
             /** Columns */
             columns?: components["schemas"]["ViewColumn"][];
+            /**
+             * Cover
+             * @default body
+             * @enum {string}
+             */
+            cover: "body" | "none";
             /** Date Prop Id */
             date_prop_id?: string | null;
             filter?: components["schemas"]["FilterGroup"] | null;
+            group_by?: components["schemas"]["GroupBy"] | null;
             /** Id */
             id: string;
             /**
@@ -13192,7 +13336,7 @@ export interface components {
              * @default table
              * @enum {string}
              */
-            type: "table" | "calendar";
+            type: "table" | "calendar" | "board" | "list" | "gallery";
         };
         /** WebhookCreate */
         WebhookCreate: {
@@ -24303,6 +24447,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RowDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_row_api_v1_wiki_rows__row_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowWithRefs"];
                 };
             };
             /** @description Validation Error */

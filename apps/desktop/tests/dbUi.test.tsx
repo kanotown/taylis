@@ -82,8 +82,8 @@ function api(views: DatabaseOut["views"], extra: Record<string, unknown> = {}) {
   return { api: out, queries };
 }
 
-const TABLE = [{ id: "v1", name: "", type: "table" as const, columns: [], sort: [], filter: null, date_prop_id: null }];
-const CALENDAR = [{ id: "cal", name: "締め切り", type: "calendar" as const, columns: [], sort: [], filter: null, date_prop_id: "due" }];
+const TABLE = [{ id: "v1", name: "", type: "table" as const, columns: [], sort: [], filter: null, date_prop_id: null, cover: "body" as const, card_size: "medium" as const }];
+const CALENDAR = [{ id: "cal", name: "締め切り", type: "calendar" as const, columns: [], sort: [], filter: null, date_prop_id: "due", cover: "body" as const, card_size: "medium" as const }];
 
 describe("the table", () => {
   it("shows each type, the readable linked rows and one placeholder for the rest", async () => {

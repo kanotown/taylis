@@ -117,7 +117,7 @@ describe("the table's columns", () => {
   });
 
   it("a view differs once its sort, filter or columns change here", () => {
-    const view: DbView = { id: "v", name: "", type: "table", columns: [], sort: [], filter: null, date_prop_id: null };
+    const view: DbView = { id: "v", name: "", type: "table", columns: [], sort: [], filter: null, date_prop_id: null, cover: "body", card_size: "medium" };
     expect(viewDiffers(view, viewBody(view))).toBe(false);
     expect(viewDiffers(view, { ...viewBody(view), sort: [{ prop_id: "a", direction: "asc" }] })).toBe(true);
     expect(viewDiffers(view, { ...viewBody(view), filter: { combinator: "and", conditions: [] } })).toBe(false);

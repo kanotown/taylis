@@ -246,7 +246,7 @@ const row = (id: string, title: string, props: Record<string, unknown> = {}): Db
   id, database_id: "db", title, icon: null, position: id, version: 1, head_rev_id: "r", props: props as DbRow["props"], relations: {}, hidden_relations: [],
   created_at: "2026-10-01T00:00:00Z", created_by: "u-me", updated_at: "2026-10-01T00:00:00Z", updated_by: "u-me",
 });
-const TABLE = [{ id: "v1", name: "", type: "table" as const, columns: [], sort: [], filter: null, date_prop_id: null }];
+const TABLE = [{ id: "v1", name: "", type: "table" as const, columns: [], sort: [], filter: null, date_prop_id: null, cover: "body" as const, card_size: "medium" as const }];
 
 function database(extra: Partial<DatabaseOut> = {}): DatabaseOut {
   return {

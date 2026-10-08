@@ -472,6 +472,12 @@ export type DbRowDetail = components["schemas"]["RowDetailOut"];
 export type DbSchemaChange = components["schemas"]["SchemaChange"];
 export type DbSchemaOp = DbSchemaChange["ops"][number];
 export type DbRowCreate = components["schemas"]["RowCreate"];
+// M147 (WIKI.md §22.4): board, list, gallery and groups.
+export type DbViewType = DbView["type"];
+export type DbGroupBy = components["schemas"]["GroupBy"];
+export type DbGroupOut = components["schemas"]["RowGroup"];
+export type DbRowCover = components["schemas"]["RowCover"];
+export type DbRowMove = components["schemas"]["RowMove"];
 // M145 (WIKI.md §22.3): templates and copies.
 export type WikiTemplatesOut = components["schemas"]["TemplatesOut"];
 export type DbTemplateRef = components["schemas"]["TemplateRef"];
