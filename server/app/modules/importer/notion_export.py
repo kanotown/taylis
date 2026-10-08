@@ -20,7 +20,10 @@ real export (2026-10-07, §6.1):
   database ``….csv``); files the same (``![](Page/image.png)``, ``[a.pdf](Page/a.pdf)``; a file
   name may itself be percent-encoded, and parentheses in names are not encoded).
 - Callouts are ``<aside>`` blocks (the first line starts with its icon), toggles are list items
-  (or ``<details>``), equations ``$$``. Mentions of people are plain ``@name`` text.
+  (or ``<details>``), equations ``$$``. Mentions of people are plain ``@name`` text. Since M149
+  (§22.5) a callout becomes ``::: callout <icon>`` … ``:::`` and a ``<details>`` toggle
+  ``::: toggle <summary>`` … ``:::`` (the M125 import wrote them as a quote and a list item;
+  rewrite_quote_callouts turns those quotes, app.cli wiki-rewrite-callouts).
 """
 
 import csv
@@ -858,15 +861,28 @@ class Converted:
 
 
 _BLOCK_START = re.compile(r"^\s*(?:[-*+] |\d+[.)] |#|>|\||```|~~~|\$\$|!\[)")
+# Characters that are icons although Unicode does not call them symbols (So).
+_ICON_EXTRA = frozenset("\u203c\u2049\u2139\u303d")  # double exclamation, ⁉, information, 〽
+# M149 (WIKI.md §22.5): at most two containers deep (a toggle in a callout).
+MAX_CONTAINER_DEPTH = 2
+
+
+def is_icon(text: str) -> bool:
+    """A callout's icon as Notion writes it: an emoji of at most 4 characters (U+FE0F
+    included). No ASCII (no word, no Markdown block start) and at least one symbol, so a short
+    Japanese word or 「…」 is not taken for an icon."""
+    if not text or len(text) > 4 or any(c.isascii() for c in text):
+        return False
+    return any(unicodedata.category(c) == "So" or c in _ICON_EXTRA for c in text)
 
 
 def _icon_first(inner: list[str]) -> list[str]:
     """A callout's icon (Notion writes it alone on the first line) in front of its first line
-    of text, as ``> 💡 text``."""
+    of text, as ``> 💡 text`` (a callout written as a quote: deeper than MAX_CONTAINER_DEPTH)."""
     if len(inner) < 2:
         return inner
     icon = inner[0].strip()
-    if not icon or len(icon) > 4 or any(c.isascii() and c.isalnum() for c in icon):
+    if not is_icon(icon):
         return inner
     k = 1
     while k < len(inner) and not inner[k].strip():
@@ -894,8 +910,39 @@ def _code_lines(lines: list[str]) -> list[bool]:
     return out
 
 
-def _blocks(lines: list[str], out: Converted) -> list[str]:
-    """``<aside>`` → a quote, ``<details>`` → a list item with its content one level down."""
+def _trim(lines: list[str]) -> list[str]:
+    """Without the empty lines at the start and the end."""
+    start, end = 0, len(lines)
+    while start < end and not lines[start].strip():
+        start += 1
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+    return lines[start:end]
+
+
+def _closing(lines: list[str], code: list[bool], i: int, opener: re.Pattern[str]) -> int:
+    """The index of the line that closes the block opened at `i` (or len(lines))."""
+    close = _ASIDE_CLOSE if opener is _ASIDE_OPEN else _DETAILS_CLOSE
+    j = i + 1
+    depth = 1
+    while j < len(lines):
+        if code[j]:
+            pass
+        elif opener.match(lines[j]):
+            depth += 1
+        elif close.match(lines[j]):
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    return j
+
+
+def _blocks(lines: list[str], out: Converted, depth: int = 0) -> list[str]:
+    """``<aside>`` → ``::: callout <icon>`` … ``:::``, ``<details>`` with its ``<summary>`` →
+    ``::: toggle <summary>`` … ``:::`` (M149, WIKI.md §22.5). `depth` is the number of
+    containers around: a third one is written the old way (M125), a callout as a quote, a
+    toggle as a list item with its content one level down, so the body always reads as meant."""
     result: list[str] = []
     code = _code_lines(lines)
     i = 0
@@ -906,59 +953,124 @@ def _blocks(lines: list[str], out: Converted) -> list[str]:
             i += 1
             continue
         if _ASIDE_OPEN.match(line):
-            j = i + 1
-            depth = 1
-            while j < len(lines):
-                if code[j]:
-                    pass
-                elif _ASIDE_OPEN.match(lines[j]):
-                    depth += 1
-                elif _ASIDE_CLOSE.match(lines[j]):
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            inner = _blocks(lines[i + 1 : j], out)
-            while inner and not inner[0].strip():
-                inner.pop(0)
-            while inner and not inner[-1].strip():
-                inner.pop()
-            inner = _icon_first(inner)
-            result.extend(f"> {x}" if x.strip() else ">" for x in inner)
-            out.count("コールアウト → 引用")
+            j = _closing(lines, code, i, _ASIDE_OPEN)
+            nested = depth < MAX_CONTAINER_DEPTH
+            inner = _trim(_blocks(lines[i + 1 : j], out, depth + 1 if nested else depth))
+            if nested:
+                icon = inner[0].strip() if inner else ""
+                if is_icon(icon):
+                    inner = _trim(inner[1:])
+                else:
+                    icon = ""
+                result.append(f"::: callout {icon}".rstrip())
+                result.extend(inner)
+                result.append(":::")
+            else:
+                inner = _icon_first(inner)
+                result.extend(f"> {x}" if x.strip() else ">" for x in inner)
+                out.count("コールアウト（3 段目の入れ子）→ 引用")
             i = j + 1
             continue
         if _DETAILS_OPEN.match(line):
-            j = i + 1
-            depth = 1
-            while j < len(lines):
-                if code[j]:
-                    pass
-                elif _DETAILS_OPEN.match(lines[j]):
-                    depth += 1
-                elif _DETAILS_CLOSE.match(lines[j]):
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
+            j = _closing(lines, code, i, _DETAILS_OPEN)
             inner = lines[i + 1 : j]
             summary = ""
             if inner and _SUMMARY.match(inner[0]):
                 summary = _SUMMARY.match(inner[0])["text"]  # type: ignore[index]
                 inner = inner[1:]
-            inner = _blocks(inner, out)
-            while inner and not inner[0].strip():
-                inner.pop(0)
-            while inner and not inner[-1].strip():
-                inner.pop()
-            result.append(f"- {summary.strip() or '…'}")
-            result.extend(f"    {x}" if x.strip() else "" for x in inner)
-            out.count("トグル → 箇条書き")
+            summary = " ".join(summary.split())
+            nested = depth < MAX_CONTAINER_DEPTH
+            inner = _trim(_blocks(inner, out, depth + 1 if nested else depth))
+            if nested:
+                result.append(f"::: toggle {summary}".rstrip())
+                result.extend(inner)
+                result.append(":::")
+            else:
+                result.append(f"- {summary or '…'}")
+                result.extend(f"    {x}" if x.strip() else "" for x in inner)
+                out.count("トグル（3 段目の入れ子）→ 箇条書き")
             i = j + 1
             continue
         result.append(line)
         i += 1
     return result
+
+
+# --- callouts the M125 import wrote as quotes (M149, app.cli wiki-rewrite-callouts) ---------------
+
+_TOP_FENCE = re.compile(r"^\s*(```|~~~)")
+_QUOTE = re.compile(r"^>[ ]?")
+_CONTAINER_OPEN = re.compile(r"^:::[ \t]*(?:callout|toggle)(?:[ \t]|$)")
+_CONTAINER_CLOSE = re.compile(r"^:::[ \t]*$")
+
+
+def _quote_callout_head(line: str) -> tuple[str, str] | None:
+    """(icon, text) when a quote line begins with a callout's icon (``> 💡`` / ``> 💡 text``)."""
+    m = _QUOTE.match(line)
+    if m is None:
+        return None
+    content = line[m.end() :].strip()
+    if not content or _BLOCK_START.match(content):
+        return None
+    icon, _, rest = content.partition(" ")
+    if not is_icon(icon):
+        return None
+    return icon, rest.strip()
+
+
+def rewrite_quote_callouts(body: str, depth: int = 0) -> str:
+    """The callouts the M125 import wrote as quotes (``> 💡 text`` and the quote lines after it)
+    as ``::: callout 💡`` … ``:::`` (WIKI.md §22.5). A run of quote lines is a callout when its
+    first line begins with an icon (is_icon, as the import decided); the run, unquoted, is its
+    content, where a nested ``> 💡`` run is a nested callout (two deep at most: deeper stays a
+    quote). Fenced code, quotes without an icon and the containers already there stay as they
+    are; a body without such callouts comes back unchanged (so running it again changes
+    nothing). `depth`: the containers around `body`."""
+    lines = body.split("\n")
+    out: list[str] = []
+    fence: str | None = None
+    open_containers = 0
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = _TOP_FENCE.match(line)
+        if fence is not None:
+            if m and m.group(1) == fence:
+                fence = None
+            out.append(line)
+            i += 1
+            continue
+        if m:
+            fence = m.group(1)
+            out.append(line)
+            i += 1
+            continue
+        if _CONTAINER_OPEN.match(line):
+            open_containers += 1
+        elif _CONTAINER_CLOSE.match(line) and open_containers:
+            open_containers -= 1
+        if not line.startswith(">"):
+            out.append(line)
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and lines[j].startswith(">"):
+            j += 1
+        head = _quote_callout_head(line)
+        if head is None or depth + open_containers >= MAX_CONTAINER_DEPTH:
+            out.extend(lines[i:j])  # a quote (or too deep): as it is, nested quotes included
+            i = j
+            continue
+        icon, text = head
+        inner = [_QUOTE.sub("", x, count=1) for x in lines[i + 1 : j]]
+        inner = _trim([text, *inner] if text else inner)
+        content = rewrite_quote_callouts("\n".join(inner), depth + open_containers + 1)
+        out.append(f"::: callout {icon}")
+        if content:
+            out.extend(content.split("\n"))
+        out.append(":::")
+        i = j
+    return "\n".join(out)
 
 
 LinkFn = Callable[[Link, str], str | None]

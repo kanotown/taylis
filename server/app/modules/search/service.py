@@ -11,8 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.doctext import blocks as doc_blocks
 from app.core.errors import AppError, bad_request
-from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases.models import Canvas
 from app.modules.canvases.schemas import to_meta as to_canvas_meta
 from app.modules.channels import service as channels
@@ -469,7 +469,7 @@ async def _search_canvases_in_time(
     hits = [
         CanvasSearchHit(
             canvas=to_canvas_meta(canvas),
-            snippet=make_snippet(canvas_markers.strip(canvas.body), keywords),
+            snippet=make_snippet(doc_blocks.reading_text(canvas.body), keywords),
             score=score,
         )
         for canvas, score in rows
@@ -604,7 +604,7 @@ async def _search_pages_in_time(
     hits = [
         PageSearchHit(
             page=items[page.id],
-            snippet=make_snippet(canvas_markers.strip(page.body), keywords),
+            snippet=make_snippet(doc_blocks.reading_text(page.body), keywords),
             score=score,
         )
         for page, score in rows

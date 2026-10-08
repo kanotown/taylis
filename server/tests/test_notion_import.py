@@ -405,11 +405,12 @@ def test_markdown_conversion() -> None:
 
     out = convert_markdown(body, link_fn=link, bare_fn=lambda s: s, mention_fn=lambda s: s)
     assert out.body == (
-        "> 💡 Remember.\n- More\n    Inside\n```\n<aside>\n[x](y.md)\n```\n"
+        "::: callout 💡\nRemember.\n:::\n::: toggle More\nInside\n:::\n"
+        "```\n<aside>\n[x](y.md)\n```\n"
         "a b `[c](d.md)` [e](page:X)\n"
     )
     assert seen == ["f.md"]
-    assert out.unsupported["コールアウト → 引用"] == 1
+    assert set(out.unsupported) == {"HTML のタグ（文字だけ残す）"}  # callouts and toggles fit
 
 
 def test_column_types_file() -> None:
@@ -482,8 +483,8 @@ async def test_import_pages_databases_files_links(
     assert "`[[code]](x.md)`" in home.body
     assert "Gone: old" in home.body
     assert f"Ask <@{people['taro'].id}> please." in home.body
-    assert "> 💡 Remember **this**." in home.body
-    assert "- More\n    hidden text" in home.body
+    assert "::: callout 💡\nRemember **this**.\n:::" in home.body  # M149
+    assert "::: toggle More\nhidden text\n:::" in home.body
     assert "<span" not in home.body and "red words\nnext line." in home.body
     assert f"Back to [Home](page:{home.id})" in sub.body
     assert f"See [Alpha](page:{alpha.id})." in gamma.body

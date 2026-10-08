@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.doctext import blocks as doc_blocks
 from app.core.doctext import body as doc
 from app.core.doctext import revisions as doc_revisions
 from app.core.doctext import save as doc_save
@@ -169,7 +170,9 @@ async def _record_activity(
 ) -> None:
     """M76 (CANVAS.md §20): the person's activity item, with the line around the mention (names
     as the person sees them)."""
-    found = canvas_mentions.find_mention(markers.strip(canvas.body), person.id, groups_with_person)
+    found = canvas_mentions.find_mention(
+        doc_blocks.reading_text(canvas.body), person.id, groups_with_person
+    )
     excerpt = ""
     if found is not None:
         line, position = found
