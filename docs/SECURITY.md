@@ -359,6 +359,10 @@ id（題名は出さない）。ゲストとボットには `workspace` と `gro
 移動 `wiki.move`、ゴミ箱 `wiki.trash`・`wiki.restore`・`wiki.purge`、版の消去 `wiki.revision_erased`。共有を変えた結果 full の人
 （ゲストでない有効な人）がいなくなる変更と移動は 409 `page_last_manager`。イベントの宛先（`page`）とメンション・共有の通知は、
 送る時点の権限で解決し直す（書いた後に権限が狭まっても、読めなくなった人には届かない）。
+M144（docs/WIKI.md §22.2）：データベースのプロパティの追加・名前・並び・選択肢の追加とビューは edit、値が消える・変わる変更
+（プロパティと選択肢の削除・型の変更）と双方向の関係は full（403 `page_manage_restricted`）。監査 `wiki.schema_changed`・
+`wiki.view_saved`・`wiki.view_deleted`。共有のページの下でデータベースを作った人には自前の `user: full` を足す（ふつうのページには
+足さない：自前の `user` の項目はゲストにも効くので、卒業してゲストになっても作ったページが見え続けるのを避ける）。
 
 実装規約: メッセージ・添付・既読・検索のあらゆるアクセスは `channels.require_member(user, channel_id)`
 を通す。例外は読むことだけ (M27、参加前のプレビュー): 公開チャンネルのメッセージの履歴・差分・前後・スレッドの返信・単体は
