@@ -12,6 +12,15 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import jp.chikuwachat.android.ui.Timeline
+import kotlin.math.abs
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** PUSH_NOTIFICATIONS.md §16: message notifications as conversations with the sender's picture. */
 class ConversationNotificationTest {
@@ -105,12 +114,31 @@ class ConversationNotificationTest {
         assertEquals("/api/v1/users/u1/avatar?v=2026-10-06T12%3A00%3A00%2B00%3A00", ConversationStyle.avatarPath("u1", "2026-10-06T12:00:00+00:00"))
     }
 
-    @Test fun initialsAndColours() {
-        assertEquals("A", ConversationStyle.initials("alice"))
-        assertEquals("AS", ConversationStyle.initials("Alice Smith"))
-        assertEquals("加", ConversationStyle.initials("加納 徹"))
-        assertEquals("?", ConversationStyle.initials("  "))
-        assertEquals(ConversationStyle.colorFor("u1"), ConversationStyle.colorFor("u1"))
+    /** The default avatar against the cases every client shares (apps/shared/avatar-initials.json), as the app draws it. */
+    private val avatarVectors: JsonObject by lazy {
+        val file = File("../../shared/avatar-initials.json")
+        check(file.isFile) { "apps/shared/avatar-initials.json not found from ${File("").absolutePath}" }
+        Json.parseToJsonElement(file.readText()).jsonObject
+    }
+
+    @Test fun initialsAndColoursFollowTheSharedRule() {
+        val initials = avatarVectors["initials"]!!.jsonArray
+        assertTrue(initials.size > 10)
+        for (case in initials) {
+            val name = case.jsonObject["name"]!!.jsonPrimitive.content
+            val expected = case.jsonObject["initials"]!!.jsonPrimitive.content
+            assertEquals(name, expected, ConversationStyle.initials(name))
+            assertEquals(name, expected, Timeline.initials(name)) // the app's avatars
+        }
+        for (case in avatarVectors["colors"]!!.jsonArray) {
+            val id = case.jsonObject["id"]!!.jsonPrimitive.content
+            assertEquals(id, case.jsonObject["hue"]!!.jsonPrimitive.int, Timeline.hue(id))
+            val rgb = case.jsonObject["rgb"]!!.jsonArray.map { it.jsonPrimitive.int }
+            val color = ConversationStyle.colorFor(id)
+            assertEquals(id, 0xFF, color ushr 24)
+            val got = listOf((color shr 16) and 0xFF, (color shr 8) and 0xFF, color and 0xFF)
+            for ((a, b) in got.zip(rgb)) assertTrue("$id: $got vs $rgb", abs(a - b) <= 1)
+        }
         assertTrue(ConversationNote.isGroup("public") && !ConversationNote.isGroup("dm") && !ConversationNote.isGroup(null))
     }
 }
