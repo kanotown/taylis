@@ -1,0 +1,35 @@
+{
+  "_comment": "The default avatar of a person without a profile picture (M14a), in the apps and in push notifications (PUSH_NOTIFICATIONS.md §16.1). initials: the trimmed name's first character upper-cased; two letters (the first of the first two words, upper-cased) when the first two words (separated by any Unicode whitespace, the full-width space U+3000 included) both start with an ASCII letter; '?' for an empty name. hue: h = 0; for each UTF-16 unit c of the id: h = (h * 31 + c) mod 2^32; hue = h mod 360. The background is hsl(hue, 55%, 45%) with white bold letters; rgb is that colour in sRGB (0-255, rounded; a client may be 1 off). Hand-written; the desktop, iOS and Android tests read it.",
+  "initials": [
+    { "name": "Toru Kano", "initials": "TK" },
+    { "name": "toru kano", "initials": "TK" },
+    { "name": "  Alice   Smith  ", "initials": "AS" },
+    { "name": "Alice Smith Jones", "initials": "AS" },
+    { "name": "Ab\tCd", "initials": "AC" },
+    { "name": "Toru\u3000Kano", "initials": "TK" },
+    { "name": "加納\u3000徹", "initials": "加" },
+    { "name": "alice", "initials": "A" },
+    { "name": "かのう", "initials": "か" },
+    { "name": "加納 徹", "initials": "加" },
+    { "name": "Toru かのう", "initials": "T" },
+    { "name": "かのう Toru", "initials": "か" },
+    { "name": "Toru 2", "initials": "T" },
+    { "name": "1st Place", "initials": "1" },
+    { "name": "éric Dupont", "initials": "É" },
+    { "name": "😀 smile", "initials": "😀" },
+    { "name": "", "initials": "?" },
+    { "name": "   ", "initials": "?" }
+  ],
+  "colors": [
+    { "id": "alice", "hue": 0, "rgb": [178, 52, 52] },
+    { "id": "eve", "hue": 20, "rgb": [178, 94, 52] },
+    { "id": "user-1", "hue": 31, "rgb": [178, 117, 52] },
+    { "id": "kano", "hue": 95, "rgb": [104, 178, 52] },
+    { "id": "taro", "hue": 138, "rgb": [52, 178, 90] },
+    { "id": "guest", "hue": 192, "rgb": [52, 153, 178] },
+    { "id": "00000000-0000-7000-8000-0000000000a1", "hue": 217, "rgb": [52, 100, 178] },
+    { "id": "0192f3c4-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "hue": 262, "rgb": [98, 52, 178] },
+    { "id": "user-24", "hue": 300, "rgb": [178, 52, 178] },
+    { "id": "user-30", "hue": 327, "rgb": [178, 52, 121] }
+  ]
+}
