@@ -50,15 +50,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.R
-import jp.chikuwachat.android.api.ApiException
-import jp.chikuwachat.android.api.DatabaseOut
-import jp.chikuwachat.android.api.DbRow
-import jp.chikuwachat.android.api.DbRowRef
 import jp.chikuwachat.android.api.DbView
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.EmbedCache
+import jp.chikuwachat.android.sync.EmbedLoad
+import jp.chikuwachat.android.sync.EmbedRows
 import jp.chikuwachat.android.sync.PageLabel
 import jp.chikuwachat.android.sync.WikiDb
-import kotlinx.coroutines.CancellationException
 
 /*
  * M149 (docs/WIKI.md §22.5): the canvas dialect's containers and embedded databases on the phone. A callout is a tinted
@@ -146,20 +144,7 @@ private sealed interface EmbedState {
     data object Loading : EmbedState
     data object Denied : EmbedState
     data object Unreachable : EmbedState
-    data class Ready(val database: DatabaseOut, val view: DbView?, val rows: List<DbRow>, val refs: Map<String, DbRowRef>) : EmbedState
-}
-
-/** The rows read this session, by database and view: scrolling back to an embed draws it at once (refreshed behind). */
-private object EmbedCache {
-    private val entries = object : LinkedHashMap<String, EmbedState.Ready>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, EmbedState.Ready>?): Boolean = size > 32
-    }
-
-    @Synchronized fun get(key: String): EmbedState.Ready? = entries[key]
-
-    @Synchronized fun put(key: String, value: EmbedState.Ready) { entries[key] = value }
-
-    @Synchronized fun remove(key: String) { entries.remove(key) }
+    data class Ready(val rows: EmbedRows) : EmbedState
 }
 
 /** The rows an embed shows on a phone (WIKI.md §22.5). */
@@ -187,32 +172,24 @@ fun embedViewName(view: DbView?): String {
  */
 @Composable
 fun EmbeddedDatabase(block: BodyBlock.Embed, controller: AppController) {
-    val key = block.pageId + "#" + (block.viewId ?: "")
-    var state by remember(key) { mutableStateOf<EmbedState>(EmbedCache.get(key) ?: EmbedState.Loading) }
-    val links = LocalPageLinks.current
+    val key = EmbedCache.key(block.pageId, block.viewId)
     val hub = controller.wiki
-    LaunchedEffect(key) {
+    // The rows kept are this session's own (the hub's): another account's or server's never show here, not even while
+    // this session's answer about the link is still on its way.
+    var state by remember(key, hub) { mutableStateOf<EmbedState>(hub?.embeds?.get(key)?.let(EmbedState::Ready) ?: EmbedState.Loading) }
+    val links = LocalPageLinks.current
+    LaunchedEffect(key, hub) {
         hub?.resolve(listOf(block.pageId))
         val api = hub?.dbApi
         if (api == null) {
             if (state !is EmbedState.Ready) state = EmbedState.Unreachable
             return@LaunchedEffect
         }
-        state = try {
-            val database = api.wikiDatabase(block.pageId)
-            val view = WikiDb.viewOf(database, block.viewId)
-            val rows = api.queryRows(block.pageId, view?.id, null, null, EMBED_ROWS)
-            EmbedState.Ready(database, view, rows.rows.take(EMBED_ROWS), rows.refs.associateBy { it.id }).also { EmbedCache.put(key, it) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ApiException.Api) {
-            // 403 / 404 (and a page that is not a database): nothing of it is shown, not even the label.
-            if (e.status in 400..499 && e.status != 401 && e.status != 429) {
-                EmbedCache.remove(key)
-                EmbedState.Denied
-            } else state as? EmbedState.Ready ?: EmbedState.Unreachable
-        } catch (e: Exception) {
-            state as? EmbedState.Ready ?: EmbedState.Unreachable
+        state = when (val got = EmbedCache.load(hub.embeds, api, block.pageId, block.viewId, EMBED_ROWS)) {
+            is EmbedLoad.Rows -> EmbedState.Ready(got.rows)
+            EmbedLoad.Denied -> EmbedState.Denied
+            // The session ended meanwhile (the cache was emptied): nothing it showed stays.
+            EmbedLoad.Failed -> if (hub.embeds.isClosed) EmbedState.Unreachable else state as? EmbedState.Ready ?: EmbedState.Unreachable
         }
     }
     val label = links?.label?.invoke(block.pageId)
@@ -239,12 +216,13 @@ fun EmbeddedDatabase(block: BodyBlock.Embed, controller: AppController) {
             }
         }
         is EmbedState.Ready -> {
-            if (label is PageLabel.Hidden) {
+            if (label is PageLabel.Hidden || hub?.embeds?.isClosed != false) {
                 Hidden(frame)
                 return
             }
-            val ctx = DbUi.context(controller, shown.refs)
-            val firstProp = remember(shown) { WikiDb.cardProps(shown.database, shown.view, max = 1).firstOrNull() }
+            val data = shown.rows
+            val ctx = DbUi.context(controller, data.refs)
+            val firstProp = remember(data) { WikiDb.cardProps(data.database, data.view, max = 1).firstOrNull() }
             val title = (label as? PageLabel.Known)?.let(::titleOf)
             Column(
                 frame.then(if (open != null) Modifier.clickable(onClick = open) else Modifier)
@@ -255,16 +233,16 @@ fun EmbeddedDatabase(block: BodyBlock.Embed, controller: AppController) {
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         if (title != null) Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
-                        Text(embedViewName(shown.view), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(embedViewName(data.view), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (open != null) TextButton(onClick = open) { Text(stringResource(R.string.common_open)) }
                 }
                 Spacer(Modifier.height(4.dp))
-                if (shown.rows.isEmpty()) {
+                if (data.rows.isEmpty()) {
                     Text(stringResource(R.string.docs_db_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
                 }
                 Column(Modifier.padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    shown.rows.forEach { row ->
+                    data.rows.forEach { row ->
                         val value = firstProp?.let { WikiDb.cellText(it, row, ctx) }?.takeIf { it.isNotBlank() }
                         val rowShape = RoundedCornerShape(6.dp)
                         Row(

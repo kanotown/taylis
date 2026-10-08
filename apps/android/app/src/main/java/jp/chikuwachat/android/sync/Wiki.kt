@@ -182,6 +182,9 @@ class WikiHub(
     /** M124: the database endpoints (the same client). */
     val dbApi: WikiDbApi? get() = api as? WikiDbApi
 
+    /** M149: the embedded databases read in this session (closed by [stop]: nothing of it shows for another account). */
+    val embeds = EmbedCache()
+
     private val _rowsSignal = MutableStateFlow<Map<String, Long>>(emptyMap())
     /** M124: per database, how many wiki.rows.changed came (an open database reads again, folded). */
     val rowsSignal: StateFlow<Map<String, Long>> = _rowsSignal
@@ -477,5 +480,6 @@ class WikiHub(
         savers.clear()
         sources.clear()
         holds.clear()
+        embeds.close()
     }
 }
