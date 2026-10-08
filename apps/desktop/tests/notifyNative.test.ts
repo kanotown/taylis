@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The macOS app shows notifications through our UNUserNotificationCenter commands (src-tauri/src/mac_notify.rs) so they
-// appear while Taylis is frontmost; elsewhere ("unavailable") the notification plugin as before.
+// appear while Taylis is frontmost, Windows through our own toasts (src-tauri/src/win_notify.rs) so that a click comes
+// back; elsewhere ("unavailable": Linux, tauri dev on macOS) the notification plugin as before.
 const state = vi.hoisted(() => ({
   native: "granted" as string,
   afterRequest: "granted" as string,
@@ -93,7 +94,7 @@ describe("desktop notifications on macOS (native UNUserNotificationCenter)", () 
     expect(await requestNotificationPermission()).toBe("granted");
   });
 
-  it("falls back to the notification plugin where native ones are unavailable (Windows, tauri dev)", async () => {
+  it("falls back to the notification plugin where native ones are unavailable (Linux, tauri dev)", async () => {
     state.native = "unavailable";
     await notify("Taylis", "hello");
     expect(sent()).toEqual([]);
@@ -106,5 +107,27 @@ describe("desktop notifications on macOS (native UNUserNotificationCenter)", () 
     await notify("Taylis", "hello");
     expect(sent()).toEqual([]);
     expect(state.plugin.sent).toEqual(["Taylis"]);
+  });
+});
+
+describe("desktop notifications on Windows (our own toasts, win_notify.rs)", () => {
+  // The Rust side answers "granted" on Windows (toasts have no permission prompt). Before, Windows used the plugin,
+  // whose toasts never reported a click: clicking one only dismissed it (the issue, desktop v0.1.45).
+  it("shows through the native command, never asks, and a click runs the notification's own action", async () => {
+    const opened: string[] = [];
+    await notify("#general", "alice: hi", () => opened.push("message"));
+    expect(commands()).not.toContain("native_notification_request");
+    expect(state.plugin.sent).toEqual([]);
+    const [args] = sent();
+    expect(args).toEqual(expect.objectContaining({ title: "#general", body: "alice: hi" }));
+    state.clicked?.({ payload: String(args?.id) });
+    expect(opened).toEqual(["message"]);
+    expect(await notificationPermission()).toBe("granted");
+    expect(await requestNotificationPermission()).toBe("granted");
+  });
+
+  it("a notification without a click action is still shown (its click only brings the window up, on the Rust side)", async () => {
+    await notify("Taylis", "test");
+    expect(sent()).toEqual([expect.objectContaining({ title: "Taylis", body: "test" })]);
   });
 });

@@ -3,7 +3,10 @@ import { isTauri } from "./env";
 /** Browser notifications still on screen, closed at sign-out (§11). */
 const shown = new Set<Notification>();
 
-/** What the Rust side says about native notifications; "unavailable" = use tauri-plugin-notification. */
+/**
+ * What the Rust side says about native notifications (macOS app: UNUserNotificationCenter; Windows: WinRT toasts, always
+ * "granted"); "unavailable" = use tauri-plugin-notification (Linux, `tauri dev` on macOS).
+ */
 type NativeState = "granted" | "denied" | "default" | "unavailable";
 
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -50,9 +53,11 @@ async function sendNative(title: string, body: string, onClick?: () => void): Pr
 
 /**
  * OS notification: in the macOS app, our own UNUserNotificationCenter commands (src-tauri/src/mac_notify.rs: shown as a
- * banner while Taylis is frontmost too, and clicks come back); tauri-plugin-notification elsewhere on the desktop (its
- * NSUserNotificationCenter path on macOS files them silently while the app is in front); the Notification API in browser
- * dev. `onClick` (M55: open the task) runs when the notification is clicked, where clicks are reported (macOS app, browser).
+ * banner while Taylis is frontmost too, and clicks come back); on Windows our own toasts (src-tauri/src/win_notify.rs:
+ * the plugin dropped their clicks, so a click only dismissed the toast); tauri-plugin-notification elsewhere on the
+ * desktop (Linux, `tauri dev` on macOS); the Notification API in browser dev. A click brings the window up (Rust side)
+ * and runs `onClick` (open the message / thread / DM, the task, …) where clicks are reported (macOS app, Windows,
+ * browser).
  */
 export async function notify(title: string, body: string, onClick?: () => void): Promise<void> {
   if (isTauri()) {

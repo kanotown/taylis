@@ -239,16 +239,12 @@ fn hide(window: &Window) {
     }
 }
 
-/// Windows, the first time the window goes to the tray: say where Taylis went (Slack does the same).
+/// Windows, the first time the window goes to the tray: say where Taylis went (Slack does the same). A click on it brings
+/// the window back (win_notify.rs).
 #[cfg(windows)]
 fn show_tray_hint(app: &AppHandle, state: &Background) {
-    use tauri_plugin_notification::NotificationExt;
-
     let labels = state.labels();
-    if let Err(err) = app.notification().builder().title(&labels.hint_title).body(&labels.hint_body).show() {
-        eprintln!("could not show the tray hint: {err}");
-        return;
-    }
+    crate::win_notify::send(app, None, labels.hint_title, labels.hint_body);
     if let Err(err) = state.update(|prefs| prefs.tray_hint_shown = true) {
         eprintln!("could not remember the tray hint: {err}");
     }
