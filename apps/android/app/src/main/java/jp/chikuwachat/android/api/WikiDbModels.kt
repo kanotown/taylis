@@ -73,7 +73,14 @@ data class DatabaseOut(
     val myLevel: String = "view",
     val rowCount: Int = 0,
     val limits: DbLimits? = null,
+    /** M146: the row templates (oldest first) and the one 「＋ 新規」 uses when nothing is chosen. */
+    val templates: List<DbTemplateRef> = emptyList(),
+    val defaultTemplateId: String? = null,
 )
+
+/** M146: a row template of a database (GET /wiki/databases/{id}'s `templates`). */
+@Serializable
+data class DbTemplateRef(val id: String, val title: String = "", val icon: String? = null)
 
 /** A row without its body. `relations`: the readable linked rows per property; `hiddenRelations`: properties that also link to rows I cannot read. */
 @Serializable

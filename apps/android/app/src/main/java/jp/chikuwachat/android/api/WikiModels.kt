@@ -37,6 +37,8 @@ data class PageItem(
     val myLevel: String = "view",
     /** Only I can see it: the tree's 「プライベート」 when it is top-level for me. */
     val private: Boolean = false,
+    /** M145/M146: a template (a top-level page, or a database's row template); never in the tree. */
+    val isTemplate: Boolean = false,
 )
 
 /** An ancestor in the breadcrumbs (root first). One I cannot read has no id, title or icon (「…」). */
@@ -65,6 +67,8 @@ data class PageOut(
     val deletedAt: String? = null,
     val myLevel: String = "view",
     val private: Boolean = false,
+    /** M146: a template page (its banner) or a row template. */
+    val isTemplate: Boolean = false,
     val body: String = "",
     /** Absent from a save's answer and a conflict's head (PageContent). */
     val breadcrumbs: List<PageCrumb>? = null,
@@ -73,7 +77,7 @@ data class PageOut(
     val item: PageItem
         get() = PageItem(
             id, parentId, position, kind, title, icon, version, headRevId, metaSeq, inheritAccess, taskTotal, taskDone,
-            createdBy, updatedBy, createdAt, updatedAt, deletedAt, myLevel, private,
+            createdBy, updatedBy, createdAt, updatedAt, deletedAt, myLevel, private, isTemplate,
         )
 }
 
@@ -137,3 +141,11 @@ data class ActivityPage(
 /** wiki.mentioned / wiki.shared (to me): who did it and where. Lenient, like CanvasMentioned. */
 @Serializable
 data class WikiNotice(val pageId: String, val title: String = "", val byUserId: String? = null, val level: String? = null, val revId: String? = null)
+
+/** M146 (WIKI.md §24.3): GET /wiki/templates — the template pages I can read (newest first) and the built-in ones. */
+@Serializable
+data class WikiTemplatesOut(val pages: List<PageItem> = emptyList(), val builtins: List<CanvasTemplateOut> = emptyList())
+
+/** M146: POST /wiki/pages/{id}/duplicate — the copy, and for a row its cells. */
+@Serializable
+data class PageDuplicateOut(val page: PageOut, val row: DbRowWithRefs? = null)

@@ -52,7 +52,11 @@ interface WikiDbApi {
     suspend fun wikiDatabase(databaseId: String): DatabaseOut
     /** A view's rows (its sort and filter); `range`: a calendar's days. */
     suspend fun queryRows(databaseId: String, viewId: String?, range: DbRange?, cursor: String?, limit: Int): DbRowQueryOut
-    suspend fun createRow(databaseId: String, title: String, props: JsonObject, clientSaveId: String): DbRowWithRefs
+    /** M146: `template` Default sends nothing (the database's default template, if any); `tz` for 「今日」. */
+    suspend fun createRow(
+        databaseId: String, title: String, props: JsonObject, clientSaveId: String,
+        template: RowTemplateChoice = RowTemplateChoice.Default, tz: String? = null,
+    ): DbRowWithRefs
     suspend fun wikiRow(rowId: String): DbRowDetail
     suspend fun setRowProps(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs
     /** Rows a relation cell may link to: only rows of the related database I can read. */
@@ -76,6 +80,9 @@ data class DbCellContext(
     val locale: Locale,
     /** A date as shown ("2026/10/07"), a date with time ("2026/10/07 9:30"). */
     val datePattern: String = "y/MM/dd",
+    /** M146: a row template's 「今日」 ({"start": "@today"}) and 「自分」 ("@me") as shown. */
+    val todayWord: String = WikiTemplates.TODAY,
+    val meWord: String = WikiTemplates.ME,
 )
 
 /** A card of the table: the row's icon and title, then the chosen properties that have a value (name, text). */
@@ -186,8 +193,10 @@ object WikiDb {
             "checkbox" -> if (checked(value)) "✓" else ""
             "select" -> string(value)?.let { id -> prop.options.firstOrNull { it.id == id }?.name }.orEmpty()
             "multi_select" -> strings(value).mapNotNull { id -> prop.options.firstOrNull { it.id == id }?.name }.joinToString(", ")
-            "date", "created_time", "updated_time" -> asDate(value)?.let { formatDate(it, ctx.zone, ctx.locale, ctx.datePattern) }.orEmpty()
-            "person", "created_by", "updated_by" -> strings(value).joinToString(", ") { ctx.names(it) }
+            "date", "created_time", "updated_time" ->
+                if (prop.type == "date" && WikiTemplates.isToday(value)) ctx.todayWord
+                else asDate(value)?.let { formatDate(it, ctx.zone, ctx.locale, ctx.datePattern) }.orEmpty()
+            "person", "created_by", "updated_by" -> strings(value).joinToString(", ") { if (it == WikiTemplates.ME) ctx.meWord else ctx.names(it) }
             else -> ""
         }
     }
@@ -506,7 +515,7 @@ class DatabaseSession(
      * A new row (edit): the title, and on a calendar the date of the day shown (today when in this month, else its
      * first). A failure on the network is sent again with the same key (one row, not two).
      */
-    suspend fun createRow(title: String): DbRow {
+    suspend fun createRow(title: String, template: RowTemplateChoice = RowTemplateChoice.Default): DbRow {
         val db = database ?: throw IllegalStateException("not loaded")
         val view = view
         val props = buildJsonObject {
@@ -519,7 +528,7 @@ class DatabaseSession(
                 }
             }
         }
-        val made = CanvasRequests.sameKey(options.newId(), wait = options.retryWait) { key -> api.createRow(databaseId, title, props, key) }
+        val made = CanvasRequests.sameKey(options.newId(), wait = options.retryWait) { key -> api.createRow(databaseId, title, props, key, template, options.zone().id) }
         refs = refs + made.refs.associateBy { it.id }
         if (rows.none { it.id == made.row.id }) {
             rows = rows + made.row

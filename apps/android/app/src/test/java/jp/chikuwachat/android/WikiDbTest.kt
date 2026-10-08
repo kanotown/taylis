@@ -99,6 +99,7 @@ class FakeWikiDbApi : WikiDbApi {
     val queries = ArrayList<Triple<String?, DbRange?, Int>>()
     val ops = ArrayList<Pair<JsonObject, String>>()
     val creates = ArrayList<Pair<JsonObject, String>>()
+    val templates = ArrayList<jp.chikuwachat.android.sync.RowTemplateChoice>()
     val failures = ArrayDeque<Throwable>()
     var detail: DbRowDetail? = null
     var candidates = emptyList<DbRowRef>()
@@ -118,7 +119,8 @@ class FakeWikiDbApi : WikiDbApi {
         return DbRowQueryOut(rows, refs, rows.size, if (cursor == null && limit == DatabaseSession.PAGE && rows.size > 1) "o:1" else null, db.schemaVersion)
     }
 
-    override suspend fun createRow(databaseId: String, title: String, props: JsonObject, clientSaveId: String): DbRowWithRefs {
+    override suspend fun createRow(databaseId: String, title: String, props: JsonObject, clientSaveId: String, template: jp.chikuwachat.android.sync.RowTemplateChoice, tz: String?): DbRowWithRefs {
+        templates.add(template)
         creates.add(props to clientSaveId)
         fail()
         return DbRowWithRefs(row("new", title, props))

@@ -93,7 +93,7 @@ class FakeWikiApi : WikiApi {
         return PageSaveOut(pageOut().copy(breadcrumbs = null, children = null), head, merged = false)
     }
 
-    override suspend fun createWikiPage(parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String): PageOut {
+    override suspend fun createWikiPage(parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String, template: jp.chikuwachat.android.sync.PageTemplateChoice?): PageOut {
         calls.add("create ${parentId ?: "-"} ${title ?: "-"} $access")
         fail()
         return PageOut(id = "new", parentId = parentId, title = title ?: "無題", myLevel = "full", headRevId = "r1", version = 1)

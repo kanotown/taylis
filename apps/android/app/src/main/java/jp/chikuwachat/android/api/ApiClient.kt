@@ -73,7 +73,7 @@ class ApiClient(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
-    jp.chikuwachat.android.sync.WikiDbApi {
+    jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -927,14 +927,20 @@ class ApiClient(
         })
 
     /** A new page (201; a retry with the same key answers the first one, 200). `access` matters for a top-level page only. */
-    override suspend fun createWikiPage(parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String): PageOut =
-        request("POST", "/api/v1/wiki/pages", buildJsonObject {
-            parentId?.let { put("parent_id", it) }
-            title?.let { put("title", it) }
-            if (parentId == null) put("access", access)
-            tz?.let { put("tz", it) }
-            put("client_save_id", clientSaveId)
-        })
+    override suspend fun createWikiPage(
+        parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String,
+        template: jp.chikuwachat.android.sync.PageTemplateChoice?,
+    ): PageOut = request("POST", "/api/v1/wiki/pages", jp.chikuwachat.android.sync.WikiRequests.createPage(parentId, title, access, tz, clientSaveId, template))
+
+    // --- templates and duplicating (docs/WIKI.md §24, M146) ----------------------------------------------
+
+    override suspend fun wikiTemplates(): jp.chikuwachat.android.api.WikiTemplatesOut = request("GET", "/api/v1/wiki/templates")
+
+    override suspend fun applyWikiTemplate(pageId: String, template: jp.chikuwachat.android.sync.PageTemplateChoice, tz: String?, clientSaveId: String): PageOut =
+        request("POST", "/api/v1/wiki/pages/$pageId/apply-template", jp.chikuwachat.android.sync.WikiRequests.applyTemplate(template, tz, clientSaveId))
+
+    override suspend fun duplicateWikiPage(pageId: String, topLevel: Boolean, clientSaveId: String): jp.chikuwachat.android.api.PageDuplicateOut =
+        request("POST", "/api/v1/wiki/pages/$pageId/duplicate", jp.chikuwachat.android.sync.WikiRequests.duplicate(topLevel, clientSaveId))
 
     override suspend fun renameWikiPage(pageId: String, title: String): PageOut =
         request("PATCH", "/api/v1/wiki/pages/$pageId", buildJsonObject { put("title", title) })
@@ -968,12 +974,10 @@ class ApiClient(
         })
 
     /** A new row (201; a retry with the same key answers the first one, 200). */
-    override suspend fun createRow(databaseId: String, title: String, props: JsonObject, clientSaveId: String): DbRowWithRefs =
-        request("POST", "/api/v1/wiki/databases/$databaseId/rows", buildJsonObject {
-            put("title", title)
-            put("props", props)
-            put("client_save_id", clientSaveId)
-        })
+    override suspend fun createRow(
+        databaseId: String, title: String, props: JsonObject, clientSaveId: String,
+        template: jp.chikuwachat.android.sync.RowTemplateChoice, tz: String?,
+    ): DbRowWithRefs = request("POST", "/api/v1/wiki/databases/$databaseId/rows", jp.chikuwachat.android.sync.WikiRequests.createRow(title, props, clientSaveId, template, tz))
 
     override suspend fun wikiRow(rowId: String): DbRowDetail = request("GET", "/api/v1/wiki/rows/$rowId")
 

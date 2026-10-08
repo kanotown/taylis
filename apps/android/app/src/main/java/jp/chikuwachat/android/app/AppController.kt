@@ -2320,12 +2320,15 @@ class AppController(private val app: Application) {
      * I manage it) or "private" (only me) — WIKI.md §4.2. A network failure is sent again with the same key, so a retry
      * never makes a second page. The page joins the tree at once (the feed confirms it).
      */
-    suspend fun createWikiPage(parentId: String?, title: String?, access: String): jp.chikuwachat.android.api.PageOut? {
+    suspend fun createWikiPage(
+        parentId: String?, title: String?, access: String,
+        template: jp.chikuwachat.android.sync.PageTemplateChoice? = null,
+    ): jp.chikuwachat.android.api.PageOut? {
         val api = api ?: return null
         val zone = java.util.TimeZone.getDefault().id
         return try {
             jp.chikuwachat.android.sync.CanvasRequests.sameKey(java.util.UUID.randomUUID().toString()) { key ->
-                api.createWikiPage(parentId, title, access, zone, key)
+                api.createWikiPage(parentId, title, access, zone, key, template)
             }.also { page -> engine?.wiki?.noteItem(page.item) }
         } catch (e: CancellationException) {
             throw e
@@ -2344,6 +2347,62 @@ class AppController(private val app: Application) {
                 engine?.wiki?.current(pageId)?.remoteVersion(page.version)
             }
             .onFailure { report(it) }.isSuccess
+    }
+
+    // --- templates and duplicating (M146, docs/WIKI.md §24.3) ------------------------------------------
+
+    /** The create sheet's gallery: built-in templates and the template pages I can read. */
+    suspend fun wikiTemplates(): Result<jp.chikuwachat.android.sync.WikiTemplates.Gallery> {
+        val api = api ?: return Result.failure(IllegalStateException("signed out"))
+        return attempt { jp.chikuwachat.android.sync.WikiTemplates.gallery(api.wikiTemplates()) }
+    }
+
+    /** 「テンプレートから始める」 on an empty page: the open page reads the new version (one key: a retry is one save). */
+    suspend fun applyWikiTemplate(pageId: String, template: jp.chikuwachat.android.sync.PageTemplateChoice): Boolean {
+        val api = api ?: return false
+        val zone = java.util.TimeZone.getDefault().id
+        return attempt {
+            jp.chikuwachat.android.sync.CanvasRequests.sameKey(java.util.UUID.randomUUID().toString()) { key ->
+                api.applyWikiTemplate(pageId, template, zone, key)
+            }
+        }.onSuccess { page ->
+            engine?.wiki?.noteItem(page.item)
+            engine?.wiki?.current(pageId)?.remoteVersion(page.version)
+        }.onFailure { report(it) }.isSuccess
+    }
+
+    /**
+     * 「複製」: beside the original (or, `topLevel`, at the top level). NeedsTopLevel: the place beside it is not mine
+     * to change — the screen asks. A made page joins the tree; a row's database reads its rows again.
+     */
+    suspend fun duplicateWikiPage(pageId: String, kind: String, topLevel: Boolean): jp.chikuwachat.android.sync.DuplicateOutcome? {
+        val api = api ?: return null
+        return try {
+            jp.chikuwachat.android.sync.WikiTemplates.duplicate(api, pageId, kind, topLevel, java.util.UUID.randomUUID().toString()).also { outcome ->
+                if (outcome is jp.chikuwachat.android.sync.DuplicateOutcome.Made) {
+                    val page = outcome.out.page
+                    engine?.wiki?.noteItem(page.item)
+                    if (page.kind == "row") page.parentId?.let { engine?.wiki?.rowsChanged(it) }
+                    notice = L10n.str(R.string.docs_tpl_duplicated, page.title.ifBlank { L10n.str(R.string.docs_untitled) })
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            report(e)
+            null
+        }
+    }
+
+    /** A row template's 「このテンプレートで行を作成」: a new row of its database (one key). */
+    suspend fun createRowFromTemplate(databaseId: String, templateId: String): jp.chikuwachat.android.api.DbRow? {
+        val api = api ?: return null
+        val zone = java.util.TimeZone.getDefault().id
+        return attempt {
+            jp.chikuwachat.android.sync.CanvasRequests.sameKey(java.util.UUID.randomUUID().toString()) { key ->
+                api.createRow(databaseId, "", kotlinx.serialization.json.JsonObject(emptyMap()), key, jp.chikuwachat.android.sync.RowTemplateChoice.Template(templateId), zone)
+            }
+        }.onSuccess { engine?.wiki?.rowsChanged(databaseId) }.onFailure { report(it) }.getOrNull()?.row
     }
 
     /** The readable pages that link to this one (null: could not be read). */

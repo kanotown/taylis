@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M146 (docs/WIKI.md §24.3): templates and duplicating on the phone. Japanese, the default; values-en / values-b+zh+Hans translate it. -->
+<resources>
+    <string name="docs_tpl_blank">白紙のページ</string>
+    <string name="docs_tpl_blank_note">何も書かれていないページ</string>
+    <string name="docs_tpl_builtin">組み込み</string>
+    <string name="docs_tpl_everyone">みんなのテンプレート</string>
+    <string name="docs_tpl_start_with">始め方</string>
+    <string name="docs_tpl_no_templates">見られるテンプレートはまだありません（パソコンでページの ⋯ の「テンプレートとして保存」から作れます）</string>
+    <string name="docs_tpl_load_failed">テンプレートを読み込めませんでした（白紙のページは作れます）</string>
+    <string name="docs_tpl_loading">テンプレートを読み込み中…</string>
+    <string name="docs_tpl_start_from">テンプレートから始める</string>
+    <string name="docs_tpl_apply_note">テンプレートの本文をこのページに入れます（題名とアイコンは、まだ無いときだけ）。</string>
+    <string name="docs_tpl_apply">入れる</string>
+    <string name="docs_tpl_duplicate">複製</string>
+    <string name="docs_tpl_duplicated">「%1$s」を作りました</string>
+    <string name="docs_tpl_top_level_title">最上位に複製しますか？</string>
+    <string name="docs_tpl_top_level_note">元のページの隣には置けません（その場所を編集する権限がありません）。写しを「ドキュメント」の最上位に置きます。</string>
+    <string name="docs_tpl_top_level_confirm">最上位に置く</string>
+    <string name="docs_tpl_banner">このページはテンプレートです。ここでの変更は、これから作るページに使われます。</string>
+    <string name="docs_tpl_row_banner">この行はテンプレートです。題名・値・本文が、ここから作る行に写されます。</string>
+    <string name="docs_tpl_use">このテンプレートでページを作成</string>
+    <string name="docs_tpl_use_row">このテンプレートで行を作成</string>
+    <string name="docs_tpl_new_page_from">テンプレートから新しいページ</string>
+    <string name="docs_tpl_row_template">テンプレート</string>
+    <string name="docs_tpl_blank_row">白紙の行</string>
+    <string name="docs_tpl_default">既定</string>
+    <string name="docs_tpl_open_template">「%1$s」を開く</string>
+    <string name="docs_tpl_today">今日</string>
+    <string name="docs_tpl_me">自分</string>
+</resources>

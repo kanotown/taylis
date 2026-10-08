@@ -28,7 +28,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FileCopy
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
@@ -42,6 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -79,6 +82,10 @@ import jp.chikuwachat.android.sync.WikiLevels
 import jp.chikuwachat.android.sync.WikiLinks
 import jp.chikuwachat.android.sync.WikiPageSource
 import jp.chikuwachat.android.sync.WikiTree
+import jp.chikuwachat.android.sync.DuplicateOutcome
+import jp.chikuwachat.android.sync.PageTemplateChoice
+import jp.chikuwachat.android.sync.TemplateBanner
+import jp.chikuwachat.android.sync.WikiTemplates
 import kotlinx.coroutines.launch
 
 /*
@@ -160,6 +167,10 @@ private fun DocPageView(
     var conflictOpen by remember(pageId) { mutableStateOf(true) }
     var renaming by remember(pageId) { mutableStateOf(false) }
     var creatingChild by remember(pageId) { mutableStateOf(false) }
+    // M146: 「テンプレートから始める」, 「複製」's question about the top level, the banner's 「このテンプレートでページを作成」.
+    var applyingTemplate by remember(pageId) { mutableStateOf(false) }
+    var askTopLevel by remember(pageId) { mutableStateOf(false) }
+    var usingTemplate by remember(pageId) { mutableStateOf(false) }
     LaunchedEffect(status) { if (status == CanvasSaveStatus.CONFLICT || status == CanvasSaveStatus.EXPIRED) conflictOpen = true }
     val loadError = saver.loadError?.takeIf { status != CanvasSaveStatus.GONE }
     val gone = status == CanvasSaveStatus.GONE
@@ -220,6 +231,15 @@ private fun DocPageView(
                 PageMenu(
                     controller, pageId, title, rights, gone, saver,
                     onRename = { renaming = true }, onNewChild = { creatingChild = true }, onReload = { saver.online() },
+                    onDuplicate = if (kind != "database" && !gone && loadError == null) ({
+                        scope.launch {
+                            when (val outcome = controller.duplicateWikiPage(pageId, kind, topLevel = false)) {
+                                is DuplicateOutcome.Made -> onOpenPage(outcome.out.page.id)
+                                DuplicateOutcome.NeedsTopLevel -> askTopLevel = true
+                                null -> Unit
+                            }
+                        }
+                    }) else null,
                 )
             }
             if (!oneRow) {
@@ -234,6 +254,20 @@ private fun DocPageView(
             val offlineSince = remember(revision) { saver.cachedAt?.takeIf { saver.unreachable } }
             if (offlineSince != null && loadError == null) OfflineCopyNotice(offlineSince) { saver.online() }
             if (loadError == null) PageNotice(controller, rights, saver, status, level)
+            val banner = WikiTemplates.banner(page)
+            if (loadError == null && banner != null) {
+                val databaseId = page?.parentId
+                TemplateBannerLine(
+                    banner,
+                    onUse = when {
+                        banner == TemplateBanner.PAGE && WikiLevels.canCreateTopLevel(store.me?.role) -> ({ usingTemplate = true })
+                        banner == TemplateBanner.ROW && databaseId != null && rights.edit -> ({
+                            scope.launch { controller.createRowFromTemplate(databaseId, pageId)?.let { onOpenPage(it.id) } }
+                        })
+                        else -> null
+                    },
+                )
+            }
             when {
                 loadError != null -> CanvasEmpty(stringResource(R.string.common_couldnt_load_2), controller.describe(loadError)) {
                     Button(onClick = { saver.load() }) { Icon(Icons.Outlined.Refresh, null); Text(stringResource(R.string.common_reload)) }
@@ -265,6 +299,7 @@ private fun DocPageView(
                         listState = listState, modifier = Modifier.weight(1f).fillMaxHeight(), preview = false,
                         children = children, backlinks = backlinks, onOpenPage = onOpenPage, onStartWriting = { mode = CanvasMode.EDIT },
                         kind = kind,
+                        onStartFromTemplate = if (WikiTemplates.canStartFromTemplate(rights.edit && usable, kind, text) && page?.isTemplate != true) ({ applyingTemplate = true }) else null,
                         header = rowSession?.let { session -> { RowPropertiesSection(controller, session, version, onOpenPage) } },
                         extra = dbSession?.let { session ->
                             { databaseItems(controller, session, dbVersion, version, selectedRow.takeIf { sideBySide }, openRow) { addingRow = true } }
@@ -272,10 +307,17 @@ private fun DocPageView(
                         onRefresh = onRefresh, refreshing = refreshing,
                     )
                     if (addingRow && dbSession != null) {
-                        NewRowDialog(controller, dbSession, onDismiss = { addingRow = false }) { row ->
-                            addingRow = false
-                            openRow(row.id)
-                        }
+                        NewRowDialog(
+                            controller, dbSession, onDismiss = { addingRow = false },
+                            onCreated = { row ->
+                                addingRow = false
+                                openRow(row.id)
+                            },
+                            onOpenTemplate = { id ->
+                                addingRow = false
+                                openRow(id)
+                            },
+                        )
                     }
                     if (sideBySide) {
                         VerticalDivider()
@@ -306,6 +348,18 @@ private fun DocPageView(
             onOpenPage(created.id)
         }
     }
+    if (applyingTemplate) ApplyTemplateDialog(controller, pageId) { applyingTemplate = false }
+    if (usingTemplate) {
+        NewPageDialog(
+            controller, NewPageTarget(null, null, "workspace"), onDismiss = { usingTemplate = false },
+            onCreated = { created ->
+                usingTemplate = false
+                onOpenPage(created.id)
+            },
+            fixedTemplate = PageTemplateChoice.Page(pageId),
+        )
+    }
+    if (askTopLevel) TopLevelDuplicateDialog(controller, pageId, kind, onDismiss = { askTopLevel = false }, onOpenPage = onOpenPage)
     val conflict = saver.conflict
     if (conflictOpen && status == CanvasSaveStatus.CONFLICT && conflict != null) {
         ConflictDialog(controller, saver, tickOnly = false, conflict.details.conflicts, conflict.details.timedOut) { conflictOpen = false }
@@ -382,6 +436,8 @@ private fun PageReader(
     spans: List<BlockSpan>? = null,
     /** M124: page, database or row. */
     kind: String = "page",
+    /** M146: 「テンプレートから始める」 on an editor's empty page. */
+    onStartFromTemplate: (() -> Unit)? = null,
     /** M124: under the title (a row's properties). */
     header: (@Composable () -> Unit)? = null,
     /** M124: after the body (a database's rows). */
@@ -423,6 +479,13 @@ private fun PageReader(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.common_nothing_written_yet), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (rights.edit && !preview) TextButton(onClick = onStartWriting) { Text(stringResource(R.string.canvas_pane_start_writing)) }
+                    }
+                    if (onStartFromTemplate != null && !preview) {
+                        OutlinedButton(onClick = onStartFromTemplate, modifier = Modifier.padding(top = 4.dp)) {
+                            Icon(Icons.Outlined.Description, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.docs_tpl_start_from))
+                        }
                     }
                 }
             }
@@ -470,11 +533,55 @@ private fun PageList(controller: AppController, version: Int, heading: String, p
     }
 }
 
+/** The banner over a template (M146): what it is, and 「このテンプレートでページ / 行を作成」 when I may. */
+@Composable
+private fun TemplateBannerLine(banner: TemplateBanner, onUse: (() -> Unit)?) {
+    Column(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            stringResource(if (banner == TemplateBanner.ROW) R.string.docs_tpl_row_banner else R.string.docs_tpl_banner),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        if (onUse != null) {
+            TextButton(onClick = onUse, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                Text(stringResource(if (banner == TemplateBanner.ROW) R.string.docs_tpl_use_row else R.string.docs_tpl_use), style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+/** 「複製」 could not go beside the original (403 page_edit_restricted): put the copy at the top level instead? */
+@Composable
+private fun TopLevelDuplicateDialog(controller: AppController, pageId: String, kind: String, onDismiss: () -> Unit, onOpenPage: (String) -> Unit) {
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.docs_tpl_top_level_title)) },
+        text = { Text(stringResource(R.string.docs_tpl_top_level_note)) },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = {
+                busy = true
+                scope.launch {
+                    val outcome = controller.duplicateWikiPage(pageId, kind, topLevel = true)
+                    busy = false
+                    onDismiss()
+                    if (outcome is DuplicateOutcome.Made) onOpenPage(outcome.out.page.id)
+                }
+            }) { Text(stringResource(R.string.docs_tpl_top_level_confirm)) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
 /** ⋮: 子ページを作る (edit), 題名を変更 (edit), リンクをコピー, 本文をコピー, 再読み込み. */
 @Composable
 private fun PageMenu(
     controller: AppController, pageId: String, title: String, rights: PageRights, gone: Boolean, saver: CanvasSaver,
     onRename: () -> Unit, onNewChild: () -> Unit, onReload: () -> Unit,
+    /** M146: 「複製」 (null: not offered — a database, a page in the trash). */
+    onDuplicate: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -482,6 +589,7 @@ private fun PageMenu(
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (rights.createChild && !gone) DropdownMenuItem(text = { Text(stringResource(R.string.docs_new_subpage)) }, leadingIcon = { Icon(Icons.Outlined.Add, null) }, onClick = { open = false; onNewChild() })
             if (rights.edit && !gone) DropdownMenuItem(text = { Text(stringResource(R.string.docs_rename)) }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = { open = false; onRename() })
+            if (onDuplicate != null) DropdownMenuItem(text = { Text(stringResource(R.string.docs_tpl_duplicate)) }, leadingIcon = { Icon(Icons.Outlined.FileCopy, null) }, onClick = { open = false; onDuplicate() })
             DropdownMenuItem(text = { Text(stringResource(R.string.docs_copy_link)) }, leadingIcon = { Icon(Icons.Outlined.Link, null) }, onClick = { open = false; controller.copyPageLink(pageId) })
             DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_copy_text_2)) }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, onClick = { open = false; controller.copyCanvasText(saver.text) })
             DropdownMenuItem(text = { Text(stringResource(R.string.common_reload)) }, leadingIcon = { Icon(Icons.Outlined.Refresh, null) }, onClick = { open = false; onReload() })

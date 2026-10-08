@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M146 (docs/WIKI.md §24.3): templates and duplicating on the phone. -->
+<resources>
+    <string name="docs_tpl_blank">空白页面</string>
+    <string name="docs_tpl_blank_note">没有任何内容的页面</string>
+    <string name="docs_tpl_builtin">内置</string>
+    <string name="docs_tpl_everyone">大家的模板</string>
+    <string name="docs_tpl_start_with">开始方式</string>
+    <string name="docs_tpl_no_templates">还没有可查看的模板（可在电脑上通过页面 ⋯ 中的“另存为模板”创建）。</string>
+    <string name="docs_tpl_load_failed">无法加载模板（仍可创建空白页面）。</string>
+    <string name="docs_tpl_loading">正在加载模板…</string>
+    <string name="docs_tpl_start_from">从模板开始</string>
+    <string name="docs_tpl_apply_note">把模板的正文放进此页面（标题和图标仅在页面还没有时设置）。</string>
+    <string name="docs_tpl_apply">使用</string>
+    <string name="docs_tpl_duplicate">复制</string>
+    <string name="docs_tpl_duplicated">已创建“%1$s”</string>
+    <string name="docs_tpl_top_level_title">复制到最上层？</string>
+    <string name="docs_tpl_top_level_note">副本无法放在原页面旁边（你没有编辑该位置的权限）。副本将放在“文档”的最上层。</string>
+    <string name="docs_tpl_top_level_confirm">放在最上层</string>
+    <string name="docs_tpl_banner">此页面是模板：在这里的更改会用于今后从它创建的页面。</string>
+    <string name="docs_tpl_row_banner">此行是模板：其标题、值和正文会复制到从它创建的行。</string>
+    <string name="docs_tpl_use">用此模板新建页面</string>
+    <string name="docs_tpl_use_row">用此模板新建行</string>
+    <string name="docs_tpl_new_page_from">从模板新建页面</string>
+    <string name="docs_tpl_row_template">模板</string>
+    <string name="docs_tpl_blank_row">空白行</string>
+    <string name="docs_tpl_default">默认</string>
+    <string name="docs_tpl_open_template">打开“%1$s”</string>
+    <string name="docs_tpl_today">今天</string>
+    <string name="docs_tpl_me">我</string>
+</resources>
