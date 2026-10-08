@@ -108,18 +108,35 @@ export function newView(database: DatabaseOut, type: DbViewType): DbViewIn {
   return { ...base, columns, group_by: board ? { prop_id: board.id, date_unit: null, hidden: [], hide_empty: false } : null };
 }
 
-export function DatabaseView({ controller, databaseId, compact, renderPeek, onOpenRowPage }: {
+/**
+ * M149 (WIKI.md §22.5): the database embedded in a page's body (`![…](page:<id>#view=<view>)`): that view only, its
+ * first EMBED_ROWS rows and 「すべて表示」, rows open as their pages. Cells and rows edit as on the database's own page
+ * (the same rights).
+ */
+export interface DbEmbed {
+  viewId: string | null;
+  /** The title row (the database's current name and icon, which opens it). */
+  header: ReactNode;
+  onOpenAll: () => void;
+  /** Shown instead when the database cannot be read (gone, no access, not a database): never its name. */
+  unavailable: ReactNode;
+}
+
+export const EMBED_ROWS = 10;
+
+export function DatabaseView({ controller, databaseId, compact, renderPeek, onOpenRowPage, embed = null }: {
   controller: AppController;
   databaseId: string;
   compact: boolean;
   /** The row beside the table (a wide screen); a narrow one opens the row as its page. */
   renderPeek: (rowId: string, close: () => void) => ReactNode;
   onOpenRowPage: (rowId: string) => void;
+  embed?: DbEmbed | null;
 }) {
   const hub = useWikiHub(controller);
   const [database, setDatabase] = useState<DatabaseOut | null>(null);
   const [failed, setFailed] = useState(false);
-  const [viewId, setViewId] = useState<string | null>(() => readRemembered(databaseId));
+  const [viewId, setViewId] = useState<string | null>(() => (embed ? embed.viewId : readRemembered(databaseId)));
   const [draft, setDraft] = useState<DbViewIn | null>(null);
   const [rows, setRows] = useState<DbRow[]>([]);
   // M147: a grouped answer's groups and the group of each row (null: not grouped).
@@ -140,6 +157,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   // M144 (WIKI.md §22.2): editors shape the database (properties, options, views); deleting and retyping is full.
   const { canEdit, canShape, canDestroy } = databaseRights(database?.my_level, controller.isGuest);
 
+  const embedded = embed !== null;
   const loadDatabase = useCallback(async () => {
     const api = controller.api;
     if (!api) return;
@@ -149,9 +167,9 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
       setFailed(false);
     } catch (error) {
       setFailed(true);
-      if (!(error instanceof ApiError && error.status === 404)) controller.setError(error);
+      if (!(error instanceof ApiError && (error.status === 404 || (embedded && error.status === 403)))) controller.setError(error);
     }
-  }, [controller, databaseId]);
+  }, [controller, databaseId, embedded]);
   useEffect(() => { void loadDatabase(); }, [loadDatabase]);
 
   // The screen's sort / filter / columns start as the view's, and follow it while unchanged here.
@@ -189,7 +207,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
         filter: { combinator: draft.filter?.combinator ?? "and", conditions },
         range,
         cursor: more ? cursor : null,
-        limit: range || grouped ? 1000 : PAGE,
+        limit: embedded && !range ? EMBED_ROWS : range || grouped ? 1000 : PAGE,
         grouped,
         group_by: grouped ? draft.group_by : null,
         covers,
@@ -274,9 +292,9 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   }, [controller, database, databaseId, loadDatabase, loadRows]);
 
   const openRow = useCallback((rowId: string) => {
-    if (compact) onOpenRowPage(rowId);
+    if (compact || embedded) onOpenRowPage(rowId);
     else setPeek(rowId);
-  }, [compact, onOpenRowPage]);
+  }, [compact, embedded, onOpenRowPage]);
 
   /** A new row: from the default template (the server's choice) unless `from` says a template, a blank row or a new
    * row template (M145). A template is not a row of the table: it opens beside it to be written. */
@@ -385,6 +403,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   };
 
   if (!database || !draft || !view) {
+    if (embed && failed) return <>{embed.unavailable}</>;
     return failed ? <p className="py-6 text-sm text-muted">{t("docs.db.loadFailed")}</p> : <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-muted" /></div>;
   }
 
@@ -392,6 +411,8 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   const columns = columnsOf(database.properties, draft.columns ?? []);
   const setColumns = (next: Column[]) => setDraft({ ...draft, columns: toViewColumns(next) });
   const differs = viewDiffers(view, draft);
+  // M149: an embed shows its first rows; the rest are on the database's page.
+  const more = !embedded && !!cursor;
   const newMenu = (
     <NewRowMenu templates={database.templates ?? []} defaultId={database.default_template_id ?? null}
       onFrom={async (templateId) => { const row = await addRow({}, templateId ? { templateId } : { blank: true }); if (row) openRow(row.id); }}
@@ -414,8 +435,17 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   if (!databases.some((d) => d.id === databaseId)) databases.unshift({ id: databaseId, title: hub?.page(databaseId)?.title ?? "" });
 
   return (
-    <div className="mt-6 min-w-0" data-database={databaseId}>
+    <div className={cn("min-w-0", embed ? "my-3 rounded-xl border border-line px-3 pb-1 pt-2" : "mt-6")} data-database={databaseId} data-embed={embed ? view.id : undefined}>
       <div className="flex flex-wrap items-center gap-1 border-b border-line pb-1.5">
+        {embed ? (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm">
+            {embed.header}
+            <span className="inline-flex items-center gap-1 text-muted" data-embed-view>
+              <ViewTypeIcon type={view.type} />
+              {viewName(view)}
+            </span>
+          </div>
+        ) : (
         <div role="tablist" aria-label={t("docs.db.views")} className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
           {database.views.map((v) => (
             <ViewTab key={v.id} view={v} active={v.id === view.id} canShape={canShape} last={database.views.length === 1}
@@ -443,8 +473,9 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
             </Menu>
           )}
         </div>
+        )}
         <div className="flex items-center gap-0.5">
-          {loading && <Loader2 size={14} className="mr-1 animate-spin text-muted" />}
+          {loading &&<Loader2 size={14} className="mr-1 animate-spin text-muted" />}
           <SortButton database={database} draft={draft} onChange={(sort) => setDraft({ ...draft, sort })} />
           <FilterButton ctx={ctx} draft={draft} onChange={(filter) => setDraft({ ...draft, filter })} />
           {draft.type !== "calendar" && <ColumnsButton columns={columns} canShape={canShape} onChange={setColumns} onAdd={() => setPropDialog({ prop: null })} onEdit={(prop) => setPropDialog({ prop })} />}
@@ -484,7 +515,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
                   }}
                   onHidden={(key, hide) => setDraft({ ...draft, group_by: { ...draft.group_by!, hidden: hide ? [...(draft.group_by!.hidden ?? []), key] : (draft.group_by!.hidden ?? []).filter((k) => k !== key) } })}
                 />
-                <ViewFooter ctx={ctx} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)} onAddRow={() => void addRow()} newMenu={newMenu} />
+                <ViewFooter ctx={ctx} total={total} hasMore={more} onMore={() => void loadRows(true)} onAddRow={() => void addRow()} newMenu={newMenu} />
               </>
             ) : groupProp ? null : (
               <BoardEmpty hasProps={groupableProps(database.properties, "board").length > 0} />
@@ -496,10 +527,10 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
               ) : (
                 <GalleryView ctx={ctx} columns={columns} rows={rows} grouping={grouping} cover={draft.cover ?? "body"} size={draft.card_size ?? "medium"} />
               )}
-              <ViewFooter ctx={ctx} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)} onAddRow={() => void addRow()} newMenu={newMenu} />
+              <ViewFooter ctx={ctx} total={total} hasMore={more} onMore={() => void loadRows(true)} onAddRow={() => void addRow()} newMenu={newMenu} />
             </>
           ) : draft.type === "table" ? (
-            <TableView ctx={ctx} columns={columns} rows={rows} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)} grouping={grouping}
+            <TableView ctx={ctx} columns={columns} rows={rows} total={total} hasMore={more} onMore={() => void loadRows(true)} grouping={grouping}
               onColumns={setColumns} onAddRow={() => void addRow()} onEditProp={canShape ? (prop) => setPropDialog({ prop }) : null}
               newMenu={newMenu}
               onAddProp={canShape ? () => setPropDialog({ prop: null }) : null}
@@ -532,10 +563,22 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
           </aside>
         )}
       </div>
+      {embed && (
+        <div className="flex justify-end border-t border-line pt-1">
+          <button type="button" data-embed-all className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-accent hover:bg-accent-soft/40" onClick={embed.onOpenAll}>
+            <Maximize2 size={13} aria-hidden="true" /> {t("docs.embed.showAll")}
+          </button>
+        </div>
+      )}
       {propDialog && <PropertyDialog ctx={ctx} prop={propDialog.prop} databases={databases} onClose={() => setPropDialog(null)} />}
       {renaming && <RenameView view={renaming} onClose={() => setRenaming(null)} onSave={(name) => { setRenaming(null); void saveView({ ...viewBody(renaming), name }, renaming.id); }} />}
     </div>
   );
+}
+
+function ViewTypeIcon({ type }: { type: DbViewType }) {
+  const Icon = viewIcon(type);
+  return <Icon size={13} aria-hidden="true" />;
 }
 
 /** Whether two answers list the same row templates and default (M145): a change re-renders the ▾. */

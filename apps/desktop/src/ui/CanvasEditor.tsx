@@ -14,7 +14,7 @@ import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, useEffect,
 import { ApiError } from "../api/errors";
 import type { PageRef } from "../api/types";
 import type { CanvasSaver, SavedDoc } from "../sync/canvasSave";
-import { applySlash, insertLinkAt, insertPageLink, pageLinkQuery, type SlashKey, slashItems, slashQuery } from "./docEditor";
+import { applySlash, insertEmbed, insertLinkAt, insertPageLink, isEmbedQuery, pageLinkQuery, type SlashKey, slashItems, slashQuery } from "./docEditor";
 import { PageIcon } from "./PageIcon";
 import type { AppController } from "../state/app";
 import { anchorLine, findTable, insertTable, lineOf, lineStart, newTable, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
@@ -42,6 +42,10 @@ export interface DocEditorLinks {
   createChild(): Promise<PageRef | null>;
   /** The `/` menu's 「データベース」 (M123): a new database below this page. */
   createDatabase?(): Promise<PageRef | null>;
+  /** M149: `![[` (「データベースを埋め込む」) — databases I can read whose title contains `q`. */
+  lookupDatabases?(q: string): Promise<PageRef[]>;
+  /** M149: the view an embed of this database names (its first; null: none known, the embed then has no view). */
+  embedView?(databaseId: string): Promise<string | null>;
 }
 
 export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea, doc = null }: {
@@ -297,7 +301,9 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
 
   // M121: on a page, `[[` (page links) and `/` at a line's start (the block menu) come before the `@` suggestions.
   const linkQ = doc ? pageLinkQuery(text, caret) : null;
-  const linkListKey = linkQ ? `link:${linkQ.start}:${linkQ.query}` : null;
+  // M149: `![[` lists databases to embed.
+  const embedQ = !!linkQ && !!doc?.lookupDatabases && isEmbedQuery(text, linkQ.start);
+  const linkListKey = linkQ ? `${embedQ ? "embed" : "link"}:${linkQ.start}:${linkQ.query}` : null;
   const slashQ = doc && !linkQ ? slashQuery(text, caret) : null;
   const slashListKey = slashQ ? `slash:${slashQ.start}:${slashQ.query}` : null;
   const [linkResults, setLinkResults] = useState<{ key: string; pages: PageRef[] } | null>(null);
@@ -305,7 +311,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     if (!doc || !linkQ || dismissed === linkListKey) return;
     const key = linkListKey!;
     const timer = setTimeout(() => {
-      void doc.lookup(linkQ.query.trim()).then((pages) => setLinkResults({ key, pages }), () => setLinkResults({ key, pages: [] }));
+      void (embedQ && doc.lookupDatabases ? doc.lookupDatabases(linkQ.query.trim()) : doc.lookup(linkQ.query.trim())).then((pages) => setLinkResults({ key, pages }), () => setLinkResults({ key, pages: [] }));
     }, 120);
     return () => clearTimeout(timer);
   }, [linkListKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -318,12 +324,27 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     : [];
   const listLength = pageCandidates.length || slashCandidates.length || candidates.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
+  const [childBusy, setChildBusy] = useState(false);
+  /** M149: a database's embed at `start` once its first view is known (the view id keeps the embed on that view). */
+  const embedAt = (start: number, page: PageRef) => {
+    setChildBusy(true);
+    void (doc?.embedView ? doc.embedView(page.id) : Promise.resolve(null)).then((viewId) => {
+      setChildBusy(false);
+      const value = area.current?.value ?? textRef.current;
+      const at = Math.min(start, value.length);
+      apply(insertEmbed({ text: value, start: at, end: at }, page, viewId));
+    });
+  };
   const pickPage = (page: PageRef) => {
     if (!linkQ) return;
-    edit((s) => insertPageLink(s, linkQ.start, page));
+    if (embedQ) {
+      // The `![[query` goes now; the embed comes where it was.
+      const start = linkQ.start - 1;
+      edit((s) => ({ text: s.text.slice(0, start) + s.text.slice(s.start), start, end: start }));
+      embedAt(start, page);
+    } else edit((s) => insertPageLink(s, linkQ.start, page));
     setSelected(0);
   };
-  const [childBusy, setChildBusy] = useState(false);
   const pickSlash = (key: SlashKey) => {
     if (!slashQ) return;
     const el = area.current;
@@ -344,6 +365,11 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       void create.then((page) => {
         setChildBusy(false);
         if (!page) return;
+        // M149 (WIKI.md §22.5): a new database is embedded where the `/` was (its view in the body), a page linked.
+        if (result.kind === "database" && doc.embedView) {
+          embedAt(result.state.start, page);
+          return;
+        }
         const current = area.current;
         const at = Math.min(result.state.start, (current?.value ?? textRef.current).length);
         apply(insertLinkAt({ text: current?.value ?? textRef.current, start: at, end: at }, page));

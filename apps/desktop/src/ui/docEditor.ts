@@ -47,7 +47,7 @@ export function slashQuery(text: string, caret: number): { start: number; query:
   return match ? { start: lineStart, query: match[1] ?? "" } : null;
 }
 
-export type SlashKey = "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage" | "database";
+export type SlashKey = "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "callout" | "toggle" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage" | "database" | "embedDatabase";
 
 interface SlashItem {
   key: SlashKey;
@@ -64,6 +64,8 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { key: "numbered", label: "docs.slash.numbered", words: ["numbered", "ol", "number", "bangou", "番号"] },
   { key: "tasks", label: "docs.slash.tasks", words: ["todo", "task", "check", "checklist", "chekku", "チェック", "タスク"] },
   { key: "quote", label: "docs.slash.quote", words: ["quote", "inyou", "引用"] },
+  { key: "callout", label: "docs.slash.callout", words: ["callout", "note", "info", "warning", "ko-ruauto", "コールアウト", "注意", "メモ"] },
+  { key: "toggle", label: "docs.slash.toggle", words: ["toggle", "details", "collapse", "fold", "toguru", "トグル", "折りたたみ"] },
   { key: "table", label: "docs.slash.table", words: ["table", "hyou", "表"] },
   { key: "code", label: "docs.slash.code", words: ["code", "ko-do", "コード"] },
   { key: "math", label: "docs.slash.math", words: ["math", "equation", "tex", "suushiki", "数式"] },
@@ -71,8 +73,37 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { key: "image", label: "docs.slash.image", words: ["image", "picture", "photo", "gazou", "画像"] },
   { key: "pageLink", label: "docs.slash.pageLink", words: ["link", "page", "rinku", "リンク", "ページ"] },
   { key: "childPage", label: "docs.slash.childPage", words: ["page", "child", "subpage", "new", "pe-ji", "子ページ", "ページ"] },
-  { key: "database", label: "docs.slash.database", words: ["database", "db", "calendar", "de-tabe-su", "データベース", "カレンダー"] },
+  { key: "database", label: "docs.slash.database", words: ["database", "db", "calendar", "board", "de-tabe-su", "データベース", "カレンダー"] },
+  { key: "embedDatabase", label: "docs.slash.embedDatabase", words: ["embed", "database", "db", "view", "linked", "umekomi", "埋め込み", "データベース"] },
 ];
+
+/** "\n" when text follows `at` on its line (a container's close must be a line of its own). */
+function lineBreakAfter(text: string, at: number): string {
+  return at < text.length && text[at] !== "\n" ? "\n" : "";
+}
+
+/**
+ * M149: `![[` (the `/` menu's 「データベースを埋め込む」, or typed) — the `[[` list then offers databases, and the choice
+ * becomes an embed instead of a link.
+ */
+export function isEmbedQuery(text: string, start: number): boolean {
+  return start > 0 && text[start - 1] === "!";
+}
+
+/**
+ * M149 (WIKI.md §22.5): the embed `![title](page:<id>#view=<view>)` put in at the caret on a line of its own (no view:
+ * the database's first), replacing the selection; the caret at the start of the next line.
+ */
+export function insertEmbed(state: EditState, page: { id: string; title: string }, viewId: string | null): EditState {
+  const before = state.text.slice(0, state.start);
+  const after = state.text.slice(state.end);
+  const embed = `![${linkLabel(page.title)}](page:${page.id}${viewId ? `#view=${viewId}` : ""})`;
+  const lead = before === "" || before.endsWith("\n") ? "" : "\n";
+  const tail = after.startsWith("\n") ? "" : "\n";
+  const text = before + lead + embed + tail + after;
+  const caret = before.length + lead.length + embed.length + 1;
+  return { text, start: caret, end: caret };
+}
 
 /** The items that match what was typed after `/` (all of them for nothing). */
 export function slashItems(query: string): SlashItem[] {
@@ -107,6 +138,13 @@ export function applySlash(state: EditState, start: number, key: SlashKey): Slas
       return put("- [ ] ");
     case "quote":
       return put("> ");
+    // M149 (WIKI.md §22.5): the close on a line of its own even when text followed the `/` on its line.
+    case "callout":
+      return put(`::: callout 💡\n\n:::${lineBreakAfter(text, at)}`, "::: callout 💡\n".length);
+    case "toggle":
+      return put(`::: toggle \n\n:::${lineBreakAfter(text, at)}`, "::: toggle ".length);
+    case "embedDatabase":
+      return put("![[");
     case "code":
       return put("```\n\n```", 4);
     case "math":

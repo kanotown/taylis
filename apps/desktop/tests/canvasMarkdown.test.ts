@@ -9,13 +9,14 @@ import { describe, expect, it } from "vitest";
 
 import { attachmentRefs, insertImageLine, insertRule, outline, preserveCaret, setHeading, toggleTaskLine, toggleTasks } from "../src/ui/canvasText";
 import { continueStructure } from "../src/ui/composerEdit";
-import { type Block, parseBlocks, type Token } from "../src/ui/markdown";
+import { type Block, calloutTone, parseBlocks, parseBlocksWithLines, type Token } from "../src/ui/markdown";
 
 interface Fixture {
   blocks: Array<{ name: string; body: string; canvas?: boolean; blocks: unknown[] }>;
   toggle: Array<{ body: string; line: number; expected: string | null }>;
   caret: Array<{ name: string; before: string; after: string; caret: number; expected: number }>;
   page_links: { cases: Array<{ name: string; body: string; canvas?: boolean; links: Array<{ url: string; label: string }> }> };
+  containers: { tones: Record<string, string[]>; cases: Array<{ name: string; body: string; canvas?: boolean; blocks: unknown[] }> };
 }
 
 const fixture = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "canvas_markdown.json"), "utf8")) as Fixture;
@@ -40,6 +41,12 @@ function describeBlock(block: Block): unknown {
       return { kind: "hr" };
     case "codeblock":
       return { kind: "codeblock", text: block.text };
+    case "callout":
+      return { kind: "callout", icon: block.icon, tone: block.tone, blocks: block.blocks.map(describeBlock) };
+    case "toggle":
+      return { kind: "toggle", title: text(block.title), blocks: block.blocks.map(describeBlock) };
+    case "embed":
+      return { kind: "embed", label: block.label, page_id: block.pageId, view_id: block.viewId, line: block.line };
     default:
       return { kind: block.kind };
   }
@@ -69,6 +76,25 @@ describe("the canvas dialect (apps/shared/canvas_markdown.json)", () => {
       else if (block.kind === "task") block.items.forEach((item) => visit(item.tokens));
     }
     expect(links).toEqual(c.links);
+  });
+});
+
+// M149 (WIKI.md §22.5): callouts, toggles and embedded databases.
+describe("containers and embeds (apps/shared/canvas_markdown.json)", () => {
+  it.each(fixture.containers.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(parseBlocks(c.body, { canvas: c.canvas ?? true }).map(describeBlock)).toEqual(c.blocks);
+  });
+
+  it("tones", () => {
+    for (const [tone, icons] of Object.entries(fixture.containers.tones)) for (const icon of icons) expect(calloutTone(icon)).toBe(tone);
+    expect(calloutTone("⚠️")).toBe("yellow");
+    expect(calloutTone(":chikuwa:")).toBe("gray");
+    expect(calloutTone(null)).toBe("gray");
+  });
+
+  it("a container is one block for the scroll sync, from its opener to its close", () => {
+    const { lines } = parseBlocksWithLines("前\n::: callout\na\n- b\n:::\n後", { canvas: true });
+    expect(lines).toEqual([{ from: 0, to: 1 }, { from: 1, to: 5 }, { from: 5, to: 6 }]);
   });
 });
 

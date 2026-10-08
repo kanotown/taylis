@@ -2515,6 +2515,7 @@ export const ja = {
   "primitives.dialog": "ダイアログ",
   "canvasBody.undone": "完了を取り消す",
   "canvasBody.makeTaskTitle": "この項目をタスクにする",
+  "canvasBody.toggleUntitled": "（見出しなし）",
   "canvasImage.unavailable": "表示できない画像",
   "window.restore": "元に戻す",
   "window.maximize": "最大化",
@@ -2677,6 +2678,11 @@ export const ja = {
   "docs.slash.image": "画像",
   "docs.slash.pageLink": "ページへのリンク",
   "docs.slash.childPage": "子ページを作る",
+  "docs.slash.callout": "コールアウト",
+  "docs.slash.toggle": "トグル",
+  "docs.slash.embedDatabase": "データベースを埋め込む",
+  "docs.embed.showAll": "すべて表示",
+  "docs.embed.label": "埋め込んだデータベース",
   "docs.unsupported": "このサーバはまだドキュメントに対応していません",
   "docs.unsupportedText": "サーバを更新すると使えるようになります。",
   "docs.loadFailed": "ドキュメントを読み込めませんでした",
@@ -2749,7 +2755,7 @@ export const ja = {
   "docs.admin.takenOver": "「{title}」を引き取りました（監査ログに記録しました）",
   // --- end M121 ---
   // --- M123: databases (WIKI.md §5) ---
-  "docs.slash.database": "データベース",
+  "docs.slash.database": "データベースを作って埋め込む",
   "docs.db.addDatabase": "データベースを追加",
   "docs.db.table": "表",
   "docs.db.calendar": "カレンダー",
