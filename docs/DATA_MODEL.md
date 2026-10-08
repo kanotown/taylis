@@ -99,6 +99,7 @@ CREATE TABLE users (
   nav_items             jsonb,                  -- M111 サイドバーの項目 / ホームのタイルの順と表示 [{key, visible}] (64 個まで、key は ^[a-z][a-z0-9-]{0,31}$ で重複なし、知らない key もそのまま保存)。NULL = 既定 (apps/shared/nav-items.json、MOBILE_UI.md §14)
   locale                text,                   -- M115 UI の言語 'ja' | 'en' | 'zh-Hans'。NULL = 端末に合わせる (Accept-Language)。1 人向けのサーバの文 (エラー・プッシュ・知らせ) もこれ (I18N.md §1)
   composer_mode         text,                   -- 2026-10-06 Desktop / Web の入力欄 'rich' (リッチ: 見たまま編集、同じ Markdown を書く) | 'markdown' (記号を打つ)。NULL = 選んでいない = リッチ。PATCH /users/me で設定し、別の端末へは user.updated で揃う。スマホはまだ読まない
+  docs_editor_mode      text,                   -- M150 (2026-10-08, 移行 0110) Desktop / Web のドキュメントのページの編集 'wysiwyg' (見たまま: 同じ Markdown を書く、WIKI.md §22.6・§27) | 'markdown' (エディタ + プレビュー)。NULL = 選んでいない = 見たまま。PATCH /users/me で設定し、別の端末へは user.updated で揃う。スマホは読まない (M153 まで Markdown)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
   bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)、'ai' = AI のボット (`ai_agents` のボット。作るときに付け、移行 0093 で今あるもの (削除したものも) に付けて `updated_at` を進めた。@ メンションの候補に出すボットはこれだけ、AI.md §2.1)。それ以外の bot と人は NULL
