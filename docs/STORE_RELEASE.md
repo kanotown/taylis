@@ -183,7 +183,13 @@ apps/android/scripts/release-android.sh
 
 - AAB は `~/Downloads/Taylis release/android/taylis-<versionName>-<versionCode>.aab`（ダウンロードフォルダ。
   `TAYLIS_ANDROID_BUILD_DIR` で変えられる）。でき上がると Finder でその AAB を選んだ状態で開く（Play Console へドラッグできる）。スクリプトは署名を `jarsigner` で確かめる。
-- Play Console へは手でアップロードする (Play Developer API での自動アップロードは作っていない)。
+- Play Console へは手でドラッグするか、Play Developer API で上げる（2026-10-08〜）：
+  `apps/android/scripts/play-upload.py <AAB> [--track internal] [--notes-ja FILE] [--notes-en FILE] [--dry-run]`。
+  鍵はサービスアカウントの JSON（`~/.config/taylis/play-service-account.json`、600、Git に入れない。
+  `TAYLIS_PLAY_SERVICE_ACCOUNT` で変えられる）。準備：Google Cloud で「Google Play Android Developer API」を有効に →
+  サービスアカウントの JSON 鍵 → Play Console の「ユーザーと権限」でそのアカウントに Taylis の「テスト版トラックへの
+  リリース」。スクリプトは標準ライブラリと `openssl` だけを使い、指定したトラック（既定 internal）に `completed` で出す。
+  製品版へは Play Console で昇格する（審査に関わるので自動にしない）。`--dry-run` は今のトラックの中身を見るだけ。
   トラックは **内部テスト** (100 人まで、審査はほぼ即時) → **クローズド テスト** (招いたメンバー。新しい個人の
   デベロッパー アカウントは製品版の前にクローズド テストで 12 人・14 日が要る) → **製品版** (段階的な公開を使える)。
   同じ AAB を上のトラックに「昇格」できる。
