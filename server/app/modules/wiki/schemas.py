@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.modules.canvases.schemas import CanvasTemplateOut
 from app.modules.wiki.models import WikiPage, WikiPageRevision
 
 Level = Literal["view", "edit", "full"]
@@ -71,6 +72,9 @@ class PageMeta(BaseModel):
     updated_at: datetime
     # Set only in the trash listing (GET /wiki/trash).
     deleted_at: datetime | None = None
+    # M145 (WIKI.md §22.3): a page template (top level, never in the tree: GET /wiki/templates)
+    # or a database's row template (never in its query: GET /wiki/databases/{id} `templates`).
+    is_template: bool = False
 
 
 class PageItem(PageMeta):
@@ -139,14 +143,23 @@ class PageCreate(BaseModel):
     kind: Literal["page", "database"] = "page"
     # Left out: the template's title, else 「無題」.
     title: str | None = Field(default=None, max_length=MAX_TITLE_LENGTH)
+    # Left out: the page template's icon, else none.
     icon: str | None = Field(default=None, max_length=MAX_ICON_LENGTH)
+    # A built-in template (GET /wiki/templates `builtins`, the canvases' templates).
     template_key: str | None = Field(default=None, max_length=40)
+    # M145: start from a page template I can read (GET /wiki/templates `pages`): its title, icon
+    # and body with the placeholders put in, its images and files copied. Not with template_key.
+    template_page_id: UUID | None = None
+    # M145: make a page template (a top-level page; not guests). The placeholders of a template
+    # it starts from stay as they are.
+    is_template: bool = False
     # Left out: the template's body, else empty. Up to 100,000 characters.
     body: str | None = None
     # A top-level page only: workspace (everyone can edit, I have full access; the default) or
-    # private (me only). A child page takes its parent's access.
+    # private (me only). A child page takes its parent's access. A page template: workspace →
+    # everyone can read it and I have full access; private → me only.
     access: Literal["workspace", "private"] = "workspace"
-    # The client's IANA zone, for a template's {{date}} / {{week}}; UTC when left out.
+    # The client's IANA zone, for a template's {{date}} / {{week}} / {{time}}; UTC when left out.
     tz: str | None = Field(default=None, max_length=64)
     # Idempotency key: a retry returns the page made by the first request (200).
     client_save_id: UUID
@@ -158,7 +171,75 @@ class PageCreate(BaseModel):
     def _one_neighbour(self) -> "PageCreate":
         if self.before_id is not None and self.after_id is not None:
             raise ValueError("Give before_id or after_id, not both")
+        if self.template_key is not None and self.template_page_id is not None:
+            raise ValueError("Give template_key or template_page_id, not both")
+        if self.is_template and (self.parent_id is not None or self.kind != "page"):
+            raise ValueError("A page template is a top-level page (no parent_id)")
+        if self.template_page_id is not None and self.kind != "page":
+            raise ValueError("A page template makes a page")
         return self
+
+
+class PageDuplicate(BaseModel):
+    """POST /wiki/pages/{id}/duplicate (M145, WIKI.md §22.3): 「複製」 and 「テンプレートとして
+    保存」. The title, icon and body (placeholders as they are) and the images and files (copied)
+    go; a row's values too. Child pages do not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Where the copy goes (null: the top level). Left out: beside the original, under the same
+    # parent; a page template always goes to the top level, a row stays in its database.
+    parent_id: UUID | None = None
+    before_id: UUID | None = None
+    after_id: UUID | None = None
+    # true: a template (a page template, or a row template of the same database); false: a page
+    # or a row; left out: what the original is.
+    as_template: bool | None = None
+    # Left out: the original's title (with 「（コピー）」 in the reader's language for a copy).
+    title: str | None = Field(default=None, max_length=MAX_TITLE_LENGTH)
+    # A copy at the top level: workspace or private (left out: private when only I can read the
+    # original, else workspace). Under a page it takes that page's access.
+    access: Literal["workspace", "private"] | None = None
+    # Idempotency key: a retry returns the copy made by the first request (200).
+    client_save_id: UUID
+
+    _title = field_validator("title")(_clean_title)
+
+    @model_validator(mode="after")
+    def _one_neighbour(self) -> "PageDuplicate":
+        if self.before_id is not None and self.after_id is not None:
+            raise ValueError("Give before_id or after_id, not both")
+        return self
+
+
+class TemplateApply(BaseModel):
+    """POST /wiki/pages/{id}/apply-template (M145): an empty page starts from a template
+    (「テンプレートから始める」): its body (placeholders put in with `tz`, files copied), and its
+    title and icon when the page has none. One of template_key and template_page_id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_key: str | None = Field(default=None, max_length=40)
+    template_page_id: UUID | None = None
+    tz: str | None = Field(default=None, max_length=64)
+    # Idempotency key: a retry changes nothing again.
+    client_save_id: UUID
+
+    _tz = field_validator("tz")(_valid_zone)
+
+    @model_validator(mode="after")
+    def _one_template(self) -> "TemplateApply":
+        if (self.template_key is None) == (self.template_page_id is None):
+            raise ValueError("Give template_key or template_page_id")
+        return self
+
+
+class TemplatesOut(BaseModel):
+    """GET /wiki/templates (M145): the page templates I can read (newest first) and the built-in
+    templates (CANVAS.md §4.12; create a page from one with `template_key`)."""
+
+    pages: list[PageItem]
+    builtins: list[CanvasTemplateOut]
 
 
 class PageUpdate(BaseModel):
@@ -167,6 +248,10 @@ class PageUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=MAX_TITLE_LENGTH)
     # "" removes the icon.
     icon: str | None = Field(default=None, max_length=MAX_ICON_LENGTH)
+    # M145: make it a template or a page / row again (edit). A page template is a top-level
+    # page without subpages (400 wiki_template_invalid); a database row becomes one of its row
+    # templates.
+    is_template: bool | None = None
 
     _title = field_validator("title")(_clean_title)
 
@@ -438,6 +523,7 @@ def to_meta(row: WikiPage, *, trashed: bool = False) -> PageMeta:
         created_at=row.created_at,
         updated_at=row.updated_at,
         deleted_at=row.deleted_at if trashed else None,
+        is_template=bool(row.is_template),
     )
 
 

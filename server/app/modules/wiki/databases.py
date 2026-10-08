@@ -24,15 +24,17 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.doctext import body as doc_body
-from app.core.errors import AppError, bad_request, conflict, forbidden
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.modules.audit import service as audit
+from app.modules.canvases import templates as tpl
 from app.modules.users.models import User
 from app.modules.wiki import access, events, ordering
 from app.modules.wiki import dbschema as ds
@@ -41,6 +43,7 @@ from app.modules.wiki import service as pages
 from app.modules.wiki.db_schemas import (
     DatabaseLimits,
     DatabaseOut,
+    DefaultTemplateIn,
     PropertyOut,
     ReferencedBy,
     RelationIn,
@@ -55,6 +58,7 @@ from app.modules.wiki.db_schemas import (
     RowWithRefs,
     SchemaChange,
     SelectOption,
+    TemplateRef,
     ViewIn,
     ViewOut,
 )
@@ -170,19 +174,46 @@ _ROW_COLUMNS = (
 async def _rows(
     db: AsyncSession, database_id: uuid.UUID, *, trashed_too: bool = False
 ) -> list[ds.Row]:
-    """The database's rows in their own order (no bodies)."""
+    """The database's rows in their own order (no bodies). `trashed_too`: every row there is,
+    in the trash and (M145) the row templates too (a schema change rewrites them all); else the
+    live rows only (a template is not a row of the table, the calendar or the CSV)."""
     stmt = select(*_ROW_COLUMNS).where(WikiPage.parent_id == database_id, WikiPage.kind == "row")
     if not trashed_too:
-        stmt = stmt.where(WikiPage.deleted_at.is_(None))
+        stmt = stmt.where(WikiPage.deleted_at.is_(None), WikiPage.is_template.is_(False))
     stmt = stmt.order_by(WikiPage.position, WikiPage.id)
     return [ds.Row(*r) for r in (await db.execute(stmt)).all()]
 
 
-async def _row_count(db: AsyncSession, database_id: uuid.UUID) -> int:
+async def _row_count(
+    db: AsyncSession, database_id: uuid.UUID, *, templates_too: bool = False
+) -> int:
     stmt = select(func.count()).where(
         WikiPage.parent_id == database_id, WikiPage.kind == "row", WikiPage.deleted_at.is_(None)
     )
+    if not templates_too:
+        stmt = stmt.where(WikiPage.is_template.is_(False))
     return int((await db.execute(stmt)).scalar_one())
+
+
+async def _templates(
+    db: AsyncSession, record: WikiDatabase
+) -> tuple[list[TemplateRef], uuid.UUID | None]:
+    """M145: the database's live row templates (oldest first) and its default among them."""
+    rows = await db.execute(
+        select(WikiPage.id, WikiPage.title, WikiPage.icon)
+        .where(
+            WikiPage.parent_id == record.page_id,
+            WikiPage.kind == "row",
+            WikiPage.is_template.is_(True),
+            WikiPage.deleted_at.is_(None),
+        )
+        .order_by(WikiPage.created_at, WikiPage.id)
+    )
+    refs = [TemplateRef(id=i, title=t, icon=c) for i, t, c in rows.all()]
+    default = record.default_template_id
+    if default is not None and all(r.id != default for r in refs):
+        default = None  # in the trash (or no longer a template)
+    return refs, default
 
 
 def _storage(database_id: uuid.UUID, prop: Mapping[str, Any]) -> tuple[uuid.UUID, str, bool] | None:
@@ -251,14 +282,17 @@ async def _visibility(
     db: AsyncSession, actor: User, targets: Iterable[uuid.UUID]
 ) -> tuple[dict[uuid.UUID, RowRef], set[uuid.UUID]]:
     """(the live rows the actor can read, as refs; the live rows they cannot). Rows in the
-    trash are neither (they are not shown at all)."""
+    trash and (M145) row templates are neither (they are not shown at all, nor linked to)."""
     ids = list(dict.fromkeys(targets))
     if not ids:
         return {}, set()
     rows = (
         await db.execute(
             select(WikiPage.id, WikiPage.parent_id, WikiPage.title, WikiPage.icon).where(
-                WikiPage.id.in_(ids), WikiPage.kind == "row", WikiPage.deleted_at.is_(None)
+                WikiPage.id.in_(ids),
+                WikiPage.kind == "row",
+                WikiPage.deleted_at.is_(None),
+                WikiPage.is_template.is_(False),
             )
         )
     ).all()
@@ -435,6 +469,7 @@ async def _database_out(
                 relation=relation,
             )
         )
+    templates, default = await _templates(db, record)
     return DatabaseOut(
         page_id=record.page_id,
         schema_version=record.schema_version,
@@ -443,6 +478,8 @@ async def _database_out(
         my_level=level_name(rank),
         row_count=await _row_count(db, record.page_id),
         limits=LIMITS,
+        templates=templates,
+        default_template_id=default,
     )
 
 
@@ -629,6 +666,7 @@ async def candidates(
         WikiPage.parent_id == target_id,
         WikiPage.kind == "row",
         WikiPage.deleted_at.is_(None),
+        WikiPage.is_template.is_(False),
         access.readable_clause(actor, WikiPage.id),
     )
     words = " ".join(q.split())
@@ -793,8 +831,10 @@ async def _apply_values(
                 if target_id != database_id:
                     touched.add(target_id)
             continue
+        # M145: a row template may hold 「今日」 and 「自分」 (put in when a row is made from it).
+        normalize = ds.normalize_template_value if row.is_template else ds.normalize_value
         try:
-            value = ds.normalize_value(prop, raw, known_users=known)
+            value = normalize(prop, raw, known_users=known)
         except ds.InvalidValue as exc:
             raise invalid_value(f"{prop.get('name') or key}: {exc}") from exc
         if stored.get(key) != value:
@@ -837,41 +877,85 @@ def _as_row(page: WikiPage) -> ds.Row:
     )
 
 
-async def create_row(
-    db: AsyncSession, actor: User, database_id: uuid.UUID, data: RowCreate
-) -> tuple[RowWithRefs, bool]:
-    """A new row at the end (edit). A retry with the same client_save_id returns the first."""
-    await access.lock_tree(db)
-    done = await repo.revision_by_save_id(db, actor.id, data.client_save_id)
-    if done is not None:
-        if done.kind != "create":
-            raise conflict("idempotency_conflict", "client_save_id was already used")
-        row, _ = await _load_row(db, actor, done.page_id, "view")
-        assert row.parent_id is not None
-        schema = (await _record(db, row.parent_id)).schema_doc
-        return await _row_with_refs(db, actor, row, schema), False
-    page, _, _ = await _load_database(db, actor, database_id, "edit")
-    targets = _relation_targets((await _record(db, page.id)).schema_doc, data.props)
-    record = (await _lock_records(db, {page.id, *targets}, share=True))[page.id]
-    if await _row_count(db, page.id) >= ds.MAX_ROWS:
-        raise conflict("wiki_too_many_rows", f"A database holds at most {ds.MAX_ROWS} rows")
-    last = await db.scalar(
-        select(func.max(WikiPage.position)).where(
-            WikiPage.parent_id == page.id, WikiPage.kind == "row"
+async def _row_template(
+    db: AsyncSession, database_id: uuid.UUID, template_id: uuid.UUID
+) -> WikiPage | None:
+    """A live row template of this database (M145), else None."""
+    page = await access.load_page(db, template_id)
+    if (
+        page is None
+        or page.is_deleted
+        or not page.is_template
+        or page.kind != "row"
+        or page.parent_id != database_id
+    ):
+        return None
+    return page
+
+
+async def _template_values(
+    db: AsyncSession,
+    actor: User,
+    database_id: uuid.UUID,
+    schema: Mapping[str, Any],
+    source: WikiPage,
+    *,
+    expand: bool,
+    today: Any,
+) -> dict[str, Any]:
+    """A row's (a template's) cells to start another row with: its stored values (「今日」 and
+    「自分」 put in when `expand`) and its relation cells as far as the actor can read them (the
+    links they cannot read are not copied: they could not have made them)."""
+    values = dict(source.props or {})
+    if expand:
+        values = ds.expand_dynamic(values, today=today, me=str(actor.id))
+    primary = [
+        p
+        for p in schema.get("properties", [])
+        if p["type"] == "relation" and (p.get("relation") or {}).get("primary", True)
+    ]
+    if primary:
+        cells = await _cells(
+            db, actor, database_id, schema, [source.id], {p["id"] for p in primary}
         )
-    )
-    body = pages.clean_body(data.body or "")
+        for prop in primary:
+            links = cells.links.get(prop["id"], {}).get(source.id)
+            if links:
+                values[prop["id"]] = [str(t) for t in links]
+    return values
+
+
+async def _insert_row(
+    db: AsyncSession,
+    actor: User,
+    database: WikiPage,
+    record: WikiDatabase,
+    *,
+    title: str,
+    icon: str | None,
+    body: str,
+    values: Mapping[str, Any],
+    position: str,
+    is_template: bool,
+    client_save_id: uuid.UUID,
+    files_from: WikiPage | None,
+    files: pages.FileStore | None,
+    notify: bool,
+) -> tuple[WikiPage, set[uuid.UUID]]:
+    """A new row (a template when `is_template`) with its first version; `files_from`: whose
+    files the body refers to (copied, M145). Returns the row and the other databases whose
+    cells changed (two-way relations)."""
     seq = await repo.next_seq(db)
     revision_id = uuid7()
     total, done_tasks = doc_body.count_tasks(body)
     row = WikiPage(
         id=uuid7(),
-        parent_id=page.id,
-        path=[*page.path, page.id],
-        position=ordering.key_between(last, None),
+        parent_id=database.id,
+        path=[*database.path, database.id],
+        position=position,
         kind="row",
-        title=data.title,
-        icon=pages._clean_icon(data.icon),
+        title=title,
+        icon=pages._clean_icon(icon),
         body=body,
         version=1,
         head_rev_id=revision_id,
@@ -883,11 +967,15 @@ async def create_row(
         props_text="",
         task_total=total,
         task_done=done_tasks,
+        is_template=is_template,
         created_by=actor.id,
         updated_by=actor.id,
     )
     db.add(row)
     await db.flush()
+    if files_from is not None:
+        copies = await pages.copy_files(db, files, actor, source=files_from, target=row)
+        row.body = pages.rewrite_files(row.body, copies)
     db.add(
         WikiPageRevision(
             id=revision_id,
@@ -896,21 +984,181 @@ async def create_row(
             kind="create",
             author_id=actor.id,
             title=row.title,
-            body=body,
-            client_save_id=data.client_save_id,
-            lines_added=len(body.split("\n")) if body else 0,
+            body=row.body,
+            client_save_id=client_save_id,
+            lines_added=len(row.body.split("\n")) if row.body else 0,
         )
     )
     await db.flush()
     await access.recompute_subtree(db, row.id)
-    _, _, touched = await _apply_values(db, actor, page.id, record.schema_doc, row, data.props)
+    _, _, touched = await _apply_values(db, actor, database.id, record.schema_doc, row, values)
     row.props_text = await _props_text(db, record.schema_doc, row.props or {})
     await db.flush()
-    await pages._after_body_change(db, actor, row, before="", revision_id=revision_id, notify=True)
+    await pages._after_body_change(
+        db, actor, row, before="", revision_id=revision_id, notify=notify
+    )
+    return row, touched
+
+
+async def _existing_row(
+    db: AsyncSession, actor: User, client_save_id: uuid.UUID
+) -> RowWithRefs | None:
+    done = await repo.revision_by_save_id(db, actor.id, client_save_id)
+    if done is None:
+        return None
+    if done.kind != "create":
+        raise conflict("idempotency_conflict", "client_save_id was already used")
+    row, _ = await _load_row(db, actor, done.page_id, "view")
+    assert row.parent_id is not None
+    schema = (await _record(db, row.parent_id)).schema_doc
+    return await _row_with_refs(db, actor, row, schema)
+
+
+async def create_row(
+    db: AsyncSession,
+    actor: User,
+    database_id: uuid.UUID,
+    data: RowCreate,
+    *,
+    files: pages.FileStore | None = None,
+) -> tuple[RowWithRefs, bool]:
+    """A new row at the end (edit). A retry with the same client_save_id returns the first.
+    M145 (WIKI.md §22.3): from `template_id`, else (not `blank`, not a template) from the
+    database's default template; the given values win over the template's."""
+    await access.lock_tree(db)
+    existing = await _existing_row(db, actor, data.client_save_id)
+    if existing is not None:
+        return existing, False
+    page, _, _ = await _load_database(db, actor, database_id, "edit")
+    current = await _record(db, page.id)
+    template: WikiPage | None = None
+    if data.template_id is not None:
+        template = await _row_template(db, page.id, data.template_id)
+        if template is None:
+            raise not_found("template_not_found", "Template not found")
+    elif not data.blank and not data.is_template and current.default_template_id is not None:
+        template = await _row_template(db, page.id, current.default_template_id)
+    now = utcnow().astimezone(ZoneInfo(data.tz or "UTC"))
+    values: dict[str, Any] = {}
+    title, icon, body = data.title, data.icon, data.body
+    expand = not data.is_template
+    if template is not None:
+        values = await _template_values(
+            db, actor, page.id, current.schema_doc, template, expand=expand, today=now.date()
+        )
+        ctx = pages.template_context(actor, tz=data.tz, parent=page)
+        if not title:
+            title = pages.expand_title(template.title, ctx) if expand else template.title
+        if "icon" not in data.model_fields_set:
+            icon = template.icon
+        if body is None:
+            body = tpl.expand(template.body, ctx, title=False) if expand else template.body
+    values.update(data.props)
+    targets = _relation_targets(current.schema_doc, values)
+    record = (await _lock_records(db, {page.id, *targets}, share=True))[page.id]
+    if await _row_count(db, page.id, templates_too=True) >= ds.MAX_ROWS:
+        raise conflict("wiki_too_many_rows", f"A database holds at most {ds.MAX_ROWS} rows")
+    last = await db.scalar(
+        select(func.max(WikiPage.position)).where(
+            WikiPage.parent_id == page.id, WikiPage.kind == "row"
+        )
+    )
+    row, touched = await _insert_row(
+        db,
+        actor,
+        page,
+        record,
+        title=title,
+        icon=icon,
+        body=pages.clean_body(body or ""),
+        values=values,
+        position=ordering.key_between(last, None),
+        is_template=data.is_template,
+        client_save_id=data.client_save_id,
+        files_from=template if template is not None and data.body is None else None,
+        files=files,
+        notify=True,
+    )
     await events.emit_rows_changed(db, {page.id, *touched})
     out = await _row_with_refs(db, actor, row, record.schema_doc)
     await db.commit()
     return out, True
+
+
+async def duplicate_row(
+    db: AsyncSession,
+    actor: User,
+    source: WikiPage,
+    *,
+    as_template: bool,
+    title: str,
+    client_save_id: uuid.UUID,
+    files: pages.FileStore | None,
+) -> RowWithRefs:
+    """M145 (WIKI.md §22.3): a copy of a row just after it in its database (edit): title, icon,
+    body, files, values and the relation links the actor can read. A row made from a template's
+    copy gets 「今日」 and 「自分」 put in; a template keeps them."""
+    assert source.parent_id is not None
+    page, _, _ = await _load_database(db, actor, source.parent_id, "edit")
+    current = await _record(db, page.id)
+    values = await _template_values(
+        db,
+        actor,
+        page.id,
+        current.schema_doc,
+        source,
+        expand=source.is_template and not as_template,
+        today=utcnow().date(),
+    )
+    targets = _relation_targets(current.schema_doc, values)
+    record = (await _lock_records(db, {page.id, *targets}, share=True))[page.id]
+    if await _row_count(db, page.id, templates_too=True) >= ds.MAX_ROWS:
+        raise conflict("wiki_too_many_rows", f"A database holds at most {ds.MAX_ROWS} rows")
+    after = await db.scalar(
+        select(func.min(WikiPage.position)).where(
+            WikiPage.parent_id == page.id,
+            WikiPage.kind == "row",
+            WikiPage.position > source.position,
+        )
+    )
+    row, touched = await _insert_row(
+        db,
+        actor,
+        page,
+        record,
+        title=title,
+        icon=source.icon,
+        body=source.body,
+        values=values,
+        position=ordering.key_between(source.position, after),
+        is_template=as_template,
+        client_save_id=client_save_id,
+        files_from=source,
+        files=files,
+        notify=False,
+    )
+    await events.emit_rows_changed(db, {page.id, *touched})
+    out = await _row_with_refs(db, actor, row, record.schema_doc)
+    await db.commit()
+    return out
+
+
+async def set_default_template(
+    db: AsyncSession, actor: User, database_id: uuid.UUID, data: DefaultTemplateIn
+) -> DatabaseOut:
+    """M145: the row template 「新規」 starts from (edit; null: none). 404 template_not_found
+    for one that is not a live row template of this database."""
+    page, _, rank = await _load_database(db, actor, database_id, "edit")
+    record = (await _lock_records(db, [page.id], share=False))[page.id]
+    if data.template_id is not None and await _row_template(db, page.id, data.template_id) is None:
+        raise not_found("template_not_found", "Template not found")
+    if record.default_template_id != data.template_id:
+        record.default_template_id = data.template_id
+        await db.flush()
+        await events.emit_rows_changed(db, [page.id])
+    out = await _database_out(db, actor, record, rank)
+    await db.commit()
+    return out
 
 
 async def get_row(db: AsyncSession, actor: User, row_id: uuid.UUID) -> RowDetailOut:

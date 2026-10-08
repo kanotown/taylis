@@ -405,8 +405,13 @@ def page_document() -> Any:
 
 
 def _page_within(stmt: Select[Any], scope: PageScope, row: Any) -> Select[Any]:
-    """Always: live pages the actor can read (the effective access, docs/WIKI.md §8.1)."""
-    stmt = stmt.where(row.id.in_(readable_ids(scope.actor)), row.deleted_at.is_(None))
+    """Always: live pages the actor can read (the effective access, docs/WIKI.md §8.1), never a
+    template (M145, §22.3)."""
+    stmt = stmt.where(
+        row.id.in_(readable_ids(scope.actor)),
+        row.deleted_at.is_(None),
+        row.is_template.is_(False),
+    )
     if scope.in_page is not None:
         stmt = stmt.where(or_(row.id == scope.in_page, row.path.contains([scope.in_page])))
     if scope.kind is not None:
@@ -434,6 +439,7 @@ def _page_hits(query: str, scope: PageScope, escaped: bool) -> Subquery:
             WikiPage.updated_by.label("updated_by"),
             WikiPage.updated_at.label("updated_at"),
             WikiPage.deleted_at.label("deleted_at"),
+            WikiPage.is_template.label("is_template"),
             func.pgroonga_score(
                 literal_column("wiki_pages.tableoid"), literal_column("wiki_pages.ctid")
             ).label("score"),

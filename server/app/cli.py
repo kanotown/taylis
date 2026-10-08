@@ -768,6 +768,12 @@ def print_notion_report(report: Any) -> None:
         for what, count in report.unsupported.most_common():
             print(f"  {what}: {count}")
     sections = (
+        ("rows turned into row templates (M145)", report.templates),
+        (
+            "row pages not in the CSV that someone changed in Taylis (left as rows; "
+            "「テンプレートにする」 in the row's ⋯ turns one)",
+            report.templates_left,
+        ),
         ("pages changed in Taylis since the last import (left as they are)", report.edited),
         ("links that do not lead to an imported page or file", report.unresolved_links),
         ("files not brought over", report.failed_files),
@@ -813,6 +819,49 @@ async def _import_notion(args: argparse.Namespace, options: Any) -> int:
         await db.dispose()
     print_notion_report(report)
     return 0
+
+
+async def _notion_templates(args: argparse.Namespace) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.importer.core import ImportFailed
+    from app.modules.importer.notion_import import convert_notion_templates
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                report = await convert_notion_templates(
+                    session,
+                    Path(args.export),
+                    actor_username=args.actor,
+                    settings=settings,
+                    dry_run=args.dry_run,
+                )
+            except (ImportFailed, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+    finally:
+        await db.dispose()
+    print("dry run: nothing was written" if report.dry_run else "done")
+    print(f"row templates: {len(report.templates)}")
+    for line in report.templates:
+        print(f"  {line}")
+    if report.templates_left:
+        print(
+            f"left as rows (changed in Taylis since the import; 「テンプレートにする」 in the "
+            f"row's ⋯ turns one) ({len(report.templates_left)}):"
+        )
+        for line in report.templates_left:
+            print(f"  {line}")
+    return 0
+
+
+def cmd_wiki_notion_templates(args: argparse.Namespace) -> int:
+    """M145 (docs/WIKI.md §22.3): turn the rows an earlier Notion import made from row pages no
+    CSV row has into row templates. Reads the same export; idempotent; --dry-run."""
+    return asyncio.run(_notion_templates(args))
 
 
 def cmd_import_notion(args: argparse.Namespace) -> int:
@@ -1142,6 +1191,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     notion.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
     notion.set_defaults(func=cmd_import_notion)
+
+    notion_templates = sub.add_parser(
+        "wiki-notion-templates",
+        help="turn the rows an earlier Notion import made from row pages not in the CSV into "
+        "row templates (M145; idempotent)",
+    )
+    notion_templates.add_argument("export", help="the same export the import read (ZIP or folder)")
+    notion_templates.add_argument("--actor", required=True, help="an administrator (audit log)")
+    notion_templates.add_argument(
+        "--dry-run", action="store_true", help="list the rows it would turn, write nothing"
+    )
+    notion_templates.set_defaults(func=cmd_wiki_notion_templates)
 
     presets = sub.add_parser(
         "import-emoji-presets",

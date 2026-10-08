@@ -60,6 +60,9 @@ class WikiPage(Base):
     props_text: Mapped[str | None] = mapped_column(Text)
     task_total: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     task_done: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # M145 (WIKI.md §22.3, migration 0108): a page template (top-level, out of the tree, search
+    # and backlinks; GET /wiki/templates) or a database's row template (out of its query).
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     updated_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
@@ -196,6 +199,10 @@ class WikiDatabase(Base):
     views: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     # +1 on every schema or view change (a change written on an older one is refused).
     schema_version: Mapped[int] = mapped_column(BigInteger, default=1, server_default=text("1"))
+    # M145: the row template 「新規」 starts from (a row of this database with is_template).
+    default_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("wiki_pages.id", ondelete="SET NULL")
+    )
 
 
 class WikiRelation(Base):

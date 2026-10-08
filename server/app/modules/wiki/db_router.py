@@ -12,6 +12,7 @@ from app.modules.auth.deps import CurrentUser
 from app.modules.wiki import databases
 from app.modules.wiki.db_schemas import (
     DatabaseOut,
+    DefaultTemplateIn,
     RowCreate,
     RowDetailOut,
     RowPropsUpdate,
@@ -22,7 +23,7 @@ from app.modules.wiki.db_schemas import (
     SchemaChange,
     ViewIn,
 )
-from app.modules.wiki.router import _limit_saves
+from app.modules.wiki.router import _limit_saves, files
 
 router = APIRouter(tags=["wiki"])
 
@@ -60,6 +61,14 @@ async def delete_view(database_id: UUID, view_id: str, user: CurrentUser, db: Db
     return await databases.delete_view(db, user, database_id, view_id)
 
 
+@router.put("/wiki/databases/{database_id}/default-template", response_model=DatabaseOut)
+async def set_default_template(
+    database_id: UUID, user: CurrentUser, body: DefaultTemplateIn, db: Db
+) -> DatabaseOut:
+    """M145: the row template a new row starts from (edit access; null: none)."""
+    return await databases.set_default_template(db, user, database_id, body)
+
+
 @router.post("/wiki/databases/{database_id}/query", response_model=RowQueryOut)
 async def query_rows(database_id: UUID, user: CurrentUser, body: RowQuery, db: Db) -> RowQueryOut:
     """The rows (without bodies) sorted and filtered by the server: a saved view's, or the
@@ -81,9 +90,11 @@ async def create_row(
     request: Request,
     response: Response,
 ) -> RowWithRefs:
-    """A new row at the end (edit access). 409 wiki_too_many_rows past 5,000."""
+    """A new row at the end (edit access). 409 wiki_too_many_rows past 5,000. M145: from
+    `template_id` (404 template_not_found), else unless `blank` from the database's default
+    template; `is_template` makes a row template."""
     _limit_saves(request, user)
-    row, created = await databases.create_row(db, user, database_id, body)
+    row, created = await databases.create_row(db, user, database_id, body, files=files(request))
     response.status_code = 201 if created else 200
     return row
 

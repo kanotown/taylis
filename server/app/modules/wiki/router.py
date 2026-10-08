@@ -5,10 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Request, Response
 
 from app.core.db import Db
-from app.core.errors import rate_limited
+from app.core.errors import rate_limited, request_locale
 from app.modules.auth.deps import CurrentUser
 from app.modules.users.models import User
-from app.modules.wiki import service
+from app.modules.wiki import service, templates
+from app.modules.wiki.db_schemas import PageDuplicateOut
 from app.modules.wiki.schemas import (
     AccessOut,
     AccessUpdate,
@@ -18,6 +19,7 @@ from app.modules.wiki.schemas import (
     PageConflictResponse,
     PageContentSave,
     PageCreate,
+    PageDuplicate,
     PageItem,
     PageMeta,
     PageMove,
@@ -31,6 +33,8 @@ from app.modules.wiki.schemas import (
     PageSaveOut,
     PageUpdate,
     ResolveIn,
+    TemplateApply,
+    TemplatesOut,
     TreeOut,
 )
 
@@ -46,6 +50,11 @@ def _limit_saves(request: Request, user: User) -> None:
     key = str(user.id)
     if not limiter.try_acquire(key):
         raise rate_limited(limiter.retry_after_seconds(key))
+
+
+def files(request: Request) -> service.FileStore:
+    """M145: where a template's or a copy's files are copied."""
+    return service.FileStore(blobs=request.app.state.blobs, settings=request.app.state.settings)
 
 
 def _matches(if_none_match: str | None, etag: str) -> bool:
@@ -97,11 +106,57 @@ async def wiki_trash(user: CurrentUser, db: Db) -> list[PageMeta]:
 async def create_page(
     user: CurrentUser, body: PageCreate, db: Db, request: Request, response: Response
 ) -> PageOut:
-    """A new page: under a page I can edit, or (not guests) at the top level with `access`."""
+    """A new page: under a page I can edit, or (not guests) at the top level with `access`.
+    From a built-in template (`template_key`) or a page template I can read (`template_page_id`,
+    404 template_not_found): the placeholders are put in with `tz`, the files copied.
+    `is_template`: a page template (top level, not guests)."""
     _limit_saves(request, user)
-    page, created = await service.create(db, user, body)
+    page, created = await service.create(db, user, body, files=files(request))
     response.status_code = 201 if created else 200
     return page
+
+
+@router.get("/wiki/templates", response_model=TemplatesOut)
+async def wiki_templates(user: CurrentUser, db: Db) -> TemplatesOut:
+    """M145 (WIKI.md §22.3): the page templates I can read (not in the tree) and the built-in
+    templates, for the gallery and the sidebar's 「テンプレート」."""
+    return await templates.list_templates(db, user)
+
+
+@router.post("/wiki/pages/{page_id}/apply-template", response_model=PageOut)
+async def apply_page_template(
+    page_id: UUID, user: CurrentUser, body: TemplateApply, db: Db, request: Request
+) -> PageOut:
+    """M145: 「テンプレートから始める」 on an empty page (edit): the template's body (placeholders
+    put in, files copied), and its title and icon when the page has none. 409
+    wiki_page_not_empty."""
+    _limit_saves(request, user)
+    return await templates.apply_template(db, user, page_id, body, files=files(request))
+
+
+@router.post(
+    "/wiki/pages/{page_id}/duplicate",
+    response_model=PageDuplicateOut,
+    status_code=201,
+    responses={200: {"model": PageDuplicateOut, "description": "A retry: the copy made before"}},
+)
+async def duplicate_page(
+    page_id: UUID,
+    user: CurrentUser,
+    body: PageDuplicate,
+    db: Db,
+    request: Request,
+    response: Response,
+) -> PageDuplicateOut:
+    """M145: 「複製」 (beside the original) and 「テンプレートとして保存」 (`as_template`): the
+    title, icon, body, files (copied) and a row's values; not the subpages. Read the original,
+    edit where the copy goes. 400 wiki_cannot_duplicate for a database."""
+    _limit_saves(request, user)
+    page, row, created = await templates.duplicate(
+        db, user, page_id, body, files=files(request), locale=request_locale(request)
+    )
+    response.status_code = 201 if created else 200
+    return PageDuplicateOut(page=page, row=row)
 
 
 @router.post("/wiki/pages/resolve", response_model=list[PageRef])
@@ -159,7 +214,8 @@ async def save_page_content(
 
 @router.patch("/wiki/pages/{page_id}", response_model=PageOut)
 async def update_page(page_id: UUID, user: CurrentUser, body: PageUpdate, db: Db) -> PageOut:
-    """Title and icon (edit level)."""
+    """Title, icon and (M145) `is_template` (edit level). 400 wiki_template_invalid: a page
+    template is a top-level page without subpages, a row template a row of its database."""
     return await service.update(db, user, page_id, body)
 
 
