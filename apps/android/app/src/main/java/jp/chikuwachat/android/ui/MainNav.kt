@@ -217,7 +217,7 @@ object MainNav {
     fun openConversation(stack: List<Route>, channelId: String, parentId: String? = null, from: ThreadFrom = ThreadFrom.CHANNEL): List<Route> =
         base(stack) + conversationRoutes(channelId, parentId, from)
 
-    /** A row of the 「スレッド」 list: its thread, and back returns to the list. */
+    /** A row of the 「スレッド」 list (or, on a phone, an activity row of a reply): its thread, and back returns to the list. */
     fun openFromThreadList(stack: List<Route>, channelId: String, parentId: String): List<Route> =
         openConversation(stack, channelId, parentId, ThreadFrom.LIST)
 
