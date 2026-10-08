@@ -120,6 +120,17 @@ async def test_query_of_5000_rows(client: AsyncClient, db: AsyncSession, as_user
             range={"prop_id": prop_id(database, "Due"), "start": "2026-10-01", "end": "2026-10-31"},  # type: ignore[arg-type]
             limit=1000,
         ),
+        # M147 (WIKI.md §22.4): a board's first 1,000 cards in groups, a table by week.
+        "board by select (1,000 cards)": RowQuery(
+            grouped=True,
+            group_by={"prop_id": stage},  # type: ignore[arg-type]
+            limit=1000,
+        ),
+        "groups by week + covers": RowQuery(
+            grouped=True,
+            group_by={"prop_id": prop_id(database, "Due"), "date_unit": "week"},  # type: ignore[arg-type]
+            covers=True,
+        ),
     }
     results: dict[str, float] = {}
     for name, q in cases.items():

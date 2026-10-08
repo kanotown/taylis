@@ -15,6 +15,7 @@ from app.modules.wiki.db_schemas import (
     DefaultTemplateIn,
     RowCreate,
     RowDetailOut,
+    RowMove,
     RowPropsUpdate,
     RowQuery,
     RowQueryOut,
@@ -158,3 +159,14 @@ async def update_row_props(
     harmless."""
     _limit_saves(request, user)
     return await databases.update_props(db, user, row_id, body)
+
+
+@router.post("/wiki/rows/{row_id}/move", response_model=RowWithRefs)
+async def move_row(
+    row_id: UUID, user: CurrentUser, body: RowMove, db: Db, request: Request
+) -> RowWithRefs:
+    """M147: a board's drag (edit access): set cells (the column's value) and place the row just
+    after `after_id` or before `before_id` in the rows' own order, in one write. 400
+    wiki_invalid_move for a neighbour that is not a live row of the same database."""
+    _limit_saves(request, user)
+    return await databases.move_row(db, user, row_id, body)

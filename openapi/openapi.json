@@ -9555,6 +9555,52 @@
         "title": "GrantOut",
         "type": "object"
       },
+      "GroupBy": {
+        "additionalProperties": false,
+        "description": "M147 (WIKI.md §22.4): rows in groups by one property. A group's key is a select option id,\na user id, \"true\" / \"false\" (checkbox), a day \"YYYY-MM-DD\" (a week by its Monday) or a month\n\"YYYY-MM\"; \"\" is the group of rows with no value (「なし」). A board groups by a select, a\nperson or a checkbox; a table, list or gallery also by a multi-select, a date or who made /\nchanged the row. A row with several values (multi-select, people) is in each of their groups.",
+        "properties": {
+          "date_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "day",
+                  "week",
+                  "month"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Unit"
+          },
+          "hidden": {
+            "items": {
+              "maxLength": 40,
+              "type": "string"
+            },
+            "maxItems": 250,
+            "title": "Hidden",
+            "type": "array"
+          },
+          "hide_empty": {
+            "default": false,
+            "title": "Hide Empty",
+            "type": "boolean"
+          },
+          "prop_id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Prop Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prop_id"
+        ],
+        "title": "GroupBy",
+        "type": "object"
+      },
       "GroupCreate": {
         "additionalProperties": false,
         "properties": {
@@ -15905,6 +15951,50 @@
         "title": "RolloverPreviewOut",
         "type": "object"
       },
+      "RowCover": {
+        "description": "M147: a gallery card's picture, the first image of the row's body (an image attached to\nthe row): GET /attachments/{attachment_id}/thumbnail when `thumbnail`, else …/content.",
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "thumbnail": {
+            "title": "Thumbnail",
+            "type": "boolean"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "thumbnail",
+          "width",
+          "height"
+        ],
+        "title": "RowCover",
+        "type": "object"
+      },
       "RowCreate": {
         "additionalProperties": false,
         "description": "POST /wiki/databases/{id}/rows. M145 (WIKI.md §22.3): a new row starts from `template_id`,\nelse (unless `blank`) from the database's default template: its title, icon, body\n(placeholders put in with `tz`), values (a date's 「今日」 and a person's 「自分」 put in) and\nfiles. The given `props` (and a title that is not empty, and a body) win over the\ntemplate's.",
@@ -16027,9 +16117,89 @@
         "title": "RowDetailOut",
         "type": "object"
       },
+      "RowGroup": {
+        "description": "A group of the answer (clients name it: the option, the person, 「なし」 for \"\").",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "count",
+          "hidden"
+        ],
+        "title": "RowGroup",
+        "type": "object"
+      },
+      "RowMove": {
+        "additionalProperties": false,
+        "description": "POST /wiki/rows/{id}/move (M147, a board's drag; edit access): set cells (as PATCH …/props,\ne.g. the column's value) and place the row just after `after_id` or just before `before_id`\n(rows of the same database), in one write. The place is the rows' own order, which every view\nwithout a sort shows. A retry with the same client_op_id changes no cell again.",
+        "properties": {
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "client_op_id": {
+            "format": "uuid",
+            "title": "Client Op Id",
+            "type": "string"
+          },
+          "set": {
+            "additionalProperties": true,
+            "maxProperties": 60,
+            "title": "Set",
+            "type": "object"
+          }
+        },
+        "required": [
+          "client_op_id"
+        ],
+        "title": "RowMove",
+        "type": "object"
+      },
       "RowOut": {
         "description": "A row without its body (GET /wiki/pages/{id} has the body).",
         "properties": {
+          "cover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RowCover"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -16178,8 +16348,13 @@
       },
       "RowQuery": {
         "additionalProperties": false,
-        "description": "POST /wiki/databases/{id}/query. A saved view's sort and filter, unless `sort` / `filter`\nare given (a sort or filter not saved: WIKI.md §5.4).",
+        "description": "POST /wiki/databases/{id}/query. A saved view's sort and filter, unless `sort` / `filter`\nare given (a sort or filter not saved: WIKI.md §5.4).\n\nM147 groups (WIKI.md §22.4): `grouped: true` answers in groups (the view's `group_by`, or the\ngiven one): `rows` group after group (a row with several values once in each of its groups),\n`row_groups` the group of each, `groups` every group with its count. `grouped: false`: no\ngroups at all. Left out (clients before M147): one list of rows, in the order of the view's\ngroups, without the rows of its hidden groups.",
         "properties": {
+          "covers": {
+            "default": false,
+            "title": "Covers",
+            "type": "boolean"
+          },
           "cursor": {
             "anyOf": [
               {
@@ -16201,6 +16376,27 @@
                 "type": "null"
               }
             ]
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grouped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouped"
           },
           "limit": {
             "default": 100,
@@ -16234,6 +16430,18 @@
             ],
             "title": "Sort"
           },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          },
           "view_id": {
             "anyOf": [
               {
@@ -16252,6 +16460,20 @@
       },
       "RowQueryOut": {
         "properties": {
+          "groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RowGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          },
           "next_cursor": {
             "anyOf": [
               {
@@ -16269,6 +16491,20 @@
             },
             "title": "Refs",
             "type": "array"
+          },
+          "row_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Groups"
           },
           "rows": {
             "items": {
@@ -20036,8 +20272,18 @@
       },
       "ViewIn": {
         "additionalProperties": false,
-        "description": "PUT /wiki/databases/{id}/views/{view_id}: a saved view (shared by everyone who reads the\ndatabase). Board views come later: `type` grows a value, the rest stays.",
+        "description": "PUT /wiki/databases/{id}/views/{view_id}: a saved view (shared by everyone who reads the\ndatabase). M147: board, list and gallery; group_by for every type but the calendar. The\nproperties a card, a list line or a phone's card shows are the visible `columns` (title\nfirst wherever it is).",
         "properties": {
+          "card_size": {
+            "default": "medium",
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ],
+            "title": "Card Size",
+            "type": "string"
+          },
           "columns": {
             "items": {
               "$ref": "#/components/schemas/ViewColumn"
@@ -20045,6 +20291,15 @@
             "maxItems": 80,
             "title": "Columns",
             "type": "array"
+          },
+          "cover": {
+            "default": "body",
+            "enum": [
+              "body",
+              "none"
+            ],
+            "title": "Cover",
+            "type": "string"
           },
           "date_prop_id": {
             "anyOf": [
@@ -20062,6 +20317,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/FilterGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupBy"
               },
               {
                 "type": "null"
@@ -20086,7 +20351,10 @@
             "default": "table",
             "enum": [
               "table",
-              "calendar"
+              "calendar",
+              "board",
+              "list",
+              "gallery"
             ],
             "title": "Type",
             "type": "string"
@@ -20098,6 +20366,16 @@
       "ViewOut": {
         "additionalProperties": false,
         "properties": {
+          "card_size": {
+            "default": "medium",
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ],
+            "title": "Card Size",
+            "type": "string"
+          },
           "columns": {
             "items": {
               "$ref": "#/components/schemas/ViewColumn"
@@ -20105,6 +20383,15 @@
             "maxItems": 80,
             "title": "Columns",
             "type": "array"
+          },
+          "cover": {
+            "default": "body",
+            "enum": [
+              "body",
+              "none"
+            ],
+            "title": "Cover",
+            "type": "string"
           },
           "date_prop_id": {
             "anyOf": [
@@ -20122,6 +20409,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/FilterGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupBy"
               },
               {
                 "type": "null"
@@ -20150,7 +20447,10 @@
             "default": "table",
             "enum": [
               "table",
-              "calendar"
+              "calendar",
+              "board",
+              "list",
+              "gallery"
             ],
             "title": "Type",
             "type": "string"
@@ -38949,6 +39249,65 @@
           }
         ],
         "summary": "Get Row",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/rows/{row_id}/move": {
+      "post": {
+        "description": "M147: a board's drag (edit access): set cells (the column's value) and place the row just\nafter `after_id` or before `before_id` in the rows' own order, in one write. 400\nwiki_invalid_move for a neighbour that is not a live row of the same database.",
+        "operationId": "move_row_api_v1_wiki_rows__row_id__move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Row Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowWithRefs"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move Row",
         "tags": [
           "wiki"
         ]
