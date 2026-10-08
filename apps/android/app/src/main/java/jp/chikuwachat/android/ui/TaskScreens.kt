@@ -793,7 +793,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
         }
         if (hub?.available == true) {
             FloatingActionButton(
-                onClick = { controller.taskForm = TaskForm(null, TaskCreateInit(channelId = null)) },
+                onClick = { controller.taskForm = TaskForm(null, TaskRules.newTaskInit(TaskRules.editableBoards(controller.store.channels.values, controller.isAdmin))) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             ) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.common_add_task)) }
         }

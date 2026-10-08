@@ -216,6 +216,34 @@ class ReviewRequestsTest {
         assertNull(TaskRules.draftProblem(jp.chikuwachat.android.ui.TaskDraft("x")))
     }
 
+    /** 2026-10-09: my own DM has nobody to share with or ask — a plain personal task, and no 「レビューを依頼」. */
+    @Test fun myOwnDmKeepsTasksPersonal() {
+        val notes = dm("n1", listOf("u-me"))
+        assertFalse(TaskRules.hasOthers(notes))
+        assertTrue(TaskRules.hasOthers(dm("d1", listOf("u-me", "u-kano"))))
+        assertTrue(TaskRules.hasOthers(channel("lab")))
+        assertNull(TaskRules.messageTaskInit("m1", "あとで読む", emptyList(), notes, users, emptyMap(), false).dmChannelId)
+        assertFalse(TaskRules.canRequestReview(notes, false))
+        assertNull(TaskRules.messageReviewInit("m1", "x", emptyList(), notes, users, emptyMap(), false, "u-me"))
+        assertTrue(TaskRules.canRequestReview(dm("g1", listOf("u-me", "u-kano", "u-ebi"), "group_dm"), false))
+        // A task already shared there stays mine to change.
+        assertTrue(TaskRules.canEditTask(task("x", channelId = "n1", channelName = null), notes, false))
+    }
+
+    /** 2026-10-09 (「選択肢自分しかない」): 「タスク」's ＋ offers the boards I may add to beside 「自分のタスク」. */
+    @Test fun aNewTaskFromMyTasksOffersMyBoards() {
+        val boards = TaskRules.editableBoards(
+            listOf(channel("zeta"), channel("alpha"), channel("news", postingPolicy = "owners"), channel("old", archived = true), dm("d1", listOf("u-me", "u-kano"))),
+            false,
+        )
+        assertEquals(listOf("alpha", "zeta"), boards)
+        val init = TaskRules.newTaskInit(boards)
+        assertNull(init.channelId)
+        assertEquals(listOf("alpha", "zeta"), init.boardChoices)
+        assertNull(init.targetChannel(null, emptyList()))
+        assertEquals("alpha", init.targetChannel("alpha", listOf("u-kano")))
+    }
+
     @Test fun dmTasksAreEditableByItsMembersAndNamedAfterThem() {
         val shared = task("x", channelId = "d1", channelName = null)
         assertTrue(TaskRules.canEditTask(shared, dm("d1", listOf("u-me", "u-kano")), false))

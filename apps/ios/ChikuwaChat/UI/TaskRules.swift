@@ -328,9 +328,17 @@ enum TaskRules {
         return channel.channel.isDm && channel.isMember && !channel.channel.archived
     }
 
-    /// L9: 「レビューを依頼」 needs a conversation the request can be shared in — a board I may add to, or a DM.
+    /// A DM with someone besides me: my own DM (only me in `dm_user_ids`) has nobody to share a task with or to ask
+    /// for a review, so its tasks stay personal (2026-10-09). Unknown members (an older server) count as others.
+    static func hasOthers(_ channel: ChannelState?) -> Bool {
+        guard let channel, channel.channel.type == "dm", let ids = channel.channel.dmUserIds else { return true }
+        return Set(ids).count > 1
+    }
+
+    /// L9: 「レビューを依頼」 needs a conversation the request can be shared in — a board I may add to, or a DM with
+    /// someone else.
     static func canRequestReview(_ channel: ChannelState?, isAdmin: Bool) -> Bool {
-        canEditBoard(channel, isAdmin: isAdmin) || canShareInDm(channel)
+        canEditBoard(channel, isAdmin: isAdmin) || (canShareInDm(channel) && hasOthers(channel))
     }
 
     /// Why a board is read-only (or could not be read), as the banner over it says; nil when it is mine to change.
@@ -432,7 +440,7 @@ enum TaskRules {
         draft.sourceExcerpt = title.isEmpty ? nil : title
         draft.boardChoices = board.map { [$0] } ?? []
         // L9 (REVIEWS.md §2.1): from a DM, choosing assignees shares it in the DM; without, it stays mine.
-        if canShareInDm(channel) { draft.dmChannelId = channel?.id }
+        if canShareInDm(channel) && hasOthers(channel) { draft.dmChannelId = channel?.id }
         return draft
     }
 
@@ -509,7 +517,7 @@ enum TaskRules {
         let mentioned = userToken.matches(in: item.text, range: whole).map { text.substring(with: $0.range(at: 1)) }
             .filter { users[$0] != nil && seen.insert($0).inserted }
         let board = canEditBoard(channel, isAdmin: isAdmin) ? channel?.id : nil
-        let share = channel.flatMap { !hasBoard($0) && canShareInDm($0) ? $0.id : nil }
+        let share = channel.flatMap { !hasBoard($0) && canShareInDm($0) && hasOthers($0) ? $0.id : nil }
         var draft = TaskDraft(title: title, channelId: board)
         draft.dueOn = dueOn
         draft.assigneeIds = board != nil || share != nil ? mentioned : []
@@ -676,6 +684,14 @@ struct TaskDraft: Equatable {
         self.title = title
         self.channelId = channelId
         self.status = status
+    }
+
+    /// 「タスク」's ＋ (TASKS.md §6): 「自分のタスク」 to start with, any board I may add to offered beside it (assignees
+    /// need a board, 2026-10-09).
+    static func newTask(boards: [String]) -> TaskDraft {
+        var draft = TaskDraft()
+        draft.boardChoices = boards
+        return draft
     }
 
     /// M86: 「締切を追加」 — a deadline on one of `boards` (the first chosen), no date yet (the form asks for one).

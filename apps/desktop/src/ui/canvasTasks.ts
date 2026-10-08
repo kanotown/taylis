@@ -13,7 +13,7 @@ import type { ChannelState } from "../sync/types";
 import { stripTaskMarkers } from "./canvasMarkers";
 import { TASK_LINE, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
-import { canEditBoard, canEditConversationTasks, hasBoard, MAX_TASK_TITLE, type TaskCreateInit } from "./tasks";
+import { canEditBoard, canShareConversationTask, hasBoard, MAX_TASK_TITLE, type TaskCreateInit } from "./tasks";
 
 const DUE = /📅\s*(\d{4}-\d{2}-\d{2})/u;
 const USER_TOKEN = /<@([0-9a-f-]{36})>/g;
@@ -58,7 +58,7 @@ export function canvasTaskInit(
   const title = plainText(mentionsToNames(item.text.replace(DUE, " "), users, groups), MAX_TASK_TITLE);
   const assigneeIds = [...new Set([...item.text.matchAll(USER_TOKEN)].map((m) => m[1]!))].filter((id) => users.has(id));
   const board = channel && canEditBoard(channel, isAdmin) ? channel.id : null;
-  const share = channel && !hasBoard(channel) && canEditConversationTasks(channel, isAdmin) ? channel.id : null;
+  const share = channel && !hasBoard(channel) && canShareConversationTask(channel, isAdmin) ? channel.id : null;
   return {
     channelId: board,
     status: "todo",

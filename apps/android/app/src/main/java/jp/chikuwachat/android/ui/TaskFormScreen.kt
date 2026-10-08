@@ -431,6 +431,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                         SubtaskEditor(draft.subtasks, enabled = !busy, onChange = { change(draft.copy(subtasks = it)) }, onTick = ::tick)
                         if (channelId != null && !(task == null && (review || init?.dmChannelId != null))) {
                             AssigneePicker(controller, channelId, version, draft.assigneeIds, label = assigneeName, onChange = { change(draft.copy(assigneeIds = it)) })
+                        } else if (task == null && !review && !deadline && init?.dmChannelId == null) {
+                            // 「自分のタスク」 has no assignees (TASKS.md §1): say so, and offer the boards right here (2026-10-09).
+                            PersonalAssignees(assigneeName, boards.map { it to boardName(it) }, onPick = { picked ->
+                                board = picked
+                                change(draft.copy(assigneeIds = emptyList()))
+                            })
                         }
                     } else if (task != null) {
                         ReadOnlyTask(controller, task, version)
@@ -669,6 +675,33 @@ private fun BoardChoice(value: String, options: List<Pair<String, String>>, enab
     }
 }
 
+/**
+ * 担当者 of a new task for 「自分のタスク」: none there (TASKS.md §1), so the reason and 「ボードを選ぶ」 (the boards I may add
+ * to; picking one moves the task there and its members come up). Testers looked for other people and found only themselves.
+ */
+@Composable
+private fun PersonalAssignees(label: String, boards: List<Pair<String, String>>, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        FieldLabel(label)
+        Text(
+            if (boards.isEmpty()) stringResource(R.string.task_form_screen_personal_no_assignees) else stringResource(R.string.task_form_screen_personal_pick_board),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (boards.isNotEmpty()) {
+            Box(Modifier.padding(top = 4.dp)) {
+                OutlinedButton(onClick = { open = true }) {
+                    Text(stringResource(R.string.task_form_screen_choose_board))
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    boards.forEach { (key, text) -> DropdownMenuItem(text = { Text(text) }, onClick = { open = false; onPick(key) }) }
+                }
+            }
+        }
+    }
+}
+
 /** 担当者: the channel's members (me first, then by name), each a checkbox; a filter field once there are more than 8. */
 @Composable
 private fun AssigneePicker(
@@ -699,6 +732,7 @@ private fun AssigneePicker(
         when {
             failed -> Text(stringResource(R.string.common_couldnt_load_members), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             members == null -> Text(stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            rows.isEmpty() -> Text(stringResource(R.string.task_form_screen_nobody_to_choose), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> {
                 if (rows.size > 8) {
                     OutlinedTextField(
@@ -718,6 +752,10 @@ private fun AssigneePicker(
                         Spacer(Modifier.width(8.dp))
                         Text(name + if (id == me) stringResource(R.string.common_you_2) else "", style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                }
+                // A board with nobody but me: where the others come from.
+                if (rows.all { it.first == me } && controller.store.channel(channelId)?.channel?.isDm != true) {
+                    Text(stringResource(R.string.task_form_screen_add_people_to_channel), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

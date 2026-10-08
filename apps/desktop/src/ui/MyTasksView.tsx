@@ -16,7 +16,7 @@ import { BackButton } from "./compact";
 import { Button, cn } from "./primitives";
 import { InlineAdd, TaskCard, useTaskHub, useToday } from "./TaskBoard";
 import { TaskDialog } from "./TaskDialog";
-import { canEditTask, groupMineByChannel, hasBoard, sortRequested, splitOpenDone, taskPlace } from "./tasks";
+import { canEditTask, groupMineByChannel, hasBoard, sortRequested, splitOpenDone, taskBoardChoices, taskPlace } from "./tasks";
 import { t } from "../i18n";
 
 export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
@@ -162,7 +162,7 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
         </div>
       </div>
       {dialog && <TaskDialog controller={controller} task={hub?.find(dialog.id) ?? dialog} onClose={() => setDialog(null)} onOpenMessage={onOpenMessage} />}
-      {creating && <TaskDialog controller={controller} task={null} init={{ channelId: null, status: "todo", title: "" }} onClose={() => setCreating(false)} />}
+      {creating && <TaskDialog controller={controller} task={null} init={{ channelId: null, status: "todo", title: "", boardChoices: taskBoardChoices(store.channels.values(), controller.isAdmin) }} onClose={() => setCreating(false)} />}
     </div>
   );
 }

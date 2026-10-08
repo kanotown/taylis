@@ -1336,6 +1336,11 @@
     <string name="tab_screens_no_matching_dms">没有匹配的私信</string>
     <string name="task_form_screen_add_subtask">" 添加子任务"</string>
     <string name="task_form_screen_add_to">添加到</string>
+    <string name="task_form_screen_choose_board">选择看板</string>
+    <string name="task_form_screen_personal_no_assignees">我的任务不能设置负责人。只有频道看板上的任务可以设置负责人。</string>
+    <string name="task_form_screen_personal_pick_board">我的任务不能设置负责人。选择频道的看板后，即可从其成员中选择。</string>
+    <string name="task_form_screen_nobody_to_choose">没有可选择的人</string>
+    <string name="task_form_screen_add_people_to_channel">要选择其他人，请先将其添加到此频道</string>
     <string name="task_form_screen_advance_notice">提前通知</string>
     <string name="task_form_screen_advance_notice_2">提前通知：</string>
     <string name="task_form_screen_assignee">负责人</string>

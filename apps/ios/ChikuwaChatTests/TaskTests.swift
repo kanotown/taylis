@@ -929,8 +929,8 @@ extension FakeServer.Api: TaskApi {
 final class ReviewTests: XCTestCase {
     private typealias F = TaskFixtures
 
-    private func store() -> Store {
-        let store = Store()
+    private func store(_ into: Store? = nil) -> Store {
+        let store = into ?? Store()
         func add(_ id: String, type: String = "public", policy: String? = nil, archived: Bool = false, dmUserIds: [String]? = nil) {
             var out = ChannelOut(id: id, type: type, name: type == "public" ? id : nil, topic: nil, purpose: nil, archived: archived, createdBy: nil,
                                  lastSeq: 0, lastMessageAt: nil, createdAt: "", updatedAt: "",
@@ -942,6 +942,9 @@ final class ReviewTests: XCTestCase {
         add("news", policy: "owners")
         add("dm", type: "dm", dmUserIds: ["u-me", "u-kano"])
         add("olddm", type: "dm", archived: true, dmUserIds: ["u-me", "u-kano"])
+        add("notes", type: "dm", dmUserIds: ["u-me"])
+        add("group", type: "group_dm", dmUserIds: ["u-me", "u-kano", "u-ebi"])
+        add("closed", archived: true)
         var me = UserMe(id: "u-me", username: "me", displayName: "私", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "", email: nil,
                         mustChangePassword: false)
         me.notifyTasks = true
@@ -1060,6 +1063,36 @@ final class ReviewTests: XCTestCase {
         XCTAssertTrue(TaskRules.canEditTask(dmTask, channel: store.channel("dm"), isAdmin: false))
         XCTAssertFalse(TaskRules.canEditTask(dmTask, channel: store.channel("olddm"), isAdmin: false))
         XCTAssertEqual(TaskDraft(task: dmTask).kind, .review)
+    }
+
+    /// 2026-10-09: my own DM has nobody to share with or ask — its message's task is a plain personal one (the form then
+    /// offers the boards), and 「レビューを依頼」 is not offered there.
+    func testMyOwnDmKeepsTasksPersonal() {
+        let store = store()
+        XCTAssertFalse(TaskRules.hasOthers(store.channel("notes")))
+        XCTAssertTrue(TaskRules.hasOthers(store.channel("dm")))
+        XCTAssertTrue(TaskRules.hasOthers(store.channel("group")))
+        XCTAssertTrue(TaskRules.hasOthers(store.channel("lab")))
+        let notes = TaskRules.messageTaskInit(message("あとで読む", channel: "notes"), channel: store.channel("notes"), users: store.users,
+                                              groups: [:], isAdmin: false)
+        XCTAssertNil(notes.dmChannelId)
+        XCTAssertNil(notes.channelId)
+        XCTAssertFalse(TaskRules.canRequestReview(store.channel("notes"), isAdmin: false))
+        XCTAssertTrue(TaskRules.canRequestReview(store.channel("group"), isAdmin: false))
+        // A task already shared in it stays mine to change.
+        XCTAssertTrue(TaskRules.canEditTask(F.task("x", channelId: "notes", channelName: nil), channel: store.channel("notes"), isAdmin: false))
+    }
+
+    /// 2026-10-09 (「選択肢自分しかない」): 「タスク」's ＋ starts in 「自分のタスク」 with the boards I may add to offered beside it,
+    /// so assignees can be picked once one is chosen.
+    func testANewTaskFromMyTasksOffersMyBoards() {
+        let controller = AppController()
+        _ = store(controller.store)
+        XCTAssertEqual(controller.taskBoards, ["lab"])  // not the announcement channel, an archived one or a DM
+        let draft = TaskDraft.newTask(boards: controller.taskBoards)
+        XCTAssertNil(draft.channelId)
+        XCTAssertEqual(draft.boardChoices, ["lab"])
+        XCTAssertEqual(draft.kind, .task)
     }
 
     func testRequestedHoldsMySharedTasksWithSomeoneElseAssigned() async {

@@ -49,7 +49,7 @@ import { ReactionsDialog } from "./WhoDialogs";
 import { isSystemMessage, systemMessageText } from "./systemMessage";
 import { TaskDialog } from "./TaskDialog";
 import { MessageTaskChips } from "./MessageTaskChips";
-import { canEditConversationTasks, messageReviewInit, messageTaskInit } from "./tasks";
+import { canShareConversationTask, messageReviewInit, messageTaskInit } from "./tasks";
 
 
 export function Timeline({ controller, channel, onOpenThread, active = true }: {
@@ -888,7 +888,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   // conversation's state (archived, posting policy, my role) is not a prop of the memoized row: it is read whenever the
   // row renders, so a change made while the row stays put shows late at worst (the server checks it again).
   const [reviewOpen, setReviewOpen] = useState(false);
-  const canRequestReview = canMakeTask && message.seq !== null && !message.pending && canEditConversationTasks(store.getChannel(message.channel_id), isAdmin);
+  const canRequestReview = canMakeTask && message.seq !== null && !message.pending && canShareConversationTask(store.getChannel(message.channel_id), isAdmin);
   // The hover bar's 「その他」 menu. What an item opens (a dialog, the remind or delete popover by ⋯) opens once the menu
   // has closed and handed focus back, which the new layer would otherwise take for a click outside (as in the composer).
   const [menuOpen, setMenuOpen] = useState(false);

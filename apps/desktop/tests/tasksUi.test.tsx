@@ -289,6 +289,40 @@ describe("「自分のタスク」", () => {
     expect(body.channel_id).toBeUndefined();
   });
 
+  it("「タスクを追加」 starts in 「自分のタスク」, says why there are no assignees, and offers my boards (2026-10-09)", async () => {
+    const { controller, api } = setup();
+    render(<MyTasksView controller={controller} onOpenBoard={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "タスクを追加" }));
+    const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
+    const where = within(dialog).getByLabelText("追加先") as HTMLSelectElement;
+    expect(where.value).toBe("me");
+    expect([...where.options].map((o) => o.textContent)).toEqual(["#lab のボード", "自分のタスク（自分だけに表示）"]);
+    const personal = dialog.querySelector("[data-task-personal-assignees]") as HTMLElement;
+    expect(personal.textContent).toContain("チャンネルのボードを選ぶと、そのメンバーから選べます");
+    fireEvent.change(within(personal).getByLabelText("ボードを選ぶ"), { target: { value: "c-lab" } });
+    await flush();
+    expect(where.value).toBe("c-lab");
+    expect(dialog.querySelector("[data-task-personal-assignees]")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "ボブ" }));
+    fireEvent.change(within(dialog).getByLabelText("題名"), { target: { value: "発表練習" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "追加" }));
+    await flush();
+    expect(api.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: "発表練習", channel_id: "c-lab", assignee_ids: [BOB] }));
+  });
+
+  it("a board with only me says how others come in", async () => {
+    const { controller, api } = setup();
+    api.members.mockResolvedValue([{ user_id: ME, role: "member", joined_at: "2026-01-01T00:00:00Z" }]);
+    render(<MyTasksView controller={controller} onOpenBoard={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "タスクを追加" }));
+    const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
+    fireEvent.change(within(dialog).getByLabelText("追加先"), { target: { value: "c-lab" } });
+    await flush();
+    expect(dialog.querySelector("[data-task-alone]")?.textContent).toBe("ほかの人を選ぶには、その人をこのチャンネルに追加してください");
+  });
+
   describe("quick add: the field keeps the focus for the next title", () => {
     const open = async () => {
       const setup_ = setup();

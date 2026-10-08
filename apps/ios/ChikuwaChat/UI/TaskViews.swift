@@ -727,7 +727,7 @@ struct MyTasksView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { form = .new(TaskDraft()) } label: { Image(systemName: "plus") }
+                Button { form = .new(TaskDraft.newTask(boards: controller.taskBoards)) } label: { Image(systemName: "plus") }
                     .accessibilityLabel("タスクを追加")
                     .disabled(hub?.available != true)
             }
