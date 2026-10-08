@@ -12,11 +12,15 @@
  * images pasted, dropped or picked (uploaded, then a block), tables through the table dialog. Markdown typed converts
  * (`# `, `- `, `1. `, `[] `, `> `, ``` ``` ```, `---`, `$$ `, `**x**`…); pasted text is read as Markdown, pasted HTML keeps
  * headings, lists, quotes, code and the marks.
+ *
+ * M151 (WIKI.md §28): a ⋮⋮ handle and a ＋ beside the block under the pointer (drag to move it, click for its menu:
+ * turn into, duplicate, move, delete; ＋ opens the `/` menu on a new line under it), ⌘⇧↑ / ⌘⇧↓ (ui/pageEditorBlocks.ts).
  */
 import { Editor, type JSONContent } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
-import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
-import { type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { Selection, TextSelection } from "@tiptap/pm/state";
+import { ArrowDown, ArrowUp, AtSign, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
+import { type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { ApiError } from "../api/errors";
@@ -39,12 +43,13 @@ import { MathView } from "./MathView";
 import { aiBotIds, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery, mentionsToNames } from "./mentions";
 import { BlockView, inline } from "./MessageBody";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
+import { blockPosAt, type BlockUnit, canPlace, deleteUnit, duplicateUnit, lineAfter, moveUnit, stepBlocks, unitAt } from "./pageEditorBlocks";
 import { applyMerge, caretLine, createPageDocument, placeCaretAtLine } from "./pageEditorDoc";
-import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap } from "./pageEditorSchema";
+import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "./pageEditorSchema";
 import { PageIcon } from "./PageIcon";
 import { PageLinkChip } from "./PageLinkChip";
 import { cn, modKey } from "./primitives";
-import { t } from "../i18n";
+import { type MessageKey, t } from "../i18n";
 
 /** How long typing pauses before the document is written to Markdown (the save loop then waits its own 2 s). */
 export const WRITE_DELAY_MS = 300;
@@ -89,6 +94,12 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const [tableEdit, setTableEdit] = useState<{ table: Table; isNew: boolean; pos: number | null } | null>(null);
   const [iconPick, setIconPick] = useState<{ pos: number; rect: DOMRect } | null>(null);
   const [linkEdit, setLinkEdit] = useState<{ href: string; rect: DOMRect } | null>(null);
+  // M151: the ⋮⋮ handle of the block under the pointer, a drag in progress, the handle's menu.
+  const wrapper = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState<{ pos: number; top: number; left: number } | null>(null);
+  const [dropLine, setDropLine] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [blockMenu, setBlockMenu] = useState<{ pos: number; rect: DOMRect } | null>(null);
+  const dragging = useRef(false);
   const picker = useRef<HTMLInputElement>(null);
   useSyncExternalStore((listener) => portals.subscribe(listener), () => portals.version);
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
@@ -119,6 +130,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   live.current = { controller, links };
   const host = useMemo<PageEditorHost>(() => ({
     portals,
+    sources,
     render: {
       pageLink: (id, label) => <PageLinkChip controller={live.current.controller} pageId={id} label={label || undefined} />,
       emoji: (md) => {
@@ -214,7 +226,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => commitRef.current(), WRITE_DELAY_MS);
       },
-      onTransaction: ({ editor: current }) => findMenu(current),
+      onTransaction: ({ editor: current, transaction }) => {
+        findMenu(current);
+        // The block handle goes with any change (typing, a move); the pointer brings it back.
+        if (transaction.docChanged) setHovered(null);
+      },
     });
     sources.add(editor.state.doc);
     editorRef.current = editor;
@@ -398,35 +414,47 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     editor.commands.focus();
   }
 
+  /** A block kind the line at the caret turns into (the `/` menu, the handle's 「変換」); false: not a kind of line. */
+  function setKind(chain: ReturnType<Editor["chain"]>, key: SlashKey | "text"): boolean {
+    switch (key) {
+      case "text":
+        chain.setNode("paragraph").run();
+        return true;
+      case "h1":
+      case "h2":
+      case "h3":
+        chain.setNode("heading", { level: Number(key.slice(1)) }).run();
+        return true;
+      case "bullets":
+        chain.setNode("listLine", { kind: "bullet", level: 0 }).run();
+        return true;
+      case "numbered":
+        chain.setNode("listLine", { kind: "ordered", level: 0, number: 1 }).run();
+        return true;
+      case "tasks":
+        chain.setNode("listLine", { kind: "task", level: 0 }).run();
+        return true;
+      case "quote":
+        chain.setNode("paragraph").wrapIn("blockquote").run();
+        return true;
+      case "code":
+        chain.setNode("codeBlock").run();
+        return true;
+      case "math":
+        chain.setNode("mathBlock").run();
+        return true;
+      default:
+        return false;
+    }
+  }
+
   function pickSlash(key: SlashKey) {
     const editor = editorRef.current;
     const current = state.current.menu;
     if (!editor || !current || current.kind !== "slash") return;
     const chain = editor.chain().focus().deleteRange({ from: current.from, to: current.to });
+    if (setKind(chain, key)) return;
     switch (key) {
-      case "h1":
-      case "h2":
-      case "h3":
-        chain.setNode("heading", { level: Number(key.slice(1)) }).run();
-        return;
-      case "bullets":
-        chain.setNode("listLine", { kind: "bullet", level: 0 }).run();
-        return;
-      case "numbered":
-        chain.setNode("listLine", { kind: "ordered", level: 0, number: 1 }).run();
-        return;
-      case "tasks":
-        chain.setNode("listLine", { kind: "task", level: 0 }).run();
-        return;
-      case "quote":
-        chain.setNode("paragraph").wrapIn("blockquote").run();
-        return;
-      case "code":
-        chain.setNode("codeBlock").run();
-        return;
-      case "math":
-        chain.setNode("mathBlock").run();
-        return;
       case "callout":
         chain.run();
         putBlock({ type: "callout", attrs: { icon: "💡" }, content: [{ type: "paragraph" }] });
@@ -552,6 +580,156 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   }
 
+  // --- block handles (M151) ---------------------------------------------------------------------------------------------------
+
+  /** The block under a point of the window (its position), with the element that draws it. */
+  function blockAtPoint(editor: Editor, x: number, y: number): { pos: number; dom: HTMLElement } | null {
+    const box = editor.view.dom.getBoundingClientRect();
+    if (y < box.top || y > box.bottom) return null;
+    // From the handle's gutter too: the point is looked up a little inside the text.
+    const at = editor.view.posAtCoords({ left: Math.min(Math.max(x, box.left + 40), box.right - 8), top: y });
+    if (!at) return null;
+    const pos = blockPosAt(editor.state.doc, at.inside >= 0 ? at.inside : at.pos);
+    const dom = pos === null ? null : (editor.view.nodeDOM(pos) as HTMLElement | null);
+    return pos === null || !(dom instanceof HTMLElement) ? null : { pos, dom };
+  }
+
+  /** Where the handle of the block drawn by `dom` goes (beside its first line; a list line's marker). */
+  function handlePlace(dom: HTMLElement): { top: number; left: number } | null {
+    const box = wrapper.current?.getBoundingClientRect();
+    if (!box) return null;
+    const rect = dom.getBoundingClientRect();
+    const marker = dom.matches("[data-list-line]") ? dom.querySelector(".pe-marker")?.getBoundingClientRect() : null;
+    const scroller = wrapper.current?.closest("[data-wysiwyg-page]")?.getBoundingClientRect();
+    const left = Math.max((marker?.left ?? rect.left) - 46, (scroller?.left ?? box.left - 46) + 2);
+    return { top: rect.top - box.top + Math.min(rect.height, 28) / 2 - 12, left: left - box.left };
+  }
+
+  function hover(event: ReactMouseEvent) {
+    const editor = editorRef.current;
+    if (!editor || dragging.current || blockMenu) return;
+    const found = blockAtPoint(editor, event.clientX, event.clientY);
+    if (!found) return;
+    const place = handlePlace(found.dom);
+    if (!place) return;
+    if (hovered?.pos !== found.pos || hovered.top !== place.top || hovered.left !== place.left) setHovered({ pos: found.pos, ...place });
+  }
+
+  /** Where the block being dragged would go for a point: a place between blocks and the line that shows it. */
+  function dropTarget(editor: Editor, unit: BlockUnit, x: number, y: number): { target: number; line: { top: number; left: number; width: number } } | null {
+    const box = wrapper.current?.getBoundingClientRect();
+    const doc = editor.state.doc;
+    if (!box) return null;
+    const found = blockAtPoint(editor, x, y);
+    if (!found) {
+      // Under the last block: the end of the page.
+      const last = doc.lastChild ? (editor.view.nodeDOM(doc.content.size - doc.lastChild.nodeSize) as HTMLElement | null) : null;
+      if (!last || y < last.getBoundingClientRect().bottom || !canPlace(doc, unit, doc.content.size)) return null;
+      const rect = last.getBoundingClientRect();
+      return { target: doc.content.size, line: { top: rect.bottom - box.top, left: rect.left - box.left, width: rect.width } };
+    }
+    let pos = found.pos;
+    let dom = found.dom;
+    // Inside the dragged blocks, or deeper than containers may go: the block that holds that place.
+    for (let guard = 0; guard < 4; guard++) {
+      const rect = dom.getBoundingClientRect();
+      const after = y > rect.top + rect.height / 2;
+      const target = after ? pos + doc.nodeAt(pos)!.nodeSize : pos;
+      if (target === unit.from || target === unit.to) return { target, line: { top: (after ? rect.bottom : rect.top) - box.top, left: rect.left - box.left, width: rect.width } };
+      if (canPlace(doc, unit, target)) return { target, line: { top: (after ? rect.bottom : rect.top) - box.top, left: rect.left - box.left, width: rect.width } };
+      const $pos = doc.resolve(pos);
+      if ($pos.depth === 0) return null;
+      pos = $pos.before($pos.depth);
+      const outer = editor.view.nodeDOM(pos);
+      if (!(outer instanceof HTMLElement)) return null;
+      dom = outer;
+    }
+    return null;
+  }
+
+  /** The ⋮⋮ handle pressed: a drag moves the block (and a list line's children); a click opens the block's menu. */
+  function grab(event: ReactMouseEvent<HTMLButtonElement>) {
+    const editor = editorRef.current;
+    if (!editor || !hovered || event.button !== 0) return;
+    event.preventDefault();
+    const unit = unitAt(editor.state.doc, hovered.pos);
+    const start = { x: event.clientX, y: event.clientY };
+    const button = event.currentTarget;
+    let target: number | null = null;
+    const move = (e: MouseEvent) => {
+      if (!dragging.current && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 4) return;
+      dragging.current = true;
+      const drop = dropTarget(editor, unit, e.clientX, e.clientY);
+      target = drop?.target ?? null;
+      setDropLine(drop?.line ?? null);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      setDropLine(null);
+      if (!dragging.current) {
+        setBlockMenu({ pos: unit.from, rect: button.getBoundingClientRect() });
+        return;
+      }
+      dragging.current = false;
+      setHovered(null);
+      if (target === null || target === unit.from || target === unit.to) return;
+      const tr = moveUnit(editor.state, unit, target, sources, { emoji: isEmoji });
+      if (tr) editor.view.dispatch(tr);
+      editor.commands.focus();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  /** ＋ beside the handle: an empty line under the block with the `/` menu open in it. */
+  function addBelow() {
+    const editor = editorRef.current;
+    if (!editor || !hovered) return;
+    const node = editor.state.doc.nodeAt(hovered.pos);
+    if (node?.type.name === "paragraph" && node.content.size === 0) {
+      editor.chain().focus().setTextSelection(hovered.pos + 1).insertContent("/").run();
+      return;
+    }
+    editor.view.dispatch(lineAfter(editor.state, unitAt(editor.state.doc, hovered.pos), "/"));
+    editor.commands.focus();
+  }
+
+  /** What the handle's menu does with its block. */
+  function blockAction(action: "duplicate" | "delete" | "up" | "down" | SlashKey | "text") {
+    const editor = editorRef.current;
+    const session = blockMenu;
+    setBlockMenu(null);
+    if (!editor || !session) return;
+    const node = editor.state.doc.nodeAt(session.pos);
+    if (!node) return;
+    const unit = unitAt(editor.state.doc, session.pos);
+    if (action === "duplicate") editor.view.dispatch(duplicateUnit(editor.state, unit, untied));
+    else if (action === "delete") editor.view.dispatch(deleteUnit(editor.state, unit));
+    else if (action === "up" || action === "down") {
+      editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(session.pos + 1))));
+      const tr = stepBlocks(editor.state, action === "up" ? -1 : 1, sources, { emoji: isEmoji });
+      if (tr) editor.view.dispatch(tr);
+    } else turnInto(editor, session.pos, node, action);
+    editor.commands.focus();
+  }
+
+  /** The block at `pos` turned into another kind (a line's kinds; a callout or toggle around it). */
+  function turnInto(editor: Editor, pos: number, node: PMNode, key: SlashKey | "text") {
+    const { schema } = editor.state;
+    if (key === "callout") {
+      editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.callout!.create({ icon: "💡" }, node)));
+      return;
+    }
+    if (key === "toggle") {
+      const title = node.isTextblock && node.inlineContent ? node.content : null;
+      const body = title ? schema.nodes.paragraph!.create() : node;
+      editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.toggle!.create(null, [schema.nodes.toggleTitle!.create(null, title), body])));
+      return;
+    }
+    setKind(editor.chain().focus().setTextSelection(pos + node.nodeSize - 1), key);
+  }
+
   const run = (action: (editor: Editor) => void) => () => {
     const editor = editorRef.current;
     if (editor) action(editor);
@@ -599,7 +777,20 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   return (
     <div className={cn("relative flex min-h-0 flex-col", className)} data-page-editor="">
       <OverflowToolbar tools={tools} label={t("composer.formatting")} className="sticky top-0 z-10 shrink-0 border-b border-line bg-canvas px-2 py-1" buttonClassName="h-7 w-7 shrink-0 text-muted hover:text-ink" />
-      <div ref={hostElement} className="page-editor-host min-h-[40vh] px-0 py-3" />
+      <div ref={wrapper} className="relative" onMouseMove={hover} onMouseLeave={(event) => { if (!dragging.current && !blockMenu && !(event.relatedTarget instanceof globalThis.Node && wrapper.current?.contains(event.relatedTarget))) setHovered(null); }}>
+        <div ref={hostElement} className="page-editor-host min-h-[40vh] px-0 py-3" />
+        {hovered && (
+          <div className="pe-handle absolute z-10 flex items-center" style={{ top: hovered.top, left: hovered.left }} data-block-handle="">
+            <button type="button" tabIndex={-1} aria-label={t("docs.wysiwyg.addBelow")} title={t("docs.wysiwyg.addBelow")} onMouseDown={(event) => event.preventDefault()} onClick={addBelow} className="grid h-6 w-5 place-items-center rounded text-muted hover:bg-panel hover:text-ink">
+              <Plus size={15} />
+            </button>
+            <button type="button" tabIndex={-1} aria-label={t("docs.wysiwyg.blockHandle")} title={t("docs.wysiwyg.blockHandleHint")} onMouseDown={grab} className="grid h-6 w-5 cursor-grab place-items-center rounded text-muted hover:bg-panel hover:text-ink active:cursor-grabbing">
+              <GripVertical size={15} />
+            </button>
+          </div>
+        )}
+        {dropLine && <div className="pointer-events-none absolute z-20 h-0.5 rounded bg-accent" style={{ top: dropLine.top - 1, left: dropLine.left, width: dropLine.width }} data-drop-line="" />}
+      </div>
       {portals.entries().map(([key, { dom, node }]) => createPortal(node, dom, key))}
       <input
         ref={picker}
@@ -654,6 +845,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
             setIconPick(null);
             editor?.commands.focus();
           }} />
+        </FloatingBox>
+      )}
+      {blockMenu && (
+        <FloatingBox rect={blockMenu.rect} onClose={() => { setBlockMenu(null); editorRef.current?.commands.focus(); }} width={240}>
+          <BlockMenu node={editorRef.current?.state.doc.nodeAt(blockMenu.pos) ?? null} canWrap={containerDepthAt(editorRef.current, blockMenu.pos) < 2} onPick={blockAction} />
         </FloatingBox>
       )}
       {linkEdit && (
@@ -740,6 +936,71 @@ function containerDepth(editor: Editor | null): number {
   let depth = 0;
   for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === "callout" || $from.node(d).type.name === "toggle") depth++;
   return depth;
+}
+
+/** How many callouts / toggles the block at `pos` would be in if it were wrapped in one more (theirs and its own). */
+function containerDepthAt(editor: Editor | null, pos: number): number {
+  if (!editor) return 0;
+  const $pos = editor.state.doc.resolve(pos);
+  let depth = 0;
+  for (let d = 1; d <= $pos.depth; d++) if ($pos.node(d).type.name === "callout" || $pos.node(d).type.name === "toggle") depth++;
+  const inner = (node: PMNode): number => {
+    let deepest = 0;
+    node.forEach((child) => (deepest = Math.max(deepest, inner(child))));
+    return deepest + (node.type.name === "callout" || node.type.name === "toggle" ? 1 : 0);
+  };
+  const node = editor.state.doc.nodeAt(pos);
+  return depth + (node ? inner(node) : 0);
+}
+
+/** The kinds a line turns into from the handle's menu (the `/` menu's kinds of line). */
+const TURN_INTO: ReadonlyArray<{ key: SlashKey | "text"; label: MessageKey }> = [
+  { key: "text", label: "docs.wysiwyg.text" },
+  { key: "h1", label: "docs.slash.h1" },
+  { key: "h2", label: "docs.slash.h2" },
+  { key: "h3", label: "docs.slash.h3" },
+  { key: "bullets", label: "docs.slash.bullets" },
+  { key: "numbered", label: "docs.slash.numbered" },
+  { key: "tasks", label: "docs.slash.tasks" },
+  { key: "quote", label: "docs.slash.quote" },
+  { key: "callout", label: "docs.slash.callout" },
+  { key: "toggle", label: "docs.slash.toggle" },
+  { key: "code", label: "docs.slash.code" },
+  { key: "math", label: "docs.slash.math" },
+];
+
+/** ⌘⇧ (macOS) or Ctrl+Shift+ (the others), before an arrow. */
+const moveKeys = () => (modKey() === "⌘" ? "⌘⇧" : "Ctrl+Shift+");
+
+/** The ⋮⋮ handle's menu: turn into (lines), duplicate, delete, move up / down. */
+function BlockMenu({ node, canWrap, onPick }: { node: PMNode | null; canWrap: boolean; onPick: (action: "duplicate" | "delete" | "up" | "down" | SlashKey | "text") => void }) {
+  const line = !!node && ["paragraph", "heading", "listLine", "codeBlock", "mathBlock"].includes(node.type.name);
+  const item = "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-panel focus-visible:bg-panel focus-visible:outline-none";
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => menu.current?.querySelector<HTMLButtonElement>("button")?.focus(), []);
+  return (
+    <div ref={menu} role="menu" aria-label={t("docs.wysiwyg.blockMenu")} className="max-h-[70vh] overflow-y-auto" onKeyDown={(event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+      const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      buttons[(at + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+    }}>
+      {line && (
+        <>
+          <div className="px-2 pb-0.5 pt-1 text-[11px] font-semibold text-muted">{t("docs.wysiwyg.turnInto")}</div>
+          {TURN_INTO.filter((kind) => canWrap || (kind.key !== "callout" && kind.key !== "toggle")).map((kind) => (
+            <button key={kind.key} type="button" role="menuitem" className={item} onClick={() => onPick(kind.key)}>{t(kind.label)}</button>
+          ))}
+          <div className="my-1 border-t border-line" />
+        </>
+      )}
+      <button type="button" role="menuitem" className={item} onClick={() => onPick("duplicate")}><Copy size={14} /> {t("docs.wysiwyg.duplicate")}</button>
+      <button type="button" role="menuitem" className={item} onClick={() => onPick("up")}><ArrowUp size={14} /> {t("docs.wysiwyg.moveUp")}<span className="ml-auto text-xs text-muted">{moveKeys()}↑</span></button>
+      <button type="button" role="menuitem" className={item} onClick={() => onPick("down")}><ArrowDown size={14} /> {t("docs.wysiwyg.moveDown")}<span className="ml-auto text-xs text-muted">{moveKeys()}↓</span></button>
+      <button type="button" role="menuitem" className={cn(item, "text-danger")} onClick={() => onPick("delete")}><Trash2 size={14} /> {t("docs.wysiwyg.deleteBlock")}</button>
+    </div>
+  );
 }
 
 function newTableFor(): Table {

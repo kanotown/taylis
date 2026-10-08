@@ -24,6 +24,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { ReactNode } from "react";
 
 import { calloutTone, listMarker } from "./markdown";
+import { stepBlocks } from "./pageEditorBlocks";
 import { listRun, pageToDoc, type RichNode, serializePage, type SourceView } from "./pageMarkdown";
 import { InlineCode, InlineMath, OnlyBold, OnlyItalic, OnlyLink, OnlyStrike } from "./RichEditor";
 
@@ -60,6 +61,8 @@ export class PortalRegistry {
 /** What the nodes ask of the page around the editor. */
 export interface PageEditorHost {
   portals: PortalRegistry;
+  /** The originals of the document as read (M151: blocks moved keep their source where it reads the same). */
+  sources: SourceMap;
   render: {
     pageLink(id: string, label: string): ReactNode;
     emoji(md: string): ReactNode;
@@ -695,6 +698,12 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
       const { $from } = editor.state.selection;
       return $from.parent;
     };
+    const moveStep = (direction: -1 | 1) => {
+      if (!host.editable()) return true;
+      const tr = stepBlocks(editor.state, direction, host.sources, { emoji: host.isEmoji });
+      if (tr) editor.view.dispatch(tr);
+      return true;
+    };
     return {
       Enter: () => {
         const { state } = editor;
@@ -768,6 +777,9 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
         if (node.attrs.level > 0) editor.commands.updateAttributes("listLine", { level: node.attrs.level - 1 });
         return true;
       },
+      // M151: the caret's block (or the selected blocks) one step up / down.
+      "Mod-Shift-ArrowUp": () => moveStep(-1),
+      "Mod-Shift-ArrowDown": () => moveStep(1),
       "Mod-s": () => {
         host.save();
         return true;
