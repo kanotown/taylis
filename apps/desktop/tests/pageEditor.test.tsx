@@ -16,7 +16,7 @@ import { Store } from "../src/sync/store";
 import { WikiHub } from "../src/sync/wiki";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { DocPage } from "../src/ui/DocPage";
-import { flattenPastedLists } from "../src/ui/PageEditor";
+import { pageHtmlFromPaste } from "../src/ui/pagePaste";
 import { docsEditorModeOf } from "../src/ui/prefs";
 import { DocsEditorModeSettings } from "../src/ui/Settings";
 import { FakeWiki, item, uid } from "./wikiFixtures";
@@ -292,7 +292,7 @@ describe("the setting and pasting", () => {
   });
 
   it("HTML lists pasted (nested, numbered, checkboxes) become flat list lines", () => {
-    const html = flattenPastedLists("<ul><li><p>一 <b>太</b></p><ul><li>二</li></ul></li></ul><ol><li>三</li></ol><ul><li><input type=\"checkbox\" checked>済</li></ul>");
+    const html = pageHtmlFromPaste("<ul><li><p>一 <b>太</b></p><ul><li>二</li></ul></li></ul><ol><li>三</li></ol><ul><li><input type=\"checkbox\" checked>済</li></ul>");
     const doc = new DOMParser().parseFromString(html, "text/html");
     const lines = [...doc.querySelectorAll("[data-list-line]")].map((el) => [el.getAttribute("data-kind"), el.getAttribute("data-level"), el.getAttribute("data-checked"), el.innerHTML]);
     expect(lines).toEqual([

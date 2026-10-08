@@ -14,7 +14,9 @@
  * headings, lists, quotes, code and the marks.
  *
  * M151 (WIKI.md §28): a ⋮⋮ handle and a ＋ beside the block under the pointer (drag to move it, click for its menu:
- * turn into, duplicate, move, delete; ＋ opens the `/` menu on a new line under it), ⌘⇧↑ / ⌘⇧↓ (ui/pageEditorBlocks.ts).
+ * turn into, duplicate, move, delete; ＋ opens the `/` menu on a new line under it), ⌘⇧↑ / ⌘⇧↓ (ui/pageEditorBlocks.ts);
+ * table cells edited in place with the table's tools above it (ui/pageEditorTable.ts); HTML from Notion, Word and
+ * Google Docs made into callouts, toggles, tables, list lines and checklists (ui/pagePaste.ts).
  */
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -47,6 +49,7 @@ import { blockPosAt, type BlockUnit, canPlace, deleteUnit, duplicateUnit, lineAf
 import { applyMerge, caretLine, createPageDocument, placeCaretAtLine } from "./pageEditorDoc";
 import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "./pageEditorSchema";
 import { PageIcon } from "./PageIcon";
+import { pageHtmlFromPaste } from "./pagePaste";
 import { PageLinkChip } from "./PageLinkChip";
 import { cn, modKey } from "./primitives";
 import { type MessageKey, t } from "../i18n";
@@ -210,7 +213,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
           const doc = editorRef.current!.schema.topNodeType.create(null, slice.content.childCount > 0 && slice.content.firstChild?.isInline ? editorRef.current!.schema.nodes.paragraph!.create(null, slice.content) : slice.content);
           return editorMarkdown(doc, new SourceMap()).text;
         },
-        transformPastedHTML: flattenPastedLists,
+        // M151: Notion, Word, Google Docs and web pages: callouts, toggles, tables, lists, checkboxes (ui/pagePaste.ts).
+        transformPastedHTML: (html) => pageHtmlFromPaste(html, containerDepth(editorRef.current)),
         handleDOMEvents: {
           compositionend: () => {
             saver.compositionEnded();
@@ -1055,40 +1059,4 @@ function BlockMenu({ node, canWrap, onPick }: { node: PMNode | null; canWrap: bo
 
 function newTableFor(): Table {
   return { align: [null, null, null], header: [1, 2, 3].map((n) => t("table.newColumn", { n })), rows: [["", "", ""], ["", "", ""]] };
-}
-
-/**
- * Lists pasted from web pages, Word or Google Docs (nested `ul` / `ol`) as the editor's flat list lines, keeping the
- * marks inside; checkboxes make checklist items.
- */
-export function flattenPastedLists(html: string): string {
-  if (!/<(ul|ol)\b/i.test(html) || typeof DOMParser === "undefined") return html;
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const flatten = (list: Element, level: number): Element[] => {
-    const out: Element[] = [];
-    for (const item of Array.from(list.children)) {
-      if (item.tagName !== "LI") continue;
-      const line = doc.createElement("div");
-      line.setAttribute("data-list-line", "");
-      const box = item.querySelector(":scope > input[type=checkbox], :scope > p > input[type=checkbox]") as HTMLInputElement | null;
-      line.setAttribute("data-kind", box ? "task" : list.tagName === "OL" ? "ordered" : "bullet");
-      line.setAttribute("data-level", String(Math.min(level, box ? 1 : 2)));
-      if (box?.checked) line.setAttribute("data-checked", "true");
-      const nested: Element[] = [];
-      for (const child of Array.from(item.childNodes)) {
-        if (child instanceof Element && (child.tagName === "UL" || child.tagName === "OL")) nested.push(child);
-        else if (child instanceof Element && child.tagName === "INPUT") continue;
-        else if (child instanceof Element && child.tagName === "P") line.append(...Array.from(child.childNodes));
-        else line.append(child);
-      }
-      out.push(line);
-      for (const sub of nested) out.push(...flatten(sub, level + 1));
-    }
-    return out;
-  };
-  for (const list of Array.from(doc.body.querySelectorAll("ul, ol"))) {
-    if (list.parentElement?.closest("ul, ol")) continue;
-    list.replaceWith(...flatten(list, 0));
-  }
-  return doc.body.innerHTML;
 }
