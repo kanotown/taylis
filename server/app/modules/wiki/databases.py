@@ -29,9 +29,10 @@ from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.doctext import body as doc_body
-from app.core.errors import AppError, bad_request, conflict
+from app.core.errors import AppError, bad_request, conflict, forbidden
 from app.core.ids import uuid7
 from app.core.time import utcnow
+from app.modules.audit import service as audit
 from app.modules.users.models import User
 from app.modules.wiki import access, events, ordering
 from app.modules.wiki import dbschema as ds
@@ -1352,13 +1353,22 @@ def _involved(record: WikiDatabase, data: SchemaChange) -> set[uuid.UUID]:
     return out
 
 
+def _needs_full(rank: int) -> None:
+    """M144 (WIKI.md §22.2): what loses data or changes another database stays with full access."""
+    if rank < access.LEVELS["full"]:
+        raise forbidden("page_manage_restricted", "Only people with full access can do this")
+
+
 async def change_schema(
     db: AsyncSession, actor: User, database_id: uuid.UUID, data: SchemaChange
 ) -> DatabaseOut:
-    """Add, rename, retype (converting every row), reorder and delete properties (full).
+    """Add, rename, retype (converting every row), reorder and delete properties.
+    M144 (WIKI.md §22.2): edit access adds, renames and reorders properties, adds options and
+    changes their names and colours and a number's format; deleting a property or an option,
+    changing a type and a two-way relation stay with full access (403 page_manage_restricted).
     409 wiki_schema_conflict when written on an older schema."""
     await access.lock_tree(db)
-    page, record, rank = await _load_database(db, actor, database_id, "full")
+    page, record, rank = await _load_database(db, actor, database_id, "edit")
     records = await _lock_records(db, _involved(record, data), share=False)
     record = records[page.id]
     if record.schema_version != data.base_schema_version:
@@ -1382,6 +1392,8 @@ async def change_schema(
             if op.type == "number":
                 prop["number_format"] = op.number_format or "number"
             if op.type == "relation":
+                if op.relation is not None and op.relation.two_way:
+                    _needs_full(rank)
                 target = await _relation_target(change, page.id, op.relation)
                 assert op.relation is not None
                 _link_relation(change, page.id, prop, target, op.relation)
@@ -1396,13 +1408,18 @@ async def change_schema(
                 old_options = prop.get("options", [])
                 prop["options"] = _options(op.options, old_options)
                 removed = {o["id"] for o in old_options} - {o["id"] for o in prop["options"]}
+                if removed:
+                    _needs_full(rank)  # the rows holding them lose the value
                 await _clear_options(change, page.id, prop, removed)
             if op.number_format is not None and prop["type"] == "number":
                 prop["number_format"] = op.number_format
         elif op.op == "retype":
             prop = change.find(page.id, op.id)
+            if prop["type"] != op.type or op.type == "relation":
+                _needs_full(rank)  # values convert, some go to wiki_props_legacy
             await _retype(change, page.id, prop, op.type, op.number_format, op.relation)
         elif op.op == "delete":
+            _needs_full(rank)
             prop = change.find(page.id, op.id)
             await _delete(change, page.id, prop)
         else:
@@ -1419,6 +1436,20 @@ async def change_schema(
         target_record.views = change.views[database]
         target_record.schema_version += 1
     await db.flush()
+    # M144: now that editors shape databases, who changed what is kept (WIKI.md §22.2).
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="wiki.schema_changed",
+        target_type="wiki_page",
+        target_id=page.id,
+        details={
+            "ops": [
+                {k: v for k, v in op.model_dump(mode="json").items() if k in ("op", "id", "type")}
+                for op in data.ops
+            ]
+        },
+    )
     await events.emit_rows_changed(db, change.changed)
     out = await _database_out(db, actor, record, rank)
     await db.commit()
@@ -1436,9 +1467,10 @@ def _check_view_id(view_id: str) -> None:
 async def put_view(
     db: AsyncSession, actor: User, database_id: uuid.UUID, view_id: str, data: ViewIn
 ) -> DatabaseOut:
-    """Save a view (create or replace; full). Everyone who reads the database sees it."""
+    """Save a view (create or replace; edit access since M144, WIKI.md §22.2). Everyone who reads
+    the database sees it."""
     _check_view_id(view_id)
-    page, _, rank = await _load_database(db, actor, database_id, "full")
+    page, _, rank = await _load_database(db, actor, database_id, "edit")
     record = (await _lock_records(db, [page.id], share=False))[page.id]
     doc = ds.view_doc(view_id.lower(), data.model_dump(mode="json"))
     _keep_restricted(doc, next((v for v in record.views if v["id"] == doc["id"]), None))
@@ -1458,6 +1490,14 @@ async def put_view(
     record.views = views
     record.schema_version += 1
     await db.flush()
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="wiki.view_saved",
+        target_type="wiki_page",
+        target_id=page.id,
+        details={"view_id": doc["id"], "type": doc.get("type")},
+    )
     await events.emit_rows_changed(db, [page.id])
     out = await _database_out(db, actor, record, rank)
     await db.commit()
@@ -1467,7 +1507,8 @@ async def put_view(
 async def delete_view(
     db: AsyncSession, actor: User, database_id: uuid.UUID, view_id: str
 ) -> DatabaseOut:
-    page, _, rank = await _load_database(db, actor, database_id, "full")
+    """Delete a view (edit access since M144); the last one stays (409 wiki_last_view)."""
+    page, _, rank = await _load_database(db, actor, database_id, "edit")
     record = (await _lock_records(db, [page.id], share=False))[page.id]
     views = [v for v in record.views if v["id"] != view_id]
     if len(views) == len(record.views):
@@ -1477,6 +1518,14 @@ async def delete_view(
     record.views = views
     record.schema_version += 1
     await db.flush()
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="wiki.view_deleted",
+        target_type="wiki_page",
+        target_id=page.id,
+        details={"view_id": view_id},
+    )
     await events.emit_rows_changed(db, [page.id])
     out = await _database_out(db, actor, record, rank)
     await db.commit()

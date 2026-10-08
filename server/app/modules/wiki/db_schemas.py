@@ -275,8 +275,9 @@ SchemaOp = Annotated[
 
 
 class SchemaChange(BaseModel):
-    """PATCH /wiki/databases/{id}/schema (full access). 409 wiki_schema_conflict when the
-    schema changed since `base_schema_version`: read it again and redo the change."""
+    """PATCH /wiki/databases/{id}/schema (edit access; deleting a property or an option, changing
+    a type and a two-way relation: full access). 409 wiki_schema_conflict when the schema changed
+    since `base_schema_version`: read it again and redo the change."""
 
     model_config = ConfigDict(extra="forbid")
 

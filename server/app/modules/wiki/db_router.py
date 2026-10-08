@@ -38,8 +38,11 @@ async def get_database(database_id: UUID, user: CurrentUser, db: Db) -> Database
 async def change_schema(
     database_id: UUID, user: CurrentUser, body: SchemaChange, db: Db
 ) -> DatabaseOut:
-    """Add, rename, retype (the values are converted), reorder or delete properties (full
-    access). 409 wiki_schema_conflict when written on an older schema_version."""
+    """Add, rename, retype (the values are converted), reorder or delete properties. Edit access
+    adds, renames and reorders properties, adds options and changes their names and colours and a
+    number's format; deleting a property or an option, changing a type and a two-way relation need
+    full access (403 page_manage_restricted). 409 wiki_schema_conflict when written on an older
+    schema_version."""
     return await databases.change_schema(db, user, database_id, body)
 
 
@@ -47,13 +50,13 @@ async def change_schema(
 async def put_view(
     database_id: UUID, view_id: str, user: CurrentUser, body: ViewIn, db: Db
 ) -> DatabaseOut:
-    """Save a view under the client's id (create or replace; full access)."""
+    """Save a view under the client's id (create or replace; edit access)."""
     return await databases.put_view(db, user, database_id, view_id, body)
 
 
 @router.delete("/wiki/databases/{database_id}/views/{view_id}", response_model=DatabaseOut)
 async def delete_view(database_id: UUID, view_id: str, user: CurrentUser, db: Db) -> DatabaseOut:
-    """Delete a view (full access; the last one stays: 409 wiki_last_view)."""
+    """Delete a view (edit access; the last one stays: 409 wiki_last_view)."""
     return await databases.delete_view(db, user, database_id, view_id)
 
 

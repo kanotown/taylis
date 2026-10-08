@@ -16374,7 +16374,7 @@
       },
       "SchemaChange": {
         "additionalProperties": false,
-        "description": "PATCH /wiki/databases/{id}/schema (full access). 409 wiki_schema_conflict when the\nschema changed since `base_schema_version`: read it again and redo the change.",
+        "description": "PATCH /wiki/databases/{id}/schema (edit access; deleting a property or an option, changing\na type and a two-way relation: full access). 409 wiki_schema_conflict when the schema changed\nsince `base_schema_version`: read it again and redo the change.",
         "properties": {
           "base_schema_version": {
             "title": "Base Schema Version",
@@ -37131,7 +37131,7 @@
     },
     "/api/v1/wiki/databases/{database_id}/schema": {
       "patch": {
-        "description": "Add, rename, retype (the values are converted), reorder or delete properties (full\naccess). 409 wiki_schema_conflict when written on an older schema_version.",
+        "description": "Add, rename, retype (the values are converted), reorder or delete properties. Edit access\nadds, renames and reorders properties, adds options and changes their names and colours and a\nnumber's format; deleting a property or an option, changing a type and a two-way relation need\nfull access (403 page_manage_restricted). 409 wiki_schema_conflict when written on an older\nschema_version.",
         "operationId": "change_schema_api_v1_wiki_databases__database_id__schema_patch",
         "parameters": [
           {
@@ -37190,7 +37190,7 @@
     },
     "/api/v1/wiki/databases/{database_id}/views/{view_id}": {
       "delete": {
-        "description": "Delete a view (full access; the last one stays: 409 wiki_last_view).",
+        "description": "Delete a view (edit access; the last one stays: 409 wiki_last_view).",
         "operationId": "delete_view_api_v1_wiki_databases__database_id__views__view_id__delete",
         "parameters": [
           {
@@ -37246,7 +37246,7 @@
         ]
       },
       "put": {
-        "description": "Save a view under the client's id (create or replace; full access).",
+        "description": "Save a view under the client's id (create or replace; edit access).",
         "operationId": "put_view_api_v1_wiki_databases__database_id__views__view_id__put",
         "parameters": [
           {
