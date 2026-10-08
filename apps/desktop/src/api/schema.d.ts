@@ -4976,6 +4976,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wiki/databases/{database_id}/default-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Default Template
+         * @description M145: the row template a new row starts from (edit access; null: none).
+         */
+        put: operations["set_default_template_api_v1_wiki_databases__database_id__default_template_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wiki/databases/{database_id}/export.csv": {
         parameters: {
             query?: never;
@@ -5048,7 +5068,9 @@ export interface paths {
         put?: never;
         /**
          * Create Row
-         * @description A new row at the end (edit access). 409 wiki_too_many_rows past 5,000.
+         * @description A new row at the end (edit access). 409 wiki_too_many_rows past 5,000. M145: from
+         *     `template_id` (404 template_not_found), else unless `blank` from the database's default
+         *     template; `is_template` makes a row template.
          */
         post: operations["create_row_api_v1_wiki_databases__database_id__rows_post"];
         delete?: never;
@@ -5117,6 +5139,9 @@ export interface paths {
         /**
          * Create Page
          * @description A new page: under a page I can edit, or (not guests) at the top level with `access`.
+         *     From a built-in template (`template_key`) or a page template I can read (`template_page_id`,
+         *     404 template_not_found): the placeholders are put in with `tz`, the files copied.
+         *     `is_template`: a page template (top level, not guests).
          */
         post: operations["create_page_api_v1_wiki_pages_post"];
         delete?: never;
@@ -5189,7 +5214,8 @@ export interface paths {
         head?: never;
         /**
          * Update Page
-         * @description Title and icon (edit level).
+         * @description Title, icon and (M145) `is_template` (edit level). 400 wiki_template_invalid: a page
+         *     template is a top-level page without subpages, a row template a row of its database.
          */
         patch: operations["update_page_api_v1_wiki_pages__page_id__patch"];
         trace?: never;
@@ -5213,6 +5239,28 @@ export interface paths {
          */
         put: operations["set_page_access_api_v1_wiki_pages__page_id__access_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/apply-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Page Template
+         * @description M145: 「テンプレートから始める」 on an empty page (edit): the template's body (placeholders
+         *     put in, files copied), and its title and icon when the page has none. 409
+         *     wiki_page_not_empty.
+         */
+        post: operations["apply_page_template_api_v1_wiki_pages__page_id__apply_template_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5254,6 +5302,28 @@ export interface paths {
          */
         put: operations["save_page_content_api_v1_wiki_pages__page_id__content_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Page
+         * @description M145: 「複製」 (beside the original) and 「テンプレートとして保存」 (`as_template`): the
+         *     title, icon, body, files (copied) and a row's values; not the subpages. Read the original,
+         *     edit where the copy goes. 400 wiki_cannot_duplicate for a database.
+         */
+        post: operations["duplicate_page_api_v1_wiki_pages__page_id__duplicate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5417,6 +5487,27 @@ export interface paths {
          *     harmless.
          */
         patch: operations["update_row_props_api_v1_wiki_rows__row_id__props_patch"];
+        trace?: never;
+    };
+    "/api/v1/wiki/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Templates
+         * @description M145 (WIKI.md §22.3): the page templates I can read (not in the tree) and the built-in
+         *     templates, for the gallery and the sidebar's 「テンプレート」.
+         */
+        get: operations["wiki_templates_api_v1_wiki_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/wiki/trash": {
@@ -8427,6 +8518,8 @@ export interface components {
          * @description GET /wiki/databases/{id}. `properties` in display order; the title property first.
          */
         DatabaseOut: {
+            /** Default Template Id */
+            default_template_id?: string | null;
             limits: components["schemas"]["DatabaseLimits"];
             /**
              * My Level
@@ -8444,6 +8537,8 @@ export interface components {
             row_count: number;
             /** Schema Version */
             schema_version: number;
+            /** Templates */
+            templates?: components["schemas"]["TemplateRef"][];
             /** Views */
             views: components["schemas"]["ViewOut"][];
         };
@@ -8535,6 +8630,15 @@ export interface components {
             memberships: number;
             /** Users */
             users: number;
+        };
+        /**
+         * DefaultTemplateIn
+         * @description PUT /wiki/databases/{id}/default-template (M145, edit): the row template a new row starts
+         *     from when POST …/rows names none (null: none).
+         */
+        DefaultTemplateIn: {
+            /** Template Id */
+            template_id: string | null;
         };
         /** DeleteProperty */
         DeleteProperty: {
@@ -9979,6 +10083,11 @@ export interface components {
             /** Inherit Access */
             inherit_access: boolean;
             /**
+             * Is Template
+             * @default false
+             */
+            is_template: boolean;
+            /**
              * Kind
              * @enum {string}
              */
@@ -10061,6 +10170,11 @@ export interface components {
             /** Icon */
             icon?: string | null;
             /**
+             * Is Template
+             * @default false
+             */
+            is_template: boolean;
+            /**
              * Kind
              * @default page
              * @enum {string}
@@ -10070,10 +10184,45 @@ export interface components {
             parent_id?: string | null;
             /** Template Key */
             template_key?: string | null;
+            /** Template Page Id */
+            template_page_id?: string | null;
             /** Title */
             title?: string | null;
             /** Tz */
             tz?: string | null;
+        };
+        /**
+         * PageDuplicate
+         * @description POST /wiki/pages/{id}/duplicate (M145, WIKI.md §22.3): 「複製」 and 「テンプレートとして
+         *     保存」. The title, icon and body (placeholders as they are) and the images and files (copied)
+         *     go; a row's values too. Child pages do not.
+         */
+        PageDuplicate: {
+            /** Access */
+            access?: ("workspace" | "private") | null;
+            /** After Id */
+            after_id?: string | null;
+            /** As Template */
+            as_template?: boolean | null;
+            /** Before Id */
+            before_id?: string | null;
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * PageDuplicateOut
+         * @description POST /wiki/pages/{id}/duplicate (M145): the copy; for a row also its cells.
+         */
+        PageDuplicateOut: {
+            page: components["schemas"]["PageOut"];
+            row: components["schemas"]["RowWithRefs"] | null;
         };
         /**
          * PageItem
@@ -10106,6 +10255,11 @@ export interface components {
             id: string;
             /** Inherit Access */
             inherit_access: boolean;
+            /**
+             * Is Template
+             * @default false
+             */
+            is_template: boolean;
             /**
              * Kind
              * @enum {string}
@@ -10174,6 +10328,11 @@ export interface components {
             id: string;
             /** Inherit Access */
             inherit_access: boolean;
+            /**
+             * Is Template
+             * @default false
+             */
+            is_template: boolean;
             /**
              * Kind
              * @enum {string}
@@ -10261,6 +10420,11 @@ export interface components {
             id: string;
             /** Inherit Access */
             inherit_access: boolean;
+            /**
+             * Is Template
+             * @default false
+             */
+            is_template: boolean;
             /**
              * Kind
              * @enum {string}
@@ -10467,6 +10631,8 @@ export interface components {
         PageUpdate: {
             /** Icon */
             icon?: string | null;
+            /** Is Template */
+            is_template?: boolean | null;
             /** Title */
             title?: string | null;
         };
@@ -11500,8 +11666,20 @@ export interface components {
             /** Items */
             items: components["schemas"]["RolloverPreviewItem"][];
         };
-        /** RowCreate */
+        /**
+         * RowCreate
+         * @description POST /wiki/databases/{id}/rows. M145 (WIKI.md §22.3): a new row starts from `template_id`,
+         *     else (unless `blank`) from the database's default template: its title, icon, body
+         *     (placeholders put in with `tz`), values (a date's 「今日」 and a person's 「自分」 put in) and
+         *     files. The given `props` (and a title that is not empty, and a body) win over the
+         *     template's.
+         */
         RowCreate: {
+            /**
+             * Blank
+             * @default false
+             */
+            blank: boolean;
             /** Body */
             body?: string | null;
             /**
@@ -11511,15 +11689,24 @@ export interface components {
             client_save_id: string;
             /** Icon */
             icon?: string | null;
+            /**
+             * Is Template
+             * @default false
+             */
+            is_template: boolean;
             /** Props */
             props?: {
                 [key: string]: unknown;
             };
+            /** Template Id */
+            template_id?: string | null;
             /**
              * Title
              * @default
              */
             title: string;
+            /** Tz */
+            tz?: string | null;
         };
         /**
          * RowDetailOut
@@ -12374,6 +12561,25 @@ export interface components {
             /** Tz */
             tz?: string | null;
         };
+        /**
+         * TemplateApply
+         * @description POST /wiki/pages/{id}/apply-template (M145): an empty page starts from a template
+         *     (「テンプレートから始める」): its body (placeholders put in with `tz`, files copied), and its
+         *     title and icon when the page has none. One of template_key and template_page_id.
+         */
+        TemplateApply: {
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /** Template Key */
+            template_key?: string | null;
+            /** Template Page Id */
+            template_page_id?: string | null;
+            /** Tz */
+            tz?: string | null;
+        };
         /** TemplateCreate */
         TemplateCreate: {
             /** Body */
@@ -12431,6 +12637,21 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * TemplateRef
+         * @description A row template of the database (M145, WIKI.md §22.3): open it as a page to edit it.
+         */
+        TemplateRef: {
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
         /** TemplateUpdate */
         TemplateUpdate: {
             /** Body */
@@ -12441,6 +12662,17 @@ export interface components {
             position?: number | null;
             /** Suggest In */
             suggest_in?: ("any" | "times") | null;
+        };
+        /**
+         * TemplatesOut
+         * @description GET /wiki/templates (M145): the page templates I can read (newest first) and the built-in
+         *     templates (CANVAS.md §4.12; create a page from one with `template_key`).
+         */
+        TemplatesOut: {
+            /** Builtins */
+            builtins: components["schemas"]["CanvasTemplateOut"][];
+            /** Pages */
+            pages: components["schemas"]["PageItem"][];
         };
         /** TemporaryPasswordOut */
         TemporaryPasswordOut: {
@@ -23066,6 +23298,41 @@ export interface operations {
             };
         };
     };
+    set_default_template_api_v1_wiki_databases__database_id__default_template_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultTemplateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_csv_api_v1_wiki_databases__database_id__export_csv_get: {
         parameters: {
             query?: {
@@ -23593,6 +23860,41 @@ export interface operations {
             };
         };
     };
+    apply_page_template_api_v1_wiki_pages__page_id__apply_template_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     page_backlinks_api_v1_wiki_pages__page_id__backlinks_get: {
         parameters: {
             query?: never;
@@ -23655,6 +23957,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageConflictResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_page_api_v1_wiki_pages__page_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageDuplicate"];
+            };
+        };
+        responses: {
+            /** @description A retry: the copy made before */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageDuplicateOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageDuplicateOut"];
                 };
             };
             /** @description Validation Error */
@@ -24001,6 +24347,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wiki_templates_api_v1_wiki_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplatesOut"];
                 };
             };
         };

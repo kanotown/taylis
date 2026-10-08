@@ -10,11 +10,20 @@ import type { DbRowDetail, DbRowRef, DbSchemaOp } from "../api/types";
 import type { AppController } from "../state/app";
 import { t } from "../i18n";
 import { CellDisplay, CellEditor, type DbCtx, Labelled, PropIcon, propName, RowChip } from "./DbCells";
+import { localZone, pageTitle, updatePage, wikiCall } from "./docsActions";
+import { TemplateBanner } from "./DocsTemplates";
 import { useWikiHub } from "./DocsTree";
 import { PopoverAnchor, PopoverContent, PopoverRoot } from "./primitives";
 import { databaseRights } from "./wikiDb";
 
-export function RowProperties({ controller, rowId, version, onOpenPage }: { controller: AppController; rowId: string; version: number; onOpenPage: (pageId: string) => void }) {
+export function RowProperties({ controller, rowId, version, onOpenPage, template = false }: {
+  controller: AppController;
+  rowId: string;
+  version: number;
+  onOpenPage: (pageId: string) => void;
+  /** M145: the row is a template of its database (「今日」 / 「自分」 in its cells, the banner and its actions). */
+  template?: boolean;
+}) {
   const hub = useWikiHub(controller);
   const [detail, setDetail] = useState<DbRowDetail | null>(null);
   const [failed, setFailed] = useState(false);
@@ -55,6 +64,7 @@ export function RowProperties({ controller, rowId, version, onOpenPage }: { cont
     refs,
     ...databaseRights(detail.database.my_level, controller.isGuest),
     openRow: onOpenPage,
+    template,
     setCell: async (row, propId, value) => {
       const api = controller.api;
       if (!api) return;
@@ -81,8 +91,29 @@ export function RowProperties({ controller, rowId, version, onOpenPage }: { cont
   };
   const row = detail.row;
   const props = detail.database.properties.filter((p) => p.type !== "title");
+  const database = detail.database.page_id;
+  // M145 (WIKI.md §22.3): a row template's actions.
+  const useTemplate = async () => {
+    const out = await wikiCall(controller, (api) => api.createWikiRow(database, { title: "", props: {}, template_id: rowId, blank: false, is_template: false, tz: localZone(), client_save_id: crypto.randomUUID() }));
+    if (out) onOpenPage(out.row.id);
+  };
+  const unset = async () => {
+    const page = await updatePage(controller, rowId, { is_template: false });
+    if (page) controller.setNotice(t("docs.tpl.unsetDone", { title: pageTitle(page, t("docs.untitled")) }));
+  };
+  const setDefault = async (on: boolean) => {
+    const next = await wikiCall(controller, (api) => api.setWikiDefaultTemplate(database, on ? rowId : null));
+    if (next) setDetail((current) => current && { ...current, database: next });
+  };
   return (
     <section aria-label={t("docs.db.rowProperties")} className="mt-4 border-b border-line pb-3" data-row-properties={rowId}>
+      {template && (
+        <div className="-mx-1 mb-3 overflow-hidden rounded-lg border border-line">
+          <TemplateBanner kind="row" canEdit={ctx.canEdit} isDefault={detail.database.default_template_id === rowId}
+            onUse={ctx.canEdit ? () => void useTemplate() : null} onUnset={() => void unset()} onDefault={(on) => void setDefault(on)}
+          />
+        </div>
+      )}
       {props.length === 0 && <p className="text-xs text-muted">{t("docs.db.noProperties")}</p>}
       {props.map((prop) => {
         const computed = prop.type === "created_time" || prop.type === "updated_time" || prop.type === "created_by" || prop.type === "updated_by";

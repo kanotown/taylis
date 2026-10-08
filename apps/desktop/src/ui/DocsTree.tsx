@@ -3,8 +3,9 @@
  * branches opened and closed (remembered on this device), ＋ for a new page at the top or below a page, ⋯ for a page's
  * actions, and pages dragged to another place (between two pages, or onto one to go inside it). A drop asks the server
  * first who would gain or lose access (DocsView's move dialog); only pages I have full access to can be dragged.
+ * M145 (WIKI.md §22.3): 「テンプレート」 below them (above the trash) lists the page templates I can read, with ＋ for a new one.
  */
-import { ChevronRight, Copy, FilePlus2, FolderInput, Lock, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { ChevronRight, Copy, FilePlus2, FolderInput, LayoutTemplate, Lock, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { type DragEvent, type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { PageItem } from "../api/types";
@@ -27,12 +28,14 @@ export function useWikiHub(controller: AppController): WikiHub | null {
   return hub;
 }
 
-export function DocsTree({ controller, selectedId, onOpen, onCreate, onMove, onTrash, onOpenTrash, className }: {
+export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTemplate = null, onMove, onTrash, onOpenTrash, className }: {
   controller: AppController;
   selectedId: string | null;
   onOpen: (pageId: string) => void;
   /** ＋: at the top of a section, or below a page. */
   onCreate: (where: { parentId: string | null; access: "workspace" | "private" }) => void;
+  /** M145: 「＋ 新しいテンプレート」 (null: not offered, e.g. a guest). */
+  onNewTemplate?: (() => void) | null;
   /** A drop: DocsView asks the server who would gain or lose access, then moves. */
   onMove: (pageId: string, target: MoveTarget) => void;
   onTrash: (page: PageItem) => void;
@@ -48,6 +51,7 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onMove, onT
   const [over, setOver] = useState<Over>(null);
   const [renaming, setRenaming] = useState<PageItem | null>(null);
   const guest = controller.isGuest;
+  useEffect(() => { void hub?.loadTemplates(); }, [hub]);
 
   // The open page's branches open (a link or a notification may open a page deep inside).
   const path = useMemo(() => (selectedId ? ancestorIds(pages, selectedId) : []), [pages, selectedId]);
@@ -209,6 +213,33 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onMove, onT
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         {section("shared", t("docs.shared"), <Users size={12} />, tree.shared, guest ? t("docs.sharedEmptyGuest") : t("docs.sharedEmpty"))}
         {section("private", t("docs.private"), <Lock size={12} />, tree.private, t("docs.privateEmpty"))}
+        <section aria-label={t("docs.tpl.section")} className="mb-3" data-templates>
+          <div className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <LayoutTemplate size={12} />
+            <span className="flex-1">{t("docs.tpl.section")}</span>
+            {onNewTemplate && (
+              <button type="button" aria-label={t("docs.tpl.new")} title={t("docs.tpl.new")} className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-ink/8 hover:text-ink" onClick={onNewTemplate}>
+                <Plus size={14} />
+              </button>
+            )}
+          </div>
+          {(hub?.templatePages() ?? []).length === 0 ? (
+            <p className="px-3 py-1 text-xs text-muted">{t("docs.tpl.empty")}</p>
+          ) : (
+            <ul aria-label={t("docs.tpl.section")}>
+              {(hub?.templatePages() ?? []).map((page) => (
+                <li key={page.id} data-template-row={page.id}>
+                  <button type="button" aria-current={page.id === selectedId ? "page" : undefined} onClick={() => onOpen(page.id)}
+                    className={cn("flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg pl-6 pr-1 text-left text-[13.5px]", page.id === selectedId ? "bg-accent-soft font-medium text-ink" : "hover:bg-panel-2")}
+                  >
+                    <PageIcon controller={controller} icon={page.icon} kind={page.kind} size={15} />
+                    <span className="truncate">{pageTitle(page, t("docs.untitled"))}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
       <div className="shrink-0 border-t border-line px-2 py-2">
         <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-muted hover:bg-panel-2 hover:text-ink" onClick={onOpenTrash}>

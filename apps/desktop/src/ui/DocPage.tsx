@@ -6,7 +6,7 @@
  * like a canvas (merge, conflict choices, retries) on the wiki endpoints. A page someone else edits comes in while
  * nothing is typed here. Offline, the page as last read shows read only.
  */
-import { ChevronRight, CloudOff, Copy, Download, FilePlus2, History, Link2, ListTree, Loader2, MoreHorizontal, Share2, SmilePlus, Table2, Trash2 } from "lucide-react";
+import { ChevronRight, CloudOff, Copy, CopyPlus, Download, FilePlus2, History, LayoutTemplate, Link2, ListTree, Loader2, MoreHorizontal, Share2, SmilePlus, Table2, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { describeError } from "../api/errors";
@@ -23,7 +23,8 @@ import { outline, toggleTaskLine } from "./canvasText";
 import { useCompact } from "./compact";
 import { pageRights } from "./docsAccess";
 import { DatabaseView } from "./DatabaseView";
-import { createChildRef, createPage, lookupPages, pageTitle, trashPage, updatePage, wikiCall } from "./docsActions";
+import { applyTemplate, createChildRef, createPage, lookupPages, pageTitle, trashPage, updatePage, wikiCall } from "./docsActions";
+import { DuplicateDialog, type DuplicateMode, TemplateBanner, TemplateGallery } from "./DocsTemplates";
 import { RowProperties } from "./RowProperties";
 import { PageRow } from "./DocsDialogs";
 import { useWikiHub } from "./DocsTree";
@@ -37,7 +38,7 @@ import { t } from "../i18n";
 
 type Mode = "view" | "edit";
 
-export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing = false, onShare, onTrash, onAddChild, embedded = false, onClosed }: {
+export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing = false, onShare, onTrash, onAddChild, embedded = false, onClosed, onUseTemplate }: {
   controller: AppController;
   pageId: string;
   onOpenPage: (pageId: string) => void;
@@ -52,6 +53,8 @@ export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing =
   embedded?: boolean;
   /** M123: the row went to the trash from here. */
   onClosed?: () => void;
+  /** M145: 「このテンプレートでページを作成」 on a page template (DocsView opens its gallery's choice). */
+  onUseTemplate?: (templateId: string) => void;
 }) {
   const hub = useWikiHub(controller);
   const [saver, setSaver] = useState<PageSaver | null>(null);
@@ -62,14 +65,14 @@ export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing =
     return held.release;
   }, [hub, pageId]);
   if (!hub || !saver) return <Centre><Loader2 size={22} className="animate-spin text-muted" /></Centre>;
-  return <PageView key={pageId} controller={controller} saver={saver} pageId={pageId} onOpenPage={onOpenPage} onBack={onBack ?? null} startEditing={startEditing} onShare={onShare} onTrash={onTrash} onAddChild={onAddChild} embedded={embedded} onClosed={onClosed} />;
+  return <PageView key={pageId} controller={controller} saver={saver} pageId={pageId} onOpenPage={onOpenPage} onBack={onBack ?? null} startEditing={startEditing} onShare={onShare} onTrash={onTrash} onAddChild={onAddChild} embedded={embedded} onClosed={onClosed} onUseTemplate={onUseTemplate} />;
 }
 
 function Centre({ children }: { children: ReactNode }) {
   return <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center text-sm text-muted">{children}</div>;
 }
 
-function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing, onShare, onTrash, onAddChild, embedded, onClosed }: {
+function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing, onShare, onTrash, onAddChild, embedded, onClosed, onUseTemplate }: {
   controller: AppController;
   saver: PageSaver;
   pageId: string;
@@ -81,6 +84,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   onAddChild: (parentId: string) => void;
   embedded: boolean;
   onClosed?: () => void;
+  onUseTemplate?: (templateId: string) => void;
 }) {
   const hub = useWikiHub(controller)!;
   const compact = useCompact() || embedded;
@@ -105,6 +109,9 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const editing = rights.edit && mode === "edit" && !!loaded && saver.status !== "gone";
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(true);
+  // M145 (WIKI.md §22.3): 「複製」 / 「テンプレートとして保存」 and an empty page's 「テンプレートから始める」.
+  const [duplicating, setDuplicating] = useState<DuplicateMode | null>(null);
+  const [applying, setApplying] = useState(false);
   useEffect(() => {
     if (saver.status === "conflict" || saver.status === "expired") setConflictOpen(true);
   }, [saver.status]);
@@ -134,6 +141,21 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
     createDatabase: () => createChildRef(controller, pageId, "database"),
   }), [controller, pageId]);
   const kind = meta?.kind ?? "page";
+  const isTemplate = !!meta?.is_template;
+  // A template is not in the tree: the page as read is what the trash and the dialogs take.
+  const item: PageItem | null = listed ?? (meta && "my_level" in meta ? meta : null);
+  const setTemplate = async (on: boolean) => {
+    const page = await updatePage(controller, pageId, { is_template: on });
+    if (page) controller.setNotice(on ? t("docs.tpl.madeRow", { title: pageTitle(page, t("docs.untitled")) }) : t("docs.tpl.unsetDone", { title: pageTitle(page, t("docs.untitled")) }));
+  };
+  const useTemplate = async () => {
+    if (onUseTemplate) {
+      onUseTemplate(pageId);
+      return;
+    }
+    const page = await createPage(controller, { parentId: null, access: "workspace", template: { kind: "page", id: pageId } });
+    if (page) onOpenPage(page.id);
+  };
   const databaseId = kind === "row" ? [...crumbs].reverse().find((c) => c.readable)?.id ?? null : null;
   const trashRow = async () => {
     if (!(await trashPage(controller, pageId))) return;
@@ -237,18 +259,23 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
               <MenuItem onSelect={() => void controller.copyPageLink(pageId)}><Link2 size={14} /> {t("canvas.copyLink")}</MenuItem>
               <MenuItem onSelect={() => setHistoryOpen(true)}><History size={14} /> {t("canvas.historyMenu")}</MenuItem>
               <MenuItem onSelect={() => void exportMarkdown()}><Download size={14} /> {t("docs.exportMarkdown")}</MenuItem>
-              {rights.edit && kind === "page" && <MenuItem onSelect={() => onAddChild(pageId)}><FilePlus2 size={14} /> {t("docs.addChild")}</MenuItem>}
-              {rights.edit && kind === "page" && <MenuItem onSelect={() => void addDatabase()}><Table2 size={14} /> {t("docs.db.addDatabase")}</MenuItem>}
+              {rights.edit && kind === "page" && !isTemplate && <MenuItem onSelect={() => onAddChild(pageId)}><FilePlus2 size={14} /> {t("docs.addChild")}</MenuItem>}
+              {rights.edit && kind === "page" && !isTemplate && <MenuItem onSelect={() => void addDatabase()}><Table2 size={14} /> {t("docs.db.addDatabase")}</MenuItem>}
+              {item && kind !== "database" && saver.status !== "gone" && <MenuItem onSelect={() => setDuplicating("copy")}><CopyPlus size={14} /> {t("docs.tpl.duplicate")}</MenuItem>}
+              {item && kind === "page" && !isTemplate && !controller.isGuest && saver.status !== "gone" && <MenuItem onSelect={() => setDuplicating("template")}><LayoutTemplate size={14} /> {t("docs.tpl.saveAs")}</MenuItem>}
+              {isTemplate && kind === "page" && <MenuItem onSelect={() => void useTemplate()}><FilePlus2 size={14} /> {t("docs.tpl.use")}</MenuItem>}
+              {rights.edit && kind === "row" && !isTemplate && <MenuItem onSelect={() => void setTemplate(true)}><LayoutTemplate size={14} /> {t("docs.tpl.makeRow")}</MenuItem>}
+              {rights.edit && isTemplate && <MenuItem onSelect={() => void setTemplate(false)}><LayoutTemplate size={14} /> {t("docs.tpl.unset")}</MenuItem>}
               {rights.edit && kind === "row" && (
                 <>
                   <MenuSeparator />
                   <MenuItem className="text-danger" onSelect={() => void trashRow()}><Trash2 size={14} /> {t("docs.db.trashRow")}</MenuItem>
                 </>
               )}
-              {rights.manage && listed && (
+              {rights.manage && item && kind !== "row" && (
                 <>
                   <MenuSeparator />
-                  <MenuItem className="text-danger" onSelect={() => onTrash(listed)}><Trash2 size={14} /> {t("canvas.moveToTrash")}</MenuItem>
+                  <MenuItem className="text-danger" onSelect={() => onTrash(item)}><Trash2 size={14} /> {t("canvas.moveToTrash")}</MenuItem>
                 </>
               )}
             </MenuContent>
@@ -264,6 +291,9 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
             </button>
           )}
         </div>
+      )}
+      {isTemplate && kind === "page" && (
+        <TemplateBanner kind="page" canEdit={rights.edit} isDefault={null} onUse={() => void useTemplate()} onUnset={() => void setTemplate(false)} onDefault={null} />
       )}
       {editing ? (
         <>
@@ -283,11 +313,14 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
             <article className={cn("mx-auto px-6 py-6 max-md:px-4 max-md:py-4", kind === "database" ? "max-w-none" : "max-w-3xl", embedded && "px-4 py-4")}>
               <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable={rights.edit && !!loaded} />
               {meta && <Byline controller={controller} page={meta} />}
-              {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} />}
+              {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} template={isTemplate} />}
               {text.trim() === "" ? (kind === "database" ? null : (
-                <p className="mt-6 text-sm text-muted">
-                  {t("canvas.emptyBody")}{rights.edit && loaded && <button type="button" className="text-accent hover:underline" onClick={() => setMode("edit")}>{t("canvas.startWriting")}</button>}
-                </p>
+                <div className="mt-6 text-sm text-muted">
+                  <p>{t("canvas.emptyBody")}{rights.edit && loaded && <button type="button" className="text-accent hover:underline" onClick={() => setMode("edit")}>{t("canvas.startWriting")}</button>}</p>
+                  {rights.edit && loaded && kind === "page" && (
+                    <Button size="sm" variant="secondary" className="mt-3" onClick={() => setApplying(true)}><LayoutTemplate size={14} /> {t("docs.tpl.applyTitle")}</Button>
+                  )}
+                </div>
               )) : (
                 <CanvasBody body={text} controller={controller} onToggleTask={offlineCopy ? null : onToggleTask} className="mt-5" />
               )}
@@ -298,7 +331,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
                   )}
                 />
               )}
-              {kind === "page" && <ChildList controller={controller} pages={children} canAdd={rights.edit && !!loaded} onOpen={onOpenPage} onAdd={() => onAddChild(pageId)} />}
+              {kind === "page" && !isTemplate && <ChildList controller={controller} pages={children} canAdd={rights.edit && !!loaded} onOpen={onOpenPage} onAdd={() => onAddChild(pageId)} />}
               <Backlinks controller={controller} pageId={pageId} version={meta?.version ?? 0} onOpen={onOpenPage} />
             </article>
           </div>
@@ -318,6 +351,14 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
             </nav>
           )}
         </div>
+      )}
+      {duplicating && item && (
+        <DuplicateDialog controller={controller} page={item} mode={duplicating} onClose={() => setDuplicating(null)} onDone={(copy) => onOpenPage(copy.id)} />
+      )}
+      {applying && (
+        <TemplateGallery controller={controller} title={t("docs.tpl.applyTitle")} description={t("docs.tpl.applyDescription")} blank={false} onClose={() => setApplying(false)}
+          onPick={(choice) => { if (choice.kind !== "blank") void applyTemplate(controller, pageId, choice); }}
+        />
       )}
       {historyOpen && history && <DocHistoryDialog controller={controller} source={history} rights={{ edit: rights.edit, erase: rights.manage }} onClose={() => setHistoryOpen(false)} />}
       {conflictOpen && saver.status === "conflict" && saver.conflict && (

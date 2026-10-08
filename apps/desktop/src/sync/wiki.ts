@@ -12,7 +12,7 @@
  *   back is one I cannot read (「アクセスできないページ」).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { PageContent, PageItem, PageMeta, PageOut, PageRef, PageSaveIn, PageSaveOut, WikiChangesOut, WikiChanged, WikiMentioned, WikiPageUpdated, WikiRowsChanged, WikiShared, WikiTreeOut } from "../api/types";
+import type { PageContent, PageItem, PageMeta, PageOut, PageRef, PageSaveIn, PageSaveOut, WikiChangesOut, WikiChanged, WikiMentioned, WikiPageUpdated, WikiRowsChanged, WikiShared, WikiTemplatesOut, WikiTreeOut } from "../api/types";
 import { CanvasSaver, type CanvasSaverOptions } from "./canvasSave";
 import type { Store } from "./store";
 import { applyChanges, buildTree, type WikiTree } from "./wikiTree";
@@ -23,6 +23,8 @@ export interface WikiApi {
   wikiPage(pageId: string, etag: string | null): Promise<PageOut | null>;
   saveWikiPage(pageId: string, body: PageSaveIn): Promise<PageSaveOut>;
   resolveWikiPages(ids: string[]): Promise<PageRef[]>;
+  /** M145: the page templates I can read (not in the tree) and the built-in ones. */
+  wikiTemplates?(): Promise<WikiTemplatesOut>;
 }
 
 /** idle: nothing asked yet; unsupported: a server before M120 (no `wiki` in bootstrap). */
@@ -59,6 +61,11 @@ export class WikiHub {
   /** M123: the open tables / calendars, by database id (wiki.rows.changed, and a reconnect, read them again). */
   private readonly rowListeners = new Map<string, Set<(event: WikiRowsChanged | null) => void>>();
   private stopped = false;
+  /** M145 (WIKI.md §22.3): GET /wiki/templates as last read (null: not read yet). Templates are not in the tree; once
+   * read, the list is read again after each wiki.changed (a template made, renamed, shared or put in the trash). */
+  templates: WikiTemplatesOut | null = null;
+  private templatesRead: Promise<void> | null = null;
+  private templatesTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly deps: {
@@ -231,23 +238,82 @@ export class WikiHub {
     }
   }
 
-  /** An answer of mine (create, rename, move, restore, takeover): into the tree now, before the feed says so. */
+  /** An answer of mine (create, rename, move, restore, takeover): into the tree now, before the feed says so. A
+   * template (M145) goes to the template list instead (and leaves the tree when a page became one). */
   upsert(page: PageItem | PageOut): void {
     if (page.kind === "row") return;
+    const { body: _body, breadcrumbs: _crumbs, children: _children, ...item } = page as PageOut;
+    if (page.is_template) {
+      this.pagesById.delete(page.id);
+      this.upsertTemplate(item);
+      this.persistTree();
+      this.changed();
+      return;
+    }
+    this.dropTemplate(page.id);
     const current = this.pagesById.get(page.id);
     if (current && current.version > page.version) return;
-    const { body: _body, breadcrumbs: _crumbs, children: _children, ...item } = page as PageOut;
     this.pagesById.set(page.id, item);
     this.refs.delete(page.id);
     this.persistTree();
     this.changed();
   }
 
-  /** A page I moved to the trash: gone from the tree with what was below it. */
+  /** A page I moved to the trash: gone from the tree with what was below it (or from the templates). */
   remove(pageId: string): void {
     this.pagesById = applyChanges(this.pagesById, { pages: [], removed: [pageId] });
+    this.dropTemplate(pageId);
     this.persistTree();
     this.changed();
+  }
+
+  // --- templates (M145) ---------------------------------------------------------------------------
+
+  /** The page templates I can read, newest first ([] until read: call loadTemplates). */
+  templatePages(): readonly PageItem[] {
+    return this.templates?.pages ?? [];
+  }
+
+  /** GET /wiki/templates (one read at a time). */
+  loadTemplates(): Promise<void> {
+    const api = this.deps.api;
+    if (!api?.wikiTemplates || this.state === "unsupported") return Promise.resolve();
+    if (this.templatesRead) return this.templatesRead;
+    const read = (async () => {
+      try {
+        const answer = await api.wikiTemplates!();
+        if (this.stopped) return;
+        this.templates = answer;
+        this.changed();
+      } catch (err) {
+        if (!isRetryable(err)) console.warn("could not read the Docs templates", err);
+      } finally {
+        this.templatesRead = null;
+      }
+    })();
+    this.templatesRead = read;
+    return read;
+  }
+
+  private scheduleTemplates(delay = this.deps.options?.feedDelayMs ?? 300): void {
+    if (this.templates === null || this.templatesTimer) return;
+    this.templatesTimer = setTimeout(() => {
+      this.templatesTimer = null;
+      void this.loadTemplates();
+    }, delay);
+  }
+
+  private upsertTemplate(page: PageItem): void {
+    const list = this.templates ?? { pages: [], builtins: [] };
+    const rest = list.pages.filter((p) => p.id !== page.id);
+    const current = list.pages.find((p) => p.id === page.id);
+    if (current && current.version > page.version) return;
+    this.templates = { ...list, pages: current ? list.pages.map((p) => (p.id === page.id ? page : p)) : [page, ...rest] };
+  }
+
+  private dropTemplate(pageId: string): void {
+    if (!this.templates?.pages.some((p) => p.id === pageId)) return;
+    this.templates = { ...this.templates, pages: this.templates.pages.filter((p) => p.id !== pageId) };
   }
 
   private persistTree(): void {
@@ -280,6 +346,7 @@ export class WikiHub {
       return;
     }
     if (event === "wiki.changed") {
+      this.scheduleTemplates();
       const seq = (data as WikiChanged).seq;
       if (this.cursor === null) {
         if (this.state !== "unsupported") void this.loadTree();
@@ -297,6 +364,11 @@ export class WikiHub {
 
   /** wiki.page.updated: title, icon, version and counts (its place comes from the feed: `parent_id` there is null). */
   private applyMeta(meta: PageMeta): void {
+    const template = this.templates?.pages.find((p) => p.id === meta.id);
+    if (template && template.version < meta.version) {
+      this.upsertTemplate({ ...template, title: meta.title, icon: meta.icon, version: meta.version, head_rev_id: meta.head_rev_id, updated_at: meta.updated_at, updated_by: meta.updated_by });
+      this.changed();
+    }
     const current = this.pagesById.get(meta.id);
     const ref = this.refs.get(meta.id);
     if (ref) this.refs.set(meta.id, { ...ref, title: meta.title, icon: meta.icon });
@@ -508,8 +580,8 @@ export class WikiHub {
 
   stop(): void {
     this.stopped = true;
-    for (const timer of [this.catchUpTimer, this.resolveTimer, this.persistTimer]) if (timer) clearTimeout(timer);
-    this.catchUpTimer = this.resolveTimer = this.persistTimer = null;
+    for (const timer of [this.catchUpTimer, this.resolveTimer, this.persistTimer, this.templatesTimer]) if (timer) clearTimeout(timer);
+    this.catchUpTimer = this.resolveTimer = this.persistTimer = this.templatesTimer = null;
     for (const saver of this.savers.values()) saver.dispose();
     this.savers.clear();
     this.holds.clear();

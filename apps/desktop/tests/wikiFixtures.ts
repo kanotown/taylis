@@ -30,6 +30,7 @@ export function item(id: string, patch: Partial<PageItem> = {}): PageItem {
     deleted_at: null,
     my_level: "full",
     private: false,
+    is_template: false,
     ...patch,
   };
 }

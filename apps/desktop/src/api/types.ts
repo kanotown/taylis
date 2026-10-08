@@ -472,6 +472,12 @@ export type DbRowDetail = components["schemas"]["RowDetailOut"];
 export type DbSchemaChange = components["schemas"]["SchemaChange"];
 export type DbSchemaOp = DbSchemaChange["ops"][number];
 export type DbRowCreate = components["schemas"]["RowCreate"];
+// M145 (WIKI.md §22.3): templates and copies.
+export type WikiTemplatesOut = components["schemas"]["TemplatesOut"];
+export type DbTemplateRef = components["schemas"]["TemplateRef"];
+export type PageDuplicate = components["schemas"]["PageDuplicate"];
+export type PageDuplicateOut = components["schemas"]["PageDuplicateOut"];
+export type PageTemplateApply = components["schemas"]["TemplateApply"];
 /** wiki.rows.changed (who can read the database): its rows, values, schema or views changed. */
 export interface WikiRowsChanged {
   database_id: string;

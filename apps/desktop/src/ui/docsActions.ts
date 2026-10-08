@@ -3,7 +3,7 @@
  * and putting what the server answered into the tree at once (the change feed says the same a moment later).
  */
 import type { ApiClient } from "../api/client";
-import type { PageCreate, PageItem, PageMove, PageOut, PageRef, WikiAccessOut, WikiAccessUpdate, WikiMoveOut } from "../api/types";
+import type { PageCreate, PageDuplicate, PageDuplicateOut, PageItem, PageMove, PageOut, PageRef, WikiAccessOut, WikiAccessUpdate, WikiMoveOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { MoveTarget } from "../sync/wikiTree";
 
@@ -20,15 +20,26 @@ export async function wikiCall<T>(controller: AppController, run: (api: ApiClien
 
 const hub = (controller: AppController) => controller.engine?.wiki ?? null;
 
-/** A new page: at the top level (`access` for 「共有」 / 「プライベート」, §4.2) or below `parentId` (it inherits). */
-export async function createPage(controller: AppController, options: { parentId?: string | null; access?: "workspace" | "private"; title?: string | null; afterId?: string | null; kind?: "page" | "database" }): Promise<PageOut | null> {
+/** The client's IANA zone, for a template's {{date}} / {{time}} and a row template's 「今日」. */
+export const localZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Where a new page starts from (M145, WIKI.md §22.3): empty, a built-in template, or a page template. */
+export type TemplateChoice = { kind: "blank" } | { kind: "builtin"; key: string } | { kind: "page"; id: string };
+
+/** A new page: at the top level (`access` for 「共有」 / 「プライベート」, §4.2) or below `parentId` (it inherits). M145: from a
+ * template (`template`), or a page template itself (`isTemplate`, top level only). */
+export async function createPage(controller: AppController, options: { parentId?: string | null; access?: "workspace" | "private"; title?: string | null; afterId?: string | null; kind?: "page" | "database"; template?: TemplateChoice; isTemplate?: boolean }): Promise<PageOut | null> {
+  const template = options.template ?? { kind: "blank" };
   const body: PageCreate = {
     kind: options.kind ?? "page",
     parent_id: options.parentId ?? null,
     access: options.access ?? "workspace",
     title: options.title ?? null,
     after_id: options.afterId ?? null,
-    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    tz: localZone(),
+    is_template: options.isTemplate ?? false,
+    template_key: template.kind === "builtin" ? template.key : null,
+    template_page_id: template.kind === "page" ? template.id : null,
     client_save_id: crypto.randomUUID(),
   };
   const page = await wikiCall(controller, (api) => api.createWikiPage(body));
@@ -44,11 +55,33 @@ export async function createChildRef(controller: AppController, parentId: string
   return { id: page.id, title: page.title, icon: page.icon, kind: page.kind };
 }
 
-export async function updatePage(controller: AppController, pageId: string, patch: { title?: string; icon?: string }): Promise<PageOut | null> {
+export async function updatePage(controller: AppController, pageId: string, patch: { title?: string; icon?: string; is_template?: boolean }): Promise<PageOut | null> {
   const page = await wikiCall(controller, (api) => api.updateWikiPage(pageId, patch));
   if (page) {
     hub(controller)?.upsert(page);
     hub(controller)?.current(pageId)?.applyMeta(page);
+  }
+  return page;
+}
+
+/** M145: 「複製」 (beside the original unless `parent_id`) and 「テンプレートとして保存」 (`as_template`). */
+export async function duplicatePage(controller: AppController, pageId: string, options: Omit<PageDuplicate, "client_save_id"> = {}): Promise<PageDuplicateOut | null> {
+  const out = await wikiCall(controller, (api) => api.duplicateWikiPage(pageId, { ...options, client_save_id: crypto.randomUUID() }));
+  if (out) hub(controller)?.upsert(out.page);
+  return out;
+}
+
+/** M145: 「テンプレートから始める」 on an empty page. */
+export async function applyTemplate(controller: AppController, pageId: string, template: Exclude<TemplateChoice, { kind: "blank" }>): Promise<PageOut | null> {
+  const page = await wikiCall(controller, (api) => api.applyWikiTemplate(pageId, {
+    template_key: template.kind === "builtin" ? template.key : null,
+    template_page_id: template.kind === "page" ? template.id : null,
+    tz: localZone(),
+    client_save_id: crypto.randomUUID(),
+  }));
+  if (page) {
+    hub(controller)?.upsert(page);
+    hub(controller)?.current(pageId)?.remoteVersion(page.version);
   }
   return page;
 }
