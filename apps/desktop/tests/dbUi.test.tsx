@@ -12,7 +12,7 @@ import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { DatabaseView } from "../src/ui/DatabaseView";
-import { type DbCtx, RelationPicker } from "../src/ui/DbCells";
+import { type DbCtx, PropertyDialog, RelationPicker } from "../src/ui/DbCells";
 import { RowProperties } from "../src/ui/RowProperties";
 
 let compact = false;
@@ -142,6 +142,74 @@ describe("the table", () => {
   });
 });
 
+describe("who shapes the database (M144)", () => {
+  const renderAt = async (level: DatabaseOut["my_level"], isGuest = false) => {
+    const { api: fake } = api(TABLE, { wikiDatabase: vi.fn(async () => database(TABLE, level)) });
+    const { controller } = fakeController(fake);
+    (controller as { isGuest: boolean }).isGuest = isGuest;
+    render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
+    await settle();
+  };
+
+  it("edit access adds views and properties (the header's ＋ too)", async () => {
+    await renderAt("edit");
+    expect(screen.getByRole("button", { name: "ビューを追加" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ビューのメニュー" })).toBeTruthy();
+    const table = document.querySelector("[data-db-table]") as HTMLElement;
+    expect(within(table).getByRole("button", { name: "プロパティを追加" })).toBeTruthy();
+  });
+
+  it("view only, and a guest even with full access: no view or property controls", async () => {
+    await renderAt("view");
+    expect(screen.queryByRole("button", { name: "ビューを追加" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "プロパティを追加" })).toBeNull();
+    cleanup();
+    await renderAt("full", true);
+    expect(screen.queryByRole("button", { name: "ビューを追加" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ビューのメニュー" })).toBeNull();
+  });
+
+  const dialog = (canDestroy: boolean, prop: DbProperty | null, changeSchema = vi.fn(async () => null)) => {
+    const { controller } = fakeController({});
+    const ctx: DbCtx = { controller, database: database(TABLE, canDestroy ? "full" : "edit"), refs: new Map(), canEdit: true, canShape: true, canDestroy, setCell: async () => {}, changeSchema, openRow: () => {} };
+    render(<PropertyDialog ctx={ctx} prop={prop} databases={[{ id: "db", title: "論文" }, { id: "people", title: "著者" }]} onClose={() => {}} />);
+    return changeSchema;
+  };
+
+  it("an editor renames and adds options, but neither deletes, retypes nor removes saved options", async () => {
+    const changeSchema = dialog(false, PROPS[1]!);
+    expect((screen.getByLabelText("種類") as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /プロパティを削除/ })).toBeNull();
+    expect(screen.queryAllByRole("button", { name: "外す" })).toHaveLength(0);
+    expect(document.querySelector("[data-full-only-note]")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /選択肢を追加/ }));
+    expect(screen.getAllByRole("button", { name: "外す" })).toHaveLength(1); // the new, unsaved one
+    const names = screen.getAllByLabelText("選択肢の名前") as HTMLInputElement[];
+    fireEvent.change(names.at(-1)!, { target: { value: "書いた" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await settle();
+    expect(changeSchema).toHaveBeenCalledWith([{ op: "update", id: "stage", options: [{ id: "o1", name: "読む", color: "blue" }, { id: "o2", name: "読んだ", color: "green" }, { name: "書いた", color: expect.any(String) }] }]);
+  });
+
+  it("an editor's new relation is one-way (no two-way choice)", () => {
+    dialog(false, null);
+    fireEvent.change(screen.getByLabelText("種類"), { target: { value: "relation" } });
+    expect(screen.queryByText("相手のデータベースにも表示する（双方向）")).toBeNull();
+  });
+
+  it("full access: delete, retype, remove options, two-way", () => {
+    dialog(true, PROPS[1]!);
+    expect((screen.getByLabelText("種類") as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: /プロパティを削除/ })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "外す" })).toHaveLength(2);
+    expect(document.querySelector("[data-full-only-note]")).toBeNull();
+    cleanup();
+    dialog(true, null);
+    fireEvent.change(screen.getByLabelText("種類"), { target: { value: "relation" } });
+    expect(screen.getByText("相手のデータベースにも表示する（双方向）")).toBeTruthy();
+  });
+});
+
 describe("the calendar", () => {
   it("asks for the six weeks on screen; a range spans its days across weeks", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 7, 12) });
@@ -183,7 +251,7 @@ describe("the relation picker", () => {
     const setCell = vi.fn(async () => {});
     const ctx: DbCtx = {
       controller, database: database(TABLE), refs: new Map([["a1", { id: "a1", database_id: "people", title: "Vaswani", icon: null }]]),
-      canEdit: true, canManage: false, setCell, changeSchema: async () => null, openRow: () => {},
+      canEdit: true, canShape: false, canDestroy: false, setCell, changeSchema: async () => null, openRow: () => {},
     };
     render(<RelationPicker ctx={ctx} prop={PROPS[4]!} row={ROWS[0]!} />);
     await settle(250);
@@ -197,7 +265,7 @@ describe("the relation picker", () => {
   it("a relation to a database I cannot read: nothing to pick", async () => {
     const { controller } = fakeController({ wikiRelationCandidates: vi.fn(async () => []) });
     const prop = p("secret", "メモ", "relation", { relation: { database_id: null, database_title: null, pair_id: null, primary: true } });
-    const ctx: DbCtx = { controller, database: database(TABLE), refs: new Map(), canEdit: true, canManage: false, setCell: async () => {}, changeSchema: async () => null, openRow: () => {} };
+    const ctx: DbCtx = { controller, database: database(TABLE), refs: new Map(), canEdit: true, canShape: false, canDestroy: false, setCell: async () => {}, changeSchema: async () => null, openRow: () => {} };
     render(<RelationPicker ctx={ctx} prop={prop} row={row("x", "x", {}, { hidden_relations: ["secret"] })} />);
     await settle();
     expect(screen.getByText("相手のデータベースを読めません")).toBeTruthy();

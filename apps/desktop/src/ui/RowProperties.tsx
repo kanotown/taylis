@@ -12,6 +12,7 @@ import { t } from "../i18n";
 import { CellDisplay, CellEditor, type DbCtx, Labelled, PropIcon, propName, RowChip } from "./DbCells";
 import { useWikiHub } from "./DocsTree";
 import { PopoverAnchor, PopoverContent, PopoverRoot } from "./primitives";
+import { databaseRights } from "./wikiDb";
 
 export function RowProperties({ controller, rowId, version, onOpenPage }: { controller: AppController; rowId: string; version: number; onOpenPage: (pageId: string) => void }) {
   const hub = useWikiHub(controller);
@@ -52,8 +53,7 @@ export function RowProperties({ controller, rowId, version, onOpenPage }: { cont
     controller,
     database: detail.database,
     refs,
-    canEdit: detail.database.my_level !== "view",
-    canManage: detail.database.my_level === "full" && !controller.isGuest,
+    ...databaseRights(detail.database.my_level, controller.isGuest),
     openRow: onOpenPage,
     setCell: async (row, propId, value) => {
       const api = controller.api;

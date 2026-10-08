@@ -2816,6 +2816,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "docs.db.propName": "Name",
   "docs.db.propType": "Type",
   "docs.db.retypeNote": "Changing the type converts every row's value. Values that can't be converted are kept for 30 days and come back if you change the type back.",
+  "docs.db.fullOnlyNote": "Only people with full access can change the type, delete a property or an option, or make a two-way relation.",
   "docs.db.numberFormat": "Number format",
   "docs.db.format.number": "Number",
   "docs.db.format.integer": "Integer",

@@ -5072,8 +5072,11 @@ export interface paths {
         head?: never;
         /**
          * Change Schema
-         * @description Add, rename, retype (the values are converted), reorder or delete properties (full
-         *     access). 409 wiki_schema_conflict when written on an older schema_version.
+         * @description Add, rename, retype (the values are converted), reorder or delete properties. Edit access
+         *     adds, renames and reorders properties, adds options and changes their names and colours and a
+         *     number's format; deleting a property or an option, changing a type and a two-way relation need
+         *     full access (403 page_manage_restricted). 409 wiki_schema_conflict when written on an older
+         *     schema_version.
          */
         patch: operations["change_schema_api_v1_wiki_databases__database_id__schema_patch"];
         trace?: never;
@@ -5088,13 +5091,13 @@ export interface paths {
         get?: never;
         /**
          * Put View
-         * @description Save a view under the client's id (create or replace; full access).
+         * @description Save a view under the client's id (create or replace; edit access).
          */
         put: operations["put_view_api_v1_wiki_databases__database_id__views__view_id__put"];
         post?: never;
         /**
          * Delete View
-         * @description Delete a view (full access; the last one stays: 409 wiki_last_view).
+         * @description Delete a view (edit access; the last one stays: 409 wiki_last_view).
          */
         delete: operations["delete_view_api_v1_wiki_databases__database_id__views__view_id__delete"];
         options?: never;
@@ -11770,8 +11773,9 @@ export interface components {
         };
         /**
          * SchemaChange
-         * @description PATCH /wiki/databases/{id}/schema (full access). 409 wiki_schema_conflict when the
-         *     schema changed since `base_schema_version`: read it again and redo the change.
+         * @description PATCH /wiki/databases/{id}/schema (edit access; deleting a property or an option, changing
+         *     a type and a two-way relation: full access). 409 wiki_schema_conflict when the schema changed
+         *     since `base_schema_version`: read it again and redo the change.
          */
         SchemaChange: {
             /** Base Schema Version */

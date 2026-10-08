@@ -1,6 +1,6 @@
 /**
  * M123 (WIKI.md §5): a database's cells — how each type shows, the editors (text, number, URL, select and multi-select
- * with new options for managers, dates with an end and a time, people, the relation picker that searches only rows I
+ * with new options for editors (M144), dates with an end and a time, people, the relation picker that searches only rows I
  * can read), the property icons, and the dialog that adds, renames, retypes or deletes a property.
  *
  * A relation cell shows the linked rows I can read; links to rows I cannot read are one 「アクセスできないページ」
@@ -23,7 +23,10 @@ export interface DbCtx {
   database: DatabaseOut;
   refs: ReadonlyMap<string, DbRowRef>;
   canEdit: boolean;
-  canManage: boolean;
+  /** M144: add / rename / reorder properties, add options, views (edit). */
+  canShape: boolean;
+  /** M144: delete a property or an option, change a type, a two-way relation (full). */
+  canDestroy: boolean;
   /** Write one cell (the last write wins on the server). */
   setCell(row: DbRow, propId: string, value: unknown): Promise<void>;
   /** A schema change on the database's current version (null: refused, the error shown). */
@@ -253,12 +256,12 @@ function OptionEditor({ ctx, prop, value, onSet }: { ctx: DbCtx; prop: DbPropert
   };
   return (
     <div className="w-64 p-1.5">
-      <Input autoFocus aria-label={t("docs.db.findOption")} placeholder={ctx.canManage ? t("docs.db.findOrCreateOption") : t("docs.db.findOption")} value={q} onChange={(event) => setQ(event.target.value)} className="mb-1 h-8 text-sm"
+      <Input autoFocus aria-label={t("docs.db.findOption")} placeholder={ctx.canShape ? t("docs.db.findOrCreateOption") : t("docs.db.findOption")} value={q} onChange={(event) => setQ(event.target.value)} className="mb-1 h-8 text-sm"
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing) {
             event.preventDefault();
-            if (shown[0] && (exact || !ctx.canManage)) toggle(shown[0].id);
-            else if (ctx.canManage) void create();
+            if (shown[0] && (exact || !ctx.canShape)) toggle(shown[0].id);
+            else if (ctx.canShape) void create();
           }
         }}
       />
@@ -272,12 +275,12 @@ function OptionEditor({ ctx, prop, value, onSet }: { ctx: DbCtx; prop: DbPropert
           </li>
         ))}
       </ul>
-      {ctx.canManage && q.trim() && !exact && (
+      {ctx.canShape && q.trim() && !exact && (
         <button type="button" className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-panel" onClick={() => void create()}>
           <Plus size={13} /> {t("docs.db.createOption", { name: q.trim() })}
         </button>
       )}
-      {!ctx.canManage && prop.options.length === 0 && <p className="px-2 py-1 text-xs text-muted">{t("docs.db.noOptions")}</p>}
+      {!ctx.canShape && prop.options.length === 0 && <p className="px-2 py-1 text-xs text-muted">{t("docs.db.noOptions")}</p>}
     </div>
   );
 }
@@ -441,9 +444,11 @@ export function PropertyDialog({ ctx, prop, databases, onClose }: { ctx: DbCtx; 
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isTitle = prop?.type === "title";
+  // M144 (WIKI.md §22.2): editors add and rename; what loses values or reaches another database is full access.
+  const destroy = ctx.canDestroy;
   const retyping = !!prop && prop.type !== type;
   const hasOptions = type === "select" || type === "multi_select";
-  const relation = type === "relation" && (!prop || retyping) ? { database_id: target, two_way: twoWay, pair_name: pairName } : undefined;
+  const relation = type === "relation" && (!prop || retyping) ? { database_id: target, two_way: destroy && twoWay, pair_name: pairName } : undefined;
   const save = async () => {
     setBusy(true);
     const opts = options.filter((o) => o.name.trim()).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name.trim(), color: o.color }));
@@ -477,7 +482,7 @@ export function PropertyDialog({ ctx, prop, databases, onClose }: { ctx: DbCtx; 
           <Input autoFocus value={name} maxLength={100} placeholder={isTitle ? t("docs.db.titleProp") : typeLabel(type)} onChange={(event) => setName(event.target.value)} />
         </Field>
         <Field label={t("docs.db.propType")} hint={retyping ? t("docs.db.retypeNote") : undefined}>
-          <select aria-label={t("docs.db.propType")} disabled={isTitle} value={type} onChange={(event) => setType(event.target.value as DbPropType)} className="h-9 w-full rounded-lg border border-line bg-canvas px-2 text-sm">
+          <select aria-label={t("docs.db.propType")} disabled={isTitle || (!!prop && !destroy)} value={type} onChange={(event) => setType(event.target.value as DbPropType)} className="h-9 w-full rounded-lg border border-line bg-canvas px-2 text-sm">
             {typeChoices.map((choice) => <option key={choice} value={choice}>{typeLabel(choice)}</option>)}
           </select>
         </Field>
@@ -498,7 +503,7 @@ export function PropertyDialog({ ctx, prop, databases, onClose }: { ctx: DbCtx; 
                     {COLOR_NAMES.map((c) => <option key={c} value={c}>{t(`docs.db.color.${c}` as MessageKey)}</option>)}
                   </select>
                   <Input aria-label={t("docs.db.optionName")} value={option.name} maxLength={100} onChange={(event) => setOptions((list) => list.map((o, i) => (i === index ? { ...o, name: event.target.value } : o)))} className="h-8 flex-1 text-sm" />
-                  <button type="button" aria-label={t("docs.db.remove")} className="text-muted hover:text-danger" onClick={() => setOptions((list) => list.filter((_, i) => i !== index))}><X size={14} /></button>
+                  {(destroy || !option.id) && <button type="button" aria-label={t("docs.db.remove")} className="text-muted hover:text-danger" onClick={() => setOptions((list) => list.filter((_, i) => i !== index))}><X size={14} /></button>}
                 </li>
               ))}
             </ul>
@@ -512,11 +517,13 @@ export function PropertyDialog({ ctx, prop, databases, onClose }: { ctx: DbCtx; 
                 {databases.map((d) => <option key={d.id} value={d.id}>{d.id === ctx.database.page_id ? t("docs.db.thisDatabase", { title: d.title || t("docs.untitled") }) : d.title || t("docs.untitled")}</option>)}
               </select>
             </Field>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" className="mt-1" checked={twoWay} onChange={(event) => setTwoWay(event.target.checked)} />
-              <span>{t("docs.db.twoWay")}<span className="block text-xs text-muted">{t("docs.db.twoWayHint")}</span></span>
-            </label>
-            {twoWay && (
+            {destroy && (
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={twoWay} onChange={(event) => setTwoWay(event.target.checked)} />
+                <span>{t("docs.db.twoWay")}<span className="block text-xs text-muted">{t("docs.db.twoWayHint")}</span></span>
+              </label>
+            )}
+            {destroy && twoWay && (
               <Field label={t("docs.db.pairName")}>
                 <Input value={pairName} maxLength={100} onChange={(event) => setPairName(event.target.value)} />
               </Field>
@@ -526,9 +533,10 @@ export function PropertyDialog({ ctx, prop, databases, onClose }: { ctx: DbCtx; 
         {prop?.type === "relation" && !retyping && (
           <p className="text-xs text-muted">{prop.relation?.database_title ? t("docs.db.relationTo", { title: prop.relation.database_title }) : t("docs.db.relationUnreadable")}{prop.relation?.pair_id ? ` ${t("docs.db.relationTwoWay")}` : ""}</p>
         )}
+        {!destroy && !isTitle && <p className="text-xs text-muted" data-full-only-note>{t("docs.db.fullOnlyNote")}</p>}
       </div>
       <div className="mt-5 flex items-center justify-between gap-2">
-        {prop && !isTitle ? (
+        {prop && !isTitle && destroy ? (
           confirmDelete ? (
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}><Trash2 size={13} /> {t("docs.db.deleteConfirm")}</Button>
           ) : (

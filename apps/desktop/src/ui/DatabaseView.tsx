@@ -25,6 +25,7 @@ import {
   clampWidth,
   type Column,
   columnsOf,
+  databaseRights,
   daysBetween,
   firstDateProp,
   isDateish,
@@ -95,8 +96,8 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   const loadSeq = useRef(0);
 
   const view = database ? database.views.find((v) => v.id === viewId) ?? database.views[0]! : null;
-  const canEdit = database ? database.my_level !== "view" : false;
-  const canManage = database ? database.my_level === "full" && !controller.isGuest : false;
+  // M144 (WIKI.md §22.2): editors shape the database (properties, options, views); deleting and retyping is full.
+  const { canEdit, canShape, canDestroy } = databaseRights(database?.my_level, controller.isGuest);
 
   const loadDatabase = useCallback(async () => {
     const api = controller.api;
@@ -279,7 +280,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     return failed ? <p className="py-6 text-sm text-muted">{t("docs.db.loadFailed")}</p> : <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-muted" /></div>;
   }
 
-  const ctx: DbCtx = { controller, database, refs, canEdit, canManage, setCell, changeSchema, openRow };
+  const ctx: DbCtx = { controller, database, refs, canEdit, canShape, canDestroy, setCell, changeSchema, openRow };
   const columns = columnsOf(database.properties, draft.columns ?? []);
   const setColumns = (next: Column[]) => setDraft({ ...draft, columns: toViewColumns(next) });
   const differs = viewDiffers(view, draft);
@@ -291,13 +292,13 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
       <div className="flex flex-wrap items-center gap-1 border-b border-line pb-1.5">
         <div role="tablist" aria-label={t("docs.db.views")} className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
           {database.views.map((v) => (
-            <ViewTab key={v.id} view={v} active={v.id === view.id} canManage={canManage} last={database.views.length === 1}
+            <ViewTab key={v.id} view={v} active={v.id === view.id} canShape={canShape} last={database.views.length === 1}
               onPick={() => { setViewId(v.id); remember(databaseId, v.id); setDraft(viewBody(v)); lastSaved.current = JSON.stringify(viewBody(v)); }}
               onRename={() => setRenaming(v)}
               onDelete={() => void deleteView(v.id)}
             />
           ))}
-          {canManage && database.views.length < database.limits.views && (
+          {canShape && database.views.length < database.limits.views && (
             <Menu>
               <MenuTrigger asChild>
                 <button type="button" aria-label={t("docs.db.addView")} title={t("docs.db.addView")} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-ink/6 hover:text-ink"><Plus size={15} /></button>
@@ -313,11 +314,11 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
           {loading && <Loader2 size={14} className="mr-1 animate-spin text-muted" />}
           <SortButton database={database} draft={draft} onChange={(sort) => setDraft({ ...draft, sort })} />
           <FilterButton ctx={ctx} draft={draft} onChange={(filter) => setDraft({ ...draft, filter })} />
-          {draft.type === "table" && <ColumnsButton columns={columns} canManage={canManage} onChange={setColumns} onAdd={() => setPropDialog({ prop: null })} onEdit={(prop) => setPropDialog({ prop })} />}
+          {draft.type === "table" && <ColumnsButton columns={columns} canShape={canShape} onChange={setColumns} onAdd={() => setPropDialog({ prop: null })} onEdit={(prop) => setPropDialog({ prop })} />}
           {differs && (
             <>
               <Button size="sm" variant="ghost" onClick={() => setDraft(viewBody(view))}>{t("docs.db.reset")}</Button>
-              {canManage && <Button size="sm" onClick={() => void saveView(draft)}><Save size={13} /> {t("docs.db.saveView")}</Button>}
+              {canShape && <Button size="sm" onClick={() => void saveView(draft)}><Save size={13} /> {t("docs.db.saveView")}</Button>}
             </>
           )}
           <Menu>
@@ -326,7 +327,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
             </MenuTrigger>
             <MenuContent align="end">
               <MenuItem onSelect={() => void exportCsv()}><Download size={14} /> {t("docs.db.exportCsv")}</MenuItem>
-              {canManage && <MenuItem onSelect={() => setPropDialog({ prop: null })}><Plus size={14} /> {t("docs.db.addProperty")}</MenuItem>}
+              {canShape && <MenuItem onSelect={() => setPropDialog({ prop: null })}><Plus size={14} /> {t("docs.db.addProperty")}</MenuItem>}
             </MenuContent>
           </Menu>
         </div>
@@ -338,7 +339,8 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
         <div className="min-w-0 flex-1">
           {draft.type === "table" ? (
             <TableView ctx={ctx} columns={columns} rows={rows} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)}
-              onColumns={setColumns} onAddRow={() => void addRow()} onEditProp={canManage ? (prop) => setPropDialog({ prop }) : null}
+              onColumns={setColumns} onAddRow={() => void addRow()} onEditProp={canShape ? (prop) => setPropDialog({ prop }) : null}
+              onAddProp={canShape ? () => setPropDialog({ prop: null }) : null}
               onSort={(propId, direction) => setDraft({ ...draft, sort: [{ prop_id: propId, direction }] })}
             />
           ) : datePropId ? (
@@ -374,14 +376,14 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   );
 }
 
-function ViewTab({ view, active, canManage, last, onPick, onRename, onDelete }: { view: DbView; active: boolean; canManage: boolean; last: boolean; onPick: () => void; onRename: () => void; onDelete: () => void }) {
+function ViewTab({ view, active, canShape, last, onPick, onRename, onDelete }: { view: DbView; active: boolean; canShape: boolean; last: boolean; onPick: () => void; onRename: () => void; onDelete: () => void }) {
   const Icon = view.type === "calendar" ? CalendarDays : Table2;
   return (
     <span className={cn("group inline-flex items-center rounded-md", active ? "bg-panel-2 text-ink" : "text-muted hover:bg-ink/6 hover:text-ink")}>
       <button type="button" role="tab" aria-selected={active} className="inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium" onClick={onPick}>
         <Icon size={14} /> {viewName(view)}
       </button>
-      {canManage && active && (
+      {canShape && active && (
         <Menu>
           <MenuTrigger asChild>
             <button type="button" aria-label={t("docs.db.viewMenu")} className="mr-0.5 inline-flex h-6 w-5 items-center justify-center rounded text-muted hover:text-ink"><MoreHorizontal size={13} /></button>
@@ -568,7 +570,7 @@ function RelationFilterValue({ ctx, prop, value, onChange }: { ctx: DbCtx; prop:
   );
 }
 
-function ColumnsButton({ columns, canManage, onChange, onAdd, onEdit }: { columns: Column[]; canManage: boolean; onChange: (columns: Column[]) => void; onAdd: () => void; onEdit: (prop: DbProperty) => void }) {
+function ColumnsButton({ columns, canShape, onChange, onAdd, onEdit }: { columns: Column[]; canShape: boolean; onChange: (columns: Column[]) => void; onAdd: () => void; onEdit: (prop: DbProperty) => void }) {
   const hidden = columns.filter((c) => c.hidden).length;
   return (
     <PopoverRoot>
@@ -586,11 +588,11 @@ function ColumnsButton({ columns, canManage, onChange, onAdd, onEdit }: { column
                   {column.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
                 </button>
               )}
-              {canManage && <button type="button" aria-label={t("docs.db.editProperty")} className="text-muted hover:text-ink" onClick={() => onEdit(column.prop)}><Pencil size={13} /></button>}
+              {canShape && <button type="button" aria-label={t("docs.db.editProperty")} className="text-muted hover:text-ink" onClick={() => onEdit(column.prop)}><Pencil size={13} /></button>}
             </li>
           ))}
         </ul>
-        {canManage && <Button size="sm" variant="ghost" className="mt-1" onClick={onAdd}><Plus size={13} /> {t("docs.db.addProperty")}</Button>}
+        {canShape && <Button size="sm" variant="ghost" className="mt-1" onClick={onAdd}><Plus size={13} /> {t("docs.db.addProperty")}</Button>}
       </PopoverContent>
     </PopoverRoot>
   );
@@ -598,7 +600,9 @@ function ColumnsButton({ columns, canManage, onChange, onAdd, onEdit }: { column
 
 // --- the table -----------------------------------------------------------------------------------------------------
 
-function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAddRow, onEditProp, onSort }: {
+const ADD_COLUMN_WIDTH = 36;
+
+function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAddRow, onEditProp, onAddProp, onSort }: {
   ctx: DbCtx;
   columns: Column[];
   rows: DbRow[];
@@ -608,6 +612,8 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
   onColumns: (columns: Column[]) => void;
   onAddRow: () => void;
   onEditProp: ((prop: DbProperty) => void) | null;
+  /** M144: 「＋」 at the end of the header row (editors too). */
+  onAddProp: (() => void) | null;
   onSort: (propId: string, direction: "asc" | "desc") => void;
 }) {
   const shown = columns.filter((c) => !c.hidden);
@@ -629,12 +635,12 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const width = shown.reduce((sum, c) => sum + c.width, 0);
+  const width = shown.reduce((sum, c) => sum + c.width, 0) + (onAddProp ? ADD_COLUMN_WIDTH : 0);
   return (
     <div className="mt-1">
       <div className="overflow-x-auto overscroll-x-contain" data-db-table>
         <table className="table-fixed border-collapse text-sm" style={{ width }}>
-          <colgroup>{shown.map((c) => <col key={c.prop.id} style={{ width: c.width }} />)}</colgroup>
+          <colgroup>{shown.map((c) => <col key={c.prop.id} style={{ width: c.width }} />)}{onAddProp && <col style={{ width: ADD_COLUMN_WIDTH }} />}</colgroup>
           <thead>
             <tr className="border-b border-line text-left">
               {shown.map((column, index) => (
@@ -667,6 +673,11 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
                   <div role="separator" aria-orientation="vertical" aria-label={t("docs.db.columnWidth")} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-accent/40" onPointerDown={(event) => startResize(event, column)} />
                 </th>
               ))}
+              {onAddProp && (
+                <th scope="col" className="h-8 px-0 font-normal">
+                  <button type="button" aria-label={t("docs.db.addProperty")} title={t("docs.db.addProperty")} className="flex h-8 w-full items-center justify-center text-muted hover:bg-ink/4 hover:text-ink" onClick={onAddProp}><Plus size={14} /></button>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -678,6 +689,7 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
                     onEdit={(on) => setEditing(on ? { rowId: row.id, propId: column.prop.id } : null)}
                   />
                 ))}
+                {onAddProp && <td />}
               </tr>
             ))}
           </tbody>

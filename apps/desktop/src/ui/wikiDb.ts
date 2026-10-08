@@ -31,6 +31,25 @@ export type NewType = (typeof NEW_TYPES)[number];
 export const isEditable = (type: DbPropType) => EDITABLE_TYPES.includes(type);
 export const isDateish = (type: DbPropType) => type === "date" || type === "created_time" || type === "updated_time";
 
+// --- who may do what (M144, WIKI.md §22.2) -------------------------------------------------------------------------
+
+export interface DatabaseRights {
+  /** Add rows and change their values (edit). */
+  canEdit: boolean;
+  /** Add, rename and reorder properties, add options and change their names and colours, a number's format, and
+   * create, change and delete views (edit since M144). */
+  canShape: boolean;
+  /** Delete a property or an option, change a type, make a two-way relation (full). */
+  canDestroy: boolean;
+}
+
+/** The server decides (403 page_manage_restricted); this only shows what it would allow. Guests keep the controls
+ * hidden as before (they reshape nothing of the lab's even where a page gives them more). */
+export function databaseRights(level: DatabaseOut["my_level"] | null | undefined, isGuest: boolean): DatabaseRights {
+  const canEdit = level === "edit" || level === "full";
+  return { canEdit, canShape: canEdit && !isGuest, canDestroy: level === "full" && !isGuest };
+}
+
 // --- reading a cell ------------------------------------------------------------------------------------------------
 
 /** A cell's value as the server has it (computed ones from the row). Relations: the readable row ids. */

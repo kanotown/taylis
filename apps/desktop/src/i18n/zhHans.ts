@@ -2816,6 +2816,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "docs.db.propName": "名称",
   "docs.db.propType": "类型",
   "docs.db.retypeNote": "更改类型会转换所有行的值。无法转换的值保留 30 天，改回原类型后会恢复。",
+  "docs.db.fullOnlyNote": "只有拥有完全访问权限的人可以更改类型、删除属性或选项，或创建双向关联。",
   "docs.db.numberFormat": "数字格式",
   "docs.db.format.number": "数字",
   "docs.db.format.integer": "整数",

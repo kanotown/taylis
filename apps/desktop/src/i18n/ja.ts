@@ -2815,6 +2815,7 @@ export const ja = {
   "docs.db.propName": "名前",
   "docs.db.propType": "種類",
   "docs.db.retypeNote": "種類を変えると、すべての行の値を変換します。変換できない値は 30 日残り、元の種類に戻すと戻ります。",
+  "docs.db.fullOnlyNote": "種類の変更・プロパティと選択肢の削除・双方向の関係は、フルアクセスの人だけができます。",
   "docs.db.numberFormat": "表示の形",
   "docs.db.format.number": "数",
   "docs.db.format.integer": "整数",
