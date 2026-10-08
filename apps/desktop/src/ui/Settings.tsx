@@ -21,7 +21,7 @@ import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, s
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
-import { type ComposerMode, composerModeOf, modKeyName, type SendKey } from "./prefs";
+import { type ComposerMode, composerModeOf, type DocsEditorMode, docsEditorModeOf, modKeyName, type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
@@ -711,6 +711,7 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
         <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={controller.groupPosts} onChange={(e) => controller.setGroupPosts(e.target.checked)} />
       </label>
       <ComposerModeSettings controller={controller} />
+      <DocsEditorModeSettings controller={controller} />
       <NavItemsSettings controller={controller} />
     </div>
   );
@@ -747,6 +748,41 @@ export function ComposerModeSettings({ controller }: { controller: AppController
         ))}
       </div>
       <p className="text-xs text-muted">{t("settings.composerMode.note")}</p>
+    </section>
+  );
+}
+
+/**
+ * M150 「ドキュメントの編集」: 見たまま (WYSIWYG) or Markdown, mine on every device's Desktop / Web
+ * (users.docs_editor_mode; never chosen = 見たまま). A page's 「見たまま / Markdown」 switch changes the same setting.
+ */
+export function DocsEditorModeSettings({ controller }: { controller: AppController }) {
+  const me = meOf(controller);
+  if (!me || me.docs_editor_mode === undefined) return null;
+  const current = docsEditorModeOf(me);
+  return (
+    <section className="space-y-2">
+      <h3 className={HEADING}>{t("settings.docsEditorMode.title")}</h3>
+      <div className="flex gap-2 max-sm:flex-col">
+        {(
+          [
+            ["wysiwyg", t("docs.editorMode.wysiwyg"), t("settings.docsEditorMode.wysiwygNote")],
+            ["markdown", t("docs.editorMode.markdown"), t("settings.docsEditorMode.markdownNote")],
+          ] as Array<[DocsEditorMode, string, string]>
+        ).map(([value, title, text]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={current === value}
+            onClick={() => void controller.setDocsEditorMode(value)}
+            className={cn("flex-1 rounded-xl border p-3 text-left transition-colors", current === value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel")}
+          >
+            <span className="block text-sm font-medium">{title}</span>
+            <span className="block text-xs text-muted">{text}</span>
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted">{t("settings.docsEditorMode.note")}</p>
     </section>
   );
 }

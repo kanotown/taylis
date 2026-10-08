@@ -8,7 +8,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ActivityItem, PageOut, WikiAccessOut, WikiMoveOut } from "../src/api/types";
+import type { ActivityItem, PageOut, UserMe, WikiAccessOut, WikiMoveOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { WikiHub } from "../src/sync/wiki";
@@ -147,7 +147,7 @@ describe("a page", () => {
     }
   }
 
-  async function openPage(level: "view" | "edit" | "full") {
+  async function openPage(level: "view" | "edit" | "full", editorMode: "wysiwyg" | "markdown" | null = null) {
     const api = new CrumbWiki();
     const pageId = uid(403);
     api.add(item(uid(402), { title: "見える親" }));
@@ -155,7 +155,9 @@ describe("a page", () => {
     const hub = new WikiHub({ api, store: new Store(), options: { debounceMs: 10, feedDelayMs: 5, resolveDelayMs: 5 } });
     hub.applyBootstrap({ change_seq: 1 });
     const backlinks = vi.fn(async () => []);
-    const { controller } = fakeController({ hub, api: { wikiBacklinks: backlinks } });
+    const { controller, store } = fakeController({ hub, api: { wikiBacklinks: backlinks } });
+    // M150: the Markdown editor is a choice (見たまま by default: tests/pageEditor.test.tsx).
+    store.setMe({ ...store.users.get("u-me")!, docs_editor_mode: editorMode } as unknown as UserMe);
     render(<DocPage controller={controller} pageId={pageId} onOpenPage={() => {}} onShare={() => {}} onTrash={() => {}} onAddChild={() => {}} />);
     await settle(60);
     return { api, hub };
@@ -179,8 +181,8 @@ describe("a page", () => {
     expect(screen.getByRole("heading", { name: "子のページ" })).toBeTruthy();
   });
 
-  it("edit access: 「編集」 opens the canvas editor on the page, which saves on the wiki endpoint", async () => {
-    const { api } = await openPage("edit");
+  it("edit access, Markdown chosen: 「編集」 opens the canvas editor on the page, which saves on the wiki endpoint", async () => {
+    const { api } = await openPage("edit", "markdown");
     fireEvent.click(screen.getByRole("tab", { name: "編集" }));
     await settle();
     const editor = screen.getByRole("textbox", { name: /キャンバスの本文/ }) as HTMLTextAreaElement;

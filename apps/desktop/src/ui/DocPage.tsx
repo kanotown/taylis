@@ -5,9 +5,11 @@
  * editor (Markdown, the toolbar, the preview beside it scrolling with it) plus `[[` and the `/` menu; it saves itself
  * like a canvas (merge, conflict choices, retries) on the wiki endpoints. A page someone else edits comes in while
  * nothing is typed here. Offline, the page as last read shows read only.
+ * M150 (WIKI.md §22.6, §27): 「編集」 is the 見たまま editor (PageEditor.tsx, loaded lazily) unless I chose Markdown
+ * (users.docs_editor_mode); the page's 「見たまま / Markdown」 switch changes the setting, the caret kept on its line.
  */
 import { ChevronRight, CloudOff, Copy, CopyPlus, Download, FilePlus2, History, LayoutTemplate, Link2, ListTree, Loader2, MoreHorizontal, Share2, SmilePlus, Table2, Trash2 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { describeError } from "../api/errors";
 import type { PageContent, PageItem, PageOut } from "../api/types";
@@ -31,12 +33,16 @@ import { useWikiHub } from "./DocsTree";
 import { EmojiPicker } from "./EmojiPicker";
 import { sinceLabel } from "./format";
 import { PageIcon } from "./PageIcon";
-import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSplit, readCanvasSplit, writeCanvasSplit } from "./prefs";
+import type { PageEditorHandle } from "./PageEditor";
+import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSplit, type DocsEditorMode, docsEditorModeOf, readCanvasSplit, writeCanvasSplit } from "./prefs";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { useCanvasScrollSync } from "./useCanvasScrollSync";
 import { t } from "../i18n";
 
 type Mode = "view" | "edit";
+
+/** M150: the 見たまま editor, its own chunk (TipTap with it): loaded the first time a page is edited that way. */
+const LazyPageEditor = lazy(() => import("./PageEditor"));
 
 export function DocPage({ controller, pageId, onOpenPage, onBack, startEditing = false, onShare, onTrash, onAddChild, embedded = false, onClosed, onUseTemplate }: {
   controller: AppController;
@@ -109,6 +115,20 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const editing = rights.edit && mode === "edit" && !!loaded && saver.status !== "gone";
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(true);
+  // M150: 見たまま or Markdown (mine, users.docs_editor_mode); switching keeps the caret's line.
+  const me = useSyncExternalStore((listener) => controller.store.subscribe(listener), () => controller.store.me);
+  const editorMode = docsEditorModeOf(me);
+  const pageEditor = useRef<PageEditorHandle | null>(null);
+  const markdownCaret = useRef<(() => number) | null>(null);
+  const [caretLine, setCaretLine] = useState<number | null>(null);
+  const switchEditor = (next: DocsEditorMode) => {
+    if (next === editorMode) return;
+    if (editorMode === "wysiwyg") {
+      pageEditor.current?.commit();
+      setCaretLine(pageEditor.current?.caretLine() ?? null);
+    } else setCaretLine(markdownCaret.current?.() ?? null);
+    void controller.setDocsEditorMode(next);
+  };
   // M145 (WIKI.md §22.3): 「複製」 / 「テンプレートとして保存」 and an empty page's 「テンプレートから始める」.
   const [duplicating, setDuplicating] = useState<DuplicateMode | null>(null);
   const [applying, setApplying] = useState(false);
@@ -128,7 +148,8 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const headings = useMemo(() => outline(text), [text]);
   const [editorArea, setEditorArea] = useState<HTMLTextAreaElement | null>(null);
   const [previewBox, setPreviewBox] = useState<HTMLDivElement | null>(null);
-  useCanvasScrollSync(editing && !compact ? editorArea : null, editing && !compact ? previewBox : null, saver.text);
+  const markdownEditing = editing && editorMode === "markdown";
+  useCanvasScrollSync(markdownEditing && !compact ? editorArea : null, markdownEditing && !compact ? previewBox : null, saver.text);
   const showOutline = !compact && !editing && headings.length >= 3 && meta?.kind !== "database";
 
   const children = hub.tree().children.get(pageId) ?? (hub.hasTree ? [] : cached?.children ?? []);
@@ -238,8 +259,17 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
         {rights.edit && loaded && saver.status !== "gone" && (
           <div role="tablist" aria-label={t("canvas.mode")} className="flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
             {(["view", "edit"] as const).map((value) => (
-              <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => setMode(value)} className={cn("rounded-md px-2.5 py-1 transition-colors", mode === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}>
+              <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => { setCaretLine(null); setMode(value); }} className={cn("rounded-md px-2.5 py-1 transition-colors", mode === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}>
                 {value === "edit" ? t("canvas.edit") : t("canvas.view")}
+              </button>
+            ))}
+          </div>
+        )}
+        {editing && (
+          <div role="group" aria-label={t("docs.editorMode.label")} className="flex shrink-0 rounded-lg border border-line p-0.5 text-xs font-medium" data-editor-mode={editorMode}>
+            {(["wysiwyg", "markdown"] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={editorMode === value} title={value === "wysiwyg" ? t("docs.editorMode.wysiwygTitle") : t("docs.editorMode.markdownTitle")} onClick={() => switchEditor(value)} className={cn("rounded-md px-2 py-0.5 transition-colors", editorMode === value ? "bg-accent-soft text-ink" : "text-muted hover:text-ink")}>
+                {value === "wysiwyg" ? t("docs.editorMode.wysiwyg") : t("docs.editorMode.markdown")}
               </button>
             ))}
           </div>
@@ -297,10 +327,24 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
       {isTemplate && kind === "page" && (
         <TemplateBanner kind="page" canEdit={rights.edit} isDefault={null} onUse={() => void useTemplate()} onUnset={() => void setTemplate(false)} onDefault={null} />
       )}
-      {editing ? (
+      {editing && editorMode === "wysiwyg" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")} data-wysiwyg-page="">
+          <article className={cn("mx-auto max-w-3xl px-6 pb-16 pt-6 max-md:px-4 max-md:pt-4", embedded && "px-4 pt-4")}>
+            <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable />
+            {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} template={isTemplate} />}
+            <Suspense fallback={(
+              <div className="mt-4" role="status" aria-label={t("docs.wysiwyg.loading")}>
+                <CanvasBody body={saver.text} controller={controller} onToggleTask={null} />
+              </div>
+            )}>
+              <LazyPageEditor key={pageId} controller={controller} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} className="mt-3" />
+            </Suspense>
+          </article>
+        </div>
+      ) : editing ? (
         <>
           <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable compact />
-          <EditorSplit compact={compact} editor={<CanvasEditor controller={controller} saver={saver} onTextArea={setEditorArea} doc={docLinks} className="h-full min-w-0" />} preview={(
+          <EditorSplit compact={compact} editor={<CanvasEditor controller={controller} saver={saver} onTextArea={setEditorArea} doc={docLinks} initialCaretLine={caretLine} caretLineRef={markdownCaret} className="h-full min-w-0" />} preview={(
             <div ref={setPreviewBox} className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")}>
               <div className="mx-auto max-w-3xl px-6 py-4">
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("composer.preview")}</div>
