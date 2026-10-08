@@ -485,7 +485,7 @@ struct ChannelView: View {
                             if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
                         }
                         .background(CoverProbe.Marker(probe: cover))
-                        .scrollDismissesKeyboard(.interactively)
+                        .conversationDismissesKeyboard()
                         .dismissesKeyboardOnTap()
                         .onPreferenceChange(VisibleMessageFrames.self) { frames in
                             self.frames.byId = frames

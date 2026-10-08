@@ -5,7 +5,7 @@ import UIKit
 /// - the list's bottom edge stays as its height changes (the keyboard, the input growing, the typing line, a Japanese
 ///   keyboard's candidate row) because the list is upside down (UpsideDownList.swift, M36): nothing here moves it;
 /// - a tap on the list closes the keyboard (`dismissesKeyboardOnTap`), and does nothing else on a message (which a tap
-///   otherwise opens the thread of); dragging the list down closes it too (`.scrollDismissesKeyboard(.interactively)`).
+///   otherwise opens the thread of); dragging the list closes it too (`conversationDismissesKeyboard`).
 /// A swipe back is left to UIKit, which slides the keyboard away with the screen: closing it as the swipe starts
 /// removed the keyboard's room at once while UIKit kept the keyboard on screen, and the input went behind it.
 enum KeyboardBehavior {
@@ -34,6 +34,21 @@ extension View {
     /// Closes the keyboard on a tap, without taking the tap from the buttons, links and menus inside.
     func dismissesKeyboardOnTap() -> some View {
         simultaneousGesture(TapGesture().onEnded { KeyboardBehavior.dismiss() })
+    }
+
+    /// Dragging a conversation's list closes the keyboard: following the finger from iOS 26, as the drag starts before.
+    /// On iOS 18 the interactive dismissal took the keyboard away but left the composer where it had been, floating
+    /// over the empty space (a tester, iOS 18, builds 109–110, 2026-10-09); a tap, which closes the keyboard the
+    /// ordinary way, brought it down every time. `.immediately` closes it that same way as the drag starts, so iOS 17
+    /// and 18 never go through the interactive path. (Not reproduced: Xcode 27 has no iOS 18 simulator, and iOS 26.5
+    /// and 27 bring the composer back after an interactive dismissal.)
+    @ViewBuilder
+    func conversationDismissesKeyboard() -> some View {
+        if #available(iOS 26.0, *) {
+            scrollDismissesKeyboard(.interactively)
+        } else {
+            scrollDismissesKeyboard(.immediately)
+        }
     }
 }
 
