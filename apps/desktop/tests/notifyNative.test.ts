@@ -10,12 +10,15 @@ const state = vi.hoisted(() => ({
   calls: [] as { command: string; args?: Record<string, unknown> }[],
   clicked: null as ((event: { payload: string }) => void) | null,
   plugin: { granted: true, sent: [] as string[] },
+  /** The OS' answer to the permission check held back until this settles. */
+  permissionHold: null as Promise<void> | null,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args?: Record<string, unknown>) => {
     state.calls.push({ command, args });
     if (command === "native_notification_permission") {
+      if (state.permissionHold) await state.permissionHold;
       if (state.native === "throw") throw new Error("command not found");
       return state.native;
     }
@@ -49,6 +52,7 @@ beforeEach(() => {
   state.afterRequest = "granted";
   state.calls = [];
   state.plugin.sent = [];
+  state.permissionHold = null;
 });
 
 afterEach(() => {
@@ -179,5 +183,78 @@ describe("the sender's picture (PUSH_NOTIFICATIONS.md §9.1, 2026-10-08)", () =>
     arrive!(new Blob(["x"]));
     await Promise.all([slow, fast]);
     expect(sent().map((args) => args?.title)).toEqual(["first", "second"]);
+  });
+});
+
+describe("sign-out while notifications wait (PUSH_NOTIFICATIONS.md §9.3; review v0.1.48 #5)", () => {
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1];
+  let arrive: ((blob: Blob) => void) | null = null;
+  const slowSender = () => ({
+    scope: "https://a.example.com",
+    userId: "secret-sender",
+    name: "Secret",
+    version: "v1",
+    fetchBlob: () => new Promise<Blob>((resolve) => { arrive = resolve; }),
+    conversationId: "ch-secret",
+    groupName: "#secret",
+    text: "confidential",
+  });
+
+  beforeEach(() => {
+    arrive = null;
+    setAvatarPainter({ picture: async () => new Uint8Array(PNG), initials: async () => new Uint8Array(PNG) });
+  });
+  afterEach(() => setAvatarPainter(null));
+
+  /** A click on every notification the native side was asked to show, by its id. */
+  const clickAll = () => { for (const args of sent()) state.clicked?.({ payload: String(args?.id) }); };
+
+  it("while the picture is fetched: neither it nor the ones queued behind it are shown, clicked or given a picture", async () => {
+    const opened: string[] = [];
+    const first = notify("#secret", "Secret: confidential", () => opened.push("first"), { sender: slowSender() });
+    const second = notify("#secret", "Secret: more", () => opened.push("second"));
+    const third = notify("#secret", "Secret: and more", () => opened.push("third"));
+    await vi.waitFor(() => expect(arrive).not.toBeNull());
+    clearNotifications();
+    await vi.waitFor(() => expect(commands()).toContain("native_notification_clear"));
+    arrive!(new Blob(["x"]));
+    await Promise.all([first, second, third]);
+    expect(sent()).toEqual([]);
+    clickAll();
+    expect(opened).toEqual([]);
+    // The next session's notification is not held behind the old picture, and nothing of the old one follows it.
+    await notify("Taylis", "after", () => opened.push("after"));
+    expect(sent().map((args) => args?.title)).toEqual(["Taylis"]);
+    expect(sent()[0]).not.toHaveProperty("person");
+    clickAll();
+    expect(opened).toEqual(["after"]);
+  });
+
+  it("while the OS is asked for the permission: nothing is shown, and no picture fetched", async () => {
+    let answer: (() => void) | null = null;
+    state.permissionHold = new Promise<void>((resolve) => { answer = resolve; });
+    const opened: string[] = [];
+    const waiting = notify("#secret", "Secret: confidential", () => opened.push("first"), { sender: slowSender() });
+    const queued = notify("#secret", "Secret: more", () => opened.push("second"));
+    await vi.waitFor(() => expect(commands()).toContain("native_notification_permission"));
+    clearNotifications();
+    answer!();
+    await Promise.all([waiting, queued]);
+    expect(arrive).toBeNull();
+    expect(sent()).toEqual([]);
+    clickAll();
+    expect(opened).toEqual([]);
+  });
+
+  it("the plugin (Linux, tauri dev) shows nothing asked for before the sign-out either", async () => {
+    state.native = "unavailable";
+    let answer: (() => void) | null = null;
+    state.permissionHold = new Promise<void>((resolve) => { answer = resolve; });
+    const waiting = notify("#secret", "Secret: confidential");
+    await vi.waitFor(() => expect(commands()).toContain("native_notification_permission"));
+    clearNotifications();
+    answer!();
+    await waiting;
+    expect(state.plugin.sent).toEqual([]);
   });
 });

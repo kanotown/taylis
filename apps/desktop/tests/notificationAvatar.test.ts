@@ -89,6 +89,24 @@ describe("notification avatars", () => {
     expect(s.fetched).toHaveLength(4);
   });
 
+  it("a sign-out while a picture is late: no initials drawn into the emptied cache for the old session", async () => {
+    let arrive: ((blob: Blob) => void) | null = null;
+    const fetched: string[] = [];
+    const s = sender({ fetchBlob: (path: string) => { fetched.push(path); return new Promise<Blob>((resolve) => { arrive = resolve; }); } });
+    const late = notificationAvatar(s, 20);
+    await vi.waitFor(() => expect(arrive).not.toBeNull());
+    clearNotificationAvatars();
+    expect(await late).toBeNull();
+    arrive!(new Blob(["x"]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drawn.filter((d) => d.kind === "initials")).toEqual([]);
+    // The next session fetches afresh: nothing of the old one was kept.
+    const next = notificationAvatar(s, 20);
+    await vi.waitFor(() => expect(fetched).toHaveLength(2));
+    arrive!(new Blob(["x"]));
+    expect((await next)?.picture).toBe(true);
+  });
+
   it("a failed fetch: the initials now, and a new try next time (a failure is not kept)", async () => {
     let fail = true;
     const s = sender({ fetchBlob: async () => { if (fail) throw new Error("503"); return new Blob(["x"], { type: "image/jpeg" }); } });

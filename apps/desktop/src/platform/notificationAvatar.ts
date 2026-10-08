@@ -45,6 +45,8 @@ export interface AvatarPainter {
 }
 
 const cache = new Map<string, Promise<NotificationAvatar | null>>();
+/** Bumped at sign-out: a picture asked for before it is not drawn into the emptied cache afterwards. */
+let cacheGeneration = 0;
 
 function remember(key: string, made: () => Promise<NotificationAvatar | null>): Promise<NotificationAvatar | null> {
   const known = cache.get(key);
@@ -80,6 +82,7 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  */
 export async function notificationAvatar(sender: AvatarSender, timeoutMs = AVATAR_TIMEOUT_MS): Promise<NotificationAvatar | null> {
   const painter = currentPainter;
+  const asked = cacheGeneration;
   if (sender.version) {
     const key = `${sender.scope}|${sender.userId}|${sender.version}`;
     const { version } = sender;
@@ -88,6 +91,7 @@ export async function notificationAvatar(sender: AvatarSender, timeoutMs = AVATA
       return { key, png: await painter.picture(blob, NOTIFICATION_AVATAR_PX), picture: true };
     }), timeoutMs);
     if (picture) return picture;
+    if (asked !== cacheGeneration) return null; // signed out meanwhile
   }
   const letters = initials(sender.name);
   const key = `${sender.scope}|${sender.userId}|initials|${letters}`;
@@ -96,6 +100,7 @@ export async function notificationAvatar(sender: AvatarSender, timeoutMs = AVATA
 
 /** Sign-out: no one's picture stays in memory. */
 export function clearNotificationAvatars(): void {
+  cacheGeneration += 1;
   cache.clear();
 }
 
