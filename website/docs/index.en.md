@@ -27,7 +27,7 @@ You run the server yourself. Messages and files are stored on that server, and y
 conversation history. There are apps for Windows, macOS, iOS and Android, and a browser client.
 
 <div class="screens" markdown>
-![The desktop app: a channel with a thread open (demo data)](assets/screens/desktop.png){ .wide }
+![The desktop app: the sidebar, a channel and a thread open on the right (demo data)](assets/screens/web-overview.webp){ .full }
 </div>
 
 <div class="screens" markdown>
@@ -36,7 +36,7 @@ conversation history. There are apps for Windows, macOS, iOS and Android, and a 
 ![A poll on iPhone (demo data)](assets/screens/ios-poll.jpg){ .phone }
 </div>
 
-<small>All screenshots show fictional demo data. The user interface is currently in Japanese.</small>
+<small>All screenshots show fictional demo data. The apps can be shown in Japanese, English or Simplified Chinese (Settings → Display → Language).</small>
 
 ## Highlights
 
@@ -73,15 +73,15 @@ conversation history. There are apps for Windows, macOS, iOS and Android, and a 
 
     ---
 
-    Polls and scheduling, calendars, tasks and boards, deadlines, canvases (shared documents), personal "times"
-    channels, workflows and bookings for shared equipment or accounts.
+    Docs (a wiki with databases), polls and scheduling, calendars, tasks and boards, deadlines, canvases, personal
+    "times" channels, workflows, bookings for shared equipment, and an attendance board.
 
 -   :material-shield-account-outline:{ .lg } **Administration and import**
 
     ---
 
     Invitation links, sign-in with your organisation's Google accounts, guests, reports and blocking, in-app
-    account deletion, and importers for Slack and Mattermost exports.
+    account deletion, and importers for Slack, Mattermost and Notion exports.
 
 </div>
 
@@ -92,7 +92,7 @@ public sign-up in the apps.
 
 | App | How to get it |
 | --- | --- |
-| Windows / macOS | Download the installer from [the GitHub releases](https://github.com/kanotown/taylis/releases/latest). New versions can be installed from within the app. |
+| Windows / macOS | Download the installer from [the GitHub releases](https://github.com/kanotown/taylis/releases/latest). New versions can be installed from within the app ([Install the apps](start/install.md)). |
 | iOS / iPadOS | Coming soon (App Store) |
 | Android | Coming soon (Google Play) |
 | Browser | Nothing to install: open your server's URL (for example `https://chat.example.com/`). |

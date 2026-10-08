@@ -76,6 +76,7 @@ plugins:
           site_description: A self-hosted team chat for research labs and small teams
           nav:
             - Home: index.md
+            - Install the apps: start/install.md
             - Self-hosting:
                 - self-hosting/index.md
                 - Quick start: self-hosting/quickstart.md
@@ -107,26 +108,43 @@ markdown_extensions:
 
 nav:
   - ホーム: index.md
-  - 機能: features.md
-  - 使い方ガイド:
-      - guide/index.md
+  - はじめに:
+      - start/index.md
+      - アプリを入れる: start/install.md
       - ログイン: guide/login.md
-      - 通知の設定: guide/notifications.md
+      - 機能の一覧: features.md
+  - 使い方:
+      - guide/index.md
+      - メッセージとスレッド: guide/messages.md
       - メッセージの書き方: guide/formatting.md
       - 絵文字とリアクション: guide/emoji.md
+      - 検索: guide/search.md
+      - アクティビティと未読: guide/activity.md
+      - ドキュメント: guide/docs.md
+      - キャンバス: guide/canvas.md
+      - タスクと締切: guide/tasks.md
+      - カレンダーと日程調整: guide/calendar.md
+      - Times: guide/times.md
+      - ワークフローと定期投稿: guide/workflows.md
       - 予約: guide/reservations.md
+      - 在室状況と操作ボタン: guide/attendance.md
+      - AI: guide/ai.md
+      - 通知の設定: guide/notifications.md
       - サイドバーと表示: guide/sidebar.md
-  - 管理者ガイド:
+  - 管理者:
       - admin/index.md
       - ユーザーと招待・SSO: admin/users.md
+      - ロールと権限: admin/roles.md
       - アナリティクス: admin/analytics.md
       - チャンネル: admin/channels.md
       - カスタム絵文字とセット: admin/emoji.md
       - 報告とモデレーション: admin/moderation.md
       - 予約の枠: admin/reservations.md
+      - 在室状況と操作ボタン: admin/attendance.md
+      - ドキュメントの管理: admin/docs.md
       - AI: admin/ai.md
       - ワークスペースの設定: admin/workspace.md
-  - サーバーを立てる:
+  - セルフホスト:
       - self-hosting/index.md
       - クイックスタート: self-hosting/quickstart.md
       - デモを試す: self-hosting/demo.md

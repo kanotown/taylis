@@ -38,7 +38,9 @@
   border-radius: 10px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
 }
-.screens .wide { width: 100%; max-width: 760px; }
+.screens .wide { width: 100%; max-width: 820px; }
+.screens .full { width: 100%; }
+.screens .narrow { width: 100%; max-width: 420px; }
 .screens .phone { width: 30%; max-width: 230px; min-width: 140px; }
 .screens .tablet { width: 48%; min-width: 260px; }
 @media screen and (max-width: 600px) {
