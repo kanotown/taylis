@@ -129,22 +129,10 @@ enum Timeline {
     }
 
     /// 「Toru Kano」→ TK, 「かのう」→ か.
-    static func initials(_ name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else { return "?" }
-        let words = trimmed.split(whereSeparator: { $0.isWhitespace })
-        if words.count >= 2, let a = words[0].first, let b = words[1].first, a.isASCII, b.isASCII, a.isLetter {
-            return String([a, b]).uppercased()
-        }
-        return String(first).uppercased()
-    }
+    static func initials(_ name: String) -> String { InitialsAvatar.initials(name) }
 
     /// Stable hue in 0..<1 per user id (same colour on every device and client).
-    static func hue(_ id: String) -> Double {
-        var hash: UInt32 = 0
-        for scalar in id.unicodeScalars { hash = hash &* 31 &+ scalar.value }
-        return Double(hash % 360) / 360
-    }
+    static func hue(_ id: String) -> Double { Double(InitialsAvatar.hue(id)) / 360 }
 
     /// M47 「連続した投稿をまとめる」 (自分 → 表示, this device only, off by default): off, every post in a channel, a DM
     /// or a thread shows its picture, name and time; on, a run of posts from one person shows them once.

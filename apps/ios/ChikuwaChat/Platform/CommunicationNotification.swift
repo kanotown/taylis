@@ -72,15 +72,13 @@ enum CommunicationNotification {
     /// The server sends 256px PNGs (tens of kilobytes); anything far larger is not a picture of ours.
     static let maxAvatarBytes = 1_000_000
 
-    /// The notification with the sender's picture (when it loads) as a communication notification; `content` itself
+    /// The notification with the sender's picture (their initials when they have none or it does not load) as a
+    /// communication notification; `content` itself
     /// when the push is not a person's message or iOS refuses (no entitlement, an older system…).
     static func update(_ content: UNNotificationContent,
                        load: @Sendable (URL) async -> Data? = fetchAvatar) async -> UNNotificationContent {
         guard let push = CommunicationPush(userInfo: content.userInfo, title: content.title) else { return content }
-        var image: INImage?
-        if let url = push.avatarURL, let data = await load(url) {
-            image = INImage(imageData: data)
-        }
+        let image = INImage(imageData: await senderPicture(push, load: load))
         let intent = push.intent(image: image, body: content.body)
         let interaction = INInteraction(intent: intent, response: nil)
         interaction.direction = .incoming
@@ -90,6 +88,13 @@ enum CommunicationNotification {
         } catch {
             return content
         }
+    }
+
+    /// The sender's picture when the push has its URL and it loads, else their default avatar (initials on their
+    /// colour, as in the app: InitialsAvatar), so the notification never shows only the app icon (§16.1).
+    static func senderPicture(_ push: CommunicationPush, load: @Sendable (URL) async -> Data?) async -> Data {
+        if let url = push.avatarURL, let data = await load(url) { return data }
+        return InitialsAvatar.png(id: push.senderId, name: push.senderName)
     }
 
     /// The picture's bytes, or nil (any error, a non-image answer, too large or too slow).
