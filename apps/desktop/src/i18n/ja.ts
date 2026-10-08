@@ -2281,6 +2281,7 @@ export const ja = {
   "drafts.sendNow": "今すぐ送信",
   "drafts.cancel": "取り消し",
   "drafts.none": "送信していない下書きはありません",
+  "drafts.delete": "下書きを削除",
   "reports.open": "未対応",
   "reports.noneOpen": "未対応の報告はありません",
   "reports.none": "報告はありません",

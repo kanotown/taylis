@@ -2282,6 +2282,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "drafts.sendNow": "Send now",
   "drafts.cancel": "Discard",
   "drafts.none": "No unsent drafts",
+  "drafts.delete": "Delete draft",
   "reports.open": "Open",
   "reports.noneOpen": "No open reports",
   "reports.none": "No reports",

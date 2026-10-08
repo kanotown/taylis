@@ -690,6 +690,12 @@ final class Store {
         if edited { onDraftEdited?(channelId, parentId) }
     }
 
+    /// 「下書き」's 削除 (2026-10-09): the conversation's draft goes, as when its composer is emptied after sending — the
+    /// engine deletes it on the server at once, so my other devices drop it too (M15d).
+    func discardDraft(_ channelId: String, parentId: String? = nil) {
+        setDraft(channelId, parentId: parentId) { $0 = Draft() }
+    }
+
     private func writeDraft(_ key: String, _ value: Draft) {
         let keep = !value.text.isEmpty || !value.attachments.isEmpty || value.isDirty
         drafts[key] = keep ? value : nil

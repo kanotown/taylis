@@ -1,4 +1,4 @@
-import { Clock, FileText } from "lucide-react";
+import { Clock, FileText, X } from "lucide-react";
 
 import { errorMessageFor } from "../api/errors";
 import type { AppController } from "../state/app";
@@ -6,7 +6,7 @@ import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { BackButton } from "./compact";
-import { Button } from "./primitives";
+import { Button, IconButton } from "./primitives";
 import { scheduleLabel } from "./schedule";
 import { t } from "../i18n";
 
@@ -70,8 +70,8 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
             {drafts.map(({ channelId, parentId, draft }) => {
               const channel = store.getChannel(channelId)!;
               return (
-                <li key={`${channelId}:${parentId ?? ""}`} data-row-key={`${channelId}:${parentId ?? ""}`}>
-                  <button type="button" className="block w-full px-3 py-2.5 text-left transition-colors hover:bg-panel" onClick={() => onOpen(channelId, parentId)}>
+                <li key={`${channelId}:${parentId ?? ""}`} data-row-key={`${channelId}:${parentId ?? ""}`} className="group relative">
+                  <button type="button" className="block w-full px-3 py-2.5 pr-11 text-left transition-colors hover:bg-panel" onClick={() => onOpen(channelId, parentId)}>
                     <div className="flex items-center gap-2 text-xs text-muted">
                       <span className="font-medium text-ink">{channelTitle(channel, controller)}</span>
                       {parentId && <span>· {t("nav.threads")}</span>}
@@ -79,6 +79,15 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
                     </div>
                     <div className="mt-0.5 line-clamp-2 text-sm text-ink">{plainText(draft.text, 200) || t("drafts.noText")}</div>
                   </button>
+                  {/* 2026-10-09: the draft goes (on the server too, so my other devices drop it); on hover, always on a phone. */}
+                  <IconButton
+                    label={t("drafts.delete")}
+                    data-draft-delete
+                    className="absolute right-1.5 top-1/2 h-8 w-8 -translate-y-1/2 text-muted opacity-0 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 max-md:opacity-100"
+                    onClick={() => controller.store.discardDraft(channelId, parentId)}
+                  >
+                    <X size={15} />
+                  </IconButton>
                 </li>
               );
             })}

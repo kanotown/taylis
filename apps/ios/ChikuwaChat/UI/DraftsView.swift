@@ -65,6 +65,13 @@ struct DraftsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    // 2026-10-09: a draft can go from here (a swipe, or the long press's menu); deleted on the server too.
+                    .swipeActions(edge: .trailing) {
+                        Button("削除", systemImage: "trash", role: .destructive) { store.discardDraft(entry.channelId, parentId: entry.parentId) }
+                    }
+                    .contextMenu {
+                        Button("削除", systemImage: "trash", role: .destructive) { store.discardDraft(entry.channelId, parentId: entry.parentId) }
+                    }
                 }
             }
         }

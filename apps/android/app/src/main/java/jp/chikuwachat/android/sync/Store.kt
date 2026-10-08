@@ -716,6 +716,12 @@ class Store(private val persistence: Persistence? = null) {
         if (edited) onDraftEdited?.invoke(channelId, parentId)
     }
 
+    /**
+     * 「下書き」's 削除 (2026-10-09): the conversation's draft goes, as when its composer is emptied after sending — the engine
+     * deletes it on the server at once, so my other devices drop it too (M15d).
+     */
+    fun discardDraft(channelId: String, parentId: String? = null) = setDraft(channelId, parentId) { Draft() }
+
     private fun writeDraft(key: String, value: Draft, quiet: Boolean = false) {
         val keep = value.text.isNotEmpty() || value.attachments.isNotEmpty() || value.dirty
         if (keep) drafts[key] = value else drafts.remove(key)

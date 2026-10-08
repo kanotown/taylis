@@ -54,6 +54,22 @@ class DraftSyncTest {
         d.a.stop(); d.b.stop(); d.scope.cancel()
     }
 
+    /** 2026-10-09: 「下書き」's 削除 deletes it on the server at once, so my other device drops it too. */
+    @Test fun aDraftDeletedFromTheListGoesEverywhere() = runBlocking {
+        val d = devices()
+        d.laptop.setDraft(d.channelId) { it.copy(text = "消す下書き") }
+        d.a.flushDrafts(); settle(d.a, d.b)
+        assertEquals(listOf("消す下書き"), d.phone.listDrafts().map { it.draft.text })
+
+        d.phone.discardDraft(d.channelId)
+        assertTrue(d.phone.listDrafts().isEmpty())
+        settle(d.a, d.b)
+        assertEquals(emptyList<Any>(), d.server.draftsOf(d.bob))
+        assertTrue(d.laptop.listDrafts().isEmpty())
+        assertTrue(d.phone.draftEntries().isEmpty())
+        d.a.stop(); d.b.stop(); d.scope.cancel()
+    }
+
     @Test fun unsavedEditsHereWinOverAnotherDevicesSave() = runBlocking {
         val d = devices()
         d.phone.setDraft(d.channelId) { it.copy(text = "スマホで書いた") }
