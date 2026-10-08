@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.DatabaseOut
 import jp.chikuwachat.android.api.DbProperty
 import jp.chikuwachat.android.api.DbRow
 import jp.chikuwachat.android.api.DbRowDetail
+import jp.chikuwachat.android.api.DbRowGroup
 import jp.chikuwachat.android.api.DbRowQueryOut
 import jp.chikuwachat.android.api.DbRowRef
 import jp.chikuwachat.android.api.DbRowWithRefs
@@ -50,8 +51,10 @@ import java.util.UUID
 /** The database endpoints (WIKI.md §18.2), apart from [WikiApi] (ApiClient has both). */
 interface WikiDbApi {
     suspend fun wikiDatabase(databaseId: String): DatabaseOut
-    /** A view's rows (its sort and filter); `range`: a calendar's days. */
-    suspend fun queryRows(databaseId: String, viewId: String?, range: DbRange?, cursor: String?, limit: Int): DbRowQueryOut
+    /** A view's rows (its sort and filter); `range`: a calendar's days; M148: `options` asks for groups and pictures. */
+    suspend fun queryRows(
+        databaseId: String, viewId: String?, range: DbRange?, cursor: String?, limit: Int, options: DbQueryOptions = DbQueryOptions(),
+    ): DbRowQueryOut
     /** M146: `template` Default sends nothing (the database's default template, if any); `tz` for 「今日」. */
     suspend fun createRow(
         databaseId: String, title: String, props: JsonObject, clientSaveId: String,
@@ -59,6 +62,8 @@ interface WikiDbApi {
     ): DbRowWithRefs
     suspend fun wikiRow(rowId: String): DbRowDetail
     suspend fun setRowProps(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs
+    /** M148: a board card to another group (POST /wiki/rows/{id}/move {set, client_op_id}; edit). */
+    suspend fun moveRow(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs
     /** Rows a relation cell may link to: only rows of the related database I can read. */
     suspend fun relationCandidates(databaseId: String, propId: String, q: String): List<DbRowRef>
 }
@@ -114,8 +119,8 @@ object WikiDb {
 
     fun propName(prop: DbProperty, titleWord: String): String = prop.name.ifBlank { if (prop.type == "title") titleWord else prop.id }
 
-    fun viewName(view: DbView, tableWord: String, calendarWord: String): String =
-        view.name.ifBlank { if (view.type == "calendar") calendarWord else tableWord }
+    /** M148: a view without a name is called by its type ([WikiDbViews.name]). */
+    fun viewName(view: DbView, words: DbViewWords): String = WikiDbViews.name(view, words)
 
     /** The view shown: the chosen one while it exists, else the first. */
     fun viewOf(database: DatabaseOut?, viewId: String?): DbView? =
@@ -348,6 +353,9 @@ data class WikiDbSnapshot(
     val refs: List<DbRowRef> = emptyList(),
     val total: Int = 0,
     val fetchedAt: Long = 0,
+    /** M148: the groups of a grouped view and the group of each kept row. */
+    val groups: List<DbRowGroup>? = null,
+    val rowGroups: List<String>? = null,
 )
 
 /** Timing and ids for the sessions (tests replace them). */
@@ -392,12 +400,26 @@ class DatabaseSession(
     /** Shown from the copy kept on this device (the server could not be read): when it was read. */
     var offlineSince: Long? = null
         private set
+    /** M148: a grouped view's groups (all, hidden ones too, with their counts) and the group of each of [rows]. */
+    var groups: List<DbRowGroup>? = null
+        private set
+    var rowGroups: List<String>? = null
+        private set
+    /** M148: folded sections ([WikiDbViews.sectionId]); this device only, never saved. */
+    var collapsed: Set<String> = emptySet()
+        private set
+    /** M148: board cards being moved (their ⋮ waits). */
+    var moving: Set<String> = emptySet()
+        private set
     private var generation = 0
     private var job: Job? = null
     private val _version = MutableStateFlow(0)
     val version: StateFlow<Int> = _version
 
     val view: DbView? get() = WikiDb.viewOf(database, viewId)
+
+    /** M148: the rows in their groups (null: the view is not grouped). */
+    val sections: List<DbSection>? get() = WikiDbViews.sections(rows, rowGroups, groups)
 
     private fun emit() {
         _version.value = _version.value + 1
@@ -412,6 +434,8 @@ class DatabaseSession(
             refs = kept.refs.associateBy { it.id }
             total = kept.total
             offlineSince = kept.fetchedAt
+            groups = kept.groups
+            rowGroups = kept.rowGroups?.takeIf { it.size == kept.rows.size }
         }
     }
 
@@ -436,6 +460,8 @@ class DatabaseSession(
             refs = answer.refs.associateBy { it.id }
             total = answer.total
             nextCursor = answer.nextCursor
+            groups = answer.groups
+            rowGroups = answer.rowGroups
             loadError = null
             offlineSince = null
             keep()
@@ -458,10 +484,11 @@ class DatabaseSession(
             val prop = WikiDb.datePropOf(db, view) ?: return DbRowQueryOut()
             return api.queryRows(databaseId, view.id, WikiDb.monthRange(prop, month), null, 1000)
         }
-        return api.queryRows(databaseId, view?.id, null, cursor, PAGE)
+        val size = if (view?.groupBy != null) WikiDbViews.GROUPED_PAGE else PAGE
+        return api.queryRows(databaseId, view?.id, null, cursor, size, WikiDbViews.queryOptions(view, options.zone()))
     }
 
-    /** The table's next 100 rows. */
+    /** The table's next 100 rows (a grouped view's next 1,000). */
     suspend fun loadMore() {
         val db = database ?: return
         val cursor = nextCursor ?: return
@@ -469,8 +496,19 @@ class DatabaseSession(
         try {
             val answer = query(db, view, cursor)
             if (mine != generation) return
-            val known = rows.map { it.id }.toSet()
-            rows = rows + answer.rows.filter { it.id !in known }
+            val before = rowGroups
+            val more = answer.rowGroups
+            if (before != null && more != null && more.size == answer.rows.size) {
+                // A row with several values is once in each of its groups: the same row in another group is not a repeat.
+                val known = rows.indices.map { rows[it].id to before[it] }.toSet()
+                val fresh = answer.rows.indices.filter { (answer.rows[it].id to more[it]) !in known }
+                rows = rows + fresh.map { answer.rows[it] }
+                rowGroups = before + fresh.map { more[it] }
+                answer.groups?.let { groups = it }
+            } else {
+                val known = rows.map { it.id }.toSet()
+                rows = rows + answer.rows.filter { it.id !in known }
+            }
             refs = refs + answer.refs.associateBy { it.id }
             total = answer.total
             nextCursor = answer.nextCursor
@@ -486,6 +524,8 @@ class DatabaseSession(
         if (id == view?.id) return
         viewId = id
         rows = emptyList()
+        groups = null
+        rowGroups = null
         nextCursor = null
         emit()
         reload()
@@ -507,7 +547,10 @@ class DatabaseSession(
     private fun keep() {
         val db = database ?: return
         store?.saveWikiDb(
-            WikiDbSnapshot(databaseId, viewId, month.toString(), db, rows.take(KEEP_ROWS), refs.values.toList(), total, options.now()),
+            WikiDbSnapshot(
+                databaseId, viewId, month.toString(), db, rows.take(KEEP_ROWS), refs.values.toList(), total, options.now(),
+                groups, rowGroups?.take(KEEP_ROWS),
+            ),
         )
     }
 
@@ -530,12 +573,75 @@ class DatabaseSession(
         }
         val made = CanvasRequests.sameKey(options.newId(), wait = options.retryWait) { key -> api.createRow(databaseId, title, props, key, template, options.zone().id) }
         refs = refs + made.refs.associateBy { it.id }
-        if (rows.none { it.id == made.row.id }) {
+        if (rowGroups != null) {
+            // M148: a grouped view: the server knows the new row's group (read again, not guessed here).
+            reload()
+        } else if (rows.none { it.id == made.row.id }) {
             rows = rows + made.row
             total += 1
         }
         emit()
         return made.row
+    }
+
+    /** M148: folds or unfolds a section of the view shown. */
+    fun toggleSection(key: String) {
+        val id = WikiDbViews.sectionId(view?.id, key)
+        collapsed = if (id in collapsed) collapsed - id else collapsed + id
+        emit()
+    }
+
+    fun isCollapsed(key: String): Boolean = WikiDbViews.sectionId(view?.id, key) in collapsed
+
+    /**
+     * M148: a board card from group `from` to `to` (§25.2's values; the server keeps its place). It moves at once; a
+     * failure on the network is sent again with the same client_op_id (the cells change once), a refusal puts it back
+     * and is thrown. The view is read again afterwards (the server's order and counts).
+     */
+    suspend fun moveRow(rowId: String, from: String, to: String) {
+        val db = database ?: return
+        val view = view
+        if (!WikiDbViews.canMove(db, view) || from == to || rowId in moving) return
+        val prop = WikiDbViews.groupProp(db, view) ?: return
+        val index = rows.indices.firstOrNull { rows[it].id == rowId && rowGroups?.getOrNull(it) == from } ?: return
+        val set = WikiDbViews.moveSet(prop, rows[index], from, to) ?: return
+        val before = Triple(rows, rowGroups, groups)
+        // At once: the row's new cell everywhere it is shown, this card in its new group (once), the counts.
+        val keys = rowGroups.orEmpty().toMutableList()
+        val moved = WikiDb.applyLocal(rows[index], prop.id, set.getValue(prop.id), prop.type)
+        val already = rows.indices.any { rows[it].id == rowId && keys[it] == to }
+        val nextRows = rows.map { if (it.id == rowId) moved else it }.toMutableList()
+        if (already) {
+            nextRows.removeAt(index)
+            keys.removeAt(index)
+        } else keys[index] = to
+        rows = nextRows
+        rowGroups = keys
+        groups = groups?.map { g ->
+            when {
+                g.key == from -> g.copy(count = (g.count - 1).coerceAtLeast(0))
+                g.key == to && !already -> g.copy(count = g.count + 1)
+                else -> g
+            }
+        }
+        generation++ // a read on its way would put the card back
+        moving = moving + rowId
+        emit()
+        try {
+            val answer = CanvasRequests.sameKey(options.newId(), wait = options.retryWait) { key -> api.moveRow(rowId, set, key) }
+            refs = refs + answer.refs.associateBy { it.id }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            rows = before.first
+            rowGroups = before.second
+            groups = before.third
+            throw e
+        } finally {
+            moving = moving - rowId
+            emit()
+        }
+        refresh()
     }
 
     fun stop() {

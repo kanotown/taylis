@@ -112,11 +112,27 @@ class FakeWikiDbApi : WikiDbApi {
         return db
     }
 
-    override suspend fun queryRows(databaseId: String, viewId: String?, range: DbRange?, cursor: String?, limit: Int): DbRowQueryOut {
+    /** M148: the options of each query, and an answer in groups when set. */
+    val queryOptions = ArrayList<jp.chikuwachat.android.sync.DbQueryOptions>()
+    var answer: ((cursor: String?) -> DbRowQueryOut)? = null
+    val moves = ArrayList<Triple<String, JsonObject, String>>()
+
+    override suspend fun queryRows(
+        databaseId: String, viewId: String?, range: DbRange?, cursor: String?, limit: Int, options: jp.chikuwachat.android.sync.DbQueryOptions,
+    ): DbRowQueryOut {
         calls.add("query ${viewId ?: "-"} ${cursor ?: "-"}")
         queries.add(Triple(viewId, range, limit))
+        queryOptions.add(options)
         fail()
+        answer?.let { return it(cursor) }
         return DbRowQueryOut(rows, refs, rows.size, if (cursor == null && limit == DatabaseSession.PAGE && rows.size > 1) "o:1" else null, db.schemaVersion)
+    }
+
+    override suspend fun moveRow(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs {
+        moves.add(Triple(rowId, set, clientOpId))
+        calls.add("move $rowId")
+        fail()
+        return DbRowWithRefs(row(rowId), refs)
     }
 
     override suspend fun createRow(databaseId: String, title: String, props: JsonObject, clientSaveId: String, template: jp.chikuwachat.android.sync.RowTemplateChoice, tz: String?): DbRowWithRefs {
@@ -203,9 +219,10 @@ class WikiDbTest {
         assertEquals("2026/10/06 20:30", WikiDb.cellText(MADE, r, ctx(NEW_YORK)))
         assertEquals("", WikiDb.cellText(PRICE, r, c))
         assertEquals("名前", WikiDb.propName(TITLE, "名前"))
-        assertEquals("表", WikiDb.viewName(DbView("v1"), "表", "カレンダー"))
-        assertEquals("カレンダー", WikiDb.viewName(DbView("v2", type = "calendar"), "表", "カレンダー"))
-        assertEquals("予定", WikiDb.viewName(DbView("v3", name = "予定", type = "calendar"), "表", "カレンダー"))
+        val words = jp.chikuwachat.android.sync.DbViewWords("表", "ボード", "リスト", "ギャラリー", "カレンダー")
+        assertEquals("表", WikiDb.viewName(DbView("v1"), words))
+        assertEquals("カレンダー", WikiDb.viewName(DbView("v2", type = "calendar"), words))
+        assertEquals("予定", WikiDb.viewName(DbView("v3", name = "予定", type = "calendar"), words))
     }
 
     // --- the agenda -----------------------------------------------------------------------------------------------

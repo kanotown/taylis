@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M148 (docs/WIKI.md §25.4): board, list and gallery views and groups on the phone. Japanese, the default; values-en / values-b+zh+Hans translate it. -->
+<resources>
+    <string name="docs_db_board">ボード</string>
+    <string name="docs_db_list">リスト</string>
+    <string name="docs_db_gallery">ギャラリー</string>
+    <string name="docs_db_no_value_group">なし</string>
+    <string name="docs_db_checked">オン</string>
+    <string name="docs_db_unchecked">オフ</string>
+    <string name="docs_db_week_of">%1$s の週</string>
+    <string name="docs_db_move_to">「%1$s」へ移動</string>
+    <string name="docs_db_card_menu">「%1$s」の操作</string>
+    <string name="docs_db_collapse_group">「%1$s」を閉じる</string>
+    <string name="docs_db_expand_group">「%1$s」を開く</string>
+    <string name="docs_db_group_empty">行はありません</string>
+    <string name="docs_db_board_needs_prop">このボードには列にするプロパティがありません（パソコンの「レイアウト」で選べます）</string>
+</resources>

@@ -959,19 +959,10 @@ class ApiClient(
 
     override suspend fun wikiDatabase(databaseId: String): DatabaseOut = request("GET", "/api/v1/wiki/databases/$databaseId")
 
-    override suspend fun queryRows(databaseId: String, viewId: String?, range: jp.chikuwachat.android.sync.DbRange?, cursor: String?, limit: Int): DbRowQueryOut =
-        request("POST", "/api/v1/wiki/databases/$databaseId/query", buildJsonObject {
-            viewId?.let { put("view_id", it) }
-            range?.let { r ->
-                put("range", buildJsonObject {
-                    put("prop_id", r.propId)
-                    put("start", r.start.toString())
-                    put("end", r.end.toString())
-                })
-            }
-            cursor?.let { put("cursor", it) }
-            put("limit", limit)
-        })
+    override suspend fun queryRows(
+        databaseId: String, viewId: String?, range: jp.chikuwachat.android.sync.DbRange?, cursor: String?, limit: Int,
+        options: jp.chikuwachat.android.sync.DbQueryOptions,
+    ): DbRowQueryOut = request("POST", "/api/v1/wiki/databases/$databaseId/query", jp.chikuwachat.android.sync.WikiDbViews.queryBody(viewId, range, cursor, limit, options))
 
     /** A new row (201; a retry with the same key answers the first one, 200). */
     override suspend fun createRow(
@@ -987,6 +978,10 @@ class ApiClient(
             put("set", set)
             put("client_op_id", clientOpId)
         })
+
+    /** M148: a board card to another group (edit); the same `client_op_id` again changes no cell. */
+    override suspend fun moveRow(rowId: String, set: JsonObject, clientOpId: String): DbRowWithRefs =
+        request("POST", "/api/v1/wiki/rows/$rowId/move", jp.chikuwachat.android.sync.WikiDbViews.moveBody(set, clientOpId))
 
     override suspend fun relationCandidates(databaseId: String, propId: String, q: String): List<DbRowRef> =
         request("GET", "/api/v1/wiki/databases/$databaseId/properties/$propId/candidates?q=" + Enc.encode(q, "UTF-8") + "&limit=30")
