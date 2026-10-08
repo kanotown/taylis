@@ -312,9 +312,11 @@ struct HomeTile: Identifiable, Equatable {
     let count: Int?
     /// The number is red (a mention in a followed thread; reminders that fired).
     let alert: Bool
+    /// Dimmed without a number: 「Times」 while no feed times has anything unread (TIMES_FEED.md §4).
+    var quiet = false
 
     var id: String { kind.rawValue }
-    var dimmed: Bool { count == 0 }
+    var dimmed: Bool { count == 0 || quiet }
 
     var title: String {
         switch kind {
@@ -399,9 +401,10 @@ struct HomeTile: Identifiable, Equatable {
     /// M143 (docs/ACTIONS.md §9.2): 操作 (key "actions", after 在室状況) only while the buttons are on and I may press one
     /// (`actions`): no number.
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?,
-                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false) -> [HomeTile] {
+                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false,
+                      timesUnread: Bool = true) -> [HomeTile] {
         let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations, docs: docs,
-                        attendance: attendance, actions: actions)
+                        attendance: attendance, actions: actions, timesUnread: timesUnread)
         let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
         return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil, actions: actions)).compactMap { byKey[$0] }
     }
@@ -412,8 +415,9 @@ struct HomeTile: Identifiable, Equatable {
     }
 
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
-                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false) -> [HomeTile] {
-        var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders)
+                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false,
+                      timesUnread: Bool = true) -> [HomeTile] {
+        var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, timesUnread: timesUnread)
         if docs, let at = row.firstIndex(where: { $0.kind == .canvases }) {
             row.insert(HomeTile(kind: .docs, count: nil, alert: false), at: at + 1)
         }
@@ -426,10 +430,10 @@ struct HomeTile: Identifiable, Equatable {
         return row
     }
 
-    private static func base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
+    private static func base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, timesUnread: Bool) -> [HomeTile] {
         [
             HomeTile(kind: .threads, count: threads.unreadCount, alert: threads.mentionCount > 0),
-            HomeTile(kind: .times, count: nil, alert: false),
+            HomeTile(kind: .times, count: nil, alert: false, quiet: !timesUnread),
             HomeTile(kind: .drafts, count: drafts, alert: false),
             HomeTile(kind: .saved, count: saved, alert: false),
             HomeTile(kind: .reminders, count: firedReminders, alert: firedReminders > 0),

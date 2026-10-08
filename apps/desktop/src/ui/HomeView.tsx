@@ -11,6 +11,7 @@ import { useOpenSelfNotes } from "./DmListView";
 import { homeSections } from "./home";
 import { reservationTodoCount } from "./reservationPools";
 import { inRoomCount } from "./attendance";
+import { hasUnreadFeed } from "../sync/timesFeed";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { Badge, Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
@@ -279,9 +280,11 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
   const fired = store.firedReminderCount();
-  const tiles: Array<{ key: string; label: string; icon: ReactNode; count: number | null; danger: boolean; onClick: () => void }> = [
+  // TIMES_FEED.md §4 (2026-10-09): 「Times」 is dimmed while no feed times has anything unread (no number, as before).
+  const timesQuiet = !hasUnreadFeed(store.channels.values());
+  const tiles: Array<{ key: string; label: string; icon: ReactNode; count: number | null; danger: boolean; quiet?: boolean; onClick: () => void }> = [
     { key: "threads", label: t("nav.threads"), icon: <MessagesSquare size={20} />, count: threads.unread_count, danger: threads.mention_count > 0, onClick: onThreads },
-    ...(onTimesFeed ? [{ key: "times", label: "Times", icon: <Newspaper size={20} />, count: null, danger: false, onClick: onTimesFeed }] : []),
+    ...(onTimesFeed ? [{ key: "times", label: "Times", icon: <Newspaper size={20} />, count: null, danger: false, quiet: timesQuiet, onClick: onTimesFeed }] : []),
     { key: "drafts", label: t("nav.drafts"), icon: <FileText size={20} />, count: drafts, danger: false, onClick: onDrafts },
     { key: "saved", label: t("nav.savedShort"), icon: <Bookmark size={20} />, count: store.bookmarks.size, danger: false, onClick: onSaved },
     { key: "reminders", label: t("nav.reminders"), icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },
@@ -301,7 +304,7 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
   return (
     <div className="flex gap-2 overflow-x-auto px-3 pb-2 pt-1 [scrollbar-width:none]">
       {tiles.map((tile) => {
-        const empty = tile.count === 0;
+        const empty = tile.count === 0 || !!tile.quiet;
         return (
           <button
             key={tile.key}

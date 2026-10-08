@@ -109,6 +109,14 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(quiet.map(\.alert), [false, false, false, false, false, false, false, false, false, false])
         XCTAssertEqual(quiet.map(\.dimmed), [false, false, false, true, true, false, false, false, false, false])
         XCTAssertEqual(quiet[0].selectionId, ThreadsListView.selectionId)
+        // 2026-10-09 (TIMES_FEED.md §4): 「Times」 is dimmed while no feed times has anything unread; never a number.
+        let read = HomeTile.tiles(threads: ThreadSummary(unreadCount: 0, mentionCount: 0), drafts: 0, saved: 0, firedReminders: 0, navItems: nil,
+                                  timesUnread: false)
+        XCTAssertEqual(read.first { $0.kind == .times }?.dimmed, true)
+        XCTAssertNil(read.first { $0.kind == .times }?.count)
+        let unread = HomeTile.tiles(threads: ThreadSummary(unreadCount: 0, mentionCount: 0), drafts: 0, saved: 0, firedReminders: 0, navItems: nil,
+                                    timesUnread: true)
+        XCTAssertEqual(unread.first { $0.kind == .times }?.dimmed, false)
     }
 }
 

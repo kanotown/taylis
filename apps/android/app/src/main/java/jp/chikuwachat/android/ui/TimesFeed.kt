@@ -46,6 +46,14 @@ object TimesFeed {
     fun isFeedChannel(channel: ChannelState?, now: Instant = Instant.now()): Boolean =
         channel != null && channel.isMember && channel.channel.timesOwnerId != null && !NotificationLevels.isMuted(channel, now)
 
+    /**
+     * §4 (2026-10-09): whether any feed times has something unread — the home's 「Times」 tile is dimmed otherwise, like an
+     * entry with nothing new (testers: it stayed bright with nothing left to read). The server's unread count, so my own
+     * posts and thread-only replies do not count.
+     */
+    fun hasUnread(channels: Collection<ChannelState>, now: Instant = Instant.now()): Boolean =
+        channels.any { isFeedChannel(it, now) && it.unreadCount > 0 }
+
     /** §5 isFeedRow: a live, user-typed timeline row (top level, or a reply also sent to the channel) of a feed channel. */
     fun isFeedRow(message: MessageOut, channel: ChannelState?, now: Instant = Instant.now()): Boolean =
         message.type == "user" && !message.deleted && (message.parentId == null || message.alsoInChannel) && isFeedChannel(channel, now)

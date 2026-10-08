@@ -54,6 +54,21 @@ final class TimesFeedTests: XCTestCase {
         XCTAssertTrue(TimesFeedList.isFeedRow(post, channel: channel("t1", level: "all"), now: now))
     }
 
+    /// 2026-10-09: the home's 「Times」 is bright only while a feed times has something unread.
+    func testHasUnreadAsksTheFeedChannelsOnly() {
+        func unread(_ state: ChannelState, _ count: Int) -> ChannelState {
+            var state = state
+            state.unreadCount = count
+            return state
+        }
+        XCTAssertFalse(TimesFeedList.hasUnread([channel("t1"), channel("t2")], now: now))
+        XCTAssertTrue(TimesFeedList.hasUnread([channel("t1"), unread(channel("t2"), 2)], now: now))
+        XCTAssertTrue(TimesFeedList.hasUnread([unread(channel("t1", times: "me"), 1)], now: now))  // a comment on mine
+        // Not a times, muted, not a member: their unread does not light it.
+        XCTAssertFalse(TimesFeedList.hasUnread([unread(channel("c", times: nil), 5), unread(channel("t1", muted: true), 3),
+                                                unread(channel("t2", member: false), 1)], now: now))
+    }
+
     // MARK: order and paging
 
     func testRowsAreNewestFirstThenByIdAcrossChannels() {

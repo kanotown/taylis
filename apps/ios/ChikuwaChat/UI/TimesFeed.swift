@@ -18,6 +18,13 @@ struct TimesFeedList: Equatable {
         return channel.isMember && channel.channel.timesOwnerId != nil && !channel.isMuted(now: now)
     }
 
+    /// §4 (2026-10-09): whether any feed times has something unread — the home's 「Times」 tile is dimmed otherwise, as an
+    /// entry with nothing new (testers: it stayed bright with nothing left to read). The server's unread count, so my own
+    /// posts and thread-only replies do not count.
+    static func hasUnread(_ channels: some Sequence<ChannelState>, now: Date = Date()) -> Bool {
+        channels.contains { isFeedChannel($0, now: now) && $0.unreadCount > 0 }
+    }
+
     /// §5 isFeedRow: a user message, not deleted, in the channel's timeline (top-level or a reply also sent there), of a
     /// feed channel. System rows and thread-only replies stay out.
     static func isFeedRow(_ message: MessageOut, channel: ChannelState?, now: Date = Date()) -> Bool {

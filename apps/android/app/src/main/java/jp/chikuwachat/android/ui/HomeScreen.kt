@@ -167,7 +167,8 @@ fun HomeScreen(
                 HomeTiles.ReservationTile(ReservationRules.todoCount(pools), pools.any { it.canOperate })
             },
             attendance = AttendanceRules.shown(store.attendance, store.me?.role),
-            actions = ActionRules.shown(store.actions, store.me?.role))
+            actions = ActionRules.shown(store.actions, store.me?.role),
+            timesUnread = TimesFeed.hasUnread(store.channels.values))
     }
     // M24: offer to make my times until I have one (joined or not: a times I left is in the channel browser).
     val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }

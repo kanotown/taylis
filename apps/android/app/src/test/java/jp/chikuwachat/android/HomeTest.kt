@@ -136,6 +136,12 @@ class HomeTest {
         assertEquals("締切", HomeTiles.description(tiles[7]))
         assertEquals("ファイル", HomeTiles.description(tiles[8]))
         assertEquals("Times", HomeTiles.description(tiles[1]))
+        // 2026-10-09 (TIMES_FEED.md §4): 「Times」 is dimmed while no feed times has anything unread; never a number.
+        val read = HomeTiles.tiles(ThreadSummary(), drafts = 0, saved = 0, firedReminders = 0, navItems = null, timesUnread = false)
+        assertTrue(read.first { it.tile == HomeTile.TIMES }.dimmed)
+        assertEquals(null, read.first { it.tile == HomeTile.TIMES }.count)
+        val unread = HomeTiles.tiles(ThreadSummary(), drafts = 0, saved = 0, firedReminders = 0, navItems = null, timesUnread = true)
+        assertFalse(unread.first { it.tile == HomeTile.TIMES }.dimmed)
     }
 
     // --- recent conversations ---
