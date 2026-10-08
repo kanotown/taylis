@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Communication Notifications (the sender's picture large on a message notification, Taylis' icon small at its corner;
+  docs/PUSH_NOTIFICATIONS.md §9.1). A restricted entitlement: a Mac app signed with it launches only with a provisioning
+  profile that grants it embedded (Contents/embedded.provisionprofile). Not in tauri.conf.json on purpose: an ordinary
+  build (tauri dev, CI, an ad-hoc release) would not start. scripts/release-desktop.sh uses this file only when
+  TAYLIS_MAC_PROVISIONING_PROFILE names such a profile, and adds the profile's application and team identifiers.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.developer.usernotifications.communication</key>
+  <true/>
+</dict>
+</plist>

@@ -40,6 +40,12 @@ objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-user-notifications = "0.3"
 block2 = "0.6"
+# A message's notification as a communication notification (the sender's picture, PUSH_NOTIFICATIONS.md §9.1): only the
+# intent, person and interaction types.
+objc2-intents = { version = "0.3", default-features = false, features = [
+  "std", "block2", "INIntent", "INIntentResponse", "INSendMessageIntent", "INSendMessageAttachment", "INPerson",
+  "INPersonHandle", "INImage", "INInteraction", "INSpeakableString", "INOutgoingMessageType",
+] }
 
 # Windows / Linux hand a deep link to a new process; this forwards it to the running app (its deep-link feature).
 # macOS delivers the URL to the running app itself. 2.4.x for tauri 2.11, as above.

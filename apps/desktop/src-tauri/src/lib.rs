@@ -18,6 +18,8 @@ use tauri_plugin_deep_link::DeepLinkExt;
 mod background;
 #[cfg(target_os = "macos")]
 mod mac_notify;
+#[cfg(any(target_os = "macos", windows))]
+mod notify_avatar;
 #[cfg(windows)]
 mod win_notify;
 
@@ -71,34 +73,62 @@ async fn native_notification_request() -> Result<String, String> {
     Ok(if cfg!(windows) { "granted" } else { "unavailable" }.to_owned())
 }
 
+/// Who a message notification is from (docs/PUSH_NOTIFICATIONS.md §9.1): the sender's picture (PNG bytes the page drew,
+/// 128 px: the profile picture or the default initials avatar) shows as the notification's main image — on macOS as a
+/// communication notification (the picture large, Taylis' icon small at its corner) where the app is entitled to, else
+/// as an attachment; on Windows as the toast's logo, cropped to a circle.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+// Windows reads only the name and the picture; elsewhere it is not read at all.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) struct NotificationPerson {
+    /// The sender's user id.
+    pub id: String,
+    pub name: String,
+    /// The conversation (channel id): macOS keeps a conversation's notifications together.
+    pub conversation_id: String,
+    /// A channel's or group DM's title; None for a 1:1 DM.
+    pub group_name: Option<String>,
+    /// The message text alone (the body without 「名前: 」): a communication notification names the sender itself.
+    pub text: String,
+    /// Names the picture (server, user, version / initials): one cached file per key (notify_avatar.rs).
+    pub avatar_key: Option<String>,
+    pub avatar_png: Option<Vec<u8>>,
+}
+
 /// Show a notification (only called after the permission said it is not "unavailable").
 #[tauri::command]
-fn native_notification_send(app: AppHandle, id: String, title: String, body: String) -> Result<(), String> {
+fn native_notification_send(app: AppHandle, id: String, title: String, body: String, person: Option<NotificationPerson>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     if mac_notify::available() {
-        mac_notify::send(&id, &title, &body);
+        mac_notify::send(&app, id, title, body, person);
         return Ok(());
     }
     #[cfg(windows)]
     {
-        win_notify::send(&app, Some(id), title, body);
+        win_notify::send(&app, Some(id), title, body, person);
         Ok(())
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, id, title, body);
+        let _ = (app, id, title, body, person);
         Err("native notifications are not available here".to_owned())
     }
 }
 
 /// Sign-out: remove our delivered notifications (nothing to do where they are not native; on Windows the toasts stay in
-/// the Action Center, as with the plugin, and a click on one after sign-out only brings the window up).
+/// the Action Center, as with the plugin, and a click on one after sign-out only brings the window up) and the senders'
+/// pictures kept for them (notify_avatar.rs).
 #[tauri::command]
-fn native_notification_clear() {
+fn native_notification_clear(app: AppHandle) {
     #[cfg(target_os = "macos")]
     if mac_notify::available() {
         mac_notify::clear();
     }
+    #[cfg(any(target_os = "macos", windows))]
+    notify_avatar::clear(&app);
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = app;
 }
 
 /// The computer's own name for the device list (「ログイン中の端末」, the test notification's list): macOS's Computer

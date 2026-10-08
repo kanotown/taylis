@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
+import { setAvatarPainter } from "../src/platform/notificationAvatar";
 import { notificationPermission, notify, requestNotificationPermission } from "../src/platform/notify";
 import { Store } from "../src/sync/store";
 import { SettingsDialog } from "../src/ui/Settings";
@@ -58,6 +59,29 @@ describe("browser notifications (M28b: the permission is asked for from the sett
     fireEvent.click(screen.getByRole("button", { name: "通知を許可" }));
     expect(await screen.findByText("許可済み")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "通知を許可" })).toBeNull();
+  });
+
+  it("a message's notification has the sender's picture as its icon, a data URL (PUSH_NOTIFICATIONS.md §9.1)", async () => {
+    const options: Array<NotificationOptions | undefined> = [];
+    class WithOptions {
+      static get permission(): NotificationPermission { return "granted"; }
+      onclose: (() => void) | null = null;
+      constructor(_title: string, init?: NotificationOptions) { options.push(init); }
+      close(): void {}
+    }
+    vi.stubGlobal("Notification", WithOptions);
+    setAvatarPainter({ picture: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]), initials: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 2]) });
+    try {
+      const fetched: string[] = [];
+      const sender = { scope: "https://a.example.com", userId: "alice", name: "Alice", version: "v1", fetchBlob: async (path: string) => { fetched.push(path); return new Blob(["x"]); }, conversationId: "c", groupName: null, text: "hi" };
+      await notify("Alice", "hi", undefined, { sender });
+      await notify("Taylis", "test");
+      expect(fetched).toEqual(["/api/v1/users/alice/avatar?v=v1"]); // with the workspace's session
+      expect(options[0]).toEqual({ body: "hi", icon: "data:image/png;base64,iVBORw0KGgoB" });
+      expect(options[1]).toEqual({ body: "test" });
+    } finally {
+      setAvatarPainter(null);
+    }
   });
 
   it("says so when the browser blocked them, with no button to press", async () => {

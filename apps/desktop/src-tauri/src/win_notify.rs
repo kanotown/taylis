@@ -18,7 +18,9 @@
 //! window calls are posted to the event loop). `Toast::show` sleeps briefly, so it runs off the async runtime's threads.
 
 use tauri::{AppHandle, Emitter};
-use tauri_winrt_notification::Toast;
+use tauri_winrt_notification::{IconCrop, Toast};
+
+use crate::{notify_avatar, NotificationPerson};
 
 /// The AppUserModelID the toast is shown under (see the module comment).
 fn app_id(app: &AppHandle) -> String {
@@ -38,12 +40,21 @@ fn app_id(app: &AppHandle) -> String {
 }
 
 /// Show one toast now. `id` names it for the click (`notification-clicked`); `None` = a click only brings the window up.
-pub fn send(app: &AppHandle, id: Option<String>, title: String, body: String) {
+/// A message's toast shows its sender's picture (the profile picture or the initials avatar, notify_avatar.rs) in place
+/// of the large app logo (`appLogoOverride`, cropped to a circle), like Teams or Slack; the header keeps Taylis' name
+/// and icon.
+pub fn send(app: &AppHandle, id: Option<String>, title: String, body: String, person: Option<NotificationPerson>) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let on_click = app.clone();
         // Default sound (Toast::new's), like macOS' banner; the plugin's toasts were silent (notify-rust's `sound(None)`).
-        let toast = Toast::new(&app_id(&app)).title(&title).text1(&body).on_activated(move |_action| {
+        let mut toast = Toast::new(&app_id(&app)).title(&title).text1(&body);
+        if let Some(person) = &person {
+            if let Some(picture) = notify_avatar::file(&app, person) {
+                toast = toast.icon(&picture, IconCrop::Circular, &person.name);
+            }
+        }
+        let toast = toast.on_activated(move |_action| {
             crate::show_main_window(&on_click);
             if let Some(id) = &id {
                 if let Err(err) = on_click.emit("notification-clicked", id.clone()) {
