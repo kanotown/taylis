@@ -1556,4 +1556,147 @@ extension SyncEngineTests {
         XCTAssertNil(w.store.threads[parent.id]?.latestReplies)
         w.engine.stop()
     }
+
+    // MARK: THREADS.md §5 「元のメッセージの削除」
+
+    /// Bob's thread open (replies fetched); `rootSender` posts the root, alice replies. The watch has seen it live.
+    private func openThread(_ w: World, rootSender: String) async throws -> (MessageOut, ThreadRootWatch) {
+        w.engine.isActive = { true }
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        let root = try w.server.post(channelId: w.channel.id, senderId: rootSender, body: "root").0
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "reply", parentId: root.id)
+        await settle(w.engine)
+        var watch = ThreadRootWatch()
+        let loaded = await w.engine.loadReplies(w.channel.id, parentId: root.id)
+        XCTAssertTrue(loaded)
+        watch.repliesLoaded(rootDeleted: w.store.deletedThreadRoots.contains(root.id))
+        XCTAssertEqual(watch.next(rootDeleted: w.store.deletedThreadRoots.contains(root.id)), .show)
+        return (root, watch)
+    }
+
+    func testRootDeletedByAnEventClosesTheThreadWithTheNotice() async throws {
+        let w = makeWorld()
+        let controller = AppController()
+        var (root, watch) = try await openThread(w, rootSender: w.alice.id)
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: root.id)
+        await settle(w.engine)
+        XCTAssertTrue(w.store.deletedThreadRoots.contains(root.id))
+        XCTAssertEqual(watch.next(rootDeleted: true), .close)
+        controller.threadClosedForDeletedRoot(root.id)
+        XCTAssertEqual(controller.notice, "元のメッセージが削除されたため、スレッドを閉じました")
+        XCTAssertEqual(watch.next(rootDeleted: true), .deletedState) // closes once
+        w.engine.stop()
+    }
+
+    func testMyOwnDeleteFromTheThreadClosesItWithoutTheNotice() async throws {
+        let w = makeWorld()
+        let controller = AppController()
+        var (root, watch) = try await openThread(w, rootSender: w.bob.id)
+        controller.markThreadRootDeletedHere(root.id) // the thread screen's root row (MessageSheets)
+        _ = w.store.upsertMessage(try w.server.delete(channelId: w.channel.id, userId: w.bob.id, messageId: root.id)) // the answer
+        await settle(w.engine)
+        XCTAssertEqual(watch.next(rootDeleted: w.store.deletedThreadRoots.contains(root.id)), .close)
+        controller.threadClosedForDeletedRoot(root.id)
+        XCTAssertNil(controller.notice)
+        // The mark is taken: another thread's root deleted later shows the notice.
+        controller.threadClosedForDeletedRoot("other")
+        XCTAssertNotNil(controller.notice)
+        w.engine.stop()
+    }
+
+    func testAThreadOpenedAfterItsRootWasDeletedSaysSoInsteadOfClosing() async throws {
+        let w = makeWorld()
+        w.engine.isActive = { true }
+        await w.engine.start()
+        let root = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "root").0
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "reply", parentId: root.id)
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: root.id)
+        await settle(w.engine)
+        // A stale link: the replies answer 404, which is the deletion (no thread, no error).
+        var watch = ThreadRootWatch()
+        let loaded = await w.engine.loadReplies(w.channel.id, parentId: root.id)
+        XCTAssertFalse(loaded)
+        let deleted = w.store.deletedThreadRoots.contains(root.id)
+        XCTAssertTrue(deleted)
+        watch.repliesLoaded(rootDeleted: deleted)
+        XCTAssertEqual(watch.next(rootDeleted: deleted), .deletedState)
+        w.engine.stop()
+    }
+
+    func testARootDeletionDropsTheThreadRowAndItsReplyDraft() async throws {
+        let w = makeWorld()
+        let (root, _) = try await openThread(w, rootSender: w.bob.id)
+        await w.engine.loadThreads(filter: "all")
+        XCTAssertNotNil(w.store.threads[root.id])
+        w.store.setDraft(w.channel.id, parentId: root.id) { $0.text = "書きかけ" }
+        w.store.setDraft(w.channel.id) { $0.text = "チャンネルの書きかけ" }
+        try w.server.delete(channelId: w.channel.id, userId: w.bob.id, messageId: root.id) // another device of mine
+        await settle(w.engine)
+        XCTAssertNil(w.store.threads[root.id])
+        XCTAssertEqual(w.store.draft(w.channel.id, parentId: root.id).text, "")
+        XCTAssertEqual(w.store.draft(w.channel.id).text, "チャンネルの書きかけ")
+        w.engine.stop()
+    }
+
+    func testRepliesAnswering404ForgetTheThreadLikeADeletion() async throws {
+        let w = makeWorld()
+        let (root, _) = try await openThread(w, rootSender: w.bob.id)
+        w.store.setDraft(w.channel.id, parentId: root.id) { $0.text = "書きかけ" }
+        w.server.holdEvents = true // the deletion is missed (no event reaches this device)
+        try w.server.delete(channelId: w.channel.id, userId: w.bob.id, messageId: root.id)
+        XCTAssertFalse(w.store.deletedThreadRoots.contains(root.id))
+        let loaded = await w.engine.loadReplies(w.channel.id, parentId: root.id) // the refetch on reconnecting
+        XCTAssertFalse(loaded)
+        XCTAssertTrue(w.store.deletedThreadRoots.contains(root.id))
+        XCTAssertNil(w.store.message(w.channel.id, root.id))
+        XCTAssertEqual(w.store.draft(w.channel.id, parentId: root.id).text, "")
+        w.engine.stop()
+    }
+
+    /// A thread opened from 「スレッド」 with no timeline of its channel: the root is held by the list's row only, and its
+    /// message.deleted still reaches the thread (the engine took events only for rows it held).
+    func testARootHeldOnlyByTheThreadsListTakesItsDeletion() async throws {
+        let w = makeWorld()
+        let root = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "root").0
+        try w.server.post(channelId: w.channel.id, senderId: w.bob.id, body: "my reply", parentId: root.id)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> reply", parentId: root.id)
+        await w.engine.start() // no conversation open
+        await settle(w.engine)
+        await w.engine.loadThreads(filter: "all")
+        XCTAssertNil(w.store.channel(w.channel.id)?.syncedSeq)
+        XCTAssertNil(w.store.message(w.channel.id, root.id))
+        XCTAssertNotNil(w.store.threads[root.id])
+        XCTAssertEqual(w.store.threadSummary.mentionCount, 1)
+        var watch = ThreadRootWatch()
+        let loaded = await w.engine.loadReplies(w.channel.id, parentId: root.id)
+        XCTAssertTrue(loaded)
+        watch.repliesLoaded(rootDeleted: w.store.deletedThreadRoots.contains(root.id))
+
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: root.id)
+        await settle(w.engine)
+        XCTAssertTrue(w.store.deletedThreadRoots.contains(root.id))
+        XCTAssertNil(w.store.threads[root.id])
+        XCTAssertEqual(w.store.threadList().count, 0)
+        XCTAssertEqual(w.store.threadSummary.mentionCount, 0) // its unread mention leaves the badge with it
+        XCTAssertEqual(watch.next(rootDeleted: true), .close)
+        w.engine.stop()
+    }
+
+    /// The deletion shown before the server answers (hideMessage) is not the root's deletion yet: a refusal puts it back,
+    /// and the thread, its row and its draft stay.
+    func testARootHiddenBeforeTheAnswerKeepsItsThread() async throws {
+        let w = makeWorld()
+        let (root, _) = try await openThread(w, rootSender: w.bob.id)
+        w.store.setDraft(w.channel.id, parentId: root.id) { $0.text = "書きかけ" }
+        var hidden = try XCTUnwrap(w.store.message(w.channel.id, root.id))
+        let shown = hidden
+        hidden.deleted = true
+        w.store.upsertMessage(hidden, replacingSameVersion: true)
+        XCTAssertFalse(w.store.deletedThreadRoots.contains(root.id))
+        XCTAssertEqual(w.store.draft(w.channel.id, parentId: root.id).text, "書きかけ")
+        w.store.upsertMessage(shown, replacingSameVersion: true) // refused
+        XCTAssertNotNil(w.store.message(w.channel.id, root.id))
+        w.engine.stop()
+    }
 }

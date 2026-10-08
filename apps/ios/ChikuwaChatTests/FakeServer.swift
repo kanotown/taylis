@@ -889,6 +889,10 @@ final class FakeServer {
     func replies(userId: String, messageId: String) throws -> [MessageOut] {
         guard let record = channels.values.first(where: { $0.messages.contains { $0.id == messageId } }) else { return [] }
         _ = try requireMember(record.channel.id, userId)
+        // As the server: a deleted root has no thread to read (THREADS.md §5).
+        if record.messages.contains(where: { $0.id == messageId && $0.deleted }) {
+            throw ApiError.api(status: 404, code: "message_not_found", message: "not found")
+        }
         return record.messages.filter { $0.parentId == messageId && !$0.deleted }.sorted { $0.seq < $1.seq }
     }
 

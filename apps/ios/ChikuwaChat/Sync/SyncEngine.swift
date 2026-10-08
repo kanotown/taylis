@@ -972,6 +972,8 @@ final class SyncEngine {
             // No timeline here: the list's numbers move, and rows already held (a thread opened from 「スレッド」,
             // its parent) take the change so that thread stays live (§7.4).
             if isHeld(message) { store.upsertMessage(message) } else { store.applyLastMessage(MessageState(message)) } // M49 (§7.8)
+            // A thread's root held only by 「スレッド」's row (or not at all): the thread goes with it all the same (THREADS.md).
+            if message.deleted && message.parentId == nil { store.threadRootDeleted(channelId, message.id) }
             if let thread { store.applyParentThread(channelId, thread) }
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
             if isNew { countUnread(message); maybeNotify(message, channel, thread) }
@@ -1154,7 +1156,12 @@ final class SyncEngine {
         var loaded = false
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
-            for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+            let replies: [MessageOut]
+            do { replies = try await api.replies(messageId: parentId) } catch let error as ApiError where error.code == "message_not_found" {
+                store.threadRootDeleted(channelId, parentId) // the root was deleted (THREADS.md): the thread is gone
+                return
+            }
+            for reply in replies { store.upsertMessage(reply) }
             completeThreads[parentId] = channelId
             loaded = true
         }.value

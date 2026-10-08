@@ -26,10 +26,13 @@ struct MessageSheet: Identifiable, Equatable {
 extension View {
     /// Presents what the rows ask for (`sheet`), what the action sheet's choice leads to once it is gone, and the
     /// delete confirmation. `openThread` and `markUnread` are the conversation's (nil where it has none); `onClosed`
-    /// runs when a message's sheet has gone.
+    /// runs when a message's sheet has gone. `threadRootId`: the root a thread screen shows at its top (deleting it there
+    /// closes the thread without a notice, THREADS.md).
     func messageSheets(_ controller: AppController, sheet: Binding<MessageSheet?>, openThread: ((MessageState) -> Void)? = nil,
-                       markUnread: ((MessageState) -> (() -> Void)?)? = nil, onClosed: @escaping () -> Void = {}) -> some View {
-        modifier(MessageSheets(controller: controller, sheet: sheet, openThread: openThread, markUnread: markUnread, onClosed: onClosed))
+                       markUnread: ((MessageState) -> (() -> Void)?)? = nil, threadRootId: String? = nil,
+                       onClosed: @escaping () -> Void = {}) -> some View {
+        modifier(MessageSheets(controller: controller, sheet: sheet, openThread: openThread, markUnread: markUnread, threadRootId: threadRootId,
+                               onClosed: onClosed))
     }
 }
 
@@ -38,6 +41,7 @@ private struct MessageSheets: ViewModifier {
     @Binding var sheet: MessageSheet?
     let openThread: ((MessageState) -> Void)?
     let markUnread: ((MessageState) -> (() -> Void)?)?
+    let threadRootId: String?
     let onClosed: () -> Void
     /// The action sheet's choice and its message, run once the sheet is gone.
     @State private var next: (MessageFollowUp, MessageState)?
@@ -129,6 +133,7 @@ private struct MessageSheets: ViewModifier {
                    presenting: deleting) { message in
                 Button("キャンセル", role: .cancel) {}
                 Button("削除", role: .destructive) {
+                    if message.id == threadRootId { controller.markThreadRootDeletedHere(message.id) } // closes without a notice
                     withAnimation(.easeOut(duration: 0.25)) { controller.hideMessage(message) }
                     Task { await controller.deleteMessage(message) }
                 }

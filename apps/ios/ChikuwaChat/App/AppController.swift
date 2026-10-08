@@ -59,7 +59,12 @@ final class AppController {
         do {
             let context = try await api.messageContext(id)
             if let parentId {
-                for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+                do {
+                    for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+                } catch let error as ApiError where error.code == "message_not_found" {
+                    // A reply whose root is deleted (a stale link, a notification): the thread opens saying so (THREADS.md §5).
+                    store.threadRootDeleted(channelId, parentId)
+                }
             }
             messageFocus = MessageFocus(channelId: channelId, messageId: id, parentId: parentId, context: context.map(MessageState.init))
             return true
@@ -846,8 +851,22 @@ final class AppController {
         guard let api else { return }
         do { _ = store.upsertMessage(try await api.deleteMessage(id: message.id)) } catch {
             store.upsertMessage(message, replacingSameVersion: true)
+            threadRootsDeletedHere.remove(message.id) // refused: the thread stays, and a later deletion is not mine
             self.error = describe(error)
         }
+    }
+
+    /// THREADS.md: thread roots I am deleting from their own thread screen (its root row): that screen then closes without
+    /// the notice. Marked right before the delete is asked for, taken when the screen closes.
+    @ObservationIgnored private var threadRootsDeletedHere: Set<String> = []
+
+    func markThreadRootDeletedHere(_ parentId: String) { threadRootsDeletedHere.insert(parentId) }
+
+    /// An open thread closes because its root was deleted (ThreadRootWatch): 「元のメッセージが削除されたため、スレッドを
+    /// 閉じました」, unless I deleted it from that thread myself.
+    func threadClosedForDeletedRoot(_ parentId: String) {
+        if threadRootsDeletedHere.remove(parentId) != nil { return }
+        notice = tr("元のメッセージが削除されたため、スレッドを閉じました")
     }
 
     // MARK: link previews (M11g): kept with the account (Store.linkPreviews), asked for once per URL per session
