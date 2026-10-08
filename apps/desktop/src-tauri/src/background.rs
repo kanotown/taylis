@@ -244,7 +244,7 @@ fn hide(window: &Window) {
 #[cfg(windows)]
 fn show_tray_hint(app: &AppHandle, state: &Background) {
     let labels = state.labels();
-    crate::win_notify::send(app, None, labels.hint_title, labels.hint_body);
+    crate::win_notify::send(app, None, labels.hint_title, labels.hint_body, None);
     if let Err(err) = state.update(|prefs| prefs.tray_hint_shown = true) {
         eprintln!("could not remember the tray hint: {err}");
     }

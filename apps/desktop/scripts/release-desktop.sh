@@ -28,6 +28,11 @@
 #   APPLE_SIGNING_IDENTITY   "Developer ID Application: … (TEAMID)" — sign the Mac app with it (else ad-hoc "-")
 #   TAYLIS_NOTARY_PROFILE    a `xcrun notarytool store-credentials` keychain profile — notarise and staple the app and
 #                            the .dmg (needs APPLE_SIGNING_IDENTITY)
+#   TAYLIS_MAC_PROVISIONING_PROFILE  a Developer ID provisioning profile (.provisionprofile) for jp.chikuwachat.desktop
+#                            with Communication Notifications: embedded in the app, which is then signed with
+#                            src-tauri/communication.entitlements, so message notifications show the sender's picture
+#                            large with Taylis' icon at its corner (docs/PUSH_NOTIFICATIONS.md §9.1). Needs
+#                            APPLE_SIGNING_IDENTITY. Unset: no entitlement (the picture is an attachment instead).
 #   TAYLIS_RELEASE_CACHE     cargo's target directory across releases (default ~/Library/Caches/taylis-release)
 set -euo pipefail
 
@@ -68,9 +73,9 @@ RELEASE_ENV="${TAYLIS_RELEASE_ENV:-$HOME/.config/taylis/release.env}"
 if [ -f "$RELEASE_ENV" ]; then
   while IFS='=' read -r name value; do
     case "$name" in
-      APPLE_SIGNING_IDENTITY|TAYLIS_NOTARY_PROFILE) [ -n "${!name:-}" ] || export "$name=$value" ;;
+      APPLE_SIGNING_IDENTITY|TAYLIS_NOTARY_PROFILE|TAYLIS_MAC_PROVISIONING_PROFILE) [ -n "${!name:-}" ] || export "$name=$value" ;;
     esac
-  done < <(grep -E '^(APPLE_SIGNING_IDENTITY|TAYLIS_NOTARY_PROFILE)=' "$RELEASE_ENV")
+  done < <(grep -E '^(APPLE_SIGNING_IDENTITY|TAYLIS_NOTARY_PROFILE|TAYLIS_MAC_PROVISIONING_PROFILE)=' "$RELEASE_ENV")
 fi
 
 KEY="${TAYLIS_UPDATER_KEY:-$HOME/.tauri/taylis-updater.key}"
@@ -79,6 +84,8 @@ LEGACY_REPO="${TAYLIS_LEGACY_RELEASES_REPO-kanotown/taylis-releases}"
 [[ "$LEGACY_REPO" != "$RELEASES_REPO" ]] || LEGACY_REPO=""
 SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${TAYLIS_NOTARY_PROFILE:-}"
+MAC_PROFILE="${TAYLIS_MAC_PROVISIONING_PROFILE:-}"
+MAC_PROFILE="${MAC_PROFILE/#\~/$HOME}"
 CACHE="${TAYLIS_RELEASE_CACHE:-$HOME/Library/Caches/taylis-release}"
 WORKFLOW="desktop.yml"
 ARTIFACT="desktop-$TAG-windows-latest"
@@ -122,7 +129,7 @@ if [[ -n "$NOTARY_PROFILE" && -z "$SIGNING_IDENTITY" ]]; then
   fail "TAYLIS_NOTARY_PROFILE needs APPLE_SIGNING_IDENTITY (notarisation needs a Developer ID signature)"
 fi
 SOURCE_REPO="$(cd "$REPO_ROOT" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo kanotown/taylis)"
-echo "  source: $SOURCE_REPO   key: $KEY   mac signing: ${SIGNING_IDENTITY:-ad-hoc}   notarise: ${NOTARY_PROFILE:-no}"
+echo "  source: $SOURCE_REPO   key: $KEY   mac signing: ${SIGNING_IDENTITY:-ad-hoc}   notarise: ${NOTARY_PROFILE:-no}   profile: ${MAC_PROFILE:-none}"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/taylis-release.XXXXXX")"
 SRC="$WORK/src"
@@ -133,6 +140,30 @@ cleanup() {
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+
+# Communication Notifications (docs/PUSH_NOTIFICATIONS.md §9.1): the profile must grant the entitlement to this app,
+# else the signed app would not launch. Checked before anything is built; the entitlements are this checkout's file
+# plus the identifiers macOS matches against the profile.
+MAC_ENTITLEMENTS=""
+if [[ -n "$MAC_PROFILE" ]]; then
+  [[ -n "$SIGNING_IDENTITY" ]] || fail "TAYLIS_MAC_PROVISIONING_PROFILE needs APPLE_SIGNING_IDENTITY (the profile is for a Developer ID signature)"
+  [[ -s "$MAC_PROFILE" ]] || fail "provisioning profile not found: $MAC_PROFILE"
+  security cms -D -i "$MAC_PROFILE" > "$WORK/profile.plist" 2>/dev/null || fail "not a provisioning profile: $MAC_PROFILE"
+  profile_value() { /usr/libexec/PlistBuddy -c "Print :$1" "$WORK/profile.plist" 2>/dev/null || true; }
+  TEAM_ID="$(profile_value Entitlements:com.apple.developer.team-identifier)"
+  APP_IDENTIFIER="$(profile_value Entitlements:com.apple.application-identifier)"
+  IDENTIFIER="$(node -e 'process.stdout.write(require(process.argv[1]).identifier)' "$REPO_ROOT/apps/desktop/src-tauri/tauri.conf.json")"
+  [[ -n "$TEAM_ID" && "$APP_IDENTIFIER" == "$TEAM_ID.$IDENTIFIER" ]] \
+    || fail "the profile is for '$APP_IDENTIFIER', not $IDENTIFIER (make a Developer ID profile for the App ID $IDENTIFIER)"
+  [[ "$(profile_value Entitlements:com.apple.developer.usernotifications.communication)" == "true" ]] \
+    || fail "the profile does not grant Communication Notifications (enable it on the App ID $IDENTIFIER, then download a new profile)"
+  EXPIRES="$(profile_value ExpirationDate)"
+  echo "  provisioning profile: $(profile_value Name) ($APP_IDENTIFIER, expires $EXPIRES)"
+  MAC_ENTITLEMENTS="$WORK/Taylis.entitlements"
+  cp "$REPO_ROOT/apps/desktop/src-tauri/communication.entitlements" "$MAC_ENTITLEMENTS"
+  /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $APP_IDENTIFIER" \
+    -c "Add :com.apple.developer.team-identifier string $TEAM_ID" "$MAC_ENTITLEMENTS" >/dev/null
+fi
 
 # --- 1. Windows ----------------------------------------------------------------------------------------
 
@@ -175,8 +206,13 @@ run rustup target add aarch64-apple-darwin x86_64-apple-darwin
 DESKTOP="$SRC/apps/desktop"
 CONFIG="$WORK/release.conf.json"
 if [[ -n "$SIGNING_IDENTITY" ]]; then
-  SIGN_JSON="$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$SIGNING_IDENTITY")"
-  echo "{\"version\":\"$VERSION\",\"bundle\":{\"macOS\":{\"signingIdentity\":$SIGN_JSON}}}" > "$CONFIG"
+  # With a provisioning profile: embedded as Contents/embedded.provisionprofile and signed with its entitlements.
+  node -e '
+    const [version, identity, entitlements, profile] = process.argv.slice(1);
+    const macOS = { signingIdentity: identity };
+    if (entitlements) Object.assign(macOS, { entitlements, files: { "embedded.provisionprofile": profile } });
+    process.stdout.write(JSON.stringify({ version, bundle: { macOS } }));
+  ' "$VERSION" "$SIGNING_IDENTITY" "$MAC_ENTITLEMENTS" "$MAC_PROFILE" > "$CONFIG"
 else
   echo "{\"version\":\"$VERSION\"}" > "$CONFIG"
 fi
@@ -200,6 +236,12 @@ fi
 APP="$BUNDLE_DIR/macos/Taylis.app"
 TARBALL="$BUNDLE_DIR/macos/Taylis.app.tar.gz"
 DMG="$ASSETS/Taylis_${VERSION}_universal.dmg"
+if [[ -n "$MAC_ENTITLEMENTS" ]] && ((!DRY_RUN)); then
+  [[ -s "$APP/Contents/embedded.provisionprofile" ]] || fail "the provisioning profile is not in the app (tauri's bundle.macOS.files)"
+  codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q usernotifications.communication \
+    || fail "the app is not signed with the Communication Notifications entitlement"
+  codesign --verify --strict --deep "$APP" || fail "the app's signature does not verify"
+fi
 
 # The .dmg of an app, laid out as tauri.conf.json `bundle.macOS.dmg` says (the window tauri's own .dmg has: the
 # background with 「Taylis を Applications にドラッグしてください」, the window size, the app and Applications positions),

@@ -37,6 +37,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   sendNotification: ({ title }: { title: string }) => state.plugin.sent.push(title),
 }));
 
+import { setAvatarPainter } from "../src/platform/notificationAvatar";
 import { clearNotifications, notificationPermission, notify, requestNotificationPermission } from "../src/platform/notify";
 
 const commands = () => state.calls.map((c) => c.command);
@@ -129,5 +130,54 @@ describe("desktop notifications on Windows (our own toasts, win_notify.rs)", () 
   it("a notification without a click action is still shown (its click only brings the window up, on the Rust side)", async () => {
     await notify("Taylis", "test");
     expect(sent()).toEqual([expect.objectContaining({ title: "Taylis", body: "test" })]);
+  });
+});
+
+describe("the sender's picture (PUSH_NOTIFICATIONS.md §9.1, 2026-10-08)", () => {
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1];
+  const INITIALS = [...PNG.slice(0, 8), 2];
+  const sender = (patch: Record<string, unknown> = {}) => ({
+    scope: "https://a.example.com",
+    userId: "alice",
+    name: "Alice",
+    version: "v1",
+    fetchBlob: async () => new Blob(["x"], { type: "image/png" }),
+    conversationId: "ch-1",
+    groupName: "#general",
+    text: "hi",
+    ...patch,
+  });
+
+  beforeEach(() => {
+    setAvatarPainter({ picture: async () => new Uint8Array(PNG), initials: async () => new Uint8Array(INITIALS) });
+  });
+  afterEach(() => setAvatarPainter(null));
+
+  it("a message's notification hands the native side its sender, conversation, text and picture", async () => {
+    await notify("#general", "Alice: hi", undefined, { sender: sender() });
+    expect(sent()).toEqual([expect.objectContaining({
+      title: "#general",
+      body: "Alice: hi",
+      person: { id: "alice", name: "Alice", conversationId: "ch-1", groupName: "#general", text: "hi", avatarKey: "https://a.example.com|alice|v1", avatarPng: PNG },
+    })]);
+  });
+
+  it("no picture: the initials avatar; other notifications carry no person at all", async () => {
+    await notify("Bob", "hi", undefined, { sender: sender({ userId: "bob", name: "Bob", version: null, groupName: null }) });
+    await notify("Taylis", "test");
+    const [message, other] = sent();
+    expect(message?.person).toMatchObject({ groupName: null, avatarKey: "https://a.example.com|bob|initials|B", avatarPng: INITIALS });
+    expect(other).not.toHaveProperty("person");
+  });
+
+  it("shown in the order asked even when an earlier one waits for its picture", async () => {
+    let arrive: ((blob: Blob) => void) | null = null;
+    const slow = notify("first", "a", undefined, { sender: sender({ userId: "slow", fetchBlob: () => new Promise<Blob>((resolve) => { arrive = resolve; }) }) });
+    const fast = notify("second", "b");
+    await vi.waitFor(() => expect(arrive).not.toBeNull());
+    expect(sent()).toEqual([]);
+    arrive!(new Blob(["x"]));
+    await Promise.all([slow, fast]);
+    expect(sent().map((args) => args?.title)).toEqual(["first", "second"]);
   });
 });

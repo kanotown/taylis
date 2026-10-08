@@ -153,6 +153,10 @@ tauri.conf.json を揃える)。公証する場合はステープルしたアプ
 この 2 つは毎回打たずに `~/.config/taylis/release.env` (リポジトリの外、秘密ではない) に `APPLE_SIGNING_IDENTITY=<証明書の SHA-1>` と
 `TAYLIS_NOTARY_PROFILE=<名前>` を書いておけば、スクリプトが読む (環境変数が優先)。証明書を 2 回取り込むと名前があいまいになるので、
 名前より SHA-1 (`security find-identity -v -p codesigning`) を使う。
+通信の通知（メッセージの通知に送った人のアイコンを大きく、PUSH_NOTIFICATIONS.md §9.3）には、さらに
+`TAYLIS_MAC_PROVISIONING_PROFILE=<Developer ID の provisioning profile のパス>`（同じ `release.env` に書ける）。スクリプトが
+profile の App ID・entitlement を確かめ、`src-tauri/communication.entitlements` で署名して profile をアプリに入れる。
+profile の作り方は PUSH_NOTIFICATIONS.md §9.3。無ければ今までどおり（アイコンは添付の画像）。
 
 手元で `npm run tauri build` すると、更新用のファイルの署名に秘密鍵を求めて最後に失敗する (アプリ自体はできている)。
 鍵なしで作るときは `npm run tauri:build` (`--config src-tauri/tauri.no-updater.conf.json`)。

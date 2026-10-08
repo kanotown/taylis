@@ -2140,14 +2140,29 @@ export class AppController {
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text. A
         // click shows the message in its conversation (a reply: in its thread), in its own workspace.
         const open = () => void this.openFromNotification(session.serverUrl, () => this.revealMessage(message));
+        const conversation = channel.type === "dm" ? null : conversationTitle(channel, store.users, store.me?.id ?? null);
+        // PUSH_NOTIFICATIONS.md §9.1 (2026-10-08): the sender's picture (or initials avatar) on the notification, as on
+        // the phones (§16), fetched with this workspace's session.
+        const from = (alone: string) => ({
+          sender: {
+            scope: session.serverUrl,
+            userId: message.sender_id,
+            name: sender,
+            version: store.users.get(message.sender_id)?.avatar_updated_at ?? null,
+            fetchBlob: (path: string) => session.api.fetchBlob(path),
+            conversationId: channel.id,
+            groupName: conversation,
+            text: alone,
+          },
+        });
         // M117 (docs/CALLS.md §6): a call reads like the server's push, the name in the text (the room is not in it).
         if (message.call) {
-          const title = channel.type === "dm" ? sender : conversationTitle(channel, store.users, store.me?.id ?? null);
-          void notify(this.notificationTitle(session, title), `📞 ${t("call.started", { name: sender })}`, open);
+          const call = `📞 ${t("call.started", { name: sender })}`;
+          void notify(this.notificationTitle(session, conversation ?? sender), call, open, from(call));
           return;
         }
-        if (channel.type === "dm")void notify(this.notificationTitle(session, sender), text, open);
-        else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`, open);
+        if (conversation === null) void notify(this.notificationTitle(session, sender), text, open, from(text));
+        else void notify(this.notificationTitle(session, conversation), `${sender}: ${text}`, open, from(text));
       },
       // M39: a reaction to my message, only when I asked for reaction banners (the engine checks that and the
       // conversation's level and mute; the activity lists it either way). Titled like the server's push.

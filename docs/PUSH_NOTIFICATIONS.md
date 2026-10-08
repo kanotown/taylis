@@ -290,6 +290,8 @@ Provider の選択は起動時に設定から決め、`notifications` モジュ�
 
 ### 9.1 Desktop の OS 通知の出し方 (2026-10-04)
 
+（送った人のアイコンとスレッドの返信のクリックは §9.3、2026-10-08。）
+
 `apps/desktop/src/platform/notify.ts` の `notify()` / `notificationPermission()` / `requestNotificationPermission()` /
 `clearNotifications()` をすべての呼び出し (新着・リマインダー・予定・タスク (M55 のクリックで開く)・キャンバス・リアクション・
 テスト通知) と設定の「この端末の通知」が通る。
@@ -374,6 +376,92 @@ WebSocket・通知・バッジはそのまま働く。実装は `apps/desktop/sr
 クリック・「Taylis を開く」→ 戻る、隠れている間も新着の通知が出る、通知のクリックで戻る、もう一度起動 → 既存の
 ウィンドウが出る (2 つ目のプロセスは残らない)、「終了」→ アイコンもプロセスも消える、設定をオフ → 閉じると終了、
 アプリ内アップデートの「更新して再起動」が止まらない。
+
+### 9.3 Desktop / Web：送った人のアイコンと、スレッドの返信のクリック（2026-10-08）
+
+利用者の要望：(A) デスクトップの通知はアプリ（Taylis）のアイコンだけだった。スマホ（§16）のように送った人のアイコンを
+出したい（アイコンの無い人は既定のアバター、§16.1）。(B) macOS でスレッドの返信の通知をクリックすると、チャンネルが開いて
+スレッドの元のメッセージが出るだけで、スレッドも返信も開かなかった。
+
+**何が出るか**（メッセージと通話の新着の通知だけ。リマインダー・タスク・リアクションなどは今までどおり）：
+
+| | 見た目 | 条件 |
+| --- | --- | --- |
+| macOS（通信の通知） | スマホと同じ：送った人のアイコンが大きく、Taylis のアイコンが隅に小さく。チャンネルは題が会話名、小見出しが送った人、本文はメッセージだけ | macOS 12 以上で、アプリが `com.apple.developer.usernotifications.communication` の entitlement 付きで署名されているとき（下の「macOS の entitlement」） |
+| macOS（それ以外） | Taylis のアイコン（左）のまま、送った人のアイコンを右に小さく（添付の画像 `UNNotificationAttachment`）。題と本文は今までどおり | entitlement の無いビルド（いまの配布版・ad-hoc・`tauri build`）、macOS 11 以前、通信の通知を macOS が断ったとき |
+| Windows | 大きいロゴの位置に送った人のアイコン（`appLogoOverride`、`hint-crop="circle"` で丸く）。見出しの行には今までどおり Taylis の名前とアイコン | いつも（インストール版・開発版とも） |
+| Web（ブラウザ） | `new Notification(title, { icon })` の画像が送った人のアイコン（data: URL） | いつも。どこに出すかはブラウザと OS 次第（macOS の Chrome は右に小さく、Windows の Chrome はロゴの位置） |
+| Linux・`tauri dev`（プラグイン） | 変わらない（アイコンなし） | |
+
+- **画像**（`src/platform/notificationAvatar.ts`）：プロフィール写真は、そのワークスペースのセッションで
+  `GET /users/{id}/avatar?v=<版>`（アプリ内のアバターと同じ認証つきの経路、`api.fetchBlob`）を取り、128 × 128 px の丸に
+  切った PNG にする（中央の正方形、`object-fit: cover` と同じ）。写真が無い・取れない・**1.5 秒**（`AVATAR_TIMEOUT_MS`）
+  で届かないときは既定のアバター（§16.1 の規則：`initials`・`avatarHue`、hsl(色相, 55%, 45%) の丸に白の太字、辺の 42%）。
+  通知は画像を待って止まらない（時間切れなら頭文字で出し、取得は続けて次の通知に使う）。画像は (ワークスペース, 人, 版)、
+  頭文字は (ワークスペース, 人, 文字) ごとにメモリに 64 件まで持ち、失敗は覚えない（次の通知でまた試す）。サインアウトで消す。
+- **順番**：通知は頼まれた順に 1 つずつ出す（画像を待つ通知を、後の通知が追い越さない）。
+- **ネイティブへの渡し方**：`native_notification_send` の `person`（送った人の id・名前、会話の id、会話名（DM は null）、
+  本文だけの文、画像のキーと PNG のバイト列）。Rust の `notify_avatar.rs` が画像をアプリのキャッシュのフォルダ
+  （`notification-avatars/`、名前はキーの FNV-1a）に 1 度だけ書く（PNG の署名と 512 KB までを確かめる）。アクションセンターに
+  残ったトーストがファイルを指すので、表示の直後には消さず、新しい 200 件を残して古いものを消し、サインアウト
+  （`native_notification_clear`）でフォルダごと消す。macOS の添付は OS がファイルを自分の置き場に移すので、使い捨ての写しを渡す。
+
+#### macOS の entitlement（通信の通知）
+
+- **使えるか**：Apple の「Supported capabilities (macOS)」で Communication Notifications は ADP・**Developer ID**・
+  Apple Developer のすべてに印があり、App Store の外で配る Developer ID 署名のアプリでも使える。ただし
+  `com.apple.developer.*` の entitlement は **provisioning profile が要る**（restricted entitlement）。profile を
+  埋め込まずに entitlement だけ付けると、macOS（AMFI）がアプリの起動を拒む。そのため entitlement は `tauri.conf.json` に
+  入れず（`tauri dev`・CI・ad-hoc のビルドが起動しなくなる）、`release-desktop.sh` が profile を渡されたときだけ付ける。
+  公証（notarization）は profile 入りの Developer ID 署名のアプリをそのまま受け付ける。
+- **Info.plist**：`NSUserActivityTypes = [INSendMessageIntent]`（iOS と同じ。`INInteraction` の寄贈に要る。entitlement が無い
+  ビルドでも害はないので常に入れる）。
+- **実行時**：`SecTaskCopyValueForEntitlement` で自分の署名に entitlement があるかを 1 度だけ確かめ、あれば iOS の拡張機能と
+  同じく `INSendMessageIntent`（送り手の `INPerson` に画像、`conversationIdentifier` = チャンネル、チャンネルとグループ DM は
+  `speakableGroupName` と受け手 2 人）を作り、`INInteraction`（incoming）を寄贈して（2 秒まで待つ）
+  `contentByUpdatingWithProvider:` で通知を作り直す。無い・macOS 11 以前・作り直しが失敗したら、題と本文を戻して添付の画像。
+- **利用者（開発者）の作業**（Apple Developer のサイト。こちらでは行っていない）：
+  1. Certificates, Identifiers & Profiles → Identifiers で macOS の App ID `jp.chikuwachat.desktop`（明示的な App ID。無ければ
+     作る）を開き、Capabilities の **Communication Notifications** に印を付けて保存。
+  2. Profiles →「+」→ Distribution の **Developer ID** → App ID `jp.chikuwachat.desktop` → 署名に使っている
+     Developer ID Application の証明書を選んで作り、`.provisionprofile` をダウンロード。
+  3. この Mac の例えば `~/.config/taylis/Taylis_Developer_ID.provisionprofile` に置き、`~/.config/taylis/release.env` に
+     `TAYLIS_MAC_PROVISIONING_PROFILE=/Users/…/Taylis_Developer_ID.provisionprofile` を足す（`APPLE_SIGNING_IDENTITY` も要る）。
+  4. 次の `release-desktop.sh` が、profile の App ID・Team ID・entitlement を確かめ（違えばビルド前に止まる）、
+     `communication.entitlements` に `com.apple.application-identifier` と `com.apple.developer.team-identifier` を足して署名し、
+     profile を `Contents/embedded.provisionprofile` に入れ（`bundle.macOS.files`）、署名と entitlement をビルド後に確かめる。
+  - profile には期限がある（スクリプトが表示する）。期限の切れた profile のアプリは起動を拒まれることがあるので、切れる前に
+    作り直して新しい版を出す。Developer ID の証明書を作り直したときも profile を作り直す。
+  - profile なしで出した版は今までどおり（添付の画像）。entitlement のある版に上げると、「システム設定」→「通知」→ Taylis に
+    通信の通知の項目が出て、集中モードの「許可された人」にも効く。
+
+#### スレッドの返信のクリック（原因と修正）
+
+- 原因：クリックの経路（`onClick` → `openFromNotification` → `revealMessage(message)`）は `parent_id` を落としておらず、
+  `messageFocus.parentId` も正しく入っていた。止まっていたのは画面側（`MainScreen` の、外から来た `messageFocus` を開く
+  effect）で、**その会話がすでに画面に出ているとき**は何もせずに戻っていた。タイムラインは focus の `parentId`（スレッドの
+  元）を中央に出すので「チャンネルが開いて元のメッセージが出るだけ」になった。Taylis を後ろに置いたまま（会話を開いたまま）
+  返信が来る、いちばんよくある場面で起きる（別の会話を開いていたときは前からスレッドが開いていた）。macOS・Windows・Web・
+  リンク（`/m/<id>`）で同じ。既存の試験は「返信」の文字が別の場所にあるだけで通っていた。
+- 修正：会話が画面に出ていても、返信ならそのスレッドを開く（`threadChannelId`・`threadId`）。スレッド欄は
+  `messageFocus.messageId` の行へスクロールして強調する（`ThreadPane` の既存の動作）。
+
+#### 試験
+
+Desktop の vitest：`notificationAvatar.test.ts`（写真を認証つきの経路で 128 px、無ければ共通の規則の頭文字と色、
+(ワークスペース, 人, 版) ごとのキャッシュと新しい版・別のサーバ・サインアウト、失敗は覚えない、時間切れで頭文字・後で写真、
+描けなければ画像なし、data: URL）、`notifyNative.test.ts`（`person` の中身、頭文字、他の通知は `person` なし、遅い画像を
+後の通知が追い越さない）、`notify.test.tsx`（ブラウザの `icon`）、`notificationClick.test.ts`（DM・チャンネル・スレッドの返信の
+送り手と会話名・本文、そのワークスペースのセッションで取る）、`historyNavigation.test.tsx`（画面に出ている会話の返信 →
+スレッド欄にその返信の行があり強調されスクロールされる、別の会話の返信 → その会話とスレッド）。Rust：`cargo check`・
+`cargo clippy`（macOS）、`notify_avatar` の単体試験、Windows のコードは `x86_64-pc-windows-msvc` 向けに作業用のクレート
+（`win_notify.rs`・`notify_avatar.rs`・`background.rs` を `#[path]` で取り込み、tauri と tauri-winrt-notification だけに依存）
+で `cargo clippy`（全体は SQLite などの C のビルドに MSVC が要り、この Mac では作れない）。
+macOS の実機（2026-10-08）：識別子を変えた `tauri build --bundles app`（ad-hoc と、Developer ID で署名し直した公証なしの写し）に
+一時的な起動時の試験コードを入れて動かし、UN の delegate・許可の確認・キャッシュのファイルの書き込み・添付の作成（写しが
+macOS に移される）までは通ったが、公証の無いこれらのビルドには macOS が通知の許可を出さず（「Notifications are not allowed
+for this application」）、バナーの見た目は確かめられていない。通信の通知は profile が無いので未確認。**次の配布版（公証あり）で
+DM・チャンネル・アイコンの無い人の通知の見た目を確かめる**。Windows の見た目も CI のビルドで手で確かめる。
 
 ## 10. 設定
 
@@ -612,7 +700,7 @@ http(s) 以外の URL、失敗時に元の通知)、`StoreReleaseTests` (拡張�
   どおり無し）。アプリ内の `AvatarView` も同じ `InitialsAvatar` を使う。
 - **Android**：`NotificationAvatars` は前から写真が無い・失敗・遅いときに頭文字の丸を描いていた。色と文字を
   `ConversationStyle.colorFor`（hsl(`Timeline.hue`, 55%, 45%)）と `Timeline.initials` に替え、文字を太字・辺の 42% にした。
-- **Desktop / Web**：OS の通知（§9.1）は題と本文だけで、送った人の写真をどこにも出していないので変えていない。
+- **Desktop / Web**：同じ日の後で、OS の通知にも送った人のアイコン（無ければこの既定のアバター）を出すようにした（§9.3）。
 - 試験：`apps/shared/avatar-initials.json` を Desktop `avatarInitials.test.ts`、iOS `CommunicationNotificationTests`
   （規則、PNG の大きさと色、写真があればそれ・無い / 取れなければ頭文字）、Android `ConversationNotificationTest` が読む。
   シミュレータで、拡張機能と同じ `CommunicationNotification.update`（写真なし）を通したローカル通知に頭文字のアバターが出る

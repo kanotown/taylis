@@ -6,15 +6,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MessageOut } from "../src/api/types";
+import type { NotifyOptions } from "../src/platform/notify";
 import { AppController } from "../src/state/app";
 import type { EngineDeps } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
 import { FakeServer } from "./fakeServer";
 
-const { shown } = vi.hoisted(() => ({ shown: [] as Array<{ title: string; body: string; onClick?: () => void }> }));
+const { shown } = vi.hoisted(() => ({ shown: [] as Array<{ title: string; body: string; onClick?: () => void; options?: NotifyOptions }> }));
 vi.mock("../src/platform/notify", () => ({
-  notify: async (title: string, body: string, onClick?: () => void) => void shown.push({ title, body, onClick }),
+  notify: async (title: string, body: string, onClick?: () => void, options?: NotifyOptions) => void shown.push({ title, body, onClick, options }),
   clearNotifications: () => {},
 }));
 
@@ -83,6 +84,26 @@ describe("notification clicks", () => {
     expect(shown.map((n) => n.body)).toEqual(["📞 Alice さんが通話を始めました", "📞 Alice さんが通話を始めました"]);
     expect(shown[0]!.title).toContain("#general");
     expect(shown[1]!.title).toContain("Alice");
+  });
+
+  it("a message's notification names its sender for the picture (PUSH_NOTIFICATIONS.md §9.1): DM, channel and thread reply", async () => {
+    const { deps } = twoWorkspaces();
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const channel = server.createChannel("general", alice.id);
+    const store = (deps as unknown as { store: Store }).store;
+    store.upsertUser({ ...alice, avatar_updated_at: "2026-10-08T00:00:00Z" });
+    const parent = server.post(channel.id, alice.id, "parent").message;
+    const reply: MessageOut = server.post(channel.id, alice.id, "a reply", undefined, parent.id).message;
+    deps.onNotify!(reply, { ...channel, type: "public", name: "general" } as unknown as ChannelState);
+    deps.onNotify!(reply, { ...channel, type: "dm" } as unknown as ChannelState);
+    await vi.waitFor(() => expect(shown).toHaveLength(2));
+    expect(shown[0]!.body).toBe("Alice: a reply");
+    expect(shown[0]!.options?.sender).toMatchObject({ scope: B, userId: alice.id, name: "Alice", version: "2026-10-08T00:00:00Z", conversationId: channel.id, groupName: "#general", text: "a reply" });
+    expect(shown[1]!.options?.sender).toMatchObject({ groupName: null, text: "a reply" });
+    // Fetched with that workspace's own session.
+    const fetched = await shown[0]!.options!.sender!.fetchBlob("/api/v1/users/x/avatar?v=1");
+    expect(fetched).toBeInstanceOf(Blob);
   });
 
   it("the open workspace's notification opens at once; a signed-out workspace's does nothing", async () => {
