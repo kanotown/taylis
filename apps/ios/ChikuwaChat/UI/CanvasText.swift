@@ -316,6 +316,42 @@ enum CanvasText {
         return EditState(text: before + inserted + rest, start: caret, end: caret)
     }
 
+    /// M149 (WIKI.md §22.5 / §22.7): a callout on lines of its own — `::: callout 💡`, the selected lines (or an empty
+    /// line), `:::` — with the caret at the end of its inside.
+    static func insertCallout(_ state: EditState, icon: String = "💡") -> EditState {
+        insertContainer(state, opener: "::: callout \(icon)", caretOnOpener: false)
+    }
+
+    /// M149: a toggle on lines of its own — `::: toggle `, the selected lines (or an empty line), `:::` — with the caret
+    /// after 「toggle 」 for its title.
+    static func insertToggle(_ state: EditState) -> EditState {
+        insertContainer(state, opener: "::: toggle ", caretOnOpener: true)
+    }
+
+    /// The selected lines put inside a container; without a selection an empty one replaces the caret's blank line or
+    /// goes below the caret's line.
+    private static func insertContainer(_ state: EditState, opener: String, caretOnOpener: Bool) -> EditState {
+        let ns = state.text as NSString
+        let start = min(max(state.start, 0), ns.length)
+        let end = min(max(state.end, start), ns.length)
+        var before: String, inner: String, after: String
+        if start != end {
+            let (lineStart, lineEnd) = selectedLines(ns, start, end)
+            before = ns.substring(to: lineStart)
+            inner = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            after = ns.substring(from: lineEnd)
+        } else {
+            let lineStart = lineStartOffset(ns, start), lineEnd = lineEndOffset(ns, start)
+            let current = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            inner = ""
+            after = ns.substring(from: lineEnd)
+            before = current.trimmingCharacters(in: .whitespaces).isEmpty ? ns.substring(to: lineStart) : ns.substring(to: lineEnd) + "\n"
+        }
+        let head = (before as NSString).length + (opener as NSString).length
+        let caret = caretOnOpener ? head : head + 1 + (inner as NSString).length
+        return EditState(text: before + opener + "\n" + inner + "\n:::" + after, start: caret, end: caret)
+    }
+
     private static let listLine = try! NSRegularExpression(pattern: #"^(\s*)(?:([-*•])|(\d{1,3})\.)\s(.*)$"#)
     private static let taskItem = try! NSRegularExpression(pattern: #"^(\s*)([-*]) \[[ xX]\](?: (.*))?$"#)
     private static let quoteLine = try! NSRegularExpression(pattern: #"^(>\s?)(.*)$"#)

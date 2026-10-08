@@ -31,8 +31,29 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
         }.joined()
     }
 
+    /// `containers`'s descriptors: a quote is only its kind.
+    static func describeContained(_ block: BodyBlock) -> JSONValue {
+        switch block {
+        case .quote: return .object(["kind": .string("quote")])
+        case .callout(let icon, let tone, let blocks):
+            return .object(["kind": .string("callout"), "icon": icon.map { .string($0) } ?? .null, "tone": .string(tone.rawValue),
+                            "blocks": .array(blocks.map { describeContained($0.block) })])
+        case .toggle(let title, let blocks):
+            return .object(["kind": .string("toggle"), "title": .string(plain(title)), "blocks": .array(blocks.map { describeContained($0.block) })])
+        default: return describe(block)
+        }
+    }
+
     static func describe(_ block: BodyBlock) -> JSONValue {
         switch block {
+        case .callout(let icon, let tone, let blocks):
+            return .object(["kind": .string("callout"), "icon": icon.map { .string($0) } ?? .null, "tone": .string(tone.rawValue),
+                            "blocks": .array(blocks.map { describe($0.block) })])
+        case .toggle(let title, let blocks):
+            return .object(["kind": .string("toggle"), "title": .string(plain(title)), "blocks": .array(blocks.map { describe($0.block) })])
+        case .embed(let label, let pageId, let viewId, let line):
+            return .object(["kind": .string("embed"), "label": .string(label), "page_id": .string(pageId),
+                            "view_id": viewId.map { .string($0) } ?? .null, "line": .number(Double(line))])
         case .heading(let level, let tokens):
             return .object(["kind": .string("heading"), "level": .number(Double(level)), "text": .string(plain(tokens))])
         case .paragraph(let lines):
@@ -69,6 +90,65 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
             let blocks = BodyTokenizer.parseBlocks(body, canvas: canvas).map(Self.describe)
             XCTAssertEqual(blocks, item["blocks"]?.arrayValue, name)
         }
+    }
+
+    /// M149: callouts, toggles and embedded databases (`containers.cases`).
+    func testContainersAndEmbeds() throws {
+        let cases = try XCTUnwrap(fixture()["containers"]?["cases"]?.arrayValue)
+        XCTAssertGreaterThanOrEqual(cases.count, 15)
+        for item in cases {
+            let name = item["name"]?.stringValue ?? "?"
+            let body = try XCTUnwrap(item["body"]?.stringValue)
+            var canvas = true
+            if case .bool(let flag)? = item["canvas"] { canvas = flag }
+            let blocks = BodyTokenizer.parseBlocks(body, canvas: canvas).map(Self.describeContained)
+            XCTAssertEqual(blocks, item["blocks"]?.arrayValue, name)
+        }
+    }
+
+    /// M149: the callout's tint by its icon (`containers.tones`), with and without U+FE0F.
+    func testCalloutTones() throws {
+        guard case .object(let tones)? = try fixture()["containers"]?["tones"] else { return XCTFail("no tones") }
+        XCTAssertEqual(Set(tones.keys), Set(CalloutTone.icons.keys.map(\.rawValue)))
+        for (name, icons) in tones {
+            let tone = try XCTUnwrap(CalloutTone(rawValue: name))
+            let list = try XCTUnwrap(icons.arrayValue).compactMap(\.stringValue)
+            XCTAssertEqual(list, CalloutTone.icons[tone], name)
+            for icon in list {
+                XCTAssertEqual(CalloutTone.of(icon), tone, icon)
+                XCTAssertEqual(CalloutTone.of(icon + "\u{FE0F}"), tone, icon + " FE0F")
+            }
+        }
+        XCTAssertEqual(CalloutTone.of(nil), .gray)
+        XCTAssertEqual(CalloutTone.of(":chikuwa:"), .gray)
+        XCTAssertEqual(CalloutTone.of("注意"), .gray)
+    }
+
+    /// M149: a task in a toggle in a callout ticks its own line of the whole body.
+    func testTickingInsideContainers() throws {
+        let body = "# 題\n::: callout 💡\n前\n::: toggle 詳しく\n- [ ] 中\n:::\n:::\n- [ ] 外"
+        guard case .callout(_, _, let outer)? = BodyTokenizer.parseBlocks(body, canvas: true).dropFirst().first,
+              case .toggle(_, let inner)? = outer.last?.block,
+              case .task(let items)? = inner.first?.block else { return XCTFail("not nested") }
+        XCTAssertEqual(items.map(\.line), [4])
+        XCTAssertEqual(CanvasText.toggleTaskLine(body, line: 4), "# 題\n::: callout 💡\n前\n::: toggle 詳しく\n- [x] 中\n:::\n:::\n- [ ] 外")
+        // The outline scrolls to the container around a heading (a closed toggle does not draw it).
+        let page = "# 上\n::: toggle t\n## 中の見出し\n:::\n## 下"
+        XCTAssertEqual(CanvasBodyView.anchorLine(page, line: 0), 0)
+        XCTAssertEqual(CanvasBodyView.anchorLine(page, line: 2), 1)
+        XCTAssertEqual(CanvasBodyView.anchorLine(page, line: 4), 4)
+    }
+
+    /// M149: an embed that is refused (403, 404, 4xx but 401 / 429) shows nothing of it; other failures keep the rows.
+    func testEmbedFailures() {
+        typealias E = CanvasEmbedView
+        let rows = E.Phase.shown(viewName: "表", rows: [E.RowLine(id: "r", title: "行", detail: nil)])
+        XCTAssertEqual(E.failed(ApiError.api(status: 403, code: "forbidden", message: ""), was: rows), .unreadable)
+        XCTAssertEqual(E.failed(ApiError.api(status: 404, code: "not_found", message: ""), was: .loading), .unreadable)
+        XCTAssertEqual(E.failed(ApiError.api(status: 401, code: "unauthorized", message: ""), was: .loading), .offline)
+        XCTAssertEqual(E.failed(ApiError.api(status: 429, code: "rate_limited", message: ""), was: rows), rows)
+        XCTAssertEqual(E.failed(ApiError.api(status: 503, code: "unavailable", message: ""), was: .loading), .offline)
+        XCTAssertEqual(E.failed(ApiError.network(URLError(.notConnectedToInternet)), was: rows), rows)
     }
 
     func testTickingATaskLine() throws {
@@ -153,6 +233,28 @@ final class CanvasTextTests: XCTestCase {
         XCTAssertNil(CanvasText.continueStructure(S(text: "本文", start: 2, end: 2)))
         XCTAssertEqual(CanvasText.taskProgress(total: 8, done: 3), "3/8")
         XCTAssertNil(CanvasText.taskProgress(total: 0, done: 0))
+    }
+
+    /// M149: the toolbar's callout and toggle, on lines of their own.
+    func testCalloutAndToggleEdits() {
+        typealias S = CanvasText.EditState
+        // Nothing selected on an empty line: an empty container there; the caret inside / after 「toggle 」.
+        XCTAssertEqual(CanvasText.insertCallout(S(text: "", start: 0, end: 0)), S(text: "::: callout 💡\n\n:::", start: 15, end: 15))
+        XCTAssertEqual(CanvasText.insertToggle(S(text: "", start: 0, end: 0)), S(text: "::: toggle \n\n:::", start: 11, end: 11))
+        // On a line with text: below it.
+        XCTAssertEqual(CanvasText.insertCallout(S(text: "本文\n後", start: 1, end: 1)), S(text: "本文\n::: callout 💡\n\n:::\n後", start: 18, end: 18))
+        XCTAssertEqual(CanvasText.insertToggle(S(text: "前\n\n後", start: 2, end: 2)), S(text: "前\n::: toggle \n\n:::\n後", start: 13, end: 13))
+        // The selected lines (whole) go inside.
+        XCTAssertEqual(CanvasText.insertCallout(S(text: "前\n- a\n- b\n後", start: 3, end: 8)),
+                       S(text: "前\n::: callout 💡\n- a\n- b\n:::\n後", start: 24, end: 24))
+        XCTAssertEqual(CanvasText.insertToggle(S(text: "a\nb", start: 0, end: 3)), S(text: "::: toggle \na\nb\n:::", start: 11, end: 11))
+        // What they insert is read back as the container.
+        let callout = CanvasText.insertCallout(S(text: "前\n- a\n- b\n後", start: 3, end: 8)).text
+        XCTAssertEqual(BodyTokenizer.parseBlocks(callout, canvas: true).map(CanvasMarkdownFixtureTests.describeContained).compactMap { $0["kind"]?.stringValue },
+                       ["paragraph", "callout", "paragraph"])
+        guard case .toggle(let title, let inner)? = BodyTokenizer.parseBlocks("::: toggle \n\n:::", canvas: true).first else { return XCTFail("not a toggle") }
+        XCTAssertEqual(title, [])
+        XCTAssertEqual(inner.count, 1) // the blank line
     }
 
     func testCanvasLinksOfThisServer() {

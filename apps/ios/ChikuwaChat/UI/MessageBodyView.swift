@@ -51,6 +51,46 @@ enum BodyBlock: Equatable {
     case image(alt: String, attachmentId: String, line: Int)
     /// `---` between blank lines.
     case rule
+    // M149 (WIKI.md §22.5, apps/shared/canvas_markdown.json `containers`): the containers and the embedded database.
+    /// `::: callout [icon]` … `:::`: its blocks (each with its line in the whole body) in a tinted box.
+    case callout(icon: String?, tone: CalloutTone, blocks: [BodyLinedBlock])
+    /// `::: toggle [title]` … `:::`: a title that opens and closes its blocks (the state is the device's).
+    case toggle(title: [BodyToken], blocks: [BodyLinedBlock])
+    /// `![label](page:<uuid>#view=<id>)` on a line of its own: a database (its view, nil: the first one); the id lower case.
+    case embed(label: String, pageId: String, viewId: String?, line: Int)
+}
+
+/// A block with the line it starts on in the whole body (0-based): a container's blocks keep their lines (tasks tick
+/// them, headings are the outline's anchors).
+struct BodyLinedBlock: Equatable {
+    let block: BodyBlock
+    let line: Int
+}
+
+/// M149: a callout's tint, from its icon (apps/shared/canvas_markdown.json `containers.tones`): the icon without U+FE0F
+/// looked up; anything else, a custom `:name:` and no icon are gray.
+enum CalloutTone: String, Equatable, CaseIterable {
+    case gray, yellow, red, green, blue
+
+    static let icons: [CalloutTone: [String]] = [
+        .yellow: ["💡", "⚠", "⭐", "🔔", "✨"],
+        .red: ["❗", "‼", "🚨", "❌", "⛔", "🚫", "🔥"],
+        .green: ["✅", "✔", "🌱", "👍", "🎉", "⭕"],
+        .blue: ["ℹ", "📝", "💬", "📌", "❓", "🔍", "📘"],
+    ]
+
+    private static let byIcon: [String: CalloutTone] = {
+        var out: [String: CalloutTone] = [:]
+        for (tone, list) in icons { for icon in list { out[icon] = tone } }
+        return out
+    }()
+
+    static func of(_ icon: String?) -> CalloutTone {
+        guard let icon else { return .gray }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: icon.unicodeScalars.filter { $0 != "\u{FE0F}" })
+        return byIcon[String(scalars)] ?? .gray
+    }
 }
 
 /// M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right).
@@ -63,7 +103,7 @@ enum BodyTokenizer {
     // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
     // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
-    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\(((?:https?://|page:|attachment:)[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
     private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`$])"#)
 
     /// TeX math (apps/shared/math.json, markdown.ts MATH_MAX_LENGTH): inline `$…$` as Pandoc reads it (the opening `$`
@@ -82,6 +122,13 @@ enum BodyTokenizer {
     // The canvas dialect (CANVAS.md §4.2), as markdown.ts: tasks as the server counts them, images of the canvas, rules.
     private static let imageLine = try! NSRegularExpression(pattern: #"^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$"#)
     private static let ruleLine = try! NSRegularExpression(pattern: #"^-{3,}\s*$"#)
+    // M149 (apps/shared/canvas_markdown.json `containers`): callouts and toggles (two deep at most), embedded databases.
+    private static let containerOpen = try! NSRegularExpression(pattern: #"^:::[ \t]*(callout|toggle)(?:[ \t]+(.*?))?[ \t]*$"#)
+    private static let containerClose = try! NSRegularExpression(pattern: #"^:::[ \t]*$"#)
+    private static let embedLine = try! NSRegularExpression(
+        pattern: #"^!\[([^\]\n]*)\]\(page:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:#view=([A-Za-z0-9_-]{1,40}))?\)\s*$"#)
+    /// Containers nest this deep at most (a toggle in a callout); inside the deepest an opener and its close are text.
+    static let containerDepth = 2
 
     /// M15g: the cells of a table row; "\|" is a literal pipe, outer pipes are optional.
     static func splitTableRow(_ line: String) -> [String] {
@@ -193,7 +240,8 @@ enum BodyTokenizer {
     /// Display math starting at `lines[index]` (apps/shared/math.json, markdown.ts mathBlockAt): its formula and its last
     /// line. `$$` starts the line (spaces around are ignored) and a later line ends with `$$`, no blank line and no other
     /// `$$` between; one line `$$tex$$` is a block too.
-    static func mathBlock(_ lines: [String], at index: Int) -> (tex: String, end: Int)? {
+    /// `limit`: the search stops before this line (a container's close; nil: the end of the body).
+    static func mathBlock(_ lines: [String], at index: Int, limit: Int? = nil) -> (tex: String, end: Int)? {
         let first = lines[index].trimmingCharacters(in: .whitespaces)
         guard first.hasPrefix("$$") else { return nil }
         func done(_ tex: String, _ end: Int) -> (tex: String, end: Int)? {
@@ -207,7 +255,7 @@ enum BodyTokenizer {
         let head = String(first.dropFirst(2))
         if head.contains("$$") { return nil }
         var k = index + 1
-        while k < lines.count {
+        while k < min(limit ?? lines.count, lines.count) {
             let trimmed = lines[k].trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { return nil } // a blank line ends the search: the $$ was not math
             if trimmed.contains("$$") {
@@ -417,7 +465,7 @@ enum BodyTokenizer {
     }
 
     /// Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. `canvas`: the canvas dialect
-    /// (tasks, images and rules; apps/shared/canvas_markdown.json).
+    /// (tasks, images, rules, callouts, toggles and embedded databases; apps/shared/canvas_markdown.json).
     static func parseBlocks(_ body: String, canvas: Bool = false) -> [BodyBlock] {
         parseLinedBlocks(body, canvas: canvas).map(\.block)
     }
@@ -428,22 +476,50 @@ enum BodyTokenizer {
         // M83 (CANVAS.md §22): a canvas's task markers are never shown; the lines stay where they are (a tick still
         // changes its line of the stored body, the marker with it).
         let lines = canvas ? split.map(CanvasMarkers.strip) : split
-        func blank(_ index: Int) -> Bool { index < 0 || index >= lines.count || lines[index].trimmingCharacters(in: .whitespaces).isEmpty }
-        func isTask(_ index: Int) -> Bool { canvas && index < lines.count && firstMatch(CanvasText.taskLine, lines[index]) != nil }
+        return linedBlocks(lines, from: 0, to: lines.count, canvas: canvas, depth: 0)
+    }
+
+    /// The blocks of `lines[from..<to]`, read as a body of their own (a container's inside is read as the top level) with
+    /// the lines of the whole body; `depth`: the containers around them.
+    private static func linedBlocks(_ lines: [String], from lo: Int, to hi: Int, canvas: Bool, depth: Int) -> [(block: BodyBlock, line: Int)] {
+        func blank(_ index: Int) -> Bool { index < 0 || index >= hi || lines[index].trimmingCharacters(in: .whitespaces).isEmpty }
+        func isTask(_ index: Int) -> Bool { canvas && index < hi && firstMatch(CanvasText.taskLine, lines[index]) != nil }
         func isImage(_ index: Int) -> Bool { canvas && firstMatch(imageLine, lines[index]) != nil }
+        func isEmbed(_ index: Int) -> Bool { canvas && firstMatch(embedLine, lines[index]) != nil }
         func isRule(_ index: Int) -> Bool { canvas && firstMatch(ruleLine, lines[index]) != nil && blank(index - 1) && blank(index + 1) }
         func fenceCloseAfter(_ index: Int) -> Int? {
-            ((index + 1)..<lines.count).first { firstMatch(fenceClose, lines[$0]) != nil }
+            ((index + 1)..<max(index + 1, hi)).first { firstMatch(fenceClose, lines[$0]) != nil }
         }
         func opensFence(_ index: Int) -> Bool { firstMatch(fenceOpen, lines[index]) != nil && fenceCloseAfter(index) != nil }
         // M15g: a header row with a pipe, directly followed by a separator with as many cells.
         func opensTable(_ index: Int) -> Bool {
-            guard index + 1 < lines.count, lines[index].contains("|"), firstMatch(tableSeparator, lines[index + 1]) != nil else { return false }
+            guard index + 1 < hi, lines[index].contains("|"), firstMatch(tableSeparator, lines[index + 1]) != nil else { return false }
             return splitTableRow(lines[index]).count == splitTableRow(lines[index + 1]).count
         }
+        // M149: the close of a container opened on `index`: scanning down counting openers and closes, fenced code
+        // skipped; nil (the opener is a text line) without one, in a message, or inside the deepest container.
+        func containerEnd(_ index: Int) -> Int? {
+            guard canvas, depth < containerDepth, firstMatch(containerOpen, lines[index]) != nil else { return nil }
+            var open = 1
+            var k = index + 1
+            while k < hi {
+                if firstMatch(fenceOpen, lines[k]) != nil, let close = fenceCloseAfter(k) {
+                    k = close + 1
+                    continue
+                }
+                if firstMatch(containerOpen, lines[k]) != nil {
+                    open += 1
+                } else if firstMatch(containerClose, lines[k]) != nil {
+                    open -= 1
+                    if open == 0 { return k }
+                }
+                k += 1
+            }
+            return nil
+        }
         var lined: [(block: BodyBlock, line: Int)] = []
-        var i = 0
-        while i < lines.count {
+        var i = lo
+        while i < hi {
             let line = lines[i]
             let first = i
             func append(_ block: BodyBlock) { lined.append((block, first)) }
@@ -453,7 +529,24 @@ enum BodyTokenizer {
                 i = close + 1
                 continue
             }
-            if let math = mathBlock(lines, at: i) {
+            if let close = containerEnd(i), let open = firstMatch(containerOpen, line) {
+                let rest = group(open, 2, in: line).trimmingCharacters(in: .whitespaces)
+                let inner = linedBlocks(lines, from: i + 1, to: close, canvas: canvas, depth: depth + 1).map { BodyLinedBlock(block: $0.block, line: $0.line) }
+                if group(open, 1, in: line) == "callout" {
+                    append(.callout(icon: rest.isEmpty ? nil : rest, tone: CalloutTone.of(rest.isEmpty ? nil : rest), blocks: inner))
+                } else {
+                    append(.toggle(title: tokenizeInline(rest), blocks: inner))
+                }
+                i = close + 1
+                continue
+            }
+            if isEmbed(i), let m = firstMatch(embedLine, line) {
+                let view = group(m, 3, in: line)
+                append(.embed(label: group(m, 1, in: line), pageId: group(m, 2, in: line).lowercased(), viewId: view.isEmpty ? nil : view, line: i))
+                i += 1
+                continue
+            }
+            if let math = mathBlock(lines, at: i, limit: hi) {
                 append(.math(math.tex))
                 i = math.end + 1
                 continue
@@ -465,7 +558,7 @@ enum BodyTokenizer {
             }
             if isTask(i) {
                 var items: [BodyTaskItem] = []
-                while i < lines.count, let m = firstMatch(CanvasText.taskLine, lines[i]) {
+                while i < hi, let m = firstMatch(CanvasText.taskLine, lines[i]) {
                     let indent = group(m, 1, in: lines[i]).replacingOccurrences(of: "\t", with: "  ").count
                     items.append(BodyTaskItem(level: indent >= 2 ? 1 : 0, done: group(m, 2, in: lines[i]) != " ",
                                               tokens: tokenizeInline(group(m, 3, in: lines[i])), line: i))
@@ -487,7 +580,7 @@ enum BodyTokenizer {
             if firstMatch(quote, line) != nil {
                 var quoted: [String] = []
                 // A line without ">" ends the quote (no lazy continuation: a reply often follows a quote).
-                while i < lines.count, let q = firstMatch(quote, lines[i]) {
+                while i < hi, let q = firstMatch(quote, lines[i]) {
                     quoted.append(group(q, 1, in: lines[i]))
                     i += 1
                 }
@@ -499,7 +592,7 @@ enum BodyTokenizer {
                 let align = splitTableRow(lines[i + 1]).map(tableAlign)
                 var rows: [[[BodyToken]]] = []
                 i += 2
-                while i < lines.count, lines[i].contains("|"), !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
+                while i < hi, lines[i].contains("|"),!lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
                     let cells = splitTableRow(lines[i])
                     rows.append(header.indices.map { tokenizeInline($0 < cells.count ? cells[$0] : "") }) // short rows pad, long rows are cut (GFM)
                     i += 1
@@ -509,7 +602,7 @@ enum BodyTokenizer {
             }
             if listLine(line) != nil {
                 var rows: [ListLine] = []
-                while i < lines.count, !isTask(i), let row = listLine(lines[i]) {
+                while i < hi, !isTask(i), let row = listLine(lines[i]) {
                     rows.append(row)
                     i += 1
                 }
@@ -518,9 +611,9 @@ enum BodyTokenizer {
                 continue
             }
             var paragraph: [[BodyToken]] = []
-            while i < lines.count {
+            while i < hi {
                 let current = lines[i]
-                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil || isImage(i) || isRule(i) || mathBlock(lines, at: i) != nil { break }
+                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil || isImage(i) || isEmbed(i) || isRule(i) || mathBlock(lines, at: i, limit: hi) != nil || containerEnd(i) != nil { break }
                 paragraph.append(tokenizeInline(current))
                 i += 1
             }
@@ -713,7 +806,7 @@ struct MessageBodyView: View {
             tableView(align: align, header: header, rows: rows)
         case .math(let tex):
             MathBlockView(tex: tex)
-        case .task, .image, .rule:
+        case .task, .image, .rule, .callout, .toggle, .embed:
             EmptyView() // the canvas dialect: drawn by CanvasBodyView (messages never parse these)
         case .codeBlock(let code, let lang):
             VStack(alignment: .trailing, spacing: 0) {

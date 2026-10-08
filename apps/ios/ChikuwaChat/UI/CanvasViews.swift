@@ -541,7 +541,7 @@ private struct CanvasReader: View {
                     Menu {
                         ForEach(headings) { entry in
                             Button(String(repeating: "  ", count: entry.level - 1) + entry.text) {
-                                withAnimation { proxy.scrollTo(CanvasBodyView.anchor(entry.line), anchor: .top) }
+                                withAnimation { proxy.scrollTo(CanvasBodyView.anchor(CanvasBodyView.anchorLine(saver.text, line: entry.line)), anchor: .top) }
                             }
                         }
                     } label: {

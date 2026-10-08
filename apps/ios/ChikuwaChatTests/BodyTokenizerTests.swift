@@ -119,6 +119,9 @@ final class ListsFixtureTests: XCTestCase {
         case .task: "task"
         case .image: "image"
         case .rule: "hr"
+        case .callout: "callout"
+        case .toggle: "toggle"
+        case .embed: "embed"
         case .math: "math"
         }
     }
@@ -341,6 +344,9 @@ final class MathFixtureTests: XCTestCase {
         case .task: ["task"]
         case .image: ["image"]
         case .rule: ["hr"]
+        case .callout: ["callout"]
+        case .toggle: ["toggle"]
+        case .embed: ["embed"]
         }
     }
 
