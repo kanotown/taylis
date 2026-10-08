@@ -1182,3 +1182,9 @@ base・送られた本文・head を 3-way マージする。
   解決）が来たら 300 ms まとめて読み直す。`schema_version` が手元と違えば `GET /wiki/databases/{id}` も読み直す。再接続の後も読み直す
   （イベントは失われうる）。マスの変更は `PATCH /wiki/rows/{id}/props {set, client_op_id}`（マスごとの後勝ち、同じ `client_op_id` の
   再送は 1 回だけ効く）。行のページは `wiki.page.updated`（`change: "props"`）でも読み直す。
+- **テンプレート（M145、WIKI.md §22.3・§24）**：ページのテンプレート（`is_template`）は木にもフィードの `pages` にも入らない。
+  ページがテンプレートになると、フィードの `removed` にその id が来る（戻すと `pages` に来る）。一覧は `GET /wiki/templates` で読み、
+  一度読んだら `wiki.changed` のたびに（300 ms まとめて）読み直す。行のテンプレートは問い合わせに入らず、`GET /wiki/databases/{id}` の
+  `templates`・`default_template_id` にある。その変更（作成・解除・名前・ゴミ箱・既定）は `wiki.rows.changed` で知らせ、
+  `schema_version` は進めない（端末は `templates` と `default_template_id` も比べて読み直す）。テンプレートから作る・複製・
+  `apply-template` は `client_save_id` で冪等（再送は同じページを 200 で返す）。新しいイベントは無い。

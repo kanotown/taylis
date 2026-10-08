@@ -1411,6 +1411,7 @@ CREATE TABLE wiki_pages (
   props_text      text,                                     -- 行だけ (検索用)
   task_total      integer NOT NULL DEFAULT 0,
   task_done       integer NOT NULL DEFAULT 0,
+  is_template     boolean NOT NULL DEFAULT false,           -- M145 (移行 0108)：ページのテンプレート (最上位、木・検索・バックリンクに出さない) か行のテンプレート (問い合わせ・件数・CSV・候補に出さない)
   created_by      uuid NOT NULL REFERENCES users(id),
   updated_by      uuid NOT NULL REFERENCES users(id),
   created_at      timestamptz NOT NULL DEFAULT now(),
@@ -1419,8 +1420,10 @@ CREATE TABLE wiki_pages (
   deleted_by      uuid REFERENCES users(id),
   trash_root_id   uuid,                                     -- 一緒にゴミ箱に入った部分木の根 (戻す・消すのはこのまとまり)
   CHECK (kind IN ('page', 'database', 'row')),
-  CHECK ((kind = 'row') = (props IS NOT NULL))
+  CHECK ((kind = 'row') = (props IS NOT NULL)),
+  CHECK (NOT is_template OR kind IN ('page', 'row'))         -- M145
 );
+CREATE INDEX wiki_pages_templates_idx ON wiki_pages (parent_id, created_at) WHERE is_template AND deleted_at IS NULL;  -- M145
 CREATE INDEX wiki_pages_children_idx ON wiki_pages (parent_id, position) WHERE deleted_at IS NULL;
 CREATE INDEX wiki_pages_path_idx ON wiki_pages USING gin (path);
 CREATE INDEX wiki_pages_meta_seq_idx ON wiki_pages (meta_seq);
@@ -1456,7 +1459,8 @@ CREATE TABLE wiki_databases (
   page_id uuid PRIMARY KEY REFERENCES wiki_pages(id) ON DELETE CASCADE,
   schema jsonb NOT NULL,          -- {"properties": [{"id","name","type","options":[{"id","name","color"}],"number_format","relation":{"database_id","pair_id","primary"}}]}
   views jsonb NOT NULL,           -- [{"id","name","type": table | calendar,"columns","sort","filter","date_prop_id"}]
-  schema_version bigint NOT NULL DEFAULT 1   -- スキーマ・ビューの変更ごとに +1 (古い版を元にした変更は 409)
+  schema_version bigint NOT NULL DEFAULT 1,  -- スキーマ・ビューの変更ごとに +1 (古い版を元にした変更は 409)
+  default_template_id uuid REFERENCES wiki_pages(id) ON DELETE SET NULL  -- M145：「新規」が使う行のテンプレート (ゴミ箱にあれば無いものとして扱う)
 );
 CREATE TABLE wiki_relations (     -- 関係のつながり 1 つ。双方向の逆のプロパティは同じ行を dst の側から読む
   src_page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
