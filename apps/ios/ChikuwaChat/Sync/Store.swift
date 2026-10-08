@@ -1085,6 +1085,29 @@ final class Store {
         }
     }
 
+    /// Thread roots known deleted while the app runs (a message.deleted, a catch-up tombstone, GET replies answering
+    /// message_not_found): an open thread of one closes, or says its root is gone (ThreadRootWatch, THREADS.md).
+    private(set) var deletedThreadRoots: Set<String> = []
+
+    /// A top-level message is deleted: as a thread's root, the thread goes with it. Its row leaves 「スレッド」 (as the
+    /// server's GET /threads leaves it out) and the local draft of a reply to it goes (the server hides and refuses it),
+    /// so no composer or draft is left hanging. Idempotent; the root's row, if held, goes too.
+    func threadRootDeleted(_ channelId: String, _ parentId: String) {
+        if !deletedThreadRoots.contains(parentId) { deletedThreadRoots.insert(parentId) }
+        if let gone = threads.removeValue(forKey: parentId)?.state {
+            let unread = gone.following && gone.unreadCount > 0 ? 1 : 0
+            let mention = gone.following && gone.mentionCount > 0 ? 1 : 0
+            if unread + mention > 0 {
+                threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount - unread),
+                                              mentionCount: max(0, threadSummary.mentionCount - mention))
+            }
+        }
+        let key = draftKey(channelId, parentId)
+        if drafts[key] != nil { writeDraft(key, Draft()) }
+        let rows = bucket(channelId)
+        if rows.byId.removeValue(forKey: parentId) != nil { persist { try $0.deleteMessage(id: parentId) } }
+    }
+
     // MARK: custom emoji (M12f)
 
     /// Review v0.1.37 #7: a bootstrap's list (after emoji.updated may have been missed offline) drops the images that no
@@ -1488,6 +1511,9 @@ final class Store {
         if message.deleted {
             rows.byId.removeValue(forKey: message.id)
             persist { try $0.deleteMessage(id: message.id) }
+            // A thread's root (THREADS.md): not for the deletion shown before the server answers (hideMessage), which
+            // a refusal puts back.
+            if message.parentId == nil && !replacingSameVersion && message.seq != nil { threadRootDeleted(message.channelId, message.id) }
         } else {
             rows.byId[message.id] = message
             persist { try $0.saveMessage(message) }

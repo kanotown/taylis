@@ -604,7 +604,7 @@ struct MainView: View {
                 .padding(.trailing, 8)
                 .padding(.vertical, 6)
                 Divider()
-                ThreadView(controller: controller, channelId: thread.channelId, parentId: thread.parentId)
+                ThreadView(controller: controller, channelId: thread.channelId, parentId: thread.parentId, onClose: { nav.openThread = nil })
             }
             .id(thread.parentId)
             .inspectorColumnWidth(min: 340, ideal: 400, max: 520)

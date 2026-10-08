@@ -18310,6 +18310,22 @@
         }
       }
     },
+    "元のメッセージが削除されたため、スレッドを閉じました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original message was deleted, so the thread was closed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原消息已被删除，话题已关闭。"
+          }
+        }
+      }
+    },
     "元のメッセージは削除されました" : {
       "localizations" : {
         "en" : {

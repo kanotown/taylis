@@ -6,7 +6,11 @@ struct ThreadView: View {
     @Bindable var controller: AppController
     let channelId: String
     let parentId: String
+    /// Closes the thread where it is not a pushed screen (the split's pane); else the normal back (THREADS.md: a deleted root).
+    var onClose: (() -> Void)? = nil
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.isPresented) private var isPresented
     /// M47: replies group like the channel's rows when on (read here, so switching it redraws an open thread).
     @AppStorage(Timeline.groupingKey) private var grouping = false
 
@@ -44,6 +48,9 @@ struct ThreadView: View {
     /// The landing on the first unread reply, in a task of its own (ChannelView.landingTask: a `.task` cancelled by the
     /// navigation's disappear and reappear left the landing unfinished).
     @State private var landingTask: Task<Void, Never>?
+    /// THREADS.md: the root deleted while the thread is shown closes it; opened already deleted, it says so.
+    @State private var rootWatch = ThreadRootWatch()
+    private var rootDeleted: Bool { controller.store.deletedThreadRoots.contains(parentId) }
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
     /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
     private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
@@ -69,7 +76,8 @@ struct ThreadView: View {
         dividerMark = ReadGate.threadDividerMark(replies, lastReadSeq: state.lastReadSeq, meId: controller.store.me?.id)
     }
 
-    var body: some View {
+    /// The thread itself: the replies under the parent, and the composer.
+    private var conversation: some View {
         // M29: pushed onto the conversation's navigation (Slack), not a sheet: back and the swipe return to it.
         VStack(spacing: 0) {
             // The flipped list must not reach under the navigation bar: a scroll view there takes the bar's height as a
@@ -160,6 +168,26 @@ struct ThreadView: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        Group {
+            if rootDeleted {
+                // THREADS.md: the root is gone: no parent row, no replies, no composer.
+                Text("元のメッセージは削除されました")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Self.margin)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                conversation
+            }
+        }
+        .onChange(of: rootDeleted, initial: true) { _, deleted in
+            guard rootWatch.next(rootDeleted: deleted) == .close else { return }
+            controller.threadClosedForDeletedRoot(parentId)
+            close()
+        }
         .navigationTitle("スレッド")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -181,7 +209,7 @@ struct ThreadView: View {
                     .accessibilityLabel(state.following ? "スレッドのフォローを外す" : "スレッドをフォロー")
                 }
             }
-            if controller.canSummarize(channelId) {  // M66 (docs/AI.md §6)
+            if controller.canSummarize(channelId) && !rootDeleted {  // M66 (docs/AI.md §6)
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         let target = controller.aiHub?.target(channelId)
@@ -206,20 +234,33 @@ struct ThreadView: View {
             guard engine.status == .online else { fetchedOnline = false; return }
             if engine.threadComplete(parentId) && fetchedOnline { return }
             fetchedOnline = await engine.loadReplies(channelId, parentId: parentId)
+            if fetchedOnline { rootWatch.repliesLoaded(rootDeleted: rootDeleted) }
             // A failed fetch (a 5xx, a timeout) left the thread half shown for good, with no word and no read marks
-            // (audit 2026-09-29): 「再読み込み」 tries again.
-            if !fetchedOnline && engine.status == .online { loadFailed = true }
+            // (audit 2026-09-29): 「再読み込み」 tries again. Not for a root found deleted (a 404): that says so instead.
+            if !fetchedOnline && engine.status == .online && !rootDeleted { loadFailed = true }
         }
         // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
         .task(id: "\(parentId):\(controller.engine?.status.rawValue ?? ""):\(loadAttempt)") {
-            guard entry == nil, let parent, let out = MessageOut(parent), let engine = controller.engine else { return }
-            if !(await engine.loadThreadState(parentId, parent: out)) && engine.status == .online { loadFailed = true }
+            guard entry == nil, !rootDeleted, let parent, let out = MessageOut(parent), let engine = controller.engine else { return }
+            if !(await engine.loadThreadState(parentId, parent: out)) && engine.status == .online && !rootDeleted { loadFailed = true }
         }
-        .messageSheets(controller, sheet: $messageSheet)
+        .messageSheets(controller, sheet: $messageSheet, threadRootId: parentId)
         .keepsKeyboardRoomWhileSwipingBack()
         // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open, also when the
         // channel is not the open conversation (a thread opened from 「スレッド」).
         .keepsChannelRows(controller.engine, channelId)
+    }
+
+    /// THREADS.md: back to where the thread was opened from (the pane closes); a thread with nothing under it goes to its
+    /// conversation.
+    private func close() {
+        if let onClose {
+            onClose()
+        } else if isPresented {
+            dismiss()
+        } else {
+            NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channelId])
+        }
     }
 
     /// The list's side margin, inside each row: a message's highlight reaches the sheet's edges (ChannelView).
@@ -500,6 +541,27 @@ private struct VisibleReplyFrames: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
+}
+
+/// THREADS.md: what an open thread does about its root's deletion. Shown live on this screen (its replies loaded with the
+/// root there), the deletion closes it, once; opened when the root is deleted already (a stale link, an activity row, a
+/// notification), it stays and says the root is gone, rather than closing under the reader at once.
+struct ThreadRootWatch: Equatable {
+    enum Step: Equatable { case show, deletedState, close }
+    private(set) var seenLive = false
+    private(set) var closed = false
+
+    /// The replies were fetched: the root was there, unless it is known deleted already.
+    mutating func repliesLoaded(rootDeleted: Bool) {
+        if !rootDeleted { seenLive = true }
+    }
+
+    mutating func next(rootDeleted: Bool) -> Step {
+        guard rootDeleted else { return .show }
+        guard seenLive, !closed else { return .deletedState }
+        closed = true
+        return .close
     }
 }
 
