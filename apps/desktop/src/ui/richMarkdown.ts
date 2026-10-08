@@ -188,10 +188,12 @@ export function inlineNodes(tokens: readonly Token[], lineStart: boolean, atoms?
     if (previous && previous.type === "text" && !previous.marks && !node.marks) previous.text += node.text;
     else merged.push(node);
   }
+  // M151: the page editor's inline math is an atom (its TeX, `display` for `$$…$$` within a line).
+  const withMath = atoms ? merged.map((node) => (node.marks?.[0]?.type === "math" ? { type: "inlineMath", attrs: { tex: node.text ?? "", display: !!node.marks[0].attrs?.display } } : node)) : merged;
   const emoji = atoms?.emoji;
-  if (!emoji) return merged;
+  if (!emoji) return withMath;
   // Emoji the renderer draws (in plain, bold, italic and struck text) are atoms that keep their `:name:`.
-  return merged.flatMap((node) => {
+  return withMath.flatMap((node) => {
     const mark = node.marks?.[0]?.type;
     const text = node.text ?? "";
     if (node.type !== "text" || !text.includes(":") || mark === "code" || mark === "math" || mark === "link") return [node];
@@ -334,6 +336,12 @@ function nodePieces(nodes: readonly RichNode[]): Piece[] {
       // M150: a page link's chip, written as the link it was read from (its label never empty).
       const label = String(node.attrs?.label ?? "").replace(/\n/g, " ") || "page";
       pieces.push({ kind: "link", text: label, href: `page:${String(node.attrs?.id ?? "")}` });
+      continue;
+    }
+    if (node.type === "inlineMath") {
+      // M151: inline math as an atom, written between its dollars as its TeX is.
+      const tex = String(node.attrs?.tex ?? "");
+      if (tex) pieces.push(node.attrs?.display ? { kind: "math", text: tex, href: "display" } : { kind: "math", text: tex });
       continue;
     }
     const text = node.type === "text" ? node.text ?? "" : plainOf(node);

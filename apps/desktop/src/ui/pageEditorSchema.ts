@@ -20,7 +20,7 @@ import { Paragraph } from "@tiptap/extension-paragraph";
 import { Text } from "@tiptap/extension-text";
 import { UndoRedo } from "@tiptap/extensions/undo-redo";
 import { Fragment, type Node as PMNode, type NodeType, Slice } from "@tiptap/pm/model";
-import { Plugin, PluginKey, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { AddMarkStep, RemoveMarkStep, ReplaceStep } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { ReactNode } from "react";
@@ -29,7 +29,7 @@ import { calloutTone, listMarker } from "./markdown";
 import { stepBlocks } from "./pageEditorBlocks";
 import { stepCell, tableShape, verticalCell } from "./pageEditorTable";
 import { listRun, pageToDoc, type RichNode, serializePage, type SourceView } from "./pageMarkdown";
-import { InlineCode, InlineMath, OnlyBold, OnlyItalic, OnlyLink, OnlyStrike } from "./RichEditor";
+import { InlineCode, OnlyBold, OnlyItalic, OnlyLink, OnlyStrike } from "./RichEditor";
 
 /** What the React side keeps of the editor's DOM: an element and what to draw into it (createPortal). */
 export class PortalRegistry {
@@ -72,6 +72,8 @@ export interface PageEditorHost {
     image(attachmentId: string, alt: string): ReactNode;
     embed(pageId: string, viewId: string | null): ReactNode;
     math(tex: string): ReactNode;
+    /** M151: inline math (KaTeX; TeX it cannot read shows as text in the error colour). */
+    inlineMath(tex: string): ReactNode;
     calloutIcon(icon: string | null): ReactNode;
   };
   /** `@name` of a mention (its Markdown: `<@id>`, `<@group:id>`, `<!channel>`). */
@@ -79,6 +81,8 @@ export interface PageEditorHost {
   /** Whether `:name:` is an emoji the renderer draws. */
   isEmoji(name: string): boolean;
   pickIcon(pos: number, anchor: HTMLElement): void;
+  /** M151: the TeX of the inline math at `pos`, in its box. */
+  editMath(pos: number): void;
   /** ⌘S: save now. */
   save(): void;
   /** ⌘K: the link of the selection. */
@@ -590,6 +594,68 @@ const TableShape = Extension.create({
   addProseMirrorPlugins: () => [tableShape()],
 });
 
+/**
+ * M151: TeX math within a line, an atom drawn with KaTeX (`display`: written `$$…$$`). A click, or Enter on it
+ * selected (the arrows select it), opens its TeX in a small box; `$x$` typed makes one. Its TeX is written back
+ * between its dollars as it is.
+ */
+export const InlineMathNode = Node.create<{ host: PageEditorHost }>({
+  name: "inlineMath",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  marks: "",
+  addOptions: () => ({ host: null as unknown as PageEditorHost }),
+  addAttributes: () => ({ tex: { default: "" }, display: { default: false } }),
+  parseHTML: () => [{ tag: "span[data-math]", getAttrs: (el) => ({ tex: (el.textContent ?? "").replace(/^\$+|\$+$/g, ""), display: el.getAttribute("data-display") === "true" }) }],
+  renderHTML: ({ node }) => ["span", { "data-math": "", ...(node.attrs.display ? { "data-display": "true" } : {}) }, node.attrs.tex],
+  renderText: ({ node }) => (node.attrs.display ? `$$${node.attrs.tex}$$` : `$${node.attrs.tex}$`),
+  addNodeView() {
+    const host = this.options.host;
+    return ({ node, getPos }) => {
+      const dom = document.createElement("span");
+      dom.className = "pe-inline-math";
+      dom.contentEditable = "false";
+      dom.setAttribute("data-inline-math", "");
+      const key = nextKey();
+      let current = node;
+      host.portals.set(key, dom, host.render.inlineMath(node.attrs.tex));
+      dom.addEventListener("mousedown", (event) => event.preventDefault());
+      dom.addEventListener("click", () => {
+        const pos = getPos();
+        if (pos !== undefined && host.editable()) host.editMath(pos);
+      });
+      return {
+        dom,
+        update(next) {
+          if (next.type !== current.type) return false;
+          if (next.attrs.tex !== current.attrs.tex) host.portals.set(key, dom, host.render.inlineMath(next.attrs.tex));
+          current = next;
+          return true;
+        },
+        destroy: () => host.portals.delete(key),
+        stopEvent: (event) => event.type === "mousedown" || event.type === "click",
+        ignoreMutation: () => true,
+      };
+    };
+  },
+  addInputRules() {
+    // Pandoc's rule as the renderer reads it: a non-space after the opening `$` and before the closing one.
+    return [
+      new InputRule({
+        find: /(?:^|[^\\$])(\$([^\s$](?:[^$\n]*[^\s$\\])?)\$)$/,
+        handler: ({ state, range, match }) => {
+          const $from = state.doc.resolve(range.from);
+          if ($from.parent.type.spec.code || state.selection.$from.marks().some((mark) => mark.type.name === "code")) return null;
+          const from = range.from + (match[0].length - match[1]!.length);
+          state.tr.replaceWith(from, range.to, this.type.create({ tex: match[2] }));
+        },
+      }),
+    ];
+  },
+});
+
 // --- list markers, keys and input rules -----------------------------------------------------------------------------------
 
 /** A list line's element: the list plugin tells it its marker and drawn level. */
@@ -730,6 +796,12 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
     };
     return {
       Enter: () => {
+        // M151: inline math selected (the arrows select it): its TeX.
+        const { selection } = editor.state;
+        if (selection instanceof NodeSelection && selection.node.type.name === "inlineMath") {
+          host.editMath(selection.from);
+          return true;
+        }
         // M151: in a table, the cell below (a cell holds one line).
         const below = verticalCell(editor.state, 1);
         if (below) {
@@ -907,7 +979,7 @@ export function pageExtensions(host: PageEditorHost) {
     OnlyItalic,
     OnlyStrike,
     InlineCode,
-    InlineMath,
+    InlineMathNode.configure({ host }),
     OnlyLink.configure({
       openOnClick: false,
       autolink: true,

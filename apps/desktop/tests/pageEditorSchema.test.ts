@@ -38,10 +38,11 @@ export function fakeHost(): PageEditorHost {
   return {
     portals: new PortalRegistry(),
     sources: new SourceMap(),
-    render: { pageLink: () => null, emoji: () => null, image: () => null, embed: () => null, math: () => null, calloutIcon: () => null },
+    render: { pageLink: () => null, emoji: () => null, image: () => null, embed: () => null, math: () => null, inlineMath: () => null, calloutIcon: () => null },
     mentionLabel: (md) => `@${md.slice(2, 6)}`,
     isEmoji: (name) => name === "smile" || name === "party",
     pickIcon: () => {},
+    editMath: () => {},
     save: () => {},
     link: () => {},
     text: { placeholder: "", editTable: "", raw: "Markdown", toggleOpen: "open", toggleClose: "close", checkbox: "done", changeIcon: "icon", untitledToggle: "" },
@@ -326,6 +327,7 @@ describe("typing Markdown converts", () => {
     ["$$ x^2", "$$x^2$$"],
     ["絵文字 :smile: ", "絵文字 :smile: "],
     ["snake_case_name ", "snake_case_name "],
+    ["式 $x^2$ と", "式 $x^2$ と"],
   ];
   it.each(cases)("%s", (typed, expected) => {
     const { editor, markdown } = open("");
@@ -532,6 +534,43 @@ describe("M151: HTML pasted from Notion, Word and Google Docs (tests/fixtures/pa
 
   it("callouts and toggles three deep give up the innermost frame (the dialect holds two)", () => {
     expect(paste("<aside>💡 一<details><summary>二</summary><aside>🔥 三</aside></details></aside>")).toBe(["::: callout 💡", "一", "::: toggle 二", "🔥 三", ":::", ":::"].join("\n"));
+  });
+});
+
+describe("M151: inline math is an atom", () => {
+  it("typed `$x$` is one; a line edited beside untouched formulas writes their TeX as it was", () => {
+    const { editor, markdown } = open("前 $\\frac{a|b}{c}$ と $$x\\$$$ 後\n次");
+    const line = editor.state.doc.child(0);
+    expect(line.content.content.filter((n) => n.type.name === "inlineMath").map((n) => [n.attrs.tex, n.attrs.display])).toEqual([["\\frac{a|b}{c}", false], ["x\\$", true]]);
+    caretInBlock(editor, 0);
+    type(editor, "！");
+    expect(markdown()).toBe("前 $\\frac{a|b}{c}$ と $$x\\$$$ 後！\n次");
+    caretInBlock(editor, 1);
+    type(editor, " $y$");
+    expect(editor.state.doc.child(1).lastChild?.type.name).toBe("inlineMath");
+    expect(markdown()).toBe("前 $\\frac{a|b}{c}$ と $$x\\$$$ 後！\n次 $y$");
+  });
+
+  it("the arrows select it and Enter opens its TeX; in a code span `$x$` stays text", () => {
+    const opened: number[] = [];
+    const { editor } = open("a $x$ b");
+    const host = (editor.extensionManager.extensions.find((e) => e.name === "pageKeys")!.options as { host: PageEditorHost }).host;
+    host.editMath = (pos) => opened.push(pos);
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, 3)));
+    press(editor, "Enter");
+    expect(opened).toEqual([3]);
+    const code = open("");
+    code.editor.commands.focus("end");
+    code.editor.commands.toggleCode();
+    type(code.editor, "$x$");
+    expect(code.markdown()).toBe("`$x$`");
+  });
+
+  it("a formula next to a letter keeps the zero-width space that ends it", () => {
+    const { editor, markdown } = open("$x$​abc");
+    caretInBlock(editor, 0);
+    type(editor, "d");
+    expect(markdown()).toBe("$x$​abcd");
   });
 });
 

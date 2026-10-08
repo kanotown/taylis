@@ -2704,6 +2704,8 @@ export const ja = {
   "docs.wysiwyg.changeIcon": "アイコンを変える",
   "docs.wysiwyg.toggleTitle": "トグルの見出し",
   "docs.wysiwyg.mathEmpty": "数式（TeX）を書く",
+  "docs.wysiwyg.mathTex": "数式（TeX）",
+  "docs.wysiwyg.mathEmptyRemoves": "空にすると数式を消します",
   "docs.wysiwyg.linkUrl": "リンク先（https://…）",
   "docs.wysiwyg.linkApply": "リンク",
   "docs.wysiwyg.loading": "エディタを読み込んでいます…",
