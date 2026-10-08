@@ -47,7 +47,39 @@ export type Block =
   // The canvas dialect (CANVAS.md §4.2): `line` is the item's line in the body (0-based), which a tick changes.
   | { kind: "task"; items: TaskItem[] }
   | { kind: "image"; alt: string; attachmentId: string; line: number }
-  | { kind: "hr" };
+  | { kind: "hr" }
+  /**
+   * M149 (WIKI.md §22.5, apps/shared/canvas_markdown.json `containers`): `::: callout [icon]` … `:::` and
+   * `::: toggle [title]` … `:::`, their content read as the top level (at most two deep); `line` is the opener's.
+   */
+  | { kind: "callout"; icon: string | null; tone: CalloutTone; blocks: Block[]; line: number }
+  | { kind: "toggle"; title: Token[]; blocks: Block[]; line: number }
+  /** M149: an embedded database `![label](page:<uuid>#view=<view id>)` on a line of its own (no view: the first). */
+  | { kind: "embed"; label: string; pageId: string; viewId: string | null; line: number };
+
+/** A callout's tint (apps/shared/canvas_markdown.json `containers.tones`). */
+export type CalloutTone = "gray" | "yellow" | "red" | "green" | "blue";
+
+const TONES: Record<Exclude<CalloutTone, "gray">, readonly string[]> = {
+  yellow: ["💡", "⚠", "⭐", "🔔", "✨"],
+  red: ["❗", "‼", "🚨", "❌", "⛔", "🚫", "🔥"],
+  green: ["✅", "✔", "🌱", "👍", "🎉", "⭕"],
+  blue: ["ℹ", "📝", "💬", "📌", "❓", "🔍", "📘"],
+};
+
+/** The tint of a callout with this icon: the icon without U+FE0F looked up; anything else (and none) is gray. */
+export function calloutTone(icon: string | null): CalloutTone {
+  if (!icon) return "gray";
+  const bare = icon.replace(/️/g, "");
+  for (const [tone, icons] of Object.entries(TONES) as Array<[CalloutTone, readonly string[]]>) if (icons.includes(bare)) return tone;
+  return "gray";
+}
+
+/** M149: a container's opener (`::: callout 💡`, `::: toggle 見出し`) and its close (`:::`). */
+export const CONTAINER_OPEN = /^:::[ \t]*(callout|toggle)(?:[ \t]+(.*?))?[ \t]*$/;
+export const CONTAINER_CLOSE = /^:::[ \t]*$/;
+/** Containers nest at most this deep (a toggle in a callout; WIKI.md §22.5). */
+export const CONTAINER_DEPTH = 2;
 
 /** What a quote holds: its lines as paragraphs, and lists drawn as lists (2026-10-08: "> - item" showed the "-"). */
 export type QuoteBlock = Extract<Block, { kind: "paragraph" } | { kind: "list" }>;
@@ -77,6 +109,7 @@ export interface ParseOptions {
 export const TASK_LINE = /^([ \t]*)[-*] \[([ xX])\](?: (.*))?$/;
 const IMAGE_LINE = /^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$/i; // M44: an upper-case id too (Swift writes one)
 const RULE_LINE = /^-{3,}\s*$/;
+const EMBED_LINE = /^!\[([^\]\n]*)\]\(page:([0-9a-fA-F-]{36})(?:#view=([A-Za-z0-9_-]{1,40}))?\)\s*$/;
 
 /** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
 export type TableAlign = "left" | "center" | "right" | null;
@@ -271,14 +304,23 @@ export interface BlockLines {
  * body is in exactly one block, in order.
  */
 export function parseBlocksWithLines(body: string, options: ParseOptions = {}): { blocks: Block[]; lines: BlockLines[] } {
-  const blocks: Block[] = [];
-  const ranges: BlockLines[] = [];
   const canvas = options.canvas === true;
-  const inl = (text: string) => tokenizeInline(text, canvas);
   // M80 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
   const lines = body.replace(/\r\n?/g, "\n").split("\n").map((line) => (canvas ? stripTaskMarkers(line) : line));
-  let i = 0;
-  let start = 0;
+  return readBlocks(lines, 0, 0, canvas);
+}
+
+/**
+ * The blocks of `lines` from `begin` to their end. M149: a container's content is read by the same function over the
+ * lines up to its close (so nothing inside looks past it), from the line after its opener: every `line` stays the
+ * line in the whole body. `depth`: the containers around these lines.
+ */
+function readBlocks(lines: readonly string[], begin: number, depth: number, canvas: boolean): { blocks: Block[]; lines: BlockLines[] } {
+  const blocks: Block[] = [];
+  const ranges: BlockLines[] = [];
+  const inl = (text: string) => tokenizeInline(text, canvas);
+  let i = begin;
+  let start = begin;
   /** A block from `from` (the line the construct began on, by default) to the current line. */
   const push = (block: Block, from = start) => {
     blocks.push(block);
@@ -298,6 +340,22 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
     const separator = lines[index + 1] ?? "";
     return header.includes("|") && TABLE_SEPARATOR.test(separator) && splitTableRow(header).length === splitTableRow(separator).length;
   };
+  const isEmbed = (index: number) => canvas && EMBED_LINE.test(lines[index] ?? "");
+  // M149: a container's close, counting the openers and closes below it and skipping fenced code (-1: none).
+  const containerCloseAfter = (index: number) => {
+    let open = 1;
+    for (let k = index + 1; k < lines.length; k++) {
+      if (opensFence(k)) {
+        k = fenceCloseAfter(k);
+        continue;
+      }
+      const line = lines[k] ?? "";
+      if (CONTAINER_OPEN.test(line)) open++;
+      else if (CONTAINER_CLOSE.test(line) && --open === 0) return k;
+    }
+    return -1;
+  };
+  const opensContainer = (index: number) => canvas && depth < CONTAINER_DEPTH && CONTAINER_OPEN.test(lines[index] ?? "") && containerCloseAfter(index) !== -1;
   while (i < lines.length) {
     start = i;
     const line = lines[i] ?? "";
@@ -306,6 +364,22 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
       const close = fenceCloseAfter(i);
       i = close + 1;
       push({ kind: "codeblock", text: straightQuotes(lines.slice(start + 1, close).join("\n")), lang:fence?.[1] ? fence[1].toLowerCase() : null });
+      continue;
+    }
+    if (opensContainer(i)) {
+      const open = CONTAINER_OPEN.exec(line)!;
+      const close = containerCloseAfter(i);
+      const inner = readBlocks(lines.slice(0, close), i + 1, depth + 1, canvas).blocks;
+      const rest = (open[2] ?? "").trim();
+      i = close + 1;
+      if (open[1] === "callout") push({ kind: "callout", icon: rest || null, tone: calloutTone(rest || null), blocks: inner, line: start });
+      else push({ kind: "toggle", title: inl(rest), blocks: inner, line: start });
+      continue;
+    }
+    if (isEmbed(i)) {
+      const m = EMBED_LINE.exec(line)!;
+      i++;
+      push({ kind: "embed", label: m[1] ?? "", pageId: (m[2] ?? "").toLowerCase(), viewId: m[3] ?? null, line: start });
       continue;
     }
     const math = mathBlockAt(lines, i);
@@ -385,7 +459,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
     const paragraph: Token[][] = [];
     while (i < lines.length) {
       const current = lines[i] ?? "";
-      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current) || isImage(i) || isRule(i) || mathBlockAt(lines, i))) break;
+      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current) || isImage(i) || isEmbed(i) || opensContainer(i) || isRule(i) || mathBlockAt(lines, i))) break;
       paragraph.push(inl(current));
       i++;
     }

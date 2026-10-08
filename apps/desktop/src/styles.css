@@ -334,6 +334,15 @@ body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important
 .md-ol > li::marker, .rich-editor ol > li::marker { font-variant-numeric: tabular-nums; }
 mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
 
+/* M149 (WIKI.md §22.5): callouts, tinted by their icon (apps/shared/canvas_markdown.json `containers.tones`). The tint
+   is mixed into the page's own background, so it stays soft in the dark theme too. */
+.callout { --callout-tint: var(--muted-fg); background: color-mix(in srgb, var(--callout-tint) 9%, var(--canvas)); border: 1px solid color-mix(in srgb, var(--callout-tint) 16%, var(--canvas)); }
+.callout[data-tone="yellow"] { --callout-tint: var(--warning); }
+.callout[data-tone="red"] { --callout-tint: var(--danger); }
+.callout[data-tone="green"] { --callout-tint: var(--success); }
+.callout[data-tone="blue"] { --callout-tint: #3b82f6; }
+.callout > div > .contents:first-child > :first-child, .callout > div > :first-child { margin-top: 0; }
+
 /* The rich composer (RichEditor.tsx): drawn as the message will be (MessageBody), one paragraph per line. */
 .rich-editor { outline: none; min-height: 3rem; }
 .rich-editor p { margin: 0; }

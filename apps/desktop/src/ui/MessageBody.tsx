@@ -91,6 +91,17 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
       return <div className="my-1 text-muted">{block.alt ? t("canvasSearch.imageAlt", { alt: block.alt }) : t("canvasSearch.image")}</div>;
     case "hr":
       return <hr className="my-3 border-line" />;
+    // M149: only parsed with `canvas: true` (ui/CanvasBody.tsx draws them with their icons, toggles and embeds); plain here.
+    case "callout":
+    case "toggle":
+      return (
+        <div className="callout my-1 rounded-lg px-3 py-1.5" data-tone={block.kind === "callout" ? block.tone : "gray"}>
+          {block.kind === "toggle" && <div className="font-medium">{inline(block.title, users, options)}</div>}
+          {block.blocks.map((inner, i) => <BlockView key={i} block={inner} users={users} options={options} />)}
+        </div>
+      );
+    case "embed":
+      return <div className="my-1 text-muted">{t("docs.embed.label")}</div>;
     case "paragraph": {
       // Blank lines at a paragraph's ends separate it from the block before / after (a heading, a list …): a gap
       // there, the same in the timeline and the composer's preview. A trailing blank line drew nothing before (a <br>

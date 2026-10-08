@@ -2516,6 +2516,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "primitives.dialog": "对话框",
   "canvasBody.undone": "取消完成",
   "canvasBody.makeTaskTitle": "将此项设为任务",
+  "canvasBody.toggleUntitled": "（无标题）",
   "canvasImage.unavailable": "无法显示的图片",
   "window.restore": "还原",
   "window.maximize": "最大化",
@@ -2678,6 +2679,11 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "docs.slash.image": "图片",
   "docs.slash.pageLink": "链接到页面",
   "docs.slash.childPage": "新建子页面",
+  "docs.slash.callout": "标注",
+  "docs.slash.toggle": "折叠块",
+  "docs.slash.embedDatabase": "嵌入数据库",
+  "docs.embed.showAll": "全部显示",
+  "docs.embed.label": "嵌入的数据库",
   "docs.unsupported": "此服务器尚不支持文档",
   "docs.unsupportedText": "服务器更新后即可使用。",
   "docs.loadFailed": "无法加载文档",
@@ -2750,7 +2756,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "docs.admin.takenOver": "已接管“{title}”（已记录在审计日志中）",
   // --- end M121 ---
   // --- M123: databases (WIKI.md §5) ---
-  "docs.slash.database": "数据库",
+  "docs.slash.database": "新建并嵌入数据库",
   "docs.db.addDatabase": "添加数据库",
   "docs.db.table": "表格",
   "docs.db.calendar": "日历",

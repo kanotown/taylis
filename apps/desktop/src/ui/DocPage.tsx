@@ -23,7 +23,7 @@ import { outline, toggleTaskLine } from "./canvasText";
 import { useCompact } from "./compact";
 import { pageRights } from "./docsAccess";
 import { DatabaseView } from "./DatabaseView";
-import { applyTemplate, createChildRef, createPage, lookupPages, pageTitle, trashPage, updatePage, wikiCall } from "./docsActions";
+import { applyTemplate, createChildRef, createPage, firstViewId, lookupDatabases, lookupPages, pageTitle, trashPage, updatePage, wikiCall } from "./docsActions";
 import { DuplicateDialog, type DuplicateMode, TemplateBanner, TemplateGallery } from "./DocsTemplates";
 import { RowProperties } from "./RowProperties";
 import { PageRow } from "./DocsDialogs";
@@ -139,6 +139,8 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
     lookup: (q: string) => lookupPages(controller, q),
     createChild: () => createChildRef(controller, pageId),
     createDatabase: () => createChildRef(controller, pageId, "database"),
+    lookupDatabases: (q: string) => lookupDatabases(controller, q),
+    embedView: (databaseId: string) => firstViewId(controller, databaseId),
   }), [controller, pageId]);
   const kind = meta?.kind ?? "page";
   const isTemplate = !!meta?.is_template;

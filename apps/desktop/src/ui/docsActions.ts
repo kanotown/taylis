@@ -126,6 +126,27 @@ export function lookupPages(controller: AppController, q: string): Promise<PageR
   return api.lookupWikiPages(q, 8).catch(() => []);
 }
 
+/** M149: `![[` in the editor — the databases of the tree (those I can read) whose title contains `q`. */
+export function lookupDatabases(controller: AppController, q: string): Promise<PageRef[]> {
+  const needle = q.trim().toLowerCase();
+  const found = [...(hub(controller)?.pages.values() ?? [])]
+    .filter((page) => page.kind === "database" && (page.title ?? "").toLowerCase().includes(needle))
+    .slice(0, 8)
+    .map((page) => ({ id: page.id, title: page.title, icon: page.icon, kind: page.kind }));
+  return Promise.resolve(found);
+}
+
+/** M149: the first view of a database (what a new embed names), null when it cannot be read. */
+export async function firstViewId(controller: AppController, databaseId: string): Promise<string | null> {
+  const api = controller.api;
+  if (!api) return null;
+  try {
+    return (await api.wikiDatabase(databaseId)).views[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The display name of an item of the tree. */
 export function pageTitle(page: Pick<PageItem, "title"> | null | undefined, untitled: string): string {
   return page?.title?.trim() ? page.title : untitled;

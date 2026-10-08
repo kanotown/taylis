@@ -2516,6 +2516,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "primitives.dialog": "Dialog",
   "canvasBody.undone": "Mark as not done",
   "canvasBody.makeTaskTitle": "Make this item a task",
+  "canvasBody.toggleUntitled": "(No title)",
   "canvasImage.unavailable": "Image unavailable",
   "window.restore": "Restore",
   "window.maximize": "Maximize",
@@ -2678,6 +2679,11 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "docs.slash.image": "Image",
   "docs.slash.pageLink": "Link to a page",
   "docs.slash.childPage": "New page inside",
+  "docs.slash.callout": "Callout",
+  "docs.slash.toggle": "Toggle",
+  "docs.slash.embedDatabase": "Embed a database",
+  "docs.embed.showAll": "Show all",
+  "docs.embed.label": "Embedded database",
   "docs.unsupported": "This server doesn't have Docs yet",
   "docs.unsupportedText": "It becomes available once the server is updated.",
   "docs.loadFailed": "Couldn't load Docs",
@@ -2750,7 +2756,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "docs.admin.takenOver": "Took over “{title}” (written to the audit log)",
   // --- end M121 ---
   // --- M123: databases (WIKI.md §5) ---
-  "docs.slash.database": "Database",
+  "docs.slash.database": "New database here",
   "docs.db.addDatabase": "Add a database",
   "docs.db.table": "Table",
   "docs.db.calendar": "Calendar",
