@@ -2705,6 +2705,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "docs.wysiwyg.changeIcon": "更换图标",
   "docs.wysiwyg.toggleTitle": "折叠标题",
   "docs.wysiwyg.mathEmpty": "编写公式（TeX）",
+  "docs.wysiwyg.mathTex": "公式（TeX）",
+  "docs.wysiwyg.mathEmptyRemoves": "留空即删除公式",
   "docs.wysiwyg.linkUrl": "链接（https://…）",
   "docs.wysiwyg.linkApply": "链接",
   "docs.wysiwyg.loading": "正在加载编辑器…",

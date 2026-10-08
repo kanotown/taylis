@@ -40,7 +40,7 @@ import { CustomEmojiImage } from "./customEmoji";
 import { type SlashKey, slashItems } from "./docEditor";
 import { emojiByShortcode, replaceShortcodes } from "./emoji";
 import { EmojiPicker } from "./EmojiPicker";
-import { MathView } from "./MathView";
+import { loadKatex, MathView } from "./MathView";
 import { aiBotIds, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery, mentionsToNames } from "./mentions";
 import { inline } from "./MessageBody";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
@@ -97,6 +97,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const [tableEdit, setTableEdit] = useState<{ table: Table; isNew: boolean; pos: number | null } | null>(null);
   const [iconPick, setIconPick] = useState<{ pos: number; rect: DOMRect } | null>(null);
   const [linkEdit, setLinkEdit] = useState<{ href: string; rect: DOMRect } | null>(null);
+  const [mathEdit, setMathEdit] = useState<{ pos: number; tex: string; rect: DOMRect } | null>(null);
   // M151: the ⋮⋮ handle of the block under the pointer, a drag in progress, the handle's menu.
   const wrapper = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<{ pos: number; top: number; left: number } | null>(null);
@@ -146,12 +147,14 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       },
       image: (attachmentId, alt) => <CanvasImage controller={live.current.controller} attachmentId={attachmentId} alt={alt} />,
       embed: (pageId, viewId) => <DatabaseEmbed controller={live.current.controller} pageId={pageId} viewId={viewId} />,
+      inlineMath: (tex) => <InlineMathView tex={tex} />,
       math: (tex) => (tex.trim() ? <MathView tex={tex.trim()} display /> : <span className="text-xs text-muted">{t("docs.wysiwyg.mathEmpty")}</span>),
       calloutIcon: (icon) => (icon ? <span aria-hidden="true">{inline([{ kind: "text", text: icon }], store.users, { customEmoji: store.customEmoji, controller: live.current.controller })}</span> : <span className="text-muted" aria-hidden="true">＋</span>),
     },
     mentionLabel: (md) => mentionsToNames(md, store.users, store.groups),
     isEmoji: (name) => !!emojiByShortcode(name) || store.customEmoji.has(name),
     pickIcon: (pos, anchor) => setIconPick({ pos, rect: anchor.getBoundingClientRect() }),
+    editMath: (pos) => openMath(pos),
     save: () => {
       commitRef.current();
       void saver.flush();
@@ -577,6 +580,33 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     editor.view.dispatch(editor.state.tr.replaceWith(session.pos, session.pos + node.nodeSize, fresh));
   }
 
+  /** M151: the inline math at `pos` in its TeX box (a live preview under the field). */
+  function openMath(pos: number) {
+    const editor = editorRef.current;
+    const node = editor?.state.doc.nodeAt(pos);
+    if (!editor || node?.type.name !== "inlineMath") return;
+    const dom = editor.view.nodeDOM(pos);
+    const rect = dom instanceof HTMLElement ? dom.getBoundingClientRect() : new DOMRect();
+    setMathEdit({ pos, tex: String(node.attrs.tex), rect });
+  }
+
+  /** The TeX box closed (Enter, Esc, a click outside): the formula changed, or gone when emptied; the caret after it. */
+  function closeMath(tex: string) {
+    const session = mathEdit;
+    setMathEdit(null);
+    const editor = editorRef.current;
+    if (!editor || !session) return;
+    const node = editor.state.doc.nodeAt(session.pos);
+    if (node?.type.name !== "inlineMath") return;
+    const tr = editor.state.tr;
+    const value = tex.replace(/\s*\n\s*/g, " ").trim();
+    if (!value) tr.delete(session.pos, session.pos + node.nodeSize);
+    else if (value !== node.attrs.tex) tr.setNodeMarkup(session.pos, undefined, { ...node.attrs, tex: value });
+    tr.setSelection(TextSelection.create(tr.doc, value ? session.pos + node.nodeSize : session.pos));
+    editor.view.dispatch(tr);
+    editor.commands.focus();
+  }
+
   function openLink() {
     const editor = editorRef.current;
     if (!editor) return;
@@ -880,6 +910,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
           <BlockMenu node={editorRef.current?.state.doc.nodeAt(blockMenu.pos) ?? null} canWrap={containerDepthAt(editorRef.current, blockMenu.pos) < 2} onPick={blockAction} />
         </FloatingBox>
       )}
+      {mathEdit && <MathBox key={mathEdit.pos} rect={mathEdit.rect} tex={mathEdit.tex} onClose={closeMath} />}
       {linkEdit && (
         <FloatingBox rect={linkEdit.rect} onClose={() => { setLinkEdit(null); editorRef.current?.commands.focus(); }} width={320}>
           <form className="flex gap-1.5 p-1" onSubmit={(event) => { event.preventDefault(); applyLink(new FormData(event.currentTarget).get("href")?.toString() ?? ""); }}>
@@ -975,6 +1006,44 @@ function TableTools({ editor, pos, wrapper, onEdit, onDialog }: { editor: Editor
         </button>
       ))}
     </div>
+  );
+}
+
+/** M151: inline math in a line: KaTeX, or its TeX in the error colour when KaTeX cannot read it (never throws). */
+function InlineMathView({ tex }: { tex: string }) {
+  const [katex, setKatex] = useState<Awaited<ReturnType<typeof loadKatex>> | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadKatex().then((module) => live && setKatex(() => module), () => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  let html: string | null = null;
+  let failed = !tex.trim();
+  if (katex && !failed) {
+    try {
+      html = katex.renderToString(tex, { displayMode: false, throwOnError: true, trust: false, strict: "ignore", maxSize: 20, maxExpand: 300, output: "htmlAndMathml" });
+    } catch {
+      failed = true;
+    }
+  }
+  if (html) return <span className="math-inline" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <code className={cn("pe-math-source", failed && katex && "text-danger")} data-math={failed && katex ? "error" : "loading"}>{tex || "TeX"}</code>;
+}
+
+/** M151: the TeX of an inline formula, with its drawing under the field; Enter, Esc or a click outside closes it. */
+function MathBox({ rect, tex, onClose }: { rect: DOMRect; tex: string; onClose: (tex: string) => void }) {
+  const [value, setValue] = useState(tex);
+  const latest = useRef(value);
+  latest.current = value;
+  return (
+    <FloatingBox rect={rect} onClose={() => onClose(latest.current)} width={320}>
+      <form className="flex flex-col gap-1.5 p-1" onSubmit={(event) => { event.preventDefault(); onClose(value); }}>
+        <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder="x^2 + y^2" aria-label={t("docs.wysiwyg.mathTex")} spellCheck={false} className="min-w-0 rounded-md border border-line bg-canvas px-2 py-1 font-mono text-sm outline-none focus:border-accent" />
+        <div className="min-h-7 overflow-x-auto px-1 text-sm" aria-live="polite">{value.trim() ? <InlineMathView tex={value} /> : <span className="text-xs text-muted">{t("docs.wysiwyg.mathEmptyRemoves")}</span>}</div>
+      </form>
+    </FloatingBox>
   );
 }
 

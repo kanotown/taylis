@@ -276,6 +276,29 @@ describe("the menus", () => {
   });
 });
 
+describe("M151: inline math", () => {
+  it("a click opens its TeX; Enter saves the change; emptied, the formula goes; TeX KaTeX cannot read shows in the error colour", async () => {
+    const { api } = await openPage("式 $x$ です\n壊れた $\\frac{$ 式");
+    await edit();
+    await settle(200);
+    const broken = document.querySelectorAll("[data-inline-math]")[1]!;
+    expect(broken.querySelector("[data-math='error']")?.textContent).toBe("\\frac{");
+    fireEvent.click(document.querySelector("[data-inline-math]")!);
+    const field = screen.getByRole("textbox", { name: "数式（TeX）" }) as HTMLInputElement;
+    expect(field.value).toBe("x");
+    fireEvent.change(field, { target: { value: "y^2" } });
+    fireEvent.submit(field.closest("form")!);
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe("式 $y^2$ です\n壊れた $\\frac{$ 式");
+    fireEvent.click(document.querySelector("[data-inline-math]")!);
+    const again = screen.getByRole("textbox", { name: "数式（TeX）" }) as HTMLInputElement;
+    fireEvent.change(again, { target: { value: "" } });
+    fireEvent.keyDown(again, { key: "Escape" });
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe("式  です\n壊れた $\\frac{$ 式");
+  });
+});
+
 describe("the setting and pasting", () => {
   it("Settings: 見たまま / Markdown, 見たまま when never chosen; a server without it shows nothing", () => {
     const store = new Store();

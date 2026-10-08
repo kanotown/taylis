@@ -396,6 +396,11 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .page-editor .rich-math[data-display]::before, .page-editor .rich-math[data-display]::after { content: "$$"; }
 .page-editor a { cursor: text; }
 .page-editor p.is-empty::before, .page-editor .pe-toggle-title.is-empty::before { content: attr(data-placeholder); color: var(--muted-fg); float: left; height: 0; pointer-events: none; }
+/* M151: inline math, an atom drawn with KaTeX (a click opens its TeX). */
+.page-editor .pe-inline-math { cursor: pointer; border-radius: 4px; padding: 0 1px; }
+.page-editor .pe-inline-math:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.page-editor .pe-math-source { font-family: var(--font-code); font-size: 0.9em; color: var(--accent); background: none; }
+.page-editor .pe-math-source.text-danger { color: var(--danger, #d92d20); }
 /* M151: tables edited in place, drawn as the page draws them (MessageBody's table): the first row is the header. */
 .page-editor .pe-table { margin: 4px 0; max-width: 100%; overflow-x: auto; }
 .page-editor .pe-table table { border-collapse: collapse; font-size: 13.5px; line-height: 1.25rem; }
