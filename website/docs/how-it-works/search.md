@@ -33,7 +33,7 @@ PostgreSQL 標準の `tsvector` は日本語に弱く、`pg_trgm` は大量の�
 | `from:@hanako` | その人の投稿 |
 | `in:#general` | そのチャンネル |
 | `after:2026-04-01` / `before:2026-05-01` / `on:2026-04-15` | 日付（after / before はその日を含みません） |
-| `has:file` / `has:link` / `has:pin` / `has:reaction` / `has:poll` | 添付・リンク・ピン留め・リアクション・投票のあるもの |
+| `has:file` / `has:link` / `has:pin` / `has:reaction` / `has:poll` | 添付・リンク・ピン留め・リアクション・アンケートのあるもの |
 | `is:thread` | スレッドの返信と、返信のある親 |
 | `is:times` | Times（作業ログ）だけ |
 
