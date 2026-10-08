@@ -113,5 +113,194 @@
       {"name": "a message keeps them as text", "body": "[予約](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)", "canvas": false, "links": []},
       {"name": "a web link beside a page link", "body": "[外](https://example.com/a) と [中](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)", "links": [{"url": "https://example.com/a", "label": "外"}, {"url": "page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "label": "中"}]}
     ]
+  },
+  "containers": {
+    "_comment": "M149 (WIKI.md §22.5, §26): callouts, toggles and embedded databases of the canvas dialect (canvases and Docs pages; messages keep them as text). A callout is the lines from `::: callout [icon]` to a line `:::`; a toggle from `::: toggle [title]` to `:::`. Opener: /^:::[ \\t]*(callout|toggle)(?:[ \\t]+(.*?))?[ \\t]*$/ (lower case; the rest of the line, trimmed, is the icon or the title; empty → icon null / title \"\"). Close: /^:::[ \\t]*$/. The close is found by scanning down from the opener counting openers (+1) and closes (-1) and skipping fenced code blocks (a ``` fence that has a closing ``` further down, as everywhere else); an opener without its close is a text line (what follows is read as if it were not there). Inside is read as the top level (lists, quotes, code, tasks, images …); `line` of tasks, images and embeds is the line in the whole body. At most two containers deep (a toggle inside a callout): inside the second one an opener and its close are text lines. A container line ends a paragraph or a list. Embed: a line of its own `![label](page:<uuid>#view=<view id>)` (`#view=…` may be left out: the database's first view; the view id is [A-Za-z0-9_-]{1,40}; the id in lower case). Descriptors as in `blocks`, plus callout {icon, tone, blocks}, toggle {title, blocks}, embed {label, page_id, view_id, line} and quote {}. `tone`: the callout's tint, from `tones` (the icon without U+FE0F looked up; anything else, a custom :name: and no icon are gray).",
+    "tones": {
+      "yellow": ["💡", "⚠", "⭐", "🔔", "✨"],
+      "red": ["❗", "‼", "🚨", "❌", "⛔", "🚫", "🔥"],
+      "green": ["✅", "✔", "🌱", "👍", "🎉", "⭕"],
+      "blue": ["ℹ", "📝", "💬", "📌", "❓", "🔍", "📘"]
+    },
+    "cases": [
+      {
+        "name": "a callout with an icon holds paragraphs, lists, quotes and code",
+        "body": "::: callout 💡\n**大事**な点\n- 一つ目\n  - 入れ子\n> 引用\n```\ncode\n```\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": "💡", "tone": "yellow", "blocks": [
+            { "kind": "paragraph", "lines": ["大事な点"] },
+            { "kind": "list", "ordered": false, "items": ["一つ目", "入れ子"] },
+            { "kind": "quote" },
+            { "kind": "codeblock", "text": "code" }
+          ] }
+        ]
+      },
+      {
+        "name": "a callout without an icon is gray; the icon's U+FE0F does not matter",
+        "body": "::: callout\n本文\n:::\n::: callout ⚠️\n注意\n:::\n:::callout ℹ\n情報\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": null, "tone": "gray", "blocks": [{ "kind": "paragraph", "lines": ["本文"] }] },
+          { "kind": "callout", "icon": "⚠️", "tone": "yellow", "blocks": [{ "kind": "paragraph", "lines": ["注意"] }] },
+          { "kind": "callout", "icon": "ℹ", "tone": "blue", "blocks": [{ "kind": "paragraph", "lines": ["情報"] }] }
+        ]
+      },
+      {
+        "name": "a custom emoji or a word as the icon: gray",
+        "body": "::: callout :chikuwa:\na\n:::\n::: callout 注意\nb\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": ":chikuwa:", "tone": "gray", "blocks": [{ "kind": "paragraph", "lines": ["a"] }] },
+          { "kind": "callout", "icon": "注意", "tone": "gray", "blocks": [{ "kind": "paragraph", "lines": ["b"] }] }
+        ]
+      },
+      {
+        "name": "a toggle: its title, tasks inside keep their lines in the body",
+        "body": "::: toggle 詳細を見る\n- [ ] 中のタスク\n- [x] 済み\n:::",
+        "blocks": [
+          { "kind": "toggle", "title": "詳細を見る", "blocks": [
+            { "kind": "task", "items": [
+              { "level": 0, "done": false, "text": "中のタスク", "line": 1 },
+              { "level": 0, "done": true, "text": "済み", "line": 2 }
+            ] }
+          ] }
+        ]
+      },
+      {
+        "name": "text before and after; the title is read for emphasis and links; an empty title",
+        "body": "前\n::: toggle **太字**の[見出し](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)\n中\n:::\n後\n::: toggle\n:::",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["前"] },
+          { "kind": "toggle", "title": "太字の見出し", "blocks": [{ "kind": "paragraph", "lines": ["中"] }] },
+          { "kind": "paragraph", "lines": ["後"] },
+          { "kind": "toggle", "title": "", "blocks": [] }
+        ]
+      },
+      {
+        "name": "a toggle inside a callout (one level of nesting)",
+        "body": "::: callout ⚠️\n注意\n::: toggle 詳しく\n## 見出し\n- [x] 済み\n:::\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": "⚠️", "tone": "yellow", "blocks": [
+            { "kind": "paragraph", "lines": ["注意"] },
+            { "kind": "toggle", "title": "詳しく", "blocks": [
+              { "kind": "heading", "level": 2, "text": "見出し" },
+              { "kind": "task", "items": [{ "level": 0, "done": true, "text": "済み", "line": 4 }] }
+            ] }
+          ] }
+        ]
+      },
+      {
+        "name": "deeper than that: the third opener and its close are text",
+        "body": "::: callout\n::: toggle a\n::: toggle b\nx\n:::\n:::\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": null, "tone": "gray", "blocks": [
+            { "kind": "toggle", "title": "a", "blocks": [
+              { "kind": "paragraph", "lines": ["::: toggle b", "x", ":::"] }
+            ] }
+          ] }
+        ]
+      },
+      {
+        "name": "an opener without its close is text",
+        "body": "::: callout 💡\n本文\n- 項目",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["::: callout 💡", "本文"] },
+          { "kind": "list", "ordered": false, "items": ["項目"] }
+        ]
+      },
+      {
+        "name": "an unclosed callout around a closed toggle: the toggle takes the close",
+        "body": "::: callout\n::: toggle t\n:::",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["::: callout"] },
+          { "kind": "toggle", "title": "t", "blocks": [] }
+        ]
+      },
+      {
+        "name": "a ::: inside code in a callout does not close it",
+        "body": "::: callout\n```\n:::\n```\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": null, "tone": "gray", "blocks": [{ "kind": "codeblock", "text": ":::" }] }
+        ]
+      },
+      {
+        "name": "a fence hides the only close: the toggle is text",
+        "body": "::: toggle t\n```\n:::\n```",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["::: toggle t"] },
+          { "kind": "codeblock", "text": ":::" }
+        ]
+      },
+      {
+        "name": "openers inside a code fence stay code",
+        "body": "```\n::: callout 💡\n:::\n```",
+        "blocks": [{ "kind": "codeblock", "text": "::: callout 💡\n:::" }]
+      },
+      {
+        "name": "a stray close, other words and upper case are text",
+        "body": "本文\n:::\n::: note\nx\n::: Callout\n::: callouts\n:::",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["本文", ":::", "::: note", "x", "::: Callout", "::: callouts", ":::"] }
+        ]
+      },
+      {
+        "name": "blank lines inside stay paragraph gaps",
+        "body": "::: callout 📝\n\n一段落目\n\n二段落目\n\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": "📝", "tone": "blue", "blocks": [{ "kind": "paragraph", "lines": ["", "一段落目", "", "二段落目", ""] }] }
+        ]
+      },
+      {
+        "name": "a container line ends a list and a paragraph",
+        "body": "- 項目\n::: callout ✅\n済み\n:::\n文\n::: toggle t\nx\n:::",
+        "blocks": [
+          { "kind": "list", "ordered": false, "items": ["項目"] },
+          { "kind": "callout", "icon": "✅", "tone": "green", "blocks": [{ "kind": "paragraph", "lines": ["済み"] }] },
+          { "kind": "paragraph", "lines": ["文"] },
+          { "kind": "toggle", "title": "t", "blocks": [{ "kind": "paragraph", "lines": ["x"] }] }
+        ]
+      },
+      {
+        "name": "an embedded database with its view",
+        "body": "![研究室の予定](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b#view=a1b2c3d4e5)",
+        "blocks": [
+          { "kind": "embed", "label": "研究室の予定", "page_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "view_id": "a1b2c3d4e5", "line": 0 }
+        ]
+      },
+      {
+        "name": "an embed without a view, an upper-case id, an empty label, between paragraphs",
+        "body": "前\n![](page:0199A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B)\n後",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["前"] },
+          { "kind": "embed", "label": "", "page_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "view_id": null, "line": 1 },
+          { "kind": "paragraph", "lines": ["後"] }
+        ]
+      },
+      {
+        "name": "an embed in a callout and in a toggle keeps its line",
+        "body": "::: callout 📌\n![DB](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b#view=v_1-x)\n:::\n::: toggle 表\n![](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)\n:::",
+        "blocks": [
+          { "kind": "callout", "icon": "📌", "tone": "blue", "blocks": [
+            { "kind": "embed", "label": "DB", "page_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "view_id": "v_1-x", "line": 1 }
+          ] },
+          { "kind": "toggle", "title": "表", "blocks": [
+            { "kind": "embed", "label": "", "page_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "view_id": null, "line": 4 }
+          ] }
+        ]
+      },
+      {
+        "name": "not embeds: text around it, not an id, another fragment",
+        "body": "見て ![DB](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)\n![DB](page:12345)\n![DB](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b#row=1)",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["見て !DB", "![DB](page:12345)", "![DB](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b#row=1)"] }
+        ]
+      },
+      {
+        "name": "messages (canvas: false) keep callouts, toggles and embeds as text",
+        "canvas": false,
+        "body": "::: callout 💡\n本文\n:::\n![DB](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b#view=a1)",
+        "blocks": [
+          { "kind": "paragraph", "lines": ["::: callout 💡", "本文", ":::", "![DB](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b#view=a1)"] }
+        ]
+      }
+    ]
   }
 }
