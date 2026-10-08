@@ -41,7 +41,7 @@ const MAX_LIST_DEPTH = 3;
 const HTTP_URL = /^https?:\/\//i;
 
 /** One mark at a time: the dialect never nests emphasis (DATA_MODEL.md 「本文の形式」). */
-const OnlyBold = Bold.extend({
+export const OnlyBold = Bold.extend({
   excludes: "_",
   // `**x**` and `*x*` are bold in this dialect; `__x__` is not (dunder names stay as typed).
   addInputRules() {
@@ -51,7 +51,7 @@ const OnlyBold = Bold.extend({
     ];
   },
 });
-const OnlyItalic = Italic.extend({
+export const OnlyItalic = Italic.extend({
   excludes: "_",
   addInputRules() {
     return [markInputRule({ find: /(?:^|\s)(_(?!\s+_)((?:[^_]+))_(?!\s+_))$/, type: this.type })];
@@ -60,23 +60,23 @@ const OnlyItalic = Italic.extend({
     return { "Mod-i": () => this.editor.commands.toggleItalic() };
   },
 });
-const OnlyStrike = Strike.extend({
+export const OnlyStrike = Strike.extend({
   excludes: "_",
   addKeyboardShortcuts() {
     return { "Mod-Shift-x": () => this.editor.commands.toggleStrike(), "Mod-Shift-s": () => this.editor.commands.toggleStrike() };
   },
 });
-const InlineCode = Code.extend({
+export const InlineCode = Code.extend({
   addKeyboardShortcuts() {
     return { "Mod-e": () => this.editor.commands.toggleCode(), "Mod-Shift-c": () => this.editor.commands.toggleCode() };
   },
 });
-const OnlyLink = Link.extend({ excludes: "_" });
+export const OnlyLink = Link.extend({ excludes: "_" });
 /**
  * TeX math within a line (apps/shared/math.json): the formula as typed, shown in its dollars (CSS) and written back
  * between them unchanged. `$x$` typed converts as the code span does; plain text with dollars stays text (escaped).
  */
-const InlineMath = Mark.create({
+export const InlineMath = Mark.create({
   name: "math",
   excludes: "_",
   code: true,

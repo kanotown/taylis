@@ -9,7 +9,7 @@
  */
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
-import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MutableRefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
 import type { PageRef } from "../api/types";
@@ -48,7 +48,7 @@ export interface DocEditorLinks {
   embedView?(databaseId: string): Promise<string | null>;
 }
 
-export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea, doc = null }: {
+export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea, doc = null, initialCaretLine = null, caretLineRef }: {
   controller: AppController;
   saver: CanvasSaver<SavedDoc>;
   className?: string;
@@ -58,6 +58,10 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   onTextArea?: (element: HTMLTextAreaElement | null) => void;
   /** M121: a Docs page's links and block menu (null: a canvas). */
   doc?: DocEditorLinks | null;
+  /** M150: the line to put the caret on when opened (switching from the 見たまま editor). */
+  initialCaretLine?: number | null;
+  /** M150: the caret's line now (switching to the 見たまま editor). */
+  caretLineRef?: MutableRefObject<(() => number) | null>;
 }) {
   const store = controller.store;
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
@@ -108,6 +112,30 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
+
+  // M150: switching from the 見たまま editor puts the caret on the line it was on; it asks for the line going back.
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!el || initialCaretLine === null) return;
+    const at = lineStart(el.value, Math.max(0, initialCaretLine));
+    el.focus();
+    el.setSelectionRange(at, at);
+    setCaret(at);
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 28;
+    el.scrollTop = Math.max(0, initialCaretLine * lineHeight - el.clientHeight / 3);
+    // Once, when the editor opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!caretLineRef) return;
+    caretLineRef.current = () => {
+      const el = area.current;
+      return el ? lineOf(el.value, el.selectionStart ?? 0) : 0;
+    };
+    return () => {
+      caretLineRef.current = null;
+    };
+  }, [caretLineRef]);
 
   useLayoutEffect(() => {
     onTextArea?.(area.current);

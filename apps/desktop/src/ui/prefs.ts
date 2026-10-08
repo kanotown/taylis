@@ -120,6 +120,17 @@ export function composerModeOf(me: { composer_mode?: string | null } | null | un
   return me?.composer_mode === "markdown" ? "markdown" : "rich";
 }
 
+/**
+ * M150 (WIKI.md §22.6): how Docs pages are edited, a per-user setting synced through the server
+ * (UserMe.docs_editor_mode): "wysiwyg" is the 見たまま page editor (PageEditor.tsx), "markdown" the text area with the
+ * preview beside it. Both write the same Markdown body. Never chosen (null) = wysiwyg (§22.8 R1).
+ */
+export type DocsEditorMode = "wysiwyg" | "markdown";
+
+export function docsEditorModeOf(me: { docs_editor_mode?: string | null } | null | undefined): DocsEditorMode {
+  return me?.docs_editor_mode === "markdown" ? "markdown" : "wysiwyg";
+}
+
 /** True when this keyboard event should send, given the preference. */
 export function isSendKey(event: { key: string; shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean }, sendKey: SendKey): boolean {
   if (event.key !== "Enter") return false;

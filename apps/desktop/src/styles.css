@@ -343,6 +343,60 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .callout[data-tone="blue"] { --callout-tint: #3b82f6; }
 .callout > div > .contents:first-child > :first-child, .callout > div > :first-child { margin-top: 0; }
 
+/* M150 (WIKI.md §22.6): the 見たまま page editor (PageEditor.tsx), drawn as the page is (CanvasBody): one paragraph
+   per body line, flat list lines indented by level with the renderer's markers, callouts, toggles and atoms. */
+.page-editor { outline: none; font-size: 15px; line-height: 1.75rem; min-height: 40vh; padding: 0 2px 2rem; }
+.page-editor p { margin: 0; min-height: 1.75rem; }
+.page-editor h1, .page-editor h2, .page-editor h3 { margin: 1rem 0 0.25rem; font-weight: 700; line-height: 1.25; }
+.page-editor h1 { font-size: 1.5rem; }
+.page-editor h2 { font-size: 1.25rem; }
+.page-editor h3 { font-size: 1.125rem; }
+.page-editor > :first-child { margin-top: 0; }.page-editor [data-list-line] { display: flex; align-items: flex-start; padding-left: calc(var(--pe-level, 0) * 24px); }
+.page-editor pre code { background: none; box-shadow: none; padding: 0; font-size: inherit; border-radius: 0; }
+.page-editor .pe-marker { flex: none; min-width: 24px; padding-right: 6px; text-align: right; user-select: none; font-variant-numeric: tabular-nums; }
+.page-editor .pe-line-text { flex: 1; min-width: 0; }
+.page-editor [data-kind="bullet"] > .pe-marker { font-size: 0; line-height: 1.75rem; }
+.page-editor [data-kind="bullet"] > .pe-marker::before {
+  content: ""; display: inline-block; box-sizing: border-box; width: 6px; height: 6px; vertical-align: middle; position: relative; top: -1px;
+  border-radius: 50%; background: currentColor; font-size: 15px;
+}
+.page-editor [data-kind="bullet"][data-level="1"] > .pe-marker::before { background: transparent; border: 1.5px solid currentColor; }
+.page-editor [data-kind="bullet"][data-level="2"] > .pe-marker::before { width: 5px; height: 5px; border-radius: 1px; }
+.page-editor [data-kind="task"] > .pe-marker { display: flex; justify-content: flex-end; }
+.page-editor [data-kind="task"] > .pe-marker input { width: 1rem; height: 1rem; margin-top: 6px; accent-color: var(--accent); cursor: pointer; }
+.page-editor [data-done] > .pe-line-text { color: var(--muted-fg); text-decoration: line-through; }
+.page-editor blockquote { margin: 4px 0; border-left: 3px solid var(--line); padding-left: 12px; color: var(--muted-fg); }
+.page-editor .pe-math { margin: 4px 0; }
+.page-editor .pe-math pre { margin: 0; color: var(--muted-fg); }
+.page-editor .pe-math-preview { padding: 4px 2px 0; }
+.page-editor pre.pe-raw { position: relative; border-style: dashed; color: var(--muted-fg); padding-top: 18px; }
+.page-editor pre.pe-raw::before { content: attr(data-label); position: absolute; top: 2px; left: 12px; font-family: var(--font-sans, inherit); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+.page-editor .pe-hr { padding: 10px 0; }
+.page-editor .pe-hr hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
+.page-editor .pe-callout { display: flex; gap: 0.6rem; border-radius: 8px; padding: 6px 14px; margin: 8px 0; }
+.page-editor .pe-callout-icon { flex: none; min-width: 1.5rem; height: 1.75rem; font-size: 1.15em; line-height: 1.75rem; border-radius: 6px; cursor: pointer; }
+.page-editor .pe-callout-icon:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.page-editor .pe-callout-body { flex: 1; min-width: 0; }
+.page-editor .pe-toggle { display: flex; gap: 2px; margin: 2px 0; }
+.page-editor .pe-toggle-chevron { flex: none; width: 1.25rem; height: 1.75rem; border-radius: 4px; position: relative; cursor: pointer; }
+.page-editor .pe-toggle-chevron:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.page-editor .pe-toggle-chevron::before {
+  content: ""; position: absolute; left: 6px; top: 10px; width: 7px; height: 7px;
+  border-right: 2px solid var(--muted-fg); border-bottom: 2px solid var(--muted-fg); transform: rotate(-45deg); transition: transform 120ms;
+}
+.page-editor .pe-toggle[data-open] > .pe-toggle-chevron::before { transform: rotate(45deg); top: 8px; }
+.page-editor .pe-toggle-body { flex: 1; min-width: 0; }
+.page-editor .pe-toggle:not([data-open]) > .pe-toggle-body > :not(:first-child) { display: none; }
+.page-editor .pe-toggle-title { font-weight: 500; min-height: 1.75rem; }
+.page-editor .pe-atom { margin: 6px 0; border-radius: 8px; }
+.page-editor .ProseMirror-selectednode { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
+.page-editor .pe-inline-atom { display: inline; }
+.page-editor .rich-math { font-family: var(--font-code); font-size: 0.9em; color: var(--accent); }
+.page-editor .rich-math::before, .page-editor .rich-math::after { content: "$"; color: var(--muted-fg); }
+.page-editor .rich-math[data-display]::before, .page-editor .rich-math[data-display]::after { content: "$$"; }
+.page-editor a { cursor: text; }
+.page-editor p.is-empty::before, .page-editor .pe-toggle-title.is-empty::before { content: attr(data-placeholder); color: var(--muted-fg); float: left; height: 0; pointer-events: none; }
+
 /* The rich composer (RichEditor.tsx): drawn as the message will be (MessageBody), one paragraph per line. */
 .rich-editor { outline: none; min-height: 3rem; }
 .rich-editor p { margin: 0; }

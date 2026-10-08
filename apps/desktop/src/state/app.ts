@@ -42,7 +42,7 @@ import { UpdateChecker } from "./updates";
 import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
-import { type ComposerMode, composerModeOf, readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
+import { type ComposerMode, composerModeOf, type DocsEditorMode, docsEditorModeOf, readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
 import type { NavItem } from "../ui/navItems";
 import { type Capability, canAdminister as canAdministerWith, hasCapability } from "../ui/roles";
 import { setLocalePreference, type UiLocale, t } from "../i18n";
@@ -1522,6 +1522,28 @@ export class AppController {
   /** The composer's mode now: what I chose, else rich (the default for new users and for those who never chose). */
   get composerMode(): ComposerMode {
     return composerModeOf(this.store.me);
+  }
+
+  /**
+   * M150 (WIKI.md §22.6): how Docs pages are edited (users.docs_editor_mode): "wysiwyg" (見たまま, writes the same
+   * Markdown) or "markdown". Shown at once; a refused or failed save puts the previous choice back. My other devices
+   * follow (user.updated). A server without the setting: this session only.
+   */
+  private docsEditorModeLocal = false;
+  async setDocsEditorMode(mode: DocsEditorMode): Promise<boolean> {
+    const before = this.store.me;
+    if (!before) return false;
+    if (!this.api || before.docs_editor_mode === undefined) this.docsEditorModeLocal = true;
+    this.store.setMe({ ...before, docs_editor_mode: mode });
+    if (this.docsEditorModeLocal) return true;
+    const ok = await this.updateProfile({ docs_editor_mode: mode });
+    if (!ok && this.store.me?.docs_editor_mode === mode) this.store.setMe({ ...this.store.me, docs_editor_mode: before.docs_editor_mode ?? null });
+    return ok;
+  }
+
+  /** How Docs pages are edited now: what I chose, else 見たまま (WIKI.md §22.8 R1). */
+  get docsEditorMode(): DocsEditorMode {
+    return docsEditorModeOf(this.store.me);
   }
 
   /**

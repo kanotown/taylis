@@ -157,7 +157,7 @@ function EmbedUnavailable({ pageId }: { pageId: string }) {
  * opens it), editable with my rights there. A page I cannot read is a placeholder; a page that is not a database, its
  * link.
  */
-function DatabaseEmbed({ controller, pageId, viewId }: { controller: AppController; pageId: string; viewId: string | null }) {
+export function DatabaseEmbed({ controller, pageId, viewId }: { controller: AppController; pageId: string; viewId: string | null }) {
   const hub = controller.engine?.wiki ?? null;
   useSyncExternalStore((listener) => hub?.subscribe(listener) ?? (() => {}), () => hub?.version ?? 0);
   const compact = useCompact();
