@@ -122,14 +122,20 @@ struct WikiDatabase: Codable, Equatable {
     var views: [DbView]
     var myLevel: WikiLevel
     var rowCount: Int
+    /// M146: the row templates (「＋」's list, oldest first) and the one a new row starts from when none is named.
+    var templates: [DbTemplateRef]
+    var defaultTemplateId: String?
 
-    init(pageId: String, schemaVersion: Int = 1, properties: [DbProperty], views: [DbView], myLevel: WikiLevel = .edit, rowCount: Int = 0) {
+    init(pageId: String, schemaVersion: Int = 1, properties: [DbProperty], views: [DbView], myLevel: WikiLevel = .edit, rowCount: Int = 0,
+         templates: [DbTemplateRef] = [], defaultTemplateId: String? = nil) {
         self.pageId = pageId
         self.schemaVersion = schemaVersion
         self.properties = properties
         self.views = views
         self.myLevel = myLevel
         self.rowCount = rowCount
+        self.templates = templates
+        self.defaultTemplateId = defaultTemplateId
     }
 
     init(from decoder: Decoder) throws {
@@ -140,10 +146,55 @@ struct WikiDatabase: Codable, Equatable {
         views = try c.decodeIfPresent([DbView].self, forKey: .views) ?? []
         myLevel = WikiLevel(raw: try c.decodeIfPresent(String.self, forKey: .myLevel))
         rowCount = try c.decodeIfPresent(Int.self, forKey: .rowCount) ?? 0
+        templates = try c.decodeIfPresent([DbTemplateRef].self, forKey: .templates) ?? []
+        defaultTemplateId = try c.decodeIfPresent(String.self, forKey: .defaultTemplateId)
     }
 
     func property(_ id: String) -> DbProperty? { properties.first { $0.id == id } }
     func view(_ id: String?) -> DbView? { id.flatMap { id in views.first { $0.id == id } } }
+
+    /// The template 「＋」 starts from when nothing is named (a trashed default comes as null).
+    var defaultTemplate: DbTemplateRef? { defaultTemplateId.flatMap { id in templates.first { $0.id == id } } }
+}
+
+/// A row template of a database (M146, §22.3): open it as a page to change it.
+struct DbTemplateRef: Codable, Equatable, Identifiable {
+    let id: String
+    var title: String
+    var icon: String?
+
+    var displayTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? tr("無題") : trimmed
+    }
+}
+
+/// What a new row starts from (POST …/rows): nothing named → the database's default template (the server picks it), a
+/// named template, or blank even when there is a default.
+enum DbRowStart: Equatable {
+    case standard
+    case template(String)
+    case blank
+}
+
+/// POST /wiki/databases/{id}/rows.
+struct DbRowCreate: Equatable {
+    var title: String
+    var props: [String: JSONValue] = [:]
+    var start: DbRowStart = .standard
+    var clientSaveId: String
+    var tz: String? = TimeZone.current.identifier
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["title": .string(title), "props": .object(props), "client_save_id": .string(clientSaveId)]
+        switch start {
+        case .standard: break
+        case .template(let id): fields["template_id"] = .string(id)
+        case .blank: fields["blank"] = .bool(true)
+        }
+        if let tz { fields["tz"] = .string(tz) }
+        return .object(fields)
+    }
 }
 
 /// A date cell: `start` "YYYY-MM-DD" (time false) or ISO 8601 with its offset (time true); `end` a range's last.
@@ -433,6 +484,21 @@ enum WikiDb {
     /// Who a user id is (a deactivated person keeps their name, §5.2).
     typealias Names = (String) -> String
 
+    // MARK: a row template's dynamic values (M146, §22.3)
+
+    /// A date cell of a row template that becomes the day the row is made: `{"start": "@today"}` (or `"@today"`).
+    static let todayToken = "@today"
+    /// A person cell's entry of a row template that becomes the person making the row.
+    static let meToken = "@me"
+
+    static func isToday(_ value: JSONValue?) -> Bool {
+        if value?.stringValue == todayToken { return true }
+        return value?["start"]?.stringValue == todayToken
+    }
+
+    /// The date cell 「今日（行を作る日）」 of a row template.
+    static var todayValue: JSONValue { .object(["start": .string(todayToken)]) }
+
     /// A cell as plain text (a card's line, the agenda, VoiceOver).
     static func text(_ prop: DbProperty, _ row: DbRow, refs: [String: DbRowRef], names: Names, zone: TimeZone = .current,
                      locale: Locale = .current) -> String {
@@ -445,8 +511,10 @@ enum WikiDb {
         case "checkbox": return isChecked(prop, row) ? "✓" : ""
         case "select", "multi_select": return options(prop, row).map(\.name).joined(separator: ", ")
         case "date", "created_time", "updated_time":
+            if isToday(value) { return tr("今日") }
             return DbDateValue(value).map { $0.start.isEmpty ? "" : formatDate($0, zone: zone, locale: locale) } ?? ""
-        case "person", "created_by", "updated_by": return strings(value).map(names).joined(separator: ", ")
+        case "person", "created_by", "updated_by":
+            return strings(value).map { $0 == meToken ? tr("自分") : names($0) }.joined(separator: ", ")
         case "relation":
             var titles = strings(value).map { refs[$0]?.displayTitle ?? tr("無題") }
             if row.hiddenRelations.contains(prop.id) { titles.append(tr("アクセスできないページ")) }

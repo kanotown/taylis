@@ -62,6 +62,27 @@ enum WikiText {
     /// NFKC and any case (the canvases' filter's rule).
     static func fold(_ text: String) -> String { text.precomposedStringWithCompatibilityMapping.lowercased() }
 
+    /// M146: the line over a template (§22.3): a page template changes the pages made from it later, a row template
+    /// the rows of its database; nil for an ordinary page.
+    static func templateBanner(_ item: WikiPageItem?) -> String? {
+        guard let item, item.isTemplate else { return nil }
+        if item.kind == "row" {
+            return tr("データベースの行のテンプレートです。ここで変えると、これから作る行に反映されます。日付の「今日」と人の「自分」は行を作るときに決まります。")
+        }
+        return tr("ページのテンプレートです。ここで変えると、これから作るページに反映されます（作ったページは変わりません）。")
+    }
+
+    /// M146: 「複製」 is offered for a page or a row (a database cannot be duplicated yet), not to guests (the server
+    /// refuses them); a row's copy goes into its database, so it needs edit there.
+    static func canDuplicate(_ item: WikiPageItem?, isGuest: Bool) -> Bool {
+        guard let item, !isGuest else { return false }
+        switch item.kind {
+        case "page": return true
+        case "row": return item.myLevel >= .edit
+        default: return false
+        }
+    }
+
     /// What VoiceOver says for a tree row.
     static func spoken(_ row: Row) -> String {
         var parts = [row.page.displayTitle]
@@ -99,7 +120,9 @@ struct WikiIconView: View {
 struct WikiNewPageTarget: Identifiable, Equatable {
     var parentId: String?
     var access: String = "workspace"
-    var id: String { (parentId ?? "top") + ":" + access }
+    /// M146: the template chosen first (「このテンプレートでページを作成」).
+    var template: WikiTemplateChoice? = nil
+    var id: String { (parentId ?? "top") + ":" + access + ":" + (template.map { "\($0)" } ?? "") }
 }
 
 /// The home's 「ドキュメント」: the tree I can read, under 共有 and プライベート (§3.1), each row opening its children; a tap
@@ -276,14 +299,17 @@ struct WikiNewPageSheet: View {
     @State private var busy = false
     /// One key for this sheet: a retry after a failure on the way returns the page made by the first try.
     @State private var key = UUID().uuidString.lowercased()
+    /// M146: nil is 「白紙のページ」.
+    @State private var template: WikiTemplateChoice?
+    @State private var started = false
 
     var body: some View {
         let parent = target.parentId.flatMap { controller.wiki?.item($0) }
         NavigationStack {
             Form {
                 Section {
-                    TextField("題名（空欄なら「無題」）", text: $title)
-                    TextField("アイコン（絵文字 1 つ、なくても可）", text: $icon)
+                    TextField(template == nil ? "題名（空欄なら「無題」）" : "題名（空欄ならテンプレートの題名）", text: $title)
+                    TextField(template == nil ? "アイコン（絵文字 1 つ、なくても可）" : "アイコン（空欄ならテンプレートのもの）", text: $icon)
                 } footer: {
                     if let parent {
                         Text("「\(parent.displayTitle)」の下に作ります。見える人は親のページと同じです。")
@@ -293,7 +319,14 @@ struct WikiNewPageSheet: View {
                         Text("ワークスペースの全員が読み書きできるページです（ゲストを除く）。")
                     }
                 }
+                WikiTemplateChoices(controller: controller, blank: true, selection: template) { template = $0 }
             }
+            .onAppear {
+                guard !started else { return }
+                started = true
+                template = target.template
+            }
+            .onChange(of: template) { _, _ in key = UUID().uuidString.lowercased() }
             .navigationTitle(target.parentId == nil ? "新しいページ" : "子ページを作成")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -312,9 +345,136 @@ struct WikiNewPageSheet: View {
         defer { busy = false }
         do {
             let page = try await hub.create(parentId: target.parentId, title: WikiText.title(title), icon: WikiText.icon(icon), access: target.access,
-                                            clientSaveId: key)
+                                            clientSaveId: key, template: template)
             dismiss()
             onCreated(page)
+        } catch {
+            controller.error = controller.describe(error)
+        }
+    }
+}
+
+/// M146 (§22.3 / §24.3): the templates to start from — 「白紙のページ」 (when `blank`), 「組み込み」 (the canvases'
+/// templates) and 「みんなのテンプレート」 (page templates I can read), read from GET /wiki/templates when shown.
+struct WikiTemplateChoices: View {
+    @Bindable var controller: AppController
+    let blank: Bool
+    let selection: WikiTemplateChoice?
+    let onSelect: (WikiTemplateChoice?) -> Void
+    @State private var templates: WikiTemplatesOut?
+    @State private var failure: String?
+
+    var body: some View {
+        Group {
+            if blank {
+                Section("テンプレート") {
+                    row(title: tr("白紙のページ"), subtitle: nil, icon: nil, choice: nil)
+                }
+            }
+            if let templates {
+                if !templates.builtins.isEmpty {
+                    Section("組み込み") {
+                        ForEach(templates.builtins) { builtin in
+                            row(title: builtin.name, subtitle: builtin.description, icon: nil, choice: .builtin(key: builtin.key))
+                        }
+                    }
+                }
+                Section {
+                    ForEach(templates.pages) { page in
+                        row(title: page.displayTitle, subtitle: nil, icon: page.icon, choice: .page(id: page.id))
+                    }
+                    if templates.pages.isEmpty {
+                        Text("まだありません。パソコンのページの ⋯ から「テンプレートとして保存」で作れます。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("みんなのテンプレート")
+                }
+            } else if let failure {
+                Section {
+                    Text(failure).font(.footnote).foregroundStyle(.secondary)
+                    Button("再読み込み") { Task { await load() } }
+                }
+            } else {
+                Section { ProgressView().frame(maxWidth: .infinity) }
+            }
+        }
+        .task { if templates == nil { await load() } }
+    }
+
+    private func load() async {
+        guard let hub = controller.wiki else { return }
+        do {
+            templates = try await hub.templates()
+            failure = nil
+        } catch {
+            failure = tr("テンプレートを読み込めませんでした：") + controller.describe(error)
+        }
+    }
+
+    private func row(title: String, subtitle: String?, icon: String?, choice: WikiTemplateChoice?) -> some View {
+        Button { onSelect(choice) } label: {
+            HStack(spacing: 10) {
+                Group {
+                    switch choice {
+                    case nil: Image(systemName: "doc").foregroundStyle(.secondary)
+                    case .builtin?: Image(systemName: "doc.text.image").foregroundStyle(.secondary)
+                    case .page?: WikiIconView(icon: icon, controller: controller)
+                    }
+                }
+                .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: title).foregroundStyle(.primary).lineLimit(1)
+                    if let subtitle, !subtitle.isEmpty { Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                }
+                Spacer(minLength: 0)
+                if selection == choice { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+            }
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selection == choice ? .isSelected : [])
+    }
+}
+
+/// M146: 「テンプレートから始める」 on an empty page (POST …/apply-template): the template's body, and its title and icon
+/// when the page has none.
+struct WikiApplyTemplateSheet: View {
+    @Bindable var controller: AppController
+    let hub: WikiHub
+    let pageId: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var template: WikiTemplateChoice?
+    @State private var busy = false
+    /// One key per choice: a retry after a failure on the way changes nothing again.
+    @State private var key = UUID().uuidString.lowercased()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                WikiTemplateChoices(controller: controller, blank: false, selection: template) { template = $0 }
+            }
+            .onChange(of: template) { _, _ in key = UUID().uuidString.lowercased() }
+            .navigationTitle("テンプレートから始める")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("使う") { Task { await apply() } }.disabled(busy || template == nil)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func apply() async {
+        guard let template else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try await hub.applyTemplate(pageId, template: template, clientSaveId: key)
+            dismiss()
         } catch {
             controller.error = controller.describe(error)
         }
@@ -380,6 +540,11 @@ struct WikiPageDocument: View {
     @State private var backlinks: [WikiPageItem]?
     /// M124: pull to refresh reads a row's cells again too.
     @State private var rowRefresh = 0
+    /// M146: 「テンプレートから始める」 and 「複製」 (one key per duplicate, kept for its move to the top level).
+    @State private var applyingTemplate = false
+    @State private var duplicating = false
+    @State private var duplicateKey: String?
+    @State private var offerTopLevel = false
 
     private var item: WikiPageItem? { hub.item(pageId) }
     private var page: WikiPageOut? { hub.pages[pageId] ?? hub.keptPage(pageId)?.page }
@@ -401,6 +566,10 @@ struct WikiPageDocument: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(notice.warn ? Color.orange.opacity(0.14) : Color.secondary.opacity(0.08))
+                Divider()
+            }
+            if let banner = WikiText.templateBanner(item) {
+                templateBanner(banner)
                 Divider()
             }
             if status == .loading {
@@ -459,7 +628,58 @@ struct WikiPageDocument: View {
         .sheet(isPresented: $history) {
             WikiHistorySheet(controller: controller, pageId: pageId, headId: item?.headRevId)
         }
+        .sheet(isPresented: $applyingTemplate) {
+            WikiApplyTemplateSheet(controller: controller, hub: hub, pageId: pageId)
+        }
+        .alert("最上位に複製しますか？", isPresented: $offerTopLevel) {
+            Button("キャンセル", role: .cancel) { duplicateKey = nil }
+            Button("最上位に複製") { Task { await duplicate(topLevel: true) } }
+        } message: {
+            Text("親のページを編集できないため、隣には置けません。写しをドキュメントの最上位に作ります。")
+        }
         .task(id: pageId) { await loadBacklinks() }
+    }
+
+    /// M146: the template's line, with 「このテンプレートでページを作成」 for a page template.
+    private func templateBanner(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "doc.on.doc").font(.caption).foregroundStyle(Color.accentColor).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(text).font(.caption).fixedSize(horizontal: false, vertical: true)
+                if item?.kind == "page", WikiRights.createsTopLevel(isGuest: controller.isGuest) {
+                    Button("このテンプレートでページを作成") {
+                        newChild = WikiNewPageTarget(parentId: nil, access: "workspace", template: .page(id: pageId))
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.10))
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 「複製」 (POST …/duplicate): the copy opens. 403 page_edit_restricted on the parent offers the top level, with
+    /// the same key.
+    private func duplicate(topLevel: Bool = false) async {
+        let key = duplicateKey ?? UUID().uuidString.lowercased()
+        duplicateKey = key
+        duplicating = true
+        defer { duplicating = false }
+        do {
+            switch try await hub.duplicate(pageId, clientSaveId: key, topLevel: topLevel) {
+            case .made(let copy):
+                duplicateKey = nil
+                controller.notice = tr("複製しました")
+                onOpenPage(copy.id)
+            case .parentRestricted:
+                offerTopLevel = true
+            }
+        } catch {
+            controller.error = controller.describe(error)
+        }
     }
 
     private func loadBacklinks() async {
@@ -478,8 +698,12 @@ struct WikiPageDocument: View {
             if rights.rename, item != nil {
                 Button("題名とアイコンを変更…", systemImage: "pencil") { renaming = true }
             }
-            if rights.createChild, item?.kind != "row" {
+            if rights.createChild, item?.kind != "row", item?.isTemplate != true {
                 Button("子ページを作成", systemImage: "plus") { newChild = WikiNewPageTarget(parentId: pageId) }
+            }
+            if WikiText.canDuplicate(item, isGuest: controller.isGuest) {
+                Button("複製", systemImage: "plus.square.on.square") { Task { await duplicate() } }
+                    .disabled(duplicating)
             }
             Button("履歴", systemImage: "clock.arrow.circlepath") { history = true }
             Button("本文をコピー", systemImage: "doc.on.doc") { controller.copyCanvasText(saver.text) }
@@ -529,6 +753,14 @@ struct WikiPageDocument: View {
                         }
                         .font(.subheadline)
                         .padding(.top, 16)
+                        // M146: an empty page may start from a template (not a template itself, not a row).
+                        if rights.edit, status != .gone, item?.kind == "page", item?.isTemplate != true, !saver.unsaved {
+                            Button { applyingTemplate = true } label: {
+                                Label("テンプレートから始める", systemImage: "doc.on.doc")
+                            }
+                            .font(.subheadline)
+                            .accessibilityIdentifier("wiki-apply-template")
+                        }
                     } else {
                         CanvasBodyView(body: saver.text, controller: controller, onToggleTask: rights.tick && status != .gone ? toggle : nil,
                                        onEditSection: rights.edit && status != .gone ? { section = WikiSectionTarget(line: $0) } : nil,
@@ -622,7 +854,7 @@ struct WikiPageDocument: View {
     private func children(rights: WikiRights, status: CanvasSaveStatus) -> some View {
         let listed = hub.tree?.page(pageId) != nil ? hub.tree?.children(of: pageId) ?? [] : page?.children ?? []
         // M124: a row has no child pages (its database is its parent).
-        if item?.kind != "row", !listed.isEmpty || (rights.createChild && status != .gone) {
+        if item?.kind != "row", item?.isTemplate != true, !listed.isEmpty || (rights.createChild && status != .gone) {
             VStack(alignment: .leading, spacing: 4) {
                 Divider().padding(.vertical, 8)
                 Text("サブページ").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)

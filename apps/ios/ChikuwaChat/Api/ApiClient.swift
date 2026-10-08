@@ -1358,6 +1358,18 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func pageBacklinks(id: String) async throws -> [WikiPageItem] { try await request("GET", "/api/v1/wiki/pages/\(id)/backlinks") }
 
+    // M146 (docs/WIKI.md §24.3): templates and duplicates.
+
+    func wikiTemplates() async throws -> WikiTemplatesOut { try await request("GET", "/api/v1/wiki/templates") }
+
+    func applyTemplate(pageId: String, _ apply: WikiTemplateApply) async throws -> WikiPageOut {
+        try await request("POST", "/api/v1/wiki/pages/\(pageId)/apply-template", body: apply.json)
+    }
+
+    func duplicatePage(id: String, _ duplicate: WikiDuplicate) async throws -> WikiDuplicateOut {
+        try await request("POST", "/api/v1/wiki/pages/\(id)/duplicate", body: duplicate.json)
+    }
+
     /// Titles for `page:` links: only the pages I can read come back.
     func resolvePages(ids: [String]) async throws -> [WikiPageRef] {
         try await request("POST", "/api/v1/wiki/pages/resolve", body: .object(["ids": .array(ids.map { .string($0) })]))

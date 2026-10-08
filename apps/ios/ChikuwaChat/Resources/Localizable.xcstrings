@@ -168,6 +168,22 @@
         }
       }
     },
+    "「%@」から行を作ります。名前を空欄にするとテンプレートの名前になります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creates a row from “%@”. Leave the name empty to use the template's."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将从“%@”新建行。名称留空则使用模板的名称。"
+          }
+        }
+      }
+    },
     "あなたが読めない行へのリンクがあります（変更しても残ります）" : {
       "localizations" : {
         "en" : {
@@ -196,6 +212,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此日历没有日期属性。请在电脑上设置视图。"
+          }
+        }
+      }
+    },
+    "このテンプレートでページを作成" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New page from this template"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用此模板新建页面"
           }
         }
       }
@@ -280,6 +312,22 @@
         }
       }
     },
+    "まだありません。パソコンのページの ⋯ から「テンプレートとして保存」で作れます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None yet. On a computer, use “Save as template” in a page's ⋯ menu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无。可在电脑上通过页面 ⋯ 中的“另存为模板”创建。"
+          }
+        }
+      }
+    },
     "まだ状態を選んでいません。上のボタンで選べます" : {
       "localizations" : {
         "en" : {
@@ -292,6 +340,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未选择状态。请点击上方的按钮。"
+          }
+        }
+      }
+    },
+    "みんなのテンプレート" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everyone's templates"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大家的模板"
+          }
+        }
+      }
+    },
+    "アイコン（空欄ならテンプレートのもの）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon (empty: the template's)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图标（留空则使用模板的）"
           }
         }
       }
@@ -392,6 +472,70 @@
         }
       }
     },
+    "テンプレートから" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From a template"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从模板"
+          }
+        }
+      }
+    },
+    "テンプレートから始める" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start from a template"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从模板开始"
+          }
+        }
+      }
+    },
+    "テンプレートを読み込めませんでした：" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load the templates: "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载模板："
+          }
+        }
+      }
+    },
+    "テンプレートを開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open a template"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开模板"
+          }
+        }
+      }
+    },
     "データベース" : {
       "localizations" : {
         "en" : {
@@ -420,6 +564,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "数据库操作"
+          }
+        }
+      }
+    },
+    "データベースの行のテンプレートです。ここで変えると、これから作る行に反映されます。日付の「今日」と人の「自分」は行を作るときに決まります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This row is a template: what you change here is used for the rows made from it. A date's “Today” and a person's “Me” are filled in when a row is made."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此行是模板：在这里的更改会用于今后从它新建的行。日期的“今天”和人员的“我”会在新建行时确定。"
           }
         }
       }
@@ -484,6 +644,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "还没有属性"
+          }
+        }
+      }
+    },
+    "ページのテンプレートです。ここで変えると、これから作るページに反映されます（作ったページは変わりません）。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This page is a template: what you change here is used for the pages made from it later (pages already made stay as they are)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此页面是模板：在这里的更改会用于今后从它新建的页面（已新建的页面不变）。"
           }
         }
       }
@@ -648,6 +824,54 @@
         }
       }
     },
+    "今は「今日（行を作る日）」です。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Now set to “Today (the day the row is made)”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前为“今天（新建行的日期）”。"
+          }
+        }
+      }
+    },
+    "今日（行を作る日）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today (the day the row is made)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天（新建行的日期）"
+          }
+        }
+      }
+    },
+    "作ると行のページが開きます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its page opens once it's created."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建后会打开该行的页面。"
+          }
+        }
+      }
+    },
     "作成日時" : {
       "localizations" : {
         "en" : {
@@ -676,6 +900,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建者"
+          }
+        }
+      }
+    },
+    "使う" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用"
           }
         }
       }
@@ -788,6 +1028,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分类用于看板的排列和“在室 n 人”的计数。"
+          }
+        }
+      }
+    },
+    "名前を付けて行を作ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name the new row."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为新行命名。"
           }
         }
       }
@@ -1064,6 +1320,54 @@
         }
       }
     },
+    "新規" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建"
+          }
+        }
+      }
+    },
+    "新規（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建（%@）"
+          }
+        }
+      }
+    },
+    "既定のテンプレート「%@」から行を作ります。名前を空欄にするとテンプレートの名前になります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creates a row from the default template “%@”. Leave the name empty to use the template's."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将从默认模板“%@”新建行。名称留空则使用模板的名称。"
+          }
+        }
+      }
+    },
     "時刻を含める" : {
       "localizations" : {
         "en" : {
@@ -1076,6 +1380,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含时间"
+          }
+        }
+      }
+    },
+    "最上位に複製" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicate at the top level"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制到顶层"
+          }
+        }
+      }
+    },
+    "最上位に複製しますか？" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicate at the top level?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要复制到顶层吗？"
           }
         }
       }
@@ -1176,6 +1512,38 @@
         }
       }
     },
+    "白紙のページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blank page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白页面"
+          }
+        }
+      }
+    },
+    "白紙の行" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blank row"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白行"
+          }
+        }
+      }
+    },
     "相手のデータベースを読めません" : {
       "localizations" : {
         "en" : {
@@ -1220,6 +1588,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理员可以在 Desktop / Web 中开启。"
+          }
+        }
+      }
+    },
+    "組み込み" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built-in"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置"
           }
         }
       }
@@ -1336,6 +1720,22 @@
         }
       }
     },
+    "自分（行を作る人）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Me (the person making the row)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我（新建行的人）"
+          }
+        }
+      }
+    },
     "行はまだありません。" : {
       "localizations" : {
         "en" : {
@@ -1380,6 +1780,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查找行"
+          }
+        }
+      }
+    },
+    "複製" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicate"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制"
+          }
+        }
+      }
+    },
+    "複製しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制"
+          }
+        }
+      }
+    },
+    "親のページを編集できないため、隣には置けません。写しをドキュメントの最上位に作ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can't edit the parent page, so the copy can't go beside the original. It will be made at the top level of Docs."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你无法编辑父页面，因此副本不能放在原页面旁边。将在文档的顶层创建副本。"
           }
         }
       }

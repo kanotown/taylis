@@ -6,7 +6,7 @@ import Observation
 protocol WikiDbApi: AnyObject {
     func wikiDatabase(id: String) async throws -> WikiDatabase
     func queryRows(databaseId: String, _ query: DbQuery) async throws -> DbQueryOut
-    func createRow(databaseId: String, title: String, props: [String: JSONValue], clientSaveId: String) async throws -> DbRowWithRefs
+    func createRow(databaseId: String, _ create: DbRowCreate) async throws -> DbRowWithRefs
     func wikiRow(id: String) async throws -> DbRowDetail
     func setRowCells(rowId: String, set: [String: JSONValue], clientOpId: String) async throws -> DbRowWithRefs
     func relationCandidates(databaseId: String, propId: String, q: String) async throws -> [DbRowRef]
@@ -19,9 +19,8 @@ extension ApiClient: WikiDbApi {
         try await requestJSON("POST", "/api/v1/wiki/databases/\(databaseId)/query", body: query.json)
     }
 
-    func createRow(databaseId: String, title: String, props: [String: JSONValue], clientSaveId: String) async throws -> DbRowWithRefs {
-        try await requestJSON("POST", "/api/v1/wiki/databases/\(databaseId)/rows",
-                              body: .object(["title": .string(title), "props": .object(props), "client_save_id": .string(clientSaveId)]))
+    func createRow(databaseId: String, _ create: DbRowCreate) async throws -> DbRowWithRefs {
+        try await requestJSON("POST", "/api/v1/wiki/databases/\(databaseId)/rows", body: create.json)
     }
 
     func wikiRow(id: String) async throws -> DbRowDetail { try await requestJSON("GET", "/api/v1/wiki/rows/\(id)") }
@@ -259,9 +258,10 @@ final class WikiDatabaseModel {
     }
 
     /// A new row: its title (and, on a calendar, the day shown) — `clientSaveId` is the sheet's, kept across retries.
-    func createRow(title: String, props: [String: JSONValue] = [:], clientSaveId: String) async throws -> DbRow {
+    /// M146: `start` names a row template or blank; left as standard the server uses the default template.
+    func createRow(title: String, props: [String: JSONValue] = [:], start: DbRowStart = .standard, clientSaveId: String) async throws -> DbRow {
         guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
-        let out = try await api.createRow(databaseId: databaseId, title: title, props: props, clientSaveId: clientSaveId)
+        let out = try await api.createRow(databaseId: databaseId, DbRowCreate(title: title, props: props, start: start, clientSaveId: clientSaveId))
         for ref in out.refs { refs[ref.id] = ref }
         if !rows.contains(where: { $0.id == out.row.id }) {
             rows.append(out.row)

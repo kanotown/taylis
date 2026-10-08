@@ -267,9 +267,12 @@ final class FakeWikiDbApi: WikiDbApi {
                           nextCursor: nil, schemaVersion: database.schemaVersion)
     }
 
-    func createRow(databaseId: String, title: String, props: [String: JSONValue], clientSaveId: String) async throws -> DbRowWithRefs {
-        creates.append(clientSaveId)
-        let made = row("new-\(clientSaveId)", title: title, props: props)
+    var createBodies: [DbRowCreate] = []
+
+    func createRow(databaseId: String, _ create: DbRowCreate) async throws -> DbRowWithRefs {
+        creates.append(create.clientSaveId)
+        createBodies.append(create)
+        let made = row("new-\(create.clientSaveId)", title: create.title, props: create.props)
         if !rows.contains(where: { $0.id == made.id }) { rows.append(made) }
         return DbRowWithRefs(row: made)
     }

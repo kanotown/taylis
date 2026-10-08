@@ -51,17 +51,19 @@ struct WikiPageItem: Codable, Identifiable, Equatable {
     var myLevel: WikiLevel
     /// Only I can see it: top level for me, it is listed under 「プライベート」 (§3.1).
     var isPrivate: Bool
+    /// M146 (§22.3 / §24.3): a page template (top level, never in the tree) or a database's row template.
+    var isTemplate: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, parentId, position, kind, title, icon, version, headRevId, metaSeq, inheritAccess, taskTotal, taskDone, createdBy, updatedBy
-        case createdAt, updatedAt, deletedAt, myLevel
+        case createdAt, updatedAt, deletedAt, myLevel, isTemplate
         case isPrivate = "private"
     }
 
     init(id: String, parentId: String? = nil, position: String = "a0", kind: String = "page", title: String, icon: String? = nil,
          version: Int = 1, headRevId: String = "", metaSeq: Int = 1, inheritAccess: Bool = true, taskTotal: Int = 0, taskDone: Int = 0,
          createdBy: String = "", updatedBy: String = "", createdAt: String = "", updatedAt: String = "", deletedAt: String? = nil,
-         myLevel: WikiLevel = .edit, isPrivate: Bool = false) {
+         myLevel: WikiLevel = .edit, isPrivate: Bool = false, isTemplate: Bool = false) {
         self.id = id
         self.parentId = parentId
         self.position = position
@@ -81,6 +83,7 @@ struct WikiPageItem: Codable, Identifiable, Equatable {
         self.deletedAt = deletedAt
         self.myLevel = myLevel
         self.isPrivate = isPrivate
+        self.isTemplate = isTemplate
     }
 
     init(from decoder: Decoder) throws {
@@ -104,6 +107,7 @@ struct WikiPageItem: Codable, Identifiable, Equatable {
         deletedAt = try c.decodeIfPresent(String.self, forKey: .deletedAt)
         myLevel = WikiLevel(raw: try c.decodeIfPresent(String.self, forKey: .myLevel))
         isPrivate = try c.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false
+        isTemplate = try c.decodeIfPresent(Bool.self, forKey: .isTemplate) ?? false
     }
 
     /// The title as lists show it (an untitled page: 「無題」, as the server names a new one).
@@ -255,6 +259,9 @@ struct WikiPageCreate: Equatable {
     var access: String = "workspace"
     var clientSaveId: String
     var tz: String? = TimeZone.current.identifier
+    /// M146: start from a template (GET /wiki/templates); the server fills the title, icon and body (placeholders put in
+    /// with `tz`, files copied). Left out: blank.
+    var template: WikiTemplateChoice? = nil
 
     var json: JSONValue {
         var fields: [String: JSONValue] = ["client_save_id": .string(clientSaveId), "kind": .string("page")]
@@ -262,8 +269,77 @@ struct WikiPageCreate: Equatable {
         if let title, !title.isEmpty { fields["title"] = .string(title) }
         if let icon, !icon.isEmpty { fields["icon"] = .string(icon) }
         if let tz { fields["tz"] = .string(tz) }
+        template?.add(to: &fields)
         return .object(fields)
     }
+}
+
+// MARK: templates and duplicates (M146, docs/WIKI.md §22.3 / §24.3)
+
+/// A template to start a page from: a built-in one (`template_key`, the canvases' templates) or a page template I can
+/// read (`template_page_id`). The two are never sent together.
+enum WikiTemplateChoice: Equatable, Hashable {
+    case builtin(key: String)
+    case page(id: String)
+
+    func add(to fields: inout [String: JSONValue]) {
+        switch self {
+        case .builtin(let key): fields["template_key"] = .string(key)
+        case .page(let id): fields["template_page_id"] = .string(id)
+        }
+    }
+}
+
+/// GET /wiki/templates: the page templates I can read (newest first) and the built-in templates not hidden.
+struct WikiTemplatesOut: Codable, Equatable {
+    var pages: [WikiPageItem] = []
+    var builtins: [CanvasTemplateOut] = []
+
+    init(pages: [WikiPageItem] = [], builtins: [CanvasTemplateOut] = []) {
+        self.pages = pages
+        self.builtins = builtins
+    }
+
+    private enum CodingKeys: String, CodingKey { case pages, builtins }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pages = try c.decodeIfPresent([WikiPageItem].self, forKey: .pages) ?? []
+        builtins = (try c.decodeIfPresent([CanvasTemplateOut].self, forKey: .builtins) ?? []).filter { !$0.hidden }
+    }
+}
+
+/// POST /wiki/pages/{id}/apply-template: 「テンプレートから始める」 on an empty page (409 wiki_page_not_empty otherwise).
+struct WikiTemplateApply: Equatable {
+    var template: WikiTemplateChoice
+    var clientSaveId: String
+    var tz: String? = TimeZone.current.identifier
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["client_save_id": .string(clientSaveId)]
+        template.add(to: &fields)
+        if let tz { fields["tz"] = .string(tz) }
+        return .object(fields)
+    }
+}
+
+/// POST /wiki/pages/{id}/duplicate: 「複製」. Left out, the copy goes beside the original (same parent) with the server's
+/// 「（コピー）」 title; `topLevel` sends `parent_id: null` (after 403 page_edit_restricted on the parent).
+struct WikiDuplicate: Equatable {
+    var clientSaveId: String
+    var topLevel = false
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["client_save_id": .string(clientSaveId)]
+        if topLevel { fields["parent_id"] = .null }
+        return .object(fields)
+    }
+}
+
+/// The duplicate's answer: the copy, and for a row its cells.
+struct WikiDuplicateOut: Decodable, Equatable {
+    var page: WikiPageOut
+    var row: DbRowWithRefs?
 }
 
 /// One version in a page's history (`PageRevisionMeta`), as the canvas's history list shows it.
