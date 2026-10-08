@@ -108,6 +108,7 @@
 - 画像: `![説明](attachment:<uuid>)`。キャンバスの添付だけを描画し、外部 URL の画像は描画しません (追跡画像と CSP のため)
 - 区切り線: `---` (前後が空行のとき)
 - メンションは `<@uuid>` / `<@group:uuid>` をそのまま使います。エディタ上では既存の encode / decode (mentions.ts ほか) で `@username` として見せます。`<!channel>` は描画だけで、通知はしません
+- コールアウト `::: callout 💡` 〜 `:::`、トグル `::: toggle 見出し` 〜 `:::`、データベースの埋め込み `![表示名](page:<id>#view=<ビュー>)`（M149、2026-10-08。規則は DATA_MODEL.md「本文の形式」と WIKI.md §26。キャンバスでも同じに描く）
 
 3 端末の字句解析 (markdown.ts / MessageBodyView.swift / BodyTokenizer.kt) に `canvas: true` の設定を足し、共通のフィクスチャ `apps/shared/canvas_markdown.json` で揃えます。メッセージでは従来どおり、これらを文字のまま表示します。
 
