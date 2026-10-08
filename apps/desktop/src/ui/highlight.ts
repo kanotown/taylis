@@ -34,3 +34,17 @@ export function highlightPieces(text: string, keywords: string[]): HighlightPiec
   if (cursor < text.length) pieces.push({ text: text.slice(cursor), hit: false });
   return pieces;
 }
+
+/**
+ * A preview that starts near the first match, so a hit deep in a long message still shows its words in the one or two
+ * lines of the live results under the search box: 「…前の文脈 設計 …」.
+ */
+export function leadToFirstHit(text: string, keywords: string[], context = 24): string {
+  const first = keywordRanges(text, keywords)[0];
+  if (!first || first[0] <= context + 8) return text;
+  const from = first[0] - context;
+  // Start after a space when one is near (English); Japanese has none, so just there.
+  const space = text.lastIndexOf(" ", from + 8);
+  const start = space > from - 8 && space < first[0] ? space + 1 : from;
+  return `…${text.slice(start)}`;
+}

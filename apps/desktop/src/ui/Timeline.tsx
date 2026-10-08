@@ -8,6 +8,7 @@ import type { Store } from "../sync/store";
 import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnreadOffered, nextAnchored, passedUnseen, readRangeReady } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
+import { isImeKeyEvent } from "./ime";
 import { AckBar } from "./AckBar";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
@@ -1366,7 +1367,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           if (e.key === "Escape") {
             e.preventDefault();
             finish();
-          } else if (isSendKey(e, controller.sendKey ?? "mod-enter") && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
+          } else if (isSendKey(e, controller.sendKey ?? "mod-enter") && !composing.current && !isImeKeyEvent(e)) {
             e.preventDefault();
             if (draft.trim() && !saving) void save();
           }

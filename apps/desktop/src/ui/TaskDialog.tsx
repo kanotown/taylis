@@ -21,6 +21,7 @@ import { useMemo, useRef, useState } from "react";
 import { describeError } from "../api/errors";
 import type { TaskOut, TaskStatus } from "../api/types";
 import type { AppController } from "../state/app";
+import { isImeKeyEvent } from "./ime";
 import { Avatar } from "./Avatar";
 import { localZone, today as todayKey } from "./calendarDates";
 import { RepeatPicker } from "./CalendarEventDialog";
@@ -570,7 +571,7 @@ function SubtaskEditor({ items, onChange, onToggle }: { items: SubtaskDraft[]; o
             aria-label={t("tasks.dialog.addSubtask")}
             onChange={(e) => setAdding(e.target.value)}
             onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return;
+              if (isImeKeyEvent(e)) return;
               if (e.key === "Enter") {
                 e.preventDefault();
                 add();

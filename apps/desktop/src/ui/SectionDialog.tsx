@@ -4,6 +4,7 @@ import { type CSSProperties, type FormEvent, useState } from "react";
 import type { TextEmojiColor } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { isPlainEnter } from "./ime";
 import { channelTitle } from "./MainScreen";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
@@ -70,7 +71,7 @@ function LetterIconPicker({ initial, onPick }: { initial: string | null; onPick:
             placeholder={t("sectionDialog.iconTextPlaceholder")}
             onChange={(e) => setRaw(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              if (isPlainEnter(e)) {
                 e.preventDefault();
                 if (valid) onPick(letterIcon(text, color));
               }

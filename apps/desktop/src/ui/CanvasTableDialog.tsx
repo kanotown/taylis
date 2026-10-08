@@ -9,6 +9,7 @@ import { ChevronDown, EllipsisVertical, Plus, X } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
+import { isImeKeyEvent } from "./ime";
 import { type Align, applyTableOp, type Table, type TableOp } from "./canvasTable";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { t } from "../i18n";
@@ -67,7 +68,7 @@ export function CanvasTableDialog({ initial, isNew, onDone, onCancel, onClosed }
       : { ...t, rows: t.rows.map((r, i) => (i === row ? r.map((c, j) => (j === col ? value : c)) : r)) }));
 
   const onCellKey = (event: KeyboardEvent<HTMLInputElement>, cell: Cell) => {
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (isImeKeyEvent(event)) return;
     const index = (cell.row + 1) * cols + cell.col;
     const last = (rows + 1) * cols - 1;
     const at = (i: number): Cell => ({ row: Math.floor(i / cols) - 1, col: i % cols });

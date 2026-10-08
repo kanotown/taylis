@@ -16,6 +16,7 @@ import type { PageContent, PageItem, PageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { saveDownload } from "../platform/download";
 import type { PageSaver } from "../sync/wiki";
+import { isPlainEnter } from "./ime";
 import { CanvasBody, headingAnchor } from "./CanvasBody";
 import { CanvasEditor } from "./CanvasEditor";
 import { DocHistoryDialog, type HistorySource } from "./CanvasHistory";
@@ -495,7 +496,7 @@ function TitleRow({ controller, pageId, title, icon, editable, compact = false }
           onBlur={() => { focused.current = false; void save(); }}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            if (isPlainEnter(event)) {
               event.preventDefault();
               (event.target as HTMLInputElement).blur();
             } else if (event.key === "Escape") {

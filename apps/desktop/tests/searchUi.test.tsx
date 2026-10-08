@@ -48,8 +48,8 @@ describe("search box", () => {
     expect(screen.getByText("人（この人の投稿）")).toBeTruthy();
     const options = screen.getAllByRole("option").map((o) => o.textContent ?? "");
     expect(options).toHaveLength(2);
-    expect(options[0]).toBe("「tana」を検索");
-    expect(options[1]).toContain("@tanaka");
+    expect(options[0]).toContain("@tanaka");
+    expect(options[1]).toBe("「tana」のすべての結果を見る");
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(onSearch).toHaveBeenCalledWith({ ...EMPTY_SEARCH, fromUserId: w.tanaka.id, sort: "newest" });

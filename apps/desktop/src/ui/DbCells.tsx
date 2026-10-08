@@ -12,6 +12,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { DatabaseOut, DbDateValue, DbOption, DbProperty, DbPropType, DbRow, DbRowRef, DbSchemaOp } from "../api/types";
 import type { AppController } from "../state/app";
 import { getLocale, intlLocale, t, type MessageKey } from "../i18n";
+import { isPlainEnter } from "./ime";
 import { Avatar } from "./Avatar";
 import { PageIcon } from "./PageIcon";
 import { Button, cn, Field, Input, Modal } from "./primitives";
@@ -229,7 +230,7 @@ function TextEditor({ initial, kind, onCommit, onCancel }: { initial: string; ki
         onChange={(event) => setText(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+          if (isPlainEnter(event)) {
             event.preventDefault();
             commit();
           } else if (event.key === "Escape") {
@@ -268,7 +269,7 @@ function OptionEditor({ ctx, prop, value, onSet }: { ctx: DbCtx; prop: DbPropert
     <div className="w-64 p-1.5">
       <Input autoFocus aria-label={t("docs.db.findOption")} placeholder={ctx.canShape ? t("docs.db.findOrCreateOption") : t("docs.db.findOption")} value={q} onChange={(event) => setQ(event.target.value)} className="mb-1 h-8 text-sm"
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+          if (isPlainEnter(event)) {
             event.preventDefault();
             if (shown[0] && (exact || !ctx.canShape)) toggle(shown[0].id);
             else if (ctx.canShape) void create();

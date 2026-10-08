@@ -11,6 +11,7 @@ import { Avatar } from "./Avatar";
 import { FileRow } from "./FilesView";
 import { fullTimestamp } from "./format";
 import { highlightPieces } from "./highlight";
+import { isPlainEnter } from "./ime";
 import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
@@ -383,7 +384,7 @@ function ListPicker<T>({ children, items, keyOf, render, match, onPick, placehol
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-1.5">
         <Input autoFocus value={needle} placeholder={placeholder} className="h-8 text-sm" onChange={(e) => setNeedle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && shown[0]) { onPick(shown[0]); setOpen(false); } }} />
+          onKeyDown={(e) => { if (isPlainEnter(e) && shown[0]) { onPick(shown[0]); setOpen(false); } }} />
         <ul className="mt-1 max-h-72 overflow-y-auto">
           {shown.map((item) => (
             <li key={keyOf(item)}>

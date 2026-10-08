@@ -227,8 +227,9 @@ function fold(value: string): string {
 }
 
 /**
- * Empty box: recent searches, then quick filters. While typing: search for the words, then people
- * (→ 送信者) and conversations (→ チャンネル) whose names match, then matching recent searches.
+ * Empty box: recent searches, then quick filters. While typing: people (→ 送信者) and conversations (→ チャンネル)
+ * whose names match, matching recent searches, and last 「「語」のすべての結果を見る」 (the results page; the search box
+ * puts its live message results just above it).
  */
 export function suggestions(
   input: string,
@@ -263,5 +264,5 @@ export function suggestions(
     .filter((params) => params.q && fold(params.q).includes(fold(text)) && params.q !== text)
     .slice(0, 3)
     .map((params): Suggestion => ({ kind: "recent", params }));
-  return [{ kind: "search", q: text }, ...users, ...channels, ...recent];
+  return [...users, ...channels, ...recent, { kind: "search", q: text }];
 }
