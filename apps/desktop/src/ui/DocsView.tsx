@@ -11,8 +11,9 @@ import type { AppController } from "../state/app";
 import type { MoveTarget } from "../sync/wikiTree";
 import { BackButton } from "./compact";
 import { DocPage } from "./DocPage";
-import { createPage, moveDryRun, movePage, pageTitle, trashPage } from "./docsActions";
+import { createPage, moveDryRun, movePage, pageTitle, type TemplateChoice, trashPage } from "./docsActions";
 import { DocsTrashDialog, MoveDialog, ShareDialog } from "./DocsDialogs";
+import { TemplateGallery } from "./DocsTemplates";
 import { DocsTree, useWikiHub } from "./DocsTree";
 import { Button, cn, Modal } from "./primitives";
 import { t } from "../i18n";
@@ -30,14 +31,24 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
   const [sharing, setSharing] = useState<Pick<PageItem, "id" | "title" | "icon"> | null>(null);
   const [trashing, setTrashing] = useState<PageItem | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
+  /** M145 (WIKI.md §22.3): a new page starts in the gallery (白紙, built-in templates, everyone's templates). */
+  const [gallery, setGallery] = useState<{ parentId: string | null; access: "workspace" | "private" } | null>(null);
 
   const open = (id: string | null) => {
     setFresh(null);
     onOpenPage(id);
   };
-  const create = async (where: { parentId: string | null; access: "workspace" | "private" }) => {
+  const create = (where: { parentId: string | null; access: "workspace" | "private" }) => setGallery(where);
+  const createFrom = async (where: { parentId: string | null; access: "workspace" | "private" }, template: TemplateChoice) => {
     const siblings = where.parentId ? hub?.tree().children.get(where.parentId) ?? [] : [];
-    const page = await createPage(controller, { parentId: where.parentId, access: where.access, afterId: siblings[siblings.length - 1]?.id ?? null });
+    const page = await createPage(controller, { parentId: where.parentId, access: where.access, afterId: siblings[siblings.length - 1]?.id ?? null, template });
+    if (!page) return;
+    if (template.kind === "blank") setFresh(page.id);
+    onOpenPage(page.id);
+  };
+  /** 「＋ 新しいテンプレート」: a page template (shared: everyone can use it), opened to be written. */
+  const createTemplate = async () => {
+    const page = await createPage(controller, { parentId: null, access: "workspace", isTemplate: true });
     if (!page) return;
     setFresh(page.id);
     onOpenPage(page.id);
@@ -74,6 +85,11 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
           </div>
         </Modal>
       )}
+      {gallery && (
+        <TemplateGallery controller={controller} title={t("docs.tpl.galleryTitle")} description={t("docs.tpl.galleryDescription")} onClose={() => setGallery(null)}
+          onPick={(choice) => void createFrom(gallery, choice)}
+        />
+      )}
       {trashOpen && <DocsTrashDialog controller={controller} onClose={() => setTrashOpen(false)} onRestored={(id) => { setTrashOpen(false); open(id); }} />}
     </>
   );
@@ -96,7 +112,8 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
       controller={controller}
       selectedId={pageId}
       onOpen={open}
-      onCreate={(where) => void create(where)}
+      onCreate={(where) => create(where)}
+      onNewTemplate={controller.isGuest ? null : () => void createTemplate()}
       onMove={(id, target) => void move(id, target)}
       onTrash={(page) => setTrashing(page)}
       onOpenTrash={() => setTrashOpen(true)}
@@ -113,7 +130,8 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
       startEditing={fresh === pageId}
       onShare={setSharing}
       onTrash={(item) => setTrashing(item)}
-      onAddChild={(parentId) => void create({ parentId, access: "workspace" })}
+      onAddChild={(parentId) => create({ parentId, access: "workspace" })}
+      onUseTemplate={(templateId) => void createFrom({ parentId: null, access: "workspace" }, { kind: "page", id: templateId })}
     />
   ) : null;
 
@@ -152,8 +170,8 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
             text={isEmpty ? t("docs.emptyText") : t("docs.pickText")}
             action={!controller.isGuest ? (
               <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => void create({ parentId: null, access: "workspace" })}><Plus size={16} /> {t("docs.newShared")}</Button>
-                <Button variant="secondary" onClick={() => void create({ parentId: null, access: "private" })}><Plus size={16} /> {t("docs.newPrivate")}</Button>
+                <Button onClick={() => create({ parentId: null, access: "workspace" })}><Plus size={16} /> {t("docs.newShared")}</Button>
+                <Button variant="secondary" onClick={() => create({ parentId: null, access: "private" })}><Plus size={16} /> {t("docs.newPrivate")}</Button>
               </div>
             ) : undefined}
           />

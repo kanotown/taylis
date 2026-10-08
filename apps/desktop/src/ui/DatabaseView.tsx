@@ -5,19 +5,22 @@
  * wiki.rows.changed and the rows are read again.
  *
  * - table: cells edited in place (a popover per type, a checkbox toggles), 「＋ 新規」 adds a row, the title's ↗ opens the
- *   row beside the table (its properties above its body); scrolls sideways on a narrow screen.
+ *   row beside the table (its properties above its body); scrolls sideways on a narrow screen. M145 (WIKI.md §22.3):
+ *   「新規」 starts from the database's default template (the server's choice), its ▾ lists the row templates (a row
+ *   from one, ✎ to edit it, ☆ to make it the default), a blank row and a new template.
  * - calendar: a month by a date property; a row with a range spans its days, a click on a day adds a row on that day,
  *   a row dragged to another day moves its date (and its end with it). On a narrow screen, the month as an agenda.
  */
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Columns3, Download, Eye, EyeOff, ListFilter, Loader2, Maximize2, MoreHorizontal, Pencil, Plus, Save, Table2, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, Eye, EyeOff, FileText, LayoutTemplate, ListFilter, Loader2, Maximize2, MoreHorizontal, Pencil, Plus, Save, Star, Table2, Trash2, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/errors";
-import type { DatabaseOut, DbFilterCondition, DbFilterOp, DbProperty, DbRow, DbRowRef, DbSchemaOp, DbView, DbViewIn } from "../api/types";
+import type { DatabaseOut, DbFilterCondition, DbFilterOp, DbProperty, DbRow, DbRowRef, DbSchemaOp, DbTemplateRef, DbView, DbViewIn } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { AppController } from "../state/app";
 import { getLocale, intlLocale, t, weekdayName, type MessageKey } from "../i18n";
 import { CellDisplay, CellEditor, type DbCtx, PropertyDialog, PropIcon, propName } from "./DbCells";
+import { localZone, pageTitle } from "./docsActions";
 import { useWikiHub } from "./DocsTree";
 import { Button, cn, Input, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import {
@@ -104,7 +107,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     if (!api) return;
     try {
       const next = await api.wikiDatabase(databaseId);
-      setDatabase((current) => (current && current.schema_version === next.schema_version && current.row_count === next.row_count ? current : next));
+      setDatabase((current) => (current && current.schema_version === next.schema_version && current.row_count === next.row_count && sameTemplates(current, next) ? current : next));
       setFailed(false);
     } catch (error) {
       setFailed(true);
@@ -226,17 +229,40 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     else setPeek(rowId);
   }, [compact, onOpenRowPage]);
 
-  const addRow = async (props: Record<string, unknown> = {}): Promise<DbRow | null> => {
+  /** A new row: from the default template (the server's choice) unless `from` says a template, a blank row or a new
+   * row template (M145). A template is not a row of the table: it opens beside it to be written. */
+  const addRow = async (props: Record<string, unknown> = {}, from: { templateId?: string | null; blank?: boolean; isTemplate?: boolean } = {}): Promise<DbRow | null> => {
     const api = controller.api;
     if (!api) return null;
     try {
-      const out = await api.createWikiRow(databaseId, { title: "", props, client_save_id: crypto.randomUUID() });
+      const out = await api.createWikiRow(databaseId, {
+        title: "",
+        props,
+        template_id: from.templateId ?? null,
+        blank: from.blank ?? false,
+        is_template: from.isTemplate ?? false,
+        tz: localZone(),
+        client_save_id: crypto.randomUUID(),
+      });
+      if (from.isTemplate) {
+        void loadDatabase();
+        return out.row;
+      }
       setRows((current) => [...current, out.row]);
       setTotal((n) => n + 1);
       return out.row;
     } catch (error) {
       controller.setError(error);
       return null;
+    }
+  };
+  const setDefaultTemplate = async (templateId: string | null) => {
+    const api = controller.api;
+    if (!api) return;
+    try {
+      setDatabase(await api.setWikiDefaultTemplate(databaseId, templateId));
+    } catch (error) {
+      controller.setError(error);
     }
   };
 
@@ -340,6 +366,14 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
           {draft.type === "table" ? (
             <TableView ctx={ctx} columns={columns} rows={rows} total={total} hasMore={!!cursor} onMore={() => void loadRows(true)}
               onColumns={setColumns} onAddRow={() => void addRow()} onEditProp={canShape ? (prop) => setPropDialog({ prop }) : null}
+              newMenu={(
+                <NewRowMenu templates={database.templates ?? []} defaultId={database.default_template_id ?? null}
+                  onFrom={async (templateId) => { const row = await addRow({}, templateId ? { templateId } : { blank: true }); if (row) openRow(row.id); }}
+                  onNewTemplate={async () => { const row = await addRow({}, { isTemplate: true }); if (row) openRow(row.id); }}
+                  onEdit={openRow}
+                  onDefault={(id) => void setDefaultTemplate(id)}
+                />
+              )}
               onAddProp={canShape ? () => setPropDialog({ prop: null }) : null}
               onSort={(propId, direction) => setDraft({ ...draft, sort: [{ prop_id: propId, direction }] })}
             />
@@ -373,6 +407,72 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
       {propDialog && <PropertyDialog ctx={ctx} prop={propDialog.prop} databases={databases} onClose={() => setPropDialog(null)} />}
       {renaming && <RenameView view={renaming} onClose={() => setRenaming(null)} onSave={(name) => { setRenaming(null); void saveView({ ...viewBody(renaming), name }, renaming.id); }} />}
     </div>
+  );
+}
+
+/** Whether two answers list the same row templates and default (M145): a change re-renders the ▾. */
+function sameTemplates(a: DatabaseOut, b: DatabaseOut): boolean {
+  return a.default_template_id === b.default_template_id && JSON.stringify(a.templates ?? []) === JSON.stringify(b.templates ?? []);
+}
+
+/** M145 (WIKI.md §22.3): 「新規 ▾」 — a row from a template (or blank), ✎ a template, ☆ the default, a new template. */
+export function NewRowMenu({ templates, defaultId, onFrom, onNewTemplate, onEdit, onDefault }: {
+  templates: readonly DbTemplateRef[];
+  defaultId: string | null;
+  onFrom: (templateId: string | null) => void;
+  onNewTemplate: () => void;
+  onEdit: (templateId: string) => void;
+  onDefault: (templateId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const run = (action: () => void) => {
+    setOpen(false);
+    action();
+  };
+  const untitled = t("docs.untitled");
+  return (
+    <PopoverRoot open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={t("docs.tpl.newRowMenu")} title={t("docs.tpl.newRowMenu")} className="flex h-7 w-6 items-center justify-center rounded-md hover:bg-panel hover:text-ink">
+          <ChevronDown size={14} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-1.5" data-new-row-menu>
+        <div className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("docs.tpl.section")}</div>
+        {templates.length === 0 && <p className="px-2 py-1 text-xs text-muted">{t("docs.tpl.noRowTemplates")}</p>}
+        <ul>
+          {templates.map((tpl) => {
+            const name = pageTitle(tpl, untitled);
+            const isDefault = tpl.id === defaultId;
+            return (
+              <li key={tpl.id} className="group flex items-center gap-0.5 rounded-md hover:bg-panel" data-row-template={tpl.id}>
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm" onClick={() => run(() => onFrom(tpl.id))}>
+                  <LayoutTemplate size={14} className="shrink-0 text-muted" />
+                  <span className="truncate">{name}</span>
+                  {isDefault && <span className="shrink-0 rounded bg-accent-soft px-1 text-[10px] text-accent">{t("docs.tpl.default")}</span>}
+                </button>
+                <button type="button" aria-label={t("docs.tpl.editTemplate", { title: name })} title={t("docs.tpl.editTemplate", { title: name })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted hover:bg-ink/8 hover:text-ink" onClick={() => run(() => onEdit(tpl.id))}>
+                  <Pencil size={13} />
+                </button>
+                <button type="button" aria-pressed={isDefault} aria-label={isDefault ? t("docs.tpl.unsetDefault") : t("docs.tpl.defaultOf", { title: name })} title={isDefault ? t("docs.tpl.unsetDefault") : t("docs.tpl.defaultOf", { title: name })}
+                  className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-ink/8", isDefault ? "text-accent" : "text-muted hover:text-ink")}
+                  onClick={() => run(() => onDefault(isDefault ? null : tpl.id))}
+                >
+                  <Star size={13} fill={isDefault ? "currentColor" : "none"} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="my-1 h-px bg-line" />
+        <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => run(() => onFrom(null))}>
+          <FileText size={14} className="text-muted" /> {t("docs.tpl.blankRow")}
+        </button>
+        <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => run(onNewTemplate)}>
+          <Plus size={14} className="text-muted" /> {t("docs.tpl.new")}
+        </button>
+      </PopoverContent>
+    </PopoverRoot>
   );
 }
 
@@ -602,7 +702,7 @@ function ColumnsButton({ columns, canShape, onChange, onAdd, onEdit }: { columns
 
 const ADD_COLUMN_WIDTH = 36;
 
-function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAddRow, onEditProp, onAddProp, onSort }: {
+function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAddRow, newMenu, onEditProp, onAddProp, onSort }: {
   ctx: DbCtx;
   columns: Column[];
   rows: DbRow[];
@@ -611,6 +711,8 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
   onMore: () => void;
   onColumns: (columns: Column[]) => void;
   onAddRow: () => void;
+  /** M145: the ▾ beside 「新規」 (the row templates). */
+  newMenu?: ReactNode;
   onEditProp: ((prop: DbProperty) => void) | null;
   /** M144: 「＋」 at the end of the header row (editors too). */
   onAddProp: (() => void) | null;
@@ -697,7 +799,10 @@ function TableView({ ctx, columns, rows, total, hasMore, onMore, onColumns, onAd
       </div>
       <div className="flex items-center gap-3 py-1.5 text-sm text-muted">
         {ctx.canEdit && rows.length < ctx.database.limits.rows && (
-          <button type="button" className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-panel hover:text-ink" onClick={onAddRow}><Plus size={14} /> {t("docs.db.newRow")}</button>
+          <span className="flex items-center">
+            <button type="button" className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-panel hover:text-ink" onClick={onAddRow}><Plus size={14} /> {t("docs.db.newRow")}</button>
+            {newMenu}
+          </span>
         )}
         <span className="ml-auto text-xs tabular-nums">{t("docs.db.count", { count: total })}</span>
       </div>

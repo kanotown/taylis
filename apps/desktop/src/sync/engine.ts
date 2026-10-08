@@ -118,6 +118,8 @@ export interface SyncApi {
   wikiPage?: WikiApi["wikiPage"];
   saveWikiPage?: WikiApi["saveWikiPage"];
   resolveWikiPages?: WikiApi["resolveWikiPages"];
+  /** M145: the page templates (not in the tree). */
+  wikiTemplates?: WikiApi["wikiTemplates"];
   /** M65: the AI status and summaries (docs/AI.md §5). Optional (older fakes). */
   aiStatus?: AiApi["aiStatus"];
   createAiSummary?: AiApi["createAiSummary"];
@@ -341,6 +343,7 @@ export class SyncEngine {
             wikiPage: (id, etag) => api.wikiPage!(id, etag),
             saveWikiPage: (id, body) => api.saveWikiPage!(id, body),
             resolveWikiPages: (ids) => api.resolveWikiPages!(ids),
+            ...(api.wikiTemplates ? { wikiTemplates: () => api.wikiTemplates!() } : {}),
           }
         : null,
       store: deps.store,

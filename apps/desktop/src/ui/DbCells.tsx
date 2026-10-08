@@ -32,7 +32,14 @@ export interface DbCtx {
   /** A schema change on the database's current version (null: refused, the error shown). */
   changeSchema(ops: DbSchemaOp[]): Promise<DatabaseOut | null>;
   openRow(rowId: string): void;
+  /** M145: a row template's cells: a date may be 「今日」 and a person 「自分」 (put in when a row is made from it). */
+  template?: boolean;
 }
+
+/** M145 (WIKI.md §22.3): a row template's dynamic values. */
+export const TODAY = "@today";
+export const ME = "@me";
+const isToday = (value: unknown) => typeof value === "object" && value !== null && (value as { start?: unknown }).start === TODAY;
 
 const TYPE_ICONS: Record<DbPropType, typeof Type> = {
   title: CaseSensitive,
@@ -125,6 +132,7 @@ export function CellDisplay({ ctx, prop, row, wrap = false }: { ctx: Pick<DbCtx,
     case "date":
     case "created_time":
     case "updated_time": {
+      if (isToday(value)) return <span className="truncate rounded bg-accent-soft px-1.5 text-xs text-accent" data-dynamic="today">{t("docs.tpl.today")}</span>;
       const date = asDate(value);
       return date ? <span className="truncate tabular-nums">{formatDate(date, locale)}</span> : empty;
     }
@@ -133,7 +141,9 @@ export function CellDisplay({ ctx, prop, row, wrap = false }: { ctx: Pick<DbCtx,
     case "updated_by":
       return (
         <span className={cn("flex items-center gap-1.5", wrap ? "flex-wrap" : "overflow-hidden")}>
-          {((value as string[] | null) ?? []).map((id) => (
+          {((value as string[] | null) ?? []).map((id) => id === ME ? (
+            <span key={id} className="truncate rounded bg-accent-soft px-1.5 text-xs text-accent" data-dynamic="me">{t("docs.tpl.me")}</span>
+          ) : (
             <span key={id} className="inline-flex min-w-0 items-center gap-1">
               <Avatar id={id} name={userName(ctx.controller, id)} size={16} />
               <span className="truncate text-sm">{userName(ctx.controller, id)}</span>
@@ -186,7 +196,7 @@ export function CellEditor({ ctx, prop, row, onDone }: { ctx: DbCtx; prop: DbPro
     case "multi_select":
       return <OptionEditor ctx={ctx} prop={prop} value={value} onSet={(next) => set(next, prop.type === "select")} />;
     case "date":
-      return <DateEditor value={asDate(value)} onSet={(next) => set(next, false)} onDone={onDone} />;
+      return <DateEditor value={isToday(value) ? null : asDate(value)} onSet={(next) => set(next, false)} onDone={onDone} onToday={ctx.template ? () => set({ start: TODAY, end: null, time: false }) : null} />;
     case "person":
       return <PersonEditor ctx={ctx} value={(value as string[] | null) ?? []} onSet={(next) => set(next.length ? next : null, false)} />;
     case "relation":
@@ -285,7 +295,7 @@ function OptionEditor({ ctx, prop, value, onSet }: { ctx: DbCtx; prop: DbPropert
   );
 }
 
-function DateEditor({ value, onSet, onDone }: { value: DbDateValue | null; onSet: (next: DbDateValue | null) => void; onDone: () => void }) {
+function DateEditor({ value, onSet, onDone, onToday }: { value: DbDateValue | null; onSet: (next: DbDateValue | null) => void; onDone: () => void; onToday: (() => void) | null }) {
   const [start, setStart] = useState(value?.start ?? "");
   const [end, setEnd] = useState(value?.end ?? "");
   const [time, setTime] = useState(value?.time ?? false);
@@ -303,6 +313,7 @@ function DateEditor({ value, onSet, onDone }: { value: DbDateValue | null; onSet
   const apply = (s = start, e = end, timed = time, withEnd = hasEnd) => onSet(toValue(s, e, timed, withEnd));
   return (
     <div className="w-72 space-y-2 p-2.5 text-sm">
+      {onToday && <Button size="sm" variant="secondary" className="w-full justify-start" onClick={onToday}>{t("docs.tpl.todayNote")}</Button>}
       <Field label={hasEnd ? t("docs.db.startDate") : t("docs.db.date")}>
         <Input type={time ? "datetime-local" : "date"} aria-label={hasEnd ? t("docs.db.startDate") : t("docs.db.date")} value={time ? local(start) : day(start)} onChange={(event) => { setStart(event.target.value); apply(event.target.value); }} className="h-8" />
       </Field>
@@ -339,6 +350,14 @@ function PersonEditor({ ctx, value, onSet }: { ctx: DbCtx; value: string[]; onSe
     <div className="w-64 p-1.5">
       <Input autoFocus aria-label={t("docs.db.findPerson")} placeholder={t("docs.db.findPerson")} value={q} onChange={(event) => setQ(event.target.value)} className="mb-1 h-8 text-sm" />
       <ul className="max-h-60 overflow-y-auto">
+        {ctx.template && (
+          <li>
+            <button type="button" aria-pressed={chosen.includes(ME)} className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-panel" onClick={() => toggle(ME)}>
+              <span className="flex w-4 justify-center">{chosen.includes(ME) && <Check size={13} />}</span>
+              <span className="truncate">{t("docs.tpl.meNote")}</span>
+            </button>
+          </li>
+        )}
         {shown.map((user) => (
           <li key={user.id}>
             <button type="button" aria-pressed={chosen.includes(user.id)} className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-panel" onClick={() => toggle(user.id)}>
