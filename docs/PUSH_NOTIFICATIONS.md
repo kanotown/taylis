@@ -518,7 +518,7 @@ APNs が無効なサーバ、プロバイダの失敗と失効トークン、DND
 - 発行するのは、その人がメッセージを送った会話のメンバーへのプッシュだけ (ゲストの見える範囲 M13e の内側)。
 - `PUSH_INCLUDE_CONTENT=false` では発行しない (URL は Apple を通り、持っている人は期限まで画像を取れるため)。
   名前は今も題 (DM) / 小見出し (チャンネル) に入っているので変えない (この設定は本文を隠すもの)。iOS はそのとき
-  アイコンの代わりに名前の頭文字の丸を出す。Android はアプリのセッションでサーバから直接取るので (Google を通らない)
+  アイコンの代わりに既定のアバター（名前の頭文字、§16.1）を出す。Android はアプリのセッションでサーバから直接取るので (Google を通らない)
   設定にかかわらずアイコンを出す。
 
 ### iOS: Notification Service Extension と通信の通知 (Communication Notifications)
@@ -527,7 +527,8 @@ APNs が無効なサーバ、プロバイダの失敗と失効トークン、DND
   `mutable-content` の付いたプッシュで動き、`CommunicationNotification.update` (`ChikuwaChat/Platform/CommunicationNotification.swift`、
   アプリと拡張機能の両方に入れ、アプリのテストから確かめる) が:
   1. `kind = message` で `sender_id` と `channel_id` があるときだけ (それ以外はそのまま返す)。
-  2. `sender_avatar_url` (http / https のみ) を 5 秒・1 MB・`image/*` の制限で取る。
+  2. `sender_avatar_url` (http / https のみ) を 5 秒・1 MB・`image/*` の制限で取る。URL が無い・取れないときは
+     既定のアバター（§16.1）を描いて使う（2026-10-08）。
   3. `INSendMessageIntent` を作る: 送り手は `INPerson` (表示名、`customIdentifier` = 送った人の id、画像)、
      `conversationIdentifier` = チャンネルの id。チャンネルとグループ DM は `speakableGroupName` = 題 (「#general」/
      「グループ DM」) と受け手 2 人 (自分と会話) でグループとして、1:1 の DM は送った人の会話として。
@@ -550,7 +551,7 @@ APNs が無効なサーバ、プロバイダの失敗と失効トークン、DND
   (Android 11 以上の「会話」の欄と見た目)。ショートカットに失敗しても通知は出す。Android 10 以下はアイコンを large icon に。
 - アイコン: そのワークスペースのサインイン済みのクライアントで `GET /users/{id}/avatar?v=<版>` を取り (3 秒まで)、128px の丸に
   切ってキャッシュのディレクトリ (`notification-avatars/`、ファイル名は (ワークスペース, 人, 版) の SHA-256) に置く。無い・失敗・遅いときは
-  名前の頭文字の丸 (人ごとに決まった色)。会話の通知は 1 つずつ順に出す (2 通目が 1 通目を追い越さない)。
+  既定のアバター（§16.1、丸に切る）。会話の通知は 1 つずつ順に出す (2 通目が 1 通目を追い越さない)。
 - 同じ会話の通知が出ている間は新しい 6 件までを並べる (同じメッセージが WS と FCM の両方から来ても 1 行)。会話を読んだ・
   通知を消したら最初から。サインアウトでショートカット・並べた行・アイコンのキャッシュを消す (そのワークスペースの分だけ、最後の 1 つなら全部)。
 
@@ -563,3 +564,30 @@ iOS `CommunicationNotificationTests` (DM / チャンネル / グループ DM の
 http(s) 以外の URL、失敗時に元の通知)、`StoreReleaseTests` (拡張機能が埋め込まれ版が同じ)。Android `ConversationNotificationTest`
 (ペイロード → 会話、MessagingStyle の Person・グループ・会話名、行の重複と上限、ショートカットの id、キャッシュの名前、頭文字)。
 **実機での見た目は未確認** (シミュレータは APNs を受け取れない。iOS のグループの見た目 (会話名とアイコンの並び) は iOS の版で違う)。
+
+### 16.1 アイコンの無い人：既定のアバター（2026-10-08）
+
+利用者の要望：アイコン（プロフィール写真）の無い人からの通知は、iOS ではアプリのアイコンしか出なかった。アプリの中と同じ
+既定のアバター（名前の頭文字を人ごとの色の上に）を出す。
+
+- **共通の規則**（`apps/shared/avatar-initials.json`、Desktop・iOS・Android の試験が読む）：
+  - 文字：名前の前後の空白を除いた最初の 1 文字を大文字に。最初の 2 語（区切りは全角の空白を含む空白）がどちらも ASCII の
+    英字で始まるときは 2 語の頭文字（「Toru Kano」→「TK」、「かのう」→「か」、「Toru 2」→「T」）。空なら「?」。
+  - 色：利用者の id の UTF-16 の各単位 c について h = (h × 31 + c) mod 2^32、色相 = h mod 360。背景は
+    hsl(色相, 55%, 45%)、文字は白の太字（辺の 42%）。
+  - これに合わせて、iOS のアプリ内のアバターの色を HSB (0.55, 0.72) から他の端末と同じ hsl(色相, 55%, 45%) に、iOS と
+    Android の「2 語目が数字・記号でも 2 文字」を Desktop と同じ「2 語目も英字のときだけ」に揃えた。Android の通知の丸は、
+    それまで独自の 8 色（id の SHA-256）と独自の頭文字だったのを、アプリ内と同じ規則にした。
+- **iOS**：`InitialsAvatar`（`ChikuwaChat/Platform/InitialsAvatar.swift`、アプリと拡張機能の両方に入れる）が 180 × 180 px の
+  PNG（正方形。通信の通知の画像は iOS が丸く切る）を `UIGraphicsImageRenderer` で描く。拡張機能は
+  `CommunicationNotification.senderPicture` で、`sender_avatar_url` が無い（アイコンが無い・`PUSH_INCLUDE_CONTENT=false`・
+  `base_url` が未記録）か取れないとき、これを送り手の `INPerson` の画像にする。必要なのは `sender_id` と `sender_name` だけで、
+  §16 のペイロードにすでにあるのでサーバは変えていない。チャンネル・グループ DM でも画像は送った人のもの（会話の画像は今まで
+  どおり無し）。アプリ内の `AvatarView` も同じ `InitialsAvatar` を使う。
+- **Android**：`NotificationAvatars` は前から写真が無い・失敗・遅いときに頭文字の丸を描いていた。色と文字を
+  `ConversationStyle.colorFor`（hsl(`Timeline.hue`, 55%, 45%)）と `Timeline.initials` に替え、文字を太字・辺の 42% にした。
+- **Desktop / Web**：OS の通知（§9.1）は題と本文だけで、送った人の写真をどこにも出していないので変えていない。
+- 試験：`apps/shared/avatar-initials.json` を Desktop `avatarInitials.test.ts`、iOS `CommunicationNotificationTests`
+  （規則、PNG の大きさと色、写真があればそれ・無い / 取れなければ頭文字）、Android `ConversationNotificationTest` が読む。
+  シミュレータで、拡張機能と同じ `CommunicationNotification.update`（写真なし）を通したローカル通知に頭文字のアバターが出る
+  ことを確かめた（`xcrun simctl push` では拡張機能が動かないため）。
