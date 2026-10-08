@@ -183,10 +183,15 @@ class Plan:
     label: str = ""  # its place in the export, for the report
     # What the page is in Taylis now (imported before): its title, body and values.
     current: tuple[str, str, dict[str, Any] | None] | None = None
+    # REVIEW-v0.1.48 #6 / #8: the page as planned (or as this import last wrote it), compared
+    # under the row lock before each write (NotionImport._seen).
+    seen: tuple[Any, ...] | None = None
+    # Written by this import, then changed in Taylis before its links and relations were.
+    changed: bool = False
 
     @property
     def writes(self) -> bool:
-        return self.state in ("new", "update", "same")
+        return self.state in ("new", "update", "same") and not self.changed
 
     @property
     def live(self) -> bool:
@@ -498,10 +503,11 @@ class NotionImport:
                 continue
             plan.path = [*page.path, page.id]  # marks it loaded
             plan.current = (page.title, page.body, dict(page.props) if page.props else None)
+            rev = last.get(page.id)
+            plan.seen = self._seen(page, rev[1] if rev is not None else None)
             if page.is_deleted:
                 plan.state = "trashed"
                 continue
-            rev = last.get(page.id)
             unchanged = (
                 rev is not None
                 and rev[2] == "import"
@@ -513,6 +519,72 @@ class NotionImport:
             if plan.state == "new" and plan.parent is not None:
                 if plan.parent.state in ("trashed", "gone", "skipped"):
                     plan.state = "skipped"
+
+    @staticmethod
+    def _seen(page: WikiPage, latest: uuid.UUID | None) -> tuple[Any, ...]:
+        """What tells that nobody changed a page since: its version counter (every change of a
+        page bumps it, a move or a share too: between the plan and the write those count as
+        well), its head, its latest version that is not a side one (a cell's change is a version
+        of kind props), its title, its values, whether it is a template, whether it is in the
+        trash."""
+        props = dict(page.props) if page.props else None
+        return (
+            page.version,
+            page.head_rev_id,
+            latest,
+            page.title,
+            props,
+            page.is_template,
+            page.is_deleted,
+        )
+
+    async def _latest(self, page_id: uuid.UUID) -> uuid.UUID | None:
+        latest: uuid.UUID | None = await self.db.scalar(
+            text(
+                "SELECT id FROM wiki_page_revisions WHERE page_id = :id AND kind <> 'side' "
+                "ORDER BY created_at DESC, id DESC LIMIT 1"
+            ),
+            {"id": page_id},
+        )
+        return latest
+
+    async def _recheck(self, plan: Plan) -> WikiPage | None:
+        """REVIEW-v0.1.48 #6 / #8: the page locked (FOR UPDATE, to the commit) when it is still as
+        planned (or as this import wrote it); None when someone changed, trashed or deleted it
+        since (a save between the plan and this write)."""
+        page = await access.load_page(self.db, plan.target, lock=True)
+        if page is None or plan.seen is None:
+            return None
+        if self._seen(page, await self._latest(page.id)) != plan.seen:
+            return None
+        return page
+
+    def _restate(self, plan: Plan, page: WikiPage | None) -> None:
+        """A page planned as unchanged that someone changed (trashed, deleted) before it was
+        written: left as it is and reported like one changed before the import, with its files."""
+        counts = self.report.counts
+        before = plan.state
+        if before in ("new", "update", "same"):
+            for fp in plan.files:
+                name = "files: already imported" if fp.existing else "files: new"
+                counts[name] -= 1
+                if not fp.existing and fp.source:
+                    counts["file bytes: new"] -= self.tree.files.size(fp.source)
+        counts[f"{plan.kind}s: {before}"] -= 1
+        if page is None:
+            plan.state = "gone"
+        elif page.is_deleted:
+            plan.state = "trashed"
+        else:
+            plan.state = "edited"
+        counts[f"{plan.kind}s: {plan.state}"] += 1
+        for name in [k for k, v in counts.items() if v <= 0]:
+            del counts[name]
+        if plan.state == "edited":
+            self.report.edited.append(f"{plan.label}（{plan.title}）")
+        else:
+            where = "ゴミ箱に入れられた" if plan.state == "trashed" else "削除された"
+            self.report.warn(f"{plan.label}: 取り込みの途中で Taylis で{where}（触らない）")
 
     def _plan_databases(self) -> None:
         row_db: dict[str, str] = {}
@@ -1035,10 +1107,19 @@ class NotionImport:
         await access.lock_tree(self.db)
         databases: set[uuid.UUID] = set()
         turned = 0
+        recorded = 0
         for plan in plans:
-            page = await access.load_page(self.db, plan.target, lock=True)
-            if page is None or page.is_deleted or page.kind != "row":
+            # REVIEW-v0.1.48 #6: still unchanged since the plan (or since this import wrote it),
+            # under the row lock; a row changed meanwhile stays a row and is reported.
+            page = await self._recheck(plan)
+            if page is None or page.kind != "row":
+                line = f"{plan.label}（{plan.title}）"
+                self.report.templates.remove(line)
+                current = await access.load_page(self.db, plan.target)
+                if current is not None and not current.is_deleted:
+                    self.report.templates_left.append(line)
                 continue
+            recorded += 1
             if not page.is_template:
                 page.is_template = True
                 page.version += 1
@@ -1049,6 +1130,10 @@ class NotionImport:
             self.db.add(
                 ImportRef(source=SOURCE, kind="template", source_id=plan.key, target_id=plan.target)
             )
+        if recorded:
+            self.report.counts["row templates: turned"] = recorded
+        else:
+            self.report.counts.pop("row templates: turned", None)
         await self.db.flush()
         if turned:
             await audit.record_in_tx(
@@ -1089,14 +1174,22 @@ class NotionImport:
                 if plan.state == "new":
                     if await self._insert(plan, seq, siblings):
                         made.add(plan.target)
-                elif plan.state == "update":
-                    await self._overwrite(plan)
+                elif plan.state in ("update", "same"):
+                    # REVIEW-v0.1.48 #8: still as planned, under the row lock (kept to the
+                    # commit, so its files are written for the page as it is); else left.
+                    page = await self._recheck(plan)
+                    if page is None:
+                        self._restate(plan, await access.load_page(self.db, plan.target))
+                    elif plan.state == "update":
+                        await self._overwrite(plan, page)
+                if plan.kind == "database" and plan.writes:
+                    # Before its rows' locks: a cell's save takes the database, then the row.
+                    await self.db.flush()
+                    await self._write_database(plan)
             await self.db.flush()
             for plan in batch:
                 if not plan.writes:
                     continue
-                if plan.kind == "database":
-                    await self._write_database(plan)
                 for fp in plan.files:
                     await self._store_file(plan, fp)
                     files_done += 1
@@ -1126,6 +1219,9 @@ class NotionImport:
     async def _insert(
         self, plan: Plan, seq: int, siblings: dict[uuid.UUID | None, str | None]
     ) -> bool:
+        if plan.parent is not None and plan.parent.state in ("trashed", "gone", "skipped"):
+            plan.state = "skipped"  # its page went while the import ran
+            return False
         parent_id, parent_path = self._parent_place(plan)
         if len(parent_path) + 1 > MAX_DEPTH:
             self.report.warn(f"{plan.label}: 深すぎる（{MAX_DEPTH} 段まで）→ 取り込まない")
@@ -1151,32 +1247,32 @@ class NotionImport:
         values: dict[str, Any] = (
             {"props": plan.props, "props_text": self._props_text(plan)} if row else {}
         )
-        self.db.add(
-            WikiPage(
-                **values,
-                id=plan.target,
-                parent_id=parent_id,
-                path=list(parent_path),
-                position=plan.position,
-                kind=plan.kind,
-                title=plan.title[:200],
-                body=plan.body,
-                version=1,
-                head_rev_id=revision_id,
-                meta_seq=seq,
-                vis_seq=seq,
-                created_seq=seq,
-                inherit_access=True,
-                task_total=total,
-                task_done=done,
-                is_template=plan.template,
-                created_by=self.actor.id,
-                updated_by=self.actor.id,
-            )
+        page = WikiPage(
+            **values,
+            id=plan.target,
+            parent_id=parent_id,
+            path=list(parent_path),
+            position=plan.position,
+            kind=plan.kind,
+            title=plan.title[:200],
+            body=plan.body,
+            version=1,
+            head_rev_id=revision_id,
+            meta_seq=seq,
+            vis_seq=seq,
+            created_seq=seq,
+            inherit_access=True,
+            task_total=total,
+            task_done=done,
+            is_template=plan.template,
+            created_by=self.actor.id,
+            updated_by=self.actor.id,
         )
+        self.db.add(page)
         await self.db.flush()
         plan.path = [*parent_path, plan.target]
         self.db.add(self._revision(plan, revision_id, version=1, before=""))
+        plan.seen = self._seen(page, revision_id)
         self.db.add(
             ImportRef(source=SOURCE, kind=plan.ref_kind, source_id=plan.key, target_id=plan.target)
         )
@@ -1234,12 +1330,10 @@ class NotionImport:
             lines_removed=removed,
         )
 
-    async def _overwrite(self, plan: Plan) -> None:
+    async def _overwrite(self, plan: Plan, page: WikiPage) -> None:
         """A page nobody changed since the last import, which the export now says differently:
-        a new version of kind import (the history keeps the old one)."""
-        page = await access.load_page(self.db, plan.target, lock=True)
-        if page is None:
-            return
+        a new version of kind import (the history keeps the old one). `page` is locked and was
+        checked to be as planned (_recheck)."""
         revision_id = uuid7()
         before = page.body
         page.version += 1
@@ -1259,6 +1353,8 @@ class NotionImport:
             page.props = plan.props
             page.props_text = self._props_text(plan)
         await events.emit_page_updated(self.db, page, "props" if plan.kind == "row" else "content")
+        await self.db.flush()
+        plan.seen = self._seen(page, revision_id)
 
     async def _write_database(self, plan: Plan) -> None:
         dbp = self.databases[plan.key]
@@ -1344,6 +1440,18 @@ class NotionImport:
         """After every page is there: the links between pages (backlinks) and the relation
         cells, then what the clients are told."""
         await access.lock_tree(self.db)
+        for plan in [p for p in self.plans if p.writes]:
+            # REVIEW-v0.1.48 #8: a page changed after its batch was committed keeps the links
+            # and relations its own save wrote.
+            if await self._recheck(plan) is not None:
+                continue
+            if plan.state == "same":
+                self._restate(plan, await access.load_page(self.db, plan.target))
+            else:
+                plan.changed = True
+                self.report.warn(
+                    f"{plan.label}: 取り込みの途中で Taylis で変更された（リンク・関係は書かない）"
+                )
         live = [p for p in self.plans if p.writes]
         for plan in live:
             await repo.replace_links(self.db, plan.target, doc.page_refs(plan.body))
