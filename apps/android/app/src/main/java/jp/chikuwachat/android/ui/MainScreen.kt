@@ -493,6 +493,22 @@ fun MainScreen(controller: AppController) {
     }
 
     /**
+     * An activity row (a mention, a reply, a reaction): its message in its conversation; a reply opens its thread, and on
+     * a phone back returns to the activity at once, as from the 「スレッド」 list (MOBILE_UI.md §5, 2026-10-09). Before,
+     * back showed the thread's conversation first and the activity only on a second back.
+     */
+    fun revealFromActivity(message: jp.chikuwachat.android.api.MessageOut) {
+        val parentId = message.parentId
+        if (parentId == null || layout != PaneLayout.PHONE) {
+            reveal(message)
+            return
+        }
+        scope.launch {
+            if (controller.revealMessage(message)) stack = MainNav.openFromThreadList(stack, message.channelId, parentId)
+        }
+    }
+
+    /**
      * A 「スレッド」 card's conversation header / 「チャンネルを開く」: the conversation itself, its timeline around the
      * thread's parent (as a search result lands); back returns to the list. Without the parent's context (offline) the
      * conversation still opens, at its usual position.
@@ -1150,7 +1166,7 @@ fun MainScreen(controller: AppController) {
                         listState = activityListState,
                         mentionsState = mentionsListState,
                         threadsState = threadsListState,
-                        onOpenMessage = ::reveal,
+                        onOpenMessage = ::revealFromActivity,
                         onOpenThread = ::openThreadFromList,
                         onOpenThreadConversation = ::openThreadConversation,
                         // M77 (CANVAS.md §20.7): a canvas row opens its conversation's 「キャンバス」 tab on this tab's
