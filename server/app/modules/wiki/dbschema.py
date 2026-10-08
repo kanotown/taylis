@@ -114,6 +114,10 @@ def view_doc(view_id: str, view: Mapping[str, Any]) -> dict[str, Any]:
         "sort": list(view.get("sort") or []),
         "filter": view.get("filter"),
         "date_prop_id": view.get("date_prop_id"),
+        # M147 (WIKI.md §22.4).
+        "group_by": view.get("group_by"),
+        "cover": view.get("cover", "body"),
+        "card_size": view.get("card_size", "medium"),
     }
 
 
@@ -772,6 +776,31 @@ def check_view(schema: Mapping[str, Any], view: Mapping[str, Any]) -> None:
         prop = props.get(view.get("date_prop_id") or "")
         if prop is None or prop["type"] not in DATEISH:
             raise InvalidView("A calendar needs a date property")
+    check_group(schema, view.get("type") or "table", view.get("group_by"))
+
+
+def check_group(schema: Mapping[str, Any], view_type: str, group: Mapping[str, Any] | None) -> None:
+    """M147: a view's (or a query's) group_by fits the schema and the view type (InvalidView)."""
+    if not group:
+        return
+    if view_type == "calendar":
+        raise InvalidView("A calendar has no groups")
+    prop = props_by_id(schema).get(group.get("prop_id") or "")
+    allowed = BOARD_GROUPS if view_type == "board" else GROUPS
+    if prop is None or prop["type"] not in allowed:
+        raise InvalidView(
+            "Group a board by a select, a person or a checkbox"
+            if view_type == "board"
+            else "Group by a select, a multi-select, a person, a checkbox or a date"
+        )
+    if group.get("date_unit") is not None and prop["type"] not in DATEISH:
+        raise InvalidView("Only a date groups by day, week or month")
+
+
+def fits_group(view_type: str, prop: Mapping[str, Any] | None) -> bool:
+    """Whether a view of this type may still group by the property (after a schema change)."""
+    allowed = BOARD_GROUPS if view_type == "board" else GROUPS
+    return prop is not None and prop["type"] in allowed
 
 
 def in_range(prop: Mapping[str, Any], first: date, last: date) -> Predicate:
@@ -780,6 +809,137 @@ def in_range(prop: Mapping[str, Any], first: date, last: date) -> Predicate:
         return found is not None and found[0] <= last and found[1] >= first
 
     return test
+
+
+# --- groups (M147, WIKI.md §22.4) ----------------------------------------------------------------
+
+# What a board's columns can be (a card moves by setting the value), and what any other view's
+# groups can be.
+BOARD_GROUPS = frozenset(("select", "person", "checkbox"))
+GROUPS = frozenset(
+    (
+        "select",
+        "multi_select",
+        "person",
+        "checkbox",
+        "date",
+        "created_time",
+        "updated_time",
+        "created_by",
+        "updated_by",
+    )
+)
+# The group of rows with no value (「なし」).
+NONE_GROUP = ""
+
+
+def _date_bucket(text: str, unit: str, zone: Any) -> str:
+    """The group of a date or time: its day (a time on `zone`'s day), the Monday of its week, or
+    its month."""
+    if len(text) > 10 and zone is not None:
+        day = datetime.fromisoformat(text).astimezone(zone).date()
+    else:
+        day = day_of(text)
+    if unit == "month":
+        return day.isoformat()[:7]
+    if unit == "week":
+        return date.fromordinal(day.toordinal() - day.weekday()).isoformat()
+    return day.isoformat()
+
+
+def group_keys(
+    prop: Mapping[str, Any], row: Row, *, unit: str | None = None, zone: Any = None
+) -> list[str]:
+    """The groups a row is in: one, or (multi-select, people) one per value; "" when empty."""
+    kind = prop["type"]
+    value = cell_value(prop, row)
+    if kind == "checkbox":
+        return ["true" if value else "false"]
+    if value in (None, "", []):
+        return [NONE_GROUP]
+    if kind == "select":
+        known = {o["id"] for o in prop.get("options", [])}
+        return [value] if value in known else [NONE_GROUP]
+    if kind == "multi_select":
+        known = {o["id"] for o in prop.get("options", [])}
+        return [v for v in dict.fromkeys(value) if v in known] or [NONE_GROUP]
+    if kind in PEOPLE:
+        return list(dict.fromkeys(str(v) for v in value)) or [NONE_GROUP]
+    if kind in DATEISH and isinstance(value, dict) and isinstance(value.get("start"), str):
+        return [_date_bucket(value["start"], unit or "day", zone)]
+    return [NONE_GROUP]
+
+
+def group_order(prop: Mapping[str, Any], present: Iterable[str], ctx: Ctx) -> list[str]:
+    """Every group in order: a select's options in their order (each, rows or not), unchecked
+    before checked, people by name, dates ascending; the empty group last."""
+    kind = prop["type"]
+    found = set(present)
+    if kind == "checkbox":
+        return ["false", "true"]
+    if kind in ("select", "multi_select"):
+        keys = [o["id"] for o in prop.get("options", [])]
+    elif kind in PEOPLE:
+        keys = sorted(
+            (k for k in found if k != NONE_GROUP),
+            key=lambda k: (name_key(ctx.names.get(k, "")), k),
+        )
+    else:
+        keys = sorted(k for k in found if k != NONE_GROUP)
+    return [*keys, NONE_GROUP]
+
+
+@dataclass
+class Grouped:
+    """Rows in groups: `entries` (group key, row) group after group, `counts` per group key, in
+    `order` (every group, hidden ones too)."""
+
+    order: list[str]
+    counts: dict[str, int]
+    entries: list[tuple[str, Row]]
+
+
+def group_rows(
+    rows: Sequence[Row],
+    prop: Mapping[str, Any],
+    group: Mapping[str, Any],
+    ctx: Ctx,
+    *,
+    zone: Any = None,
+) -> Grouped:
+    """`rows` (sorted) in the groups of `group` (a GroupBy): a hidden group's rows are counted,
+    not listed; `hide_empty` leaves out the groups without rows."""
+    unit = group.get("date_unit")
+    members: dict[str, list[Row]] = {}
+    for row in rows:
+        for found in group_keys(prop, row, unit=unit, zone=zone):
+            members.setdefault(found, []).append(row)
+    order = group_order(prop, members, ctx)
+    if group.get("hide_empty"):
+        order = [k for k in order if members.get(k)]
+    hidden = set(group.get("hidden") or ())
+    entries = [(k, r) for k in order if k not in hidden for r in members.get(k, ())]
+    return Grouped(order=order, counts={k: len(members.get(k, ())) for k in order}, entries=entries)
+
+
+def in_group_order(
+    rows: Sequence[Row],
+    prop: Mapping[str, Any],
+    group: Mapping[str, Any],
+    ctx: Ctx,
+    *,
+    zone: Any = None,
+) -> list[Row]:
+    """For a client that does not ask for groups (before M147): each row once, by its first
+    shown group, without the rows whose groups are all hidden."""
+    grouped = group_rows(rows, prop, group, ctx, zone=zone)
+    seen: set[UUID] = set()
+    out: list[Row] = []
+    for _, row in grouped.entries:
+        if row.id not in seen:
+            seen.add(row.id)
+            out.append(row)
+    return out
 
 
 # --- sorting -------------------------------------------------------------------------------------

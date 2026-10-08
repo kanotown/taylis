@@ -1416,10 +1416,15 @@
    "en": "This value doesn't fit the property.",
    "zh-Hans": "此值不适用于该属性。"
   },
+  "wiki_invalid_move": {
+   "ja": "この行はそこへ移動できません",
+   "en": "This row can't be moved there.",
+   "zh-Hans": "无法将此行移到那里。"
+  },
   "wiki_invalid_view": {
-   "ja": "並べ替えか絞り込みの条件がこのデータベースに合いません",
-   "en": "The sort or filter doesn't fit this database.",
-   "zh-Hans": "排序或筛选条件与此数据库不符。"
+   "ja": "並べ替え・絞り込み・グループの設定がこのデータベースに合いません",
+   "en": "The sort, filter or grouping doesn't fit this database.",
+   "zh-Hans": "排序、筛选或分组设置与此数据库不符。"
   },
   "wiki_last_view": {
    "ja": "最後のビューは削除できません",

@@ -48,8 +48,11 @@ from app.modules.wiki.db_schemas import (
     ReferencedBy,
     RelationIn,
     RelationOut,
+    RowCover,
     RowCreate,
     RowDetailOut,
+    RowGroup,
+    RowMove,
     RowOut,
     RowPropsUpdate,
     RowQuery,
@@ -561,6 +564,55 @@ async def _select(
         raise invalid_view(str(exc)) from exc
 
 
+def _grouping(
+    record: WikiDatabase, view: Mapping[str, Any] | None, q: RowQuery
+) -> tuple[dict[str, Any] | None, bool]:
+    """(the group_by the answer uses, whether it is answered in groups) — M147. A client before
+    M147 (`grouped` left out) gets the view's groups as an order, without hidden groups' rows."""
+    if q.grouped is False:
+        return None, False
+    group: dict[str, Any] | None = (
+        q.group_by.model_dump(mode="json")
+        if q.grouped and q.group_by is not None
+        else (view or {}).get("group_by")
+    )
+    view_type = (view or {}).get("type") or "table"
+    if not group:
+        return None, bool(q.grouped)
+    try:
+        ds.check_group(record.schema_doc, view_type, group)
+    except ds.InvalidView as exc:
+        if q.grouped:
+            raise invalid_view(str(exc)) from exc
+        return None, False  # a stale saved group (an older client): no order from it
+    return group, bool(q.grouped)
+
+
+_FIRST_IMAGE = r"!\[[^\]\n]*\]\(attachment:([0-9a-fA-F-]{36})\)"
+
+
+async def _covers(db: AsyncSession, row_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, RowCover]:
+    """M147: each row's gallery picture, the first image of its body when that is an image
+    attached to the row (an image of another page is not shown: it is not the row's)."""
+    if not row_ids:
+        return {}
+    found = await db.execute(
+        text(
+            "SELECT p.id, a.id, a.thumbnail_key IS NOT NULL, a.width, a.height "
+            "FROM wiki_pages p "
+            "CROSS JOIN LATERAL (SELECT (regexp_match(p.body, :pattern))[1] AS ref) m "
+            "JOIN attachments a ON a.id = CAST(m.ref AS uuid) AND a.page_id = p.id "
+            "AND a.status = 'attached' AND a.content_type LIKE 'image/%' "
+            "WHERE p.id = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": list(row_ids), "pattern": _FIRST_IMAGE},
+    )
+    return {
+        row_id: RowCover(attachment_id=aid, thumbnail=thumb, width=w, height=h)
+        for row_id, aid, thumb, w, h in found.all()
+    }
+
+
 async def query(db: AsyncSession, actor: User, database_id: uuid.UUID, q: RowQuery) -> RowQueryOut:
     _, record, _ = await _load_database(db, actor, database_id, "view")
     view = _view(record, q.view_id)
@@ -580,17 +632,44 @@ async def query(db: AsyncSession, actor: User, database_id: uuid.UUID, q: RowQue
         date_range=q.range.model_dump() if q.range is not None else None,
         names=names,
     )
+    group_by, grouped = _grouping(record, view, q)
+    groups: list[RowGroup] | None = [] if grouped else None
+    keys: list[str] = []
+    if group_by is not None:
+        prop = ds.props_by_id(record.schema_doc)[group_by["prop_id"]]
+        zone = ZoneInfo(q.tz or "UTC")
+        ctx = ds.Ctx(names=names, actor_id=str(actor.id))
+        if grouped:
+            found = ds.group_rows(matched, prop, group_by, ctx, zone=zone)
+            hidden = set(group_by.get("hidden") or ())
+            groups = [
+                RowGroup(key=k, count=found.counts[k], hidden=k in hidden) for k in found.order
+            ]
+            keys = [k for k, _ in found.entries]
+            matched = [r for _, r in found.entries]
+        else:
+            matched = ds.in_group_order(matched, prop, group_by, ctx, zone=zone)
     start = _offset(q.cursor)
     page = matched[start : start + q.limit]
-    cells = await _cells(db, actor, record.page_id, record.schema_doc, [r.id for r in page])
-    rows = [_row_out(r, record.page_id, cells) for r in page]
+    unique = list(dict.fromkeys(r.id for r in page))
+    by_id = {r.id: r for r in page}
+    cells = await _cells(db, actor, record.page_id, record.schema_doc, unique)
+    covers = await _covers(db, unique) if q.covers else {}
+    outs: dict[uuid.UUID, RowOut] = {}
+    for row_id in unique:
+        out = _row_out(by_id[row_id], record.page_id, cells)
+        out.cover = covers.get(row_id)
+        outs[row_id] = out
+    rows = [outs[r.id] for r in page]
     more = start + q.limit < len(matched)
     return RowQueryOut(
         rows=rows,
-        refs=_refs_for(rows, cells),
+        refs=_refs_for(outs.values(), cells),
         total=len(matched),
         next_cursor=f"o:{start + q.limit}" if more else None,
         schema_version=record.schema_version,
+        groups=groups,
+        row_groups=keys[start : start + q.limit] if grouped else None,
     )
 
 
@@ -1271,6 +1350,105 @@ async def update_props(
     return out
 
 
+async def move_row(db: AsyncSession, actor: User, row_id: uuid.UUID, data: RowMove) -> RowWithRefs:
+    """M147 (WIKI.md §22.4): a board's drag in one write (edit): the cells of `set` (a version
+    of kind props, as PATCH …/props) and the row's place just after `after_id` / before
+    `before_id` in the database's own row order (a new fractional key between the neighbours, so
+    one row is written). 400 wiki_invalid_move for a neighbour that is not a live row of the same
+    database. A retry of the same client_op_id changes no cell again (the place is set again,
+    which keeps it)."""
+    row, _ = await _load_row(db, actor, row_id, "edit")
+    database_id = row.parent_id
+    assert database_id is not None
+    if row.is_template:
+        raise bad_request("wiki_invalid_move", "A row template has no place among the rows")
+    targets = _relation_targets((await _record(db, database_id)).schema_doc, data.set)
+    placing = data.after_id is not None or data.before_id is not None
+    # FOR UPDATE on the database when placing (two drags into one gap never take one key), FOR
+    # SHARE on it and the linked databases for the cells (as PATCH …/props).
+    records = await _lock_records(db, {database_id, *targets}, share=not placing)
+    record = records.get(database_id)
+    if record is None:
+        raise access.page_not_found()
+    locked = await access.load_page(db, row.id, lock=True)
+    if locked is None or locked.is_deleted:
+        raise access.page_not_found()
+    row = locked
+    changed: set[uuid.UUID] = set()
+    done = await repo.revision_by_save_id(db, actor.id, data.client_op_id) if data.set else None
+    if done is not None and done.page_id != row.id:
+        raise conflict("idempotency_conflict", "client_op_id was already used for another row")
+    if data.set and done is None:
+        before, after, touched = await _apply_values(
+            db, actor, database_id, record.schema_doc, row, data.set
+        )
+        if before or after:
+            row.props_text = await _props_text(db, record.schema_doc, row.props or {})
+            row.version += 1
+            row.updated_by = actor.id
+            row.updated_at = utcnow()
+            db.add(
+                WikiPageRevision(
+                    id=uuid7(),
+                    page_id=row.id,
+                    version=None,
+                    kind="props",
+                    parent_rev_id=row.head_rev_id,
+                    author_id=actor.id,
+                    title=row.title,
+                    body=row.body,
+                    props={"before": before, "after": after},
+                    client_save_id=data.client_op_id,
+                )
+            )
+            changed |= {database_id, *touched}
+            await db.flush()
+            if "title" in after:
+                changed |= await repo.linked_databases(db, row.id)
+            await events.emit_page_updated(db, row, "props")
+    if placing:
+        position = await _place_between(db, row, data)
+        if position != row.position:
+            row.position = position
+            changed.add(database_id)
+    await db.flush()
+    if changed:
+        await events.emit_rows_changed(db, changed)
+    out = await _row_with_refs(db, actor, row, record.schema_doc)
+    await db.commit()
+    return out
+
+
+async def _place_between(db: AsyncSession, row: WikiPage, data: RowMove) -> str:
+    """The key that puts `row` just after `after_id` (or before `before_id`) among its database's
+    rows (every row there, in the trash and templates too, bounds the gap)."""
+    anchor_id = data.after_id if data.after_id is not None else data.before_id
+    assert anchor_id is not None
+    if anchor_id == row.id:
+        return row.position
+    anchor = await db.get(WikiPage, anchor_id)
+    if (
+        anchor is None
+        or anchor.kind != "row"
+        or anchor.parent_id != row.parent_id
+        or anchor.deleted_at is not None
+        or anchor.is_template
+    ):
+        raise bad_request("wiki_invalid_move", "Place a row next to a row of its database")
+    siblings = (WikiPage.parent_id == row.parent_id, WikiPage.kind == "row", WikiPage.id != row.id)
+    if data.after_id is not None:
+        upper = await db.scalar(
+            select(func.min(WikiPage.position)).where(
+                *siblings, WikiPage.position > anchor.position
+            )
+        )
+        return ordering.key_between(anchor.position, upper)
+    lower = await db.scalar(
+        select(func.max(WikiPage.position)).where(*siblings, WikiPage.position < anchor.position)
+    )
+    return ordering.key_between(lower, anchor.position)
+
+
 # --- schema changes ------------------------------------------------------------------------------
 
 
@@ -1413,6 +1591,8 @@ def _forget_in_views(views: list[dict[str, Any]], prop_id: str, *, keep_sort: bo
             ]
         if view.get("date_prop_id") == prop_id:
             view["date_prop_id"] = None
+        if (view.get("group_by") or {}).get("prop_id") == prop_id:
+            view["group_by"] = None  # M147: a board then asks for another property
 
 
 async def _legacy(db: AsyncSession, rows: Iterable[tuple[uuid.UUID, str, str, Any]]) -> None:
@@ -1528,6 +1708,16 @@ async def _retype(
             view["sort"] = [s for s in view.get("sort") or [] if s["prop_id"] != prop["id"]]
         if view.get("date_prop_id") == prop["id"] and new_type not in ds.DATEISH:
             view["date_prop_id"] = None
+        grouping = view.get("group_by") or {}
+        if grouping.get("prop_id") == prop["id"]:
+            if not ds.fits_group(view.get("type") or "table", prop):
+                view["group_by"] = None
+            else:  # the old type's group keys (and a date's unit) mean nothing now
+                view["group_by"] = {
+                    **grouping,
+                    "hidden": [],
+                    "date_unit": grouping.get("date_unit") if new_type in ds.DATEISH else None,
+                }
 
 
 async def _delete(change: _Change, database_id: uuid.UUID, prop: dict[str, Any]) -> None:
@@ -1583,6 +1773,12 @@ async def _clear_options(
                 for c in group.get("conditions", [])
                 if not (c["prop_id"] == prop["id"] and c.get("value") in removed)
             ]
+        grouping = view.get("group_by") or {}
+        if grouping.get("prop_id") == prop["id"] and grouping.get("hidden"):
+            view["group_by"] = {
+                **grouping,
+                "hidden": [k for k in grouping["hidden"] if k not in removed],
+            }
 
 
 def _involved(record: WikiDatabase, data: SchemaChange) -> set[uuid.UUID]:

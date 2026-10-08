@@ -48,7 +48,14 @@ NewPropType = Literal[
 OptionColor = Literal["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"]
 # number: as written; integer: rounded for display; percent: 0.5 shows 50 %; yen: ¥1,200.
 NumberFormat = Literal["number", "integer", "percent", "yen"]
-ViewType = Literal["table", "calendar"]
+# M147 (WIKI.md §22.4): board, list and gallery. A phone that does not know a type shows the view
+# as its card list (the table's), so the shown properties stay in `columns` for every type.
+ViewType = Literal["table", "calendar", "board", "list", "gallery"]
+# How a date groups rows (M147): by its day, its week (from Monday) or its month.
+DateUnit = Literal["day", "week", "month"]
+# A gallery card's picture: the first image of the row's body, or none.
+CoverSource = Literal["body", "none"]
+CardSize = Literal["small", "medium", "large"]
 FilterOp = Literal[
     "contains",
     "not_contains",
@@ -158,9 +165,32 @@ class FilterGroup(BaseModel):
     conditions: list[FilterCondition] = Field(default_factory=list, max_length=20)
 
 
+GroupKey = Annotated[str, Field(max_length=40)]
+
+
+class GroupBy(BaseModel):
+    """M147 (WIKI.md §22.4): rows in groups by one property. A group's key is a select option id,
+    a user id, "true" / "false" (checkbox), a day "YYYY-MM-DD" (a week by its Monday) or a month
+    "YYYY-MM"; "" is the group of rows with no value (「なし」). A board groups by a select, a
+    person or a checkbox; a table, list or gallery also by a multi-select, a date or who made /
+    changed the row. A row with several values (multi-select, people) is in each of their groups."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prop_id: Id
+    # Dates: the bucket (day when left out).
+    date_unit: DateUnit | None = None
+    # Group keys not shown (their rows are left out; the groups are still listed with counts).
+    hidden: list[GroupKey] = Field(default_factory=list, max_length=250)
+    # Leave out the groups with no rows.
+    hide_empty: bool = False
+
+
 class ViewIn(BaseModel):
     """PUT /wiki/databases/{id}/views/{view_id}: a saved view (shared by everyone who reads the
-    database). Board views come later: `type` grows a value, the rest stays."""
+    database). M147: board, list and gallery; group_by for every type but the calendar. The
+    properties a card, a list line or a phone's card shows are the visible `columns` (title
+    first wherever it is)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -173,6 +203,12 @@ class ViewIn(BaseModel):
     filter: FilterGroup | None = None
     # calendar: the date property that places rows on days.
     date_prop_id: Id | None = None
+    # M147: groups (a board's columns; a table's, list's or gallery's sections). A board needs one
+    # (one whose property was deleted shows none until another is chosen).
+    group_by: GroupBy | None = None
+    # M147, gallery: the card's picture and size.
+    cover: CoverSource = "body"
+    card_size: CardSize = "medium"
 
     @field_validator("name")
     @classmethod
@@ -320,6 +356,16 @@ class DateValue(BaseModel):
 PropValue = str | float | bool | list[str] | DateValue
 
 
+class RowCover(BaseModel):
+    """M147: a gallery card's picture, the first image of the row's body (an image attached to
+    the row): GET /attachments/{attachment_id}/thumbnail when `thumbnail`, else …/content."""
+
+    attachment_id: UUID
+    thumbnail: bool
+    width: int | None
+    height: int | None
+
+
 class RowOut(BaseModel):
     """A row without its body (GET /wiki/pages/{id} has the body)."""
 
@@ -341,6 +387,8 @@ class RowOut(BaseModel):
     created_by: UUID
     updated_at: datetime
     updated_by: UUID
+    # M147: the gallery's picture, only when the query asks for `covers` (else null).
+    cover: RowCover | None = None
 
 
 class RowRef(BaseModel):
@@ -370,7 +418,13 @@ class DateRange(BaseModel):
 
 class RowQuery(BaseModel):
     """POST /wiki/databases/{id}/query. A saved view's sort and filter, unless `sort` / `filter`
-    are given (a sort or filter not saved: WIKI.md §5.4)."""
+    are given (a sort or filter not saved: WIKI.md §5.4).
+
+    M147 groups (WIKI.md §22.4): `grouped: true` answers in groups (the view's `group_by`, or the
+    given one): `rows` group after group (a row with several values once in each of its groups),
+    `row_groups` the group of each, `groups` every group with its count. `grouped: false`: no
+    groups at all. Left out (clients before M147): one list of rows, in the order of the view's
+    groups, without the rows of its hidden groups."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -380,16 +434,39 @@ class RowQuery(BaseModel):
     range: DateRange | None = None
     cursor: str | None = Field(default=None, max_length=40)
     limit: int = Field(default=100, ge=1, le=1000)
+    grouped: bool | None = None
+    # Groups not saved (as `sort` / `filter`); with `grouped` true.
+    group_by: GroupBy | None = None
+    # M147: each row's gallery picture (`cover`).
+    covers: bool = False
+    # The client's IANA zone: the day of a time (created / changed) when grouping by date; UTC
+    # when left out.
+    tz: str | None = Field(default=None, max_length=64)
+
+    _tz = field_validator("tz")(_valid_zone)
+
+
+class RowGroup(BaseModel):
+    """A group of the answer (clients name it: the option, the person, 「なし」 for "")."""
+
+    key: str
+    # Rows in it (all pages of the answer; a hidden group's too).
+    count: int
+    hidden: bool
 
 
 class RowQueryOut(BaseModel):
     rows: list[RowOut]
     # Titles of the linked rows in `rows` that I can read.
     refs: list[RowRef]
-    # The rows that match (all pages of the answer).
+    # The rows that match (all pages of the answer); grouped: the rows of the shown groups,
+    # counted once in each.
     total: int
     next_cursor: str | None
     schema_version: int
+    # M147, grouped only: every group in order, and the group of each of `rows`.
+    groups: list[RowGroup] | None = None
+    row_groups: list[str] | None = None
 
 
 class RowCreate(BaseModel):
@@ -435,6 +512,28 @@ class RowPropsUpdate(BaseModel):
 
     set: dict[str, Any] = Field(min_length=1, max_length=60)
     client_op_id: UUID
+
+
+class RowMove(BaseModel):
+    """POST /wiki/rows/{id}/move (M147, a board's drag; edit access): set cells (as PATCH …/props,
+    e.g. the column's value) and place the row just after `after_id` or just before `before_id`
+    (rows of the same database), in one write. The place is the rows' own order, which every view
+    without a sort shows. A retry with the same client_op_id changes no cell again."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    set: dict[str, Any] = Field(default_factory=dict, max_length=60)
+    before_id: UUID | None = None
+    after_id: UUID | None = None
+    client_op_id: UUID
+
+    @model_validator(mode="after")
+    def _one_place(self) -> "RowMove":
+        if self.before_id is not None and self.after_id is not None:
+            raise ValueError("Give before_id or after_id, not both")
+        if not self.set and self.before_id is None and self.after_id is None:
+            raise ValueError("Nothing to move")
+        return self
 
 
 class RowWithRefs(BaseModel):
