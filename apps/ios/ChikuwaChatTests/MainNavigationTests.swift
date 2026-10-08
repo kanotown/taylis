@@ -159,6 +159,39 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertEqual(wider.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
     }
 
+    /// The thread header's conversation link (2026-10-09): over its own conversation the thread is popped (no second
+    /// copy of the conversation); alone over the activity the conversation takes its place, so Back still returns to
+    /// the activity; the conversation in front already stays alone.
+    func testTheThreadHeadersLinkShowsItsConversation() {
+        var over = navigation(.tabs)
+        over.show("general", parentId: "p1", on: .home)
+        over.openThreadConversation("general", on: .home)
+        XCTAssertEqual(over.paths[.home], [.channel("general")])
+
+        var alone = navigation(.tabs)
+        alone.tab = .activity
+        alone.showFromActivity("general", parentId: "p1", on: .activity)
+        alone.openThreadConversation("general", on: .activity)
+        XCTAssertEqual(alone.paths[.activity], [.channel("general")])
+        alone.back()
+        XCTAssertEqual(alone.paths[.activity], [])
+
+        // A thread over another conversation's screen (a list, another channel) is replaced, not popped to it.
+        var other = navigation(.tabs)
+        other.paths[.home] = [.channel("random"), .thread(channelId: "general", parentId: "p1")]
+        other.openThreadConversation("general", on: .home)
+        XCTAssertEqual(other.paths[.home], [.channel("random"), .channel("general")])
+
+        // The detail column's stack in the split; the conversation in front already: nothing more.
+        var split = navigation(.split)
+        split.select(.list(MainNavigation.activityId))
+        split.split.append(.thread(channelId: "general", parentId: "p1"))
+        split.openThreadConversation("general", on: .activity)
+        XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
+        split.openThreadConversation("general", on: .activity)
+        XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
+    }
+
     func testAThreadScreenGoesToThePaneInTheSplitAndLeavesWithItsConversation() {
         var nav = navigation(.tabs)
         nav.tab = .activity

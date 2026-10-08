@@ -8,6 +8,9 @@ struct ThreadView: View {
     let parentId: String
     /// Closes the thread where it is not a pushed screen (the split's pane); else the normal back (THREADS.md: a deleted root).
     var onClose: (() -> Void)? = nil
+    /// The header's conversation line as a link (MOBILE_UI.md §6.7): the caller reveals the parent in the conversation
+    /// and shows it. Nil (and while the root is deleted) the line is plain text.
+    var onOpenConversation: (() -> Void)? = nil
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
@@ -199,7 +202,7 @@ struct ThreadView: View {
             // MOBILE_POLISH.md C7: which conversation, under the title (Slack; Android's two-line title).
             if let channel = controller.store.channel(channelId) {
                 ToolbarItem(placement: .principal) {
-                    ThreadTitle(conversation: channelTitle(channel, store: controller.store))
+                    ThreadTitle(conversation: channelTitle(channel, store: controller.store), onOpen: rootDeleted ? nil : onOpenConversation)
                 }
             }
             if let state = entry?.state, controller.store.channel(channelId)?.isMember == true {
@@ -473,16 +476,34 @@ struct ThreadView: View {
 /// 「スレッド」 over the conversation it is in (「#general」, a DM's names), as the channel's own title and subtitle.
 struct ThreadTitle: View {
     let conversation: String
+    /// The conversation line opens the conversation (a link with a chevron); nil leaves it plain.
+    var onOpen: (() -> Void)? = nil
 
     var body: some View {
+        if let onOpen, !conversation.isEmpty {
+            Button(action: onOpen) { lines(link: true).contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .accessibilityLabel(Text("\(conversation) を開く"))
+        } else {
+            lines(link: false)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    private func lines(link: Bool) -> some View {
         VStack(spacing: 0) {
             Text("スレッド").font(.headline).lineLimit(1)
             if !conversation.isEmpty {
-                Text(conversation).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 2) {
+                    Text(conversation).lineLimit(1)
+                    if link { Image(systemName: "chevron.right").font(.caption2.weight(.semibold)) }
+                }
+                .font(.caption)
+                .foregroundStyle(link ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
     }
 }
 

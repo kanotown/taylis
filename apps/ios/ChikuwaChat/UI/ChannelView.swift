@@ -672,7 +672,10 @@ struct ChannelView: View {
         .aiSummarySheet(controller, request: $aiSummary)
         .loadsSummaryTarget(controller, channelId: channelId)
         .navigationDestination(item: Binding(get: { threadInPane ? nil : thread }, set: { thread = $0 })) { target in
-            ThreadView(controller: controller, channelId: channelId, parentId: target.id)
+            // The header's conversation link (MOBILE_UI.md §6.7): back to this conversation at the thread's parent.
+            ThreadView(controller: controller, channelId: channelId, parentId: target.id, onOpenConversation: {
+                Task { if await controller.revealMessage(id: target.id, channelId: channelId, parentId: nil) { thread = nil } }
+            })
         }
         .onChange(of: thread?.id) { _, id in
             // The split (MOBILE_UI.md §13): MainView shows the thread in its pane beside the detail column (an inspector

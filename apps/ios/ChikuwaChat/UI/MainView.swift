@@ -114,6 +114,17 @@ struct MainView: View {
         Task { if let channelId = await controller.revealThreadParent(entry) { show(channelId, parentId: nil, on: tab) } }
     }
 
+    /// The thread header's conversation link (MOBILE_UI.md §6.7): the parent revealed in the conversation's timeline,
+    /// then the conversation in place of the thread (MainNavigation.openThreadConversation). Nothing moves when the
+    /// parent cannot be loaded (the reveal shows its error).
+    private func openThreadConversation(_ channelId: String, parentId: String, on tab: MainTab) {
+        Task {
+            if await controller.revealMessage(id: parentId, channelId: channelId, parentId: nil) {
+                nav.openThreadConversation(channelId, on: tab)
+            }
+        }
+    }
+
     /// A public channel I have not joined shows as its preview (`screen`), which opens no thread of its own.
     private func isPreview(_ channelId: String) -> Bool {
         guard let channel = store.channel(channelId) else { return false }
@@ -594,7 +605,26 @@ struct MainView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("スレッド").font(.headline)
                         if let channel = store.channel(thread.channelId) {
-                            Text(channelTitle(channel, store: store)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            // The conversation beside it: its parent revealed there, the thread stays open (§6.7).
+                            let title = channelTitle(channel, store: store)
+                            if store.deletedThreadRoots.contains(thread.parentId) {
+                                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            } else {
+                                Button {
+                                    Task { _ = await controller.revealMessage(id: thread.parentId, channelId: thread.channelId, parentId: nil) }
+                                } label: {
+                                    HStack(spacing: 2) {
+                                        Text(title).lineLimit(1)
+                                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.tint)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .hoverEffect(.highlight)
+                                .accessibilityLabel(Text("\(title) を開く"))
+                            }
                         }
                     }
                     Spacer(minLength: 0)
@@ -631,7 +661,10 @@ struct MainView: View {
             // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation. From the
             // activity it is pushed alone (MainNavigation.showFromActivity): Back goes to the activity.
             if store.channel(channelId) != nil {
-                ThreadView(controller: controller, channelId: channelId, parentId: parentId).modifier(HidesTabBar())
+                ThreadView(controller: controller, channelId: channelId, parentId: parentId, onOpenConversation: {
+                    openThreadConversation(channelId, parentId: parentId, on: tab)
+                })
+                .modifier(HidesTabBar())
             } else {
                 ContentUnavailableView("会話が見つかりません", systemImage: "bubble.left.and.bubble.right")
             }
