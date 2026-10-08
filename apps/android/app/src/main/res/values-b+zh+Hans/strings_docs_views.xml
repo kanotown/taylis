@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="docs_db_board">看板</string>
+    <string name="docs_db_list">列表</string>
+    <string name="docs_db_gallery">画廊</string>
+    <string name="docs_db_no_value_group">无</string>
+    <string name="docs_db_checked">已勾选</string>
+    <string name="docs_db_unchecked">未勾选</string>
+    <string name="docs_db_week_of">%1$s 这周</string>
+    <string name="docs_db_move_to">移到“%1$s”</string>
+    <string name="docs_db_card_menu">“%1$s”的操作</string>
+    <string name="docs_db_collapse_group">收起“%1$s”</string>
+    <string name="docs_db_expand_group">展开“%1$s”</string>
+    <string name="docs_db_group_empty">没有行</string>
+    <string name="docs_db_board_needs_prop">此看板没有用作列的属性（请在电脑上的“布局”中选择）。</string>
+</resources>

@@ -1,6 +1,23 @@
 package jp.chikuwachat.android.ui
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import jp.chikuwachat.android.sync.DbGroupWords
+import jp.chikuwachat.android.sync.DbViewWords
+import jp.chikuwachat.android.sync.WikiDbViews
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -108,7 +125,9 @@ import java.time.format.DateTimeFormatter
  * is its body; under it the view chips, then a table view's rows as cards (the title and the view's first visible
  * properties) or a calendar view's month as an agenda (each day with the rows on it), pull to refresh and 「＋ 新規」.
  * A row's page has its properties above the body, one editor per type; a view-only reader gets the same form read
- * only. Schemas and views are edited on a computer (§5.5).
+ * only. Schemas and views are edited on a computer (§5.5). M148 (§25.4): a board as sections of cards per group (an
+ * editor's card ⋮ moves it), a gallery as a 2-column grid with the body's first image, a list as the cards, a grouped
+ * table / list / gallery under folding headers ([WikiDbViews]).
  */
 
 object DbUi {
@@ -125,6 +144,19 @@ object DbUi {
     )
 
     fun propName(prop: DbProperty): String = WikiDb.propName(prop, L10n.str(R.string.docs_db_title_prop))
+
+    /** M148: the names of views without one, by type. */
+    fun viewWords(): DbViewWords = DbViewWords(
+        table = L10n.str(R.string.docs_db_table), board = L10n.str(R.string.docs_db_board), list = L10n.str(R.string.docs_db_list),
+        gallery = L10n.str(R.string.docs_db_gallery), calendar = L10n.str(R.string.docs_db_calendar),
+    )
+
+    /** M148: the words of a group's header. */
+    fun groupWords(): DbGroupWords = DbGroupWords(
+        none = L10n.str(R.string.docs_db_no_value_group), checked = L10n.str(R.string.docs_db_checked),
+        unchecked = L10n.str(R.string.docs_db_unchecked), weekOf = { L10n.str(R.string.docs_db_week_of, it) },
+        monthPattern = L10n.str(R.string.docs_db_month_pattern),
+    )
 
     /** An option's colour as a chip's background (the server's names, Desktop's palette). */
     fun optionColor(color: String): Color = when (color) {
@@ -220,7 +252,7 @@ fun LazyListScope.databaseItems(
                     database.views.forEach { v ->
                         FilterChip(
                             selected = v.id == view?.id, onClick = { session.selectView(v.id) },
-                            label = { Text(WikiDb.viewName(v, L10n.str(R.string.docs_db_table), L10n.str(R.string.docs_db_calendar)), maxLines = 1) },
+                            label = { Text(WikiDb.viewName(v, DbUi.viewWords()), maxLines = 1) },
                         )
                     }
                 }
@@ -281,13 +313,78 @@ fun LazyListScope.databaseItems(
         }
         return
     }
+    // M148: a table / list / gallery / board, in sections when the view has groups.
+    val kind = WikiDbViews.kind(view)
     val props = WikiDb.cardProps(database, view)
-    if (session.rows.isEmpty() && !session.loading) item(key = "db-empty") { MutedLine(stringResource(R.string.docs_db_empty)) }
-    session.rows.forEach { row ->
-        item(key = "row-${row.id}") {
-            val card = WikiDb.card(row, props, ctx, L10n.str(R.string.docs_db_title_prop))
-            RowCard(controller, version, card.icon, card.title, card.lines, selected = row.id == selectedRow) { onOpenRow(row.id) }
+    val sections = session.sections
+    val groupProp = WikiDbViews.groupProp(database, view)
+    val unit = view?.groupBy?.dateUnit
+    val canMove = WikiDbViews.canMove(database, view)
+    val covers = kind == WikiDbViews.GALLERY && view?.cover != "none"
+    val titleWord = L10n.str(R.string.docs_db_title_prop)
+    val words = DbUi.groupWords()
+    fun cards(prefix: String, rows: List<DbRow>, group: String?) {
+        if (kind == WikiDbViews.GALLERY) {
+            rows.chunked(2).forEach { pair ->
+                item(key = "$prefix-${pair.first().id}") {
+                    Row(Modifier.canvasColumn().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { row ->
+                            val card = WikiDb.card(row, props, ctx, titleWord)
+                            GalleryCard(controller, version, row, card.title, card.lines, covers, selected = row.id == selectedRow, modifier = Modifier.weight(1f)) { onOpenRow(row.id) }
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+            return
         }
+        val targets = if (canMove && group != null && sections != null) {
+            WikiDbViews.moveTargets(sections, group).map { it to WikiDbViews.groupLabel(groupProp, it, unit, ctx, words) }
+        } else emptyList()
+        rows.forEach { row ->
+            item(key = "$prefix-${row.id}") {
+                val card = WikiDb.card(row, props, ctx, titleWord)
+                val scope = rememberCoroutineScope()
+                RowCard(
+                    controller, version, card.icon, card.title, card.lines, selected = row.id == selectedRow,
+                    moveTargets = targets, moving = row.id in session.moving,
+                    onMove = { to ->
+                        scope.launch {
+                            try {
+                                session.moveRow(row.id, group.orEmpty(), to)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                controller.report(e)
+                            }
+                        }
+                    },
+                ) { onOpenRow(row.id) }
+            }
+        }
+    }
+    if (kind == WikiDbViews.BOARD && groupProp == null) item(key = "db-board-prop") { MutedLine(stringResource(R.string.docs_db_board_needs_prop)) }
+    if (session.rows.isEmpty() && !session.loading && sections == null) item(key = "db-empty") { MutedLine(stringResource(R.string.docs_db_empty)) }
+    if (sections != null) {
+        sections.forEach { section ->
+            val label = WikiDbViews.groupLabel(groupProp, section.key, unit, ctx, words)
+            val folded = session.isCollapsed(section.key)
+            item(key = "sec-${section.key}") {
+                GroupHeader(label, WikiDbViews.groupColor(groupProp, section.key), section.count, folded) { session.toggleSection(section.key) }
+            }
+            if (folded) return@forEach
+            if (section.rows.isEmpty() && section.count == 0) {
+                item(key = "sec-${section.key}-empty") {
+                    Text(
+                        stringResource(R.string.docs_db_group_empty), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.canvasColumn().padding(start = 28.dp, bottom = 4.dp),
+                    )
+                }
+            }
+            cards("g-${section.key}", section.rows, section.key)
+        }
+    } else {
+        cards("row", session.rows, null)
     }
     if (session.nextCursor != null) {
         item(key = "db-more") {
@@ -304,21 +401,127 @@ private fun MutedLine(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.canvasColumn().padding(vertical = 16.dp))
 }
 
-/** A table row as a card: icon and title, then 「プロパティ：値」 for the chosen properties that have one. */
+/** M148: a group's header: its name (an option as its chip), how many rows, folds on a tap (this device only). */
 @Composable
-private fun RowCard(controller: AppController, version: Int, icon: String?, title: String, lines: List<Pair<String, String>>, selected: Boolean, onOpen: () -> Unit) {
+private fun GroupHeader(label: String, color: String?, count: Int, folded: Boolean, onToggle: () -> Unit) {
+    val action = stringResource(if (folded) R.string.docs_db_expand_group else R.string.docs_db_collapse_group, label)
+    val countText = pluralStringResource(R.plurals.docs_db_count, count, count)
+    Row(
+        Modifier.canvasColumn().padding(top = 10.dp, bottom = 2.dp).clip(RoundedCornerShape(8.dp))
+            .clickable(onClickLabel = action, onClick = onToggle).heightIn(min = 40.dp).padding(horizontal = 4.dp)
+            .semantics(mergeDescendants = true) { heading(); contentDescription = "$label, $countText" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (folded) Icons.AutoMirrored.Outlined.KeyboardArrowRight else Icons.Outlined.KeyboardArrowDown, null,
+            Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(4.dp))
+        if (color != null) {
+            Text(
+                label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false).background(DbUi.optionColor(color), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        } else {
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        }
+        Text("$count", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+/** M148: a gallery card: the body's first image (with the session, as other images), the title, the properties. */
+@Composable
+private fun GalleryCard(
+    controller: AppController, version: Int, row: DbRow, title: String, lines: List<Pair<String, String>>, covers: Boolean,
+    selected: Boolean, modifier: Modifier, onOpen: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        modifier = modifier.clickable(onClickLabel = stringResource(R.string.docs_db_open_row), onClick = onOpen),
+    ) {
+        Column {
+            if (covers) {
+                Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                    row.cover?.let { cover -> CoverImage(controller, cover.attachmentId, cover.thumbnail) }
+                }
+            }
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                PageTitleText(controller, version, row.icon, title, MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, kind = "row")
+                lines.forEach { (_, text) ->
+                    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        }
+    }
+}
+
+/** A card's picture, fetched with the session (the thumbnail, else the image scaled down); nothing on failure. */
+@Composable
+private fun BoxScope.CoverImage(controller: AppController, attachmentId: String, thumbnail: Boolean) {
+    var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(attachmentId, thumbnail) {
+        val path = if (thumbnail) "/api/v1/attachments/$attachmentId/thumbnail" else "/api/v1/attachments/$attachmentId/content?inline=1"
+        bitmap = try {
+            val bytes = controller.fetchBytes(path)
+            withContext(Dispatchers.Default) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= COVER_PIXELS && bounds.outHeight / (sample * 2) >= COVER_PIXELS) sample *= 2
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+    bitmap?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize()) }
+}
+
+/** A cover is decoded at about this many pixels (a card is half a phone's width). */
+private const val COVER_PIXELS = 480
+
+/**
+ * A table row as a card: icon and title, then 「プロパティ：値」 for the chosen properties that have one. M148: on a
+ * board an editor's card has a ⋮ with 「◯◯へ移動」 for each other group.
+ */
+@Composable
+private fun RowCard(
+    controller: AppController, version: Int, icon: String?, title: String, lines: List<Pair<String, String>>, selected: Boolean,
+    moveTargets: List<Pair<String, String>> = emptyList(), moving: Boolean = false, onMove: (String) -> Unit = {}, onOpen: () -> Unit,
+) {
     Surface(
         shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
         modifier = Modifier.canvasColumn().padding(vertical = 4.dp).clickable(onClickLabel = stringResource(R.string.docs_db_open_row), onClick = onOpen),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            PageTitleText(controller, version, icon, title, MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, kind = "row")
-            lines.forEach { (name, text) ->
-                Row(Modifier.padding(top = 3.dp)) {
-                    Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(96.dp))
-                    Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Row {
+            Column(Modifier.weight(1f).padding(start = 12.dp, end = if (moveTargets.isEmpty()) 12.dp else 0.dp, top = 10.dp, bottom = 10.dp)) {
+                PageTitleText(controller, version, icon, title, MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, kind = "row")
+                lines.forEach { (name, text) ->
+                    Row(Modifier.padding(top = 3.dp)) {
+                        Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(96.dp))
+                        Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+            if (moveTargets.isNotEmpty()) {
+                var open by remember { mutableStateOf(false) }
+                Box {
+                    if (moving) {
+                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) }
+                    } else {
+                        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.docs_db_card_menu, title)) }
+                    }
+                    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                        moveTargets.forEach { (key, label) ->
+                            DropdownMenuItem(text = { Text(stringResource(R.string.docs_db_move_to, label)) }, onClick = { open = false; onMove(key) })
+                        }
+                    }
                 }
             }
         }

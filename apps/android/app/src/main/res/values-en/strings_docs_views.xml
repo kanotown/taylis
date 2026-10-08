@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="docs_db_board">Board</string>
+    <string name="docs_db_list">List</string>
+    <string name="docs_db_gallery">Gallery</string>
+    <string name="docs_db_no_value_group">None</string>
+    <string name="docs_db_checked">Checked</string>
+    <string name="docs_db_unchecked">Unchecked</string>
+    <string name="docs_db_week_of">Week of %1$s</string>
+    <string name="docs_db_move_to">Move to “%1$s”</string>
+    <string name="docs_db_card_menu">Actions for “%1$s”</string>
+    <string name="docs_db_collapse_group">Collapse “%1$s”</string>
+    <string name="docs_db_expand_group">Expand “%1$s”</string>
+    <string name="docs_db_group_empty">No rows</string>
+    <string name="docs_db_board_needs_prop">This board has no property for its columns (choose one under Layout on a computer).</string>
+</resources>
