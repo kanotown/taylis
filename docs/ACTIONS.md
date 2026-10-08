@@ -81,7 +81,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
   kind             text NOT NULL,            -- invoke | test
   status           text NOT NULL,            -- pending | succeeded | failed
   status_code      integer,                  -- 中継の HTTP の番号
-  error            text,                     -- timeout | network | relay_error | url_not_allowed | secret_missing | interrupted
+  error            text,                     -- timeout | network | relay_error | url_not_allowed | secret_missing | interrupted | action_changed
   message          varchar(200),             -- 中継の答えの message
   latency_ms       integer,
   created_at, finished_at,
@@ -123,6 +123,21 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 
 - **タイムアウトの意味**：`error: "timeout"` は「中継が 10 秒以内に答えなかった」で、**操作が起きなかったとは限らない**。端末は
   「機器（またはハブ）から応答がありませんでした。実行されたかどうかわかりません」と出す。自動ではやり直さない。
+
+### 4.1 許した設定のとおりに送る（2026-10-09、v0.1.48 のレビュー #1）
+
+手順 1 の確認から手順 5 の送信までの間に、管理者がボタン（URL・`action_key`・鍵のファイル名・押せるロール・グループ・個別のユーザー・
+有効かどうか）や機能の切り替えを変えることがある。読み直した最新の設定で送ると、許していない送信先・操作を署名して送ることになる。
+
+- 手順 1 で許したときのボタンの設定（上の項目の写し）を押下が持ち、送る直前（手順 5 の DB の読み取り）にもう一度確かめる：機能がオン、
+  ボタンが有り・有効で設定が写しと同じ、押した人が今も押せる（ロール・グループの所属・無効でない）。送る中身はこの確かめた設定から作る。
+- どれかが変わっていれば **送らない**。行は `failed`（`error: "action_changed"`、`status_code` は null）で閉じ、監査ログにも残す。
+  答えは HTTP 200・`ok: false`。端末は既定の失敗の文を出す。
+- 閉じた押下は同じ `client_invoke_id` で送り直されても、前の結果（`action_changed`、`repeated: true`）を返すだけで、後から送らない
+  （設定を戻した後も）。
+- 境界は送る直前の確かめ：それより後の変更は「送った後の変更」として扱う。名前・絵文字・確認の文・通知の会話・並びの変更は送る中身と
+  押せる人を変えないので止めない。送る直前にボタンが消されていたら `404 action_not_found`（記録はボタンと一緒に消える）。
+- 移行は無い（写しはプロセスの中で持ち、押下は 1 回のリクエストの中で終わる）。テスト：server `tests/test_action_races.py`。
 
 ## 5. 中継へのリクエスト
 
@@ -365,3 +380,17 @@ Taylis は汎用のまま：Taylis が知るのは「中継が返した短い文
 研究室の Web サイトの中継（別のリポジトリ）は `action_key` から機器を引き、SwitchBot の `GET /v1.1/devices/{id}/status`（Smart Lock：
 `lockState` locked / unlocked / jammed、`doorState` opened / closed、`battery`）を読んで、施錠かつドア閉 → ok「施錠中・ドア閉」、解錠 →
 warn「解錠中」、ドアが開いている → warn、動作不良 → alert、電池 20% 未満で「電池残りわずか」を添える、のように訳す。7 秒で打ち切る。
+
+### 12.6 答えは尋ねたときの設定のもの（2026-10-09、v0.1.48 のレビュー #4）
+
+状態を尋ねている間に管理者が状態のボタンを別の機器（URL・`action_key`）や別の見られる人に変えると、古い機器の答えが新しい設定の
+答えとして覚え・待っている人・`actions.status_updated` に流れうる（管理者だけの部屋の状態がメンバーに見える）。
+
+- 覚えは **世代** を数える。ボタン・設定の変更のたびの「覚えを捨てる」（`forget()`）で世代が 1 つ進み、尋ねている途中の問い合わせも捨てる。
+- 読み取りは、どのボタンに尋ねるかを DB から読む **前に** 世代を控える。答えが返った時点で世代が進んでいれば、その答えは覚えにも、
+  待っている人にも、イベントにも渡さない。`GET /actions/status` は新しい設定で読み直す（3 回まで。それでも変わり続ける組は答えから外す）。
+  待ち合わせ（同時の読み取りを 1 回にまとめる）は同じ世代の間だけ。押した後の再読は、その時点でも状態のボタンが同じときだけ尋ねる。
+- `actions.status_updated` を書くときは状態のボタンの行を読み取りの鍵（FOR SHARE）で押さえ、尋ねたときの設定と同じで、ボタンと機能が
+  オンのときだけ書く（変更の確定と「覚えを捨てる」の間の隙間も塞ぐ）。配る時点（outbox の relay）で状態のボタンがイベントより後に
+  変わっていれば（`updated_at` がイベントの `created_at` 以降）、誰にも送らない。
+- 端末と API の形は変わらない。テスト：server `tests/test_action_races.py`。

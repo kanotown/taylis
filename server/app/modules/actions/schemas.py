@@ -103,7 +103,8 @@ class ActionInvokeOut(BaseModel):
     # The relay's HTTP status (null when nothing came back).
     status_code: int | None
     # Why it failed: timeout | network | relay_error | url_not_allowed | secret_missing |
-    # interrupted (null when it succeeded or is still pending).
+    # interrupted | action_changed (not sent: the button, the switch or the right changed after
+    # the press was allowed, docs/ACTIONS.md §4.1) (null when it succeeded or is still pending).
     error: str | None
     # The relay's own `message` (plain text, at most 200 characters), on success or failure.
     message: str | None

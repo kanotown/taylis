@@ -5,6 +5,10 @@ calls the relay once outside any transaction (one bound on the whole send), then
 result, the audit row and, on success, the optional notice in one transaction. There is no outbox
 and no retry: a late or repeated "unlock" is dangerous (D3, D4). A repeat of the same person's
 `client_invoke_id` returns the earlier result without calling the relay again (D5).
+
+What is sent is what was authorized (§4.1): the press carries the button's configuration it was
+allowed under, and just before sending the button, the switch and the person's right are checked
+again. If any of it changed, nothing is sent and the press ends as `failed` (`action_changed`).
 """
 
 import asyncio
@@ -14,6 +18,7 @@ import time
 import unicodedata
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -542,6 +547,11 @@ def _answer_message(answer: signed.Answer) -> str | None:
     return clean_message(data.get("message")) if isinstance(data, dict) else None
 
 
+# A press not sent because the button, the switch or the person's right changed after it was
+# authorized (§4.1).
+ACTION_CHANGED = "action_changed"
+
+
 def _error_of(answer: signed.Answer) -> str | None:
     if answer.ok:
         return None
@@ -550,7 +560,7 @@ def _error_of(answer: signed.Answer) -> str | None:
     code = answer.error or "network"
     if code == "timeout":
         return "timeout"
-    if code in ("url_not_allowed", "secret_missing"):
+    if code in ("url_not_allowed", "secret_missing", ACTION_CHANGED):
         return code
     return "network"  # DNS, connection refused, TLS…
 
@@ -567,6 +577,44 @@ def build_poster(settings: Settings) -> signed.Poster:
 
 def _iso(moment: datetime) -> str:
     return moment.isoformat().replace("+00:00", "Z")
+
+
+@dataclass(frozen=True)
+class Authorized:
+    """What a press was allowed under (§4.1): where it goes, what it asks for and who may press.
+    The press is sent only while the button still reads the same."""
+
+    action_key: str
+    url: str
+    secret_name: str
+    allowed_roles: tuple[str, ...]
+    allowed_group_ids: tuple[uuid.UUID, ...]
+    allowed_user_ids: tuple[uuid.UUID, ...]
+
+    @classmethod
+    def of(cls, row: Action) -> "Authorized":
+        return cls(
+            row.action_key,
+            row.url,
+            row.secret_name,
+            tuple(row.allowed_roles),
+            tuple(row.allowed_group_ids),
+            tuple(row.allowed_user_ids),
+        )
+
+
+async def _still_allowed(
+    db: AsyncSession, action: Action | None, person: User | None, authorized: Authorized
+) -> bool:
+    """The switch on, the button there, on and unchanged, and the person still allowed."""
+    return (
+        action is not None
+        and person is not None
+        and action.enabled
+        and Authorized.of(action) == authorized
+        and await is_enabled(db)
+        and may_press(person, action, await _group_ids_of(db, person.id))
+    )
 
 
 async def _body(
@@ -674,7 +722,8 @@ async def _finish(
     latency_ms: int,
 ) -> ActionInvocation:
     row = await db.get(ActionInvocation, invocation_id, populate_existing=True)
-    assert row is not None
+    if row is None:  # the button was deleted meanwhile (its presses go with it)
+        raise not_found("action_not_found", "No such button")
     row.status = "succeeded" if answer.ok else "failed"
     row.status_code = answer.status_code
     row.error = _error_of(answer)
@@ -693,13 +742,20 @@ async def _send(
     user: User,
     settings: Settings,
     post: signed.Poster,
+    authorized: Authorized | None = None,
 ) -> tuple[signed.Answer, int]:
-    """One call to the relay, outside any transaction. Never retried."""
+    """One call to the relay, outside any transaction. Never retried. With `authorized` (a press),
+    nothing is sent unless the button, the switch and the person's right are as they were when
+    the press was allowed (§4.1); otherwise the answer is `action_changed`."""
     async with factory() as db:
         action = await db.get(Action, action_id)
         invocation = await db.get(ActionInvocation, invocation_id)
         person = await db.get(User, user.id)
-        assert action is not None and invocation is not None and person is not None
+        if authorized is not None and not await _still_allowed(db, action, person, authorized):
+            log.warning("action %s: changed after the press was allowed; not sent", action_id)
+            return signed.Answer(None, ACTION_CHANGED), 0
+        if action is None or invocation is None or person is None:
+            raise not_found("action_not_found", "No such button")
         body = await _body(db, event, invocation, action, person, settings.workspace_display_name)
         url, secret_name = action.url, action.secret_name
     secret = signed.read_secret(settings.action_secrets_dir, secret_name)
@@ -783,7 +839,8 @@ async def invoke(
     """POST /actions/{id}/invoke (docs/ACTIONS.md §4). `acquire` is the per-person, per-button
     rate limit (raises 429); a repeat of a client_invoke_id does not count against it."""
     async with factory() as db:
-        await _pressable(db, user, action_id)
+        # Pinned here: what is sent must be what this check allowed (§4.1).
+        authorized = Authorized.of(await _pressable(db, user, action_id))
     earlier = await _settle_repeat(factory, user.id, client_invoke_id, action_id, settings)
     if earlier is not None:
         return earlier
@@ -818,6 +875,7 @@ async def invoke(
         user=user,
         settings=settings,
         post=post,
+        authorized=authorized,
     )
     async with factory() as db:
         row = await _finish(db, invocation_id, answer, latency)
