@@ -93,6 +93,15 @@ struct MainNavigation: Equatable {
         }
     }
 
+    /// An activity row (a mention, a reply, a reaction; MOBILE_UI.md §5): on the phone a reply's thread goes over the
+    /// activity alone, so Back returns to the activity at once, as from 「スレッド」 (2026-10-09). With the conversation
+    /// pushed under it, Back showed the conversation first and the activity only on a second Back. Anything else, and
+    /// the split (the thread in the conversation's pane), as `show`.
+    mutating func showFromActivity(_ channelId: String, parentId: String?, on tab: MainTab) {
+        guard layout == .tabs, let parentId else { return show(channelId, parentId: parentId, on: tab) }
+        paths[tab, default: []].append(.thread(channelId: channelId, parentId: parentId))
+    }
+
     /// A conversation's screens on a phone's stack: the conversation, and the thread over it.
     static func conversation(_ channelId: String, thread parentId: String?) -> [MainRoute] {
         [.channel(channelId)] + (parentId.map { [.thread(channelId: channelId, parentId: $0)] } ?? [])
@@ -164,7 +173,11 @@ struct MainNavigation: Equatable {
         if new == .split {
             // A thread pushed as its own screen goes to the conversation's pane.
             var stack = paths[tab] ?? []
-            if case .thread(let channelId, let parentId)? = stack.last { thread = ThreadRef(channelId: channelId, parentId: parentId) }
+            if case .thread(let channelId, let parentId)? = stack.last {
+                thread = ThreadRef(channelId: channelId, parentId: parentId)
+                // A thread alone over a list (from the activity): its conversation shows it in the pane.
+                if !stack.dropLast().contains(.channel(channelId)) { stack[stack.count - 1] = .channel(channelId) }
+            }
             stack.removeAll { if case .thread = $0 { true } else { false } }
             switch tab {
             case .home: split = stack

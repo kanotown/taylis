@@ -102,6 +102,12 @@ struct MainView: View {
         nav.show(channelId, parentId: isPreview(channelId) ? nil : parentId, on: tab)
     }
 
+    /// An activity row's message (MainNavigation.showFromActivity): a reply's thread alone over the activity.
+    private func showFromActivity(_ message: MessageOut, on tab: MainTab) {
+        if isPreview(message.channelId) { return show(message.channelId, parentId: nil, on: tab) }
+        nav.showFromActivity(message.channelId, parentId: message.parentId, on: tab)
+    }
+
     /// 「スレッド」's conversation link / 「チャンネルを開く」: the conversation on this tab's stack, the thread's parent
     /// revealed in its timeline (the thread itself not opened).
     private func showThreadConversation(_ entry: ThreadEntry, on tab: MainTab) {
@@ -496,7 +502,7 @@ struct MainView: View {
 
     private func activityList(on tab: MainTab) -> some View {
         ActivityView(controller: controller, onOpenMention: { message in
-            Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
+            Task { if await controller.revealMessage(message) { showFromActivity(message, on: tab) } }
         }, onOpenItem: { item in
             // M122: a page that mentions me or was shared with me: the page on this tab's stack.
             if let page = item.page {
@@ -514,9 +520,9 @@ struct MainView: View {
                 Task { if await controller.openActivityCanvas(item) { show(canvas.channelId, parentId: nil, on: tab) } }
                 return
             }
-            // M39: the message in its conversation, a reply in its thread, on this tab's stack.
+            // M39: the message in its conversation, a reply in its thread (alone: Back returns here), on this tab's stack.
             guard let message = item.message else { return }
-            Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
+            Task { if await controller.revealMessage(message) { showFromActivity(message, on: tab) } }
         }, onOpenThreadConversation: { showThreadConversation($0, on: tab) })
     }
 
@@ -622,7 +628,8 @@ struct MainView: View {
                 .id(pageId)
                 .modifier(HidesTabBar())
         case .thread(let channelId, let parentId):
-            // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation.
+            // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation. From the
+            // activity it is pushed alone (MainNavigation.showFromActivity): Back goes to the activity.
             if store.channel(channelId) != nil {
                 ThreadView(controller: controller, channelId: channelId, parentId: parentId).modifier(HidesTabBar())
             } else {
