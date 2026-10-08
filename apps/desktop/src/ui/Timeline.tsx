@@ -1261,7 +1261,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                 <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
                   {t("common.cancel")}
                 </Button>
-                <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id); }}>
+                <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id, { fromThread: thread }); }}>
                   {t("common.deleteConfirm")}
                 </Button>
               </div>
@@ -1294,6 +1294,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           controller={controller}
           message={message}
           initialView={sheet}
+          thread={thread}
           onClose={() => setSheet(null)}
           onOpenThread={onOpenThread}
           onShare={() => setShareOpen(true)}

@@ -162,7 +162,7 @@ describe("the ⋯ menu", () => {
     expect(w.controller.deleteMessage).not.toHaveBeenCalled();
     await chooseFromRowMenu("削除", w.mine());
     fireEvent.click(within(screen.getByRole("dialog", { name: "メッセージの削除" })).getByRole("button", { name: "削除する" }));
-    expect(w.controller.deleteMessage).toHaveBeenCalledWith(w.mineMessage.id);
+    expect(w.controller.deleteMessage).toHaveBeenCalledWith(w.mineMessage.id, { fromThread: false });
   });
 
   it("「リマインド…」 opens the presets and the note by ⋯", async () => {

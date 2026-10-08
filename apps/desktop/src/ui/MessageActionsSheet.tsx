@@ -34,7 +34,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit, thread = false }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -55,6 +55,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   isAdmin: boolean;
   /** Editing in place is offered (my own message with its conversation open); my own message when left out. */
   canEdit?: boolean;
+  /** A row of a thread pane (its root or a reply): deleting the root there closes the pane without a notice. */
+  thread?: boolean;
 }) {
   const store = controller.store;
   const me = store.me;
@@ -168,7 +170,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
             <div className="text-xs text-muted">{t("timeline.deleteNote")}</div>
             <div className="flex gap-2">
               <button type="button" className="h-11 flex-1 rounded-xl border border-line text-sm" onClick={() => setView("actions")}>{t("common.cancel")}</button>
-              <button type="button" className="h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white" onClick={then(() => void controller.deleteMessage(message.id))}>{t("common.deleteConfirm")}</button>
+              <button type="button" className="h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white" onClick={then(() => void controller.deleteMessage(message.id, { fromThread: thread }))}>{t("common.deleteConfirm")}</button>
             </div>
           </div>
         ) : (

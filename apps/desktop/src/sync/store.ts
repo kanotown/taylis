@@ -80,6 +80,12 @@ export class Store {
   readonly threads = new Map<string, ThreadEntry>();
   threadSummary: ThreadSummary = { unread_count: 0, mention_count: 0 };
   /**
+   * Messages seen deleted in this session (an event, a catch-up page, my own delete's answer, a thread whose replies the
+   * server no longer has). A deleted row leaves the store, so an open thread asks here whether its root is gone
+   * (THREADS.md §5 「元のメッセージの削除」). Not persisted.
+   */
+  private readonly deletedIds = new Set<string>();
+  /**
    * M39: the activity badge and read position; null while the server has sent none (before M39). Kept with `me`, so an
    * offline start shows the last badge; bootstrap replaces it.
    */
@@ -1319,6 +1325,7 @@ export class Store {
     if (stored.deleted) {
       bucket.delete(stored.id);
       this.persist((p) => p.deleteMessage(stored.id));
+      if (!stored.parent_id) this.forgetThread(stored.channel_id, stored.id);
     } else {
       bucket.set(stored.id, stored);
       this.persist((p) => p.saveMessage(stored));
@@ -1328,6 +1335,26 @@ export class Store {
     this.onMessageStored?.(stored, !local);
     this.emit();
     return true;
+  }
+
+  /** True once this session saw the message deleted (THREADS.md §5 「元のメッセージの削除」). */
+  wasDeleted(messageId: string): boolean {
+    return this.deletedIds.has(messageId);
+  }
+
+  /**
+   * A thread whose root is gone (deleted, or GET replies answered 404): its row leaves the threads list at once (the
+   * server's list leaves deleted roots out) and the reply draft for it goes (the server hides and refuses it).
+   */
+  forgetThread(channelId: string, rootId: string): void {
+    this.deletedIds.add(rootId);
+    this.threads.delete(rootId);
+    const key = this.draftKey(channelId, rootId);
+    if (this.drafts.has(key)) {
+      this.drafts.delete(key);
+      this.persist((p) => p.saveMeta(key, null));
+    }
+    this.emit();
   }
 
   /**

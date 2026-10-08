@@ -1868,6 +1868,8 @@ export class FakeServer {
         maybeFail();
         const record = [...this.channels.values()].find((r) => r.messages.some((m) => m.id === messageId));
         if (!record) return [];
+        // As the server: a deleted root has no thread to read (THREADS.md §5 「元のメッセージの削除」).
+        if (record.messages.some((m) => m.id === messageId && m.deleted)) throw new ApiError(404, "message_not_found", "not found");
         this.requireReadable(record.channel.id, userId);
         return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq).map((m) => this.viewAs(m, userId));
       },

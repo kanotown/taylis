@@ -1182,6 +1182,8 @@ export class SyncEngine {
     const thread = (frame.data["parent_thread"] as ParentThread | null | undefined) ?? null;
     const isNew = frame.event === "message.created";
     this.notePinMove(channel.id, message);
+    // A followed thread's root deleted: its row leaves the list with the deletion; the badge is the server's to recount.
+    if (message.deleted && !message.parent_id && store.threads.has(message.id)) this.scheduleThreadRefresh();
     // L8 (TIMES_FEED.md §5): whatever the timeline does with it, the feed takes it (a new row only while on screen).
     this.timesFeed.applyMessage(message, isNew);
     if (thread) this.timesFeed.applyParentThread(thread);
@@ -1263,6 +1265,8 @@ export class SyncEngine {
   private holds(channelId: string, message: MessageOut): boolean {
     const store = this.deps.store;
     if (store.message(channelId, message.id)) return true;
+    // A thread root held only by the threads list or an open thread: its deletion closes that thread (THREADS.md §5).
+    if (!message.parent_id && (store.threads.has(message.id) || this.loadedThreads.has(message.id))) return true;
     const parentId = message.parent_id;
     return !!parentId && (this.loadedThreads.has(parentId) || store.message(channelId, parentId) !== undefined);
   }
@@ -2128,11 +2132,34 @@ export class SyncEngine {
     let loaded = false;
     await this.enqueue(async () => {
       if (this.status !== "online") return;
-      for (const reply of await this.deps.api.replies(parentId)) this.deps.store.upsertMessage(reply);
+      let replies: MessageOut[];
+      try {
+        replies = await this.deps.api.replies(parentId);
+      } catch (error) {
+        // THREADS.md §5 「元のメッセージの削除」: the server keeps no thread for a deleted root (404). Its tombstone was
+        // missed (a reconnect, an event not held): the root is gone here too, and the open thread closes or says so.
+        if (error instanceof ApiError && error.status === 404 && error.code === "message_not_found") {
+          this.forgetDeletedRoot(channelId, parentId);
+          return;
+        }
+        throw error;
+      }
+      for (const reply of replies) this.deps.store.upsertMessage(reply);
       this.completeThreads.set(parentId, channelId);
       loaded = true;
     });
     return loaded;
+  }
+
+  /**
+   * A thread root the server no longer has (its replies answered 404): its row, if held, leaves as a deletion would take
+   * it, and the thread is forgotten (THREADS.md §5 「元のメッセージの削除」).
+   */
+  forgetDeletedRoot(channelId: string, rootId: string): void {
+    const store = this.deps.store;
+    const held = store.message(channelId, rootId);
+    if (held && held.seq !== null) store.upsertMessage({ ...held, body: "", deleted: true, updated_seq: held.updated_seq + 1 });
+    else store.forgetThread(channelId, rootId);
   }
 
   /** §10.2: every reply of the thread is held (GET replies succeeded and nothing cleared them since). */
