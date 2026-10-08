@@ -373,6 +373,7 @@ if channel.synced_seq is null:
     # ローカルにタイムラインが無い。チャンネル一覧の情報だけ更新する
     channel.last_seq = event.seq
     if type == message.created and 未読に数える行 (§10.1 12.): unread_count += 1 (+ mention_count)
+    if type == message.deleted: §10.6 で数から引く (タイムラインがあってもなくても、last_seq を進める前に)
 elif event.seq == synced_seq + 1:
     upsert(event.data.message)
     synced_seq = event.seq
@@ -693,6 +694,48 @@ badge(c)      = muted(c) ? mention_count : (DM ? unread_count : mention_count)
 - 静かな未読の会話は、メンションが無ければ太字にしない。未読があることは名前の横の控えめな点で示す (ミュートは
   何も示さない、という違い)。プッシュはチャンネルの既定 (`mentions`) どおりメンションのときだけ。
 - 通知レベルを `all` にすると普通のチャンネルと同じになる (太字、全件のプッシュ)。
+
+### 10.6 削除されたメッセージと未読数（2026-10-09）
+
+テスターの報告：読む前に DM・メンションが削除されると赤いバッジが残り、開いても何も無く、ワークスペースを切り替えると
+バッジが戻った。サーバの数（bootstrap、`GET /sync/summary`、アクティビティ、プッシュの `badge`、スレッド）は削除済みを
+数えない（DATA_MODEL.md read_states。`server/tests/test_deleted_unread.py`）。原因は 3 端末とも同じで、未読数を
+`message.created` で足すのに `message.deleted` で引いていなかった。サーバは削除で `read.updated` を出さないので、次の
+bootstrap まで手元の数が残った。会話を開いても未読の行が手元に無いため、表示範囲の既読（§10）では位置が進まず消えなかった。iOS では、アクティブな
+ワークスペースの「最後に知った `badge`」（WORKSPACES.md §6）とアプリアイコンの数も手元の数から書くので、古い数が保存され、
+切り替えのたびに（bootstrap が置き換えるまで）その数が出た。
+
+3 端末共通の規則（検証ベクトルは `apps/shared/unread-delete-rules.json`、3 端末のテストが同じファイルを読む）：
+
+```
+on message.deleted (m, event_seq):     # トゥームストーンで手元の行を置き換える前、last_seq を進める前に
+    counted_to = channel.last_seq       # 数はここまでの変化を含んでいる (§7.4、M28e)
+    held = 手元の行 (無ければ null)。mentions_me は §7.4 の「自分宛て」の規則で held から決める
+           (サーバは削除でメンションを消すので、トゥームストーンからは分からない)
+    数えていた = event_seq > counted_to and 他人の行 and type == user and タイムラインの行
+                 and m.seq > last_read_seq and not held.deleted and unread > 0
+    if 数えていた:
+        unread -= 1
+        if unread == 0: mentions = 0, first_unread_at = null (問い合わせない)
+        elif held: mentions -= (mentions_me ? 1 : 0)  (0 未満にしない)
+        elif mentions > 0: サーバに問い合わせる
+        if first_unread_at == m.created_at かつ unread > 0: サーバに問い合わせる (次の未読の時刻が分からない)
+```
+
+- **サーバへの問い合わせ**：`PUT /channels/{id}/read {last_read_seq: 0}`（何も動かさず今の既読状態を返す。§7.9 と同じ）の
+  値を `read.updated` と同じに取る（位置は max マージ、数は置き換え）。同じチャンネルは 1 本ずつ。待つ間に別の変化
+  （新しい行、もう一度の問い合わせ）があれば最大 2 回まで問い直す。
+- **差分同期**（§7.3）：取りこぼしの間に削除された行は、トゥームストーンで届く。差分の前に数えていた行
+  （`seq <= counted_to`、`updated_seq > counted_to`、`seq > last_read_seq`、数える種類の行）があれば、メンションかどうか
+  分からないのでサーバに問い合わせる。差分で新しく数える行（M28e）からトゥームストーンは外す（作られてすぐ消えた行を
+  数えていた）。
+- **開いたとき**：追いついていて（`synced_seq >= last_seq`）既読位置より後の行がすべて手元にあり（§10.1 `covers`）、数える
+  行が `unread_count` より少なければ、数が古い（以前のビルドが保存した数、取りこぼし）。サーバに問い合わせる。この端末の
+  既読を送っている間（`pending_read_seq` がある間）は数が応答で来るので問い合わせない。
+- 未読数が 0 になったら、その会話の通知を消す（既読と同じ）。アプリアイコンのバッジ（iOS・Desktop の Dock / タスクバー）、
+  DM 一覧、サイドバー、ホーム、タブのバッジ、ワークスペースのレールは、この数から作るので一緒に動く。
+- アクティビティのバッジ：削除された行が手元に無い、自分宛て、フォロー中のスレッドの返信なら、サーバの数を読み直す
+  （MOBILE_UI.md §6.4。数はサーバのもの）。スレッドの未読は `thread.updated`（`reason: "deleted"`）がサーバの数を運ぶ。
 
 ### 10.1 最初の未読が読み込まれていないとき (M17)
 

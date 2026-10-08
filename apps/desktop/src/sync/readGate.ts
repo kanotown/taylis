@@ -33,8 +33,45 @@ export function readRangeReady(channel: { unreadCount: number; oldestLoadedSeq: 
  * timeline (top-level, or a reply also sent to the channel). System rows counted here would make the count and the
  * banner's 「… 以降」 disagree with the server until its next value.
  */
-export function countsAsUnread(message: { sender_id: string; type?: string | null; parent_id?: string | null; also_in_channel?: boolean }, meId: string | null | undefined): boolean {
+export function countsAsUnread(message: { sender_id: string; type?: string | null; parent_id?: string | null; also_in_channel?: boolean; deleted?: boolean }, meId: string | null | undefined): boolean {
+  // A tombstone is never counted (a message posted and deleted while a catch-up's gap was open came in deleted).
+  return message.deleted !== true && countableRow(message, meId);
+}
+
+/** The kind of row the server counts, alive or not: someone else's "user" row in the timeline. */
+function countableRow(message: { sender_id: string; type?: string | null; parent_id?: string | null; also_in_channel?: boolean }, meId: string | null | undefined): boolean {
   return message.sender_id !== meId && (message.type ?? "user") === "user" && (!message.parent_id || message.also_in_channel === true);
+}
+
+/** A conversation's counts as held, and what a deletion leaves of them (SYNC_PROTOCOL.md §10.6). */
+export interface DeleteCounts {
+  unread: number;
+  mentions: number;
+  firstUnreadAt: string | null;
+  /** The counts cannot be told here: ask the server (PUT /channels/{id}/read {last_read_seq: 0}). */
+  refetch: boolean;
+}
+
+/**
+ * §10.6 (2026-10-09, a DM or a mention deleted before it was read kept its badge): what a message.deleted takes off the
+ * conversation's counts, before the tombstone replaces the held row. `countedTo` is the channel's last seq before the
+ * event (the counts cover every change up to it); `held` the row this device holds (null: not held), `mentionsMe` by the
+ * live rule. The vectors are apps/shared/unread-delete-rules.json, shared with iOS and Android.
+ */
+export function countsAfterDelete(
+  channel: { lastReadSeq: number; countedTo: number; unread: number; mentions: number; firstUnreadAt: string | null },
+  eventSeq: number,
+  message: { seq: number; sender_id: string; type?: string | null; parent_id?: string | null; also_in_channel?: boolean; created_at: string },
+  held: { deleted: boolean; mentionsMe: boolean } | null,
+  meId: string | null | undefined,
+): DeleteCounts {
+  const same: DeleteCounts = { unread: channel.unread, mentions: channel.mentions, firstUnreadAt: channel.firstUnreadAt, refetch: false };
+  if (eventSeq <= channel.countedTo || !countableRow(message, meId) || message.seq <= channel.lastReadSeq || held?.deleted === true || channel.unread <= 0) return same;
+  const unread = channel.unread - 1;
+  if (unread === 0) return { unread: 0, mentions: 0, firstUnreadAt: null, refetch: false };
+  const mentions = held ? Math.max(0, channel.mentions - (held.mentionsMe ? 1 : 0)) : channel.mentions;
+  const refetch = (held === null && channel.mentions > 0) || channel.firstUnreadAt === message.created_at;
+  return { unread, mentions, firstUnreadAt: channel.firstUnreadAt, refetch };
 }
 
 /** The first held row after `afterSeq` from someone else (my own rows are never unread). */

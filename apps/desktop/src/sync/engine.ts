@@ -21,7 +21,7 @@ import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 import { takesDmClose } from "./dmCloses";
-import { caughtUp, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
+import { caughtUp, countsAfterDelete, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
 
 /** §7.7: a channel nobody looks at is trimmed back to the cap once live rows take it this far past it. */
 export const TRIM_MARGIN = 100;
@@ -252,6 +252,8 @@ export class SyncEngine {
   readonly stats = { catchUps: 0, reloads: 0, reconnects: 0 };
   private readonly pendingReads = new Map<string, Promise<void>>();
   private readonly readCancels = new Map<string, () => void>();
+  /** §10.6: channels whose counts are being read again; true when another refetch was asked meanwhile. */
+  private readonly countRefetches = new Map<string, boolean>();
   /** Thread read positions sent (or about to be) while the thread's state is not loaded yet. */
   private readonly threadReadFloor = new Map<string, number>();
   /** §10: thread read marks the server has not taken (a failed PUT); sent again after reconnecting. */
@@ -1181,6 +1183,9 @@ export class SyncEngine {
     const message = frame.data["message"] as MessageOut;
     const thread = (frame.data["parent_thread"] as ParentThread | null | undefined) ?? null;
     const isNew = frame.event === "message.created";
+    // §10.6: a deletion takes itself off the counts, before its tombstone replaces the held row (whether it mentioned me
+    // is known from that row only) and before the channel's last seq moves past it.
+    if (frame.event === "message.deleted") this.uncountDeleted(channel, seq, message);
     this.notePinMove(channel.id, message);
     // A followed thread's root deleted: its row leaves the list with the deletion; the badge is the server's to recount.
     if (message.deleted && !message.parent_id && store.threads.has(message.id)) this.scheduleThreadRefresh();
@@ -1296,6 +1301,68 @@ export class SyncEngine {
       // §10.1: the first unread message starts the banner's 「… 以降」; later ones leave it.
       ...(channel.unreadCount === 0 ? { firstUnreadAt: message.created_at } : {}),
     });
+  }
+
+  /**
+   * §10.6 (2026-10-09: a DM or a mention deleted before it was read kept its red badge, and tapping it showed nothing):
+   * the counts drop at once, by the shared rule (countsAfterDelete); what this device cannot tell (a mention it does not
+   * hold, the first unread gone) it asks the server. The activity badge is the server's, read again.
+   */
+  private uncountDeleted(channel: ChannelState, eventSeq: number, message: MessageOut): void {
+    const store = this.deps.store;
+    const me = store.me;
+    if (!me || message.sender_id === me.id) return;
+    const row = store.message(channel.id, message.id);
+    const held = row ? { deleted: row.deleted === true, mentionsMe: mentionsMe(row, me) } : null;
+    const next = countsAfterDelete(
+      { lastReadSeq: channel.lastReadSeq, countedTo: channel.lastSeq, unread: channel.unreadCount, mentions: channel.mentionCount, firstUnreadAt: channel.firstUnreadAt },
+      eventSeq,
+      message,
+      held,
+      me.id,
+    );
+    if (next.unread !== channel.unreadCount || next.mentions !== channel.mentionCount || next.firstUnreadAt !== channel.firstUnreadAt) {
+      store.updateChannel(channel.id, { unreadCount: next.unread, mentionCount: next.mentions, firstUnreadAt: next.firstUnreadAt });
+      if (next.unread === 0) this.deps.onRead?.(channel.id);
+    }
+    if (next.refetch) this.refetchCounts(channel.id, eventSeq); // the channel's last seq moves to this event right after
+    // MOBILE_UI.md §6.4: a mention of me or a reply in a thread I follow leaves the activity badge (the server's count).
+    const parentId = message.parent_id;
+    const following = !!parentId && this.deps.store.threads.get(parentId)?.state.following === true;
+    if (eventSeq > channel.lastSeq && (row === undefined || held?.mentionsMe === true || following)) this.scheduleActivityRefresh();
+  }
+
+  /**
+   * §10.6: the conversation's counts from the server, taken like read.updated (PUT /read {last_read_seq: 0} moves
+   * nothing and answers the read state). One request per channel at a time; a change that came meanwhile (a row
+   * counted on top of what the answer may already hold) asks once more.
+   */
+  private refetchCounts(channelId: string, upTo = 0, attempt = 0): void {
+    if (this.countRefetches.has(channelId)) {
+      this.countRefetches.set(channelId, true);
+      return;
+    }
+    if (this.status !== "online") return; // the next bootstrap brings them
+    this.countRefetches.set(channelId, false);
+    const before = Math.max(this.deps.store.getChannel(channelId)?.lastSeq ?? 0, upTo);
+    const done = (async () => {
+      let again = false;
+      try {
+        const state = await this.deps.api.markRead(channelId, 0);
+        await this.enqueue(async () => {
+          const now = this.deps.store.getChannel(channelId);
+          if (!now) return;
+          again = this.countRefetches.get(channelId) === true || now.lastSeq !== before;
+          this.applyReadState(channelId, state, false);
+        });
+      } catch (err) {
+        console.warn("could not read the unread counts again; the next bootstrap brings them", err);
+      } finally {
+        this.countRefetches.delete(channelId);
+      }
+      if (again && attempt < 2) this.refetchCounts(channelId, 0, attempt + 1);
+    })();
+    this.trackRead(`counts:${channelId}`, done);
   }
 
   private applyReadState(channelId: string, state: ReadStateOut, allowDecrease = false): void {
@@ -1535,8 +1602,25 @@ export class SyncEngine {
       // Only a channel of mine: one I have not joined is read through openPreview, never into the store.
       if (!channel || !channel.isMember) return;
       if (channel.syncedSeq === null || channel.syncedSeq < channel.lastSeq) await this.catchUp(channelId);
+      this.settleStaleUnread(channelId);
       // Read position is owned by the visible timeline, not navigation or sync.
     });
+  }
+
+  /**
+   * §10.6: a conversation opened with a count that no held row backs (its unread rows were deleted and the counts missed
+   * it: an older client's store, a lost event) would keep its badge with nothing to read, and no row on screen could
+   * move the position. While every row after the read position is held, fewer held unread rows than counted asks the
+   * server for the counts (the position stays where it is, §10).
+   */
+  private settleStaleUnread(channelId: string): void {
+    const store = this.deps.store;
+    const channel = store.getChannel(channelId);
+    // Not while a read of this device is on its way: the position moved ahead at once, its counts come with the answer.
+    if (!channel || channel.unreadCount === 0 || channel.pendingReadSeq !== null || !caughtUp(channel) || !covers(channel.oldestLoadedSeq, channel.lastReadSeq)) return;
+    const meId = store.me?.id;
+    const held = store.messages(channelId).filter((m) => m.seq !== null && m.seq > channel.lastReadSeq && countsAsUnread(m, meId)).length;
+    if (held < channel.unreadCount) this.refetchCounts(channelId);
   }
 
   /**
@@ -1952,6 +2036,14 @@ export class SyncEngine {
     await this.catchUpRows(channelId, brought);
     const synced = store.getChannel(channelId)?.syncedSeq ?? counted;
     for (const message of [...brought.values()].filter((m) => m.seq > counted && m.seq <= synced).sort((a, b) => a.seq - b.seq)) this.countUnread(message);
+    // §10.6: a counted row deleted while the events were lost came back as a tombstone; whether it mentioned me went
+    // with its body, so the server says what is left.
+    const after = store.getChannel(channelId);
+    const meId = store.me?.id;
+    const uncounted = [...brought.values()].some(
+      (m) => m.deleted && m.seq <= counted && m.updated_seq > counted && m.seq > (after?.lastReadSeq ?? before.lastReadSeq) && countsAsUnread({ ...m, deleted: false }, meId),
+    );
+    if (uncounted && (after?.unreadCount ?? 0) > 0) this.refetchCounts(channelId);
   }
 
   private async catchUpRows(channelId: string, brought: Map<string, MessageOut>): Promise<void> {
