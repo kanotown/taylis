@@ -869,51 +869,45 @@ export class AppController {
     return this.api ? messagePermalink(this.api.baseUrl, messageId) : null;
   }
 
-  async copyPermalink(messageId: string): Promise<void> {
-    const url = this.permalink(messageId);
-    if (!url) return;
+  /**
+   * 2026-10-08: what every copy button does. The text to the clipboard, then a short toast (「コピーしました」, or `notice`
+   * such as 「仮パスワードをコピーしました」); when the clipboard refuses (a browser without the permission), the error toast.
+   * Resolves whether it was copied, for a button that also shows its own 「コピーしました」 mark.
+   */
+  async copyToClipboard(text: string, notice: string = t("app.copied")): Promise<boolean> {
     try {
-      await copyText(url);
-      this.setNotice(t("app.linkCopied"));
+      await copyText(text);
+      if (this.error === t("app.clipboardFailed")) this.setError(null); // an earlier refusal, now out of date
+      this.setNotice(notice);
+      return true;
     } catch (error) {
       console.warn("copy failed", error);
       this.setError(t("app.clipboardFailed"));
+      return false;
     }
+  }
+
+  async copyPermalink(messageId: string): Promise<void> {
+    const url = this.permalink(messageId);
+    if (!url) return;
+    await this.copyToClipboard(url, t("app.linkCopied"));
   }
 
   /** M121: `<server>/p/<id>` of a Docs page (WIKI.md §9.3). */
   async copyPageLink(pageId: string): Promise<void> {
     if (!this.api) return;
-    try {
-      await copyText(pageLink(this.api.baseUrl, pageId));
-      this.setNotice(t("app.linkCopied"));
-    } catch (error) {
-      console.warn("copy failed", error);
-      this.setError(t("app.clipboardFailed"));
-    }
+    await this.copyToClipboard(pageLink(this.api.baseUrl, pageId), t("app.linkCopied"));
   }
 
   /** M44: `<server>/c/<id>` of a canvas (CANVAS.md §4.13). */
   async copyCanvasLink(canvasId: string): Promise<void> {
     if (!this.api) return;
-    try {
-      await copyText(canvasLink(this.api.baseUrl, canvasId));
-      this.setNotice(t("app.linkCopied"));
-    } catch (error) {
-      console.warn("copy failed", error);
-      this.setError(t("app.clipboardFailed"));
-    }
+    await this.copyToClipboard(canvasLink(this.api.baseUrl, canvasId), t("app.linkCopied"));
   }
 
   /** M25: 「テキストをコピー」 from the phone action sheet: the body with mentions as names (as the phone apps copy it). */
   async copyMessageText(body: string): Promise<void> {
-    try {
-      await copyText(mentionsToNames(body, this.store.users, this.store.groups));
-      this.setNotice(t("app.textCopied"));
-    } catch (error) {
-      console.warn("copy failed", error);
-      this.setError(t("app.clipboardFailed"));
-    }
+    await this.copyToClipboard(mentionsToNames(body, this.store.users, this.store.groups), t("app.textCopied"));
   }
 
   /** A permalink tapped in a body: fetch the message (membership is checked there) and reveal it. */
@@ -3199,8 +3193,11 @@ export async function profileKey(account: string): Promise<string> {
   return [...digest.subarray(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The async clipboard first; a hidden textarea + execCommand when a webview refuses it (no permission API). */
-async function copyText(text: string): Promise<void> {
+/**
+ * The async clipboard first; a hidden textarea + execCommand when a webview refuses it (no permission API). Use
+ * `AppController.copyToClipboard` from a button: it also shows 「コピーしました」 or the error.
+ */
+export async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
     return;

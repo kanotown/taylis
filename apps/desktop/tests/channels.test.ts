@@ -64,8 +64,9 @@ describe("sidebar unread rules", () => {
     const sections = sectionChannels(all, { unreadOnly: true, currentId: "general", now });
     expect(sections.channels.map((c) => c.id)).toEqual(["general", "random"]);
     expect(sections.dms).toEqual([]);
-    expect(sections.browse).toEqual([]);
-    expect(sectionChannels(all, { now }).browse.map((c) => c.id)).toEqual(["public"]);
+    // 2026-10-08: a channel I have not joined is in no section (「チャンネルを探す」 lists it), unread-only or not.
+    const every = sectionChannels(all, { now });
+    expect([...every.channels, ...every.dms, ...every.times, ...every.favorites].map((c) => c.id)).not.toContain("public");
   });
 
   it("steps through channels and through unread channels with wrap-around", () => {

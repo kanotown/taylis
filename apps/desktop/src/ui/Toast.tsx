@@ -16,7 +16,7 @@ export function Toast({ controller }: { controller: AppController }) {
   return (
     <div
       role="alert"
-      className="fixed bottom-6 left-1/2 z-50 flex max-w-[80vw] -translate-x-1/2 items-center gap-3 rounded-xl border border-danger/40 bg-canvas px-4 py-3 text-sm text-ink shadow-2xl"
+      className="fixed bottom-6 left-1/2 z-[60] flex max-w-[80vw] -translate-x-1/2 items-center gap-3 rounded-xl border border-danger/40 bg-canvas px-4 py-3 text-sm text-ink shadow-2xl"
     >
       <AlertCircle size={18} className="shrink-0 text-danger" />
       <span>{message}</span>
@@ -39,7 +39,7 @@ export function NoticeToast({ controller }: { controller: AppController }) {
   }, [message, action, controller]);
   if (!message) return null;
   return (
-    <div role="status" className="fixed bottom-6 left-1/2 z-50 flex max-w-[80vw] -translate-x-1/2 items-center gap-2 rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm text-ink shadow-2xl">
+    <div role="status" className="fixed bottom-6 left-1/2 z-[60] flex max-w-[80vw] -translate-x-1/2 items-center gap-2 rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm text-ink shadow-2xl">
       <CheckCircle2 size={16} className="shrink-0 text-success" />
       <span>{message}</span>
       {action && (

@@ -51,14 +51,7 @@ export function WebhooksTab({ controller }: { controller: AppController }) {
     }
   };
 
-  const copy = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      controller.setNotice(t("webhooks.copied"));
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
+  const copy = (url: string) => controller.copyToClipboard(url, t("webhooks.copied"));
 
   const channelName = (id: string) => {
     const channel = store.channels.get(id);

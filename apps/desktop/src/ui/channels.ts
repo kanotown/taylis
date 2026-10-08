@@ -157,7 +157,6 @@ export interface ChannelSections {
   times: ChannelState[];
   /** Pinned DMs (M118), my own DM, then the section's sort (newest first unless chosen otherwise). */
   dms: ChannelState[];
-  browse: ChannelState[];
 }
 
 // --- the order inside a section (DATA_MODEL.md sidebar_sections 「セクションの中の並び順」「並べ替え」) -------------
@@ -310,7 +309,8 @@ export function pinnedFirst<T extends { id: string }>(rows: readonly T[], pins: 
 }
 
 /**
- * The sidebar order: each section in its sort (DMs: my own DM first unless by hand), joinable public channels by name.
+ * The sidebar order: each section in its sort (DMs: my own DM first unless by hand). The public channels I could join
+ * are not listed (2026-10-08: too long with many channels); 「チャンネルを探す」 has them.
  * M118: pinned DMs come first in every section that holds them, even by hand; then my own DM (when not pinned).
  * M141: a closed DM is in none of them (favorites and my sections too), so Alt+↑/↓ skips it as well.
  */
@@ -354,7 +354,6 @@ export function sectionChannels(
     channels: sectionOrder(all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)), defaultSort(options.defaults, "channels"), title),
     times: all.filter((c) => visible(c) && isTimes(c) && loose(c)).sort(mineFirst),
     dms: [...pinnedFirst(dms.filter((c) => pinned.has(c.id)), pins), ...self, ...sectionOrder(dms.filter((c) => !pinned.has(c.id) && !self.includes(c)), dmSort, title)],
-    browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(compareByName),
   };
 }
 

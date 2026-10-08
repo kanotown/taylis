@@ -23,7 +23,7 @@ interface Props {
   currentId: string | null;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
-  /** Opens a conversation; one of 「参加できるチャンネル」 opens as its preview (SYNC_PROTOCOL.md §7.6.1), not joined. */
+  /** Opens a conversation; a public channel I have not joined (from a link or 「チャンネルを探す」) opens as its preview (SYNC_PROTOCOL.md §7.6.1). */
   onOpen: (id: string) => void;
   onNewDm: () => void;
   /** M13g: the member directory. */
@@ -601,6 +601,19 @@ collapsed={folded.has("channels")}
       >
         <ul className="space-y-px">{shown(sections.channels, folded.has("channels"), undefined, reorder({ default: "channels" }, sections.channels, defaultSortOf("channels")))}</ul>
         {sections.channels.length === 0 && <Hint>{unreadOnly ? t("sidebar.noUnreadChannels") : t("sidebar.noChannels")}</Hint>}
+        {/* 2026-10-08: the channels I could join are no longer listed in the sidebar (a long list with many channels); this
+            row opens 「チャンネルを探す」, where they are, as the phones' 「チャンネルを追加」 does. */}
+        {onBrowse && !controller.isGuest && !unreadOnly && !folded.has("channels") && (
+          <button
+            type="button"
+            onClick={onBrowse}
+            data-browse-channels=""
+            className={cn("flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 opacity-80 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong hover:opacity-100", SECTION_ROW_PAD)}
+          >
+            <Compass size={15} className="shrink-0 opacity-70" />
+            <span className="flex-1 truncate">{t("sidebar.browse")}</span>
+          </button>
+        )}
       </Section>
       {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
         <Section
@@ -690,29 +703,6 @@ collapsed={folded.has("dms")}
         </ul>
         {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? t("sidebar.noUnreadDms") : t("sidebar.dmsEmptyHint")}</Hint>}
       </Section>
-      {sections.browse.length > 0 && (
-        <Section title={t("sidebar.joinable")}>
-          <ul className="space-y-px">
-            {sections.browse.map((c) => (
-              <li key={c.id}>
-                {/* M27: a click shows the channel read-only first; its bar joins (Slack). */}
-                <button
-                  type="button"
-                  onClick={() => onOpen(c.id)}
-                  aria-current={c.id === currentId ? "page" : undefined}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px]", SECTION_ROW_PAD,
-                    c.id === currentId ? "bg-sidebar-active text-sidebar-active-fg" : "opacity-80 hover:bg-sidebar-hover hover:text-sidebar-strong hover:opacity-100",
-                  )}
-                >
-                  <Hash size={15} className="shrink-0 opacity-70" />
-                  <span className="flex-1 truncate">{c.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
       {newSection && <NewSectionDialog controller={controller} onClose={() => setNewSection(false)} />}
     </nav>
   );

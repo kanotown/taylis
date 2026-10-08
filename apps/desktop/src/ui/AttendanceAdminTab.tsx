@@ -285,7 +285,7 @@ function Integrations({ controller }: { controller: AppController }) {
           <div className="font-medium">{t("attendanceAdmin.tokenOf", { name: token.name })}</div>
           <div className="mt-1 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded bg-canvas px-2 py-1 font-mono text-xs">{token.token}</code>
-            <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard.writeText(token.token).then(() => controller.setNotice(t("webhooks.copied")), (error: unknown) => controller.setError(error))}>
+            <Button size="sm" variant="secondary" onClick={() => void controller.copyToClipboard(token.token, t("attendanceAdmin.tokenCopied"))}>
               <Copy size={14} /> {t("common.copy")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setToken(null)}>{t("common.close")}</Button>
