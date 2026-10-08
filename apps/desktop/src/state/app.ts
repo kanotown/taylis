@@ -148,7 +148,16 @@ export class AppController {
       // A channel I have not joined is read without the store (its preview, SYNC_PROTOCOL.md §7.6.1): the thread pane
       // fetches the replies itself there.
       const mine = this.store.getChannel(message.channel_id)?.isMember === true;
-      if (message.parent_id && mine) for (const reply of await this.api.replies(message.parent_id)) this.store.upsertMessage(reply);
+      if (message.parent_id && mine) {
+        try {
+          for (const reply of await this.api.replies(message.parent_id)) this.store.upsertMessage(reply);
+        } catch (error) {
+          // A reply whose root is deleted (a stale link or notification): the thread opens saying so (THREADS.md §5).
+          if (!(error instanceof ApiError && error.status === 404 && error.code === "message_not_found")) throw error;
+          if (this.engine) this.engine.forgetDeletedRoot(message.channel_id, message.parent_id);
+          else this.store.forgetThread(message.channel_id, message.parent_id);
+        }
+      }
       this.messageFocus = { channelId: message.channel_id, messageId: message.id, parentId: message.parent_id ?? null, context };
       this.emit();
       return true;
@@ -637,13 +646,26 @@ export class AppController {
     }
   }
 
-  async deleteMessage(messageId: string): Promise<void> {
+  /**
+   * `fromThread`: deleted from a thread pane's own rows. When that is the thread's root, the pane closes without
+   * 「元のメッセージが削除されたため、スレッドを閉じました」 (THREADS.md §5): I closed it myself.
+   */
+  async deleteMessage(messageId: string, options: { fromThread?: boolean } = {}): Promise<void> {
     if (!this.api) return;
+    if (options.fromThread) this.threadDeletes.add(messageId);
     try {
       this.store.upsertMessage(await this.api.deleteMessage(messageId));
     } catch (error) {
+      this.threadDeletes.delete(messageId);
       this.setError(error);
     }
+  }
+
+  private readonly threadDeletes = new Set<string>();
+
+  /** True (once) when the message was deleted from a thread pane on this screen (deleteMessage's `fromThread`). */
+  takeThreadDelete(messageId: string): boolean {
+    return this.threadDeletes.delete(messageId);
   }
 
   // --- link previews (M11g): one fetch per URL per session ---------------------------------

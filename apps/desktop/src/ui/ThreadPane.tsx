@@ -26,9 +26,12 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   // The parent comes from the channel, the threads list, a search hit or the Times feed (L8); once seen it is kept for
   // this pane so a list refresh that drops the row does not blank the thread.
   const lastParent = useRef<{ id: string; message: MessageState } | null>(null);
-  const found: MessageState | undefined = store.message(channel.id, parentId) ?? entry?.parent ?? controller.messageFocus?.context.find((m) => m.id === parentId) ?? engine?.timesFeed?.find(parentId);
+  // THREADS.md §5 「元のメッセージの削除」: a deleted root leaves the store, but the threads list, a search hit or the
+  // copy kept below may still hold it; this session saw it deleted, so none of them is shown.
+  const rootDeleted = store.wasDeleted(parentId);
+  const found: MessageState | undefined = rootDeleted ? undefined : store.message(channel.id, parentId) ?? entry?.parent ?? controller.messageFocus?.context.find((m) => m.id === parentId) ?? engine?.timesFeed?.find(parentId);
   if (found) lastParent.current = { id: parentId, message: found };
-  const parent = found ?? (lastParent.current?.id === parentId ? lastParent.current.message : undefined);
+  const parent = rootDeleted ? undefined : (found ?? (lastParent.current?.id === parentId ? lastParent.current.message : undefined));
   const replies = store.replies(channel.id, parentId);
   const state = entry?.state;
   // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open.
@@ -49,6 +52,21 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   // cleared) and my read position in it is known. Before that the held replies may be only the newest ones.
   const [loaded, setLoaded] = useState<string | null>(null);
   const ready = loaded === parentId && !!engine?.threadComplete(parentId) && state !== undefined;
+  /**
+   * The thread was shown live here (its replies fetched while the root stood). Its root deleted after that (an event,
+   * a catch-up, my own delete, the replies' 404 on reconnecting) closes the pane, with 「元のメッセージが削除されたため、
+   * スレッドを閉じました」 unless I deleted it from this pane. A thread opened when its root was already gone (a stale
+   * link, an activity row) stays open and says so instead.
+   */
+  const liveSeen = useRef<string | null>(null);
+  if (loaded === parentId && !rootDeleted) liveSeen.current = parentId;
+  useEffect(() => {
+    if (!rootDeleted || liveSeen.current !== parentId) return;
+    liveSeen.current = null;
+    const mine = controller.takeThreadDelete(parentId);
+    onClose();
+    if (!mine) controller.setNotice(t("thread.rootDeletedClosed"));
+  }, [rootDeleted, parentId]);
   // Like the timeline's: visible replies mark read only after the first unread reply has been on screen.
   const anchored = useRef(false);
   /** The parent whose opening position was applied (once, when the thread is ready). */
@@ -109,11 +127,12 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   useEffect(() => {
     const key = `${channel.id}:${parentId}:${engine?.status}`;
     if (complete && fetched.current?.engine === engine && fetched.current.key === key) return; // that fetch completed it
+    if (rootDeleted) return; // the server has no thread for it any more
     fetched.current = { engine, key };
     void engine?.loadReplies(channel.id, parentId).then((ok) => {
       if (ok) setLoaded(parentId);
     }, (error) => controller.setError(error));
-  }, [engine, engine?.status, channel.id, parentId, complete]);
+  }, [engine, engine?.status, channel.id, parentId, complete, rootDeleted]);
 
   // Until the thread is ready the held replies sit at the bottom (or the search hit is centred). Once it is, the
   // opening position is applied once: the hit, else 「新しい返信」 at the top, else the newest reply.
@@ -161,7 +180,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
 
   // No parent held: a thread opened from the preview and kept open through 「#name に参加する」 (§7.6.1), whose parent
   // is older than the page the conversation loaded. The engine fetches it, and the thread goes on with its composer.
-  const parentMissing = parent === undefined;
+  const parentMissing = parent === undefined && !rootDeleted;
   useEffect(() => {
     if (!parentMissing) return;
     void engine?.loadParent(channel.id, parentId).catch((error) => controller.setError(error));
@@ -243,7 +262,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <div className="text-sm font-semibold">{t("nav.threads")}</div>
           <div className="truncate text-xs text-muted">{channelTitle(channel, controller)}</div>
         </div>
-        {state && channel.isMember && (
+        {state && channel.isMember && !rootDeleted && (
           <Button
             size="sm"
             variant={state.following ? "secondary" : "ghost"}
@@ -296,7 +315,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
             </div>
           </>
         ) : (
-          <div className="py-8 text-center text-sm text-muted">{t("preview.messageMissing")}</div>
+          <div className="py-8 text-center text-sm text-muted">{rootDeleted ? t("thread.rootDeleted") : t("preview.messageMissing")}</div>
         )}
         </div>
       </div>

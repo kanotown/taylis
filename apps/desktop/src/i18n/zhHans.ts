@@ -2406,6 +2406,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "thread.newCount": "{count} 条新回复",
   "thread.toLatest": "跳到最新回复",
   "thread.replyPlaceholder": "在话题中回复",
+  "thread.rootDeleted": "原消息已被删除。",
+  "thread.rootDeletedClosed": "原消息已被删除，话题已关闭。",
   "files.filter": "按文件名筛选",
   "files.allChannels": "所有频道",
   "files.noneIn": "{name} 中还没有文件",

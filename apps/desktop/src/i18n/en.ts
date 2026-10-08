@@ -2406,6 +2406,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "thread.newCount": "{count, plural, one {# new reply} other {# new replies}}",
   "thread.toLatest": "Jump to latest reply",
   "thread.replyPlaceholder": "Reply in thread",
+  "thread.rootDeleted": "The original message was deleted.",
+  "thread.rootDeletedClosed": "The original message was deleted, so the thread was closed.",
   "files.filter": "Filter by file name",
   "files.allChannels": "All channels",
   "files.noneIn": "No files in {name} yet",

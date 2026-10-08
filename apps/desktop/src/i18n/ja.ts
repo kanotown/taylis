@@ -2405,6 +2405,8 @@ export const ja = {
   "thread.newCount": "新しい返信 {count} 件",
   "thread.toLatest": "最新の返信へ",
   "thread.replyPlaceholder": "スレッドに返信",
+  "thread.rootDeleted": "元のメッセージは削除されました",
+  "thread.rootDeletedClosed": "元のメッセージが削除されたため、スレッドを閉じました",
   "files.filter": "ファイル名で絞り込む",
   "files.allChannels": "すべてのチャンネル",
   "files.noneIn": "{name} にはまだファイルがありません",
