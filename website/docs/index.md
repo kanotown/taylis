@@ -27,13 +27,13 @@ Taylis は、研究室・ゼミ・小さなチームのためのチャットで�
 管理します。アプリは Windows・macOS・iOS・Android 版と、ブラウザ版があります。
 
 <div class="screens" markdown>
-![デスクトップ版：スレッドを開いたチャンネル（デモのデータ）](assets/screens/desktop.png){ .wide }
+![デスクトップ版の画面。左にチャンネルの一覧、真ん中に会話、右にスレッド（デモのデータ）](assets/screens/web-overview.webp){ .full }
 </div>
 
 <div class="screens" markdown>
 ![iPhone のホーム（デモのデータ）](assets/screens/ios-home.jpg){ .phone }
 ![iPhone の会話（デモのデータ）](assets/screens/ios-conversation.jpg){ .phone }
-![iPhone の投票（デモのデータ）](assets/screens/ios-poll.jpg){ .phone }
+![iPhone のアンケート（デモのデータ）](assets/screens/ios-poll.jpg){ .phone }
 </div>
 
 <small>画面はすべて架空のデモのデータです。</small>
@@ -73,15 +73,15 @@ Taylis は、研究室・ゼミ・小さなチームのためのチャットで�
 
     ---
 
-    投票と日程調整、カレンダー、タスクとカンバン、締切、キャンバス（共有の文書）、Times（作業ログ）、
-    ワークフロー、共有の機材やアカウントの予約。
+    ドキュメント（Wiki とデータベース）、アンケートと日程調整、カレンダー、タスクとカンバン、締切、キャンバス、
+    Times（作業ログ）、ワークフロー、共有の機材の予約、在室状況。
 
 -   :material-shield-account-outline:{ .lg } **管理と移行**
 
     ---
 
     招待リンク、組織の Google アカウントでのログイン、ゲスト、報告とブロック、アプリからのアカウント削除。
-    Slack と Mattermost からの移行にも対応しています。
+    Slack・Mattermost・Notion からの移行にも対応しています。
 
 </div>
 
@@ -94,7 +94,7 @@ Taylis を使うには、所属する組織の Taylis サーバーと、管理�
 
 | アプリ | 入手方法 |
 | --- | --- |
-| Windows / macOS | [GitHub のリリース](https://github.com/kanotown/taylis/releases/latest) からインストーラをダウンロードしてください。アプリの中から新しい版に更新できます。 |
+| Windows / macOS | [GitHub のリリース](https://github.com/kanotown/taylis/releases/latest) からインストーラをダウンロードしてください。アプリの中から新しい版に更新できます（[アプリを入れる](start/install.md)）。 |
 | iOS / iPadOS | 準備中です（App Store での配信を準備しています） |
 | Android | 準備中です（Google Play での配信を準備しています） |
 | ブラウザ | インストールは要りません。サーバーの URL（例：`https://chat.example.com/`）をブラウザで開いてください。 |
@@ -108,7 +108,7 @@ Taylis を使うには、所属する組織の Taylis サーバーと、管理�
 
 ## はじめての方へ
 
-- **使う人**：[使い方ガイド](guide/index.md) で、ログイン・通知の設定・メッセージの書き方を説明しています。
-- **管理者**：[管理者ガイド](admin/index.md) で、ユーザーの作成や招待、チャンネルや絵文字の管理を説明しています。
+- **使う人**：[はじめに](start/index.md) でアプリを入れてログインし、[使い方](guide/index.md) で分野ごとの操作を確かめてください。
+- **管理者**：[管理者](admin/index.md) で、ユーザーの作成や招待、チャンネルや絵文字の管理を説明しています。
 - **サーバーを用意する人**：[クイックスタート](self-hosting/quickstart.md) から始めてください。
 - **仕組みが気になる人**：[仕組み](how-it-works/index.md) で、同期・通知・検索・セキュリティの考え方を紹介しています。
