@@ -175,7 +175,7 @@ describe("reading", () => {
     expect(callout).toMatchObject({ type: "callout", attrs: { icon: "💡" }, content: [{ type: "listLine" }] });
     expect(toggle!.content![0]).toEqual({ type: "toggleTitle", content: [{ type: "text", text: "T", marks: [{ type: "bold" }] }] });
     expect(image).toMatchObject({ type: "image", attrs: { alt: "" } });
-    expect(table).toMatchObject({ type: "table", attrs: { markdown: "| a |\n| - |" } });
+    expect(table).toMatchObject({ type: "table", content: [{ type: "tableRow", content: [{ type: "tableCell", content: [{ type: "text", text: "a" }] }] }] });
   });
 
   it("keeps the exact line breaks of every line", () => {
@@ -244,6 +244,54 @@ describe("editing one block writes that block only", () => {
   it("a rule put between two lines gets the blank lines it needs", () => {
     const out = edit((doc) => blocks(doc).splice(1, 1, { type: "horizontalRule" }));
     expect(out.startsWith("# 題\r\n\n---\n\n* one")).toBe(true);
+  });
+});
+
+describe("M151: tables written from their cells", () => {
+  const cell = (content: RichNode[], align: string | null = null): RichNode => ({ type: "tableCell", attrs: { align }, ...(content.length ? { content } : {}) });
+  const text = (value: string): RichNode => ({ type: "text", text: value });
+  const table = (rows: RichNode[][]): RichNode => ({ type: "doc", content: [{ type: "table", content: rows.map((cells) => ({ type: "tableRow", content: cells })) }] });
+  const cellsOf = (doc: RichNode) => (doc.content![0]!.content ?? []).map((row) => (row.content ?? []).map((c) => shapeOf(c).content ?? []));
+
+  it("pipes, backslashes, code spans and links with pipes, empty cells, Japanese: GFM that reads back as the same cells", () => {
+    const doc = table([
+      [cell([text("名前")], "left"), cell([text("a|b")], "center"), cell([text("メモ")], "right")],
+      [cell([text("back\\slash \\| end\\")]), cell([{ type: "text", text: "x | y", marks: [{ type: "code" }] }]), cell([])],
+      [cell([text("日本語 **ではない**")]), cell([{ type: "text", text: "リンク", marks: [{ type: "link", attrs: { href: "https://example.com/a|b" } }] }]), cell([text("太字"), { type: "text", text: "強", marks: [{ type: "bold" }] }])],
+    ]);
+    const written = canonicalPage(doc);
+    expect(written).toBe([
+      "| 名前 | a\\|b | メモ |",
+      "| :--- | :---: | ---: |",
+      "| back\\slash \\\\| end\\ | `x \\| y` |  |",
+      "| 日本語 **ではない\\*\\* | [リンク](https://example.com/a\\|b) | 太字**強** |",
+    ].join("\n"));
+    const again = pageToDoc(written);
+    expect(again.content![0]!.type).toBe("table");
+    expect(cellsOf(again)).toEqual(cellsOf(doc));
+    expect(canonicalPage(again)).toBe(written);
+  });
+
+  it("random cell texts (pipes, backslashes, marks' signs, spaces inside) read back as typed", () => {
+    const next = random(151);
+    const chars = ["a", "b", "表", "|", "\\", "`", "*", "_", "~", "$", " ", "[", "]", "(", ")", ":", "-", "#", "<", "@"];
+    for (let k = 0; k < 1500; k++) {
+      const cells = Array.from({ length: 1 + Math.floor(next() * 4) }, () => Array.from({ length: Math.floor(next() * 9) }, () => chars[Math.floor(next() * chars.length)]!).join("").trim());
+      const doc = table([cells.map((value) => cell(value ? [text(value)] : [])), cells.map(() => cell([text("x")]))]);
+      const written = canonicalPage(doc);
+      const read = pageToDoc(written);
+      expect(read.content![0]!.type, JSON.stringify(cells)).toBe("table");
+      expect(read.content![0]!.content![0]!.content!.map((c) => (c.content ?? []).map((n) => n.text ?? "").join("")), `${JSON.stringify(cells)} → ${written}`).toEqual(cells);
+    }
+  });
+
+  it("a table read keeps its source; one cell edited writes the whole table anew (rows padded to the header)", () => {
+    const body = "前\n|a|b|\n|-|:-:|\n|1|\n後";
+    const doc = pageToDoc(body);
+    expect(docToPage(doc)).toBe(body);
+    const original = originalOf(doc);
+    doc.content![1]!.content![1]!.content![0]!.content = [text("一")];
+    expect(docToPage(doc, original)).toBe("前\n| a | b |\n| --- | :---: |\n| 一 |  |\n後");
   });
 });
 
