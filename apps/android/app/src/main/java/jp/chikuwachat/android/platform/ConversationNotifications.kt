@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Shader
+import android.graphics.Typeface
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.createBitmap
@@ -16,6 +17,9 @@ import androidx.core.graphics.scale
 import java.io.File
 import java.net.URLEncoder
 import java.security.MessageDigest
+import jp.chikuwachat.android.ui.Timeline
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -65,18 +69,29 @@ object ConversationStyle {
     fun shortcutId(workspace: String?, channelId: String): String =
         "conv:" + digest(workspace ?: "").take(8) + ":" + channelId
 
-    /** The letters a picture-less sender's circle shows: the first character (two for a Latin "First Last"). */
-    fun initials(name: String): String {
-        val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
-        if (words.isEmpty()) return "?"
-        val first = words[0].codePointAt(0)
-        val ascii = words.size >= 2 && first < 0x80 && words[1].codePointAt(0) < 0x80
-        val letters = if (ascii) String(Character.toChars(first)) + String(Character.toChars(words[1].codePointAt(0))) else String(Character.toChars(first))
-        return letters.uppercase()
-    }
+    /** The letters a picture-less sender's avatar shows: the app's rule (Timeline.initials, apps/shared/avatar-initials.json). */
+    fun initials(name: String): String = Timeline.initials(name)
 
-    /** The initials circle's colour: the same person always gets the same one. */
-    fun colorFor(id: String): Int = PALETTE[(digest(id)[0].code and 0x7f) % PALETTE.size]
+    /** The background of a picture-less sender's avatar: hsl(hue, 55%, 45%) as the app's Avatar draws it. */
+    fun colorFor(id: String): Int = hslColor(Timeline.hue(id).toFloat(), 0.55f, 0.45f)
+
+    /** hsl → opaque ARGB (pure arithmetic, so the unit tests need no Android graphics). */
+    fun hslColor(hue: Float, saturation: Float, lightness: Float): Int {
+        val chroma = (1 - abs(2 * lightness - 1)) * saturation
+        val h = hue / 60f
+        val x = chroma * (1 - abs(h % 2 - 1))
+        val (r, g, b) = when {
+            h < 1 -> Triple(chroma, x, 0f)
+            h < 2 -> Triple(x, chroma, 0f)
+            h < 3 -> Triple(0f, chroma, x)
+            h < 4 -> Triple(0f, x, chroma)
+            h < 5 -> Triple(x, 0f, chroma)
+            else -> Triple(chroma, 0f, x)
+        }
+        val m = lightness - chroma / 2
+        fun channel(v: Float) = ((v + m) * 255f).roundToInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (channel(r) shl 16) or (channel(g) shl 8) or channel(b)
+    }
 
     fun person(id: String, name: String, icon: IconCompat?): Person =
         Person.Builder().setKey(id).setName(name).setIcon(icon).build()
@@ -103,17 +118,13 @@ object ConversationStyle {
 
     private fun digest(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
-
-    private val PALETTE = listOf(
-        0xFF5B5BD6.toInt(), 0xFF2E7D32.toInt(), 0xFFC62828.toInt(), 0xFF00838F.toInt(),
-        0xFFEF6C00.toInt(), 0xFF6A1B9A.toInt(), 0xFF37474F.toInt(), 0xFFAD1457.toInt(),
-    )
 }
 
 /**
  * The senders' pictures for notifications: loaded with the workspace's own signed-in client (no credentials in the push),
  * kept on disk per picture version, shrunk to [ConversationStyle.AVATAR_PX] and cut to a circle. A missing picture, an
- * error or a slow server (over [TIMEOUT_MS]) gives the initials instead; the notification never waits longer.
+ * error or a slow server (over [TIMEOUT_MS]) gives the sender's default avatar instead (their initials on their colour, as
+ * in the app: PUSH_NOTIFICATIONS.md §16.1); the notification never waits longer.
  */
 class NotificationAvatars(context: Context) {
     private val dir = File(context.cacheDir, "notification-avatars")
@@ -171,7 +182,8 @@ class NotificationAvatars(context: Context) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textAlign = Paint.Align.CENTER
-            textSize = side * (if (text.length > 1) 0.38f else 0.46f)
+            textSize = side * 0.42f  // as the app's Avatar (bold, 42% of the side)
+            typeface = Typeface.DEFAULT_BOLD
         }
         val y = side / 2f - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText(text, side / 2f, y, paint)

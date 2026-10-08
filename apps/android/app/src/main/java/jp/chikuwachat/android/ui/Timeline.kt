@@ -80,18 +80,19 @@ object Timeline {
         return if (day.year == today.year) md else L10n.str(R.string.timeline_date_with_year, day.year, md)
     }
 
-    /** 「Toru Kano」→ TK, 「かのう」→ か. */
+    /** 「Toru Kano」→ TK, 「かのう」→ か: the rule every client shares (apps/shared/avatar-initials.json). */
     fun initials(name: String): String {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return "?"
-        val words = trimmed.split(Regex("\\s+"))
-        if (words.size >= 2 && words[0].first().isLetter() && words[0].first().code < 128 && words[1].first().code < 128) {
+        val words = trimmed.split(Regex("[\\s\\u3000]+"))
+        fun asciiLetter(c: Char) = c.code < 128 && c.isLetter()
+        if (words.size >= 2 && asciiLetter(words[0].first()) && asciiLetter(words[1].first())) {
             return (words[0].take(1) + words[1].take(1)).uppercase()
         }
         return trimmed.codePointAt(0).let { String(Character.toChars(it)) }.uppercase()
     }
 
-    /** Stable hue (0-359) per user id. */
+    /** Stable hue (0-359) per user id; the avatar's colour is hsl(hue, 55%, 45%). */
     fun hue(id: String): Int {
         var hash = 0L
         for (ch in id) hash = (hash * 31 + ch.code) and 0xffffffffL
