@@ -110,7 +110,7 @@ final class MainNavigationTests: XCTestCase {
         var all: [String] { lock.lock(); defer { lock.unlock() }; return paths }
     }
 
-    /// An activity (or mentions, saved, Times) row of a reply: one push of the conversation and its thread; Back goes to
+    /// A mentions, saved or Times row of a reply: one push of the conversation and its thread; Back goes to
     /// the conversation, then to the list.
     func testARevealedReplyPushesItsConversationAndThreadAtOnce() {
         var nav = navigation(.tabs)
@@ -129,6 +129,34 @@ final class MainNavigationTests: XCTestCase {
         split.show("general", parentId: "p1", on: .home)
         XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
         XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+    }
+
+    /// An activity row of a reply (2026-10-09): the thread alone over the activity, Back returns to the activity in one
+    /// step (as from 「スレッド」); a top-level message still opens its conversation; the split keeps the pane.
+    func testAnActivityReplyPushesItsThreadAloneOverTheActivity() {
+        var nav = navigation(.tabs)
+        nav.tab = .activity
+        nav.showFromActivity("general", parentId: "p1", on: .activity)
+        XCTAssertEqual(nav.paths[.activity], [.thread(channelId: "general", parentId: "p1")])
+        XCTAssertEqual(nav.frontChannelId, "general")
+        nav.back()
+        XCTAssertEqual(nav.paths[.activity], [])
+        nav.showFromActivity("random", parentId: nil, on: .activity)
+        XCTAssertEqual(nav.paths[.activity], [.channel("random")])
+
+        var split = navigation(.split)
+        split.select(.list(MainNavigation.activityId))
+        split.showFromActivity("general", parentId: "p1", on: .activity)
+        XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
+        XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+
+        // Wider (an iPad's window): the thread goes to its conversation's pane.
+        var wider = navigation(.tabs)
+        wider.tab = .activity
+        wider.showFromActivity("general", parentId: "p1", on: .activity)
+        wider.setLayout(.split, isDm: isDm)
+        XCTAssertEqual(wider.split, [.list(MainNavigation.activityId), .channel("general")])
+        XCTAssertEqual(wider.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
     }
 
     func testAThreadScreenGoesToThePaneInTheSplitAndLeavesWithItsConversation() {
