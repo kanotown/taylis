@@ -418,6 +418,9 @@ class SyncEngine(
     private var outboxFailures = 0
     private var reconnectAttempt = 0
     private val pendingReads = HashMap<String, Job>()
+    /** §10.6: channels whose counts are being read again; true when another refetch was asked meanwhile. */
+    private val countRefetches = HashMap<String, Boolean>()
+    private val countRefetchJobs = HashMap<String, Job>()
     /** Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10). */
     private val unreadHold = HashMap<String, Int>()
     fun heldUnread(channelId: String): Int? = unreadHold[channelId]
@@ -495,6 +498,9 @@ class SyncEngine(
         activityRefresh = null
         outboxRetry?.cancel()
         outboxRetry = null
+        countRefetchJobs.values.forEach { it.cancel() }
+        countRefetchJobs.clear()
+        countRefetches.clear()
         closeSocket()
         _status.value = EngineStatus.IDLE
     }
@@ -1017,8 +1023,10 @@ class SyncEngine(
                 // refreshed from the server shortly after, which also covers threads we do not hold.
                 store.applyThreadState(withFloor(Codec.snake.decodeFromJsonElement(ThreadState.serializer(), frame.data)))
                 scheduleThreadRefresh()
-                // MOBILE_UI.md §6.4: replies and mentions read in the thread no longer count in the activity badge.
-                if (frame.data.str("reason") == "read") scheduleActivityRefresh()
+                // MOBILE_UI.md §6.4: replies and mentions read in the thread no longer count in the activity badge, nor one
+                // deleted (§10.6; the ThreadState above already leaves it out of the thread's own counts).
+                val reason = frame.data.str("reason")
+                if (reason == "read" || reason == "deleted") scheduleActivityRefresh()
             }
             "channel.created", "channel.updated" -> {
                 val channel = Codec.snake.decodeFromJsonElement(ChannelOut.serializer(), frame.data["channel"] ?: return)
@@ -1145,6 +1153,9 @@ class SyncEngine(
         val message = Codec.snake.decodeFromJsonElement(MessageOut.serializer(), frame.data["message"]?.jsonObject ?: return)
         val thread = (frame.data["parent_thread"] as? JsonObject)?.let { Codec.snake.decodeFromJsonElement(ParentThread.serializer(), it) }
         val isNew = frame.event == "message.created"
+        // §10.6: a deletion takes itself off the counts, before its tombstone replaces the held row (whether it mentioned me
+        // is known from that row only) and before the channel's last seq moves past it.
+        if (frame.event == "message.deleted") uncountDeleted(channel, seq, message)
         // M141 (§7.9): a new timeline row opens a closed conversation again (the server counts it open without a write).
         if (isNew && (message.parentId == null || message.alsoInChannel)) store.setDmClosed(channelId, false)
         emitTimeline(channelId, TimelineEvent(frame.event, message, thread))
@@ -1240,6 +1251,78 @@ class SyncEngine(
                 firstUnreadAt = if (channel.unreadCount == 0) message.createdAt else channel.firstUnreadAt,
             )
         }
+    }
+
+    /**
+     * §10.6 (2026-10-09: a DM or a mention deleted before it was read kept its red badge, and tapping it showed nothing):
+     * the counts drop at once, by the shared rule (ReadGate.countsAfterDelete); what this device cannot tell (a mention it
+     * does not hold, the first unread gone) it asks the server. The activity badge is the server's, read again.
+     */
+    private fun uncountDeleted(channel: ChannelState, eventSeq: Int, message: MessageOut) {
+        val me = store.me ?: return
+        if (!channel.isMember || message.senderId == me.id) return
+        val row = store.message(channel.id, message.id)
+        val held = row?.let { ReadGate.HeldRow(it.deleted, it.mentionAll || me.id in it.mentionedUserIds || hitsKeyword(it.body, me.notifyKeywords)) }
+        val next = ReadGate.countsAfterDelete(
+            channel.lastReadSeq, channel.lastSeq, channel.unreadCount, channel.mentionCount, channel.firstUnreadAt, eventSeq, message, held, me.id,
+        )
+        if (next.unread != channel.unreadCount || next.mentions != channel.mentionCount || next.firstUnreadAt != channel.firstUnreadAt) {
+            store.updateChannel(channel.id) { it.copy(unreadCount = next.unread, mentionCount = next.mentions, firstUnreadAt = next.firstUnreadAt) }
+            if (next.unread == 0) onRead?.invoke(channel.id) // its notification and the badge follow, as with a read state of 0
+        }
+        if (next.refetch) refetchCounts(channel.id, upTo = eventSeq) // the channel's last seq moves to the deletion right after
+        // MOBILE_UI.md §6.4: a mention of me or a reply in a thread I follow leaves the activity badge (the server's count).
+        val following = message.parentId?.let { store.threads[it]?.state?.following } == true
+        if (eventSeq > channel.lastSeq && (row == null || held?.mentionsMe == true || following)) scheduleActivityRefresh()
+    }
+
+    /**
+     * §10.6: the conversation's counts from the server, taken like read.updated (PUT /read {last_read_seq: 0} moves
+     * nothing and answers the read state). One request per channel at a time; a change that came meanwhile (a row
+     * counted on top of what the answer may already hold) asks once more, at most twice. `upTo`: a seq the channel's last
+     * seq is about to take (the deletion being applied), so its own move is not taken for a change. Runs on the work queue.
+     */
+    private fun refetchCounts(channelId: String, upTo: Int = 0, attempt: Int = 0) {
+        if (countRefetches.containsKey(channelId)) {
+            countRefetches[channelId] = true
+            return
+        }
+        if (_status.value != EngineStatus.ONLINE) return // the next bootstrap brings them
+        countRefetches[channelId] = false
+        val before = maxOf(store.channel(channelId)?.lastSeq ?: 0, upTo)
+        countRefetchJobs[channelId] = scope.launch {
+            val state = try {
+                api.markRead(channelId, 0)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("SyncEngine", "could not read the unread counts again; the next bootstrap brings them", e)
+                null
+            }
+            post {
+                countRefetchJobs.remove(channelId)
+                val again = countRefetches.remove(channelId) == true || store.channel(channelId)?.lastSeq != before
+                if (state == null || store.channel(channelId) == null) return@post
+                applyReadState(channelId, state)
+                if (again && attempt < 2) refetchCounts(channelId, attempt = attempt + 1)
+            }
+        }
+    }
+
+    /**
+     * §10.6: a conversation opened with a count that no held row backs (its unread rows were deleted and the counts
+     * missed it: a store persisted by an older build, a lost event) would keep its badge with nothing to read, and no row
+     * on screen could move the position. While every row after the read position is held, fewer held unread rows than
+     * counted asks the server for the counts (the position stays where it is, §10).
+     */
+    private fun settleStaleUnread(channelId: String) {
+        val channel = store.channel(channelId) ?: return
+        if (channel.unreadCount == 0 || !ReadGate.caughtUp(channel) || !ReadGate.covers(channel.oldestLoadedSeq, channel.lastReadSeq)) return
+        // A read of this device waiting or on its way moved the position at once; its counts come with the answer.
+        if (channel.unsentReadSeq != null || pendingReads[channelId]?.isActive == true) return
+        val meId = store.me?.id
+        val held = store.messages(channelId).count { it.seq != null && it.seq > channel.lastReadSeq && ReadGate.countsAsUnread(it, meId) }
+        if (held < channel.unreadCount) refetchCounts(channelId)
     }
 
     private fun applyReadState(channelId: String, state: ReadStateOut, allowDecrease: Boolean = false) {
@@ -1367,6 +1450,7 @@ class SyncEngine(
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
             if (channel.syncedSeq == null || channel.syncedSeq < channel.lastSeq) catchUp(channelId)
+            settleStaleUnread(channelId)
             // Only the visible timeline advances read state.
         }
     }
@@ -1476,6 +1560,7 @@ class SyncEngine(
     /** Waits for debounced read marks (tests). */
     suspend fun flushReads() {
         pendingReads.values.toList().forEach { it.join() }
+        countRefetchJobs.values.toList().forEach { it.join() }
         idle()
     }
 
@@ -1646,6 +1731,15 @@ class SyncEngine(
         } finally {
             val synced = store.channel(channelId)?.syncedSeq ?: counted
             brought.values.filter { it.seq > counted && it.seq <= synced }.sortedBy { it.seq }.forEach { countAsUnread(it) }
+            // §10.6: a counted row deleted while the events were lost came back as a tombstone; whether it mentioned me went
+            // with its body, so the server says what is left.
+            val after = store.channel(channelId)
+            val meId = store.me?.id
+            val uncounted = brought.values.any {
+                it.deleted && it.seq <= counted && it.updatedSeq > counted && it.seq > (after?.lastReadSeq ?: channel.lastReadSeq) &&
+                    ReadGate.countableRow(it.senderId, it.type, it.parentId, it.alsoInChannel, meId)
+            }
+            if (uncounted && (after?.unreadCount ?: 0) > 0) refetchCounts(channelId)
         }
     }
 

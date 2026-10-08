@@ -1,5 +1,7 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.MessageOut
+
 /**
  * SYNC_PROTOCOL.md §10.1 / §10.2 (M17): visible-range reads only once every unread row is held and the first one
  * has been on screen, so opening a conversation never reads past messages this device never loaded. The same pure
@@ -114,6 +116,47 @@ object ReadGate {
      */
     fun nextSeenSeq(seenSeq: Int, settled: Boolean, atBottom: Boolean, newestSeq: Int): Int =
         if (settled && atBottom && newestSeq > seenSeq) newestSeq else seenSeq
+
+    /**
+     * §10.1 rule 12: a row the server counts as unread: someone else's "user" row in the timeline (top-level, or a reply
+     * also sent to the channel), and not a tombstone (a message posted and deleted while a catch-up's gap was open).
+     */
+    fun countsAsUnread(message: MessageState, meId: String?): Boolean =
+        !message.deleted && countableRow(message.senderId, message.type, message.parentId, message.alsoInChannel, meId)
+
+    /** The kind of row the server counts, alive or not. */
+    fun countableRow(senderId: String, type: String, parentId: String?, alsoInChannel: Boolean, meId: String?): Boolean =
+        senderId != meId && type == "user" && (parentId == null || alsoInChannel)
+
+    /** A conversation's counts as held, and what a deletion leaves of them (SYNC_PROTOCOL.md §10.6). */
+    data class DeleteCounts(
+        val unread: Int, val mentions: Int, val firstUnreadAt: String?,
+        /** The counts cannot be told here: ask the server (PUT /channels/{id}/read {last_read_seq: 0}). */
+        val refetch: Boolean,
+    )
+
+    /** The row this device holds for a deleted message before its tombstone: already deleted, and whether it mentions me (live rule). */
+    data class HeldRow(val deleted: Boolean, val mentionsMe: Boolean)
+
+    /**
+     * §10.6 (2026-10-09, a DM or a mention deleted before it was read kept its badge): what a message.deleted takes off the
+     * conversation's counts, before the tombstone replaces the held row. `countedTo` is the channel's last seq before the
+     * event (the counts cover every change up to it); `held` the row this device holds (null: not held). The vectors are
+     * apps/shared/unread-delete-rules.json, shared with Desktop / Web and iOS.
+     */
+    fun countsAfterDelete(
+        lastReadSeq: Int, countedTo: Int, unread: Int, mentions: Int, firstUnreadAt: String?,
+        eventSeq: Int, message: MessageOut, held: HeldRow?, meId: String?,
+    ): DeleteCounts {
+        val same = DeleteCounts(unread, mentions, firstUnreadAt, refetch = false)
+        if (eventSeq <= countedTo || !countableRow(message.senderId, message.type, message.parentId, message.alsoInChannel, meId) ||
+            message.seq <= lastReadSeq || held?.deleted == true || unread <= 0) return same
+        val left = unread - 1
+        if (left == 0) return DeleteCounts(0, 0, null, refetch = false)
+        val mentionsLeft = if (held != null) maxOf(0, mentions - if (held.mentionsMe) 1 else 0) else mentions
+        val refetch = (held == null && mentions > 0) || firstUnreadAt == message.createdAt
+        return DeleteCounts(left, mentionsLeft, firstUnreadAt, refetch)
+    }
 
     /** One pass of the visible-range read: the view's new `anchored`, and the seq to mark (null = nothing). */
     data class ReadStep(val anchored: Boolean, val markSeq: Int?)
