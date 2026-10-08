@@ -76,6 +76,7 @@
     <string name="app_controller_status_updated">ステータスを更新しました</string>
     <string name="app_controller_templates">" · テンプレート："</string>
     <string name="app_controller_text_copied">テキストをコピーしました</string>
+    <string name="common_copied">コピーしました</string>
     <string name="app_controller_text_copied_2">本文をコピーしました</string>
     <string name="app_controller_the_destination_channel">送り先のチャンネル</string>
     <string name="app_controller_the_file_is_too_large_limit">ファイルが大きすぎます（上限 %1$s）</string>

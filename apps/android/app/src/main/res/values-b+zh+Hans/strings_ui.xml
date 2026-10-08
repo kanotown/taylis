@@ -76,6 +76,7 @@
     <string name="app_controller_status_updated">已更新状态</string>
     <string name="app_controller_templates">" · 模板："</string>
     <string name="app_controller_text_copied">已复制文本</string>
+    <string name="common_copied">已复制</string>
     <string name="app_controller_text_copied_2">已复制正文</string>
     <string name="app_controller_the_destination_channel">目标频道</string>
     <string name="app_controller_the_file_is_too_large_limit">文件过大 (上限 %1$s)</string>
