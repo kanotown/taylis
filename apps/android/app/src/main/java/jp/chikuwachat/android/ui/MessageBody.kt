@@ -425,6 +425,10 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
         is BodyBlock.Image -> Text("🖼 " + block.alt.ifEmpty { stringResource(R.string.common_image) }, style = MaterialTheme.typography.bodyMedium, color = muted)
         BodyBlock.Rule -> HorizontalDivider(Modifier.padding(vertical = 8.dp))
         is BodyBlock.Math -> MathBlockView(block.tex)
+        // M149: the canvas dialect only (messages keep `:::` as text); CanvasBody draws them with ticking boxes and rows.
+        is BodyBlock.Callout -> CalloutBox(block, inline) { BodyBlockView(it, inline) }
+        is BodyBlock.Toggle -> ToggleBox(block, inline) { BodyBlockView(it, inline) }
+        is BodyBlock.Embed -> EmbedLine(block)
     }
 }
 

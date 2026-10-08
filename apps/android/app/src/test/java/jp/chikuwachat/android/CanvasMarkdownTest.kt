@@ -3,7 +3,9 @@ package jp.chikuwachat.android
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.ui.BodyBlock
 import jp.chikuwachat.android.ui.CanvasSections
+import jp.chikuwachat.android.ui.CalloutTone
 import jp.chikuwachat.android.ui.CanvasText
+import jp.chikuwachat.android.ui.calloutTone
 import jp.chikuwachat.android.ui.parseBlocks
 import jp.chikuwachat.android.ui.visibleText
 import kotlinx.serialization.json.JsonArray
@@ -54,6 +56,40 @@ class CanvasMarkdownTest {
         is BodyBlock.CodeBlock -> buildJsonObject { put("kind", "codeblock"); put("text", block.text) }
         is BodyBlock.Quote -> buildJsonObject { put("kind", "quote") }
         is BodyBlock.Table -> buildJsonObject { put("kind", "table") }
+        // M149 (`containers`): callouts, toggles and embedded databases.
+        is BodyBlock.Callout -> buildJsonObject {
+            put("kind", "callout"); put("icon", block.icon); put("tone", block.tone.key)
+            put("blocks", JsonArray(block.blocks.map(::describe)))
+        }
+        is BodyBlock.Toggle -> buildJsonObject { put("kind", "toggle"); put("title", visibleText(block.title)); put("blocks", JsonArray(block.blocks.map(::describe))) }
+        is BodyBlock.Embed -> buildJsonObject { put("kind", "embed"); put("label", block.label); put("page_id", block.pageId); put("view_id", block.viewId); put("line", block.line) }
+    }
+
+    @Test
+    fun calloutsTogglesAndEmbedsAreTheSharedOnes() {
+        val cases = fixture["containers"]!!.jsonObject["cases"]!!.jsonArray
+        check(cases.size >= 15)
+        for (case in cases.map { it.jsonObject }) {
+            val name = case["name"]!!.jsonPrimitive.content
+            val canvas = case["canvas"]?.jsonPrimitive?.boolean ?: true
+            val got = JsonArray(parseBlocks(case["body"]!!.jsonPrimitive.content, canvas = canvas).map(::describe))
+            assertEquals(name, case["blocks"]!!, got)
+        }
+    }
+
+    @Test
+    fun aCalloutsToneIsItsIcons() {
+        val tones = fixture["containers"]!!.jsonObject["tones"]!!.jsonObject
+        for ((tone, icons) in tones) {
+            for (icon in icons.jsonArray.map { it.jsonPrimitive.content }) {
+                assertEquals(icon, tone, calloutTone(icon).key)
+                assertEquals("$icon + U+FE0F", tone, calloutTone(icon + "️").key)
+            }
+        }
+        // Everything else is gray: no icon, a custom emoji, a word, an emoji not in the table.
+        for (icon in listOf(null, ":chikuwa:", "注意", "🍤")) assertEquals(icon.toString(), "gray", calloutTone(icon).key)
+        // Every tone but gray has its icons in the table, and the table names no other tone.
+        assertEquals(CalloutTone.entries.map { it.key }.filter { it != "gray" }.toSet(), tones.keys)
     }
 
     @Test
@@ -128,6 +164,33 @@ class CanvasMarkdownTest {
         assertEquals(CanvasText.Edit("", 0), CanvasText.continueStructure(CanvasText.Edit("- [ ] ", 6)))
         assertEquals(CanvasText.Edit("1. a\n2. ", 8), CanvasText.continueStructure(CanvasText.Edit("1. a", 4)))
         assertNull(CanvasText.continueStructure(CanvasText.Edit("本文", 2)))
+    }
+
+    @Test
+    fun calloutAndToggleFromTheToolbar() {
+        // Nothing selected on a written line: the callout goes on lines of its own after it, the caret on its empty line.
+        val c = CanvasText.insertCallout(CanvasText.Edit("前\n後", 1))
+        assertEquals("前\n::: callout 💡\n\n:::\n後", c.text)
+        assertEquals("前\n::: callout 💡\n".length, c.start)
+        assertEquals(c.start, c.end)
+        // On a blank line: that line becomes it.
+        assertEquals(CanvasText.Edit("a\n::: callout 💡\n\n:::\nb", "a\n::: callout 💡\n".length), CanvasText.insertCallout(CanvasText.Edit("a\n\nb", 2)))
+        // An empty body.
+        assertEquals(CanvasText.Edit("::: callout 💡\n\n:::", "::: callout 💡\n".length), CanvasText.insertCallout(CanvasText.Edit("", 0)))
+        // Selected lines go inside (whole lines), the caret at their end.
+        val wrapped = CanvasText.insertCallout(CanvasText.Edit("前\n一行目\n二行目\n後", 3, 8))
+        assertEquals("前\n::: callout 💡\n一行目\n二行目\n:::\n後", wrapped.text)
+        assertEquals("前\n::: callout 💡\n一行目\n二行目".length, wrapped.start)
+        // A toggle: the caret after "toggle " for its title.
+        val t = CanvasText.insertToggle(CanvasText.Edit("本文", 2))
+        assertEquals("本文\n::: toggle \n\n:::", t.text)
+        assertEquals("本文\n::: toggle ".length, t.start)
+        val tw = CanvasText.insertToggle(CanvasText.Edit("詳細\n- [ ] a", 0, 2))
+        assertEquals("::: toggle \n詳細\n:::\n- [ ] a", tw.text)
+        assertEquals("::: toggle ".length, tw.start)
+        // What they insert reads back as a callout and a toggle (the toggle's title empty until typed).
+        assertEquals(listOf(BodyBlock.Paragraph::class, BodyBlock.Callout::class, BodyBlock.Paragraph::class), parseBlocks(wrapped.text, canvas = true).map { it::class })
+        assertEquals(listOf(BodyBlock.Paragraph::class, BodyBlock.Toggle::class), parseBlocks(t.text, canvas = true).map { it::class })
     }
 
     @Test

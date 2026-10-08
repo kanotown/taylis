@@ -55,6 +55,9 @@ class MathTest {
             is BodyBlock.Tasks -> listOf("task")
             is BodyBlock.Image -> listOf("image")
             BodyBlock.Rule -> listOf("hr")
+            is BodyBlock.Callout -> listOf("callout")
+            is BodyBlock.Toggle -> listOf("toggle")
+            is BodyBlock.Embed -> listOf("embed")
         }.map { JsonPrimitive(it) },
     )
 

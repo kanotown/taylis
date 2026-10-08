@@ -28,6 +28,8 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -439,8 +441,16 @@ private fun CanvasEditing(controller: AppController, canvasId: String, modifier:
 
 /** The list item of the heading on `line` (the title row comes first). */
 internal suspend fun scrollToHeading(state: LazyListState, text: String, line: Int) {
-    val index = parseBlocks(text, canvas = true).indexOfFirst { it is BodyBlock.Heading && it.line == line }
+    val index = parseBlocks(text, canvas = true).indexOfFirst { holdsHeading(it, line) }
     if (index >= 0) state.animateScrollToItem(index + 1)
+}
+
+/** The heading on `line`, or (M149) a callout or toggle with it inside: the outline scrolls to the container. */
+private fun holdsHeading(block: BodyBlock, line: Int): Boolean = when (block) {
+    is BodyBlock.Heading -> block.line == line
+    is BodyBlock.Callout -> block.blocks.any { holdsHeading(it, line) }
+    is BodyBlock.Toggle -> block.blocks.any { holdsHeading(it, line) }
+    else -> false
 }
 
 @Composable
@@ -949,7 +959,7 @@ private val TABLE_EDIT_SAVER = Saver<TableEditState?, String>(
     restore = { runCatching { jp.chikuwachat.android.api.Codec.plain.decodeFromString(TableEditState.serializer(), it) }.getOrNull() },
 )
 
-/** 見出し, 太字, 箇条書き, 番号, チェックリスト, 引用, リンク, 画像, メンション, 区切り線, 表 (the desktop's toolbar, for a thumb). */
+/** 見出し, 太字, 箇条書き, チェックリスト, コールアウト, トグル (M149), 番号, 引用, リンク, 画像, メンション, 区切り線, 表 (the desktop's toolbar, for a thumb). */
 @Composable
 private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit, onTable: () -> Unit, onPhotos: () -> Unit, onCamera: (() -> Unit)?) {
     var headingMenu by remember { mutableStateOf(false) }
@@ -966,6 +976,9 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit,
         IconButton(onClick = { apply { CanvasText.toggleWrap(it, "**") } }) { Icon(Icons.Outlined.FormatBold, contentDescription = stringResource(R.string.common_bold)) }
         IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "- ") } }) { Icon(Icons.AutoMirrored.Outlined.FormatListBulleted, contentDescription = stringResource(R.string.common_bulleted_list)) }
         IconButton(onClick = { apply { CanvasText.toggleTasks(it) } }) { Icon(Icons.Outlined.Checklist, contentDescription = stringResource(R.string.canvas_pane_checklist)) }
+        // M149 (WIKI.md §22.7): a callout and a toggle around the selected lines (or empty, the caret inside).
+        IconButton(onClick = { apply { CanvasText.insertCallout(it) } }) { Icon(Icons.Outlined.Lightbulb, contentDescription = stringResource(R.string.docs_block_callout)) }
+        IconButton(onClick = { apply { CanvasText.insertToggle(it) } }) { Icon(Icons.Outlined.UnfoldMore, contentDescription = stringResource(R.string.docs_block_toggle)) }
         IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "1. ") } }) { Icon(Icons.Outlined.FormatListNumbered, contentDescription = stringResource(R.string.common_numbered_list)) }
         IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "> ") } }) { Icon(Icons.Outlined.FormatQuote, contentDescription = stringResource(R.string.common_quote)) }
         IconButton(onClick = { apply { CanvasText.insertLink(it) } }) { Icon(Icons.Outlined.Link, contentDescription = stringResource(R.string.common_link)) }

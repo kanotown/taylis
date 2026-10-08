@@ -33,6 +33,9 @@ class ListsTest {
         is BodyBlock.Image -> "image"
         BodyBlock.Rule -> "hr"
         is BodyBlock.Math -> "math"
+        is BodyBlock.Callout -> "callout"
+        is BodyBlock.Toggle -> "toggle"
+        is BodyBlock.Embed -> "embed"
     }
 
     @Test

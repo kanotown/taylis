@@ -204,6 +204,38 @@ object CanvasText {
         return Edit(before + inserted + rest, caret)
     }
 
+    /** M149 (WIKI.md §22.7): 「コールアウト」 — `::: callout 💡` / the selected lines (or an empty line) / `:::`, the caret inside. */
+    fun insertCallout(state: Edit, icon: String = "💡"): Edit = insertContainer(state, "::: callout $icon", caretOnOpener = false)
+
+    /** M149: 「トグル」 — `::: toggle ` / the selected lines (or an empty line) / `:::`, the caret where its title goes. */
+    fun insertToggle(state: Edit): Edit = insertContainer(state, "::: toggle ", caretOnOpener = true)
+
+    /**
+     * A container (BodyTokenizer CONTAINER_OPEN) on lines of its own: around the selected lines, else (nothing selected) on
+     * the caret's line when it is blank or after it, with an empty line inside. The caret goes to the end of the opener
+     * (`caretOnOpener`, a toggle's title) or of the inner lines.
+     */
+    private fun insertContainer(state: Edit, opener: String, caretOnOpener: Boolean): Edit {
+        val text = state.text
+        val start = state.start.coerceIn(0, text.length)
+        val end = state.end.coerceIn(start, text.length)
+        if (end > start) {
+            val (lineStart, lineEnd) = lineSpan(Edit(text, start, end))
+            val inner = text.substring(lineStart, lineEnd)
+            val caret = lineStart + opener.length + if (caretOnOpener) 0 else 1 + inner.length
+            return Edit(text.substring(0, lineStart) + opener + "\n" + inner + "\n:::" + text.substring(lineEnd), caret)
+        }
+        val lineStart = text.lastIndexOf('\n', start - 1) + 1
+        val lineEnd = text.indexOf('\n', start).let { if (it == -1) text.length else it }
+        val block = "$opener\n\n:::"
+        val (out, at) = if (text.substring(lineStart, lineEnd).isBlank()) {
+            text.substring(0, lineStart) + block + text.substring(lineEnd) to lineStart
+        } else {
+            text.substring(0, lineEnd) + "\n" + block + text.substring(lineEnd) to lineEnd + 1
+        }
+        return Edit(out, at + opener.length + if (caretOnOpener) 0 else 1)
+    }
+
     private val TASK_ITEM = Regex("""^(\s*)([-*]) \[[ xX]\](?: (.*))?$""")
     private val LIST_LINE = Regex("""^(\s*)(?:([-*•])|(\d{1,3})\.)\s(.*)$""")
     private val QUOTE_LINE = Regex("""^(>\s?)(.*)$""")
