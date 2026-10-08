@@ -870,6 +870,7 @@
     <string name="main_screen_choose_a_channel_from_the_list">Choose a channel from the list on the left</string>
     <string name="main_screen_choose_a_dm_from_the_list">Choose a DM from the list on the left</string>
     <string name="main_screen_close_thread">Close thread</string>
+    <string name="main_screen_open_conversation">Open %1$s</string>
     <string name="main_screen_connecting_to_the_server">Connecting to the server…</string>
     <string name="main_screen_details">Details</string>
     <string name="main_screen_follow">Follow</string>

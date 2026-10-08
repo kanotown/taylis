@@ -866,6 +866,7 @@
     <string name="main_screen_choose_a_channel_from_the_list">左の一覧からチャンネルを選んでください</string>
     <string name="main_screen_choose_a_dm_from_the_list">左の一覧から DM を選んでください</string>
     <string name="main_screen_close_thread">スレッドを閉じる</string>
+    <string name="main_screen_open_conversation">%1$s を開く</string>
     <string name="main_screen_connecting_to_the_server">サーバに接続しています…</string>
     <string name="main_screen_details">詳細</string>
     <string name="main_screen_follow">フォロー</string>
