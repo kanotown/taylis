@@ -915,7 +915,10 @@ final class AppController {
 
     // MARK: custom emoji (M12f)
 
-    private var emojiLoads: Set<String> = []
+    /// The images being fetched. Not observed: `loadEmojiImage` runs inside a view's body (`CustomEmoji.text`'s
+    /// `onNeed`), and a tracked write there invalidated the view being drawn, an AttributeGraph abort opening the
+    /// threads list (TestFlight build 109, 2026-10-08).
+    @ObservationIgnored private var emojiLoads: Set<String> = []
 
     /// M100: text emoji pills follow the app's light / dark look (RootView reports it through `appearanceChanged`).
     /// A change swaps the cached pills for the other look at once (both looks are drawn once and kept, see

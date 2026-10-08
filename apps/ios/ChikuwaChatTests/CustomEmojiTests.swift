@@ -180,6 +180,25 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertEqual(pillBackground(try XCTUnwrap(controller.store.emojiImages["t1"])), light)
     }
 
+    /// 2026-10-08 (TestFlight build 109): opening the threads list crashed once in AttributeGraph. `onNeed` runs inside
+    /// a view's body (`CustomEmoji.text`), and `loadEmojiImage` read and wrote the controller's in-flight set there:
+    /// the set was observation-tracked, so the write invalidated the very view being drawn. The set is bookkeeping only
+    /// and must not be observed; a body asking for a second image must not invalidate one that asked for the first.
+    @MainActor
+    func testAskingForAnEmojiImageInvalidatesNoView() throws {
+        func emoji(_ id: String) throws -> CustomEmojiOut {
+            let json = #"{"id":"\#(id)","name":"\#(id)","kind":"text","label":"ok","color":"green","content_type":"","width":0,"height":0,"created_by":"u","created_at":""}"#
+            return try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(json.utf8))
+        }
+        let first = try emoji("e1"), second = try emoji("e2")
+        let controller = AppController()
+        controller.store.customEmoji = ["e1": first, "e2": second]
+        var invalidated = false
+        withObservationTracking { controller.loadEmojiImage(first) } onChange: { invalidated = true }
+        controller.loadEmojiImage(second) // another row's body, before the deferred pills are drawn
+        XCTAssertFalse(invalidated)
+    }
+
     /// M101 (docs/EMOJI.md §7): the emoji-only rule's tables and cases shared with the web and Android.
     func testEmojiOnlyFollowsTheSharedCases() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
