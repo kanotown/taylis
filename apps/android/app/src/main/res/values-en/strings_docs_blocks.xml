@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M149 (docs/WIKI.md §22.5, §22.7): callouts, toggles and embedded databases. -->
+<resources>
+    <string name="docs_block_callout">Callout</string>
+    <string name="docs_block_toggle">Toggle</string>
+    <string name="docs_block_view_board">Board</string>
+    <string name="docs_block_view_list">List</string>
+    <string name="docs_block_view_gallery">Gallery</string>
+    <string name="docs_block_embedded_database">Embedded database</string>
+    <string name="docs_block_loading_database">Loading database</string>
+</resources>

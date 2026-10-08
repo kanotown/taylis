@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M149 (docs/WIKI.md §22.5, §22.7): callouts, toggles and embedded databases. -->
+<resources>
+    <string name="docs_block_callout">标注</string>
+    <string name="docs_block_toggle">折叠块</string>
+    <string name="docs_block_view_board">看板</string>
+    <string name="docs_block_view_list">列表</string>
+    <string name="docs_block_view_gallery">画廊</string>
+    <string name="docs_block_embedded_database">嵌入的数据库</string>
+    <string name="docs_block_loading_database">正在加载数据库</string>
+</resources>

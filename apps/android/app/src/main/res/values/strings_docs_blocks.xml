@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M149 (docs/WIKI.md §22.5, §22.7): callouts, toggles and embedded databases. Japanese, the default; values-en / values-b+zh+Hans translate it. -->
+<resources>
+    <string name="docs_block_callout">コールアウト</string>
+    <string name="docs_block_toggle">トグル</string>
+    <string name="docs_block_view_board">ボード</string>
+    <string name="docs_block_view_list">リスト</string>
+    <string name="docs_block_view_gallery">ギャラリー</string>
+    <string name="docs_block_embedded_database">埋め込まれたデータベース</string>
+    <string name="docs_block_loading_database">データベースを読み込み中</string>
+</resources>

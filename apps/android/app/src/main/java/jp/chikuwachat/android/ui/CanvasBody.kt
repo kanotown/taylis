@@ -132,6 +132,11 @@ fun CanvasBlockView(
                 }
             }
         }
+        // M149 (WIKI.md §22.5): what a container holds is drawn here too (boxes tick with their lines in the body, images
+        // load); a heading inside one offers no section editing (its section would run past the container's close).
+        is BodyBlock.Callout -> CalloutBox(block, inline) { CanvasBlockView(it, inline, controller, onToggle, null, onMakeTask) }
+        is BodyBlock.Toggle -> ToggleBox(block, inline) { CanvasBlockView(it, inline, controller, onToggle, null, onMakeTask) }
+        is BodyBlock.Embed -> EmbeddedDatabase(block, controller)
         else -> BodyBlockView(block, inline)
     }
 }

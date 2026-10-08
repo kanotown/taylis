@@ -14,7 +14,9 @@ import jp.chikuwachat.android.L10n
  * "*" too, two leading spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image
  * URLs stay text) and rules ("---" between blank lines). Messages keep showing all of these as text.
  * apps/shared/canvas_markdown.json holds the cases the three clients share (CanvasMarkdownTest). M83: the hidden task
- * markers (` <!--task:<id>-->`, CanvasMarkers.kt) are left out in the canvas dialect.
+ * markers (` <!--task:<id>-->`, CanvasMarkers.kt) are left out in the canvas dialect. M149 (WIKI.md §22.5): callouts
+ * (`::: callout 💡` … `:::`), toggles (`::: toggle 見出し` … `:::`) and embedded databases
+ * (`![label](page:<uuid>#view=<id>)`), the `containers` cases of the same file.
  */
 sealed class BodyToken {
     data class Text(val text: String) : BodyToken()
@@ -60,7 +62,39 @@ sealed class BodyBlock {
     data class Tasks(val items: List<BodyTaskItem>) : BodyBlock()
     data class Image(val alt: String, val attachmentId: String, val line: Int) : BodyBlock()
     data object Rule : BodyBlock()
+    /**
+     * M149 (WIKI.md §22.5, apps/shared/canvas_markdown.json `containers`): `::: callout [icon]` … `:::`, its content read
+     * as the top level. `line`: the opener's line in the body.
+     */
+    data class Callout(val icon: String?, val tone: CalloutTone, val blocks: List<BodyBlock>, val line: Int) : BodyBlock()
+    /** M149: `::: toggle [title]` … `:::` (open or closed per device, never in the body); `line`: the opener's. */
+    data class Toggle(val title: List<BodyToken>, val blocks: List<BodyBlock>, val line: Int) : BodyBlock()
+    /** M149: an embedded database `![label](page:<uuid>#view=<view id>)` on a line of its own (no view: the first). */
+    data class Embed(val label: String, val pageId: String, val viewId: String?, val line: Int) : BodyBlock()
 }
+
+/** A callout's tint (apps/shared/canvas_markdown.json `containers.tones`). */
+enum class CalloutTone(val key: String) { GRAY("gray"), YELLOW("yellow"), RED("red"), GREEN("green"), BLUE("blue") }
+
+private val TONES: Map<String, CalloutTone> = buildMap {
+    listOf("💡", "⚠", "⭐", "🔔", "✨").forEach { put(it, CalloutTone.YELLOW) }
+    listOf("❗", "‼", "🚨", "❌", "⛔", "🚫", "🔥").forEach { put(it, CalloutTone.RED) }
+    listOf("✅", "✔", "🌱", "👍", "🎉", "⭕").forEach { put(it, CalloutTone.GREEN) }
+    listOf("ℹ", "📝", "💬", "📌", "❓", "🔍", "📘").forEach { put(it, CalloutTone.BLUE) }
+}
+
+/** The tint of a callout with this icon: the icon without U+FE0F looked up; anything else (and none) is gray. */
+fun calloutTone(icon: String?): CalloutTone = icon?.let { TONES[it.replace("️", "")] } ?: CalloutTone.GRAY
+
+/** M149: a container's opener (`::: callout 💡`, `::: toggle 見出し`) and its close (`:::`). */
+val CONTAINER_OPEN = Regex("""^:::[ \t]*(callout|toggle)(?:[ \t]+(.*?))?[ \t]*$""")
+val CONTAINER_CLOSE = Regex("""^:::[ \t]*$""")
+
+/** Containers nest at most this deep (a toggle in a callout; WIKI.md §22.5). */
+const val CONTAINER_DEPTH = 2
+
+// The id is read in either case and kept in lower case; `#view=` names the view (none: the database's first).
+private val EMBED_LINE = Regex("""^!\[([^\]\n]*)\]\(page:([0-9a-fA-F-]{36})(?:#view=([A-Za-z0-9_-]{1,40}))?\)\s*$""")
 
 /** A task line, as the server counts it (server/app/modules/canvases/service.py TASK_LINE). */
 val TASK_LINE = Regex("""^([ \t]*)[-*] \[([ xX])\](?: (.*))?$""")
@@ -408,6 +442,15 @@ data class BlockSpan(val block: BodyBlock, val start: Int, val end: Int)
 fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
     // M83 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
     val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n").let { all -> if (canvas) all.map(CanvasMarkers::strip) else all }
+    return readBlocks(lines, 0, 0, canvas)
+}
+
+/**
+ * The blocks of `lines` from `begin` to their end. M149: a container's content is read by the same function over the
+ * lines up to its close (so nothing inside looks past it), from the line after its opener: every `line` stays the line
+ * in the whole body. `depth`: the containers around these lines.
+ */
+private fun readBlocks(lines: List<String>, begin: Int, depth: Int, canvas: Boolean): List<BlockSpan> {
     // M122: the canvas dialect reads `page:` and `attachment:` links too.
     val inlineOf: (String) -> List<BodyToken> = if (canvas) ::tokenizeDocInline else ::tokenizeInline
     fun blank(index: Int) = index < 0 || index >= lines.size || lines[index].isBlank()
@@ -419,10 +462,28 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
     // M15g: a header row with a pipe, directly followed by a separator with as many cells.
     fun opensTable(index: Int) = index + 1 < lines.size && '|' in lines[index] && TABLE_SEPARATOR.matches(lines[index + 1]) &&
         splitTableRow(lines[index]).size == splitTableRow(lines[index + 1]).size
+    fun isEmbed(index: Int) = canvas && EMBED_LINE.matches(lines[index])
+    // M149: a container's close, counting the openers and closes below it and skipping fenced code (-1: none).
+    fun containerCloseAfter(index: Int): Int {
+        var open = 1
+        var k = index + 1
+        while (k < lines.size) {
+            if (opensFence(k)) {
+                k = fenceCloseAfter(k) + 1
+                continue
+            }
+            if (CONTAINER_OPEN.matches(lines[k])) open++
+            else if (CONTAINER_CLOSE.matches(lines[k]) && --open == 0) return k
+            k++
+        }
+        return -1
+    }
+    fun opensContainer(index: Int) =
+        canvas && depth < CONTAINER_DEPTH && CONTAINER_OPEN.matches(lines[index]) && containerCloseAfter(index) != -1
     val blocks = ArrayList<BodyBlock>()
     val spans = ArrayList<BlockSpan>()
-    var i = 0
-    var start = 0
+    var i = begin
+    var start = begin
     /** The blocks added since the last call cover `start` until `i` (several only for a list split by kind). */
     fun close() {
         val added = blocks.subList(spans.size, blocks.size)
@@ -447,6 +508,24 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
             val close = fenceCloseAfter(i)
             blocks.add(BodyBlock.CodeBlock(straightQuotes(lines.subList(i + 1, close).joinToString("\n")), lang.ifEmpty { null }?.lowercase()))
             i = close + 1
+            continue
+        }
+        if (opensContainer(i)) {
+            val open = CONTAINER_OPEN.matchEntire(line)!!
+            val close = containerCloseAfter(i)
+            val inner = readBlocks(lines.subList(0, close), i + 1, depth + 1, canvas).map { it.block }
+            val rest = open.groups[2]?.value.orEmpty().trim().ifEmpty { null }
+            blocks.add(
+                if (open.groupValues[1] == "callout") BodyBlock.Callout(rest, calloutTone(rest), inner, i)
+                else BodyBlock.Toggle(inlineOf(rest.orEmpty()), inner, i),
+            )
+            i = close + 1
+            continue
+        }
+        if (isEmbed(i)) {
+            val m = EMBED_LINE.matchEntire(line)!!
+            blocks.add(BodyBlock.Embed(m.groupValues[1], m.groupValues[2].lowercase(), m.groups[3]?.value, i))
+            i++
             continue
         }
         val math = mathBlock(lines, i)
@@ -517,7 +596,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
         val paragraph = ArrayList<List<BodyToken>>()
         while (i < lines.size) {
             val current = lines[i]
-            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current) || isImage(i) || isRule(i) || mathBlock(lines, i) != null)) break
+            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current) || isImage(i) || isEmbed(i) || opensContainer(i) || isRule(i) || mathBlock(lines, i) != null)) break
             paragraph.add(inlineOf(current))
             i++
         }
