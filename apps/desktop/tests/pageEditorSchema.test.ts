@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { blockPosAt, canPlace, deleteUnit, duplicateUnit, moveUnit, unitAt } from "../src/ui/pageEditorBlocks";
 import { cellPos, editTable } from "../src/ui/pageEditorTable";
+import { pageHtmlFromPaste } from "../src/ui/pagePaste";
 import { jsonView, readsAsShown, type RichNode } from "../src/ui/pageMarkdown";
 import { applyMerge, createPageDocument } from "../src/ui/pageEditorDoc";
 import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "../src/ui/pageEditorSchema";
@@ -495,6 +496,42 @@ describe("M151: moving blocks", () => {
     expect(markdown()).toBe("- [ ] 予稿 <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [ ] 予稿\n後");
     editor.view.dispatch(deleteUnit(editor.state, unitAt(editor.state.doc, 0)));
     expect(markdown()).toBe("- [ ] 予稿\n後");
+  });
+});
+
+describe("M151: HTML pasted from Notion, Word and Google Docs (tests/fixtures/paste)", () => {
+  const fixture = (name: string) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures", "paste", name), "utf8");
+  // jsdom has no ClipboardEvent (ProseMirror's pasteHTML makes one).
+  (globalThis as { ClipboardEvent?: unknown }).ClipboardEvent ??= class extends Event {
+    clipboardData = null;
+  };
+  const paste = (html: string, body = "") => {
+    const { editor, markdown } = open(body);
+    editor.commands.focus("end");
+    editor.view.pasteHTML(pageHtmlFromPaste(html));
+    return markdown();
+  };
+
+  it("Word: headings, marks, list paragraphs (bullets in a symbol font, numbers, levels), a table with paragraphs in its cells; no Office leftovers", () => {
+    const html = pageHtmlFromPaste(fixture("word.html"));
+    expect(html).not.toMatch(/<o:p|<!--|<style|<meta|<xml|supportLists|mso-list:\s*Ignore/i);
+    expect(paste(fixture("word.html"))).toBe(["# 研究室の手順", "まず**装置の電源**を入れ、_必ず_\u200b記録する。", "", "- 試料を準備する", "  - 温度を~~確認~~測る", "- 測定する", "1. 一つ目", "2. 二つ目", "| 項目 | 値 |", "| --- | ---: |", "| 温度 (degC) | 25 \\| 26 |", "Done."].join("\n"));
+  });
+
+  it("Google Docs: the guid wrapper is not bold, span styles are marks, nested lists, checklists, a table with colspan / rowspan", () => {
+    expect(paste(fixture("gdocs.html"))).toBe(["## 議事録", "ふつうの文と**太字**_斜体_~~取り消し~~と[リンク](https://example.com/minutes)", "- 項目 A", "  - 入れ子", "- 項目 B", "- [x] ~~済んだこと~~", "- [ ] まだのこと", "| 担当と期限 |  | 状態 |", "| --- | --- | :---: |", "| 花子 | 10/3 | 済 |", "|  | 11/1 | 未 |"].join("\n"));
+  });
+
+  it("Notion's HTML export: callouts with their icon (one in a toggle), toggles, to-dos, a table with its header", () => {
+    expect(paste(fixture("notion-export.html"))).toBe(["# 実験ノート", "本文の**太字**と`code`。", "::: callout ⚠️", "装置は**必ず**止めてから", "- 中のリスト", ":::", "::: toggle 詳しい手順", "隠れた行", "::: callout 💡", "トグルの中のコールアウト", ":::", ":::", "- [x] 済んだ", "- [ ] まだ", "| 名前 | 役割 |", "| --- | --- |", "| 花子 | 測定 \\| 解析 |"].join("\n"));
+  });
+
+  it("Notion's app and pages: <aside> with a leading emoji, <details>, `[x]` items, a callout block around a note", () => {
+    expect(paste(fixture("notion-app.html"))).toBe(["## 週次の予定", "::: callout 📌", "締切は**金曜**まで", ":::", "::: toggle 過去の議事録", "先週は休み", ":::", "- [x] 予稿を出す", "- [ ] 発表練習", "1. 一", "2. 二", "  1. 二の一", "::: callout 🧪", "試薬の扱い", ":::"].join("\n"));
+  });
+
+  it("callouts and toggles three deep give up the innermost frame (the dialect holds two)", () => {
+    expect(paste("<aside>💡 一<details><summary>二</summary><aside>🔥 三</aside></details></aside>")).toBe(["::: callout 💡", "一", "::: toggle 二", "🔥 三", ":::", ":::"].join("\n"));
   });
 });
 

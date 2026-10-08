@@ -158,8 +158,13 @@ export const tableShape = () =>
           map.forEach((_a, _b, from, to) => {
             for (const at of [from, to]) {
               const $at = state.doc.resolve(Math.min(at, state.doc.content.size));
-              for (let d = $at.depth; d >= 0; d--) if ($at.node(d).type.name === "table") tables.add($at.before(d));
+              for (let d = $at.depth; d >= 1; d--) if ($at.node(d).type.name === "table") tables.add($at.before(d));
             }
+            // Tables put in whole (pasted).
+            state.doc.nodesBetween(Math.min(from, state.doc.content.size), Math.min(to, state.doc.content.size), (node, pos) => {
+              if (node.type.name === "table") tables.add(pos);
+              return node.type.name !== "table" && !node.isTextblock;
+            });
           });
         }
       }
