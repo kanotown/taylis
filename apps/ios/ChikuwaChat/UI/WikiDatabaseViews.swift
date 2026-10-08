@@ -82,6 +82,8 @@ struct WikiDatabaseScreen: View {
     @State private var newKey = UUID().uuidString.lowercased()
     @State private var newStart: DbRowStart = .standard
     @State private var creating = false
+    /// M148: the closed groups ("view id|group key"), this device only.
+    @State private var collapsed: Set<String> = []
 
     private var item: WikiPageItem? { hub.item(databaseId) }
 
@@ -207,7 +209,18 @@ struct WikiDatabaseScreen: View {
                 if view?.isCalendar == true {
                     agenda(model, database: database)
                 } else {
-                    cards(model, database: database, view: view)
+                    if view?.isBoard == true && model.groupProp == nil {
+                        Text("このボードには列にするプロパティがありません。パソコンでビューを設定してください。")
+                            .font(.footnote).foregroundStyle(.secondary).listRowSeparator(.hidden)
+                    }
+                    if let prop = model.groupProp, let sections = model.sections {
+                        grouped(model, database: database, view: view, prop: prop, sections: sections)
+                    } else if view?.isGallery == true {
+                        gallery(model, rows: model.rows, properties: WikiDb.cardProperties(database, view: view))
+                        footer(model)
+                    } else {
+                        cards(model, database: database, view: view)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -236,7 +249,7 @@ struct WikiDatabaseScreen: View {
                     Button {
                         Task { await model.select(view: view.id) }
                     } label: {
-                        Label(view.displayName, systemImage: view.isCalendar ? "calendar" : "rectangle.grid.1x2")
+                        Label(view.displayName, systemImage: view.symbol)
                             .font(.subheadline)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -275,6 +288,12 @@ struct WikiDatabaseScreen: View {
                 if row.id == model.rows.last?.id, model.nextCursor != nil { Task { await model.loadMore() } }
             }
         }
+        footer(model)
+    }
+
+    /// 「さらに読み込む」 and the count under the rows.
+    @ViewBuilder
+    private func footer(_ model: WikiDatabaseModel) -> some View {
         if model.nextCursor != nil {
             Button("さらに読み込む") { Task { await model.loadMore() } }
                 .frame(maxWidth: .infinity)
@@ -282,6 +301,132 @@ struct WikiDatabaseScreen: View {
         }
         if model.total > 0 {
             Text("\(model.total) 行").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).listRowSeparator(.hidden)
+        }
+    }
+
+    // MARK: groups, boards and galleries (M148, §25.4)
+
+    private func collapseKey(_ model: WikiDatabaseModel, _ key: String) -> String { (model.view?.id ?? "") + "|" + key }
+
+    /// A grouped view: a section per shown group, its header the group's name and count. A board's sections are its
+    /// columns (cards with ⋯ 「◯◯へ移動」); a table's or list's (cards) and a gallery's (the grid) close with a tap
+    /// on the header (this device only, not saved).
+    @ViewBuilder
+    private func grouped(_ model: WikiDatabaseModel, database: WikiDatabase, view: DbView?, prop: DbProperty,
+                         sections: [WikiDb.GroupSection]) -> some View {
+        let properties = WikiDb.cardProperties(database, view: view)
+        let board = view?.isBoard == true
+        let unit = view?.groupBy?.dateUnit
+        if sections.allSatisfy({ $0.rows.isEmpty }) && model.rows.isEmpty && !model.loading {
+            Text(model.rights.addRows ? "行はまだありません。＋で追加できます。" : "行はまだありません。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .listRowSeparator(.hidden)
+        }
+        ForEach(sections) { section in
+            let key = collapseKey(model, section.key)
+            let closed = !board && collapsed.contains(key)
+            Section {
+                if !closed {
+                    if view?.isGallery == true {
+                        gallery(model, rows: section.rows, properties: properties)
+                    } else {
+                        ForEach(section.rows) { row in
+                            if board {
+                                boardCard(model, row: row, section: section, sections: sections, prop: prop, unit: unit, properties: properties)
+                            } else {
+                                Button { onOpenPage(row.id) } label: {
+                                    WikiDbCard(controller: controller, row: row,
+                                               fields: WikiDb.card(row, properties: properties, refs: model.refs, names: names,
+                                                                   locale: UILanguage.shared.locale))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        if section.rows.isEmpty {
+                            Text("カードはありません").font(.footnote).foregroundStyle(.tertiary).listRowSeparator(.hidden)
+                        }
+                    }
+                }
+            } header: {
+                WikiDbGroupHeader(controller: controller, prop: prop, key: section.key, unit: unit, count: section.count,
+                                  collapsible: !board, closed: closed, names: names) {
+                    if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) }
+                }
+            }
+        }
+        footer(model)
+    }
+
+    /// A board's card: opens the row; its ⋯ (and a long press) moves it to another column — edit access only.
+    @ViewBuilder
+    private func boardCard(_ model: WikiDatabaseModel, row: DbRow, section: WikiDb.GroupSection, sections: [WikiDb.GroupSection],
+                           prop: DbProperty, unit: String?, properties: [DbProperty]) -> some View {
+        let targets = WikiDb.moveTargets(sections, from: section.key)
+        let canMove = model.canMoveCards && !targets.isEmpty
+        HStack(alignment: .top, spacing: 4) {
+            Button { onOpenPage(row.id) } label: {
+                WikiDbCard(controller: controller, row: row,
+                           fields: WikiDb.card(row, properties: properties, refs: model.refs, names: names,
+                                               locale: UILanguage.shared.locale),
+                           chevron: !canMove)
+            }
+            .buttonStyle(.plain)
+            if canMove {
+                Menu {
+                    moveItems(model, row: row, from: section.key, targets: targets, prop: prop, unit: unit)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .disabled(model.moving.contains(row.id))
+                .accessibilityLabel(Text("「\(row.displayTitle)」の操作"))
+                .accessibilityIdentifier("wiki-db-card-menu")
+            }
+        }
+        .contextMenu {
+            if canMove { moveItems(model, row: row, from: section.key, targets: targets, prop: prop, unit: unit) }
+        }
+    }
+
+    @ViewBuilder
+    private func moveItems(_ model: WikiDatabaseModel, row: DbRow, from: String, targets: [WikiDb.GroupSection], prop: DbProperty,
+                           unit: String?) -> some View {
+        ForEach(targets) { target in
+            let name = WikiDb.groupName(prop, key: target.key, unit: unit, names: names, locale: UILanguage.shared.locale)
+            Button(tr("「\(name)」へ移動"), systemImage: "arrow.right") {
+                Task {
+                    do { try await model.move(row, from: from, to: target.key) } catch { controller.error = controller.describe(error) }
+                }
+            }
+        }
+    }
+
+    /// A gallery: two columns of cards, each with the row's picture (its thumbnail, authenticated) over its title.
+    @ViewBuilder
+    private func gallery(_ model: WikiDatabaseModel, rows: [DbRow], properties: [DbProperty]) -> some View {
+        if rows.isEmpty && model.groups == nil && !model.loading {
+            Text(model.rights.addRows ? "行はまだありません。＋で追加できます。" : "行はまだありません。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .listRowSeparator(.hidden)
+        } else if !rows.isEmpty {
+            let covers = model.view?.showsCovers ?? false
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top), GridItem(.flexible(), spacing: 10, alignment: .top)],
+                      spacing: 10) {
+                ForEach(rows) { row in
+                    Button { onOpenPage(row.id) } label: {
+                        WikiDbGalleryCard(controller: controller, row: row, covers: covers,
+                                          fields: Array(WikiDb.card(row, properties: properties, refs: model.refs, names: names,
+                                                                    locale: UILanguage.shared.locale).prefix(2)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+            .listRowSeparator(.hidden)
         }
     }
 
@@ -345,6 +490,8 @@ struct WikiDbCard: View {
     @Bindable var controller: AppController
     let row: DbRow
     let fields: [WikiDb.CardField]
+    /// A board card with a ⋯ next to it has no chevron.
+    var chevron = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -352,7 +499,7 @@ struct WikiDbCard: View {
                 if let icon = row.icon, !icon.isEmpty { WikiIconView(icon: icon, controller: controller, size: 16) }
                 Text(verbatim: row.displayTitle).font(.body.weight(.semibold)).lineLimit(2)
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                if chevron { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
             }
             ForEach(fields) { field in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -372,6 +519,142 @@ struct WikiDbCard: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A group's header (M148): its label — the option's chip, the person with their face, オン / オフ, a day / week / month,
+/// 「なし」 — and its count; a tap closes or opens the section when it may close (not a board's column).
+struct WikiDbGroupHeader: View {
+    @Bindable var controller: AppController
+    let prop: DbProperty
+    let key: String
+    let unit: String?
+    let count: Int
+    let collapsible: Bool
+    let closed: Bool
+    let names: WikiDb.Names
+    let onToggle: () -> Void
+
+    private var name: String { WikiDb.groupName(prop, key: key, unit: unit, names: names, locale: UILanguage.shared.locale) }
+
+    var body: some View {
+        if collapsible {
+            Button(action: onToggle) { label }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: name + tr("、") + tr("\(count) 件")))
+                .accessibilityValue(closed ? tr("閉じています") : tr("開いています"))
+                .accessibilityHint(closed ? tr("開く") : tr("閉じる"))
+        } else {
+            label
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: name + tr("、") + tr("\(count) 件")))
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    private var label: some View {
+        HStack(spacing: 8) {
+            if collapsible {
+                Image(systemName: closed ? "chevron.right" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+            }
+            if let option = WikiDb.groupOption(prop, key: key) {
+                DbOptionChip(option: option)
+            } else if key != WikiDb.noneGroup, ["person", "created_by", "updated_by"].contains(prop.type) {
+                AvatarView(id: key, name: name, size: 20)
+                Text(verbatim: name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+            } else if prop.type == "checkbox" {
+                Image(systemName: key == "true" ? "checkmark.square.fill" : "square").foregroundStyle(.secondary)
+                Text(verbatim: name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+            } else {
+                Text(verbatim: name).font(.subheadline.weight(.semibold))
+                    .foregroundStyle(key == WikiDb.noneGroup ? Color.secondary : Color.primary).lineLimit(1)
+            }
+            Text(verbatim: "\(count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 30)
+        .contentShape(Rectangle())
+        .textCase(nil)
+    }
+}
+
+/// A gallery card (M148): the row's picture (or a plain box), its icon and title, up to two properties.
+struct WikiDbGalleryCard: View {
+    @Bindable var controller: AppController
+    let row: DbRow
+    let covers: Bool
+    let fields: [WikiDb.CardField]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if covers {
+                Color.secondary.opacity(0.1)
+                    .aspectRatio(4 / 3, contentMode: .fit)
+                    .overlay {
+                        if let cover = row.cover {
+                            DbCoverImage(cover: cover, controller: controller)
+                        } else if let icon = row.icon, !icon.isEmpty {
+                            WikiIconView(icon: icon, controller: controller, size: 28)
+                        } else {
+                            Image(systemName: "doc.text").font(.title2).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .clipped()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if let icon = row.icon, !icon.isEmpty { WikiIconView(icon: icon, controller: controller, size: 14) }
+                    Text(verbatim: row.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                }
+                ForEach(fields) { field in
+                    if !field.options.isEmpty {
+                        HStack(spacing: 4) { ForEach(field.options.prefix(2)) { DbOptionChip(option: $0) } }
+                    } else {
+                        Text(verbatim: field.text).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+            }
+            .padding(8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A gallery card's picture: the attachment's thumbnail (authenticated, as other images), else the file itself.
+struct DbCoverImage: View {
+    let cover: DbRowCover
+    @Bindable var controller: AppController
+    @State private var loader = AttachmentImageLoader()
+
+    var body: some View {
+        Group {
+            if let image = loader.image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if loader.failed {
+                Image(systemName: "photo").font(.title2).foregroundStyle(.tertiary)
+            } else {
+                ProgressView()
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: cover.attachmentId) {
+            await loader.load {
+                guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
+                do {
+                    return try await api.fetchData(cover.path)
+                } catch ApiError.api(_, let code, _) where code == "thumbnail_not_found" && cover.thumbnail {
+                    return try await api.fetchData(DbRowCover(attachmentId: cover.attachmentId, thumbnail: false).path)
+                }
+            }
+        }
     }
 }
 

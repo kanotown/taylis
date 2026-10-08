@@ -77,22 +77,58 @@ struct DbViewColumn: Codable, Equatable {
     }
 }
 
-/// A saved view (`ViewOut`): a table (cards on the phone) or a calendar (an agenda). The server applies its sort and
-/// filter when the query names it; the phone never edits views (§5.5).
+/// M147 (§25.1): a view's groups — a board's columns, a table's / list's / gallery's sections. The phone reads it and
+/// never changes it (the hidden groups and the order are in the server's answer).
+struct DbGroupBy: Codable, Equatable {
+    let propId: String
+    /// day | week | month for a date (nil: day).
+    var dateUnit: String?
+    var hidden: [String] = []
+    var hideEmpty: Bool = false
+
+    init(propId: String, dateUnit: String? = nil, hidden: [String] = [], hideEmpty: Bool = false) {
+        self.propId = propId
+        self.dateUnit = dateUnit
+        self.hidden = hidden
+        self.hideEmpty = hideEmpty
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        propId = try c.decode(String.self, forKey: .propId)
+        dateUnit = try c.decodeIfPresent(String.self, forKey: .dateUnit)
+        hidden = try c.decodeIfPresent([String].self, forKey: .hidden) ?? []
+        hideEmpty = try c.decodeIfPresent(Bool.self, forKey: .hideEmpty) ?? false
+    }
+}
+
+/// A saved view (`ViewOut`): a table or a list (cards on the phone), a board (sections of cards, M148), a gallery (a
+/// two-column grid, M148) or a calendar (an agenda). The server applies its sort, filter and groups when the query
+/// names it; the phone never edits views (§5.5).
 struct DbView: Codable, Equatable, Identifiable {
     let id: String
     var name: String
-    /// table | calendar (an unknown one of a newer server shows as cards).
+    /// table | calendar | board | list | gallery (an unknown one of a newer server shows as cards).
     var type: String
     var columns: [DbViewColumn] = []
     var datePropId: String?
+    /// M147: the groups (nil: none; a board without one shows its cards in one list).
+    var groupBy: DbGroupBy?
+    /// M147, gallery: the card's picture, body (the body's first image) | none.
+    var cover: String = "body"
+    /// M147, gallery: small | medium | large (the phone's grid has two columns whatever it is).
+    var cardSize: String = "medium"
 
-    init(id: String, name: String = "", type: String = "table", columns: [DbViewColumn] = [], datePropId: String? = nil) {
+    init(id: String, name: String = "", type: String = "table", columns: [DbViewColumn] = [], datePropId: String? = nil,
+         groupBy: DbGroupBy? = nil, cover: String = "body", cardSize: String = "medium") {
         self.id = id
         self.name = name
         self.type = type
         self.columns = columns
         self.datePropId = datePropId
+        self.groupBy = groupBy
+        self.cover = cover
+        self.cardSize = cardSize
     }
 
     init(from decoder: Decoder) throws {
@@ -102,15 +138,39 @@ struct DbView: Codable, Equatable, Identifiable {
         type = try c.decodeIfPresent(String.self, forKey: .type) ?? "table"
         columns = try c.decodeIfPresent([DbViewColumn].self, forKey: .columns) ?? []
         datePropId = try c.decodeIfPresent(String.self, forKey: .datePropId)
+        groupBy = try c.decodeIfPresent(DbGroupBy.self, forKey: .groupBy)
+        cover = try c.decodeIfPresent(String.self, forKey: .cover) ?? "body"
+        cardSize = try c.decodeIfPresent(String.self, forKey: .cardSize) ?? "medium"
     }
 
     var isCalendar: Bool { type == "calendar" }
+    var isBoard: Bool { type == "board" }
+    var isGallery: Bool { type == "gallery" }
+    /// The gallery asks for each row's picture (`covers: true`).
+    var showsCovers: Bool { isGallery && cover != "none" }
 
-    /// An unnamed view: 「表」 / 「カレンダー」.
+    /// An unnamed view: its type's word (「表」 for a table and an unknown type).
     var displayName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        return isCalendar ? tr("カレンダー") : tr("表")
+        switch type {
+        case "calendar": return tr("カレンダー")
+        case "board": return tr("ボード")
+        case "list": return tr("リスト")
+        case "gallery": return tr("ギャラリー")
+        default: return tr("表")
+        }
+    }
+
+    /// The switcher's symbol of the type.
+    var symbol: String {
+        switch type {
+        case "calendar": "calendar"
+        case "board": "rectangle.split.3x1"
+        case "list": "list.bullet"
+        case "gallery": "square.grid.2x2"
+        default: "tablecells"
+        }
     }
 }
 
@@ -240,10 +300,12 @@ struct DbRow: Codable, Equatable, Identifiable {
     var createdBy: String = ""
     var updatedAt: String = ""
     var updatedBy: String = ""
+    /// M147: the gallery's picture (only when the query asked for `covers`).
+    var cover: DbRowCover?
 
     init(id: String, databaseId: String, title: String, icon: String? = nil, version: Int = 1, props: [String: JSONValue] = [:],
          relations: [String: [String]] = [:], hiddenRelations: [String] = [], createdAt: String = "", createdBy: String = "",
-         updatedAt: String = "", updatedBy: String = "") {
+         updatedAt: String = "", updatedBy: String = "", cover: DbRowCover? = nil) {
         self.id = id
         self.databaseId = databaseId
         self.title = title
@@ -256,6 +318,7 @@ struct DbRow: Codable, Equatable, Identifiable {
         self.createdBy = createdBy
         self.updatedAt = updatedAt
         self.updatedBy = updatedBy
+        self.cover = cover
     }
 
     init(from decoder: Decoder) throws {
@@ -274,11 +337,26 @@ struct DbRow: Codable, Equatable, Identifiable {
         createdBy = try c.decodeIfPresent(String.self, forKey: .createdBy) ?? ""
         updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
         updatedBy = try c.decodeIfPresent(String.self, forKey: .updatedBy) ?? ""
+        cover = try c.decodeIfPresent(DbRowCover.self, forKey: .cover)
     }
 
     var displayTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? tr("無題") : trimmed
+    }
+}
+
+/// M147 (§25.2): a gallery card's picture, the first image of the row's body (an image attached to the row): its
+/// thumbnail when the server made one, else the file itself.
+struct DbRowCover: Codable, Equatable {
+    let attachmentId: String
+    var thumbnail: Bool = true
+    var width: Int?
+    var height: Int?
+
+    /// The authenticated path the card loads.
+    var path: String {
+        thumbnail ? "/api/v1/attachments/\(attachmentId)/thumbnail" : "/api/v1/attachments/\(attachmentId)/content?inline=1"
     }
 }
 
@@ -302,6 +380,17 @@ struct DbQueryOut: Codable, Equatable {
     var total: Int = 0
     var nextCursor: String?
     var schemaVersion: Int = 0
+    /// M147, a grouped answer only: every group in order (hidden ones too, with their counts) and the group of each of
+    /// `rows` (a row with several values comes once in each of its groups).
+    var groups: [DbRowGroup]?
+    var rowGroups: [String]?
+}
+
+/// A group of a grouped answer (`RowGroup`): the phone names it (the option, the person, 「なし」 for "").
+struct DbRowGroup: Codable, Equatable {
+    let key: String
+    var count: Int = 0
+    var hidden: Bool = false
 }
 
 /// A row with the titles of its linked rows (a create's or a cell write's answer).
@@ -334,10 +423,17 @@ struct DbQuery: Equatable {
     var range: (propId: String, start: String, end: String)?
     var cursor: String?
     var limit: Int = 100
+    /// M148: true answers in the view's groups (`groups`, `row_groups`); nil (left out) as before M147.
+    var grouped: Bool?
+    /// M148: each row's gallery picture.
+    var covers = false
+    /// The device's IANA zone: the day of a time when grouping by a date.
+    var tz: String?
 
     static func == (a: DbQuery, b: DbQuery) -> Bool {
         a.viewId == b.viewId && a.cursor == b.cursor && a.limit == b.limit && a.range?.propId == b.range?.propId
-            && a.range?.start == b.range?.start && a.range?.end == b.range?.end
+            && a.range?.start == b.range?.start && a.range?.end == b.range?.end && a.grouped == b.grouped && a.covers == b.covers
+            && a.tz == b.tz
     }
 
     var json: JSONValue {
@@ -345,8 +441,21 @@ struct DbQuery: Equatable {
         if let viewId { fields["view_id"] = .string(viewId) }
         if let range { fields["range"] = .object(["prop_id": .string(range.propId), "start": .string(range.start), "end": .string(range.end)]) }
         if let cursor { fields["cursor"] = .string(cursor) }
+        if let grouped { fields["grouped"] = .bool(grouped) }
+        if covers { fields["covers"] = .bool(true) }
+        if let tz { fields["tz"] = .string(tz) }
         return .object(fields)
     }
+}
+
+/// POST /wiki/rows/{id}/move (M147, §25.2): a board card's 「◯◯へ移動」 on the phone — the column's value only (no
+/// place: the row keeps its place in the rows' order). One `client_op_id` per move, the same on every retry (the
+/// server sets the cells once).
+struct DbRowMove: Equatable {
+    var set: [String: JSONValue]
+    var clientOpId: String
+
+    var json: JSONValue { .object(["set": .object(set), "client_op_id": .string(clientOpId)]) }
 }
 
 /// What the phone may do with a database and its rows (§5.5, §18.1): edit adds rows and changes cells, full changes the
@@ -562,6 +671,83 @@ enum WikiDb {
             let options = prop.type == "select" || prop.type == "multi_select" ? options(prop, row) : []
             return CardField(prop: prop, text: text, options: options)
         }
+    }
+
+    // MARK: groups and boards (M148, §25)
+
+    /// The group of rows with no value (「なし」).
+    static let noneGroup = ""
+    /// The types a board's columns may be (a card moves by setting the value).
+    static let boardGroupTypes: Set<String> = ["select", "person", "checkbox"]
+
+    /// The property a view groups by (nil: no groups, a calendar, or one deleted since).
+    static func groupProperty(_ database: WikiDatabase, view: DbView?) -> DbProperty? {
+        guard let view, !view.isCalendar, let groupBy = view.groupBy, let prop = database.property(groupBy.propId) else { return nil }
+        if view.isBoard && !boardGroupTypes.contains(prop.type) { return nil }
+        return prop
+    }
+
+    /// A group's name: the option, the person, オン / オフ, the day / week / month, 「なし」 for "".
+    static func groupName(_ prop: DbProperty, key: String, unit: String?, names: Names, locale: Locale = .current) -> String {
+        if prop.type == "checkbox" { return key == "true" ? tr("オン") : tr("オフ") }
+        if key == noneGroup { return tr("なし") }
+        switch prop.type {
+        case "select", "multi_select":
+            return prop.options.first { $0.id == key }?.name ?? tr("なし")
+        case "person", "created_by", "updated_by":
+            return names(key)
+        default:
+            if unit == "month" { return monthHeading(key, locale: locale) }
+            let day = formatDate(DbDateValue(start: key), zone: TimeZone(identifier: "UTC")!, locale: locale)
+            return unit == "week" ? tr("\(day) の週") : day
+        }
+    }
+
+    /// The option a select / multi-select group shows as its chip (nil: 「なし」, or an option deleted since).
+    static func groupOption(_ prop: DbProperty, key: String) -> DbOption? {
+        guard prop.type == "select" || prop.type == "multi_select", key != noneGroup else { return nil }
+        return prop.options.first { $0.id == key }
+    }
+
+    /// One section of a grouped view: its group and its rows (a row with several values is in each of its groups).
+    struct GroupSection: Equatable, Identifiable {
+        let key: String
+        var count: Int
+        var hidden: Bool
+        var rows: [DbRow]
+        var id: String { key }
+    }
+
+    /// The sections of an answer in the server's order (`rowGroups[i]` is the group of `rows[i]`). Hidden groups are left
+    /// out (the server sends none of their rows; their settings are the desktop's).
+    static func sections(groups: [DbRowGroup], rows: [DbRow], rowGroups: [String]) -> [GroupSection] {
+        var out = groups.filter { !$0.hidden }.map { GroupSection(key: $0.key, count: $0.count, hidden: false, rows: []) }
+        var index: [String: Int] = [:]
+        for (i, section) in out.enumerated() where index[section.key] == nil { index[section.key] = i }
+        for (i, row) in rows.enumerated() {
+            let key = i < rowGroups.count ? rowGroups[i] : noneGroup
+            guard let at = index[key], !out[at].rows.contains(where: { $0.id == row.id }) else { continue }
+            out[at].rows.append(row)
+        }
+        return out
+    }
+
+    /// The value a board card gets when it moves from the column `from` to `to` (§25.2): a select takes the option
+    /// (「なし」 clears it), a checkbox the column's state, a person loses `from` and gains `to` (「なし」 clears it).
+    static func boardValue(_ prop: DbProperty, _ row: DbRow, from: String, to: String) -> JSONValue {
+        if prop.type == "checkbox" { return .bool(to == "true") }
+        if to == noneGroup { return .null }
+        if prop.type == "person" {
+            var people = strings(row.props[prop.id]).filter { $0 != from }
+            if !people.contains(to) { people.append(to) }
+            return encodeIds(people)
+        }
+        return .string(to)
+    }
+
+    /// The columns a board card in `from` may move to: the other shown groups, in order.
+    static func moveTargets(_ sections: [GroupSection], from: String) -> [GroupSection] {
+        sections.filter { $0.key != from && !$0.hidden }
     }
 
     // MARK: days and the agenda (§5.8)
