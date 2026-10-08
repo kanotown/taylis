@@ -958,6 +958,9 @@ final class SyncEngine {
         let message = payload.message
         let thread = payload.parentThread
         let isNew = frame.event == "message.created"
+        // §10.6: a deletion takes itself off the counts, before its tombstone replaces the held row (whether it mentioned
+        // me is known from that row only) and before the channel's last seq moves past it.
+        if frame.event == "message.deleted" { uncountDeleted(channel, eventSeq: seq, message) }
         onTimelineMessage?(frame.event, message, thread)
         if isNew {
             // M141 (§7.9): a new timeline row opens a closed DM again (the server counts it so too, no call).
@@ -1065,9 +1068,82 @@ final class SyncEngine {
     private func heldUnread(_ channelId: String, after: Int) -> (count: Int, mentions: Int, firstAt: String?) {
         let me = store.me
         let later = store.messages(channelId).filter { ($0.seq ?? 0) > after && $0.countsAsUnread(meId: me?.id) }
-        // Mentions counted with the same rule as live events, notification keywords included (§7.4).
-        let mentions = me.map { me in later.filter { $0.mentionAll || $0.mentionedUserIds.contains(me.id) || NotifyKeywords.matches($0.body, me.notifyKeywords) }.count } ?? 0
+        let mentions = me.map { me in later.filter { Self.mentionsMe($0, me) }.count } ?? 0
         return (later.count, mentions, later.first?.createdAt)
+    }
+
+    /// A held row addressed to me, with the same rule as live events, notification keywords included (§7.4).
+    private static func mentionsMe(_ row: MessageState, _ me: UserMe) -> Bool {
+        row.mentionAll || row.mentionedUserIds.contains(me.id) || NotifyKeywords.matches(row.body, me.notifyKeywords)
+    }
+
+    /// §10.6 (2026-10-09: a DM or a mention deleted before it was read kept its red badge, and tapping it showed
+    /// nothing): the counts drop at once, by the shared rule (ReadGate.countsAfterDelete); what this device cannot tell
+    /// (a mention it does not hold, the first unread gone) it asks the server. The activity badge is the server's, read
+    /// again.
+    private func uncountDeleted(_ channel: ChannelState, eventSeq: Int, _ message: MessageOut) {
+        guard let me = store.me, message.senderId != me.id else { return }
+        let row = store.message(channel.id, id: message.id)
+        let held = row.map { (deleted: $0.deleted, mentionsMe: Self.mentionsMe($0, me)) }
+        let next = ReadGate.countsAfterDelete(lastReadSeq: channel.lastReadSeq, countedTo: channel.lastSeq, unread: channel.unreadCount,
+                                              mentions: channel.mentionCount, firstUnreadAt: channel.firstUnreadAt, eventSeq: eventSeq,
+                                              message: message, held: held, meId: me.id)
+        if next.unread != channel.unreadCount || next.mentions != channel.mentionCount || next.firstUnreadAt != channel.firstUnreadAt {
+            store.updateChannel(channel.id) { $0.unreadCount = next.unread; $0.mentionCount = next.mentions; $0.firstUnreadAt = next.firstUnreadAt }
+            if next.unread == 0 { onRead?(channel.id) }
+        }
+        onBadge?(store.badgeCount) // the app icon and this workspace's last known badge (WORKSPACES.md §6) follow
+        if next.refetch { refetchCounts(channel.id, upTo: eventSeq) }
+        // MOBILE_UI.md §6.4: a mention of me or a reply in a thread I follow leaves the activity badge (the server's count).
+        let following = message.parentId.flatMap { store.threads[$0]?.state.following } ?? false
+        if eventSeq > channel.lastSeq && (row == nil || held?.mentionsMe == true || following) { scheduleActivityRefresh() }
+    }
+
+    /// §10.6: channels whose counts are being read again; true when another refetch was asked meanwhile.
+    private var countRefetches: [String: Bool] = [:]
+
+    /// §10.6: the conversation's counts from the server, taken like read.updated (PUT /read {last_read_seq: 0} moves
+    /// nothing and answers the read state). One request per channel at a time; a change that came meanwhile (a row
+    /// counted on top of what the answer may already hold) asks once more, at most twice. `upTo`: the seq the live event
+    /// asking it moves the channel to (its last seq has not moved yet).
+    private func refetchCounts(_ channelId: String, upTo: Int = 0, attempt: Int = 0) {
+        if countRefetches[channelId] != nil {
+            countRefetches[channelId] = true
+            return
+        }
+        guard status == .online else { return } // the next bootstrap brings them
+        countRefetches[channelId] = false
+        let before = max(store.channel(channelId)?.lastSeq ?? 0, upTo)
+        let key = "counts:\(channelId)"
+        pendingReads[key] = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let state = try await self.api.markRead(channelId: channelId, lastReadSeq: 0)
+                _ = try? await self.enqueue { [self] in
+                    guard let now = self.store.channel(channelId) else { return }
+                    if now.lastSeq != before { self.countRefetches[channelId] = true }
+                    self.applyReadState(channelId, state)
+                }.value
+            } catch {
+                print("could not read the unread counts again; the next bootstrap brings them: \(error)")
+            }
+            let again = self.countRefetches[channelId] == true
+            self.countRefetches[channelId] = nil
+            self.pendingReads[key] = nil
+            if again && attempt < 2 { self.refetchCounts(channelId, attempt: attempt + 1) }
+        }
+    }
+
+    /// §10.6: a conversation opened with a count no held row backs (its unread rows were deleted and the counts missed
+    /// it: a store persisted by an older build, a lost event) would keep its badge with nothing to read, and no row on
+    /// screen could move the position. While every row after the read position is held, fewer held unread rows than
+    /// counted asks the server for the counts (the position stays where it is, §10).
+    /// A read of this device waiting or in flight moved the position ahead before its counts came: not checked then.
+    private func settleStaleUnread(_ channelId: String) {
+        guard store.unsentReads[channelId] == nil, pendingReads[channelId] == nil else { return }
+        guard let channel = store.channel(channelId), channel.unreadCount > 0, ReadGate.reachesNewest(channel),
+              ReadGate.covers(channel.oldestLoadedSeq, channel.lastReadSeq) else { return }
+        if heldUnread(channelId, after: channel.lastReadSeq).count < channel.unreadCount { refetchCounts(channelId) }
     }
 
     /// M12e: open reminders; refreshed after every bootstrap.
@@ -1238,6 +1314,7 @@ final class SyncEngine {
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId), channel.isMember else { return }
             if channel.syncedSeq == nil || channel.oldestLoadedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }
+            settleStaleUnread(channelId)
             // Only the visible timeline advances read state.
         }.value
     }
@@ -1545,6 +1622,13 @@ final class SyncEngine {
         try await catchUpRows(channelId, into: &brought)
         let synced = store.channel(channelId)?.syncedSeq ?? counted
         for message in brought.values.filter({ $0.seq > counted && $0.seq <= synced }).sorted(by: { $0.seq < $1.seq }) { countUnread(message) }
+        // §10.6: a counted row deleted while the events were lost came back as a tombstone; whether it mentioned me went
+        // with its body, so the server says what is left.
+        guard let after = store.channel(channelId), after.unreadCount > 0 else { return }
+        let meId = store.me?.id
+        if brought.values.contains(where: { $0.deleted && $0.seq <= counted && $0.updatedSeq > counted && $0.seq > after.lastReadSeq && ReadGate.countableRow($0, meId: meId) }) {
+            refetchCounts(channelId)
+        }
     }
 
     private func catchUpRows(_ channelId: String, into brought: inout [String: MessageOut]) async throws {

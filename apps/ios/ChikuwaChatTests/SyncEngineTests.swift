@@ -1699,4 +1699,123 @@ extension SyncEngineTests {
         XCTAssertNotNil(w.store.message(w.channel.id, root.id))
         w.engine.stop()
     }
+
+    // MARK: §10.6: a deletion leaves the counts (2026-10-09, a DM deleted before it was read kept its red badge)
+
+    func testAnUnreadDmDeletedBeforeItWasReadLeavesTheBadge() async throws {
+        let w = makeWorld()
+        let dm = w.server.createChannel("dm", ownerId: w.alice.id, type: "dm")
+        w.server.join(dm.id, w.bob.id)
+        var badges: [Int] = []
+        w.engine.onBadge = { badges.append($0) }
+        var read: [String] = []
+        w.engine.onRead = { read.append($0) }
+        await w.engine.start()
+        await settle(w.engine)
+        let message = try w.server.post(channelId: dm.id, senderId: w.alice.id, body: "oops").0
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(dm.id)?.unreadCount, 1)
+        XCTAssertEqual(w.store.badgeCount, 1)
+        XCTAssertNil(w.store.channel(dm.id)?.syncedSeq) // never opened: the row is not held
+        try w.server.delete(channelId: dm.id, userId: w.alice.id, messageId: message.id)
+        await settle(w.engine)
+        await w.engine.flushReads()
+        let channel = try XCTUnwrap(w.store.channel(dm.id))
+        XCTAssertEqual(channel.unreadCount, 0)
+        XCTAssertEqual(channel.mentionCount, 0)
+        XCTAssertNil(channel.firstUnreadAt)
+        XCTAssertEqual(w.store.badgeCount, 0)
+        XCTAssertEqual(badges.last, 0)
+        XCTAssertEqual(read, [dm.id])
+        XCTAssertFalse(w.api.calls.contains("markRead")) // nothing left to ask
+        w.engine.stop()
+    }
+
+    func testAMentionNotHeldDeletedAsksTheServerForTheCounts() async throws {
+        let w = makeWorld()
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-10-09T00:00:00Z", unreadCount: 1, mentionUnread: true)
+        await w.engine.start()
+        await settle(w.engine)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "first")
+        let mention = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> look").0
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "third")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 3)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.mentionCount, 1)
+        XCTAssertEqual(w.store.badgeCount, 1)
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-10-09T00:00:00Z", unreadCount: 0, mentionUnread: false)
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: mention.id)
+        await settle(w.engine)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        await w.engine.flushActivity()
+        XCTAssertTrue(w.api.calls.contains("markRead"))
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 2)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.mentionCount, 0) // the server's answer
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 0) // PUT {last_read_seq: 0} moved nothing
+        XCTAssertEqual(w.store.badgeCount, 0)
+        XCTAssertEqual(w.store.activity?.unreadCount, 0) // the activity badge was read again
+        w.engine.stop()
+    }
+
+    func testAHeldMentionDeletedDropsAtOnceWithoutAsking() async throws {
+        let w = makeWorld()
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "first")
+        let mention = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> look").0
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertNotNil(w.store.message(w.channel.id, id: mention.id))
+        XCTAssertEqual(w.store.channel(w.channel.id)?.mentionCount, 1)
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: mention.id)
+        await settle(w.engine)
+        await w.engine.flushReads()
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 1)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.mentionCount, 0)
+        XCTAssertFalse(w.api.calls.contains("markRead"))
+        w.engine.stop()
+    }
+
+    /// A count no held row backs (a store persisted by an older build) is asked again when the conversation opens.
+    func testOpeningAConversationWhoseCountNoRowBacksAsksTheServer() async throws {
+        let w = makeWorld()
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "read")
+        _ = try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 1)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        w.store.updateChannel(w.channel.id) { $0.unreadCount = 2; $0.mentionCount = 1 } // stale
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertTrue(w.api.calls.contains("markRead"))
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 0)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.mentionCount, 0)
+        w.engine.stop()
+    }
+
+    /// §10.6: a counted row deleted while its events were lost comes back as a tombstone in the catch-up: the server
+    /// says what is left.
+    func testACatchUpBringingATombstoneOfACountedRowAsksTheServer() async throws {
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        let gone = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> gone").0 // 1, counted live
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "stays") // 2
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 2)
+        w.server.sockets.forEach { $0.dropNext = 1 }
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: gone.id) // 3, its event lost
+        try w.server.post(channelId: w.channel.id, senderId: w.bob.id, body: "mine", advanceRead: false) // 4: the gap
+        await settle(w.engine)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 4)
+        XCTAssertTrue(w.api.calls.contains("markRead"))
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 1)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.mentionCount, 0)
+        w.engine.stop()
+    }
 }

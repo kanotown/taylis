@@ -253,6 +253,35 @@ enum ReadGate {
         channel.syncedSeq.map { $0 >= channel.lastSeq } ?? false
     }
 
+    /// The kind of row the server counts, alive or not: someone else's "user" row in the timeline.
+    static func countableRow(_ message: MessageOut, meId: String?) -> Bool {
+        message.senderId != meId && message.type == "user" && (message.parentId == nil || message.alsoInChannel)
+    }
+
+    /// A conversation's counts after a deletion (SYNC_PROTOCOL.md §10.6). `refetch`: the counts cannot be told here, ask
+    /// the server (PUT /channels/{id}/read {last_read_seq: 0}).
+    struct DeleteCounts: Equatable {
+        var unread: Int
+        var mentions: Int
+        var firstUnreadAt: String?
+        var refetch: Bool
+    }
+
+    /// §10.6 (2026-10-09, a DM or a mention deleted before it was read kept its badge): what a message.deleted takes off
+    /// the conversation's counts, before the tombstone replaces the held row. `countedTo` is the channel's last seq before
+    /// the event (the counts cover every change up to it); `held` the row this device holds (nil: not held), `mentionsMe`
+    /// by the live rule. The vectors are apps/shared/unread-delete-rules.json, shared with Desktop / Web and Android.
+    static func countsAfterDelete(lastReadSeq: Int, countedTo: Int, unread: Int, mentions: Int, firstUnreadAt: String?, eventSeq: Int,
+                                  message: MessageOut, held: (deleted: Bool, mentionsMe: Bool)?, meId: String?) -> DeleteCounts {
+        let same = DeleteCounts(unread: unread, mentions: mentions, firstUnreadAt: firstUnreadAt, refetch: false)
+        if eventSeq <= countedTo || !countableRow(message, meId: meId) || message.seq <= lastReadSeq || held?.deleted == true || unread <= 0 { return same }
+        let left = unread - 1
+        if left == 0 { return DeleteCounts(unread: 0, mentions: 0, firstUnreadAt: nil, refetch: false) }
+        let mentionsLeft = held.map { max(0, mentions - ($0.mentionsMe ? 1 : 0)) } ?? mentions
+        let refetch = (held == nil && mentions > 0) || firstUnreadAt == message.createdAt
+        return DeleteCounts(unread: left, mentions: mentionsLeft, firstUnreadAt: firstUnreadAt, refetch: refetch)
+    }
+
     /// The row the 「新着メッセージ」 divider precedes: the first confirmed row past `afterSeq` from someone else.
     static func firstUnreadRow(_ rows: [MessageState], afterSeq: Int, meId: String?) -> MessageState? {
         rows.first { ($0.seq.map { $0 > afterSeq } ?? false) && $0.senderId != meId }
