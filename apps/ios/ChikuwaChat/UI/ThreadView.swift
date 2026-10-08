@@ -35,8 +35,13 @@ struct ThreadView: View {
     /// The newest reply the reader has had on screen at the newest edge (ChannelView.seenSeq): replies from others after
     /// it are 「新着 N 件」 on the jump button.
     @State private var seenSeq: Int?
-    @State private var visibleFrames: [String: CGRect] = [:]
-    @State private var viewportHeight: CGFloat = 0
+    /// Where the replies are on screen, for the read rules and the landing: not view state (ChannelView's RowFrames).
+    /// Written on every frame the list moves — and on iOS 18 on every frame of the keyboard's animation, which lays the
+    /// conversation out frame by frame there — it ran this view's body each time (iOS 18 testers: the list stuttered as
+    /// the keyboard came up, 2026-10-09).
+    @State private var frames = RowFrames()
+    private var visibleFrames: [String: CGRect] { frames.byId }
+    private var viewportHeight: CGFloat { frames.viewportHeight }
     @State private var cover = CoverProbe()
     @State private var landingInterrupted = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
@@ -118,9 +123,9 @@ struct ThreadView: View {
                         if anchor.landing != nil { landingInterrupted = true }
                     }
                     .background(CoverProbe.Marker(probe: cover))
-                    .onPreferenceChange(VisibleReplyFrames.self) { frames in
-                        visibleFrames = frames
-                        viewportHeight = viewport.size.height
+                    .onPreferenceChange(VisibleReplyFrames.self) { visible in
+                        frames.byId = visible
+                        frames.viewportHeight = viewport.size.height
                         markRead()
                     }
                 }

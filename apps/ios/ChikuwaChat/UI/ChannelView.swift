@@ -1661,8 +1661,12 @@ struct ComposerView: View {
 
     /// The height of a one-line input: 「＋」 is as tall, so the two sit on one line (it was 4 pt lower).
     private static let fieldHeight: CGFloat = 40
-    /// The tools row shows while the input has the keyboard (Slack / Mattermost).
-    private var typing: Bool { focused }
+    /// The tools row shows while the input has the keyboard (Slack / Mattermost). Follows `focused` in an animated
+    /// transaction of its own, so the conversation above moves with the composer: with `.animation(value:)` on the
+    /// composer only its inside was animated, and the list's bottom edge (the composer's top) jumped by the tools row's
+    /// height in one frame as the keyboard came and went (27–36 pt on the iOS 26.5 simulator), before the keyboard's own
+    /// motion: a jolt at the start of every keyboard show and hide (testers on iOS 18, 2026-10-09).
+    @State private var typing = false
 
     @ViewBuilder
     private var inputField: some View {
@@ -1924,7 +1928,10 @@ struct ComposerView: View {
             if typing && controller != nil { toolRow }
         }
         .animation(.easeOut(duration: 0.15), value: canSend)
-        .animation(.easeOut(duration: 0.2), value: typing)
+        .onChange(of: focused, initial: true) { _, now in
+            guard typing != now else { return }
+            withAnimation(.easeOut(duration: 0.25)) { typing = now }
+        }
         .background(Color(.systemBackground))
         // Sized before the conversation above it: a VStack offers its flexible children equal shares, so with the
         // keyboard up the composer got half of what was left and the input shrank to fit it — to ~1.2 lines once the
