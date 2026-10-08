@@ -10,6 +10,13 @@ successful press the group's state is asked again and sent to its viewers
 
 Status requests are not presses: no `action_invocations` row and no audit; a failure is logged at
 warning level.
+
+An answer belongs to the configuration it was asked under (§12.6): the cache counts generations
+(every `forget()` starts a new one, as every change of a button or the switch does), a read takes
+the generation before it reads which button to ask, and an answer that comes back in a later
+generation reaches neither the cache, nor whoever waited for it, nor `actions.status_updated`
+(the read is done again under the new configuration). An event is also sent to nobody when its
+status button changed after it was written.
 """
 
 import asyncio
@@ -57,6 +64,8 @@ ACTIONS_STATUS_UPDATED = "actions.status_updated"
 # button).
 AUDIENCE_TYPE: Final = "action"
 TONES = ("ok", "warn", "alert", "neutral")
+# How many times GET /actions/status reads again when the configuration changes under it.
+STALE_ATTEMPTS = 3
 _STATE_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789_-")
 
 
@@ -223,14 +232,21 @@ class _Entry:
     expires: float  # time.monotonic()
 
 
+class Stale(Exception):
+    """The configuration changed while the state was being read (§12.6): the answer is dropped."""
+
+
 class StatusCache:
     """Per process: the last answer per status button, the request in flight per button (later
-    lookers wait for it instead of asking again), and the background re-reads after presses."""
+    lookers of the same generation wait for it instead of asking again), and the background
+    re-reads after presses."""
 
     def __init__(self) -> None:
         self.entries: dict[uuid.UUID, _Entry] = {}
-        self.inflight: dict[uuid.UUID, asyncio.Future[ActionStatusOut]] = {}
+        self.inflight: dict[uuid.UUID, tuple[int, asyncio.Future[ActionStatusOut]]] = {}
         self.background: set[asyncio.Task[None]] = set()
+        # Bumped by every forget(): an answer asked for in an earlier generation is not used.
+        self.generation = 0
 
     def fresh(self, action_id: uuid.UUID) -> ActionStatusOut | None:
         entry = self.entries.get(action_id)
@@ -239,11 +255,15 @@ class StatusCache:
         return entry.out
 
     def forget(self, action_id: uuid.UUID | None = None) -> None:
-        """One button's answer (or all of them: a button or the switch changed)."""
+        """One button's answer (or all of them: a button or the switch changed). Starts a new
+        generation: reads in flight are dropped and their answers not used."""
+        self.generation += 1
         if action_id is None:
             self.entries.clear()
+            self.inflight.clear()
         else:
             self.entries.pop(action_id, None)
+            self.inflight.pop(action_id, None)
 
     async def drain(self) -> None:
         """Waits for the background re-reads (tests; shutdown cancels them instead)."""
@@ -267,30 +287,38 @@ async def fetch(
     settings: Settings,
     post: signed.Poster,
     *,
+    generation: int,
     refresh: bool = False,
     announce: bool = False,
 ) -> ActionStatusOut:
     """The group's state: from the cache unless `refresh`; otherwise one request to the relay
     (shared with anyone asking at the same moment). A successful answer is sent to the group's
-    viewers when `announce` or when it differs from the last one."""
+    viewers when `announce` or when it differs from the last one. `generation` is the cache's,
+    taken before `source` was read: raises Stale when the configuration changed since (§12.6)."""
+    if cache.generation != generation:
+        raise Stale
     if not refresh:
         cached = cache.fresh(source.id)
         if cached is not None:
             return cached
     pending = cache.inflight.get(source.id)
-    if pending is not None:
-        return await asyncio.shield(pending)
+    if pending is not None and pending[0] == generation:
+        return await asyncio.shield(pending[1])
     future: asyncio.Future[ActionStatusOut] = asyncio.get_running_loop().create_future()
-    cache.inflight[source.id] = future
+    cache.inflight[source.id] = (generation, future)
     try:
         out = await ask(factory, source, person, settings, post)
+        if cache.generation != generation:
+            raise Stale
         before = cache.entries.get(source.id)
         cache.entries[source.id] = _Entry(
             out, time.monotonic() + settings.action_status_cache_seconds
         )
         changed = before is not None and before.out.ok and not _same(before.out, out)
         if out.ok and (announce or changed):
-            await _announce(factory, out)
+            await _announce(factory, source, out)
+        if cache.generation != generation:
+            raise Stale
         future.set_result(out)
         return out
     except BaseException as exc:
@@ -302,12 +330,33 @@ async def fetch(
                 future.exception()  # retrieved: nobody may be waiting
         raise
     finally:
-        cache.inflight.pop(source.id, None)
+        slot = cache.inflight.get(source.id)
+        if slot is not None and slot[1] is future:
+            del cache.inflight[source.id]
 
 
-async def _announce(factory: async_sessionmaker[AsyncSession], out: ActionStatusOut) -> None:
+async def _announce(
+    factory: async_sessionmaker[AsyncSession], source: Source, out: ActionStatusOut
+) -> None:
+    """`actions.status_updated`, only while the status button is still the one that was asked
+    (its row is held until the event is committed, so a change after it is newer than the event:
+    see viewers())."""
     try:
         async with factory() as db:
+            row = (
+                await db.execute(
+                    select(Action).where(Action.id == source.id).with_for_update(read=True)
+                )
+            ).scalar_one_or_none()
+            if (
+                row is None
+                or not row.enabled
+                or not row.provides_status
+                or Source.of(row) != source
+                or not await service.is_enabled(db)
+            ):
+                log.info("action %s: changed while its state was read; not sent", source.id)
+                return
             await write_outbox(
                 db,
                 event_type=ACTIONS_STATUS_UPDATED,
@@ -365,13 +414,19 @@ async def source_for(db: AsyncSession, action_id: uuid.UUID) -> Source | None:
     return None
 
 
-async def viewers(db: AsyncSession, source_id: uuid.UUID) -> list[uuid.UUID]:
-    """Who may press something in the status button's group (people only)."""
+async def viewers(
+    db: AsyncSession, source_id: uuid.UUID, *, written_at: datetime | None = None
+) -> list[uuid.UUID]:
+    """Who may press something in the status button's group (people only). With `written_at`
+    (an event's): nobody when the status button changed since, as the state in the event was
+    read from what the button was before (§12.6)."""
     if not await service.is_enabled(db):
         return []
     rows = await service._ordered(db)
     source = next((r for r in rows if r.id == source_id), None)
     if source is None:
+        return []
+    if written_at is not None and source.updated_at >= written_at:
         return []
     key = service.group_key(source)
     members = [r for r in rows if r.enabled and service.group_key(r) == key]
@@ -401,7 +456,8 @@ def audience_resolver(fallback: AudienceResolver) -> AudienceResolver:
 
     async def resolve(db: AsyncSession, event: OutboxEvent) -> Audience:
         if event.audience_type == AUDIENCE_TYPE and event.audience_id is not None:
-            return Audience(kind="users", ids=tuple(await viewers(db, event.audience_id)))
+            ids = await viewers(db, event.audience_id, written_at=event.created_at)
+            return Audience(kind="users", ids=tuple(ids))
         return await fallback(db, event)
 
     return resolve
@@ -420,17 +476,39 @@ async def statuses_for(
     refresh: bool = False,
 ) -> ActionStatusListOut:
     """GET /actions/status: every visible group's state, asked concurrently (each bounded by the
-    send's own timeout)."""
-    async with factory() as db:
-        enabled = await service.is_enabled(db)
-        sources = await visible_sources(db, user)
-    if not enabled:
-        return ActionStatusListOut(enabled=False)
+    send's own timeout). Read again when the configuration changes meanwhile (§12.6); a group
+    still changing after STALE_ATTEMPTS reads is left out of the answer."""
     person = _person(user)
-    statuses = await asyncio.gather(
-        *(fetch(cache, factory, s, person, settings, post, refresh=refresh) for s in sources)
-    )
-    return ActionStatusListOut(enabled=True, statuses=list(statuses))
+    for attempt in range(STALE_ATTEMPTS):
+        generation = cache.generation  # before the buttons are read
+        async with factory() as db:
+            enabled = await service.is_enabled(db)
+            sources = await visible_sources(db, user)
+        if not enabled:
+            return ActionStatusListOut(enabled=False)
+        results = await asyncio.gather(
+            *(
+                fetch(
+                    cache,
+                    factory,
+                    s,
+                    person,
+                    settings,
+                    post,
+                    generation=generation,
+                    refresh=refresh,
+                )
+                for s in sources
+            ),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException) and not isinstance(result, Stale):
+                raise result
+        statuses = [r for r in results if isinstance(r, ActionStatusOut)]
+        if len(statuses) == len(results) or attempt == STALE_ATTEMPTS - 1:
+            return ActionStatusListOut(enabled=True, statuses=statuses)
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 async def check_status(
@@ -456,16 +534,34 @@ def after_press(
     post: signed.Poster,
 ) -> None:
     """After a successful press: forget the group's state now, ask again a few seconds later (a
-    lock's motor takes a moment) and send the answer to the group's viewers."""
+    lock's motor takes a moment) and send the answer to the group's viewers. Nothing is asked when
+    the status button changed meanwhile (§12.6)."""
     cache.forget(source.id)
     person = _person(user)
 
     async def later() -> None:
         try:
             await asyncio.sleep(settings.action_status_after_invoke_seconds)
-            await fetch(cache, factory, source, person, settings, post, refresh=True, announce=True)
+            generation = cache.generation  # before the button is read again
+            async with factory() as db:
+                current = await source_for(db, source.id)
+            if current != source:
+                return
+            await fetch(
+                cache,
+                factory,
+                source,
+                person,
+                settings,
+                post,
+                generation=generation,
+                refresh=True,
+                announce=True,
+            )
         except asyncio.CancelledError:
             raise
+        except Stale:
+            return
         except Exception:
             log.exception("action %s: reading the state after a press failed", source.id)
 

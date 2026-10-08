@@ -754,6 +754,8 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - **遅れた・重なった操作を起こさない**：同期で 1 回だけ送り、outbox も再送も使わない。同じ人の同じ `client_invoke_id` は前の結果を返して
   中継を呼ばない（同時に来ても一意の制約で 1 回）。人ごと・ボタンごとに 3 秒に 1 回（`429`）。送っている途中でサーバが落ちた押下は
   `interrupted` と答え、送り直さない。
+- **許した設定のとおりに送る**（ACTIONS.md §4.1）：許したときのボタンの設定を押下が持ち、送る直前に設定・機能のオン・押した人の権利を
+  確かめ直す。変わっていれば送らず `action_changed` で閉じ、同じ `client_invoke_id` でも後から送らない。
 - **中継への要求**：HMAC-SHA256 の署名（`X-Taylis-Signature`・`X-Taylis-Timestamp`）と `X-Taylis-Delivery`（= `invoke_id`）。中継は時刻
   （1 分以内）・署名・`invoke_id` の重複を確かめる。送信先は https の公開の URL だけ（保存時に形、送るたびに DNS の結果を §14 と同じ検査）。
   リダイレクトは追わず、DNS の確認から応答までの全体を 10 秒で切り、応答は 4 KB まで読む。開発のときだけ `ACTION_ALLOW_PRIVATE=true`
@@ -761,4 +763,4 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - **送る中身**：押した人の id・ユーザー名・メールアドレス・表示名・ロール、`action_key`、時刻、ワークスペース。中継の名簿と突き合わせるため。
 - **中継の答え**：JSON の `message`（文字列だけ、制御文字を除いて 200 文字まで）をプレーンテキストとして押した人に見せる。HTML は描かない。
 - **記録**：押すたびに `action_invocations` と監査ログ `action.invoked`。保持日数で消える（既定 365 日）。
-- **機器の状態**（ACTIONS.md §12）：`action.status` も同じ署名・送信先の検査・10 秒・4 KB。中継は `action.status` で何も動かさない。状態はその組のボタンを 1 つでも押せる人にだけ返し・送る（`GET /actions/status`、`actions.status_updated`）。答えはプレーンテキスト（文 80 文字・details 6 個まで）として出す。中継を叩きすぎないよう、ボタンごとに 30 秒覚え、同時の読み取りは 1 回にまとめ、`refresh` は人ごとに 5 秒に 1 回。
+- **機器の状態**（ACTIONS.md §12）：`action.status` も同じ署名・送信先の検査・10 秒・4 KB。中継は `action.status` で何も動かさない。状態はその組のボタンを 1 つでも押せる人にだけ返し・送る（`GET /actions/status`、`actions.status_updated`）。答えはプレーンテキスト（文 80 文字・details 6 個まで）として出す。中継を叩きすぎないよう、ボタンごとに 30 秒覚え、同時の読み取りは 1 回にまとめ、`refresh` は人ごとに 5 秒に 1 回。尋ねている間に設定が変わった答えは、覚え・待っている人・イベントのどれにも渡さない（ACTIONS.md §12.6）。
