@@ -367,4 +367,35 @@ final class ReadGateTests: XCTestCase {
         XCTAssertFalse(hides(hasRows: false, connecting: true, waits: true)) // the empty state
         XCTAssertFalse(hides(focused: true, connecting: true, waits: true)) // the search context
     }
+
+    // MARK: §10.6: a deletion's effect on the counts (apps/shared/unread-delete-rules.json)
+
+    private struct DeleteRules: Decodable {
+        struct Channel: Decodable { let lastReadSeq, countedTo, unread, mentions: Int; let firstUnreadAt: String? }
+        struct Message: Decodable { let seq: Int; let senderId, type: String; let parentId: String?; let alsoInChannel: Bool; let createdAt: String }
+        struct Held: Decodable { let deleted, mentionsMe: Bool }
+        struct Expect: Decodable { let unread, mentions: Int; let firstUnreadAt: String?; let refetch: Bool }
+        struct Case: Decodable { let name: String; let channel: Channel; let eventSeq: Int; let message: Message; let held: Held?; let expect: Expect }
+        let me: String
+        let cases: [Case]
+    }
+
+    func testTheSharedDeleteRules() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/unread-delete-rules.json")
+        let rules = try JSON.snakeDecoder.decode(DeleteRules.self, from: Data(contentsOf: url))
+        XCTAssertFalse(rules.cases.isEmpty)
+        for c in rules.cases {
+            var message = MessageOut(id: "m", channelId: "c", senderId: c.message.senderId, seq: c.message.seq, updatedSeq: c.eventSeq, clientMsgId: "k",
+                                     body: "", createdAt: c.message.createdAt, editedAt: nil, deleted: true)
+            message.type = c.message.type
+            message.parentId = c.message.parentId
+            message.alsoInChannel = c.message.alsoInChannel
+            let got = ReadGate.countsAfterDelete(lastReadSeq: c.channel.lastReadSeq, countedTo: c.channel.countedTo, unread: c.channel.unread,
+                                                 mentions: c.channel.mentions, firstUnreadAt: c.channel.firstUnreadAt, eventSeq: c.eventSeq,
+                                                 message: message, held: c.held.map { ($0.deleted, $0.mentionsMe) }, meId: rules.me)
+            XCTAssertEqual(got, ReadGate.DeleteCounts(unread: c.expect.unread, mentions: c.expect.mentions, firstUnreadAt: c.expect.firstUnreadAt,
+                                                      refetch: c.expect.refetch), c.name)
+        }
+    }
 }
