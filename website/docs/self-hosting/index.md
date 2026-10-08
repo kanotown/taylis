@@ -50,7 +50,7 @@ Taylis のサーバーは、Linux のサーバー 1 台に Docker Compose で立
     - [文書のプレビュー](previews.md)
 3. [バックアップと復元](backup.md) を毎日動かします。
 4. [更新と自動デプロイ](updates.md)：新しい版への更新、GitHub のタグからの自動デプロイ。
-5. [Slack / Mattermost からの移行](import.md)。
+5. [Slack / Mattermost / Notion からの移行](import.md)。
 6. うまくいかないときは [困ったとき](troubleshooting.md)。
 
 このサイトには要点だけを書いています。手順と設定の全体は、リポジトリの

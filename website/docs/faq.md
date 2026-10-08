@@ -23,6 +23,12 @@ description: Taylis についてよくある質問
     管理者に仮のパスワードを発行してもらってください。組織の Google アカウントでログインしている場合は、
     Google のパスワードの手続きに従ってください。
 
+??? question "英語や中国語で使えますか？"
+    はい。設定 →「表示」→「言語」で、日本語・English・简体中文 を選べます（[サイドバーと表示](guide/sidebar.md)）。
+
+??? question "Notion のようにマニュアルをまとめられますか？"
+    はい。「ドキュメント」にページの木とデータベースを作れます（[ドキュメント](guide/docs.md)）。Notion の書き出しも取り込めます。
+
 ??? question "複数のチームの Taylis を使えますか？"
     はい。アプリの「ワークスペースを追加」から、いくつものサーバーにログインして切り替えられます。
 
@@ -43,9 +49,13 @@ description: Taylis についてよくある質問
 ??? question "何人まで使えますか？"
     数十人・数百の同時接続・数百万件のメッセージを目安に設計しています。それ以上の規模は想定していません。
 
-??? question "Slack や Mattermost から移れますか？"
-    はい。Slack のエクスポート（ZIP）と、Mattermost のチームを、会話ごと読み込めます
-    （[Slack / Mattermost からの移行](self-hosting/import.md)）。
+??? question "Slack や Mattermost、Notion から移れますか？"
+    はい。Slack のエクスポート（ZIP）と Mattermost のチームは会話ごと、Notion の書き出しはドキュメントとして読み込めます
+    （[Slack / Mattermost / Notion からの移行](self-hosting/import.md)）。
+
+??? question "管理を学生に手伝ってもらえますか？"
+    はい。ロール「運営」にすると、招待・名簿・チャンネル・絵文字・予約の枠などの日々の管理ができます。運営も、メンバーでない
+    非公開の会話は読めません（[ロールと権限](admin/roles.md)）。
 
 ??? question "公式のストアのアプリで、自分のサーバーのプッシュ通知を受け取れますか？"
     今のところ受け取れません（準備中）。プッシュはアプリの持ち主の鍵でしか送れないためです。アプリを開いている間は

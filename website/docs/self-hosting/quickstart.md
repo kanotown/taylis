@@ -83,7 +83,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
 - ブラウザで `https://chat.example.com/` を開き、`admin` と仮のパスワードでログインします。新しいパスワードを決めます。
 - デスクトップ版やスマートフォンのアプリでは、ログイン画面の「サーバ URL」に `https://chat.example.com` を入れます。
 
-ここからは [管理者ガイド](../admin/index.md) に沿って、メンバーを作るか招待リンクを送ってください。
+ここからは [管理者](../admin/index.md) のページに沿って、メンバーを作るか招待リンクを送ってください。
 
 ## 次にすること
 
