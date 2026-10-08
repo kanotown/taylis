@@ -14,6 +14,10 @@ protocol WikiApi: AnyObject {
     func updatePage(id: String, title: String?, icon: String?) async throws -> WikiPageOut
     func pageBacklinks(id: String) async throws -> [WikiPageItem]
     func resolvePages(ids: [String]) async throws -> [WikiPageRef]
+    /// M146: GET /wiki/templates, POST …/apply-template, POST …/duplicate.
+    func wikiTemplates() async throws -> WikiTemplatesOut
+    func applyTemplate(pageId: String, _ apply: WikiTemplateApply) async throws -> WikiPageOut
+    func duplicatePage(id: String, _ duplicate: WikiDuplicate) async throws -> WikiDuplicateOut
 }
 
 /// GET /wiki/tree's answer with its ETag (the next read sends it as If-None-Match).
@@ -32,7 +36,7 @@ struct WikiTree: Codable, Equatable {
     private(set) var etag: String?
 
     init(pages: [WikiPageItem], cursor: Int, etag: String? = nil) {
-        for page in pages where page.kind != "row" { self.pages[page.id] = page }
+        for page in pages where Self.listed(page) { self.pages[page.id] = page }
         self.cursor = cursor
         self.etag = etag
     }
@@ -48,6 +52,9 @@ struct WikiTree: Codable, Equatable {
     }
 
     func page(_ id: String) -> WikiPageItem? { pages[id] }
+
+    /// The tree holds pages and databases: not database rows, not templates (M146, §22.3).
+    static func listed(_ page: WikiPageItem) -> Bool { page.kind != "row" && !page.isTemplate }
 
     var isEmpty: Bool { pages.isEmpty }
 
@@ -83,7 +90,11 @@ struct WikiTree: Codable, Equatable {
     mutating func apply(_ changes: WikiChangesOut) -> Bool {
         guard !changes.reset else { return false }
         for page in changes.pages {
-            if page.kind == "row" { continue }
+            // M146: a page that became a template leaves the tree (the server also lists it in `removed`).
+            guard Self.listed(page) else {
+                pages[page.id] = nil
+                continue
+            }
             pages[page.id] = page
         }
         for id in changes.removed { pages[id] = nil }
@@ -94,7 +105,11 @@ struct WikiTree: Codable, Equatable {
 
     /// A page as a read or a create answered (it is mine to show: my level, my parent).
     mutating func upsert(_ page: WikiPageItem) {
-        guard page.kind != "row" else { return }
+        guard Self.listed(page) else {
+            // M146: a template opened (or one a page became) is not in the tree.
+            if pages.removeValue(forKey: page.id) != nil { etag = nil }
+            return
+        }
         if let known = pages[page.id], known.version > page.version { return }
         pages[page.id] = page
         etag = nil
@@ -511,12 +526,58 @@ final class WikiHub {
 
     /// A new page: under `parentId` (its access), or at the top level with `access` (workspace / private, §4.2).
     /// `clientSaveId` is the screen's, kept across retries (the server answers a retry with the first page).
-    func create(parentId: String?, title: String?, icon: String?, access: String, clientSaveId: String) async throws -> WikiPageOut {
+    /// M146: `template` starts it from a built-in or a page template.
+    func create(parentId: String?, title: String?, icon: String?, access: String, clientSaveId: String,
+                template: WikiTemplateChoice? = nil) async throws -> WikiPageOut {
         guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
-        let page = try await api.createPage(WikiPageCreate(parentId: parentId, title: title, icon: icon, access: access, clientSaveId: clientSaveId))
+        let page = try await api.createPage(WikiPageCreate(parentId: parentId, title: title, icon: icon, access: access, clientSaveId: clientSaveId,
+                                                           template: template))
         received(page)
         if let parentId { expanded.insert(parentId) }
         return page
+    }
+
+    // MARK: templates and duplicates (M146, §24.3)
+
+    /// The templates the create sheet offers (read each time it opens: they are not in the tree).
+    func templates() async throws -> WikiTemplatesOut {
+        guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        return try await api.wikiTemplates()
+    }
+
+    /// 「テンプレートから始める」 on an empty page: the server writes the body (and the title / icon when the page has
+    /// none); the open page's save loop reads it.
+    func applyTemplate(_ id: String, template: WikiTemplateChoice, clientSaveId: String) async throws {
+        guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        let page = try await api.applyTemplate(pageId: id, WikiTemplateApply(template: template, clientSaveId: clientSaveId))
+        received(page)
+        // The save loop reads the new body itself (its known version is the old one, so the read is not a 304).
+        await savers[id]?.refresh()
+    }
+
+    /// What a duplicate came to.
+    enum DuplicateResult: Equatable {
+        case made(WikiPageOut)
+        /// 403 page_edit_restricted on the original's parent: the copy may go to the top level instead (a page only).
+        case parentRestricted
+    }
+
+    /// 「複製」: beside the original (the server names it 「…（コピー）」), or at the top level. One `clientSaveId` per
+    /// duplicate, kept across retries and the move to the top level (the server answers a retry with the first copy).
+    func duplicate(_ id: String, clientSaveId: String, topLevel: Bool = false) async throws -> DuplicateResult {
+        guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        do {
+            let out = try await api.duplicatePage(id: id, WikiDuplicate(clientSaveId: clientSaveId, topLevel: topLevel))
+            received(out.page)
+            if let parentId = out.page.item.parentId, out.page.item.kind != "row" { expanded.insert(parentId) }
+            if out.page.item.kind == "row", let databaseId = out.row?.row.databaseId {
+                rowsChanged(databaseId: databaseId, schemaVersion: nil)
+            }
+            return .made(out.page)
+        } catch ApiError.api(let status, let code, _) where status == 403 && code == "page_edit_restricted" && !topLevel
+                    && item(id)?.kind != "row" {
+            return .parentRestricted
+        }
     }
 
     /// The title and / or the icon (`icon: ""` removes it).

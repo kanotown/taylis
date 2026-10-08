@@ -21,6 +21,26 @@ extension DbOption {
     }
 }
 
+/// Words of the database screens (pure, for the tests).
+enum WikiDbText {
+    /// M146: the new row's alert, by what it starts from (a title left empty takes the template's).
+    static func newRowMessage(_ start: DbRowStart, database: WikiDatabase?) -> String {
+        let opens = tr("作ると行のページが開きます。")
+        switch start {
+        case .template(let id):
+            let name = database?.templates.first { $0.id == id }?.displayTitle ?? tr("テンプレート")
+            return tr("「\(name)」から行を作ります。名前を空欄にするとテンプレートの名前になります。") + opens
+        case .standard:
+            if let fallback = database?.defaultTemplate {
+                return tr("既定のテンプレート「\(fallback.displayTitle)」から行を作ります。名前を空欄にするとテンプレートの名前になります。") + opens
+            }
+            return tr("名前を付けて行を作ります。") + opens
+        case .blank:
+            return tr("名前を付けて行を作ります。") + opens
+        }
+    }
+}
+
 struct DbOptionChip: View {
     let option: DbOption
 
@@ -60,6 +80,7 @@ struct WikiDatabaseScreen: View {
     @State private var newRow = false
     @State private var newTitle = ""
     @State private var newKey = UUID().uuidString.lowercased()
+    @State private var newStart: DbRowStart = .standard
     @State private var creating = false
 
     private var item: WikiPageItem? { hub.item(databaseId) }
@@ -77,16 +98,42 @@ struct WikiDatabaseScreen: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if let model, model.rights.addRows, model.offlineSince == nil {
-                    Button {
-                        newTitle = ""
-                        newKey = UUID().uuidString.lowercased()
-                        newRow = true
-                    } label: {
-                        Image(systemName: "plus")
+                    let templates = model.database?.templates ?? []
+                    if templates.isEmpty {
+                        Button { startRow(.standard) } label: {
+                            Image(systemName: "plus")
+                        }
+                        .disabled(creating)
+                        .accessibilityLabel("新しい行")
+                        .accessibilityIdentifier("wiki-db-new-row")
+                    } else {
+                        // M146 (§24.3): the row templates — 「新規」 from the default (the server picks it), one of
+                        // them, or blank; and opening a template to change it.
+                        Menu {
+                            let fallback = model.database?.defaultTemplate
+                            Button(fallback.map { tr("新規（\($0.displayTitle)）") } ?? tr("新規"), systemImage: "plus") { startRow(.standard) }
+                            Section("テンプレートから") {
+                                ForEach(templates) { template in
+                                    Button {
+                                        startRow(.template(template.id))
+                                    } label: {
+                                        Label(template.displayTitle, systemImage: template.id == fallback?.id ? "star.fill" : "doc.on.doc")
+                                    }
+                                }
+                            }
+                            Button("白紙の行", systemImage: "doc") { startRow(.blank) }
+                            Menu("テンプレートを開く", systemImage: "pencil") {
+                                ForEach(templates) { template in
+                                    Button(template.displayTitle) { onOpenPage(template.id) }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .disabled(creating)
+                        .accessibilityLabel("新しい行")
+                        .accessibilityIdentifier("wiki-db-new-row")
                     }
-                    .disabled(creating)
-                    .accessibilityLabel("新しい行")
-                    .accessibilityIdentifier("wiki-db-new-row")
                 }
                 Menu {
                     Button("リンクをコピー", systemImage: "link") { controller.copyPageLink(databaseId) }
@@ -101,7 +148,7 @@ struct WikiDatabaseScreen: View {
             Button("キャンセル", role: .cancel) {}
             Button("作成") { Task { await create() } }
         } message: {
-            Text("名前を付けて行を作ります。作ると行のページが開きます。")
+            Text(WikiDbText.newRowMessage(newStart, database: model?.database))
         }
         .onAppear {
             if model == nil {
@@ -117,13 +164,21 @@ struct WikiDatabaseScreen: View {
         .onChange(of: hub.reconnects) { _, _ in model?.changed() }
     }
 
+    /// The title alert for a new row started from `start` (one key per row).
+    private func startRow(_ start: DbRowStart) {
+        newStart = start
+        newTitle = ""
+        newKey = UUID().uuidString.lowercased()
+        newRow = true
+    }
+
     private func create() async {
         guard let model else { return }
         creating = true
         defer { creating = false }
         do {
             let title = WikiText.title(newTitle) ?? ""
-            let row = try await model.createRow(title: title, props: model.newRowProps(), clientSaveId: newKey)
+            let row = try await model.createRow(title: title, props: model.newRowProps(), start: newStart, clientSaveId: newKey)
             onOpenPage(row.id)
         } catch {
             controller.error = controller.describe(error)
@@ -361,7 +416,7 @@ struct WikiRowPropertiesView: View {
         .onChange(of: hub.reconnects) { _, _ in Task { await model?.load() } }
         .sheet(item: $editing) { target in
             if let model {
-                WikiCellEditor(controller: controller, model: model, prop: target.prop)
+                WikiCellEditor(controller: controller, model: model, prop: target.prop, isTemplate: hub.item(rowId)?.isTemplate == true)
             }
         }
     }
@@ -525,6 +580,8 @@ struct WikiCellEditor: View {
     @Bindable var controller: AppController
     let model: WikiRowModel
     let prop: DbProperty
+    /// M146: a row template's date may be 「今日」 and its people 「自分」 (put in when a row is made from it).
+    var isTemplate = false
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var invalid = false
@@ -638,7 +695,14 @@ struct WikiCellEditor: View {
         }
         Section {
             Button("今日") { start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(9 * 3600) }
+            if isTemplate {
+                Button("今日（行を作る日）") { write(WikiDb.todayValue) }
+            }
             Button("消す", role: .destructive) { write(.null) }
+        } footer: {
+            if isTemplate, let row, WikiDb.isToday(WikiDb.value(prop, row)) {
+                Text("今は「今日（行を作る日）」です。")
+            }
         }
     }
 
@@ -656,6 +720,14 @@ struct WikiCellEditor: View {
         Section {
             TextField("人を探す", text: $query).autocorrectionDisabled().textInputAutocapitalization(.never)
         }
+        if isTemplate {
+            Section {
+                Button { toggle(WikiDb.meToken) } label: {
+                    HStack { Text("自分（行を作る人）"); Spacer(); if chosen.contains(WikiDb.meToken) { Image(systemName: "checkmark") } }
+                }
+                .foregroundStyle(.primary)
+            }
+        }
         Section {
             ForEach(people.prefix(80)) { user in
                 Button { toggle(user.id) } label: {
@@ -669,7 +741,7 @@ struct WikiCellEditor: View {
                 .foregroundStyle(.primary)
             }
             // A chosen person no longer listed (deactivated): still shown, so they can be removed.
-            ForEach(chosen.filter { id in !people.contains { $0.id == id } }, id: \.self) { id in
+            ForEach(chosen.filter { id in id != WikiDb.meToken && !people.contains { $0.id == id } }, id: \.self) { id in
                 Button { toggle(id) } label: {
                     HStack { Text(verbatim: controller.store.users[id]?.displayName ?? tr("メンバー")); Spacer(); Image(systemName: "checkmark") }
                 }

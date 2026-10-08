@@ -339,6 +339,48 @@ final class FakeWikiApi: WikiApi {
         calls.append("resolve:\(ids.joined(separator: ","))")
         return ids.compactMap { id in pages[id].map { WikiPageRef(id: id, title: $0.item.title, icon: $0.item.icon, kind: "page") } }
     }
+
+    // M146
+    var templates = WikiTemplatesOut()
+    var applies: [(id: String, apply: WikiTemplateApply)] = []
+    var duplicates: [(id: String, duplicate: WikiDuplicate)] = []
+    /// Ids whose parent I cannot edit: a duplicate beside them is refused (403 page_edit_restricted).
+    var parentRestricted: Set<String> = []
+    /// Copies made, by key (a retry with the same key answers the first copy).
+    var copies: [String: WikiPageOut] = [:]
+
+    func wikiTemplates() async throws -> WikiTemplatesOut {
+        calls.append("templates")
+        if failNetwork { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        return templates
+    }
+
+    func applyTemplate(pageId: String, _ apply: WikiTemplateApply) async throws -> WikiPageOut {
+        applies.append((pageId, apply))
+        guard var page = pages[pageId] else { throw ApiError.api(status: 404, code: "page_not_found", message: "") }
+        guard page.body.isEmpty else { throw ApiError.api(status: 409, code: "wiki_page_not_empty", message: "") }
+        var item = page.item
+        item.version += 1
+        item.headRevId = "rev\(item.version)"
+        page.content = WikiPageContent(item: item, body: "# テンプレートから")
+        pages[pageId] = page
+        return page
+    }
+
+    func duplicatePage(id: String, _ duplicate: WikiDuplicate) async throws -> WikiDuplicateOut {
+        duplicates.append((id, duplicate))
+        if failNetwork { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        if let made = copies[duplicate.clientSaveId] { return WikiDuplicateOut(page: made) }
+        guard let original = pages[id] else { throw ApiError.api(status: 404, code: "page_not_found", message: "") }
+        if !duplicate.topLevel, parentRestricted.contains(id) { throw ApiError.api(status: 403, code: "page_edit_restricted", message: "") }
+        var item = original.item
+        item = WikiPageItem(id: "copy-\(copies.count + 1)", parentId: duplicate.topLevel ? nil : item.parentId, position: "z",
+                            title: item.title + "（コピー）", icon: item.icon, headRevId: "c1", myLevel: .full)
+        let made = out(item, body: original.body)
+        pages[item.id] = made
+        copies[duplicate.clientSaveId] = made
+        return WikiDuplicateOut(page: made)
+    }
 }
 
 @MainActor
