@@ -295,6 +295,14 @@ fun MainScreen(controller: AppController) {
         snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
         if (controller.notice == message) controller.notice = null
     }
+    // THREADS.md: the thread on screen lost its root while shown (ThreadRootWatch): it closes as back would (to where it
+    // was opened from; its conversation when nothing is under it). The notice, if any, came through controller.notice.
+    LaunchedEffect(controller.threadClosed) {
+        val parentId = controller.threadClosed ?: return@LaunchedEffect
+        controller.threadClosed = null
+        if (MainNav.thread(stack)?.parentId == parentId) focusManager.clearFocus()
+        stack = MainNav.threadGone(stack, parentId)
+    }
     // M141 (SYNC_PROTOCOL.md §7.9): a conversation I closed here closes on every tab (the phone goes back to its list),
     // and 「会話を閉じました」 offers 「元に戻す」. A refused close clears it, which dismisses the offer.
     LaunchedEffect(controller.dmClosed) {

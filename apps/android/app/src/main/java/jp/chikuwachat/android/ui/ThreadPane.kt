@@ -49,6 +49,8 @@ import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ReadGate
 import jp.chikuwachat.android.sync.toOut
+import jp.chikuwachat.android.sync.isRootGone
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -156,6 +158,14 @@ object ThreadRows {
 @Composable
 fun ThreadPane(controller: AppController, channelId: String, parentId: String, version: Int) {
     val store = controller.store
+    // THREADS.md: the root deleted (an event, a tombstone, my delete, a 404 for it). Shown live here, the thread closes
+    // (ThreadRootWatch); opened on a root already deleted, it shows that instead of an empty thread.
+    val rootDeleted = store.isRootDeleted(parentId)
+    DisposableEffect(controller, parentId) {
+        controller.threadRoots.opened(parentId)
+        onDispose { controller.threadRoots.left(parentId) }
+    }
+    LaunchedEffect(parentId, rootDeleted) { if (rootDeleted) controller.threadRootDeleted(parentId) }
     // L8: a parent known nowhere on this device (a reply also in the channel, opened from the Times feed) is fetched.
     var fetched by remember(parentId) { mutableStateOf<MessageState?>(null) }
     val parent = ThreadRows.parent(store, channelId, parentId, controller.messageFocus?.context, controller.timesFeedState.rows, fetched)
@@ -257,21 +267,26 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         }
     }
     suspend fun load() {
-        try { if (controller.engine?.loadReplies(channelId, parentId) == true) loads += 1 }
-        catch (e: Exception) { controller.report(e) }
+        try {
+            if (controller.engine?.loadReplies(channelId, parentId) == true) {
+                controller.threadRoots.loaded(parentId, store.isRootDeleted(parentId))
+                loads += 1
+            }
+        } catch (e: Exception) { controller.report(e) }
     }
     LaunchedEffect(parentId, controller.engineStatus) { load() }
     // A §7.3 reload of the channel dropped the fetched thread: fetch it again.
     LaunchedEffect(parentId, complete) { if (!complete && loads > 0) load() }
-    LaunchedEffect(parentId, controller.engineStatus, parent == null) {
-        if (parent != null || controller.engineStatus != EngineStatus.ONLINE) return@LaunchedEffect
-        controller.fetchMessage(parentId)?.takeIf { !it.deleted }?.let { fetched = MessageState.from(it) }
+    LaunchedEffect(parentId, controller.engineStatus, parent == null, rootDeleted) {
+        if (parent != null || rootDeleted || controller.engineStatus != EngineStatus.ONLINE) return@LaunchedEffect
+        controller.fetchThreadParent(channelId, parentId)?.let { fetched = MessageState.from(it) }
     }
     // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
     LaunchedEffect(parentId, controller.engineStatus, parent?.seq) {
-        if (store.threads[parentId] != null) return@LaunchedEffect
+        if (store.threads[parentId] != null || store.isRootDeleted(parentId)) return@LaunchedEffect
         val out = parent?.toOut() ?: return@LaunchedEffect
         try { controller.engine?.loadThreadState(parentId, out) }
+        catch (e: jp.chikuwachat.android.api.ApiException.Api) { if (e.isRootGone()) store.dropDeletedRoot(channelId, parentId) else controller.report(e) }
         catch (e: Exception) { controller.report(e) }
     }
     // Read position = the newest reply fully shown (never just "opened"), like the timeline, and only anchored.
@@ -288,6 +303,19 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         }
     }
 
+    if (rootDeleted) {
+        // No parent row, no replies, no composer: only what happened.
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Text(
+                stringResource(R.string.thread_pane_root_deleted),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // The channel's 8 dp above and below (ChannelPane): the newest reply sits as far above the input as a channel's
@@ -297,7 +325,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 if (parent != null) {
-                    item(key = "parent") { ThreadMessage(parent, store, controller, version) }
+                    item(key = "parent") { ThreadMessage(parent, store, controller, version, isRoot = true) }
                     item(key = "divider") {
                         Text(
                             if (replies.isEmpty()) stringResource(R.string.common_no_replies_yet) else pluralStringResource(R.plurals.common_replies_count, replies.size, replies.size),
@@ -367,7 +395,7 @@ private fun NewRepliesDivider() {
 }
 
 @Composable
-private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController, version: Int, compact: Boolean = false) {
+private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController, version: Int, compact: Boolean = false, isRoot: Boolean = false) {
     MessageRow(
         message, store, controller, version, compact = compact,
         canEdit = !message.pending && message.senderId == store.me?.id,
@@ -376,6 +404,7 @@ private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.s
         onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
         onReact = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } },
         onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
-        onDelete = { controller.scope.launch { controller.deleteMessage(message.id) } },
+        // The root row: its deletion closes this thread without the notice (ThreadRootWatch).
+        onDelete = { controller.scope.launch { controller.deleteMessage(message.id, fromThreadRoot = isRoot) } },
     )
 }

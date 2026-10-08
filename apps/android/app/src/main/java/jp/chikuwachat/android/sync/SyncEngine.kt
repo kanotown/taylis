@@ -98,6 +98,9 @@ interface WsTransport {
 
 typealias WsConnector = suspend (url: String, token: String) -> WsTransport
 
+/** GET /messages/{root}/replies or GET /messages/{root} for a deleted root (THREADS.md): 404 `message_not_found`. */
+fun ApiException.Api.isRootGone(): Boolean = status == 404 && code == "message_not_found"
+
 private fun isNewer(a: String, b: String): Boolean {
     val instantA = runCatching { java.time.OffsetDateTime.parse(a).toInstant() }.getOrNull()
     val instantB = runCatching { java.time.OffsetDateTime.parse(b).toInstant() }.getOrNull()
@@ -1159,6 +1162,8 @@ class SyncEngine(
                     if (thread != null) store.applyParentThread(channelId, thread)
                 } else {
                     store.applyLastMessage(MessageState.from(message)) // M49: the DM list's preview moves without a timeline too (§7.8)
+                    // A root deleted: its thread draft goes and a thread screen opened on it later knows (THREADS.md).
+                    if (message.deleted && message.parentId == null) store.dropDeletedRoot(channelId, message.id)
                 }
                 store.updateChannel(channelId) { it.advancedTo(seq, message, isNew) }
                 if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
@@ -1184,6 +1189,9 @@ class SyncEngine(
     /** Whether the store holds rows this message goes with: the row itself, or its thread's parent or replies (§7.4). */
     private fun holds(channelId: String, message: MessageOut): Boolean {
         if (store.message(channelId, message.id) != null) return true
+        // A thread root held only through the 「スレッド」 list or its replies (an open thread in a channel without a
+        // timeline): its deletion must reach the store, or the open thread kept showing it.
+        if (message.parentId == null && (store.threads.containsKey(message.id) || store.replies(channelId, message.id).isNotEmpty())) return true
         val parentId = message.parentId ?: return false
         return store.message(channelId, parentId) != null || store.replies(channelId, parentId).isNotEmpty()
     }
@@ -1288,8 +1296,16 @@ class SyncEngine(
         var loaded = false
         enqueue {
             if (_status.value != EngineStatus.ONLINE) return@enqueue
+            val replies = try {
+                api.replies(parentId)
+            } catch (e: ApiException.Api) {
+                // The root was deleted (only it is tombstoned; its replies are no longer served): the store knows, the
+                // thread screen closes or shows its deleted state, and this is no failure to show.
+                if (e.isRootGone()) { store.dropDeletedRoot(channelId, parentId); return@enqueue }
+                throw e
+            }
             store.threads[parentId]?.parent?.let { store.upsertMessage(it) }
-            api.replies(parentId).forEach { store.upsertMessage(it) }
+            replies.forEach { store.upsertMessage(it) }
             completeThreads[parentId] = channelId
             loaded = true
         }

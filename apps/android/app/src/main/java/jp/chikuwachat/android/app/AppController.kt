@@ -82,6 +82,7 @@ import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.ui.openCachedFile
 import jp.chikuwachat.android.ui.DownloadCache
 import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.sync.isRootGone
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.ConversationNote
 import jp.chikuwachat.android.platform.Notifier
@@ -294,7 +295,15 @@ class AppController(private val app: Application) {
         return try {
             val context = api.messageContext(messageId)
             if (store.channel(channelId) == null) api.channel(channelId).takeIf { it.membership == null }?.let { store.upsertChannel(it, isMember = false) }
-            if (store.channel(channelId)?.isMember == true) parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
+            if (store.channel(channelId)?.isMember == true) parentId?.let { parent ->
+                try {
+                    api.replies(parent).forEach { store.upsertMessage(it) }
+                } catch (e: ApiException.Api) {
+                    // A reply whose root is deleted (a stale link, a notification): the thread opens saying so (THREADS.md §5).
+                    if (!e.isRootGone()) throw e
+                    store.dropDeletedRoot(channelId, parent)
+                }
+            }
             messageFocus = MessageFocus(channelId, messageId, parentId, context.map { MessageState.from(it) })
             true
         } catch (e: Exception) { report(e); false }
@@ -1623,8 +1632,56 @@ class AppController(private val app: Application) {
     suspend fun editMessage(messageId: String, body: String): Result<Unit> =
         attempt { store.upsertMessage(api!!.editMessage(messageId, body)); Unit }.onFailure { error = describe(it) }
 
-    suspend fun deleteMessage(messageId: String): Result<Unit> =
-        attempt { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }.onFailure { error = describe(it) }
+    /**
+     * `fromThreadRoot`: the root row at the top of the thread showing it (THREADS.md): the thread then closes without
+     * 「元のメッセージが削除されたため…」 ([threadRoots]); marked before the call, as its event may come before the answer.
+     */
+    suspend fun deleteMessage(messageId: String, fromThreadRoot: Boolean = false): Result<Unit> {
+        if (fromThreadRoot) threadRoots.deletingFromThread(messageId)
+        return attempt { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }
+            .onFailure { if (fromThreadRoot) threadRoots.deleteFailed(messageId); error = describe(it) }
+    }
+
+    /** The thread screen's rules for a deleted root (ThreadRootWatch); ThreadPane reports to it. */
+    val threadRoots = jp.chikuwachat.android.ui.ThreadRootWatch()
+
+    /** A thread whose root was deleted while shown: the screen closes it (as back would), then sets this to null. */
+    var threadClosed by mutableStateOf<String?>(null)
+
+    /**
+     * The thread's root is known deleted (Store.isRootDeleted): a thread shown live closes, with the notice unless I
+     * deleted the root from its root row; one opened on a root already deleted keeps its deleted state.
+     */
+    fun threadRootDeleted(parentId: String): jp.chikuwachat.android.ui.ThreadRootWatch.Outcome {
+        val outcome = threadRoots.close(parentId, store.isRootDeleted(parentId))
+        when (outcome) {
+            jp.chikuwachat.android.ui.ThreadRootWatch.Outcome.CLOSE_WITH_NOTICE -> {
+                notice = L10n.str(R.string.thread_pane_closed_root_deleted)
+                threadClosed = parentId
+            }
+            jp.chikuwachat.android.ui.ThreadRootWatch.Outcome.CLOSE -> threadClosed = parentId
+            else -> Unit
+        }
+        return outcome
+    }
+
+    /**
+     * L8: a thread's parent held nowhere here, fetched by its id; null when it cannot be read now. A 404
+     * `message_not_found` says the root was deleted (the store then knows it).
+     */
+    suspend fun fetchThreadParent(channelId: String, parentId: String): jp.chikuwachat.android.api.MessageOut? {
+        val api = api ?: return null
+        return try {
+            api.message(parentId).also { if (it.deleted && it.parentId == null) store.dropDeletedRoot(channelId, parentId) }.takeIf { !it.deleted }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ApiException.Api) {
+            if (e.isRootGone()) store.dropDeletedRoot(channelId, parentId)
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = attempt { api!!.listPins(channelId) }
     suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = attempt { api!!.listBookmarks(cursor) }
