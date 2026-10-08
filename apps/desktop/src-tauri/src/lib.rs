@@ -4,8 +4,10 @@
 //! Refresh tokens never touch the file system: they live in Keychain / Credential Manager.
 //! In-app updates: tauri-plugin-updater (kanotown/taylis' latest.json, tauri.conf.json plugins.updater) and
 //! tauri-plugin-process (relaunch after installing); the page drives both (src/state/updates.ts).
-//! Notifications: tauri-plugin-notification, except in the macOS app bundle, where `native_notification_*` show them
-//! through UNUserNotificationCenter so that they appear while Taylis is frontmost too (mac_notify.rs).
+//! Notifications: `native_notification_*` in the macOS app bundle (UNUserNotificationCenter, so that they appear while
+//! Taylis is frontmost too: mac_notify.rs) and on Windows (WinRT toasts whose click brings the window up: win_notify.rs);
+//! tauri-plugin-notification elsewhere (Linux, `tauri dev` on macOS). Either native path reports a click to the page as
+//! `notification-clicked` with the notification's id.
 //! Closing the window keeps the app running (the Dock on macOS, the notification area on Windows) unless the reader
 //! turned that off; quitting is ⌘Q / the tray's 「終了」 (background.rs).
 
@@ -16,6 +18,8 @@ use tauri_plugin_deep_link::DeepLinkExt;
 mod background;
 #[cfg(target_os = "macos")]
 mod mac_notify;
+#[cfg(windows)]
+mod win_notify;
 
 const SERVICE: &str = "jp.chikuwachat.desktop";
 
@@ -46,14 +50,15 @@ fn secret_delete(account: String) -> Result<(), String> {
 }
 
 /// "granted" / "denied" / "default" from the OS, or "unavailable" where the page uses tauri-plugin-notification
-/// (Windows, Linux, and `tauri dev` on macOS, which runs outside an app bundle).
+/// (Linux, and `tauri dev` on macOS, which runs outside an app bundle). Windows has no permission prompt for toasts
+/// (they are switched off in the system's settings, if at all): "granted", as the plugin said there.
 #[tauri::command]
 async fn native_notification_permission() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     if mac_notify::available() {
         return mac_notify::permission().await;
     }
-    Ok("unavailable".to_owned())
+    Ok(if cfg!(windows) { "granted" } else { "unavailable" }.to_owned())
 }
 
 /// Ask the OS (its prompt the first time) and say what was decided; "unavailable" as above.
@@ -63,22 +68,31 @@ async fn native_notification_request() -> Result<String, String> {
     if mac_notify::available() {
         return mac_notify::request_permission().await;
     }
-    Ok("unavailable".to_owned())
+    Ok(if cfg!(windows) { "granted" } else { "unavailable" }.to_owned())
 }
 
 /// Show a notification (only called after the permission said it is not "unavailable").
 #[tauri::command]
-fn native_notification_send(id: String, title: String, body: String) -> Result<(), String> {
+fn native_notification_send(app: AppHandle, id: String, title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     if mac_notify::available() {
         mac_notify::send(&id, &title, &body);
         return Ok(());
     }
-    let _ = (id, title, body);
-    Err("native notifications are not available here".to_owned())
+    #[cfg(windows)]
+    {
+        win_notify::send(&app, Some(id), title, body);
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, id, title, body);
+        Err("native notifications are not available here".to_owned())
+    }
 }
 
-/// Sign-out: remove our delivered notifications (nothing to do where they are not native).
+/// Sign-out: remove our delivered notifications (nothing to do where they are not native; on Windows the toasts stay in
+/// the Action Center, as with the plugin, and a click on one after sign-out only brings the window up).
 #[tauri::command]
 fn native_notification_clear() {
     #[cfg(target_os = "macos")]

@@ -43,5 +43,10 @@ block2 = "0.6"
 
 # Windows / Linux hand a deep link to a new process; this forwards it to the running app (its deep-link feature).
 # macOS delivers the URL to the running app itself. 2.4.x for tauri 2.11, as above.
+# Windows toasts with a click handler (src/win_notify.rs): the notification plugin drops the click. The version the plugin
+# already pulls in through notify-rust (Cargo.lock), so no new crate.
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
+
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "~2.4.5", features = ["deep-link"] }
