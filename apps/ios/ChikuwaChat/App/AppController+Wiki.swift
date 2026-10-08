@@ -31,8 +31,7 @@ extension AppController {
     /// The page's permalink on the clipboard (`<server>/p/<id>`: the same card in messages and canvases).
     func copyPageLink(_ pageId: String) {
         guard let api else { return }
-        UIPasteboard.general.string = PageLink.url(base: api.baseUrl, pageId: pageId)
-        notice = tr("リンクをコピーしました")
+        copyToClipboard(PageLink.url(base: api.baseUrl, pageId: pageId), notice: tr("リンクをコピーしました"))
     }
 
     /// A page's file (`[name](attachment:<id>)`): read and kept in the temporary folder to preview or share.

@@ -13024,6 +13024,22 @@
         }
       }
     },
+    "テキストをコピーしました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text copied"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制文本"
+          }
+        }
+      }
+    },
     "テスト通知" : {
       "localizations" : {
         "en" : {

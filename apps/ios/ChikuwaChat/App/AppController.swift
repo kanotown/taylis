@@ -1045,8 +1045,15 @@ final class AppController {
 
     func copyPermalink(_ messageId: String) {
         guard let url = permalink(messageId) else { return }
-        UIPasteboard.general.string = url
-        notice = tr("リンクをコピーしました")
+        copyToClipboard(url, notice: tr("リンクをコピーしました"))
+    }
+
+    /// 2026-10-08: what every copy button does. iOS says nothing when the pasteboard is written, so the app's toast says
+    /// 「コピーしました」 (or what was copied: 「リンクをコピーしました」). A sheet that covers the toast shows its own
+    /// 「コピーしました」 on the button instead (回復コード, AI の答え, カレンダーの購読 URL).
+    func copyToClipboard(_ text: String, notice: String? = nil, pasteboard: UIPasteboard = .general) {
+        pasteboard.string = text
+        self.notice = notice ?? tr("コピーしました")
     }
 
     /// A permalink tapped in a body: fetch the message (membership is checked there), reveal it and open its conversation.
