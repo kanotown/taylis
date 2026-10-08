@@ -230,13 +230,11 @@ extension AppController {
 
     /// A canvas's body as a reader sees it (mentions as names, no task markers) on the clipboard.
     func copyCanvasText(_ text: String) {
-        UIPasteboard.general.string = Mentions.decode(CanvasMarkers.strip(text), users: store.users, groups: store.groups)
-        notice = tr("本文をコピーしました")
+        copyToClipboard(Mentions.decode(CanvasMarkers.strip(text), users: store.users, groups: store.groups), notice: tr("本文をコピーしました"))
     }
 
     func copyCanvasLink(_ canvasId: String) {
         guard let api else { return }
-        UIPasteboard.general.string = CanvasLink.url(base: api.baseUrl, canvasId: canvasId)
-        notice = tr("リンクをコピーしました")
+        copyToClipboard(CanvasLink.url(base: api.baseUrl, canvasId: canvasId), notice: tr("リンクをコピーしました"))
     }
 }

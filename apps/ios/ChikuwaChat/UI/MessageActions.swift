@@ -231,7 +231,9 @@ struct MessageActionsSheet: View {
                 if isMine { row(tr("編集"), "pencil") { then(.edit) } }
                 if !message.body.isEmpty {
                     row(tr("テキストをコピー"), "doc.on.doc") {
-                        UIPasteboard.general.string = Mentions.decode(message.body, users: store.users, groups: store.groups)
+                        // 2026-10-08: the toast says so once the sheet is down (it said nothing before).
+                        controller.copyToClipboard(Mentions.decode(message.body, users: store.users, groups: store.groups),
+                                                   notice: tr("テキストをコピーしました"))
                         dismiss()
                     }
                 }
