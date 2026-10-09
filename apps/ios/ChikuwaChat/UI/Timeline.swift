@@ -374,14 +374,31 @@ enum ReadGate {
 
     /// 「新着 N 件」 goes to the first of the N rows, not to the newest one, so nothing is passed unseen (Slack; testers,
     /// build 110). With that row already on screen (the second tap, or a landing that put it there) it goes on to the
-    /// newest edge; with nothing new (the plain ↓) straight there.
+    /// newest edge; with nothing new (the plain ↓) straight there. The first new row above the screen (older than every
+    /// row on it: the reader scrolled on past it, while `seenSeq` moves only at the newest edge) is never scrolled
+    /// back to; the jump goes on to the first new row below the screen (newer than every row on it), or to the newest
+    /// edge when there is none. Android's Timeline.newRowsTarget is the same.
     static func newRowsJump(_ items: [TimelineItem], seenSeq: Int?, meId: String?, onScreenIds: Set<String>) -> NewRowsJump {
         guard let seenSeq else { return .newest }
+        let onScreenSeqs = items.compactMap { item -> Int? in
+            guard case .message(let message, _) = item, onScreenIds.contains(message.id) else { return nil }
+            return message.seq
+        }
         var previous: TimelineItem?
+        var passed = false
         for item in items {
             defer { if case .date = item {} else { previous = item } }
-            guard case .message(let message, _) = item, (message.seq ?? 0) > seenSeq, message.senderId != meId else { continue }
+            guard case .message(let message, _) = item, let seq = message.seq, seq > seenSeq, message.senderId != meId else { continue }
+            if passed {
+                // After a first new row above the screen: the first one below it.
+                if let bottom = onScreenSeqs.max(), seq > bottom { return .firstNew(scrollId: message.rowKey, rowId: message.id) }
+                continue
+            }
             if onScreenIds.contains(message.id) { return .newest }
+            if let top = onScreenSeqs.min(), seq < top {
+                passed = true
+                continue
+            }
             if case .unread = previous { return .firstNew(scrollId: TimelineItem.unread.id, rowId: message.id) }
             return .firstNew(scrollId: message.rowKey, rowId: message.id)
         }
