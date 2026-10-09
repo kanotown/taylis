@@ -1550,6 +1550,37 @@ extension SyncEngineTests {
         XCTAssertNil(ThreadCardRules.replies(store.threads["p"]!, me: "me", isBlocked: { _ in false }))
     }
 
+    func testThreadsFilterSwitchesLocallyBeforeTheFetch() {
+        // 「すべて」/「未読」: the rows held are filtered at once; a page for the filter left meanwhile only adds rows.
+        let store = Store()
+        func item(_ id: String, unread: Int, minute: Int) -> ThreadItem {
+            let at = String(format: "2026-10-07T01:%02d:00Z", minute)
+            let parent = MessageOut(id: id, channelId: "c1", senderId: "me", seq: minute, updatedSeq: minute, clientMsgId: nil, body: id,
+                                    createdAt: at, editedAt: nil, deleted: false, replyCount: 1)
+            return ThreadItem(parent: parent, state: ThreadState(parentId: id, channelId: "c1", following: true, lastReadSeq: 0, unreadCount: unread,
+                                                                 mentionCount: 0, replyCount: 1, lastReplyAt: at, participantIds: []))
+        }
+        store.setThreadPage(filter: "all", items: [item("a", unread: 1, minute: 3), item("b", unread: 0, minute: 2), item("c", unread: 2, minute: 1)],
+                            cursor: "next", append: false, pageSize: 3)
+        XCTAssertTrue(store.threadsHasMore)
+        store.selectThreadsFilter("unread")
+        XCTAssertEqual(store.threadsFilter, "unread")
+        XCTAssertEqual(store.threadList().map(\.parent.id), ["a", "c"])
+        XCTAssertFalse(store.threadsHasMore) // 「さらに表示」 waits for the unread page's cursor
+        XCTAssertNil(store.threadsCursor)
+        store.selectThreadsFilter("all")
+        XCTAssertEqual(store.threadList().map(\.parent.id), ["a", "b", "c"])
+        // The unread page arrives after the switch back: its rows merge, the filter, cursor and held rows stay.
+        store.setThreadPage(filter: "unread", items: [item("d", unread: 1, minute: 4)], cursor: "u", append: false, pageSize: 1)
+        XCTAssertEqual(store.threadsFilter, "all")
+        XCTAssertNil(store.threadsCursor)
+        XCTAssertEqual(store.threadList().map(\.parent.id), ["d", "a", "b", "c"])
+        // The page of the filter shown sets it all, as before.
+        store.setThreadPage(filter: "all", items: [item("d", unread: 1, minute: 4)], cursor: "n2", append: false, pageSize: 1)
+        XCTAssertEqual(store.threadsCursor, "n2")
+        XCTAssertTrue(store.threadsHasMore)
+    }
+
     func testThreadsListFromAnOlderServerHasNoPreviews() async throws {
         let (w, parent) = try await previewWorld(previews: false)
         XCTAssertNotNil(w.store.threads[parent.id])

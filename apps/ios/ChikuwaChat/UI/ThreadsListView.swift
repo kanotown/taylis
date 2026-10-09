@@ -34,7 +34,7 @@ struct ThreadsListView: View {
     var body: some View {
         List {
             Section {
-                Picker("表示", selection: Binding(get: { store.threadsFilter }, set: { value in Task { await controller.engine?.loadThreads(filter: value) } })) {
+                Picker("表示", selection: Binding(get: { store.threadsFilter }, set: { value in store.selectThreadsFilter(value); Task { await controller.engine?.loadThreads(filter: value) } })) {
                     Text("すべて").tag("all")
                     Text("未読").tag("unread")
                 }
