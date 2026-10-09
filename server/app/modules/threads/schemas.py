@@ -55,3 +55,26 @@ class ThreadFollowIn(BaseModel):
 
 class ThreadUpdatedData(ThreadState):
     reason: Literal["reply", "deleted", "read", "follow"]
+
+
+class ThreadReadPosition(BaseModel):
+    """One thread moved by POST /threads/read-all, with its counts after the move (a reply
+    committed during the call stays unread and is counted here)."""
+
+    parent_id: UUID
+    channel_id: UUID
+    last_read_seq: int
+    unread_count: int
+    mention_count: int
+
+
+class ThreadsReadAllOut(BaseModel):
+    """POST /threads/read-all (THREADS.md §3): the new badge and the threads that moved. The
+    same shape is the payload of threads.read_all to my other devices."""
+
+    summary: ThreadSummary
+    threads: list[ThreadReadPosition]
+
+
+class ThreadsReadAllData(ThreadsReadAllOut):
+    pass

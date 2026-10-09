@@ -346,6 +346,8 @@ CREATE INDEX thread_follows_user_idx ON thread_follows (user_id, following);
 - 返信もチャンネルの `seq` を消費するので、スレッド内の位置も `seq` で表せる。未読数は `read_states` と同じく
   導出する (THREADS.md §2 のクエリ)。チャンネルの未読 (`read_states`) とは独立で、返信はそちらに数えない。
 - `message.created` の `parent_thread.participant_ids` と `thread.updated` の宛先はこの表の `following=true`。
+- `POST /threads/read-all` (2026-10-09) は自分の `following=true`・参加中のチャンネル・親が削除されていない行の
+  `last_read_seq` を 1 つの `UPDATE` で最新の返信の `seq` へ進める (進むだけ。THREADS.md §3.2)。
 
 ### bookmarks (保存したメッセージ、M11c)
 

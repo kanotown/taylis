@@ -10,9 +10,21 @@ from app.events.outbox import write_outbox
 from app.modules.messages.models import Message
 from app.modules.messages.schemas import MessageOut
 from app.modules.threads import repository as repo
-from app.modules.threads.events import THREAD_UPDATED, ThreadUpdatedData
+from app.modules.threads.events import (
+    THREAD_UPDATED,
+    THREADS_READ_ALL,
+    ThreadsReadAllData,
+    ThreadUpdatedData,
+)
 from app.modules.threads.models import ThreadFollow
-from app.modules.threads.schemas import ThreadItem, ThreadListOut, ThreadState, ThreadSummary
+from app.modules.threads.schemas import (
+    ThreadItem,
+    ThreadListOut,
+    ThreadReadPosition,
+    ThreadsReadAllOut,
+    ThreadState,
+    ThreadSummary,
+)
 
 Reason = Literal["reply", "deleted", "read", "follow"]
 
@@ -144,6 +156,35 @@ async def mark_read(db: AsyncSession, parent: Message, user_id: uuid.UUID, seq: 
     )
     await db.commit()
     return state
+
+
+async def mark_all_read(db: AsyncSession, user_id: uuid.UUID) -> ThreadsReadAllOut:
+    """POST /threads/read-all (THREADS.md §3): one transaction, one threads.read_all to my
+    devices (not one thread.updated per thread: a person may follow hundreds of threads). No
+    event when nothing moved, like a read that does not move."""
+    moved = await repo.read_all(db, user_id)
+    counts = await repo.counts_for_user(db, user_id, [parent_id for parent_id, _, _ in moved])
+    threads = [
+        ThreadReadPosition(
+            parent_id=parent_id,
+            channel_id=channel_id,
+            last_read_seq=seq,
+            unread_count=counts.get(parent_id, (0, 0))[0],
+            mention_count=counts.get(parent_id, (0, 0))[1],
+        )
+        for parent_id, channel_id, seq in moved
+    ]
+    out = ThreadsReadAllOut(summary=await summary_for(db, user_id), threads=threads)
+    if threads:
+        await write_outbox(
+            db,
+            event_type=THREADS_READ_ALL,
+            audience_type="user",
+            audience_id=user_id,
+            payload=ThreadsReadAllData(**out.model_dump()).model_dump(mode="json"),
+        )
+    await db.commit()
+    return out
 
 
 async def set_following(

@@ -1,7 +1,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, any_, bindparam, exists, func, or_, select, true
+from sqlalchemy import (
+    ColumnElement,
+    and_,
+    any_,
+    bindparam,
+    exists,
+    func,
+    or_,
+    select,
+    true,
+    update,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -203,6 +214,38 @@ async def set_following(
     row.updated_at = utcnow()
     await db.flush()
     return row, True
+
+
+async def read_all(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[uuid.UUID, uuid.UUID, int]]:
+    """POST /threads/read-all: every thread I follow, in a channel I am still in and whose parent
+    is not deleted (the rows `summary` counts), is read to its newest live reply. One statement:
+    the newest seq comes from that statement's snapshot, so a reply committed during the call is
+    either covered by the new position or stays unread, never half of each. Forward only.
+    Returns (parent_id, channel_id, last_read_seq) of the rows that moved."""
+    reply = aliased(Message)
+    parent = aliased(Message)
+    newest = (
+        select(func.max(reply.seq))
+        .where(reply.parent_id == ThreadFollow.parent_id, reply.deleted_at.is_(None))
+        .correlate(ThreadFollow)
+        .scalar_subquery()
+    )
+    stmt = (
+        update(ThreadFollow)
+        .where(
+            parent.id == ThreadFollow.parent_id,
+            parent.deleted_at.is_(None),
+            ThreadFollow.user_id == user_id,
+            ThreadFollow.following.is_(True),
+            _member_of_thread_channel(),
+            newest > ThreadFollow.last_read_seq,
+        )
+        .values(last_read_seq=newest, updated_at=utcnow())
+        .returning(ThreadFollow.parent_id, parent.channel_id, ThreadFollow.last_read_seq)
+        .execution_options(synchronize_session=False)
+    )
+    rows = (await db.execute(stmt)).all()
+    return [(row[0], row[1], int(row[2])) for row in rows]
 
 
 def _unread_filter(user_id: uuid.UUID, last_read_seq: int) -> ColumnElement[bool]:

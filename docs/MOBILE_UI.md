@@ -264,7 +264,7 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
        - 既読位置は自分のものだけを見る（他の人が読んでも変わらない）。「ここから未読にする」（`mode: "set"`）で位置が戻れば、`activity_read_at` より新しい項目はまた未読になる
     - `reaction`・`canvas_mention` は 1 だけ（メッセージの既読位置とは関係しない）。`reservation` は 1 かつ「対応済み」でない（M112 のまま）
     - サーバは `GET /activity/summary`・bootstrap の `activity`・`PUT /activity/read` の応答の `unread_count` / `mention_unread` をこの規則で数え、`GET /activity` の各項目に `read: bool` を付ける（同じ規則。null・無しはこの規則より前のサーバなので `at` と `read_at` を比べる）。2026-10-07 からは下の「開いたら既読」も加わる
-    - クライアント：未読の点は `read` で出す。接続中に `read.updated`（自分の会話の既読位置）と `thread.updated`（`reason: "read"`、自分のスレッドの既読位置）を受けたら、今のメンション・返信の `message.created` と同じくまとめて（デバウンスして）`GET /activity/summary` を取り直す。一覧を表示・保持していれば、上の 2 の規則でその場で項目の `read` を true にしてよい（`channel_id` と `last_read_seq`、または `parent_id` と `last_read_seq` で該当する項目）。`reason: "set"` で位置が戻ったときは一覧を読み直す
+    - クライアント：未読の点は `read` で出す。接続中に `read.updated`（自分の会話の既読位置）と `thread.updated`（`reason: "read"`、自分のスレッドの既読位置）、`threads.read_all`（2026-10-09、スレッドのすべて既読）を受けたら、今のメンション・返信の `message.created` と同じくまとめて（デバウンスして）`GET /activity/summary` を取り直す。一覧を表示・保持していれば、上の 2 の規則でその場で項目の `read` を true にしてよい（`channel_id` と `last_read_seq`、または `parent_id` と `last_read_seq` で該当する項目）。`reason: "set"` で位置が戻ったときは一覧を読み直す
     - アプリのアイコンのバッジ（プッシュの `badge`）はアクティビティの数を含まない（PUSH_NOTIFICATIONS.md §4.2）ので、この規則で変わらない
   - **開いたら既読（2026-10-07、Slack と同じ）**。利用者の声：「アクティビティの通知がいつ消える（既読になる）のかわかりにくい」。それまでは
     タブを開いて約 1.5 秒で `activity_read_at` が進み（「すべて」のとき）、見ただけで全部が既読になっていた。これをやめる。
@@ -272,6 +272,7 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
     1. **その項目を開いた**（一覧の行をクリック・タップ）。`PUT /activity/items/read` `{item_ids}`
     2. メンション・スレッドの返信は、そのメッセージを会話・スレッドで読んだ（上の 2026-10-06 の規則のまま）
     3. **「すべて既読にする」**を押した（見出しのボタン。`PUT /activity/read`、`read_at` は今。既読位置より前は全部既読）
+       - これはアクティビティの項目だけを既読にし、スレッドの既読位置（「スレッド」の未読）は動かさない。スレッドは「スレッド」一覧の見出しの「すべて既読にする」（`POST /threads/read-all`、THREADS.md §3.2、2026-10-09）で読む。そちらで読んだスレッドの返信・メンションの項目は上の 2 で既読になる（他端末へは `threads.read_all`。受けたらアクティビティのバッジを取り直す）
     4. 予約の担当者の作業は「対応済み」になった（RESERVATIONS.md §5 のまま）
 
     **一覧を表示する・スクロールするだけでは何も既読にしない**（`PUT /activity/read` を自動で送らない）。

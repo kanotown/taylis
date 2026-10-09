@@ -52,6 +52,7 @@ WHERE parent_id = $parent AND seq > $last_read_seq AND sender_id <> $me;
 | 状態 | `GET /messages/{id}/thread` | 自分の `ThreadState` 1 件。スレッドパネルのフォロー表示と「新しい返信」の区切りに使う。行が無ければ `following=false, last_read_seq=0` |
 | 既読 | `PUT /messages/{id}/thread/read {last_read_seq}` | 単調、最新の返信の `seq` で clamp。スレッドを開いて表示できた返信の最大 `seq` を 1 秒デバウンスで送る。`id` は返信の id でもよい (親に解決する) |
 | フォロー | `PUT /messages/{id}/thread/follow {following}` | false で一覧と通知から外れる (チャンネルの通知レベルが「すべて」でも返信は通知しない)。手動で外したものは自動フォローで戻さない。既読 API はフォローを作らない |
+| すべて既読 | `POST /threads/read-all` (本文なし) | 「スレッド」一覧の「すべて既読にする」(2026-10-09)。下の §3.2 |
 | bootstrap | `threads: { unread_count, mention_count }` | 未読の返信があるフォロー中スレッドの数と、そのうち未読メンションがあるものの数。サイドバーの「スレッド」バッジ用 |
 
 ```text
@@ -90,11 +91,39 @@ ThreadState
 - イベント: 返信の作成 / 削除の `parent_thread` にも `reply_user_ids` を入れる (SYNC_PROTOCOL.md §6)。親への
   それ以外の変更 (`message.updated`) は `MessageOut` ごと届くのでそのまま入っている。
 
+### 3.2 すべて既読 (2026-10-09)
+
+テスターの声：アクティビティの「すべて既読にする」の後も「スレッド」の未読が残る。アクティビティの既読は
+`users.activity_read_at` だけを進め、スレッドの位置はスレッドごと (`thread_follows.last_read_seq`) なので、別の
+操作にした。**アクティビティの「すべて既読」はスレッドに触れない**。スレッドは一覧の見出しの「すべて既読にする」で読む。
+
+- `POST /threads/read-all` (認証のみ、本文なし)。1 トランザクションで、自分の `thread_follows` のうち
+  `following = true`、今も参加しているチャンネル、親が削除されていない行 (= バッジの `summary` が数える行) の
+  `last_read_seq` を、そのスレッドの削除されていない最新の返信の `seq` へ進める (進むだけ。それより先にある位置は
+  そのまま)。フォローを外したスレッド、抜けたチャンネルのスレッド、他の人の位置は動かない。
+- 1 つの `UPDATE` 文で、最新の `seq` はその文のスナップショットから取る。呼び出し中に確定した返信は、新しい位置に
+  含まれるか未読のまま残るかのどちらかで、半端にはならない (残ったものは応答の各行の `unread_count` と `summary` に
+  数えられ、その返信の `thread.updated` (`reply`) も今までどおり届く)。
+- 応答 `ThreadsReadAllOut`：`{ summary: ThreadSummary, threads: [{ parent_id, channel_id, last_read_seq,
+  unread_count, mention_count }] }`。`threads` は位置が動いた行だけ (数はその後の値。ふつうは 0)。何も動かなければ
+  `threads: []` でイベントも出さない (冪等)。
+- 他の端末へは **`threads.read_all` 1 件** (audience=user、data は応答と同じ)。スレッドごとの `thread.updated` に
+  しなかったのは、フォロー中のスレッドが数百ありうるため (outbox の行と、受けた端末の 300 ms 後の取り直しがスレッドの
+  数だけ増える。`participant_ids` などこの操作で変わらない値も毎回運ぶことになる)。
+- アクティビティ：そのスレッドの返信 (`thread_reply`) と返信の中のメンション (`mention`) は「スレッドで読んだ」規則
+  (MOBILE_UI.md §6.4) でそのまま既読になる。`activity_read_at` は動かさない。
+- 制限：`POST /channels/read-all` と同じく回数の制限はかけない (1 回の文で済み、何も動かなければ書き込まない)。
+- テスト：`server/tests/test_threads_read_all.py`。
+
 ## 4. イベント
 
 - `thread.updated` (audience=user、フォロワー全員): 返信の作成 / 削除はフォロワー全員に、フォロー変更と既読更新は
   本人 (の全端末) に送る。payload は `ThreadState` + `reason` (`reply` / `deleted` / `read` / `follow`)。
   outbox 経由 (ARCHITECTURE.md §6)。位置が動かない既読送信はイベントを出さない。
+- `threads.read_all` (audience=user、本人の全端末): `POST /threads/read-all` で位置が動いたとき 1 件 (§3.2)。
+  data は `{ summary, threads: [{ parent_id, channel_id, last_read_seq, unread_count, mention_count }] }`。
+  クライアントは保持している行の位置を進め (下げない)、数を置き換え、バッジを `summary` にし、
+  `thread.updated` (`read`) と同じくアクティビティのバッジを取り直す。
 - 返信そのものは今までどおり `message.created` としてチャンネルの購読者に届く。一覧はイベントで
   更新し、開いたスレッドは `replies` で埋める。
 - プッシュ: `message.created` の `parent_thread.participant_ids` は `thread_follows.following=true` の

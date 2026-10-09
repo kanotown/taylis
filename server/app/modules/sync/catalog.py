@@ -77,6 +77,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     auth_events.SESSION_REVOKED: (auth_events.SessionRevokedData, "session", False),
     read_events.READ_UPDATED: (read_events.ReadUpdatedData, "user", False),
     thread_events.THREAD_UPDATED: (thread_events.ThreadUpdatedData, "user", False),
+    thread_events.THREADS_READ_ALL: (thread_events.ThreadsReadAllData, "user", False),
     bookmark_events.BOOKMARK_UPDATED: (bookmark_events.BookmarkUpdatedData, "user", False),
     activity_events.ACTIVITY_READ: (activity_events.ActivityReadData, "user", False),
     activity_events.ACTIVITY_ITEMS_READ: (

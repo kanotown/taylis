@@ -8460,6 +8460,87 @@
         "type": "object"
       }
     },
+    "threads.read_all": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "ThreadReadPosition": {
+            "description": "One thread moved by POST /threads/read-all, with its counts after the move (a reply\ncommitted during the call stays unread and is counted here).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "last_read_seq": {
+                "title": "Last Read Seq",
+                "type": "integer"
+              },
+              "mention_count": {
+                "title": "Mention Count",
+                "type": "integer"
+              },
+              "parent_id": {
+                "format": "uuid",
+                "title": "Parent Id",
+                "type": "string"
+              },
+              "unread_count": {
+                "title": "Unread Count",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "parent_id",
+              "channel_id",
+              "last_read_seq",
+              "unread_count",
+              "mention_count"
+            ],
+            "title": "ThreadReadPosition",
+            "type": "object"
+          },
+          "ThreadSummary": {
+            "description": "Followed threads with unread replies / unread mentions (sidebar badge, bootstrap).",
+            "properties": {
+              "mention_count": {
+                "title": "Mention Count",
+                "type": "integer"
+              },
+              "unread_count": {
+                "title": "Unread Count",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "unread_count",
+              "mention_count"
+            ],
+            "title": "ThreadSummary",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "summary": {
+            "$ref": "#/$defs/ThreadSummary"
+          },
+          "threads": {
+            "items": {
+              "$ref": "#/$defs/ThreadReadPosition"
+            },
+            "title": "Threads",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "threads"
+        ],
+        "title": "ThreadsReadAllData",
+        "type": "object"
+      }
+    },
     "user.created": {
       "audience": "all",
       "consumes_seq": false,

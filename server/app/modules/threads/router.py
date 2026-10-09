@@ -12,7 +12,13 @@ from app.modules.messages.models import Message
 from app.modules.messages.schemas import MessageOut
 from app.modules.threads import repository as repo
 from app.modules.threads import service
-from app.modules.threads.schemas import ThreadFollowIn, ThreadListOut, ThreadRead, ThreadState
+from app.modules.threads.schemas import (
+    ThreadFollowIn,
+    ThreadListOut,
+    ThreadRead,
+    ThreadsReadAllOut,
+    ThreadState,
+)
 from app.modules.users.models import User
 
 router = APIRouter(tags=["threads"])
@@ -51,6 +57,13 @@ async def list_threads(
         assert out.parent_id is not None
         by_parent.setdefault(out.parent_id, []).append(out)
     return await service.list_threads(db, user.id, parents, rows, by_parent)
+
+
+@router.post("/threads/read-all", response_model=ThreadsReadAllOut)
+async def mark_all_threads_read(user: CurrentUser, db: Db) -> ThreadsReadAllOut:
+    """「すべて既読にする」 of the threads list: every followed thread in my channels is read to
+    its newest reply (THREADS.md §3). The activity's own read-all does not touch threads."""
+    return await service.mark_all_read(db, user.id)
 
 
 @router.get("/messages/{message_id}/thread", response_model=ThreadState)
