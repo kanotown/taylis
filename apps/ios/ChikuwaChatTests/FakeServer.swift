@@ -256,6 +256,10 @@ final class FakeServer {
             try maybeFail("markThreadRead")
             return try server.markThreadRead(userId: userId, messageId: messageId, seq: lastReadSeq)
         }
+        func readAllThreads() async throws -> ThreadsReadAllOut {
+            try maybeFail("readAllThreads")
+            return server.readAllThreads(userId)
+        }
         func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState {
             try maybeFail("setThreadFollow")
             return try server.setThreadFollow(userId: userId, messageId: messageId, following: following)
@@ -872,6 +876,31 @@ final class FakeServer {
             emitThread(found.parent.id, to: [userId], reason: "read")
         }
         return try threadState(userId: userId, parentId: found.parent.id)
+    }
+
+    /// POST /threads/read-all (THREADS.md §3.2): every followed thread of a live parent to its newest live reply;
+    /// one threads.read_all to my devices when something moved.
+    @discardableResult
+    func readAllThreads(_ userId: String) -> ThreadsReadAllOut {
+        var moved: [ThreadReadStateOut] = []
+        for (key, row) in threadFollows where row.userId == userId && row.following {
+            guard let found = try? threadParent(row.parentId), !found.parent.deleted, found.record.members.contains(userId) else { continue }
+            let newest = found.record.messages.filter { $0.parentId == found.parent.id && !$0.deleted }.map(\.seq).max() ?? 0
+            guard newest > row.lastReadSeq else { continue }
+            threadFollows[key]!.lastReadSeq = newest
+            guard let state = try? threadState(userId: userId, parentId: row.parentId) else { continue }
+            moved.append(ThreadReadStateOut(parentId: state.parentId, channelId: state.channelId, lastReadSeq: state.lastReadSeq,
+                                            unreadCount: state.unreadCount, mentionCount: state.mentionCount))
+        }
+        let out = ThreadsReadAllOut(summary: threadSummary(for: userId), threads: moved)
+        if !moved.isEmpty { emitThreadsReadAll(userId, out) }
+        return out
+    }
+
+    func emitThreadsReadAll(_ userId: String, _ out: ThreadsReadAllOut) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("threads.read_all"), "ts": .string(now()),
+                                "channel_id": .null, "seq": .null, "data": try! JSONValue.from(out)]))
     }
 
     @discardableResult

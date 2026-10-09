@@ -1850,3 +1850,119 @@ extension SyncEngineTests {
         w.engine.stop()
     }
 }
+
+/// 「スレッド」's 「すべて既読にする」 (THREADS.md §3.2): POST /threads/read-all and threads.read_all.
+extension SyncEngineTests {
+    /// bob follows two threads with alice's unread replies (one mentions him); the list is loaded, one thread's replies held.
+    private func readAllWorld(activityUnread: Int = 0) async throws -> (World, first: MessageOut, second: MessageOut) {
+        let w = makeWorld()
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-09-30T00:00:00Z", unreadCount: activityUnread, mentionUnread: activityUnread > 0)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await w.engine.send(w.channel.id, body: "topic 1")
+        await w.engine.send(w.channel.id, body: "topic 2")
+        await settle(w.engine)
+        let first = try w.server.messageByBody(w.channel.id, "topic 1")
+        let second = try w.server.messageByBody(w.channel.id, "topic 2")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> a", parentId: first.id)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "b", parentId: first.id)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "c", parentId: second.id)
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        await w.engine.loadThreads(filter: "all")
+        await w.engine.loadReplies(w.channel.id, parentId: first.id)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 2, mentionCount: 1))
+        XCTAssertEqual(w.store.threads[first.id]?.state.unreadCount, 2)
+        return (w, first, second)
+    }
+
+    func testAllThreadsReadShowsAtOnceThenTakesTheServersAnswer() async throws {
+        let (w, first, second) = try await readAllWorld(activityUnread: 1)
+        XCTAssertNotNil(w.store.activity)
+        let newestFirst = try w.server.messageByBody(w.channel.id, "b").seq
+        let newestSecond = try w.server.messageByBody(w.channel.id, "c").seq
+        // The first badge change comes before the request: every row read (to the newest reply held), the badge at 0.
+        var optimistic: (summary: ThreadSummary, first: ThreadState?, second: ThreadState?, calls: [String])?
+        w.engine.onBadge = { [store = w.store, api = w.api] _ in
+            if optimistic == nil { optimistic = (store.threadSummary, store.threads[first.id]?.state, store.threads[second.id]?.state, api.calls) }
+        }
+        let summaryCallsBefore = w.api.calls.filter { $0 == "activitySummary" }.count
+        try await w.engine.markAllThreadsRead()
+        let seen = try XCTUnwrap(optimistic)
+        XCTAssertFalse(seen.calls.contains("readAllThreads"))
+        XCTAssertEqual(seen.summary, ThreadSummary(unreadCount: 0, mentionCount: 0))
+        XCTAssertEqual(seen.first?.unreadCount, 0)
+        XCTAssertEqual(seen.first?.mentionCount, 0)
+        XCTAssertEqual(seen.first?.lastReadSeq, newestFirst) // its replies are held here
+        XCTAssertEqual(seen.second?.unreadCount, 0)
+        XCTAssertEqual(seen.second?.lastReadSeq, newestSecond) // held from its live event (the channel is open)
+
+        // The answer: the positions the server reached, the badge its summary; the activity badge is fetched now.
+        XCTAssertEqual(w.store.threads[first.id]?.state.lastReadSeq, newestFirst)
+        XCTAssertEqual(w.store.threads[second.id]?.state.lastReadSeq, newestSecond)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 0, mentionCount: 0))
+        XCTAssertEqual(w.store.threadList(filter: "unread").count, 0)
+        XCTAssertGreaterThan(w.api.calls.filter { $0 == "activitySummary" }.count, summaryCallsBefore)
+        XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: first.id).lastReadSeq, newestFirst)
+        XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: second.id).lastReadSeq, newestSecond)
+
+        // The event of my own call changes nothing more.
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threads[second.id]?.state.lastReadSeq, newestSecond)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 0, mentionCount: 0))
+        // Nothing left to read: no rows, no event.
+        XCTAssertEqual(w.server.readAllThreads(w.bob.id).threads, [])
+        w.engine.stop()
+    }
+
+    func testAFailedAllThreadsReadPutsTheRowsAndTheBadgeBack() async throws {
+        let (w, first, second) = try await readAllWorld()
+        let before = (w.store.threads[first.id]?.state, w.store.threads[second.id]?.state, w.store.threadSummary)
+        w.api.failures["readAllThreads"] = [ApiError.network(URLError(.notConnectedToInternet))]
+        do {
+            try await w.engine.markAllThreadsRead()
+            XCTFail("the error reaches the caller")
+        } catch {}
+        XCTAssertEqual(w.store.threads[first.id]?.state, before.0)
+        XCTAssertEqual(w.store.threads[second.id]?.state, before.1)
+        XCTAssertEqual(w.store.threadSummary, before.2)
+        XCTAssertEqual(w.store.badgeCount, 1) // the thread mention again
+        XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: first.id).lastReadSeq, 0)
+        w.engine.stop()
+    }
+
+    func testAllThreadsReadOnAnotherDeviceArrivesAsOneEvent() async throws {
+        let (w, first, second) = try await readAllWorld()
+        let newestSecond = try w.server.messageByBody(w.channel.id, "c").seq
+        w.server.readAllThreads(w.bob.id) // another of bob's devices
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threads[first.id]?.state.unreadCount, 0)
+        XCTAssertEqual(w.store.threads[second.id]?.state.lastReadSeq, newestSecond)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 0, mentionCount: 0))
+        XCTAssertEqual(w.store.badgeCount, 0)
+        w.engine.stop()
+    }
+
+    func testAllThreadsReadNeverMovesAPositionBackAndTakesTheSummary() async throws {
+        let (w, first, second) = try await readAllWorld()
+        let newestFirst = try w.server.messageByBody(w.channel.id, "b").seq
+        // This device read the first thread to its end already; an answer from an older position does not undo it.
+        w.engine.isActive = { true }
+        w.engine.markThreadRead(first.id, seq: newestFirst)
+        XCTAssertEqual(w.store.threads[first.id]?.state.unreadCount, 0)
+        let summary = ThreadSummary(unreadCount: 1, mentionCount: 0)
+        w.engine.applyThreadsReadAll(ThreadsReadAllOut(summary: summary, threads: [
+            ThreadReadStateOut(parentId: first.id, channelId: w.channel.id, lastReadSeq: 1, unreadCount: 1, mentionCount: 1),
+            ThreadReadStateOut(parentId: second.id, channelId: w.channel.id, lastReadSeq: 0, unreadCount: 1, mentionCount: 0),
+            ThreadReadStateOut(parentId: "not-held", channelId: w.channel.id, lastReadSeq: 9, unreadCount: 0, mentionCount: 0),
+        ]))
+        XCTAssertEqual(w.store.threads[first.id]?.state.lastReadSeq, newestFirst)
+        XCTAssertEqual(w.store.threads[first.id]?.state.unreadCount, 0)
+        XCTAssertEqual(w.store.threads[first.id]?.state.mentionCount, 0)
+        XCTAssertEqual(w.store.threads[second.id]?.state.unreadCount, 1)
+        XCTAssertNil(w.store.threads["not-held"])
+        XCTAssertEqual(w.store.threadSummary, summary) // the badge is the server's
+        w.engine.stop()
+    }
+}
