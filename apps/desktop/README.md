@@ -12,6 +12,8 @@ npm test               # vitest: エンジン、API クライアント、本文�
 npm run dev            # ブラウザで UI だけ動かす (資格情報は localStorage、通知は Notification API)
 npm run tauri dev      # Tauri で起動 (Keychain / SQLite / OS 通知が本物になる)
 npm run tauri:build    # バンドル作成 (macOS: .app / .dmg、Windows: .msi / .exe)。更新用のファイルは作らない
+npm run build:mobile-editor    # スマホに同梱するページエディタ → ../shared/mobile-editor/dist (M153a、下の節)
+npm run preview:mobile-editor  # それを http://localhost:1422/?dev=1 で試す (ネイティブの代わりの harness つき)
 ```
 
 `npm run tauri build` は更新用のファイル (`.app.tar.gz` と `.sig`) も作り、その署名に更新の秘密鍵
@@ -34,6 +36,9 @@ src/
   platform/   secrets.ts (Keychain / Credential Manager)、sqlite.ts (tauri-plugin-sql)、notify.ts (OS 通知。macOS のアプリは UNUserNotificationCenter、PUSH_NOTIFICATIONS.md §9.1)、deviceName.ts (端末名「Mac (コンピュータ名)」/「Mac (Safari)」)、deepLink.ts (`chikuwachat://`、Google でログインの戻り)
   state/      app.ts (起動時のセッション復元、ログイン、強制パスワード変更、エンジンのライフサイクル)
   ui/         LoginScreen、ChangePasswordScreen、MainScreen (左: チャンネル / DM、中央: タイムラインと入力欄、右: スレッド用の余白)
+  mobileEditor/  スマホに同梱するページエディタの包み (M153a): 橋の環境 bridgeEnv.tsx、MobileEditorApp.tsx、?dev=1 の harness
+  styles.css / app.css  Tailwind の読み込み (styles.css) と、トークン・テーマ・部品の規則 (app.css。同梱のエディタも読む)
+mobile-editor/  同梱のエディタの入口 (index.html・main.tsx・mobile.css)。vite.mobile-editor.config.ts で ../shared/mobile-editor/dist に書き出す
 src-tauri/    Rust 側: secret_get / secret_set / secret_delete (keyring)、SQL と通知プラグイン (Windows / Linux / `tauri dev`)、macOS のアプリの通知 native_notification_* (mac_notify.rs、前面でもバナー・本当の許可の状態・クリック)、computer_name (端末名)、deep link (+ Windows は single-instance)、アプリ内の更新 (updater / process、画面側は state/updates.ts)
 tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiClient / markdown のテスト、contract.test.ts (server/tests/contract/*.json)、live.test.ts
 ```
