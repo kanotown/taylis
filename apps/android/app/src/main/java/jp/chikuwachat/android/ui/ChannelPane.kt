@@ -622,7 +622,8 @@ fun MessageRow(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, version, { controller.loadEmojiImage(it) }, onOpenThread)  // M15c
-                // M95 (WORKFLOWS.md §8 1.): 「⚡ name」 above a message a workflow posted; a tap opens its form.
+                // M95 (WORKFLOWS.md §8 1., §11): 「⚡ name」 above a message a workflow posted; a tap always opens its form
+                // (a look at the workflow), even for one that posts at once from the ＋ menu or /name (openWorkflowById).
                 message.workflow?.takeIf { !message.deleted && !message.pending }?.let { workflow ->
                     WorkflowLabel(workflow) { controller.scope.launch { controller.openWorkflowById(workflow.id, message.channelId) } }
                 }
