@@ -50,6 +50,8 @@ import jp.chikuwachat.android.api.ThreadItem
 import jp.chikuwachat.android.api.ThreadListOut
 import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.ThreadSummary
+import jp.chikuwachat.android.api.ThreadReadAllRow
+import jp.chikuwachat.android.api.ThreadsReadAllOut
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.SystemEventOut
@@ -436,6 +438,13 @@ class FakeServer {
             return this@FakeServer.markThreadRead(userId, messageId, lastReadSeq)
         }
         override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState { maybeFail(); return this@FakeServer.setThreadFollow(userId, messageId, following) }
+        /** When set, the next POST /threads/read-all waits for it before the server moves anything (a call in flight). */
+        var threadsReadAllGate: CompletableDeferred<Unit>? = null
+        override suspend fun readAllThreads(): ThreadsReadAllOut {
+            threadsReadAllGate?.let { gate -> threadsReadAllGate = null; gate.await() }
+            maybeFail()
+            return this@FakeServer.readAllThreads(userId)
+        }
     }
 
     class ChannelRecord(var channel: ChannelOut, val members: MutableSet<String>, val messages: MutableList<MessageOut>)
@@ -929,6 +938,32 @@ class FakeServer {
             emitThread(parent.id, listOf(userId), "read")
         }
         return threadState(userId, parent.id)
+    }
+
+    /**
+     * POST /threads/read-all (THREADS.md §3.2): my followed threads in channels I am in, roots not deleted, read to their
+     * newest live reply (forward only); one threads.read_all to my devices when any moved.
+     */
+    fun readAllThreads(userId: String): ThreadsReadAllOut {
+        val moved = ArrayList<ThreadReadAllRow>()
+        threadFollows.values.filter { it.userId == userId && it.following }.forEach { row ->
+            val record = channels.values.firstOrNull { r -> r.messages.any { it.id == row.parentId } } ?: return@forEach
+            if (userId !in record.members) return@forEach
+            if (record.messages.first { it.id == row.parentId }.deleted) return@forEach
+            val newest = record.messages.filter { it.parentId == row.parentId && !it.deleted }.maxOfOrNull { it.seq } ?: return@forEach
+            if (newest <= row.lastReadSeq) return@forEach
+            row.lastReadSeq = newest
+            val state = threadState(userId, row.parentId)
+            moved += ThreadReadAllRow(row.parentId, record.channel.id, state.lastReadSeq, state.unreadCount, state.mentionCount)
+        }
+        val answer = ThreadsReadAllOut(threadSummary(userId), moved)
+        if (moved.isNotEmpty()) emitThreadsReadAll(userId, answer)
+        return answer
+    }
+
+    /** threads.read_all to `userId`'s devices (also usable alone: a read-all made on another device). */
+    fun emitThreadsReadAll(userId: String, answer: ThreadsReadAllOut) {
+        emit(setOf(userId), event("threads.read_all", null, null, Codec.snake.encodeToJsonElement(ThreadsReadAllOut.serializer(), answer).jsonObject))
     }
 
     fun setThreadFollow(userId: String, messageId: String, following: Boolean): ThreadState {

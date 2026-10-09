@@ -1486,6 +1486,8 @@
     <string name="thread_pane_closed_root_deleted">The original message was deleted, so the thread was closed.</string>
     <string name="threads_pane_cant_load_threads_while_offline">Can\'t load threads while offline</string>
     <string name="threads_pane_couldnt_load_threads">Couldn\'t load threads</string>
+    <string name="threads_pane_mark_all_read_confirm_text">Marks every reply in the threads you follow as read.</string>
+    <string name="threads_pane_mark_all_read_confirm_title">Mark all threads as read?</string>
     <string name="threads_pane_no_followed_threads">No followed threads</string>
     <string name="threads_pane_no_unread_threads">No unread threads</string>
     <string name="threads_pane_open_channel">Open channel</string>

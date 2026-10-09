@@ -27,6 +27,7 @@ import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadListOut
 import jp.chikuwachat.android.api.ThreadState
+import jp.chikuwachat.android.api.ThreadsReadAllOut
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.WorkspaceSettingsOut
@@ -82,6 +83,8 @@ interface SyncApi {
     suspend fun threadState(messageId: String): ThreadState
     suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState
     suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState
+    /** THREADS.md §3.2: POST /threads/read-all; fakes may not have it. */
+    suspend fun readAllThreads(): ThreadsReadAllOut = throw UnsupportedOperationException("POST /threads/read-all")
     /** M111: my private settings again (GET /users/me) after another of my devices changed them; fakes may not have it. */
     suspend fun me(): UserMe = throw UnsupportedOperationException("GET /users/me")
 }
@@ -1028,6 +1031,13 @@ class SyncEngine(
                 val reason = frame.data.str("reason")
                 if (reason == "read" || reason == "deleted") scheduleActivityRefresh()
             }
+            "threads.read_all" -> {
+                // THREADS.md §4: 「すべて既読にする」 on the 「スレッド」 list (on any of my devices): the rows held move
+                // forward, the badge is the summary; the list and the activity badge are read again as for a read.
+                applyThreadsReadAll(Codec.snake.decodeFromJsonElement(ThreadsReadAllOut.serializer(), frame.data))
+                scheduleThreadRefresh()
+                scheduleActivityRefresh()
+            }
             "channel.created", "channel.updated" -> {
                 val channel = Codec.snake.decodeFromJsonElement(ChannelOut.serializer(), frame.data["channel"] ?: return)
                 val memberIds = (frame.data["member_ids"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
@@ -1638,6 +1648,35 @@ class SyncEngine(
     suspend fun setThreadFollow(parentId: String, following: Boolean) = enqueue {
         if (_status.value != EngineStatus.ONLINE) return@enqueue
         store.applyThreadState(withFloor(api.setThreadFollow(parentId, following)))
+    }
+
+    /**
+     * 「すべて既読にする」 on the 「スレッド」 list (THREADS.md §3.2). The followed rows held read at once (to their newest
+     * reply held here) and the badge goes to 0; then POST /threads/read-all, whose answer applies like the
+     * threads.read_all event. A failure puts back the rows nothing changed meanwhile (and the badge) and is rethrown.
+     */
+    suspend fun markAllThreadsRead() {
+        var undo: Store.ThreadsReadAllUndo? = null
+        enqueue { undo = store.readAllThreadsLocally() }
+        val answer = try {
+            api.readAllThreads()
+        } catch (e: CancellationException) {
+            undo?.let { saved -> post { store.restoreThreadsReadAll(saved) } }
+            throw e
+        } catch (e: Exception) {
+            undo?.let { saved -> enqueue { store.restoreThreadsReadAll(saved) } }
+            scheduleThreadRefresh() // the badge (and rows changed meanwhile) from the server again
+            throw e
+        }
+        enqueue { applyThreadsReadAll(answer) }
+        // MOBILE_UI.md §6.4: the replies and mentions read in those threads leave the activity badge (as after a channel read-all).
+        activityRefresh?.cancel()
+        refreshActivity()
+    }
+
+    /** The read-all's answer or the threads.read_all event: positions only move forward (nor behind a read on its way). */
+    private fun applyThreadsReadAll(answer: ThreadsReadAllOut) {
+        store.applyThreadsReadAll(answer.threads, answer.summary) { threadReadFloor[it] }
     }
 
     private fun scheduleThreadRefresh() {

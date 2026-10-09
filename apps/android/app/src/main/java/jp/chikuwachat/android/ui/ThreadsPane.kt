@@ -29,7 +29,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -71,11 +76,16 @@ fun ThreadsPane(
     onOpen: (ThreadEntry, MessageState?) -> Unit,
     listState: LazyListState = rememberLazyListState(),
     onOpenConversation: (ThreadEntry) -> Unit = {},
+    /** 「すべて既読にする」 at the end of the filter row (THREADS.md §3.2); off where the screen has its own read-all (アクティビティ). */
+    showReadAll: Boolean = true,
 ) {
     val store = controller.store
     val rows = remember(version) { store.threadList() }
     val filter = store.threadsFilter
     val scope = rememberCoroutineScope()
+    // Like the home's 「すべて既読にする」, it asks first.
+    var confirmReadAll by rememberSaveable { mutableStateOf(false) }
+    val anyUnread = store.threadSummary.unreadCount > 0 || store.threads.values.any { it.state.following && it.state.unreadCount > 0 }
     // M28c: offline the list says so instead of 「読み込んでいます…」 for good (the engine's load returns at once), and a
     // failed load offers 「再読み込み」; the reconnect loads again by itself (keyed on the status).
     var failed by remember { mutableStateOf(false) }
@@ -94,10 +104,22 @@ fun ThreadsPane(
 
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = if (showReadAll) 8.dp else 16.dp, top = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 // The rows held are filtered at once; the new filter's first page completes them.
                 FilterChip(selected = filter == "all", onClick = { store.selectThreadsFilter("all"); load("all") }, label = { Text(stringResource(R.string.common_all)) })
                 FilterChip(selected = filter == "unread", onClick = { store.selectThreadsFilter("unread"); load("unread") }, label = { Text(stringResource(R.string.common_unread)) })
+                if (showReadAll) {
+                    Spacer(Modifier.weight(1f))
+                    TextButton(enabled = anyUnread, onClick = { confirmReadAll = true }) {
+                        Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.activity_screen_mark_all_read), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
         if (rows.isEmpty()) {
@@ -135,6 +157,16 @@ fun ThreadsPane(
                 item { TextButton(onClick = { load(filter, more = true) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.threads_pane_show_more)) } }
             }
         }
+    }
+    if (confirmReadAll) {
+        AlertDialog(
+            onDismissRequest = { confirmReadAll = false },
+            title = { Text(stringResource(R.string.threads_pane_mark_all_read_confirm_title)) },
+            text = { Text(stringResource(R.string.threads_pane_mark_all_read_confirm_text)) },
+            // The app's scope: the read-all finishes (or puts the rows back) even when the list is left meanwhile.
+            confirmButton = { TextButton(onClick = { confirmReadAll = false; controller.scope.launch { controller.markAllThreadsRead() } }) { Text(stringResource(R.string.common_mark_as_read)) } },
+            dismissButton = { TextButton(onClick = { confirmReadAll = false }) { Text(stringResource(R.string.common_cancel)) } },
+        )
     }
 }
 

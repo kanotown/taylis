@@ -1481,6 +1481,8 @@
     <string name="thread_pane_closed_root_deleted">元のメッセージが削除されたため、スレッドを閉じました</string>
     <string name="threads_pane_cant_load_threads_while_offline">オフラインのためスレッドを読み込めません</string>
     <string name="threads_pane_couldnt_load_threads">スレッドを読み込めませんでした</string>
+    <string name="threads_pane_mark_all_read_confirm_text">フォロー中のスレッドの返信をすべて既読にします。</string>
+    <string name="threads_pane_mark_all_read_confirm_title">スレッドをすべて既読にしますか？</string>
     <string name="threads_pane_no_followed_threads">フォロー中のスレッドはありません</string>
     <string name="threads_pane_no_unread_threads">未読のスレッドはありません</string>
     <string name="threads_pane_open_channel">チャンネルを開く</string>

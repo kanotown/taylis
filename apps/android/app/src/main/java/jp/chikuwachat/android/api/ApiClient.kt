@@ -628,6 +628,9 @@ class ApiClient(
     override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState =
         request("PUT", "/api/v1/messages/$messageId/thread/follow", buildJsonObject { put("following", following) })
 
+    /** POST /threads/read-all (THREADS.md §3.2): every followed thread read to its newest reply; no body. */
+    override suspend fun readAllThreads(): ThreadsReadAllOut = request("POST", "/api/v1/threads/read-all")
+
     // --- two-factor authentication (M12i) ----------------------------------------------------
 
     suspend fun totpStatus(): TotpStatusOut = request("GET", "/api/v1/auth/totp")

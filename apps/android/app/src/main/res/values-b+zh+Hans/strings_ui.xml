@@ -1481,6 +1481,8 @@
     <string name="thread_pane_closed_root_deleted">原消息已被删除，话题已关闭。</string>
     <string name="threads_pane_cant_load_threads_while_offline">离线时无法加载话题</string>
     <string name="threads_pane_couldnt_load_threads">无法加载话题</string>
+    <string name="threads_pane_mark_all_read_confirm_text">将你关注的话题中的所有回复标为已读。</string>
+    <string name="threads_pane_mark_all_read_confirm_title">将所有话题标为已读？</string>
     <string name="threads_pane_no_followed_threads">没有关注的话题</string>
     <string name="threads_pane_no_unread_threads">没有未读话题</string>
     <string name="threads_pane_open_channel">打开频道</string>

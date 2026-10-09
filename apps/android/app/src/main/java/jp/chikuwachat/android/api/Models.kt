@@ -977,6 +977,14 @@ data class ThreadSummary(val unreadCount: Int = 0, val mentionCount: Int = 0)
 @Serializable
 data class ThreadListOut(val items: List<ThreadItem>, val nextCursor: String? = null, val summary: ThreadSummary)
 
+/** One thread POST /threads/read-all moved (THREADS.md §3.2); the counts are those after the move (usually 0). */
+@Serializable
+data class ThreadReadAllRow(val parentId: String, val channelId: String, val lastReadSeq: Int, val unreadCount: Int = 0, val mentionCount: Int = 0)
+
+/** POST /threads/read-all and the threads.read_all event (THREADS.md §3.2, §4): only the threads whose position moved. */
+@Serializable
+data class ThreadsReadAllOut(val summary: ThreadSummary, val threads: List<ThreadReadAllRow> = emptyList())
+
 @Serializable
 data class MemberOut(val userId: String, val role: String, val joinedAt: String)
 
