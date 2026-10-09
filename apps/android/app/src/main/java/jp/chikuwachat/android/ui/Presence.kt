@@ -8,6 +8,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -130,4 +131,10 @@ object PresenceRules {
             put("tz", tz)
         }
     }
+
+    /**
+     * The menu header's 「解除」: PATCH /users/me's body that ends the pause and nothing else — Settings' 「再開」 (§11.1).
+     * `{status: "auto"}` would also clear 離席中 and 「在席を隠す」 set separately in Settings (the review's finding).
+     */
+    fun clearPauseBody(): JsonObject = buildJsonObject { put("dnd_until", JsonNull) }
 }

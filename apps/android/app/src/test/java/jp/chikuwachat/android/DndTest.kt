@@ -36,6 +36,13 @@ class DndTest {
         val paused = base.copy(dndUntil = "2026-09-28T03:30:00Z")
         assertTrue(Dnd.isActive(paused, at("2026-09-28T03:00:00Z")))
         assertFalse(Dnd.isActive(paused, at("2026-09-28T03:31:00Z")))
+        // The profile card's 「通知を一時停止中」 line is the quiet hours' only: the manual pause is its 取り込み中 line
+        // (PRESENCE.md §11.5), which said the same dnd_until twice.
+        assertEquals(null, Dnd.activeQuietHours(paused, at("2026-09-28T03:00:00Z")))
+        val lunch = QuietHours("12:00", "13:00", tz = "Asia/Tokyo")
+        assertEquals(lunch, Dnd.activeQuietHours(paused.copy(quietHours = lunch), at("2026-09-28T03:30:00Z"))) // 12:30 in Tokyo
+        assertEquals(null, Dnd.activeQuietHours(base.copy(quietHours = lunch), at("2026-09-28T04:00:00Z")))
+        assertEquals(null, Dnd.activeQuietHours(null, at("2026-09-28T03:30:00Z")))
         assertEquals("22:00〜07:00 (月火水木金)", Dnd.label(QuietHours("22:00", "07:00", listOf(0, 1, 2, 3, 4), "Asia/Tokyo")))
         assertEquals("22:00〜07:00", Dnd.label(QuietHours("22:00", "07:00", tz = "Asia/Tokyo")))
         val tomorrow = Instant.parse(Dnd.pauseUntil("tomorrow", ZonedDateTime.of(2026, 9, 28, 15, 0, 0, 0, ZoneId.of("Asia/Tokyo"))))

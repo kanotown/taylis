@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.EngineOptions
@@ -15,6 +16,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -23,10 +27,15 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 
-/** docs/PRESENCE.md §11: the quick status menu's rules, the Store's look, and my choice from my other devices. */
+/**
+ * docs/PRESENCE.md §11: the quick status menu's rules against the shared vectors (apps/shared/presence-rules.json, the
+ * file iOS and Desktop / Web test against too), what the vectors leave out, the Store's look, and my choice from my
+ * other devices.
+ */
 class PresenceTest {
     private val tokyo = ZoneId.of("Asia/Tokyo")
     private val now = Instant.parse("2026-10-09T03:00:00Z") // 12:00 in Tokyo
@@ -38,49 +47,114 @@ class PresenceTest {
     private fun user(id: String, dndUntil: String? = null, updatedAt: String = "2026-10-09T02:00:00Z") =
         UserPublic(id, id, id, "member", createdAt = "2026-01-01T00:00:00Z", updatedAt = updatedAt, dndUntil = dndUntil)
 
-    // --- the rules ---
+    // --- the shared vectors ---
 
-    @Test fun myChoiceReadsTheColumnsInOrder() {
-        assertEquals(PresenceChoice.AUTO, PresenceRules.myChoice(null, now))
-        assertEquals(PresenceChoice.AUTO, PresenceRules.myChoice(me(), now))
-        assertEquals(PresenceChoice.AWAY, PresenceRules.myChoice(me(manual = "away"), now))
-        assertEquals(PresenceChoice.AUTO, PresenceRules.myChoice(me(manual = "lunch"), now)) // unknown = automatic
-        assertEquals(PresenceChoice.INVISIBLE, PresenceRules.myChoice(me(hidden = true, manual = "away"), now))
-        assertEquals(PresenceChoice.DND, PresenceRules.myChoice(me(dndUntil = "2026-10-09T06:30:00Z", hidden = true, manual = "away"), now))
-        // A pause that ran out is not 取り込み中 any more: the next column counts.
-        assertEquals(PresenceChoice.INVISIBLE, PresenceRules.myChoice(me(dndUntil = "2026-10-09T02:59:00Z", hidden = true), now))
-        assertEquals(PresenceChoice.DND, PresenceRules.myChoice(me(dndUntil = forever), now))
+    @Serializable
+    private data class ChoiceCase(val name: String, val dndUntil: String? = null, val presenceHidden: Boolean, val presenceManual: String? = null, val choice: String)
+
+    @Serializable
+    private data class LookCase(val name: String, val connection: String, val dndUntil: String? = null, val look: String)
+
+    @Serializable
+    private data class IndefiniteCase(val dndUntil: String? = null, val indefinite: Boolean)
+
+    /** `label`, or `until_cleared` for the indefinite pause (「解除するまで」 in the device's words). */
+    @Serializable
+    private data class EndLabelCase(val dndUntil: String, val label: String? = null, val untilCleared: Boolean = false)
+
+    @Serializable
+    private data class EndLabels(val tz: String, val cases: List<EndLabelCase>)
+
+    @Serializable
+    private data class SoonestCase(val name: String, val dndUntil: List<String?>, val end: String? = null)
+
+    @Serializable
+    private data class RequestCase(val status: String, val duration: String? = null, val tz: String? = null, val body: JsonObject)
+
+    @Serializable
+    private data class Vectors(
+        val now: String, val myChoice: List<ChoiceCase>, val look: List<LookCase>, val indefinite: List<IndefiniteCase>,
+        val endLabel: EndLabels, val soonestEnd: List<SoonestCase>, val request: List<RequestCase>, val durations: List<String>,
+    )
+
+    /** The file the other clients test against: from the module (apps/android/app), ../../shared (as ChannelsTest reads unread-rules.json). */
+    private fun vectors(): Vectors {
+        val file = File("../../shared/presence-rules.json")
+        check(file.isFile) { "apps/shared/presence-rules.json not found from ${File("").absolutePath}" }
+        return Codec.snake.decodeFromString(Vectors.serializer(), file.readText())
     }
 
-    @Test fun theLookPutsDoNotDisturbOverTheConnection() {
-        for (connection in listOf("online", "away", "offline")) {
-            assertEquals("dnd", PresenceRules.look(connection, "2026-10-09T03:30:00Z", now))
-            assertEquals(connection, PresenceRules.look(connection, "2026-10-09T03:00:00Z", now)) // ended exactly now
-            assertEquals(connection, PresenceRules.look(connection, null, now))
+    @Test fun sharedMyChoiceReadsTheColumnsInOrder() { // §11.1
+        val v = vectors()
+        val at = Instant.parse(v.now)
+        assertTrue(v.myChoice.isNotEmpty())
+        for (case in v.myChoice) {
+            assertEquals(case.name, case.choice, PresenceRules.myChoice(me(dndUntil = case.dndUntil, hidden = case.presenceHidden, manual = case.presenceManual), at).api)
         }
-        assertEquals("dnd", PresenceRules.look("offline", forever, now))
-        assertEquals("online", PresenceRules.look("online", "garbage", now))
+    }
+
+    @Test fun sharedLookPutsDoNotDisturbOverTheConnection() { // §11.5
+        val v = vectors()
+        val at = Instant.parse(v.now)
+        assertTrue(v.look.isNotEmpty())
+        for (case in v.look) assertEquals(case.name, case.look, PresenceRules.look(case.connection, case.dndUntil, at))
+    }
+
+    @Test fun sharedIndefiniteFromTheYear9999() { // §11.2
+        val cases = vectors().indefinite
+        assertTrue(cases.isNotEmpty())
+        for (case in cases) assertEquals(case.dndUntil ?: "null", case.indefinite, PresenceRules.isIndefinite(case.dndUntil))
+    }
+
+    @Test fun sharedEndLabelsInTheGivenZone() { // §11.6
+        val v = vectors()
+        val at = Instant.parse(v.now)
+        val zone = ZoneId.of(v.endLabel.tz)
+        assertTrue(v.endLabel.cases.isNotEmpty())
+        for (case in v.endLabel.cases) {
+            val expected = if (case.untilCleared) "解除するまで" else case.label!!
+            assertEquals(case.dndUntil, expected, PresenceRules.endLabel(case.dndUntil, at, zone))
+        }
+    }
+
+    @Test fun sharedSoonestEndSkipsThePastAndTheIndefinite() { // §11.3
+        val v = vectors()
+        val at = Instant.parse(v.now)
+        assertTrue(v.soonestEnd.isNotEmpty())
+        for (case in v.soonestEnd) assertEquals(case.name, case.end?.let { Instant.parse(it) }, PresenceRules.nextDndEnd(case.dndUntil, at))
+    }
+
+    @Test fun sharedRequestBodiesAndDurations() { // §11.4, §11.2
+        val v = vectors()
+        assertTrue(v.request.isNotEmpty())
+        for (case in v.request) {
+            val choice = PresenceChoice.entries.first { it.api == case.status }
+            val duration = case.duration?.let { d -> DndDuration.entries.first { it.api == d } }
+            val body = if (case.tz != null) PresenceRules.body(choice, duration, case.tz) else PresenceRules.body(choice, duration)
+            assertEquals("${case.status} ${case.duration ?: ""}".trim(), case.body, body)
+        }
+        assertEquals(v.durations, DndDuration.entries.map { it.api })
+    }
+
+    // --- what the vectors leave out ---
+
+    @Test fun rulesBeyondTheVectors() {
+        assertEquals(PresenceChoice.AUTO, PresenceRules.myChoice(null, now))
+        assertEquals("online", PresenceRules.look("online", "garbage", now)) // an unreadable end is no pause
         // My own dot: what I chose, or the frames' while automatic.
         assertEquals("offline", PresenceRules.myLook(PresenceChoice.AUTO, "offline"))
         assertEquals("online", PresenceRules.myLook(PresenceChoice.AUTO, "online"))
         assertEquals("away", PresenceRules.myLook(PresenceChoice.AWAY, "online"))
         assertEquals("offline", PresenceRules.myLook(PresenceChoice.INVISIBLE, "online"))
         assertEquals("dnd", PresenceRules.myLook(PresenceChoice.DND, "offline"))
-    }
-
-    @Test fun indefiniteFromTheYear9999() {
-        assertTrue(PresenceRules.isIndefinite(forever))
-        assertTrue(PresenceRules.isIndefinite("9999-01-01T00:00:00Z"))
+        // The indefinite end written with an offset, and garbage.
         assertTrue(PresenceRules.isIndefinite("9999-12-31T09:00:00+09:00"))
-        assertFalse(PresenceRules.isIndefinite("9998-12-31T23:59:59Z"))
-        assertFalse(PresenceRules.isIndefinite(null))
         assertFalse(PresenceRules.isIndefinite("nope"))
+        // An unreadable end among the others is skipped by the timer.
+        assertEquals(Instant.parse("2026-10-09T04:00:00Z"), PresenceRules.nextDndEnd(listOf("bad", "2026-10-09T04:00:00Z", null), now))
     }
 
-    @Test fun labelsInTheDevicesZone() {
-        assertEquals("15:30", PresenceRules.endLabel("2026-10-09T06:30:00Z", now, tokyo))
-        assertEquals("10/10 23:59", PresenceRules.endLabel("2026-10-10T14:59:59Z", now, tokyo))
-        assertEquals("解除するまで", PresenceRules.endLabel(forever, now, tokyo))
+    @Test fun linesInTheDevicesZone() {
         assertEquals("取り込み中（〜15:30）", PresenceRules.dndLine("2026-10-09T06:30:00Z", now, tokyo))
         assertEquals("取り込み中（解除するまで）", PresenceRules.dndLine(forever, now, tokyo))
         assertEquals("取り込み中（解除するまで）", PresenceRules.myLine(me(dndUntil = forever), now, tokyo))
@@ -95,14 +169,16 @@ class PresenceTest {
         assertEquals("15:30 まで", YouSettings.pauseSummary("2026-10-09T06:30:00Z", now, tokyo))
     }
 
-    @Test fun theRequestBody() {
-        assertEquals(buildJsonObject { put("status", "dnd"); put("duration", "today"); put("tz", "Asia/Tokyo") }, PresenceRules.body(PresenceChoice.DND, DndDuration.TODAY, "Asia/Tokyo"))
-        assertEquals(buildJsonObject { put("status", "away") }, PresenceRules.body(PresenceChoice.AWAY, DndDuration.HOUR_1, "Asia/Tokyo"))
-        assertEquals(buildJsonObject { put("status", "auto") }, PresenceRules.body(PresenceChoice.AUTO))
-        assertEquals(buildJsonObject { put("status", "invisible") }, PresenceRules.body(PresenceChoice.INVISIBLE))
-        assertEquals(JsonPrimitive(ZoneId.systemDefault().id), PresenceRules.body(PresenceChoice.DND, DndDuration.MINUTES_30)["tz"])
-        assertEquals(listOf("30m", "1h", "2h", "4h", "today", "tomorrow", "forever"), DndDuration.entries.map { it.api })
+    @Test fun theRequestBodyBeyondTheVectors() {
+        assertEquals(JsonPrimitive(ZoneId.systemDefault().id), PresenceRules.body(PresenceChoice.DND, DndDuration.MINUTES_30)["tz"]) // the device's zone
+        assertEquals(buildJsonObject { put("status", "away") }, PresenceRules.body(PresenceChoice.AWAY, DndDuration.HOUR_1, "Asia/Tokyo")) // a length only with dnd
         assertEquals(listOf("auto", "away", "dnd", "invisible"), PresenceChoice.entries.map { it.api })
+        // The menu's 「解除」 is Settings' 「再開」: PATCH /users/me ends the pause alone (`{status: "auto"}` also dropped
+        // 離席中 and 「在席を隠す」 set in Settings underneath it); the next column then shows, as the vectors say.
+        assertEquals(buildJsonObject { put("dnd_until", JsonNull) }, PresenceRules.clearPauseBody())
+        val paused = me(dndUntil = forever, manual = "away")
+        assertEquals(PresenceChoice.DND, PresenceRules.myChoice(paused, now))
+        assertEquals(PresenceChoice.AWAY, PresenceRules.myChoice(paused.copy(dndUntil = null), now))
     }
 
     @Test fun currentMeTakesTheNewerPublicCopy() {
@@ -115,12 +191,6 @@ class PresenceTest {
         assertNull(PresenceRules.currentMe(held, user("other", dndUntil = forever, updatedAt = "2026-10-09T05:00:00Z"))?.dndUntil)
         // A newer public copy that cleared it wins too (取り込み中 解除 on my phone).
         assertNull(PresenceRules.currentMe(me(dndUntil = forever), user("u", updatedAt = "2026-10-09T02:30:00Z"))?.dndUntil)
-    }
-
-    @Test fun theSoonestEndSkipsThePastAndTheIndefinite() {
-        val untils = listOf(null, "2026-10-09T02:00:00Z", forever, "2026-10-09T05:00:00Z", "2026-10-09T04:00:00Z", "bad")
-        assertEquals(Instant.parse("2026-10-09T04:00:00Z"), PresenceRules.nextDndEnd(untils, now))
-        assertNull(PresenceRules.nextDndEnd(listOf(forever, null), now))
     }
 
     // --- the Store ---

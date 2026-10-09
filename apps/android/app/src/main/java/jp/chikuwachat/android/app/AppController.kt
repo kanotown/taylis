@@ -2706,6 +2706,14 @@ class AppController(private val app: Application) {
         scope.launch { setMyPresence(choice, duration) }
     }
 
+    /**
+     * The menu header's 「解除」 (PRESENCE.md §11.1): the same call as Settings' 「再開」, `PATCH /users/me {dnd_until: null}`,
+     * so only the pause ends; 離席中 and 「在席を隠す」 set separately in Settings stay (`{status: "auto"}` cleared them too).
+     */
+    fun clearMyPause() {
+        scope.launch { updateProfileJson(jp.chikuwachat.android.ui.PresenceRules.clearPauseBody()) }
+    }
+
     /** M15b: public → private (owner / admin) or private → public (an admin who is a member, L4). */
     suspend fun convertChannel(channelId: String, type: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, type = type))
