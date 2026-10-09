@@ -24,8 +24,11 @@ from app.modules.users.dnd import valid_zone
 MAX_BODY_LENGTH = 20_000
 # Control characters other than newline and tab are stripped (SECURITY.md §5).
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-# A unicode emoji (sequence) or a :shortcode:.
-EMOJI_PATTERN = r"^(:[a-z0-9_+\-]{1,30}:|[^\x00-\x7f]{1,16})$"
+# A unicode emoji (sequence) or a :shortcode: (a custom emoji's name is up to 32 characters,
+# emoji.service.NAME; standard names from imports may be shorter).
+EMOJI_PATTERN = r"^(:[a-z0-9_+\-]{1,32}:|[^\x00-\x7f]{1,16})$"
+# The longest value EMOJI_PATTERN admits: a 32-character shortcode with its colons.
+EMOJI_MAX_LENGTH = 34
 
 
 def strip_control_chars(value: str) -> str:

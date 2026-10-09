@@ -22,6 +22,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
+from app.modules.calendar.service import zone_for
 from app.modules.users.dnd import valid_zone
 from app.modules.users.events import USER_UPDATED, emit_user_event
 from app.modules.users.models import User
@@ -30,8 +31,6 @@ from app.modules.users.models import User
 DND_INDEFINITE = datetime(9999, 12, 31, tzinfo=UTC)
 # Clients treat any dnd_until at or after this as 「解除するまで」.
 DND_INDEFINITE_FROM = datetime(9999, 1, 1, tzinfo=UTC)
-# The zone for 「今日の終わり」 when the request names none and I have no quiet hours.
-DEFAULT_TZ = "Asia/Tokyo"
 
 PresenceChoice = Literal["auto", "away", "dnd", "invisible"]
 DndDuration = Literal["30m", "1h", "2h", "4h", "today", "tomorrow", "forever"]
@@ -74,14 +73,6 @@ class PresenceUpdate(BaseModel):
         return self
 
 
-def zone_of(tz: str | None, user: User) -> ZoneInfo:
-    if tz:
-        return ZoneInfo(tz)
-    if user.quiet_hours_tz and valid_zone(user.quiet_hours_tz):
-        return ZoneInfo(user.quiet_hours_tz)
-    return ZoneInfo(DEFAULT_TZ)
-
-
 def _end_of(day: date, zone: ZoneInfo) -> datetime:
     """23:59:59 local on `day` (shown as 「〜23:59」; the second left is not worth a push)."""
     return datetime.combine(day, time(23, 59, 59), zone).astimezone(UTC)
@@ -105,7 +96,8 @@ def apply_choice(user: User, data: PresenceUpdate, now: datetime) -> None:
         user.dnd_until = data.until
     else:
         assert data.duration is not None  # the validator's rule
-        user.dnd_until = dnd_until_for(data.duration, now, zone_of(data.tz, user))
+        # The request's zone, else my quiet hours' zone, else Asia/Tokyo (as calendar and tasks).
+        user.dnd_until = dnd_until_for(data.duration, now, ZoneInfo(zone_for(data.tz, user)))
 
 
 async def set_presence(db: AsyncSession, user: User, data: PresenceUpdate) -> User:

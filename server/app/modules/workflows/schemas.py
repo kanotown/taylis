@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.modules.messages.schemas import EMOJI_PATTERN, strip_control_chars
+from app.modules.messages.schemas import EMOJI_MAX_LENGTH, EMOJI_PATTERN, strip_control_chars
 from app.modules.workflows.models import (
     MAX_DESCRIPTION_LENGTH,
     MAX_NAME_LENGTH,
@@ -182,7 +182,7 @@ class WorkflowCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=MAX_NAME_LENGTH * 2)
     # A unicode emoji or :shortcode: for the menu (⚡ when null).
-    emoji: str | None = Field(default=None, max_length=32, pattern=EMOJI_PATTERN)
+    emoji: str | None = Field(default=None, max_length=EMOJI_MAX_LENGTH, pattern=EMOJI_PATTERN)
     description: str = Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
     # Where the message is posted.
     channel_id: UUID
@@ -221,7 +221,7 @@ class WorkflowUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH * 2)
-    emoji: str | None = Field(default=None, max_length=32, pattern=EMOJI_PATTERN)
+    emoji: str | None = Field(default=None, max_length=EMOJI_MAX_LENGTH, pattern=EMOJI_PATTERN)
     description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     channel_id: UUID | None = None
     offered_channel_ids: list[UUID] | None = Field(default=None, max_length=MAX_OFFERED)

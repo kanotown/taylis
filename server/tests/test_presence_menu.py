@@ -31,6 +31,15 @@ def _drain(conn: Any) -> list[dict[str, Any]]:
     return [conn.queue.get_nowait() for _ in range(conn.queue.qsize())]
 
 
+def _presence_of(conn: Any, user_id: uuid.UUID) -> list[str]:
+    """The presence statuses this connection was told about `user_id`, in order (drained)."""
+    return [
+        f["status"]
+        for f in _drain(conn)
+        if f.get("type") == "presence" and f.get("user_id") == str(user_id)
+    ]
+
+
 def test_durations_in_the_users_zone() -> None:
     tokyo = ZoneInfo("Asia/Tokyo")
     # 2026-10-09 22:30 JST = 13:30 UTC.
@@ -91,6 +100,11 @@ async def test_choices_are_exclusive_and_others_see_them(
     assert invisible["presence_hidden"] is True and invisible["dnd_until"] is None
     assert hub.presence_status(alice.id) == "offline"
     assert alice.id not in [user_id for user_id, _ in hub.presence_snapshot()]
+
+    # invisible → 離席中: the others get one frame, away (never a passing online).
+    _drain(watcher)
+    assert (await _put(client, status="away")).status_code == 200
+    assert _presence_of(watcher, alice.id) == ["away"]
 
     # オンライン（自動）clears everything.
     auto = (await _put(client, status="auto")).json()
@@ -185,7 +199,7 @@ def test_hub_manual_away_and_hidden() -> None:
     hub.set_presence_hidden(user, True)  # hidden wins over away
     assert hub.presence_status(user) == "offline"
     hub.set_presence_hidden(user, False)
-    hub.set_presence_away(user, False)
+    hub.set_presence_flags(user, hidden=False, away=False)
     frames = _drain(seen)
     assert frames[-1] == {"type": "presence", "user_id": str(user), "status": "online"}
     assert {f["status"] for f in frames if f.get("type") == "presence"} <= {
@@ -193,6 +207,30 @@ def test_hub_manual_away_and_hidden() -> None:
         "away",
         "offline",
     }
+
+
+def test_hub_menu_choice_is_one_announcement() -> None:
+    """invisible → 離席中 (and back) is one frame: both flags change together, so nobody sees a
+    passing online (two separate setters announced ['online', 'away'])."""
+    hub = RealtimeHub()
+    user, watcher = uuid.uuid4(), uuid.uuid4()
+    seen = hub.new_connection(watcher, uuid.uuid4())
+    hub.new_connection(user, uuid.uuid4(), presence_hidden=True)
+    assert _presence_of(seen, user) == []
+    hub.set_presence_flags(user, hidden=False, away=True)
+    assert _presence_of(seen, user) == ["away"]
+    hub.set_presence_flags(user, hidden=True, away=False)
+    assert _presence_of(seen, user) == ["offline"]
+    # The settings' 在席を隠す (PATCH /users/me) moves that flag alone: a manual away stays.
+    hub.set_presence_flags(user, hidden=False, away=True)
+    assert _presence_of(seen, user) == ["away"]
+    hub.set_presence_hidden(user, True)
+    assert _presence_of(seen, user) == ["offline"]
+    hub.set_presence_hidden(user, False)
+    assert _presence_of(seen, user) == ["away"]
+    # Nothing changes: nothing is announced.
+    hub.set_presence_flags(user, hidden=False, away=True)
+    assert _presence_of(seen, user) == []
 
 
 async def test_dnd_from_the_menu_stops_pushes(

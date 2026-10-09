@@ -8,6 +8,7 @@ from app.core.errors import rate_limited
 from app.modules.auth.deps import CurrentUser
 from app.modules.messages import service
 from app.modules.messages.schemas import (
+    EMOJI_MAX_LENGTH,
     EMOJI_PATTERN,
     AckPendingOut,
     DeltaOut,
@@ -23,7 +24,7 @@ from app.modules.messages.schemas import (
 
 router = APIRouter(tags=["messages"])
 
-Emoji = Path(min_length=1, max_length=32, pattern=EMOJI_PATTERN)
+Emoji = Path(min_length=1, max_length=EMOJI_MAX_LENGTH, pattern=EMOJI_PATTERN)
 
 
 @router.post("/channels/{channel_id}/messages", response_model=MessageOut)

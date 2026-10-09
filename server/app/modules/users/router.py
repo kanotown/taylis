@@ -64,9 +64,10 @@ async def update_my_presence(
     if locked is None:
         raise not_found("user_not_found", "User not found")
     updated = await set_presence(db, locked, body)
-    hub = request.app.state.hub
-    hub.set_presence_hidden(updated.id, updated.presence_hidden)
-    hub.set_presence_away(updated.id, updated.presence_manual == "away")
+    # Both flags in one announcement: invisible → 離席中 must not flash online in between.
+    request.app.state.hub.set_presence_flags(
+        updated.id, hidden=updated.presence_hidden, away=updated.presence_manual == "away"
+    )
     return to_user_me(updated)
 
 
