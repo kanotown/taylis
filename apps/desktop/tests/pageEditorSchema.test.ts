@@ -9,15 +9,17 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Editor, type JSONContent } from "@tiptap/core";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { closeHistory } from "@tiptap/pm/history";
+import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { blockPosAt, canPlace, deleteUnit, duplicateUnit, moveUnit, unitAt } from "../src/ui/pageEditorBlocks";
+import { BlockSelection, extendTo, pasteAfterBlocks } from "../src/ui/pageEditorSelection";
 import { cellPos, editTable } from "../src/ui/pageEditorTable";
 import { pageHtmlFromPaste } from "../src/ui/pagePaste";
 import { jsonView, readsAsShown, type RichNode } from "../src/ui/pageMarkdown";
 import { applyMerge, createPageDocument } from "../src/ui/pageEditorDoc";
-import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "../src/ui/pageEditorSchema";
+import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, sliceMarkdown, SourceMap, untied } from "../src/ui/pageEditorSchema";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const shared = join(root, "apps", "shared");
@@ -45,6 +47,7 @@ export function fakeHost(): PageEditorHost {
     editMath: () => {},
     save: () => {},
     link: () => {},
+    focusTitle: () => {},
     text: { placeholder: "", editTable: "", raw: "Markdown", toggleOpen: "open", toggleClose: "close", checkbox: "done", changeIcon: "icon", untitledToggle: "" },
     editable: () => true,
   };
@@ -61,10 +64,22 @@ function open(body: string) {
   document.body.append(element);
   const host = fakeHost();
   const sources = host.sources;
-  const editor = new Editor({ element, extensions: pageExtensions(host), content: createPageDocument(body, host.isEmoji) as JSONContent });
+  // The clipboard as PageEditor.tsx sets it up: Markdown out and in, blocks pasted after a block selection (M154).
+  const ref: { editor: Editor | null } = { editor: null };
+  const editor = new Editor({
+    element,
+    extensions: pageExtensions(host),
+    content: createPageDocument(body, host.isEmoji) as JSONContent,
+    editorProps: {
+      clipboardTextSerializer: (slice) => sliceMarkdown(ref.editor!, slice, sources),
+      clipboardTextParser: (text) => markdownSlice(ref.editor!, text, host.isEmoji),
+      handlePaste: (view, _event, slice) => pasteAfterBlocks(view, slice),
+    },
+  });
+  ref.editor = editor;
   sources.add(editor.state.doc);
   editors.push(editor);
-  return { editor, sources, markdown: () => editorMarkdown(editor.state.doc, sources).text };
+  return { editor, sources, host, markdown: () => editorMarkdown(editor.state.doc, sources).text };
 }
 
 /** Types text the way the keyboard does (input rules run). */
@@ -640,5 +655,276 @@ describe("M151: table cells edited in place", () => {
     // Measured on the development Mac (M5 Max, jsdom): see WIKI.md §28 (CI machines are slower).
     expect((typed - started) / 2).toBeLessThan(100);
     expect(done - typed).toBeLessThan(500);
+  });
+});
+
+describe("M154: block selection (WIKI.md §30.1)", () => {
+  const LINES = ["# 題", "本文の行", "- 親", "  - 子", "- 次", "::: callout 💡", "中の一", "中の二", ":::", "![](attachment:0190a2b4-0000-7000-8000-0000000000aa)", "最後"];
+  const BODY_SEL = LINES.join("\n");
+  const esc = (editor: Editor) => press(editor, "Escape");
+  const arrow = (editor: Editor, key: "ArrowUp" | "ArrowDown", init: KeyboardEventInit = {}) => press(editor, key, init);
+  const blocks = (editor: Editor) => editor.state.selection instanceof BlockSelection ? [editor.state.selection.from, editor.state.selection.to] : null;
+  const selectedDom = (editor: Editor) => editor.view.dom.querySelectorAll(".pe-selected").length;
+  /** The caret at the end of the inner block `inner` of the top-level block `index`. */
+  const caretInside = (editor: Editor, index: number, inner: number) => {
+    const container = editor.state.doc.child(index);
+    let pos = before(editor, index) + 1;
+    for (let k = 0; k < inner; k++) pos += container.child(k).nodeSize;
+    editor.commands.setTextSelection(pos + container.child(inner).nodeSize - 1);
+  };
+  /** A clipboard for the editor's copy / cut / paste events (jsdom has none). */
+  const clipboard = (editor: Editor) => {
+    const data = new Map<string, string>();
+    const transfer = { getData: (type: string) => data.get(type) ?? "", setData: (type: string, value: string) => void data.set(type, value), clearData: () => data.clear(), files: [], types: [] as string[], items: [] };
+    return {
+      data,
+      fire: (type: "copy" | "cut" | "paste") => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", { value: transfer });
+        editor.view.dom.dispatchEvent(event);
+      },
+    };
+  };
+
+  it("Esc selects the caret's block (a list line with its deeper lines); in a callout the inner block first, then the callout; at the top it clears; nothing is written", () => {
+    const { editor, markdown } = open(BODY_SEL);
+    editor.view.focus();
+    caretInBlock(editor, 1);
+    esc(editor);
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 2)]);
+    expect(selectedDom(editor)).toBe(1);
+    expect(editor.state.selection.visible).toBe(false);
+    expect(editor.view.dom.classList.contains("ProseMirror-hideselection")).toBe(true);
+    caretInBlock(editor, 2);
+    esc(editor);
+    expect(blocks(editor)).toEqual([before(editor, 2), before(editor, 4)]); // 親 with 子
+    expect(selectedDom(editor)).toBe(2);
+    caretInside(editor, 5, 0);
+    esc(editor);
+    expect(blocks(editor)).toEqual([before(editor, 5) + 1, before(editor, 5) + 1 + editor.state.doc.child(5).child(0).nodeSize]);
+    expect(selectedDom(editor)).toBe(1);
+    esc(editor);
+    expect(blocks(editor)).toEqual([before(editor, 5), before(editor, 6)]);
+    expect(editor.view.dom.querySelector(".pe-selected")?.matches("[data-callout]")).toBe(true);
+    esc(editor);
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.$from.parent.textContent).toBe("中の一");
+    expect(selectedDom(editor)).toBe(0);
+    expect(editor.view.dom.classList.contains("ProseMirror-hideselection")).toBe(false);
+    expect(markdown()).toBe(BODY_SEL);
+  });
+
+  it("↑ / ↓ move block by block (a child line on its own), out of a callout at its end, onto the callout at its start; the page's edges stop", () => {
+    const { editor, markdown } = open(BODY_SEL);
+    caretInBlock(editor, 1);
+    esc(editor);
+    arrow(editor, "ArrowDown");
+    expect(blocks(editor)).toEqual([before(editor, 2), before(editor, 4)]);
+    arrow(editor, "ArrowDown");
+    expect(blocks(editor)).toEqual([before(editor, 3), before(editor, 4)]);
+    arrow(editor, "ArrowDown");
+    arrow(editor, "ArrowDown");
+    expect(blocks(editor)).toEqual([before(editor, 5), before(editor, 6)]); // the callout, not into it
+    arrow(editor, "ArrowDown");
+    expect(blocks(editor)).toEqual([before(editor, 6), before(editor, 7)]); // the image
+    arrow(editor, "ArrowDown");
+    arrow(editor, "ArrowDown");
+    expect(blocks(editor)).toEqual([before(editor, 7), editor.state.doc.content.size]); // the last block stays
+    arrow(editor, "ArrowUp");
+    arrow(editor, "ArrowUp");
+    expect(blocks(editor)).toEqual([before(editor, 5), before(editor, 6)]);
+    caretInside(editor, 5, 1);
+    esc(editor);
+    arrow(editor, "ArrowDown");
+    expect(blocks(editor)).toEqual([before(editor, 6), before(editor, 7)]); // out of the callout
+    caretInside(editor, 5, 0);
+    esc(editor);
+    arrow(editor, "ArrowUp");
+    expect(blocks(editor)).toEqual([before(editor, 5), before(editor, 6)]); // the callout itself
+    for (let k = 0; k < 5; k++) arrow(editor, "ArrowUp");
+    expect(blocks(editor)).toEqual([0, before(editor, 1)]);
+    expect(markdown()).toBe(BODY_SEL);
+  });
+
+  it("Shift+↓ / ↑ extend and shrink by whole list items within the holder (never out of it); the anchor stays; Shift+click lifts to the anchor's holder", () => {
+    const { editor } = open(BODY_SEL);
+    caretInBlock(editor, 1);
+    esc(editor);
+    arrow(editor, "ArrowDown", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 4)]); // 親 with 子
+    arrow(editor, "ArrowDown", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 5)]); // 次 (not 子 again)
+    arrow(editor, "ArrowDown", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 6)]);
+    expect(selectedDom(editor)).toBe(5); // 本文の行, 親, 子, 次, the callout (its inner blocks are not marked)
+    arrow(editor, "ArrowUp", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 5)]);
+    arrow(editor, "ArrowUp", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 4)]); // back to 親 (with 子), one step
+    for (let k = 0; k < 6; k++) arrow(editor, "ArrowUp", { shiftKey: true });
+    expect(blocks(editor)).toEqual([0, before(editor, 2)]); // the head above the anchor; the anchor block stays in
+    expect((editor.state.selection as BlockSelection).$anchorBlock.pos).toBe(before(editor, 1));
+    // From below a list item, Shift+↑ takes the item with its deeper lines.
+    caretInBlock(editor, 4);
+    esc(editor);
+    arrow(editor, "ArrowUp", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 2), before(editor, 5)]);
+    // Shift+click on a line inside the callout: the callout (lifted to the page).
+    expect(extendTo(editor.state, before(editor, 5) + 2)!.to).toBe(before(editor, 6));
+    // Inside the callout Shift+↓ stops at its last block, and a click outside it extends nothing.
+    caretInside(editor, 5, 0);
+    esc(editor);
+    arrow(editor, "ArrowDown", { shiftKey: true });
+    arrow(editor, "ArrowDown", { shiftKey: true });
+    expect(blocks(editor)).toEqual([before(editor, 5) + 1, before(editor, 6) - 1]);
+    expect(extendTo(editor.state, before(editor, 7) + 1)).toBeNull();
+  });
+
+  it("⌘A selects the block's text, then every block of the page", () => {
+    const { editor } = open(BODY_SEL);
+    caretInBlock(editor, 1);
+    press(editor, "a", { ctrlKey: true }); // jsdom is not a Mac: Mod is Ctrl
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect([editor.state.selection.from, editor.state.selection.to]).toEqual([before(editor, 1) + 1, before(editor, 2) - 1]);
+    press(editor, "a", { ctrlKey: true });
+    expect(blocks(editor)).toEqual([0, editor.state.doc.content.size]);
+    expect(selectedDom(editor)).toBe(editor.state.doc.childCount);
+    press(editor, "a", { ctrlKey: true });
+    expect(blocks(editor)).toEqual([0, editor.state.doc.content.size]);
+  });
+
+  it("Enter edits at the end of the block; a key typed does the same and goes in there; an image stays a node selection on Enter, a key makes a line under it", () => {
+    const { editor, markdown } = open(BODY_SEL);
+    caretInBlock(editor, 1, "start");
+    esc(editor);
+    press(editor, "Enter");
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.$from.parent.textContent).toBe("本文の行");
+    expect(editor.state.selection.$from.parentOffset).toBe(4);
+    type(editor, "！");
+    esc(editor);
+    press(editor, "x");
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    type(editor, "x");
+    expect(markdown()).toBe(BODY_SEL.replace("本文の行", "本文の行！x"));
+    editor.view.dispatch(editor.state.tr.setSelection(BlockSelection.create(editor.state.doc, before(editor, 6))));
+    press(editor, "Enter");
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    editor.view.dispatch(editor.state.tr.setSelection(BlockSelection.create(editor.state.doc, before(editor, 6))));
+    press(editor, "a");
+    type(editor, "a");
+    expect(markdown()).toBe(BODY_SEL.replace("本文の行", "本文の行！x").replace("0000000000aa)\n", "0000000000aa)\na\n"));
+    // A callout: its last text; a toggle: its title.
+    const toggled = open("::: toggle 題\n中\n:::\n::: callout\n一\n二\n:::");
+    toggled.editor.view.dispatch(toggled.editor.state.tr.setSelection(BlockSelection.create(toggled.editor.state.doc, 0)));
+    press(toggled.editor, "Enter");
+    expect(toggled.editor.state.selection.$from.parent.type.name).toBe("toggleTitle");
+    toggled.editor.view.dispatch(toggled.editor.state.tr.setSelection(BlockSelection.create(toggled.editor.state.doc, before(toggled.editor, 1))));
+    press(toggled.editor, "Enter");
+    expect(toggled.editor.state.selection.$from.parent.textContent).toBe("二");
+  });
+
+  it("Backspace / Delete remove the blocks in one undo step; the others keep their bytes; undo brings the bytes and the selection back; a callout emptied keeps a line", () => {
+    const CRLF = LINES.join("\r\n");
+    const { editor, markdown } = open(CRLF);
+    caretInBlock(editor, 2);
+    esc(editor);
+    press(editor, "Backspace");
+    expect(markdown()).toBe([...LINES.slice(0, 2), ...LINES.slice(4)].join("\r\n"));
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    editor.commands.undo();
+    expect(markdown()).toBe(CRLF);
+    expect(blocks(editor)).toEqual([before(editor, 2), before(editor, 4)]);
+    caretInside(editor, 5, 0);
+    esc(editor);
+    arrow(editor, "ArrowDown", { shiftKey: true });
+    press(editor, "Delete");
+    expect(markdown()).toBe(CRLF.replace("中の一\r\n中の二\r\n", "")); // an empty callout is written without a line
+    expect(editor.state.doc.child(5).childCount).toBe(1);
+    editor.commands.undo();
+    expect(markdown()).toBe(CRLF);
+  });
+
+  it("⌘D duplicates the blocks below (written anew, a task's hidden link not copied) and selects the copies; undo restores the bytes", () => {
+    const BODY_D = "*   古い <!--task:0190a2b4-0000-7000-8000-000000000001-->\n    * 子\n後";
+    const { editor, markdown } = open(BODY_D);
+    caretInBlock(editor, 0);
+    esc(editor);
+    press(editor, "d", { ctrlKey: true });
+    expect(markdown()).toBe("*   古い <!--task:0190a2b4-0000-7000-8000-000000000001-->\n    * 子\n- 古い\n  - 子\n後");
+    expect(blocks(editor)).toEqual([before(editor, 2), before(editor, 4)]);
+    press(editor, "d", { ctrlKey: true });
+    expect(markdown()).toBe("*   古い <!--task:0190a2b4-0000-7000-8000-000000000001-->\n    * 子\n- 古い\n  - 子\n- 古い\n  - 子\n後");
+    editor.commands.undo();
+    editor.commands.undo();
+    expect(markdown()).toBe(BODY_D);
+  });
+
+  it("⌘⇧↓ / ↑ move the selected blocks; the selection goes with them", () => {
+    const { editor, markdown } = open(BODY_SEL);
+    caretInBlock(editor, 1);
+    esc(editor);
+    press(editor, "ArrowDown", { ctrlKey: true, shiftKey: true });
+    expect(markdown()).toBe([LINES[0], LINES[2], LINES[3], LINES[1], ...LINES.slice(4)].join("\n"));
+    expect(editor.state.selection).toBeInstanceOf(BlockSelection);
+    expect((editor.state.selection as BlockSelection).$anchorBlock.nodeAfter?.textContent).toBe("本文の行");
+    press(editor, "ArrowUp", { ctrlKey: true, shiftKey: true });
+    expect(markdown()).toBe(BODY_SEL);
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 2)]);
+  });
+
+  it("⌘C puts the blocks' Markdown (their bytes) on the clipboard; ⌘V pastes after the blocks (written anew) and selects them; ⌘X takes them out; untouched blocks keep every byte", () => {
+    const BODY_C = "# 題\r\n*   古い\r\n    * 子\r\n後";
+    const { editor, markdown } = open(BODY_C);
+    const clip = clipboard(editor);
+    caretInBlock(editor, 1);
+    esc(editor);
+    clip.fire("copy");
+    expect(clip.data.get("text/plain")).toBe("*   古い\r\n    * 子");
+    expect(clip.data.get("text/html")).toContain("data-list-line");
+    expect(markdown()).toBe(BODY_C);
+    clip.fire("paste");
+    expect(markdown()).toBe("# 題\r\n*   古い\r\n    * 子\r\n- 古い\n  - 子\n後");
+    expect(blocks(editor)).toEqual([before(editor, 3), before(editor, 5)]);
+    editor.view.dispatch(closeHistory(editor.state.tr)); // the paste and the cut would group as one undo step within 500 ms
+    clip.fire("cut");
+    expect(clip.data.get("text/plain")).toBe("- 古い\n  - 子");
+    expect(markdown()).toBe(BODY_C);
+    editor.commands.undo();
+    expect(markdown()).toBe("# 題\r\n*   古い\r\n    * 子\r\n- 古い\n  - 子\n後");
+    // Text copied out of a line pastes as a line of its own after the blocks; a callout cut empty keeps a line.
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, before(editor, 5) + 1, before(editor, 5) + 2)));
+    clip.fire("copy");
+    expect(clip.data.get("text/plain")).toBe("後");
+    editor.view.dispatch(editor.state.tr.setSelection(BlockSelection.create(editor.state.doc, 0)));
+    clip.fire("paste");
+    expect(markdown()).toBe("# 題\r\n後\n*   古い\r\n    * 子\r\n- 古い\n  - 子\n後");
+    const callout = open("::: callout 💡\n一\n二\n:::\n後");
+    const inner = clipboard(callout.editor);
+    callout.editor.view.dispatch(callout.editor.state.tr.setSelection(BlockSelection.create(callout.editor.state.doc, 1, 4)));
+    inner.fire("cut");
+    expect(inner.data.get("text/plain")).toBe("一\n二");
+    expect(callout.markdown()).toBe("::: callout 💡\n:::\n後");
+    expect(callout.editor.state.doc.child(0).childCount).toBe(1);
+  });
+
+  it("a merge from the server keeps the selection on its block, and lets it go when the block is gone", () => {
+    const { editor, sources } = open(BODY_SEL);
+    caretInBlock(editor, 1);
+    esc(editor);
+    expect(applyMerge(editor, sources, BODY_SEL.replace("最後", "最後（他）"), () => false)).toBe("partial");
+    expect(blocks(editor)).toEqual([before(editor, 1), before(editor, 2)]);
+    expect(applyMerge(editor, sources, BODY_SEL.replace("本文の行\n", "").replace("最後", "最後（他）"), () => false)).not.toBe("none");
+    expect(editor.state.selection).not.toBeInstanceOf(BlockSelection);
+  });
+
+  it("JSON and the undo history's bookmark round-trip; an invalid position is refused", () => {
+    const { editor } = open(BODY_SEL);
+    const selection = BlockSelection.create(editor.state.doc, before(editor, 2), before(editor, 4));
+    expect(selection.toJSON()).toEqual({ type: "block", anchor: before(editor, 2), head: before(editor, 4) });
+    expect(Selection.fromJSON(editor.state.doc, selection.toJSON()).eq(selection)).toBe(true);
+    expect(selection.getBookmark().resolve(editor.state.doc).eq(selection)).toBe(true);
+    expect(() => BlockSelection.fromJSON(editor.state.doc, { anchor: 1, head: 1 })).toThrow(RangeError);
+    expect(BlockSelection.valid(editor.state.doc, before(editor, 1), before(editor, 5) + 1)).toBe(false); // different holders
   });
 });

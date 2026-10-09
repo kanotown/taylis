@@ -401,9 +401,41 @@ export function RenameChannelDialog({ controller, channel, onClose }: { controll
   );
 }
 
-function shortcuts(): Array<[string, string]> {
-  return SHORTCUT_KEYS.map(([keys, what]) => [keys.replace(/\{(\w+)\}/g, (_, k: string) => t(`shortcuts.${k}` as MessageKey)), t(what)]);
+/** The shortcuts' rows: the app's, then each titled section (M154: the document editor's keys). */
+function shortcuts(): Array<{ title: string | null; rows: Array<[string, string]> }> {
+  const rows = (keys: Array<[string, MessageKey]>): Array<[string, string]> => keys.map(([key, what]) => [key.replace(/\{(\w+)\}/g, (_, k: string) => t(`shortcuts.${k}` as MessageKey)), t(what)]);
+  return [{ title: null, rows: rows(SHORTCUT_KEYS) }, ...SHORTCUT_SECTIONS.map((section) => ({ title: t(section.title), rows: rows(section.keys) }))];
 }
+
+/** M154 (WIKI.md §30.1): the keys of the document editor (見たまま), under their own heading. */
+const SHORTCUT_SECTIONS: Array<{ title: MessageKey; keys: Array<[string, MessageKey]> }> = [
+  {
+    title: "shortcuts.docs.title",
+    keys: [
+      ["Esc", "shortcuts.docs.esc"],
+      ["↑ / ↓ {blockSelected}", "shortcuts.docs.arrows"],
+      ["Shift + ↑ / ↓ {blockSelected}", "shortcuts.docs.extend"],
+      ["Ctrl/⌘ + A", "shortcuts.docs.selectAll"],
+      ["Enter {blockSelected}", "shortcuts.docs.enter"],
+      ["Backspace / Delete {blockSelected}", "shortcuts.docs.delete"],
+      ["Ctrl/⌘ + D {blockSelected}", "shortcuts.docs.duplicate"],
+      ["Ctrl/⌘ + Shift + ↑ / ↓", "shortcuts.docs.move"],
+      ["Ctrl/⌘ + C / X / V {blockSelected}", "shortcuts.docs.clipboard"],
+      ["Enter {inTitle}", "shortcuts.docs.titleEnter"],
+      ["↑ {atBodyStart}", "shortcuts.docs.titleUp"],
+      ["/", "shortcuts.docs.slash"],
+      ["[[", "shortcuts.docs.pageLink"],
+      ["@", "shortcuts.docs.mention"],
+      ["Ctrl/⌘ + K", "shortcuts.docs.link"],
+      ["Ctrl/⌘ + F", "shortcuts.docs.find"],
+      ["Ctrl/⌘ + B / I / E", "shortcuts.docs.marks"],
+      ["Ctrl/⌘ + Shift + X", "shortcuts.docs.strike"],
+      ["Tab / Shift + Tab", "shortcuts.docs.indent"],
+      ["Ctrl/⌘ + S", "shortcuts.docs.save"],
+      ["Ctrl/⌘ + Z / Shift + Z", "shortcuts.docs.undo"],
+    ],
+  },
+];
 
 const SHORTCUT_KEYS: Array<[string, MessageKey]> = [
   ["F6 / Shift + F6", "shortcuts.f6"],
@@ -437,19 +469,30 @@ const SHORTCUT_KEYS: Array<[string, MessageKey]> = [
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title={t("main.shortcuts")} className="w-[520px]">
-      <table className="mt-4 w-full text-sm">
-        <tbody className="divide-y divide-line">
-          {shortcuts().map(([keys, what]) => (
-            <tr key={keys}>
-              <td className="whitespace-nowrap py-2 pr-4 align-top">
-                <Kbd>{keys}</Kbd>
-              </td>
-              <td className="py-2 text-ink">{what}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Modal onClose={onClose} title={t("main.shortcuts")} className="w-[560px]">
+      <div className="mt-4 max-h-[70vh] overflow-y-auto">
+        {shortcuts().map((section, index) => (
+          <table key={section.title ?? index} className="w-full text-sm" aria-label={section.title ?? t("main.shortcuts")}>
+            {section.title && (
+              <thead>
+                <tr>
+                  <th colSpan={2} scope="colgroup" className="pb-1 pt-5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted">{section.title}</th>
+                </tr>
+              </thead>
+            )}
+            <tbody className="divide-y divide-line">
+              {section.rows.map(([keys, what]) => (
+                <tr key={keys}>
+                  <td className="whitespace-nowrap py-2 pr-4 align-top">
+                    <Kbd>{keys}</Kbd>
+                  </td>
+                  <td className="py-2 text-ink">{what}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ))}
+      </div>
     </Modal>
   );
 }

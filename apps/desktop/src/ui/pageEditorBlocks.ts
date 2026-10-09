@@ -104,7 +104,7 @@ export function canPlace(doc: PMNode, unit: Pick<BlockUnit, "from" | "to">, targ
 }
 
 /** The blocks `from`–`to` taken out (a holder left without blocks gets an empty line: it needs one). */
-function takeOut(tr: Transaction, from: number, to: number): void {
+export function takeOut(tr: Transaction, from: number, to: number): void {
   const $from = tr.doc.resolve(from);
   const holder = $from.parent;
   const count = tr.doc.slice(from, to).content.childCount;
@@ -231,10 +231,10 @@ export function stepTarget(doc: PMNode, unit: BlockUnit, direction: -1 | 1): num
   if (direction < 0) {
     if (unit.first <= firstBlock(holder)) return $from.depth > 0 ? $from.before($from.depth) : null;
     let k = unit.first - 1;
-    // Past a whole list item: back over the lines deeper than the one moved, to the item they belong to.
-    if (head.type.name === "listLine") {
-      while (k > firstBlock(holder) && holder.child(k).type.name === "listLine" && holder.child(k).attrs.level > head.attrs.level && holder.child(k - 1).type.name === "listLine") k--;
-    }
+    // Past a whole list item: back over the lines deeper than the one moved (any other block: deeper than the top),
+    // to the item they belong to. (M154: a paragraph moved up no longer parts an item from its children.)
+    const level = head.type.name === "listLine" ? (head.attrs.level as number) : 0;
+    while (k > firstBlock(holder) && holder.child(k).type.name === "listLine" && holder.child(k).attrs.level > level && holder.child(k - 1).type.name === "listLine") k--;
     return posOf(k);
   }
   if (unit.end >= holder.childCount) return $from.depth > 0 ? $from.after($from.depth) : null;

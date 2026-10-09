@@ -7,9 +7,11 @@
  * nothing is typed here. Offline, the page as last read shows read only.
  * M150 (WIKI.md §22.6, §27): 「編集」 is the 見たまま editor (PageEditor.tsx, loaded lazily) unless I chose Markdown
  * (users.docs_editor_mode); the page's 「見たまま / Markdown」 switch changes the setting, the caret kept on its line.
+ * M154 (WIKI.md §30.1): Enter in the title puts the caret at the start of the body (from the reading view it opens
+ * the editor there); ↑ on the body's first line (← at its very start) goes back to the end of the title.
  */
 import { ChevronRight, CloudOff, Copy, CopyPlus, Download, FilePlus2, History, LayoutTemplate, Link2, ListTree, Loader2, MoreHorizontal, Share2, SmilePlus, Table2, Trash2 } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, type MutableRefObject, type ReactNode, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { describeError } from "../api/errors";
 import type { PageContent, PageItem, PageOut } from "../api/types";
@@ -138,6 +140,23 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
       setCaretLine(pageEditor.current?.caretLine() ?? null);
     } else setCaretLine(markdownCaret.current?.() ?? null);
     void controller.setDocsEditorMode(next);
+  };
+  // M154: Enter in the title → the start of the body (the editor opened there from the reading view); ↑ at the body's
+  // first line → the end of the title.
+  const titleRow = useRef<TitleHandle | null>(null);
+  const focusTitle = () => titleRow.current?.focus();
+  const enterBody = () => {
+    if (editing) {
+      if (editorMode === "wysiwyg") pageEditor.current?.focusStart();
+      else if (editorArea) {
+        editorArea.focus();
+        editorArea.setSelectionRange(0, 0);
+      }
+      return;
+    }
+    if (!rights.edit || !loaded || saver.status === "gone") return;
+    setCaretLine(0);
+    setMode("edit");
   };
   // M145 (WIKI.md §22.3): 「複製」 / 「テンプレートとして保存」 and an empty page's 「テンプレートから始める」.
   const [duplicating, setDuplicating] = useState<DuplicateMode | null>(null);
@@ -341,20 +360,20 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
       {editing && editorMode === "wysiwyg" ? (
         <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")} data-wysiwyg-page="" data-find-root="">
           <article className={cn("mx-auto max-w-3xl px-6 pb-16 pt-6 max-md:px-4 max-md:pt-4", embedded && "px-4 pt-4")}>
-            <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable />
+            <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable onEnter={enterBody} handle={titleRow} />
             {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} template={isTemplate} />}
             <Suspense fallback={(
               <div className="mt-4" role="status" aria-label={t("docs.wysiwyg.loading")}>
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={null} />
               </div>
             )}>
-              <LazyPageEditor key={pageId} controller={controller} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} className="mt-3" />
+              <LazyPageEditor key={pageId} controller={controller} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} onTitle={focusTitle} className="mt-3" />
             </Suspense>
           </article>
         </div>
       ) : editing ? (
         <>
-          <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable compact />
+          <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable compact onEnter={enterBody} handle={titleRow} />
           <EditorSplit compact={compact} editor={<CanvasEditor controller={controller} saver={saver} onTextArea={setEditorArea} doc={docLinks} initialCaretLine={caretLine} caretLineRef={markdownCaret} className="h-full min-w-0" />} preview={(
             <div ref={setPreviewBox} className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")} data-find-root="">
               <div className="mx-auto max-w-3xl px-6 py-4">
@@ -368,7 +387,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
         <div className="flex min-h-0 flex-1">
           <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")} data-find-root="">
             <article className={cn("mx-auto px-6 py-6 max-md:px-4 max-md:py-4", kind === "database" ? "max-w-none" : "max-w-3xl", embedded && "px-4 py-4")}>
-              <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable={rights.edit && !!loaded} />
+              <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable={rights.edit && !!loaded} onEnter={enterBody} handle={titleRow} />
               {meta && <Byline controller={controller} page={meta} />}
               {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} template={isTemplate} />}
               {text.trim() === "" ? (kind === "database" ? null : (
@@ -453,13 +472,34 @@ function Breadcrumbs({ controller, crumbs, title, icon, onOpenPage }: { controll
   );
 }
 
-/** The icon (a picker for an editor) and the title (edited in place: saved on Enter or when leaving it). */
-function TitleRow({ controller, pageId, title, icon, editable, compact = false }: { controller: AppController; pageId: string; title: string; icon: string | null; editable: boolean; compact?: boolean }) {
+/** M154: what the body asks of the title row (↑ on the body's first line). */
+interface TitleHandle {
+  /** The caret at the end of the title's field. */
+  focus(): void;
+}
+
+/** The icon (a picker for an editor) and the title (edited in place: saved on Enter or when leaving it; M154: Enter then goes to the body). */
+function TitleRow({ controller, pageId, title, icon, editable, compact = false, onEnter, handle }: { controller: AppController; pageId: string; title: string; icon: string | null; editable: boolean; compact?: boolean; onEnter?: () => void; handle?: MutableRefObject<TitleHandle | null> }) {
   const [value, setValue] = useState(title);
   const focused = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!focused.current) setValue(title);
   }, [title]);
+  useEffect(() => {
+    if (!handle) return;
+    handle.current = {
+      focus: () => {
+        const el = input.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      },
+    };
+    return () => {
+      handle.current = null;
+    };
+  }, [handle]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const save = async () => {
     const trimmed = value.trim();
@@ -498,6 +538,7 @@ function TitleRow({ controller, pageId, title, icon, editable, compact = false }
       )}
       {editable ? (
         <input
+          ref={input}
           aria-label={t("docs.titleLabel")}
           value={value}
           maxLength={200}
@@ -507,8 +548,10 @@ function TitleRow({ controller, pageId, title, icon, editable, compact = false }
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
             if (isPlainEnter(event)) {
+              // Saved by the blur; M154: then the body.
               event.preventDefault();
               (event.target as HTMLInputElement).blur();
+              onEnter?.();
             } else if (event.key === "Escape") {
               setValue(title);
               event.stopPropagation();

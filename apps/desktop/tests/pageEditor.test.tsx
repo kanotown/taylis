@@ -15,7 +15,9 @@ import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { WikiHub } from "../src/sync/wiki";
 import { COMPACT_QUERY } from "../src/ui/compact";
+import { ShortcutsDialog } from "../src/ui/Dialogs";
 import { DocPage } from "../src/ui/DocPage";
+import { BlockSelection } from "../src/ui/pageEditorSelection";
 import { pageHtmlFromPaste } from "../src/ui/pagePaste";
 import { docsEditorModeOf } from "../src/ui/prefs";
 import { DocsEditorModeSettings } from "../src/ui/Settings";
@@ -362,5 +364,99 @@ describe("the setting and pasting", () => {
       ["ordered", "0", null, "三"],
       ["task", "0", "true", "済"],
     ]);
+  });
+});
+
+describe("M154: the title and the body, the block selection on the page", () => {
+  const title = () => screen.getByRole("textbox", { name: "ページの題名" }) as HTMLInputElement;
+
+  it("Enter in the title puts the caret at the start of the body; ↑ on the body's first line goes back to the title's end; nothing is saved", async () => {
+    const { api } = await openPage(BODY);
+    const editor = await edit();
+    caretAtEndOf(editor, 2);
+    const input = title();
+    act(() => input.focus());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await settle(60);
+    expect(editor.state.selection.from).toBe(1);
+    expect(document.activeElement).toBe(editor.view.dom);
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(input.value.length);
+    // ← at the very start too; ↑ further down does not leave the body.
+    act(() => editor.commands.focus(1));
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(input);
+    act(() => editor.view.focus());
+    caretAtEndOf(editor, 2);
+    expect(document.activeElement).toBe(editor.view.dom);
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(editor.view.dom);
+    await settle(450);
+    expect(saves(api)).toEqual([]);
+  });
+
+  it("Enter in the title while reading opens the editor with the caret at the start of the body", async () => {
+    const { api } = await openPage(BODY);
+    fireEvent.keyDown(title(), { key: "Enter" });
+    const dom = await screen.findByRole("textbox", { name: "ページの本文" }, { timeout: 4000 });
+    await settle(60);
+    const editor = (dom as unknown as { editor: Editor }).editor;
+    expect(editor.state.selection.from).toBe(1);
+    await settle(450);
+    expect(saves(api)).toEqual([]);
+  });
+
+  it("Esc, the arrows and ⌘A select blocks without writing anything; leaving the editor clears the selection", async () => {
+    const { api } = await openPage(BODY);
+    const editor = await edit();
+    caretAtEndOf(editor, 2);
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    expect(editor.state.selection).toBeInstanceOf(BlockSelection);
+    expect(editor.view.dom.querySelectorAll(".pe-selected")).toHaveLength(1);
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown", shiftKey: true });
+    expect(editor.view.dom.querySelectorAll(".pe-selected")).toHaveLength(2);
+    fireEvent.keyDown(editor.view.dom, { key: "a", ctrlKey: true });
+    expect((editor.state.selection as BlockSelection).to).toBe(editor.state.doc.content.size);
+    await settle(450);
+    expect(saves(api)).toEqual([]);
+    expect(api.bodies.get(uid(501))).toBe(BODY);
+    fireEvent.blur(editor.view.dom);
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.view.dom.querySelectorAll(".pe-selected")).toHaveLength(0);
+    await settle(450);
+    expect(saves(api)).toEqual([]);
+  });
+
+  it("Delete on selected blocks saves the body with just those lines gone; Backspace at the very start changes nothing", async () => {
+    const { api } = await openPage(BODY);
+    const editor = await edit();
+    caretAtEndOf(editor, 3); // 「*   古い書き方の項目」
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    fireEvent.keyDown(editor.view.dom, { key: "Delete" });
+    await settle(450);
+    expect(saves(api)).toHaveLength(1);
+    expect(api.bodies.get(uid(501))).toBe(BODY.replace("*   古い書き方の項目\r\n", ""));
+    act(() => editor.commands.setTextSelection(1));
+    fireEvent.keyDown(editor.view.dom, { key: "Backspace" }); // the heading becomes text (as before)
+    await settle(450);
+    expect(saves(api)).toHaveLength(2);
+    expect(editor.state.doc.child(0).type.name).toBe("paragraph");
+    const afterwards = BODY.replace("*   古い書き方の項目\r\n", "").replace("# 手順", "手順");
+    expect(api.bodies.get(uid(501))).toBe(afterwards);
+    fireEvent.keyDown(editor.view.dom, { key: "Backspace" }); // at the very start of the page: nothing
+    await settle(450);
+    expect(saves(api)).toHaveLength(2);
+    expect(editor.state.doc.childCount).toBe(8);
+    expect(api.bodies.get(uid(501))).toBe(afterwards);
+  });
+
+  it("the shortcuts dialog lists the editor's keys under 「ドキュメントの編集」", () => {
+    render(<ShortcutsDialog onClose={() => {}} />);
+    expect(screen.getByText("ドキュメントの編集")).toBeTruthy();
+    expect(screen.getByText("ブロックを選択（囲みの中ではもう一度で囲み、さらにもう一度で解除）")).toBeTruthy();
+    expect(screen.getByText("Ctrl/⌘ + D （ブロックを選択中）")).toBeTruthy();
+    expect(screen.getByText("本文の先頭へ")).toBeTruthy();
   });
 });
