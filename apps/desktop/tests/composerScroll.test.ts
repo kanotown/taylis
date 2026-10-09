@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { contentLine, fits, keepLineInView, lineAround, revealLine, settle } from "../src/ui/composerScroll";
+import { contentLine, fits, keepLineInView, lineAround, markerLine, revealLine, settle, textAreaCaretLine } from "../src/ui/composerScroll";
+
+afterEach(() => vi.restoreAllMocks());
 
 // The composer's box: 12 px of padding above the text, 4 below, 24 px lines, 280 px at most (Composer.tsx).
 const PADDING = { top: 12, bottom: 4 };
@@ -98,6 +100,80 @@ describe("the composer's scrolling (composerScroll.ts)", () => {
     keepLineInView(el, null); // the input is not focused: only settled
     expect(el.scrollTop).toBe(72);
     el.remove();
+  });
+
+  it("asks for the caret's line only above the cap (the text area's mirror is not built while the draft fits)", () => {
+    const sizes = { clientHeight: 88, scrollHeight: 89 };
+    const el = element(sizes);
+    const caret = vi.fn(() => line(13));
+    keepLineInView(el, caret);
+    expect(caret).not.toHaveBeenCalled();
+    sizes.clientHeight = 280;
+    sizes.scrollHeight = 352;
+    keepLineInView(el, caret);
+    expect(caret).toHaveBeenCalledTimes(1);
+    expect(el.scrollTop).toBe(72);
+    el.remove();
+  });
+
+  describe("the mirror's marker", () => {
+    // The mirror at viewport top 100 with a 1 px border; the marker's first fragment on line 2, a 21 px glyph box.
+    const fragment = (n: number, top = 100 + 1) => ({ top: top + 12 + 24 * n + 1.5, bottom: top + 12 + 24 * n + 22.5 });
+    const box = (over: Partial<{ top: number; height: number; offsetHeight: number; clientTop: number }> = {}) => ({
+      getBoundingClientRect: () => ({ top: over.top ?? 100, height: over.height ?? 400 }),
+      offsetHeight: over.offsetHeight ?? 400,
+      clientTop: over.clientTop ?? 1,
+    });
+
+    it("is its first line fragment: a Japanese marker runs to the paragraph's end, over many lines", () => {
+      const marker = { getClientRects: () => [fragment(2), fragment(3), fragment(4)], offsetTop: 61.5, offsetHeight: 69 };
+      expect(markerLine(marker, box())).toEqual({ top: 61.5, bottom: 82.5 });
+      expect(lineAround(markerLine(marker, box()), 24)).toEqual(line(2));
+      // Its offset box, which the old measure took, reached line 4: the input would have scrolled to the paragraph's end.
+      expect(marker.offsetTop + marker.offsetHeight).toBeGreaterThan(line(4).top);
+    });
+
+    it("turns viewport pixels into the mirror's own under a zoom, and falls back to the offset box without rects", () => {
+      // WebKit's `zoom: 0.9`: the mirror's 400 px show as 360, and the fragment's pixels are 0.9 of its own.
+      const zoomed = { getClientRects: () => [{ top: 100 + (1 + 12 + 48 + 1.5) * 0.9, bottom: 100 + (1 + 12 + 48 + 22.5) * 0.9 }], offsetTop: 61.5, offsetHeight: 21 };
+      const { top, bottom } = markerLine(zoomed, box({ height: 360 }));
+      expect(top).toBeCloseTo(61.5);
+      expect(bottom).toBeCloseTo(82.5);
+      expect(markerLine({ getClientRects: () => [], offsetTop: 61.5, offsetHeight: 21 }, box())).toEqual({ top: 61.5, bottom: 82.5 });
+    });
+
+    it("textAreaCaretLine lays out the rest of the caret's word, or of a Japanese paragraph, and reads one line of it", () => {
+      const area = document.createElement("textarea");
+      area.style.paddingTop = "12px";
+      area.style.lineHeight = "24px";
+      area.style.fontSize = "14.5px";
+      document.body.appendChild(area);
+      const markers: string[] = [];
+      const isMirror = (el: Element | null) => el instanceof HTMLDivElement && el.style.visibility === "hidden";
+      vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element) {
+        if (!(this instanceof HTMLSpanElement) || !isMirror(this.parentElement)) return [] as unknown as DOMRectList;
+        markers.push(this.textContent ?? "");
+        const lines = Math.ceil((this.textContent?.length ?? 1) / 10); // ten characters a line
+        return Array.from({ length: lines }, (_, i) => fragment(2 + i, 100)) as unknown as DOMRectList;
+      });
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+        return { top: isMirror(this) ? 100 : 0, height: 0, bottom: 0, left: 0, right: 0, width: 0, x: 0, y: 0, toJSON: () => ({}) };
+      });
+      const caretAt = (value: string, caret: number) => {
+        area.value = value;
+        area.setSelectionRange(caret, caret);
+        return textAreaCaretLine(area);
+      };
+      const paragraph = "設計の話を決める会議の日取りをまだ誰も決めていないので早めに相談したい。";
+      expect(caretAt(`${paragraph}\n次の段落`, 10)).toEqual(line(2)); // the marker wraps over four lines; the caret's is the first
+      expect(markers.at(-1)).toBe(paragraph.slice(10));
+      expect(caretAt("hello world and more", 8)).toEqual(line(2));
+      expect(markers.at(-1)).toBe("rld"); // the caret's word, so it wraps where it does
+      caretAt("end", 3);
+      expect(markers.at(-1)).toBe("​"); // nothing after the caret: a zero-width stand-in
+      expect(document.body.querySelector("div")).toBeNull(); // the mirror is gone
+      area.remove();
+    });
   });
 
   it("turns viewport coordinates into the box's content coordinates, also under a zoom", () => {

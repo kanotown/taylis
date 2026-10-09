@@ -91,10 +91,16 @@ export function settle(scroller: HTMLElement): boolean {
   return fit;
 }
 
-/** Settles `scroller` and scrolls it to `line` (content coordinates) when the content is taller than it. */
-export function keepLineInView(scroller: HTMLElement, line: Line | null): void {
-  if (settle(scroller) || !line) return;
-  const next = revealLine(scroller, line, paddingOf(scroller));
+/**
+ * Settles `scroller` and scrolls it to `line` (content coordinates) when the content is taller than it. A function is
+ * asked for the line only then: measuring a text area's caret lays out a copy of its text (textAreaCaretLine), which
+ * would be built and thrown away on every keystroke while the draft fits.
+ */
+export function keepLineInView(scroller: HTMLElement, line: Line | null | (() => Line | null)): void {
+  if (settle(scroller)) return;
+  const target = typeof line === "function" ? line() : line;
+  if (!target) return;
+  const next = revealLine(scroller, target, paddingOf(scroller));
   if (Math.abs(next - scroller.scrollTop) >= 0.5) scroller.scrollTop = next;
 }
 
@@ -123,9 +129,41 @@ const MIRRORED = [
   "whiteSpace", "wordBreak", "overflowWrap", "direction",
 ] as const;
 
+/** An inline element laid out in a box: its line fragments on screen, and its offset box as a stand-in. */
+export interface Marker {
+  getClientRects(): ArrayLike<Pick<DOMRectReadOnly, "top" | "bottom">>;
+  offsetTop: number;
+  offsetHeight: number;
+}
+
+/** The box a marker is laid out in (its offsetParent, with a border it may mirror). */
+export interface MarkerBox {
+  getBoundingClientRect(): Pick<DOMRectReadOnly, "top" | "height">;
+  offsetHeight: number;
+  clientTop: number;
+}
+
+/**
+ * The line of an inline `marker` in `box`'s content coordinates (0 at the top of its padding): the marker's first line
+ * fragment. Its offset box would do while the marker sits on one line, but a marker that wraps covers every line it
+ * runs over — the rest of a Japanese paragraph, which has no space to stop at — and its offsetHeight is theirs
+ * together, which read as a line reaching the paragraph's end. Viewport pixels and the box's own differ under a zoom
+ * (contentLine); without client rects (jsdom) the offset box stands in.
+ */
+export function markerLine(marker: Marker, box: MarkerBox): Line {
+  const first = marker.getClientRects()[0];
+  if (!first) return { top: marker.offsetTop, bottom: marker.offsetTop + marker.offsetHeight };
+  const rect = box.getBoundingClientRect();
+  const scale = box.offsetHeight > 0 && rect.height > 0 ? rect.height / box.offsetHeight : 1;
+  const at = (y: number) => (y - rect.top) / scale - box.clientTop;
+  return { top: at(first.top), bottom: at(first.bottom) };
+}
+
 /**
  * The line of a text area's caret, in its content coordinates: a copy of its text up to the caret laid out in a hidden
- * box of the same width and type (a text area tells nothing of where its caret is).
+ * box of the same width and type (a text area tells nothing of where its caret is), with a marker for the rest of the
+ * caret's word, so it wraps where it does in the text area. In Japanese the marker runs to the paragraph's end (no
+ * space to stop at), so only its first line fragment is the caret's line (markerLine).
  */
 export function textAreaCaretLine(area: HTMLTextAreaElement): Line {
   const doc = area.ownerDocument;
@@ -140,12 +178,10 @@ export function textAreaCaretLine(area: HTMLTextAreaElement): Line {
   const caret = area.selectionDirection === "backward" ? area.selectionStart : area.selectionEnd;
   mirror.textContent = area.value.slice(0, caret);
   const marker = doc.createElement("span");
-  // The rest of the line, so the caret's word wraps where it does in the text area.
   marker.textContent = /^[^\s]*/.exec(area.value.slice(caret))?.[0] || "​";
   mirror.appendChild(marker);
   doc.body.appendChild(mirror);
-  const top = marker.offsetTop; // from the padding edge, as the text area scrolls
-  const height = marker.offsetHeight;
+  const line = markerLine(marker, mirror);
   mirror.remove();
-  return lineAround({ top, bottom: top + height }, lineHeightOf(area));
+  return lineAround(line, lineHeightOf(area));
 }
