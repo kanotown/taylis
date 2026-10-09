@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, SmallInteger, String, Text, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, SmallInteger, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,7 @@ from app.core.time import utcnow
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("presence_manual IN ('away')", name="presence_manual"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     username: Mapped[str] = mapped_column(CITEXT, unique=True)
@@ -40,6 +41,10 @@ class User(Base):
     notify_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     # L4 (M31): others always see this person as offline (the hub announces nothing else).
     presence_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # docs/PRESENCE.md §11 (migration 0111): "away" = I chose 離席中 in the status menu (the hub
+    # announces me as away even while I use an app); NULL = automatic. 取り込み中 is dnd_until,
+    # オフライン表示 is presence_hidden.
+    presence_manual: Mapped[str | None] = mapped_column(String(16))
     # M39: the activity read position, and whether a reaction to my message pushes (the activity
     # lists it anyway).
     activity_read_at: Mapped[datetime] = mapped_column(

@@ -123,8 +123,11 @@ class UserMe(UserPublic):
     must_change_password: bool
     # M12g: words that make a message count as a mention of me (case-insensitive substring).
     notify_keywords: list[str] = []
-    # L4 (M31): others see me as offline.
+    # L4 (M31): others see me as offline (= オフライン表示 in the status menu, PRESENCE.md §11).
     presence_hidden: bool = False
+    # PRESENCE.md §11: "away" = I chose 離席中 (others see me away while connected); null =
+    # automatic. With dnd_until (取り込み中) and presence_hidden it gives the menu's choice.
+    presence_manual: Literal["away"] | None = None
     # M35: what channels without a level of their own notify me of (PUSH_NOTIFICATIONS.md §4).
     notification_default: Literal["all", "mentions", "none"] = "all"
     # M39: a push when someone reacts to my message (banner); the activity lists reactions either
@@ -280,6 +283,7 @@ def to_user_me(user: User) -> UserMe:
         must_change_password=user.must_change_password,
         notify_keywords=list(user.notify_keywords or []),
         presence_hidden=user.presence_hidden,
+        presence_manual="away" if user.presence_manual == "away" else None,
         notification_default=user.notification_default,  # type: ignore[arg-type]
         notify_reactions=user.notify_reactions,
         notify_tasks=user.notify_tasks,

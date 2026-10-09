@@ -14211,6 +14211,72 @@
         "title": "PresenceEntry",
         "type": "object"
       },
+      "PresenceUpdate": {
+        "additionalProperties": false,
+        "description": "PUT /users/me/presence. `dnd` takes exactly one of `duration` (the menu's choices; the\nserver works out 「今日の終わり」 / 「明日まで」 in `tz`) or `until` (a custom instant, ahead of\nnow). The other choices take neither.",
+        "properties": {
+          "duration": {
+            "anyOf": [
+              {
+                "enum": [
+                  "30m",
+                  "1h",
+                  "2h",
+                  "4h",
+                  "today",
+                  "tomorrow",
+                  "forever"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "status": {
+            "enum": [
+              "auto",
+              "away",
+              "dnd",
+              "invisible"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IANA zone for today / tomorrow; else my quiet hours' zone, else Asia/Tokyo",
+            "title": "Tz"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PresenceUpdate",
+        "type": "object"
+      },
       "PropertyOut": {
         "properties": {
           "id": {
@@ -19786,6 +19852,18 @@
             "default": false,
             "title": "Presence Hidden",
             "type": "boolean"
+          },
+          "presence_manual": {
+            "anyOf": [
+              {
+                "const": "away",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presence Manual"
           },
           "quick_reactions": {
             "anyOf": [
@@ -37225,6 +37303,53 @@
         "summary": "Auth:Password",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/users/me/presence": {
+      "put": {
+        "description": "The quick status menu (docs/PRESENCE.md §11): auto / away / dnd (with duration or until) /\ninvisible. One at a time; user.updated tells the others and my other devices.",
+        "operationId": "update_my_presence_api_v1_users_me_presence_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMe"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update My Presence",
+        "tags": [
+          "users"
         ]
       }
     },
