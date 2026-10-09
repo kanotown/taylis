@@ -13552,6 +13552,11 @@ export interface components {
              */
             channel_id: string;
             /**
+             * Confirm
+             * @default true
+             */
+            confirm: boolean;
+            /**
              * Description
              * @default
              */
@@ -13613,6 +13618,8 @@ export interface components {
              * Format: uuid
              */
             channel_id: string;
+            /** Confirm */
+            confirm: boolean;
             /**
              * Created At
              * Format: date-time
@@ -13690,6 +13697,8 @@ export interface components {
         WorkflowUpdate: {
             /** Channel Id */
             channel_id?: string | null;
+            /** Confirm */
+            confirm?: boolean | null;
             /** Description */
             description?: string | null;
             /** Emoji */

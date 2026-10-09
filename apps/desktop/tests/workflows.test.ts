@@ -7,6 +7,7 @@ import {
   defaultValue,
   findWorkflowCommand,
   keyFromLabel,
+  postsWithoutAsking,
   renderPreview,
   renderWorkflow,
   runBlockedText,
@@ -83,6 +84,7 @@ function workflow(name: string, extra: Partial<WorkflowOut> = {}): WorkflowOut {
     fields: [],
     template: "x",
     enabled: true,
+    confirm: true,
     created_by: "u1",
     created_at: "",
     updated_at: "",
@@ -113,6 +115,16 @@ describe("the slash lookup", () => {
   it("why a workflow cannot run", () => {
     expect(runBlockedText(workflow("a", { run_blocked: "not_a_member" }), "#報告")).toBe("#報告 に参加すると使えます");
     expect(runBlockedText(workflow("a"), "#報告")).toBeNull();
+  });
+  it("posts without asking only when 「確認」 is off, there is nothing to fill and I can run it", () => {
+    const field: WorkflowField = { key: "a", label: "A", type: "text", required: false, help: "", multiple: false, options: [] };
+    expect(postsWithoutAsking(workflow("a", { confirm: false }))).toBe(true);
+    expect(postsWithoutAsking(workflow("a"))).toBe(false); // confirm: true
+    expect(postsWithoutAsking(workflow("a", { confirm: false, fields: [field] }))).toBe(false);
+    expect(postsWithoutAsking(workflow("a", { confirm: false, can_run: false, run_blocked: "disabled" }))).toBe(false);
+    // An older server leaves it out: those always asked.
+    const { confirm: _, ...old } = workflow("a");
+    expect(postsWithoutAsking(old)).toBe(false);
   });
 });
 

@@ -326,6 +326,14 @@ export function workflowCandidates(text: string, workflows: readonly WorkflowOut
   return workflows.filter((w) => !/\s/u.test(w.name) && fold(w.name).startsWith(prefix));
 }
 
+/**
+ * Whether choosing it posts at once, without the form (WORKFLOWS.md §11): its author turned 「確認」 off, it has no
+ * fields to fill and I can run it. An older server leaves `confirm` out, and those workflows always asked.
+ */
+export function postsWithoutAsking(workflow: Pick<WorkflowOut, "fields" | "can_run"> & { confirm?: boolean | null }): boolean {
+  return workflow.confirm === false && workflow.fields.length === 0 && workflow.can_run;
+}
+
 /** Why I cannot submit it, for the menu; null when I can. */
 export function runBlockedText(workflow: Pick<WorkflowOut, "run_blocked">, target: string): string | null {
   switch (workflow.run_blocked) {

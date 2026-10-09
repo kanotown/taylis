@@ -48,6 +48,7 @@ const WORKFLOW: WorkflowOut = {
   fields: FIELDS,
   template: "*【報告者】* {{報告者}}\n*【報告の内容】* ゼミの{{内容}}\n*【日付】* {{日付}}\n*【理由】* {{理由}}",
   enabled: true,
+  confirm: true,
   created_by: ME,
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-01T00:00:00Z",
@@ -131,6 +132,74 @@ describe("the form", () => {
     expect(within(restricted).getByText("#報告-ゼミ欠席 はオーナーと管理者だけが投稿できます")).toBeTruthy();
     fireEvent.click(list.getByText("ゼミ欠席報告"));
     expect(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" })).toBeTruthy();
+  });
+});
+
+describe("「確認を求める」 (confirm, WORKFLOWS.md §11)", () => {
+  const QUICK: WorkflowOut = { ...WORKFLOW, id: "w-quick", name: "出勤", emoji: "🏢", description: "", fields: [], template: "出勤しました", confirm: false };
+
+  it("a workflow that does not ask posts as soon as it is chosen, with no dialog", async () => {
+    const { store } = makeStore();
+    const controller = controllerFor(store, {});
+    const onClose = vi.fn();
+    render(<WorkflowRunDialog controller={controller} workflow={QUICK} here="c-lab" onClose={onClose} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await flush();
+    expect(controller.submitWorkflow).toHaveBeenCalledTimes(1);
+    expect(controller.submitWorkflow.mock.calls[0]!.slice(0, 2)).toEqual(["w-quick", {}]);
+    expect(controller.setNotice).toHaveBeenCalledWith("#報告-ゼミ欠席 に投稿しました");
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("when that post fails the dialog appears with the reason, and 投稿 retries with the same key", async () => {
+    const { store } = makeStore();
+    const controller = controllerFor(store, {});
+    controller.submitWorkflow.mockResolvedValueOnce({ ok: false, error: new ApiError(409, "workflow_disabled", "x") });
+    const onClose = vi.fn();
+    render(<WorkflowRunDialog controller={controller} workflow={QUICK} onClose={onClose} />);
+    await flush();
+    const dialog = within(screen.getByRole("dialog", { name: "🏢 出勤" }));
+    expect(dialog.getByRole("alert")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "投稿" }));
+    await flush();
+    expect(controller.submitWorkflow).toHaveBeenCalledTimes(2);
+    const [first, second] = controller.submitWorkflow.mock.calls;
+    expect(second![2]).toBe(first![2]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("asks as before when 「確認」 is on, when it has fields, and when an older server leaves the field out", () => {
+    const { store } = makeStore();
+    const controller = controllerFor(store, {});
+    const { confirm: _, ...old } = QUICK;
+    const cases: Array<[WorkflowOut, string]> = [
+      [{ ...QUICK, confirm: true }, "🏢 出勤"],
+      [{ ...WORKFLOW, confirm: false }, "🙇 ゼミ欠席報告"],
+      [old as WorkflowOut, "🏢 出勤"],
+    ];
+    for (const [workflow, name] of cases) {
+      const view = render(<WorkflowRunDialog controller={controller} workflow={workflow} onClose={() => {}} />);
+      expect(screen.getByRole("dialog", { name })).toBeTruthy();
+      view.unmount();
+    }
+    expect(controller.submitWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("from the channel's menu it posts and closes the menu", async () => {
+    const { store, channel } = makeStore();
+    const api = { channelWorkflows: vi.fn(async () => [{ ...QUICK, channel_id: "c-lab" }]) };
+    const controller = controllerFor(store, api);
+    controller.submitWorkflow.mockResolvedValueOnce({ ok: true, message: { id: "m1", channel_id: "c-lab" } });
+    const onClose = vi.fn();
+    render(<ChannelWorkflowsDialog controller={controller} channel={channel} onClose={onClose} />);
+    await flush();
+    fireEvent.click(within(screen.getByRole("list", { name: "ワークフロー" })).getByText("出勤"));
+    await flush();
+    expect(controller.submitWorkflow).toHaveBeenCalledTimes(1);
+    expect(controller.setNotice).not.toHaveBeenCalled(); // posted here: the message shows up in the timeline
+    expect(onClose).toHaveBeenCalled();
   });
 });
 
@@ -221,6 +290,57 @@ describe("the editor", () => {
     expect(screen.getByRole("status").textContent).toBe("保存しました");
   });
 
+  it("chooses the emoji with the app's picker (custom emoji too) and saves 「確認を求める」", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:x");
+    const { store } = makeStore();
+    store.replaceCustomEmoji([
+      { id: "e1", name: "parrot", content_type: "image/png", width: 64, height: 64, keywords: [], position: 0, created_by: ME, created_at: "", kind: "image", pack_id: null },
+    ] as never);
+    const api = {
+      fetchBlob: vi.fn(async () => new Blob(["x"])),
+      workflows: vi.fn(async () => [{ ...WORKFLOW, fields: [], template: "出勤しました" }]),
+      workflowTemplates: vi.fn(async () => []),
+      updateWorkflow: vi.fn(async (_id: string, body: Record<string, unknown>) => ({ ...WORKFLOW, ...body })),
+    };
+    const controller = controllerFor(store, api);
+    render(<WorkflowManager controller={controller} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /編集/ }));
+    const dialog = within(screen.getByRole("dialog", { name: "ワークフローを編集" }));
+    // No text box for the emoji any more: the picker.
+    fireEvent.click(dialog.getByRole("button", { name: "絵文字を変更" }));
+    fireEvent.change(await screen.findByPlaceholderText("検索（例：tada、乾杯）"), { target: { value: "books" } });
+    fireEvent.click(await screen.findByTitle(":books:"));
+    fireEvent.click(dialog.getByRole("button", { name: "絵文字を変更" }));
+    fireEvent.click(screen.getAllByTitle(":parrot:").find((el) => el.tagName === "BUTTON")!);
+    // 「確認」 is on (as every workflow so far); off, it says what happens.
+    const confirm = dialog.getByRole("switch", { name: /実行するときに確認する/ }) as HTMLInputElement;
+    expect(confirm.checked).toBe(true);
+    fireEvent.click(confirm);
+    expect(dialog.getByText("オフにすると、メニューや /名前 で選んだらすぐに投稿します")).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+    await flush();
+    expect(api.updateWorkflow).toHaveBeenCalledWith("w1", expect.objectContaining({ emoji: ":parrot:", confirm: false }));
+  });
+
+  it("with fields, turning 「確認」 off says the form still opens; removing the emoji goes back to ⚡", async () => {
+    const { store } = makeStore();
+    const api = { workflows: vi.fn(async () => [WORKFLOW]), workflowTemplates: vi.fn(async () => []), updateWorkflow: vi.fn(async () => WORKFLOW) };
+    const controller = controllerFor(store, api);
+    render(<WorkflowManager controller={controller} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /編集/ }));
+    const dialog = within(screen.getByRole("dialog", { name: "ワークフローを編集" }));
+    fireEvent.click(dialog.getByRole("switch", { name: /実行するときに確認する/ }));
+    expect(dialog.getByText("項目があるので、オフでも入力のフォームは出ます")).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: "絵文字を変更" }));
+    fireEvent.click(await screen.findByRole("button", { name: "絵文字を外す" }));
+    expect(dialog.getByRole("button", { name: "絵文字を選ぶ" })).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+    await flush();
+    expect(api.updateWorkflow).toHaveBeenCalledWith("w1", expect.objectContaining({ emoji: null, confirm: false }));
+  });
+
   it("adds, moves and removes fields", async () => {
     const { store } = makeStore();
     const api = { workflows: vi.fn(async () => [WORKFLOW]), workflowTemplates: vi.fn(async () => []), updateWorkflow: vi.fn(async () => WORKFLOW) };
@@ -243,7 +363,7 @@ describe("the editor", () => {
 });
 
 describe("the composer (`/name`, `/wf name`)", () => {
-  async function world(extraTemplates: Array<{ id: string; name: string; body: string }> = []) {
+  async function world(extraTemplates: Array<{ id: string; name: string; body: string }> = [], extraWorkflows: WorkflowOut[] = []) {
     const server = new FakeServer();
     const me = server.addUser("alice");
     const channel = server.createChannel("general", me.id);
@@ -252,10 +372,11 @@ describe("the composer (`/name`, `/wf name`)", () => {
     store.upsertChannel(channel, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
     store.replaceTemplates(extraTemplates.map((t) => ({ scope: "workspace", owner_id: null, suggest_in: "any", position: 0, created_at: "", updated_at: "", ...t })) as never);
     const spaced = { ...WORKFLOW, id: "w3", name: "学部 ゼミ案内", channel_id: channel.id };
-    const api = { channelWorkflows: vi.fn(async () => [{ ...WORKFLOW, channel_id: channel.id }, spaced]) };
+    const api = { channelWorkflows: vi.fn(async () => [{ ...WORKFLOW, channel_id: channel.id }, spaced, ...extraWorkflows.map((w) => ({ ...w, channel_id: channel.id }))]) };
     const setError = vi.fn();
+    const submitWorkflow = vi.fn(async () => ({ ok: true, message: { id: "m1", channel_id: channel.id } }));
     const controller = {
-      store, api, setError, setNotice: vi.fn(), messageFocus: null, sendKey: "shift-enter", isAdmin: false, subscribe: () => () => {},
+      store, api, setError, setNotice: vi.fn(), submitWorkflow, messageFocus: null, sendKey: "shift-enter", isAdmin: false, subscribe: () => () => {},
       engine: { send: vi.fn(), sendTyping: vi.fn(), status: "online", unreadHold: new Map(), reloadCount: () => 0 },
     } as unknown as AppController;
     function View() {
@@ -268,7 +389,7 @@ describe("the composer (`/name`, `/wf name`)", () => {
     const box = () => area;
     const type = (value: string) => fireEvent.change(box(), { target: { value } });
     const sendKey = async () => { await act(async () => { fireEvent.keyDown(box(), { key: "Escape" }); fireEvent.keyDown(box(), { key: "Enter", shiftKey: true }); }); };
-    return { api, box, type, sendKey, setError, channel };
+    return { api, box, type, sendKey, setError, channel, submitWorkflow };
   }
 
   it("offers workflows among the `/` candidates and opens the form", async () => {
@@ -281,6 +402,17 @@ describe("the composer (`/name`, `/wf name`)", () => {
     await sendKey();
     expect(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" })).toBeTruthy();
     expect(box().value).toBe("");
+  });
+
+  it("`/name` of a workflow that does not ask posts at once", async () => {
+    const { type, sendKey, channel, submitWorkflow } = await world([], [{ ...WORKFLOW, id: "w-quick", name: "出勤", fields: [], template: "出勤しました", confirm: false }]);
+    type("/出勤");
+    await sendKey();
+    await flush();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(submitWorkflow).toHaveBeenCalledTimes(1);
+    expect(submitWorkflow.mock.calls[0]!.slice(0, 2)).toEqual(["w-quick", {}]);
+    expect(channel.id).toBeTruthy();
   });
 
   it("`/wf name` opens a name with spaces", async () => {
