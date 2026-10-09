@@ -17,10 +17,9 @@ import { entryOf, myChoices, myState } from "./attendance";
 import { attendanceColorStyle, StateGlyph } from "./attendanceIcons";
 import { chooseMyState } from "./AttendanceView";
 import { Avatar } from "./Avatar";
-import { deviceTimeZone } from "./dnd";
 import { useStoreUpdates } from "./hooks";
 import { cn } from "./primitives";
-import { choiceLabel, currentMe, DND_DURATIONS, durationLabel, myPresenceChoice, myPresenceLine } from "./presence";
+import { choiceLabel, currentMe, DND_DURATIONS, durationLabel, myPresenceChoice, myPresenceLine, presenceRequest } from "./presence";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
 import { t } from "../i18n";
@@ -82,7 +81,7 @@ function MenuBody({ controller, onSettings, onOpenAttendance }: { controller: Ap
   const choice = myPresenceChoice(me);
   const status = activeStatus(store.users.get(me.id) ?? me);
   const choose = (next: PresenceChoice, duration?: DndDuration) => {
-    void controller.setMyPresence(next === "dnd" ? { status: "dnd", duration, tz: deviceTimeZone() } : { status: next });
+    void controller.setMyPresence(presenceRequest(next, duration));
   };
   const board = store.attendance;
   const attendance = !!board && !controller.isGuest;
@@ -116,7 +115,8 @@ function MenuBody({ controller, onSettings, onOpenAttendance }: { controller: Ap
             data-presence-clear
             title={t("presence.clearTitle")}
             className="shrink-0 select-none rounded-md border border-line px-2 py-0.5 text-xs outline-none data-[highlighted]:bg-accent-soft"
-            onSelect={() => choose("auto")}
+            // The settings' 「再開」: the pause alone ends. `auto` would also drop 離席中 or 「在席を隠す」 chosen there.
+            onSelect={() => void controller.updateProfile({ dnd_until: null })}
           >
             {t("presence.clear")}
           </DropdownMenu.Item>

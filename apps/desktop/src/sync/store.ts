@@ -8,7 +8,8 @@ import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
 import type { CanvasPendingState } from "./canvasSave";
 import { restoredDmPins } from "./dmCloses";
 import { ownNotification } from "./notifications";
-import { isIndefiniteDnd, presenceLook } from "../ui/presence";
+import { isIndefiniteDnd } from "../ui/dnd";
+import { presenceLook } from "../ui/presence";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */

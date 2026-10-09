@@ -1,21 +1,41 @@
 // @vitest-environment jsdom
 /**
- * The quick status menu (docs/PRESENCE.md §11): the rules (my choice, the look others see, 「解除するまで」), the store's
- * 取り込み中 look and its end by the clock, the red dot, the menu (choices, durations, 解除), the settings' pause that
- * mirrors it, and a change from another of my devices.
+ * The quick status menu (docs/PRESENCE.md §11): the shared rules (apps/shared/presence-rules.json: my choice, the look
+ * others see, 「解除するまで」, the end's label, the one redraw timer, the request body, the durations), the header line,
+ * the store's 取り込み中 look and its end by the clock, the red dot (and the directory's 🔕), the menu (choices,
+ * durations, 解除), the settings' pause that mirrors it, and a change from another of my devices.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { UserMe, UserPublic } from "../src/api/types";
+import type { DndDuration, PresenceChoice, PresenceStatus, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { Avatar } from "../src/ui/Avatar";
-import { pauseValue } from "../src/ui/dnd";
+import { DirectoryDialog } from "../src/ui/DirectoryDialog";
+import { isIndefiniteDnd, pauseValue } from "../src/ui/dnd";
 import { MyStatusMenu } from "../src/ui/MyStatusMenu";
-import { currentMe, DND_DURATIONS, dndEndLabel, isIndefiniteDnd, myPresenceChoice, myPresenceLine, presenceLook } from "../src/ui/presence";
+import { currentMe, DND_DURATIONS, dndEndLabel, myPresenceChoice, myPresenceLine, presenceLook, presenceRequest } from "../src/ui/presence";
 import { SettingsSectionBody } from "../src/ui/Settings";
 import { Sidebar } from "../src/ui/Sidebar";
+
+interface PresenceRules {
+  now: string;
+  my_choice: Array<{ name: string; dnd_until: string | null; presence_hidden: boolean; presence_manual: string | null; choice: PresenceChoice }>;
+  look: Array<{ name: string; connection: PresenceStatus; dnd_until: string | null; look: string }>;
+  indefinite: Array<{ dnd_until: string | null; indefinite: boolean }>;
+  end_label: { tz: string; cases: Array<{ dnd_until: string; label?: string; until_cleared?: boolean }> };
+  soonest_end: Array<{ name: string; dnd_until: Array<string | null>; end: string | null }>;
+  request: Array<{ status: PresenceChoice; duration?: DndDuration; tz?: string; body: Record<string, string> }>;
+  durations: string[];
+}
+// A path, not a URL object: under jsdom the global URL is jsdom's, which node:fs does not take.
+const rules = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../shared/presence-rules.json"), "utf8")) as PresenceRules;
+// The vectors' labels are in this zone (the app uses the device's).
+process.env.TZ = rules.end_label.tz;
 
 afterEach(() => {
   cleanup();
@@ -42,36 +62,62 @@ function storeWith(me: UserMe): Store {
 }
 
 function controllerFor(store: Store, setMyPresence = vi.fn(async () => true)) {
-  return { store, me: store.me, isGuest: false, isAdmin: false, can: () => false, version: 0, subscribe: () => () => {}, setError: vi.fn(), setMyPresence, updateProfile: vi.fn(async () => true) } as unknown as AppController;
+  return { store, me: store.me, isGuest: false, isAdmin: false, can: () => false, version: 0, subscribe: () => () => {}, setError: vi.fn(), setMyPresence, updateProfile: vi.fn(async () => true) } as unknown as AppController & { updateProfile: ReturnType<typeof vi.fn> };
 }
 
-describe("the rules", () => {
-  it("my choice: 取り込み中 > オフライン表示 > 離席中 > 自動", () => {
-    expect(myPresenceChoice(meWith())).toBe("auto");
-    expect(myPresenceChoice(meWith({ presence_manual: "away" }))).toBe("away");
-    expect(myPresenceChoice(meWith({ presence_manual: "away", presence_hidden: true }))).toBe("invisible");
-    expect(myPresenceChoice(meWith({ presence_hidden: true, dnd_until: inMinutes(5) }))).toBe("dnd");
-    // A pause that is over is no longer 取り込み中.
-    expect(myPresenceChoice(meWith({ dnd_until: inMinutes(-1) }))).toBe("auto");
+describe("the shared rules (apps/shared/presence-rules.json)", () => {
+  const now = Date.parse(rules.now);
+
+  it.each(rules.my_choice.map((c) => [c.name, c] as const))("my choice: %s", (_name, c) => {
+    expect(myPresenceChoice({ dnd_until: c.dnd_until, presence_hidden: c.presence_hidden, presence_manual: c.presence_manual as UserMe["presence_manual"] }, now)).toBe(c.choice);
   });
 
-  it("others see 取り込み中 over any connection state; quiet hours are not 取り込み中", () => {
-    for (const status of ["online", "away", "offline"] as const) expect(presenceLook(status, { dnd_until: inMinutes(30) })).toBe("dnd");
-    expect(presenceLook("away", { dnd_until: inMinutes(-1) })).toBe("away");
-    expect(presenceLook("online", { dnd_until: null })).toBe("online");
+  it.each(rules.look.map((c) => [c.name, c] as const))("the look others see: %s", (_name, c) => {
+    expect(presenceLook(c.connection, { dnd_until: c.dnd_until }, now)).toBe(c.look);
   });
 
-  it("「解除するまで」 is any dnd_until from 9999 on; the times are local", () => {
-    expect(isIndefiniteDnd(FOREVER)).toBe(true);
-    expect(isIndefiniteDnd("2099-01-01T00:00:00Z")).toBe(false);
+  it("「解除するまで」 is any dnd_until from 9999 on", () => {
+    for (const c of rules.indefinite) expect(isIndefiniteDnd(c.dnd_until), String(c.dnd_until)).toBe(c.indefinite);
+  });
+
+  it("the end's label: the time today, the date and time on another day, 「解除するまで」", () => {
+    for (const c of rules.end_label.cases) expect(dndEndLabel(c.dnd_until, new Date(now)), c.dnd_until).toBe(c.until_cleared ? "解除するまで" : c.label);
+  });
+
+  it.each(rules.soonest_end.map((c) => [c.name, c] as const))("the store's one redraw timer: %s", (_name, c) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const store = new Store();
+    c.dnd_until.forEach((until, i) => store.upsertUser(alice({ id: `u${i}`, username: `u${i}`, dnd_until: until })));
+    if (c.end === null) {
+      expect(vi.getTimerCount()).toBe(0);
+      return;
+    }
+    const before = store.version;
+    vi.advanceTimersByTime(Date.parse(c.end) - now);
+    expect(store.version).toBe(before); // nothing until the end
+    vi.advanceTimersByTime(100);
+    expect(store.version).toBeGreaterThan(before); // the redraw, with no event
+  });
+
+  it("the request body: 取り込み中 carries its length and the zone, the others only the status", () => {
+    for (const c of rules.request) expect(presenceRequest(c.status, c.duration, c.tz), c.status).toEqual(c.body);
+  });
+
+  it("the durations, in the menu's order", () => {
+    expect(DND_DURATIONS).toEqual(rules.durations);
+  });
+});
+
+describe("the header line", () => {
+  it("names the choice, with the end for 取り込み中", () => {
     const now = new Date(2026, 9, 9, 10, 0);
-    expect(dndEndLabel(new Date(2026, 9, 9, 15, 30).toISOString(), now)).toBe("15:30");
-    expect(dndEndLabel(new Date(2026, 9, 10, 23, 59).toISOString(), now)).toBe("10/10 23:59");
-    expect(dndEndLabel(FOREVER, now)).toBe("解除するまで");
     expect(myPresenceLine(meWith({ dnd_until: new Date(2026, 9, 9, 15, 30).toISOString() }), now)).toBe("取り込み中（〜15:30）");
+    expect(myPresenceLine(meWith({ dnd_until: new Date(2026, 9, 10, 23, 59).toISOString() }), now)).toBe("取り込み中（〜10/10 23:59）");
     expect(myPresenceLine(meWith({ dnd_until: FOREVER }), now)).toBe("取り込み中（解除するまで）");
     expect(myPresenceLine(meWith({ presence_hidden: true }), now)).toBe("オフライン表示");
-    expect(DND_DURATIONS).toEqual(["30m", "1h", "2h", "4h", "today", "tomorrow", "forever"]);
+    expect(myPresenceLine(meWith({ presence_manual: "away" }), now)).toBe("離席中");
+    expect(myPresenceLine(meWith(), now)).toBe("オンライン（自動）");
   });
 });
 
@@ -121,6 +167,25 @@ describe("the dot", () => {
     expect(trigger.querySelector('[data-presence="away"]')).toBeTruthy();
     // The name still opens my profile card (M93).
     expect(within(header).getByRole("button", { name: "自分のプロフィール（わたし）" })).toBeTruthy();
+  });
+
+  it("the member directory's 🔕 ends with the pause, like the dot (dnd_until stays set until the next user.updated)", () => {
+    vi.useFakeTimers();
+    const store = storeWith(meWith());
+    store.setPresence(ALICE, "online");
+    store.upsertUser(alice({ dnd_until: inMinutes(10) }));
+    const controller = controllerFor(store);
+    // A new element each time: the main screen redraws the dialog on the store's version (the same element would bail out).
+    const dialog = () => <DirectoryDialog controller={controller} onClose={() => {}} onOpen={() => {}} />;
+    const view = render(dialog());
+    const row = () => screen.getByText("アリス", { selector: "span.font-medium" }).closest("li")!;
+    expect(within(row()).getByText("🔕")).toBeTruthy();
+    expect(row().querySelector('[data-presence="dnd"]')).toBeTruthy();
+    vi.advanceTimersByTime(10 * 60_000 + 100);
+    view.rerender(dialog()); // the store's redraw
+    expect(store.users.get(ALICE)!.dnd_until).not.toBeNull();
+    expect(within(row()).queryByText("🔕")).toBeNull();
+    expect(row().querySelector('[data-presence="online"]')).toBeTruthy();
   });
 });
 
@@ -195,17 +260,19 @@ describe("the menu", () => {
     expect(setMyPresence).toHaveBeenCalledWith({ status: "dnd", duration: "today", tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
   });
 
-  it("while 取り込み中: the header says until when, with 「解除」 (back to automatic)", async () => {
+  it("while 取り込み中: the header says until when, with 「解除」 (the settings' 「再開」: the pause alone ends)", async () => {
     const setMyPresence = vi.fn(async () => true);
     const until = new Date();
     until.setHours(23, 59, 0, 0);
     if (until.getTime() < Date.now() + 60_000) until.setTime(Date.now() + 30 * 60_000);
-    renderMenu(storeWith(meWith({ dnd_until: until.toISOString() })), setMyPresence);
+    // 「在席を隠す」 chosen in the settings underneath: 「解除」 must not drop it, as `auto` would.
+    const controller = renderMenu(storeWith(meWith({ dnd_until: until.toISOString(), presence_hidden: true })), setMyPresence);
     const menu = await openMenu();
     expect(menu.querySelector("[data-my-presence-line]")!.textContent).toBe(`取り込み中（〜${dndEndLabel(until.toISOString())}）`);
     expect(menu.querySelector('[data-presence-choice="dnd"]')!.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(within(menu).getByText("解除"));
-    expect(setMyPresence).toHaveBeenCalledWith({ status: "auto" });
+    expect(controller.updateProfile).toHaveBeenCalledWith({ dnd_until: null });
+    expect(setMyPresence).not.toHaveBeenCalled();
   });
 
   it("follows a change from another of my devices (user.updated before /users/me answers)", async () => {
