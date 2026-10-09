@@ -3,7 +3,7 @@
  * ⋯, `/name` and `/wf name`, and the 「⚡ name」 label on a message it posted), the list a channel offers, and for the
  * target channel's owners and administrators the list of workflows with the editor (fields, template, live preview).
  */
-import { ArrowDown, ArrowUp, Pause, Pencil, Play, Plus, Trash2, X, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Pause, Pencil, Play, Plus, SmilePlus, Trash2, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
@@ -11,8 +11,10 @@ import type { FieldDefault, WorkflowField, WorkflowFieldType, WorkflowOut, Workf
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
 import { Avatar } from "./Avatar";
+import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
-import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
+import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
+import { SectionIcon } from "./SectionDialog";
 import {
   DEFAULT_EMOJI,
   FIELD_TYPES,
@@ -33,6 +35,7 @@ import {
   type Values,
   WEEKDAYS_JA,
   workflowDraftProblem,
+  postsWithoutAsking,
 } from "./workflows";
 import { t, weekdayName } from "../i18n";
 
@@ -84,8 +87,20 @@ function channelLabel(controller: AppController, channelId: string): string {
   return name ? `#${name}` : t("workflow.targetChannel");
 }
 
-export function WorkflowEmoji({ workflow, className }: { workflow: Pick<WorkflowOut, "emoji">; className?: string }) {
-  return <span className={cn("inline-flex w-5 shrink-0 justify-center text-base leading-none", className)} aria-hidden>{workflow.emoji ?? DEFAULT_EMOJI}</span>;
+/** The workflow's emoji (⚡ when none); with the controller a custom `:name:` shows as its image. */
+export function WorkflowEmoji({ workflow, className, controller }: { workflow: Pick<WorkflowOut, "emoji">; className?: string; controller?: AppController }) {
+  const emoji = workflow.emoji ?? DEFAULT_EMOJI;
+  return (
+    <span className={cn("inline-flex w-5 shrink-0 justify-center text-base leading-none", className)} aria-hidden>
+      {controller ? <SectionIcon controller={controller} emoji={emoji} size={16} /> : emoji}
+    </span>
+  );
+}
+
+/** The run dialog's title: a custom emoji (`:name:`) cannot be drawn in it, so only a Unicode one leads the name. */
+function titleOf(workflow: Pick<WorkflowOut, "emoji" | "name">): string {
+  const emoji = workflow.emoji ?? DEFAULT_EMOJI;
+  return emoji.startsWith(":") ? workflow.name : `${emoji} ${workflow.name}`;
 }
 
 /** The menu: the workflows the channel offers, each opening its form (greyed with the reason when it cannot run). */
@@ -106,7 +121,7 @@ export function WorkflowList({ controller, channel, workflows, onRun }: { contro
               className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left hover:bg-panel disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
               data-workflow={workflow.id}
             >
-              <WorkflowEmoji workflow={workflow} className="mt-0.5" />
+              <WorkflowEmoji workflow={workflow} className="mt-0.5" controller={controller} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{workflow.name}</span>
                 {workflow.description && <span className="block truncate text-xs text-muted">{workflow.description}</span>}
@@ -154,7 +169,11 @@ export function canManageWorkflows(channel: ChannelState | undefined, isAdmin: b
 
 // --- the form ---------------------------------------------------------------------------------------------------
 
-/** Fills and posts one workflow. One idempotency key per open form: pressing 投稿 again after a failure never posts twice. */
+/**
+ * Fills and posts one workflow. One idempotency key per open form: pressing 投稿 again after a failure never posts twice.
+ * A workflow that does not ask first (`confirm` off and no fields, WORKFLOWS.md §11) posts as soon as this opens and
+ * shows nothing; only when that fails does the dialog appear, with the reason and the same key for 投稿.
+ */
 export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
   controller: AppController;
   workflow: WorkflowOut;
@@ -169,6 +188,10 @@ export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const key = useRef<string>(crypto.randomUUID());
+  const quick = postsWithoutAsking(workflow);
+  // Hidden while the immediate post is under way; shown when it failed (or for every workflow that asks).
+  const [shown, setShown] = useState(!quick);
+  const started = useRef(false);
   const preview = useMemo(() => renderPreview(workflow.template, workflow.fields, values), [workflow, values]);
   const target = channelLabel(controller, workflow.channel_id);
   const set = (fieldKey: string, value: FieldValue) => {
@@ -197,6 +220,7 @@ export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
       onClose();
       return;
     }
+    setShown(true);
     const error = result.error;
     if (error instanceof ApiError && error.code === "workflow_values_invalid") {
       const fields = (error.details as { fields?: Record<string, ValueError> } | undefined)?.fields ?? {};
@@ -204,8 +228,15 @@ export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
     }
     setProblem(describeError(error));
   };
+  useEffect(() => {
+    if (!quick || started.current) return;
+    started.current = true;
+    void submit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when it opens
+  }, []);
+  if (!shown) return null;
   return (
-    <Modal onClose={onClose} title={`${workflow.emoji ?? DEFAULT_EMOJI} ${workflow.name}`} description={workflow.description || t("workflow.willPost", { target })} className="w-[560px]">
+    <Modal onClose={onClose} title={titleOf(workflow)} description={workflow.description || t("workflow.willPost", { target })} className="w-[560px]">
       <form
         className="mt-4 space-y-3"
         aria-label={workflow.name}
@@ -436,7 +467,7 @@ export function WorkflowManager({ controller, channelId }: { controller: AppCont
           {rows.map((workflow) => (
             <li key={workflow.id} className="space-y-1 px-3 py-2.5" data-workflow-row={workflow.id}>
               <div className="flex items-center gap-2">
-                <WorkflowEmoji workflow={workflow} />
+                <WorkflowEmoji workflow={workflow} controller={controller} />
                 <strong className="min-w-0 flex-1 truncate text-sm">{workflow.name}</strong>
                 {!workflow.enabled && <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted">{t("workflow.paused")}</span>}
               </div>
@@ -494,10 +525,11 @@ interface Draft {
   fields: WorkflowField[];
   template: string;
   enabled: boolean;
+  confirm: boolean;
 }
 
 function draftOf(workflow: WorkflowOut | null, channelId: string | undefined): Draft {
-  if (!workflow) return { name: "", emoji: "", description: "", channelId: channelId ?? "", offered: [], fields: [], template: "", enabled: true };
+  if (!workflow) return { name: "", emoji: "", description: "", channelId: channelId ?? "", offered: [], fields: [], template: "", enabled: true, confirm: true };
   return {
     name: workflow.name,
     emoji: workflow.emoji ?? "",
@@ -507,6 +539,8 @@ function draftOf(workflow: WorkflowOut | null, channelId: string | undefined): D
     fields: workflow.fields.map((f) => ({ ...f, options: [...(f.options ?? [])] })),
     template: workflow.template,
     enabled: workflow.enabled,
+    // An older server leaves it out: it always asked.
+    confirm: workflow.confirm ?? true,
   };
 }
 
@@ -528,6 +562,7 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
   const [templates, setTemplates] = useState<WorkflowTemplateOut[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const templateArea = useRef<HTMLTextAreaElement>(null);
   const me = store.me?.id ?? null;
   useEffect(() => {
@@ -605,6 +640,7 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
       fields: draft.fields.map((f) => ({ ...f, label: f.label.trim(), options: f.type === "select" ? (f.options ?? []).map((o) => o.trim()) : [] })),
       template: draft.template,
       enabled: draft.enabled,
+      confirm: draft.confirm,
     };
     try {
       onSaved(workflow ? await api.updateWorkflow(workflow.id, body) : await api.createWorkflow(body));
@@ -631,7 +667,31 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
         )}
         <div className="grid grid-cols-[4.5rem_1fr] gap-3 max-sm:grid-cols-1">
           <Field label={t("composer.emoji")}>
-            <Input value={draft.emoji} maxLength={16} placeholder={DEFAULT_EMOJI} onChange={(e) => set({ emoji: e.target.value })} />
+            {/* The app's emoji picker (custom emoji too), as for a status or a section: typing one only brought up the keyboard. */}
+            <PopoverRoot open={picking} onOpenChange={setPicking}>
+              <PopoverTrigger asChild>
+                <button type="button" data-workflow-emoji="" aria-label={draft.emoji ? t("status.changeEmoji") : t("status.pickEmoji")} title={t("composer.emoji")} className="flex h-9 w-full items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:bg-panel">
+                  {draft.emoji ? <SectionIcon controller={controller} emoji={draft.emoji} size={18} /> : <span className="text-lg leading-none opacity-60">{DEFAULT_EMOJI}</span>}
+                  <SmilePlus size={12} className="ml-1 shrink-0" aria-hidden />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-3">
+                <EmojiPicker
+                  recent={readRecentEmoji()}
+                  custom={[...store.customEmoji.values()]}
+                  controller={controller}
+                  onPick={(entry) => {
+                    set({ emoji: entry.glyph });
+                    setPicking(false);
+                  }}
+                />
+                {draft.emoji && (
+                  <div className="mt-2 border-t border-line pt-2 text-right">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { set({ emoji: "" }); setPicking(false); }}>{t("status.removeEmoji")}</Button>
+                  </div>
+                )}
+              </PopoverContent>
+            </PopoverRoot>
           </Field>
           <Field label={t("workflow.nameLabel")}>
             <Input autoFocus value={draft.name} maxLength={MAX_NAME * 2} placeholder={t("workflow.namePlaceholder")} onChange={(e) => set({ name: e.target.value })} />
@@ -711,6 +771,13 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
           <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={draft.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
           {t("workflow.enabledLabel")}
         </label>
+        <div className="space-y-0.5">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={draft.confirm} onChange={(e) => set({ confirm: e.target.checked })} />
+            {t("workflow.confirmLabel")}
+          </label>
+          {!draft.confirm && <p className="pl-6 text-xs text-muted">{draft.fields.length > 0 ? t("workflow.confirmFieldsNote") : t("workflow.confirmOffNote")}</p>}
+        </div>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <div className="flex items-center justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
