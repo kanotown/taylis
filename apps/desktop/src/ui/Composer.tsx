@@ -106,8 +106,8 @@ export function Composer({
       el.style.height = "auto";
       if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
       // Scrolled by the caret's line, not by the browser's reveal of its glyph (composerScroll.ts); nothing to scroll
-      // while the draft fits.
-      keepLineInView(el, el.scrollHeight > 0 && el.ownerDocument.activeElement === el ? textAreaCaretLine(el) : null);
+      // while the draft fits, and the caret is measured (a copy of the text laid out) only above the cap.
+      keepLineInView(el, () => (el.ownerDocument.activeElement === el ? textAreaCaretLine(el) : null));
     }
     box.style.minHeight = "";
     shownRich.current = rich;

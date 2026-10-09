@@ -232,7 +232,7 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
         handleScrollToSelection: (view) => {
           const box = host.current;
           if (!box || !cappedRef.current) return false;
-          keepLineInView(box, caretLine(box, view));
+          keepLineInView(box, () => caretLine(box, view));
           return true;
         },
         handleDOMEvents: {
