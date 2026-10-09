@@ -1269,8 +1269,9 @@ class Store(private val persistence: Persistence? = null) {
             before[id] = state
             after[id] = next
         }
-        after.forEach { (id, state) -> threads[id]?.let { threads[id] = it.copy(state = state) } }
         val undo = ThreadsReadAllUndo(before, after, threadSummary)
+        // Each row as a thread.updated would be applied (the entry, its position, the badge's arithmetic); the badge is then 0 / 0 outright.
+        after.values.forEach { applyThreadState(it) }
         threadSummary = ThreadSummary()
         emit()
         return undo
@@ -1294,13 +1295,15 @@ class Store(private val persistence: Persistence? = null) {
     fun applyThreadsReadAll(rows: List<ThreadReadAllRow>, summary: ThreadSummary, floor: (String) -> Int? = { null }) {
         for (row in rows) {
             val position = maxOf(row.lastReadSeq, floor(row.parentId) ?: 0)
-            if (position > (threadReadSeqs[row.parentId] ?: 0)) threadReadSeqs[row.parentId] = position
-            if (row.parentId in deletedRoots) continue
-            val entry = threads[row.parentId] ?: continue
+            val entry = threads[row.parentId]?.takeIf { row.parentId !in deletedRoots }
+            if (entry == null) {
+                // Not held (or its root deleted): only the dots follow, forward.
+                if (position > (threadReadSeqs[row.parentId] ?: 0)) threadReadSeqs[row.parentId] = position
+                continue
+            }
+            // A held row goes through the same bookkeeping as a thread.updated; its position never goes back.
             val state = entry.state
-            threads[row.parentId] = entry.copy(
-                state = state.copy(lastReadSeq = maxOf(state.lastReadSeq, position), unreadCount = row.unreadCount, mentionCount = row.mentionCount),
-            )
+            applyThreadState(state.copy(lastReadSeq = maxOf(state.lastReadSeq, position), unreadCount = row.unreadCount, mentionCount = row.mentionCount))
         }
         threadSummary = summary
         emit()
