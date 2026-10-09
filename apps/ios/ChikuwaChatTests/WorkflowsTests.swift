@@ -220,6 +220,51 @@ final class WorkflowsTests: XCTestCase {
         XCTAssertNotEqual(WorkflowSubmitter(api: api).clientMsgId, submitter.clientMsgId)
     }
 
+    // MARK: 「確認を求める」 (WORKFLOWS.md §11)
+
+    func testConfirmDecodesAndDecidesWhetherToAsk() throws {
+        func decode(_ extra: String) throws -> WorkflowOut {
+            try JSON.snakeDecoder.decode(WorkflowOut.self, from: Data(#"{"id":"w1","name":"出勤","channel_id":"c1","template":"x","can_run":true\#(extra)}"#.utf8))
+        }
+        // An older server leaves it out: those always asked.
+        XCTAssertTrue(try decode("").confirm)
+        XCTAssertFalse(try decode("").postsWithoutAsking)
+        XCTAssertFalse(try decode(#","confirm":false"#).confirm)
+        XCTAssertTrue(try decode(#","confirm":false"#).postsWithoutAsking)
+        let field = WorkflowField(key: "a", label: "A", type: "text")
+        XCTAssertFalse(WorkflowOut(id: "w", name: "n", channelId: "c", fields: [field], template: "{{a}}", confirm: false).postsWithoutAsking)
+        XCTAssertFalse(WorkflowOut(id: "w", name: "n", channelId: "c", template: "x", confirm: false, canRun: false, runBlocked: "disabled").postsWithoutAsking)
+        XCTAssertFalse(WorkflowOut(id: "w", name: "n", channelId: "c", template: "x").postsWithoutAsking)
+    }
+
+    func testAWorkflowThatDoesNotAskPostsAtOnce() async {
+        let controller = AppController(defaults: UserDefaults(suiteName: "wf-\(UUID())")!)
+        let api = FakeWorkflowApi()
+        let quick = WorkflowOut(id: "w9", name: "出勤", channelId: "c2", template: "出勤しました", confirm: false)
+        await controller.postWithoutAsking(quick, here: "c1", api: api)
+        XCTAssertEqual(api.keys.count, 1)
+        XCTAssertEqual(api.sent, [[:]])
+        XCTAssertNil(controller.workflowRun)  // no form
+        XCTAssertEqual(controller.notice, "送り先のチャンネル に投稿しました")  // posted elsewhere than here
+
+        // It fails: the form opens with the reason and the key that post used (投稿 there retries with it).
+        api.failures = [ApiError.network(URLError(.timedOut))]
+        await controller.postWithoutAsking(quick, here: "c2", api: api)
+        XCTAssertEqual(controller.workflowRun?.workflow, quick)
+        XCTAssertEqual(controller.workflowRun?.clientMsgId, api.keys.last)
+        XCTAssertEqual(controller.workflowRun?.problem, ErrorMessages.network)
+        let retry = WorkflowSubmitter(api: api, clientMsgId: controller.workflowRun!.clientMsgId!)
+        _ = await retry.submit(quick, values: [:])
+        XCTAssertEqual(api.keys.suffix(2).count, 2)
+        XCTAssertEqual(Set(api.keys.suffix(2)), [api.keys.last!])
+
+        // A workflow that asks opens its form, as before.
+        controller.workflowRun = nil
+        controller.runWorkflow(WorkflowOut(id: "w1", name: "n", channelId: "c2", template: "x"), here: "c2")
+        XCTAssertNotNil(controller.workflowRun)
+        XCTAssertNil(controller.workflowRun?.clientMsgId)
+    }
+
     func testValuesInvalidDetailsAreRead() throws {
         let body = Data(#"{"error":{"code":"workflow_values_invalid","message":"m","details":{"fields":{"日付":"invalid","人":"user_not_found"}}}}"#.utf8)
         let error = ApiClient.workflowSubmitFailure(status: 400, data: body) as? WorkflowValuesInvalid

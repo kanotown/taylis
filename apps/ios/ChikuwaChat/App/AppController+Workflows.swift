@@ -4,6 +4,9 @@ import Foundation
 struct WorkflowRunTarget: Identifiable, Equatable {
     let workflow: WorkflowOut
     var here: String? = nil
+    /// When posting without asking failed: the key it used (投稿 in the form retries with it, never posting twice) and why.
+    var clientMsgId: String? = nil
+    var problem: String? = nil
     /// A new form each time (its idempotency key goes with it).
     let id = UUID()
 }
@@ -34,9 +37,12 @@ extension AppController {
         store.channel(channelId)?.channel.name.map { "#\($0)" } ?? tr("送り先のチャンネル")
     }
 
-    /// Opens the form of a workflow I can use; otherwise says why (the label on a message, `/name`).
+    /// Opens the form of a workflow I can use; otherwise says why (the label on a message, `/name`). One that does not ask
+    /// first (`confirm` off, no fields: WORKFLOWS.md §11) posts at once instead.
     func runWorkflow(_ workflow: WorkflowOut, here: String?) {
-        if workflow.canRun && workflow.runBlocked == nil {
+        if workflow.postsWithoutAsking {
+            Task { await postWithoutAsking(workflow, here: here) }
+        } else if workflow.canRun && workflow.runBlocked == nil {
             workflowRun = WorkflowRunTarget(workflow: workflow, here: here)
         } else {
             error = Workflows.runBlockedText(workflow, target: workflowTarget(workflow.channelId)) ?? tr("このワークフローは使えません")
@@ -50,6 +56,27 @@ extension AppController {
             runWorkflow(try await api.workflow(id: id), here: nil)
         } catch {
             self.error = describe(error)
+        }
+    }
+
+    /// The workflows being posted without asking: a second tap meanwhile does not post again.
+    private static var postingWorkflows: Set<String> = []
+
+    /// Posts a workflow that does not ask first. When that fails, its form opens with the reason and the same key, so 投稿
+    /// there retries without posting twice.
+    func postWithoutAsking(_ workflow: WorkflowOut, here: String?, api: WorkflowApi? = nil) async {
+        guard let client = api ?? self.api, !Self.postingWorkflows.contains(workflow.id) else { return }
+        Self.postingWorkflows.insert(workflow.id)
+        defer { Self.postingWorkflows.remove(workflow.id) }
+        let submitter = WorkflowSubmitter(api: client)
+        switch await submitter.submit(workflow, values: [:]) {
+        case .posted(let message):
+            workflowPosted(message, here: here)
+        case .invalid:
+            workflowRun = WorkflowRunTarget(workflow: workflow, here: here, clientMsgId: submitter.clientMsgId,
+                                            problem: tr("入力を確認してください"))
+        case .failed(let text):
+            workflowRun = WorkflowRunTarget(workflow: workflow, here: here, clientMsgId: submitter.clientMsgId, problem: text)
         }
     }
 
