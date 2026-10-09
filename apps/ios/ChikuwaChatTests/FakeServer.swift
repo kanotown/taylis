@@ -74,6 +74,12 @@ final class FakeServer {
 
     @MainActor
     final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ReservationsApi, AttendanceApi, ActionsApi {
+        /// GET /users/me (SyncEngine.refreshMe): what a test put in `meAnswers`, else no answer (the default).
+        func me() async throws -> UserMe {
+            if let me = server.meAnswers[userId] { return me }
+            throw CancellationError()
+        }
+
         func actions() async throws -> ActionListOut {
             try maybeFail("actions")
             server.actionReads += 1
@@ -277,6 +283,8 @@ final class FakeServer {
     }
 
     var users: [String: UserPublic] = [:]
+    /// PRESENCE.md §11: GET /users/me per user (nil: the call fails, as before).
+    var meAnswers: [String: UserMe] = [:]
     var channels: [String: ChannelRecord] = [:]
     /// "user:channel" → last_read_seq (DATA_MODEL.md read_states).
     var readPositions: [String: Int] = [:]

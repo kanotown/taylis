@@ -45,8 +45,7 @@ extension AppController {
     /// canvas.mentioned while the app is open (the engine checked the conversation's level and mute): the push's
     /// words, unless I do not want to be disturbed now or the canvas is on screen already. Tapping it opens the canvas.
     func sayCanvasMention(_ mention: CanvasMentioned) {
-        let me = store.me ?? self.me
-        guard !DND.isActive(me?.asPublic), !(engine?.canvases.isShown(mention.canvasId) ?? false) else { return }
+        guard !DND.isActive(currentMe?.asPublic), !(engine?.canvases.isShown(mention.canvasId) ?? false) else { return }
         let text = "📝 " + mention.noticeText { [store] id in store.users[id]?.displayName }
         noticeCanvas = (text, CanvasOpen(canvasId: mention.canvasId, channelId: mention.channelId))
         notice = text

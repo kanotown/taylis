@@ -1,0 +1,55 @@
+{
+  "_comment": "PRESENCE.md §11 (the quick status menu, 2026-10-09): rules every client applies the same way, at the instant `now`. my_choice: my choice in the menu from UserMe (§11.1): dnd_until later than now → dnd, else presence_hidden → invisible, else presence_manual \"away\" → away (an unknown value is none), else auto. look: what anyone's dot shows (§11.5): dnd while their dnd_until is later than now (whatever the connection), else the connection (online / away / offline). indefinite: a dnd_until at or after 9999-01-01T00:00:00Z is 「解除するまで」 (§11.2). end_label: the end in the menu header and profile card, in the zone `tz` (the device's): HH:mm on now's day, M/D HH:mm on another day, until_cleared for the indefinite one. soonest_end: the one redraw timer's instant (§11.3): the earliest dnd_until later than now, leaving out the indefinite ones; null when none. request: the body of PUT /users/me/presence (§11.4): dnd carries duration and tz, the others only status. Hand-written; iOS tests against it (Desktop / Web's tests/presenceMenu.test.tsx and Android may read it too).",
+  "now": "2026-10-09T01:00:00Z",
+  "my_choice": [
+    { "name": "nothing chosen", "dnd_until": null, "presence_hidden": false, "presence_manual": null, "choice": "auto" },
+    { "name": "away", "dnd_until": null, "presence_hidden": false, "presence_manual": "away", "choice": "away" },
+    { "name": "an unknown manual value is none", "dnd_until": null, "presence_hidden": false, "presence_manual": "busy", "choice": "auto" },
+    { "name": "invisible beats away", "dnd_until": null, "presence_hidden": true, "presence_manual": "away", "choice": "invisible" },
+    { "name": "dnd beats invisible", "dnd_until": "2026-10-09T01:05:00Z", "presence_hidden": true, "presence_manual": null, "choice": "dnd" },
+    { "name": "the indefinite pause is dnd", "dnd_until": "9999-12-31T00:00:00Z", "presence_hidden": false, "presence_manual": null, "choice": "dnd" },
+    { "name": "a pause that is over is no longer dnd", "dnd_until": "2026-10-09T00:59:00Z", "presence_hidden": false, "presence_manual": "away", "choice": "away" },
+    { "name": "a pause ending exactly now is over", "dnd_until": "2026-10-09T01:00:00Z", "presence_hidden": false, "presence_manual": null, "choice": "auto" }
+  ],
+  "look": [
+    { "name": "online", "connection": "online", "dnd_until": null, "look": "online" },
+    { "name": "away", "connection": "away", "dnd_until": null, "look": "away" },
+    { "name": "offline draws nothing", "connection": "offline", "dnd_until": null, "look": "offline" },
+    { "name": "dnd over online", "connection": "online", "dnd_until": "2026-10-09T01:30:00Z", "look": "dnd" },
+    { "name": "dnd over away", "connection": "away", "dnd_until": "2026-10-09T01:30:00Z", "look": "dnd" },
+    { "name": "dnd while disconnected", "connection": "offline", "dnd_until": "9999-12-31T00:00:00Z", "look": "dnd" },
+    { "name": "an ended pause shows the connection", "connection": "away", "dnd_until": "2026-10-09T00:30:00Z", "look": "away" }
+  ],
+  "indefinite": [
+    { "dnd_until": "9999-12-31T00:00:00Z", "indefinite": true },
+    { "dnd_until": "9999-01-01T00:00:00Z", "indefinite": true },
+    { "dnd_until": "9998-12-31T23:59:59Z", "indefinite": false },
+    { "dnd_until": "2099-01-01T00:00:00Z", "indefinite": false },
+    { "dnd_until": null, "indefinite": false }
+  ],
+  "end_label": {
+    "tz": "Asia/Tokyo",
+    "cases": [
+      { "dnd_until": "2026-10-09T06:30:00Z", "label": "15:30" },
+      { "dnd_until": "2026-10-09T01:05:00Z", "label": "10:05" },
+      { "dnd_until": "2026-10-09T14:59:59Z", "label": "23:59" },
+      { "dnd_until": "2026-10-10T14:59:59Z", "label": "10/10 23:59" },
+      { "dnd_until": "2026-10-09T15:00:00Z", "label": "10/10 00:00" },
+      { "dnd_until": "9999-12-31T00:00:00Z", "until_cleared": true }
+    ]
+  },
+  "soonest_end": [
+    { "name": "none", "dnd_until": [], "end": null },
+    { "name": "the earliest", "dnd_until": ["2026-10-09T03:00:00Z", null, "2026-10-09T01:30:00Z"], "end": "2026-10-09T01:30:00Z" },
+    { "name": "ended ones are left out", "dnd_until": ["2026-10-09T00:30:00Z", "2026-10-09T02:00:00Z"], "end": "2026-10-09T02:00:00Z" },
+    { "name": "the indefinite pause arms no timer", "dnd_until": ["9999-12-31T00:00:00Z"], "end": null }
+  ],
+  "request": [
+    { "status": "auto", "body": { "status": "auto" } },
+    { "status": "away", "body": { "status": "away" } },
+    { "status": "invisible", "body": { "status": "invisible" } },
+    { "status": "dnd", "duration": "today", "tz": "Asia/Tokyo", "body": { "status": "dnd", "duration": "today", "tz": "Asia/Tokyo" } },
+    { "status": "dnd", "duration": "forever", "tz": "Europe/Berlin", "body": { "status": "dnd", "duration": "forever", "tz": "Europe/Berlin" } }
+  ],
+  "durations": ["30m", "1h", "2h", "4h", "today", "tomorrow", "forever"]
+}

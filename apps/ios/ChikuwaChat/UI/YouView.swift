@@ -20,6 +20,8 @@ struct YouView: View {
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
     @State private var confirmLogout = false
     @State private var reportingProblem = false
+    @State private var myStatusShown = false
+    @State private var afterMyStatus: MyStatusDestination?
 
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var mePublic: UserPublic? { me.map { controller.store.users[$0.id] ?? $0.asPublic } }
@@ -87,6 +89,18 @@ struct YouView: View {
             }
             .navigationDestination(for: YouRoute.self) { route in destination(route) }
             .sheet(isPresented: $reportingProblem) { ReportProblemSheet(controller: controller) }
+            .sheet(isPresented: $myStatusShown, onDismiss: {
+                guard let destination = afterMyStatus else { return }
+                afterMyStatus = nil
+                switch destination {
+                case .setStatus: path = [.status]
+                case .editProfile: path = [.profile]
+                case .settings: path = []
+                case .attendanceBoard: onOpenAttendance?()
+                }
+            }) {
+                MyStatusSheet(controller: controller, showsSettings: false, showsAttendanceBoard: onOpenAttendance != nil) { afterMyStatus = $0 }
+            }
             .alert("ログアウトしますか？", isPresented: $confirmLogout) {
                 Button("キャンセル", role: .cancel) {}
                 Button("ログアウト", role: .destructive) { Task { await controller.logout() } }
@@ -101,16 +115,23 @@ struct YouView: View {
         // The roster label is the title too (LAB.md 「肩書と名簿」).
         let title = Roster.displayTitle(user?.title ?? me.title, controller.store.roster[me.id])
         let subtitle = "@\(user?.username ?? me.username)" + (title.map { " · \($0)" } ?? "")
+        let current = controller.store.currentMe ?? me
         return HStack(spacing: 14) {
-            AvatarView(id: me.id, name: me.displayName, size: 64, presence: controller.store.presenceOf(me.id))
+            // PRESENCE.md §11.7: my picture opens the quick status menu.
+            Button { myStatusShown = true } label: {
+                AvatarView(id: me.id, name: me.displayName, size: 64, presence: controller.store.presenceOf(me.id), showOffline: true)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(tr("自分のステータスを変える（\(PresenceRules.myLine(current))）"))
             VStack(alignment: .leading, spacing: 3) {
                 Text(me.displayName).font(.title3.bold()).lineLimit(2)
                 Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                Text(PresenceRules.myLine(current)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
+            .accessibilityElement(children: .combine)
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
     }
 
     /// 「ステータスを更新」, showing the status I have.
@@ -191,7 +212,8 @@ struct PauseNotificationsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("今の状態", value: paused ? tr("\(DND.pauseSummary(dndUntil))止めています") : tr("オフ"))
+                LabeledContent("今の状態", value: !paused ? tr("オフ")
+                    : PresenceRules.isIndefinite(dndUntil) ? tr("解除するまで止めています") : tr("\(DND.pauseSummary(dndUntil))止めています"))
             } footer: {
                 Text("止めている間はプッシュ通知が届きません。メッセージと未読はそのまま届きます。")
             }

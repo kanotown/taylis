@@ -53,6 +53,8 @@ struct UserMe: Codable, Equatable {
     var avatarUpdatedAt: String? = nil
     /// L4 (M31): others always see me as offline.
     var presenceHidden: Bool? = nil
+    /// PRESENCE.md §11: 離席中 chosen in the quick status menu ("away"; null or an unknown value = none). Only mine.
+    var presenceManual: String? = nil
     /// M35: what conversations without a level of their own notify me of ("all" / "mentions" / "none"); nil from
     /// servers before M35 (their per-type defaults are the same as "mentions").
     var notificationDefault: String? = nil

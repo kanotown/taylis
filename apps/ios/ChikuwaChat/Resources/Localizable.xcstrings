@@ -146,6 +146,44 @@
         }
       }
     },
+    "4 時間" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4 hours"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4 小时"
+          }
+        }
+      }
+    },
+    "presence.clear" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除"
+          }
+        }
+      }
+    },
     "report.other" : {
       "localizations" : {
         "en" : {
@@ -312,6 +350,22 @@
         }
       }
     },
+    "ほかの人にはオフラインに見えます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Others see you as offline"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他人看到你是离线"
+          }
+        }
+      }
+    },
     "まだありません。パソコンのページの ⋯ から「テンプレートとして保存」で作れます。" : {
       "localizations" : {
         "en" : {
@@ -388,6 +442,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法访问的页面"
+          }
+        }
+      }
+    },
+    "オフライン表示" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appear offline"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示为离线"
+          }
+        }
+      }
+    },
+    "オンライン（自動）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online (automatic)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在线（自动）"
           }
         }
       }
@@ -872,6 +958,22 @@
         }
       }
     },
+    "今日の終わりまで" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Until the end of today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直到今天结束"
+          }
+        }
+      }
+    },
     "今日（行を作る日）" : {
       "localizations" : {
         "en" : {
@@ -948,6 +1050,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用"
+          }
+        }
+      }
+    },
+    "使っていても離席中に見えます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows you as away even while you use the app"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即使在使用应用也显示为离开"
+          }
+        }
+      }
+    },
+    "使っているかどうかで自動で切り替わります" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follows whether you are using the app"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "根据是否在使用应用自动切换"
           }
         }
       }
@@ -1064,6 +1198,102 @@
         }
       }
     },
+    "取り込み中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do not disturb"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请勿打扰"
+          }
+        }
+      }
+    },
+    "取り込み中にする長さを選びます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how long"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择持续时长"
+          }
+        }
+      }
+    },
+    "取り込み中を解除して通知を再開" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn off do not disturb and resume notifications"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除请勿打扰并恢复通知"
+          }
+        }
+      }
+    },
+    "取り込み中（〜%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do not disturb (until %@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请勿打扰（至 %@）"
+          }
+        }
+      }
+    },
+    "取り込み中（解除するまで）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do not disturb (until turned off)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请勿打扰（直到关闭）"
+          }
+        }
+      }
+    },
+    "取り込み中：%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do not disturb: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请勿打扰：%@"
+          }
+        }
+      }
+    },
     "名前を付けて行を作ります。" : {
       "localizations" : {
         "en" : {
@@ -1156,6 +1386,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在室状况已关闭"
+          }
+        }
+      }
+    },
+    "在室状況を設定" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set attendance"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置在室状况"
           }
         }
       }
@@ -1396,6 +1642,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将从默认模板“%@”新建行。名称留空则使用模板的名称。"
+          }
+        }
+      }
+    },
+    "明日まで" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Until the end of tomorrow"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直到明天结束"
           }
         }
       }
@@ -1672,6 +1934,54 @@
         }
       }
     },
+    "自分のステータス" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的状态"
+          }
+        }
+      }
+    },
+    "自分のステータスを変える" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change my status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改我的状态"
+          }
+        }
+      }
+    },
+    "自分のステータスを変える（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change my status (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改我的状态（%@）"
+          }
+        }
+      }
+    },
     "自分の状態" : {
       "localizations" : {
         "en" : {
@@ -1864,6 +2174,38 @@
         }
       }
     },
+    "解除するまで" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Until turned off"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直到关闭"
+          }
+        }
+      }
+    },
+    "解除するまで止めています" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paused until turned off"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暂停，直到关闭"
+          }
+        }
+      }
+    },
     "読める行が見つかりません" : {
       "localizations" : {
         "en" : {
@@ -1892,6 +2234,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已发送。管理员会进行确认。"
+          }
+        }
+      }
+    },
+    "通知を止めます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pauses your notifications"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂停通知"
           }
         }
       }

@@ -103,16 +103,19 @@ final class M38Tests: XCTestCase {
     // MARK: 4. the home avatar's badge
 
     func testHomeAvatarBadgeShowsPresenceWhileConnectedElseTheConnection() {
-        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "online", dnd: false), .online)
-        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "away", dnd: false), .away)
-        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "online", dnd: true), .dnd)
-        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "offline", dnd: false), .none) // hidden presence
+        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "online"), .online)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "away"), .away)
+        // PRESENCE.md §11: 取り込み中 (the look "dnd") over the quiet hours' 🔕, over オフライン表示's grey ring.
+        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "dnd", quiet: true, invisible: true), .dnd)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "online", quiet: true), .quiet)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "offline", invisible: true), .invisible)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .online, presence: "offline"), .none)
         // The offline indication the green dot gave is kept.
-        XCTAssertEqual(HomeAvatarBadge.of(status: .offline, presence: "online", dnd: true), .offline)
-        XCTAssertEqual(HomeAvatarBadge.of(status: .connecting, presence: "online", dnd: false), .connecting)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .offline, presence: "dnd", quiet: true), .offline)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .connecting, presence: "online"), .connecting)
         XCTAssertTrue(HomeAvatarBadge.offline.disconnected)
         XCTAssertFalse(HomeAvatarBadge.away.disconnected)
-        XCTAssertEqual(HomeAvatarBadge.of(status: .idle, presence: "online", dnd: false), .none)
+        XCTAssertEqual(HomeAvatarBadge.of(status: .idle, presence: "online"), .none)
     }
 
     // MARK: 5. videos

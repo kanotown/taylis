@@ -1378,7 +1378,7 @@ final class AppController {
 
     /// M112: a reservation notice while the app is open: the banner (the activity lists it too).
     func sayReservationNotice(_ notice: ReservationNotice) {
-        guard !DND.isActive((store.me ?? me)?.asPublic) else { return }
+        guard !DND.isActive(currentMe?.asPublic) else { return }
         self.notice = "🎫 " + notice.text
     }
 
@@ -1551,6 +1551,26 @@ final class AppController {
             self.error = describe(error); return false
         }
     }
+
+    /// PRESENCE.md §11: the quick status menu (PUT /users/me/presence). 取り込み中 sends its length and this device's
+    /// zone; the answer replaces me (my other devices hear user.updated and read /users/me again). An older server
+    /// answers 404: the reason is shown and nothing changes (the settings' 「通知を一時停止」 still works).
+    func setMyPresence(_ choice: PresenceChoice, duration: DndDuration? = nil) async -> Bool {
+        guard let api else { return false }
+        do {
+            let updated = try await api.setPresence(PresenceRules.requestBody(choice, duration: duration))
+            me = updated
+            store.setMe(updated)
+            store.upsertUser(updated.asPublic)
+            return true
+        } catch {
+            self.error = describe(error)
+            return false
+        }
+    }
+
+    /// Me with the newest public fields (PresenceRules.currentMe): what the DND checks of in-app notices read.
+    var currentMe: UserMe? { store.currentMe ?? me }
 
     /// M50: the long-press quick reactions (nil: back to the recent-first rule), shown at once and taken back when the
     /// server refuses (the reason is shown). My other devices take it with their next bootstrap, as the other prefs.

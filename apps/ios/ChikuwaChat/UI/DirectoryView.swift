@@ -24,7 +24,8 @@ struct DirectoryView: View {
 
     private func rank(_ user: UserPublic) -> Int {
         if user.role == "bot" { return 3 }
-        switch controller.store.presenceOf(user.id) {
+        // PRESENCE.md §11.5: 取り込み中 sorts by the connection under it.
+        switch controller.store.connectionOf(user.id) {
         case "online": return 0
         case "away": return 1
         default: return 2
@@ -39,11 +40,7 @@ struct DirectoryView: View {
         if let status = activeStatus(user) { parts.append("\(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces)) }
         if !parts.isEmpty { return parts.joined(separator: " · ") }
         if user.role == "bot" { return controller.isAiBot(user.id) ? tr("AI のボット") : tr("受信 Webhook") }
-        switch controller.store.presenceOf(user.id) {
-        case "online": return tr("オンライン")
-        case "away": return tr("離席中")
-        default: return tr("オフライン")
-        }
+        return presenceLabel(controller.store.presenceOf(user.id))
     }
 
     private func row(_ user: UserPublic) -> some View {
