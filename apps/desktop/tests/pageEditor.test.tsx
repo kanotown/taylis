@@ -5,6 +5,9 @@
  * changed; switching to Markdown and back keeps the bytes and the caret's line; a merged body from the server comes in
  * (only its blocks change); the `/` menu, `[[` and `@`; no merged body while an IME composition is open; the setting.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
@@ -458,5 +461,196 @@ describe("M154: the title and the body, the block selection on the page", () => 
     expect(screen.getByText("ブロックを選択（囲みの中ではもう一度で囲み、さらにもう一度で解除）")).toBeTruthy();
     expect(screen.getByText("Ctrl/⌘ + D （ブロックを選択中）")).toBeTruthy();
     expect(screen.getByText("本文の先頭へ")).toBeTruthy();
+    expect(screen.getByText("ブロックの種類を変える（変換のメニュー）")).toBeTruthy();
+    expect(screen.getByText("Enter と同じ（新しいブロック。ブロックの中の改行は無い）")).toBeTruthy();
+  });
+});
+
+describe("M155: the floating toolbar, ⌘/, the `/` menu's sections, `@` pages, the editing look (WIKI.md §30.2)", () => {
+  const TOOLBAR = "選択範囲の書式";
+  /** Text `from`–`to` (offsets in the text) of the top-level block `index` selected. */
+  const selectIn = (editor: Editor, index: number, from: number, to: number) => {
+    let pos = 0;
+    for (let k = 0; k < index; k++) pos += editor.state.doc.child(k).nodeSize;
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, pos + 1 + from, pos + 1 + to)));
+    });
+  };
+
+  it("text selected shows the toolbar; bold from it saves only that line; Esc hides it and the next Esc selects the block; nothing on a caret or a block selection", async () => {
+    const { api } = await openPage(BODY);
+    const editor = await edit();
+    expect(screen.queryByRole("toolbar", { name: TOOLBAR })).toBeNull();
+    selectIn(editor, 2, 0, 4); // 最初の行
+    const toolbar = screen.getByRole("toolbar", { name: TOOLBAR });
+    expect(toolbar.getAttribute("data-selection-toolbar")).toBe("block");
+    expect(within(toolbar).getByRole("button", { name: "変換" })).toBeTruthy();
+    const bold = () => within(screen.getByRole("toolbar", { name: TOOLBAR })).getByRole("button", { name: "太字（Ctrl+B）" });
+    expect(bold().getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(bold());
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe(BODY.replace("最初の行", "**最初の行**"));
+    expect(bold().getAttribute("aria-pressed")).toBe("true");
+    expect([editor.state.selection.from, editor.state.selection.to]).toEqual([editor.state.selection.from, editor.state.selection.from + 4]);
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    expect(screen.queryByRole("toolbar", { name: TOOLBAR })).toBeNull();
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    expect(editor.state.selection).toBeInstanceOf(BlockSelection);
+    expect(screen.queryByRole("toolbar", { name: TOOLBAR })).toBeNull();
+    act(() => editor.commands.setTextSelection(1));
+    expect(screen.queryByRole("toolbar", { name: TOOLBAR })).toBeNull();
+    await settle(450);
+    expect(saves(api)).toHaveLength(1);
+  });
+
+  it("in a table's cell the toolbar has the marks only; 「変換 ▾」 lists the kinds and 見出し 2 turns the line, keeping the selection", async () => {
+    const { api } = await openPage(BODY);
+    const editor = await edit();
+    const table = editor.state.doc.childCount - 1;
+    selectIn(editor, table, 2, 3); // the cell 「a」: the row and the cell open before its text
+    const inCell = screen.getByRole("toolbar", { name: TOOLBAR });
+    expect(inCell.getAttribute("data-selection-toolbar")).toBe("marks");
+    expect(within(inCell).queryByRole("button", { name: "変換" })).toBeNull();
+    expect(within(inCell).getByRole("button", { name: "太字（Ctrl+B）" })).toBeTruthy();
+    selectIn(editor, 2, 0, 2);
+    const from = editor.state.selection.from;
+    fireEvent.click(within(screen.getByRole("toolbar", { name: TOOLBAR })).getByRole("button", { name: "変換" }));
+    const menu = await screen.findByRole("menu", { name: "ブロックを変換" });
+    expect(within(menu).getByRole("menuitemradio", { name: "テキスト" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: "見出し 2" }));
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe(BODY.replace("最初の行", "## 最初の行"));
+    expect([editor.state.selection.from, editor.state.selection.to]).toEqual([from, from + 2]);
+    expect(screen.queryByRole("menu", { name: "ブロックを変換" })).toBeNull();
+  });
+
+  it("⌘/ opens the 「変換」 list for the caret's line; 見出し 3 is saved with only that line changed; a block selection of two lines becomes one callout", async () => {
+    const { api } = await openPage(BODY);
+    const editor = await edit();
+    caretAtEndOf(editor, 2);
+    fireEvent.keyDown(editor.view.dom, { key: "/", ctrlKey: true });
+    const menu = await screen.findByRole("menu", { name: "ブロックを変換" });
+    expect(within(menu).getByRole("menuitemradio", { name: "テキスト" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: "見出し 3" }));
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe(BODY.replace("最初の行", "### 最初の行"));
+    expect(editor.state.doc.child(2).type.name).toBe("heading");
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown", shiftKey: true });
+    expect(editor.state.selection).toBeInstanceOf(BlockSelection);
+    fireEvent.keyDown(editor.view.dom, { key: "/", ctrlKey: true });
+    fireEvent.click(within(await screen.findByRole("menu", { name: "ブロックを変換" })).getByRole("menuitemradio", { name: "コールアウト" }));
+    await settle(450);
+    // The lines inside keep their own line endings (the heading's, the untouched item's bytes); the new opener is LF.
+    expect(api.bodies.get(uid(501))).toBe(BODY.replace("最初の行\r\n*   古い書き方の項目\r\n", "::: callout 💡\n### 最初の行\r\n*   古い書き方の項目\r\n:::\n"));
+  });
+
+  it("the `/` menu: sections with a line of help, 「todo」 filters to the checklist, the pick is remembered as 「最近使ったもの」 on this device", async () => {
+    const { api } = await openPage("本文");
+    const editor = await edit();
+    caretAtEndOf(editor, 0);
+    act(() => {
+      editor.commands.splitBlock();
+    });
+    type(editor, "/");
+    await settle();
+    const menu = screen.getByRole("listbox", { name: "ブロックを追加" });
+    expect(within(menu).getAllByRole("group").map((group) => group.getAttribute("aria-label"))).toEqual(["基本", "リスト", "メディア", "埋め込み", "高度"]);
+    expect(within(menu).getByText("チェックボックスで進み具合を追う")).toBeTruthy();
+    expect(within(menu).getAllByRole("option")).toHaveLength(18);
+    type(editor, "todo");
+    await settle();
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]!.textContent).toContain("チェックリスト");
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+    type(editor, "やる");
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe("本文\n- [ ] やる");
+    expect(JSON.parse(localStorage.getItem("taylis.docs.slashRecents")!)).toEqual(["tasks"]);
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+    type(editor, "/");
+    await settle();
+    const again = within(screen.getByRole("listbox", { name: "ブロックを追加" })).getAllByRole("group");
+    expect(again[0]!.getAttribute("aria-label")).toBe("最近使ったもの");
+    expect(within(again[0]!).getAllByRole("option")).toHaveLength(1);
+    expect(within(again[0]!).getAllByRole("option")[0]!.textContent).toContain("チェックリスト");
+    expect(within(again[0]!).getAllByRole("option")[0]!.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("`@` offers pages after the people: a page chosen is the chip `[[` makes; people stay first", async () => {
+    const { api, lookupWikiPages } = await openPage("");
+    const editor = await edit();
+    type(editor, "確認 @設");
+    await settle(250);
+    expect(lookupWikiPages).toHaveBeenCalledWith("設", 8);
+    const menu = screen.getByRole("listbox", { name: "メンションの候補" });
+    expect(within(menu).getByText("ページ")).toBeTruthy();
+    expect(within(menu).getByText("設計メモ")).toBeTruthy();
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+    await settle(450);
+    expect(api.bodies.get(uid(501))).toBe("確認 [設計メモ](page:0190a2b4-0000-7000-8000-0000000000c1) ");
+    type(editor, "@h");
+    await settle(250);
+    const rows = within(screen.getByRole("listbox", { name: "メンションの候補" })).getAllByRole("option");
+    expect(rows.map((row) => row.textContent)).toEqual([expect.stringContaining("@hanako"), expect.stringContaining("設計メモ")]);
+  });
+
+  it("the editing look is the reading look: blank lines, headings, lists, checklists, rules, callouts, quotes, tables and toggles have the reader's margins", async () => {
+    // The editor's rules from styles.css go into the document: jsdom hands back what they declare. The reader's Tailwind
+    // classes are read as the scale they name (0.25rem a step), so the two sides are compared in pixels.
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "styles.css"), "utf8");
+    const style = document.createElement("style");
+    style.textContent = (css.match(/\.page-editor[^{}]*\{[^}]*\}/g) ?? []).join("\n");
+    document.head.append(style);
+    const px = (value: string) => (value.endsWith("rem") ? parseFloat(value) * 16 : parseFloat(value) || 0);
+    const tw = (el: Element | null, prefix: string) => {
+      const found = [...(el?.classList ?? [])].map((c) => /^(m[tby]|h|p[xy]|pl|gap)-(\d+(?:\.\d+)?)$/.exec(c)).find((m) => m && m[1] === prefix);
+      return found ? Number(found[2]) * 4 : 0;
+    };
+    const PARITY = "前\n# 見出し\n\n段落\n\n\n次の段落\n- 項目\n- 項目 2\n\n- [ ] やる\n\n---\n\n::: callout 💡\n中\n:::\n> 引用\n| a |\n| --- |\n| 1 |\n::: toggle 題\n中\n:::";
+    await openPage(PARITY);
+    const reading = document.querySelector(".canvas-body")!;
+    const read = {
+      heading: reading.querySelector("[id^=canvas-h-]"),
+      gap: reading.querySelector("p.mt-2\\.5"),
+      list: reading.querySelector("ul.md-ul"),
+      tasks: reading.querySelector("ul.list-none"),
+      rule: reading.querySelector("hr"),
+      callout: reading.querySelector(".callout"),
+      quote: reading.querySelector("blockquote"),
+      table: reading.querySelector("table")?.parentElement ?? null,
+      toggle: reading.querySelector("details"),
+    };
+    const editor = await edit();
+    const dom = editor.view.dom;
+    const cs = (selector: string) => getComputedStyle(dom.querySelector(selector)!);
+    // The six blank lines: after the heading (before text) and the two between paragraphs are the reader's `mt-2.5`
+    // gap, a margin (the second of the run adds nothing: the margins collapse); the ones between a list and a
+    // checklist, a checklist and a rule, a rule and a callout are the reader's `h-2.5` box.
+    const blanks = [...dom.querySelectorAll("p")].filter((p) => p.textContent === "");
+    expect(blanks).toHaveLength(6);
+    const gap = tw(read.gap, "mt");
+    const box = tw(reading.querySelector("div.h-2\\.5"), "h");
+    expect([gap, box]).toEqual([10, 10]);
+    expect(blanks.map((p) => px(getComputedStyle(p).marginTop))).toEqual([gap, gap, 0, 0, 0, 0]);
+    expect(blanks.map((p) => px(getComputedStyle(p).height))).toEqual([0, 0, 0, box, box, box]);
+    expect(px(cs("h1").marginTop)).toBe(tw(read.heading, "mt"));
+    expect(px(cs("h1").marginBottom)).toBe(tw(read.heading, "mb"));
+    expect(cs("h1").lineHeight).toBe("2rem"); // the reader's text-2xl keeps its own line height (measured in Chrome: 32px)
+    expect(px(cs("[data-list-line]").marginTop)).toBe(tw(read.list, "my"));
+    expect(px(cs("[data-list-line][data-kind='task']").marginTop)).toBe(tw(read.tasks, "my"));
+    expect(px(cs(".pe-hr").marginTop)).toBe(tw(read.rule, "my"));
+    expect(px(cs(".pe-callout").marginTop)).toBe(tw(read.callout, "my"));
+    expect(px(cs(".pe-callout").paddingTop)).toBe(tw(read.callout, "py"));
+    expect(px(cs(".pe-callout").paddingLeft)).toBe(tw(read.callout, "px"));
+    expect(px(cs("blockquote").marginTop)).toBe(tw(read.quote, "my"));
+    expect(px(cs("blockquote").paddingLeft)).toBe(tw(read.quote, "pl"));
+    expect(px(cs(".pe-table").marginTop)).toBe(tw(read.table, "my"));
+    expect(px(cs(".pe-toggle").marginTop)).toBe(tw(read.toggle, "my"));
+    expect(getComputedStyle(dom).lineHeight).toBe("1.75rem"); // the reader's leading-7
+    expect(reading.classList.contains("leading-7")).toBe(true);
+    style.remove();
   });
 });

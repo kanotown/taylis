@@ -22,12 +22,16 @@
  * the clipboard; ⌘V pastes after the blocks), Shift and the handle extend the selection, the handle's menu has 「選択」;
  * Enter in the title puts the caret at the start of the body (`focusStart`), ↑ on the body's first line goes back
  * (`onTitle`).
+ *
+ * M155 (WIKI.md §30.2): a toolbar floats over a text selection (ui/pageEditorToolbar.tsx: the marks, inline math, the
+ * link box, 「変換 ▾」); ⌘/ opens the 「変換」 list for the caret's block or the selected blocks; the `/` menu has icons,
+ * a line of help, sections and 「最近使ったもの」 (this device's localStorage); `@` offers pages after the people.
  */
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Columns3, Rows3, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, BoxSelect, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { ApiError } from "../api/errors";
@@ -43,7 +47,7 @@ import { parseTable, sameTable, serializeTable, type Table } from "./canvasTable
 import { CanvasTableDialog } from "./CanvasTableDialog";
 import { attachmentRefs, MAX_CANVAS_IMAGES } from "./canvasText";
 import { CustomEmojiImage } from "./customEmoji";
-import { type SlashKey, slashItems } from "./docEditor";
+import { readSlashRecents, rememberSlashKey, type SlashKey, slashSections } from "./docEditor";
 import { emojiByShortcode, replaceShortcodes } from "./emoji";
 import { EmojiPicker } from "./EmojiPicker";
 import { loadKatex, MathView } from "./MathView";
@@ -55,6 +59,7 @@ import { blockPosAt, type BlockUnit, canPlace, deleteUnit, duplicateUnit, lineAf
 import { applyMerge, caretLine, createPageDocument, placeCaretAtLine } from "./pageEditorDoc";
 import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, sliceMarkdown, SourceMap, untied } from "./pageEditorSchema";
 import { BlockSelection, clearedSelection, extendTo, pasteAfterBlocks } from "./pageEditorSelection";
+import { containerDepthAt, kindOf, mathSelectable, SelectionToolbar, setKind, slashIcon, stepMenuFocus, toolbarState, type ToolbarPlace, TURN_INTO, turnBlocks, TurnIntoList, type TurnKey, turnRange, wrapMath } from "./pageEditorToolbar";
 import { PageIcon } from "./PageIcon";
 import { pageHtmlFromPaste } from "./pagePaste";
 import { PageLinkChip } from "./PageLinkChip";
@@ -76,6 +81,18 @@ type Menu =
   | { kind: "slash"; from: number; to: number; query: string }
   | { kind: "link"; from: number; to: number; query: string; embed: boolean }
   | { kind: "mention"; from: number; to: number; query: string };
+
+/** M155: a row of the `@` menu — a person or group, or (after them) a page. */
+type MentionRow = { kind: "mention"; candidate: MentionCandidate } | { kind: "page"; page: PageRef };
+
+/** M155: the 「変換」 list open: where, for which blocks, the text selection it keeps (null: the caret goes to the end). */
+interface TurnMenu {
+  rect: DOMRect;
+  range: { from: number; to: number };
+  keep: { from: number; to: number } | null;
+  current: TurnKey | null;
+  canWrap: boolean;
+}
 
 const SLASH_AT = /(?:^|\s)\/([^\s/]{0,20})$/u;
 const LINK_AT = /(!?)\[\[([^[\]\n]{0,80})$/;
@@ -109,6 +126,13 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const [iconPick, setIconPick] = useState<{ pos: number; rect: DOMRect } | null>(null);
   const [linkEdit, setLinkEdit] = useState<{ href: string; rect: DOMRect } | null>(null);
   const [mathEdit, setMathEdit] = useState<{ pos: number; tex: string; rect: DOMRect } | null>(null);
+  // M155: the toolbar over a text selection (gone while the pointer selects, during a composition, after Esc until the
+  // selection changes), the 「変換」 list, the `/` menu's recents.
+  const [bubble, setBubble] = useState<{ place: ToolbarPlace; marks: { bold: boolean; italic: boolean; strike: boolean; code: boolean }; mathEnabled: boolean } | null>(null);
+  const bubbleDismissed = useRef<string | null>(null);
+  const pointerDown = useRef(false);
+  const [turnMenu, setTurnMenu] = useState<TurnMenu | null>(null);
+  const [recents, setRecents] = useState<SlashKey[]>(() => readSlashRecents());
   // M151: the ⋮⋮ handle of the block under the pointer, a drag in progress, the handle's menu.
   const wrapper = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<{ pos: number; top: number; left: number } | null>(null);
@@ -172,6 +196,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     },
     link: () => openLink(),
     focusTitle: () => live.current.onTitle?.(),
+    turnMenu: () => openTurnMenu(),
     text: {
       placeholder: t("docs.wysiwyg.placeholder"),
       editTable: t("docs.wysiwyg.editTable"),
@@ -234,9 +259,26 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
             saver.compositionEnded();
             return false;
           },
-          blur: (view) => {
+          // M155: the toolbar waits for the pointer to finish selecting (document mouseup below) and for a composition to end.
+          mousedown: () => {
+            pointerDown.current = true;
+            setBubble(null);
+            return false;
+          },
+          compositionstart: () => {
+            setBubble(null);
+            return false;
+          },
+          focus: () => {
+            if (editorRef.current) findBubble(editorRef.current);
+            return false;
+          },
+          blur: (view, event) => {
             // M154: a block selection ends with the focus (a click elsewhere, the title); the caret goes to its first block.
             if (view.state.selection instanceof BlockSelection) view.dispatch(view.state.tr.setSelection(clearedSelection(view.state)));
+            // M155: the toolbar goes with the focus, unless the focus went into it or into one of the editor's boxes.
+            const to = (event as FocusEvent).relatedTarget;
+            if (!(to instanceof Element) || !to.closest("[data-selection-toolbar], [data-pe-popover]")) setBubble(null);
             commitRef.current();
             void saver.flush();
             return false;
@@ -251,6 +293,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       },
       onTransaction: ({ editor: current, transaction }) => {
         findMenu(current);
+        findBubble(current);
         // The block handle goes with any change (typing, a move); the pointer brings it back.
         if (transaction.docChanged) setHovered(null);
         const place = cellPlace(current.state);
@@ -286,9 +329,17 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       commitRef.current();
       void saver.flush();
     };
+    // M155: the pointer finished selecting (wherever it was let go): the toolbar for what it selected.
+    const onUp = () => {
+      if (!pointerDown.current) return;
+      pointerDown.current = false;
+      findBubble(editor);
+    };
     document.addEventListener("visibilitychange", onHide);
+    document.addEventListener("mouseup", onUp);
     return () => {
       document.removeEventListener("visibilitychange", onHide);
+      document.removeEventListener("mouseup", onUp);
       commitRef.current();
       saver.canReplace = () => true;
       if (handle) handle.current = null;
@@ -342,11 +393,12 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const menuKey = menu ? `${menu.kind}:${menu.from}:${menu.query}` : null;
   const [linkResults, setLinkResults] = useState<{ key: string; pages: PageRef[] } | null>(null);
   useEffect(() => {
-    if (!menu || menu.kind !== "link" || dismissed === menuKey) return;
+    // The pages `[[` links (databases for `![[`); M155: `@` looks them up too (shown after the people).
+    if (!menu || (menu.kind !== "link" && menu.kind !== "mention") || dismissed === menuKey) return;
     const key = menuKey!;
     const query = menu.query.trim();
     const timer = setTimeout(() => {
-      void (menu.embed && links.lookupDatabases ? links.lookupDatabases(query) : links.lookup(query)).then((pages) => setLinkResults({ key, pages }), () => setLinkResults({ key, pages: [] }));
+      void (menu.kind === "link" && menu.embed && links.lookupDatabases ? links.lookupDatabases(query) : links.lookup(query)).then((pages) => setLinkResults({ key, pages }), () => setLinkResults({ key, pages: [] }));
     }, 120);
     return () => clearTimeout(timer);
   }, [menuKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -354,19 +406,34 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
 
   const open = !!menu && dismissed !== menuKey;
   const depth = containerDepth(editorRef.current);
-  const slashList = open && menu.kind === "slash" ? slashItems(menu.query).filter((item) => (item.key !== "callout" && item.key !== "toggle") || depth < 2) : [];
+  // M155: the `/` menu in sections (「最近使ったもの」 first); its rows flat for the keys.
+  const sections = open && menu.kind === "slash" ? slashSections(menu.query, recents, (item) => (item.key !== "callout" && item.key !== "toggle") || depth < 2) : [];
+  const slashList = sections.flatMap((section) => section.items);
   const pageList = open && menu.kind === "link" && linkResults?.key === menuKey ? linkResults.pages : [];
-  const mentionList: MentionCandidate[] = open && menu.kind === "mention" ? mentionCandidates(menu.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store)).filter((c) => c.kind !== "all") : [];
+  // M155: `@` offers pages after the people and groups (three of the pages `[[` finds).
+  const mentionList: MentionRow[] = open && menu.kind === "mention"
+    ? [
+        ...mentionCandidates(menu.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store)).filter((c) => c.kind !== "all").map((candidate): MentionRow => ({ kind: "mention", candidate })),
+        ...(linkResults?.key === menuKey ? linkResults.pages.slice(0, 3) : []).map((page): MentionRow => ({ kind: "page", page })),
+      ]
+    : [];
   const listLength = slashList.length || pageList.length || mentionList.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
-  const state = useRef({ listLength, active, slashList, pageList, mentionList, menu, menuKey });
-  state.current = { listLength, active, slashList, pageList, mentionList, menu, menuKey };
+  const state = useRef({ listLength, active, slashList, pageList, mentionList, menu, menuKey, bubble });
+  state.current = { listLength, active, slashList, pageList, mentionList, menu, menuKey, bubble };
+  // A long menu: the active row kept in view.
+  const menuList = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const row = menuList.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    row?.scrollIntoView?.({ block: "nearest" });
+  }, [active, menuKey]);
 
   /** A key before the editor's own handling; true when a menu took it. Never during an IME composition. */
   function keyDown(event: KeyboardEvent, composing: boolean): boolean {
     if (composing || isImeKeyEvent(event)) return false;
     // M151: ⌘K in the editor is its link box (pages too); the app's own ⌘K (the switcher) is for outside it.
-    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") event.stopPropagation();
+    // M155: ⌘/ is the 「変換」 list here, not the app's shortcuts dialog.
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && (event.key.toLowerCase() === "k" || event.key === "/")) event.stopPropagation();
     const current = state.current;
     if (current.listLength > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -385,12 +452,70 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       }
     }
     if (event.key === "Escape") {
+      event.stopPropagation();
+      if (current.bubble) {
+        // M155: the first Esc hides the toolbar (until the selection changes); the next selects the block (M154).
+        bubbleDismissed.current = `${current.bubble.place.from}:${current.bubble.place.to}`;
+        setBubble(null);
+        return true;
+      }
       // M154: selects the block (the extension: once more its container, then leaves the editor). Never the screen's Esc
       // (that would switch back to the messages).
-      event.stopPropagation();
       return false;
     }
     return false;
+  }
+
+  /** M155: the toolbar's place for the selection now (none while the pointer selects, during a composition, after Esc). */
+  function findBubble(editor: Editor) {
+    const place = pointerDown.current ? null : toolbarState(editor.state, editor.view.composing);
+    if (!place || bubbleDismissed.current === `${place.from}:${place.to}`) {
+      setBubble(null);
+      return;
+    }
+    bubbleDismissed.current = null;
+    setBubble({
+      place,
+      marks: { bold: editor.isActive("bold"), italic: editor.isActive("italic"), strike: editor.isActive("strike"), code: editor.isActive("code") },
+      mathEnabled: place.kind !== "code" && mathSelectable(editor.state),
+    });
+  }
+
+  /** M155: 「コピー」 in a code block's toolbar: the selected text. */
+  function copySelection() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    void controller.copyMessageText(editor.state.doc.textBetween(from, to, "\n", "￼"));
+  }
+
+  /** M155: the 「変換」 list (⌘/, the toolbar's 「変換 ▾」) for the caret's block or the selected blocks; `anchor`: under it, else at the caret. */
+  function openTurnMenu(anchor: DOMRect | null = null) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const { selection, doc } = editor.state;
+    const range = turnRange(editor.state);
+    if (!range) return;
+    let rect = anchor;
+    if (!rect) {
+      try {
+        const coords = editor.view.coordsAtPos(selection.from);
+        rect = new DOMRect(coords.left, coords.top, 1, coords.bottom - coords.top);
+      } catch {
+        rect = editor.view.dom.getBoundingClientRect();
+      }
+    }
+    const keep = selection instanceof BlockSelection ? null : { from: selection.from, to: selection.to };
+    setTurnMenu({ rect, range, keep, current: kindOf(doc.nodeAt(range.from)), canWrap: containerDepthAt(editor, range.from, range.to) < 2 });
+  }
+
+  /** The list's pick: the blocks it was opened for, as they still are. */
+  function pickTurn(key: TurnKey) {
+    const session = turnMenu;
+    setTurnMenu(null);
+    const editor = editorRef.current;
+    if (!editor || !session || session.range.to > editor.state.doc.content.size) return;
+    turnBlocks(editor, session.range.from, session.range.to, key, session.keep);
   }
 
   /** `[[query` (or `![[query`) replaced by a page's link (or a database's embed, on a line of its own). */
@@ -413,10 +538,16 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     putBlock({ type: "embed", attrs: { pageId: page.id, viewId, label: linkLabel(page.title) } });
   }
 
-  function pickMention(candidate: MentionCandidate) {
+  function pickMention(row: MentionRow) {
     const editor = editorRef.current;
     const current = state.current.menu;
     if (!editor || !current || current.kind !== "mention") return;
+    if (row.kind === "page") {
+      // M155: a page from `@`: the chip `[[` makes.
+      editor.chain().focus().deleteRange({ from: current.from, to: current.to }).insertContent([{ type: "pageLink", attrs: { id: row.page.id, label: linkLabel(row.page.title) } }, { type: "text", text: " " }]).run();
+      return;
+    }
+    const { candidate } = row;
     const md = encodeMentions(`@${candidate.username}`, store.users.values(), store.groups.values());
     const user = /^<@([0-9a-f-]{36})>$/.exec(md);
     const group = /^<@group:([0-9a-f-]{36})>$/.exec(md);
@@ -459,44 +590,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     editor.commands.focus();
   }
 
-  /** A block kind the line at the caret turns into (the `/` menu, the handle's 「変換」); false: not a kind of line. */
-  function setKind(chain: ReturnType<Editor["chain"]>, key: SlashKey | "text"): boolean {
-    switch (key) {
-      case "text":
-        chain.setNode("paragraph").run();
-        return true;
-      case "h1":
-      case "h2":
-      case "h3":
-        chain.setNode("heading", { level: Number(key.slice(1)) }).run();
-        return true;
-      case "bullets":
-        chain.setNode("listLine", { kind: "bullet", level: 0 }).run();
-        return true;
-      case "numbered":
-        chain.setNode("listLine", { kind: "ordered", level: 0, number: 1 }).run();
-        return true;
-      case "tasks":
-        chain.setNode("listLine", { kind: "task", level: 0 }).run();
-        return true;
-      case "quote":
-        chain.setNode("paragraph").wrapIn("blockquote").run();
-        return true;
-      case "code":
-        chain.setNode("codeBlock").run();
-        return true;
-      case "math":
-        chain.setNode("mathBlock").run();
-        return true;
-      default:
-        return false;
-    }
-  }
-
   function pickSlash(key: SlashKey) {
     const editor = editorRef.current;
     const current = state.current.menu;
     if (!editor || !current || current.kind !== "slash") return;
+    setRecents(rememberSlashKey(key));
     const chain = editor.chain().focus().deleteRange({ from: current.from, to: current.to });
     if (setKind(chain, key)) return;
     switch (key) {
@@ -815,24 +913,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(session.pos + 1))));
       const tr = stepBlocks(editor.state, action === "up" ? -1 : 1, sources, { emoji: isEmoji });
       if (tr) editor.view.dispatch(tr);
-    } else turnInto(editor, session.pos, node, action);
+    } else turnBlocks(editor, session.pos, session.pos + node.nodeSize, action);
     editor.commands.focus();
-  }
-
-  /** The block at `pos` turned into another kind (a line's kinds; a callout or toggle around it). */
-  function turnInto(editor: Editor, pos: number, node: PMNode, key: SlashKey | "text") {
-    const { schema } = editor.state;
-    if (key === "callout") {
-      editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.callout!.create({ icon: "💡" }, node)));
-      return;
-    }
-    if (key === "toggle") {
-      const title = node.isTextblock && node.inlineContent ? node.content : null;
-      const body = title ? schema.nodes.paragraph!.create() : node;
-      editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.toggle!.create(null, [schema.nodes.toggleTitle!.create(null, title), body])));
-      return;
-    }
-    setKind(editor.chain().focus().setTextSelection(pos + node.nodeSize - 1), key);
   }
 
   const run = (action: (editor: Editor) => void) => () => {
@@ -865,7 +947,9 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const menuAt = (() => {
     const editor = editorRef.current;
     if (!editor || !open || listLength === 0 || !menu) return null;
-    const height = Math.min(320, listLength * 34 + 10);
+    // M155: the `/` menu's rows are two lines under section headings; `@` has a heading before its pages.
+    const headings = menu.kind === "slash" ? sections.length : mentionList.some((row) => row.kind === "page") ? 1 : 0;
+    const height = Math.min(menu.kind === "slash" ? 400 : 320, listLength * (menu.kind === "slash" ? 46 : 34) + headings * 26 + 10);
     try {
       const coords = editor.view.coordsAtPos(menu.from);
       // Under the line, or above it when the window ends first.
@@ -883,7 +967,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     <div className={cn("relative flex min-h-0 flex-col", className)} data-page-editor="">
       <OverflowToolbar tools={tools} label={t("composer.formatting")} className="sticky top-0 z-10 shrink-0 border-b border-line bg-canvas px-2 py-1" buttonClassName="h-7 w-7 shrink-0 text-muted hover:text-ink" />
       <div ref={wrapper} className="relative" onMouseMove={hover} onMouseLeave={(event) => { if (!dragging.current && !blockMenu && !(event.relatedTarget instanceof globalThis.Node && wrapper.current?.contains(event.relatedTarget))) setHovered(null); }}>
-        <div ref={hostElement} className="page-editor-host min-h-[40vh] px-0 py-3" />
+        <div ref={hostElement} className="page-editor-host min-h-[40vh] px-0 pb-3" />
         {hovered && (
           <div className="pe-handle absolute z-10 flex items-center" style={{ top: hovered.top, left: hovered.left }} data-block-handle="">
             <button type="button" tabIndex={-1} aria-label={t("docs.wysiwyg.addBelow")} title={t("docs.wysiwyg.addBelow")} onMouseDown={(event) => event.preventDefault()} onClick={addBelow} className="grid h-6 w-5 place-items-center rounded text-muted hover:bg-panel hover:text-ink">
@@ -901,6 +985,21 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
           editor?.commands.focus();
         }} onDialog={openTable} />}
         {dropLine && <div className="pointer-events-none absolute z-20 h-0.5 rounded bg-accent" style={{ top: dropLine.top - 1, left: dropLine.left, width: dropLine.width }} data-drop-line="" />}
+        {bubble && editorRef.current && wrapper.current && (
+          <SelectionToolbar
+            editor={editorRef.current}
+            wrapper={wrapper.current}
+            place={bubble.place}
+            marks={bubble.marks}
+            mathEnabled={bubble.mathEnabled}
+            turnOpen={!!turnMenu}
+            onToggle={(mark) => run((e) => e.chain().focus().toggleMark(mark).run())()}
+            onMath={() => run((e) => wrapMath(e))()}
+            onLink={openLink}
+            onTurn={(anchor) => openTurnMenu(anchor)}
+            onCopy={copySelection}
+          />
+        )}
       </div>
       {portals.entries().map(([key, { dom, node }]) => createPortal(node, dom, key))}
       <input
@@ -917,10 +1016,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       />
       {menuAt && (
         <ul
+          ref={menuList}
           role="listbox"
           aria-label={pageList.length > 0 ? t("docs.linkSuggestions") : slashList.length > 0 ? t("docs.slash.menu") : t("canvasEditor.mentionSuggestions")}
-          className="fixed z-50 max-h-80 w-72 overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl"
-          style={{ left: Math.max(8, Math.min(menuAt.left, window.innerWidth - 300)), top: menuAt.top, maxHeight: menuAt.height }}
+          className={cn("fixed z-50 max-h-80 overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl", slashList.length > 0 ? "w-80" : "w-72")}
+          style={{ left: Math.max(8, Math.min(menuAt.left, window.innerWidth - (slashList.length > 0 ? 332 : 300))), top: menuAt.top, maxHeight: menuAt.height }}
         >
           {pageList.map((page, index) => (
             <MenuRow key={page.id} active={index === active} onPick={() => pickPage(page)}>
@@ -928,13 +1028,38 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
               <span className="truncate">{page.title || t("docs.untitled")}</span>
             </MenuRow>
           ))}
-          {pageList.length === 0 && slashList.map((item, index) => (
-            <MenuRow key={item.key} active={index === active} onPick={() => pickSlash(item.key)}>{t(item.label)}</MenuRow>
-          ))}
-          {pageList.length === 0 && slashList.length === 0 && mentionList.map((candidate, index) => (
-            <MenuRow key={candidate.username} active={index === active} onPick={() => pickMention(candidate)}>
-              <strong>@{candidate.username}</strong> <span className="truncate text-muted">{candidate.label}</span>
+          {pageList.length === 0 && sections.map((section, s) => {
+            // M155: a heading, then the rows (an icon, the label, a line of help); the index counts across the sections.
+            const offset = sections.slice(0, s).reduce((n, before) => n + before.items.length, 0);
+            return (
+              <li key={section.group} role="presentation">
+                <div className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-semibold text-muted">{t(section.label)}</div>
+                <ul role="group" aria-label={t(section.label)}>
+                  {section.items.map((item, k) => (
+                    <MenuRow key={item.key} active={offset + k === active} onPick={() => pickSlash(item.key)}>
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line bg-panel text-muted" aria-hidden="true">{slashIcon(item.key)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{t(item.label)}</span>
+                        <span className="block truncate text-xs text-muted">{t(item.hint)}</span>
+                      </span>
+                    </MenuRow>
+                  ))}
+                </ul>
+              </li>
+            );
+          })}
+          {pageList.length === 0 && slashList.length === 0 && mentionList.map((row, index) => row.kind === "mention" ? (
+            <MenuRow key={`u:${row.candidate.username}`} active={index === active} onPick={() => pickMention(row)}>
+              <strong>@{row.candidate.username}</strong> <span className="truncate text-muted">{row.candidate.label}</span>
             </MenuRow>
+          ) : (
+            <Fragment key={`p:${row.page.id}`}>
+              {(index === 0 || mentionList[index - 1]!.kind === "mention") && <li role="presentation" className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-semibold text-muted">{t("docs.wysiwyg.mentionPages")}</li>}
+              <MenuRow active={index === active} onPick={() => pickMention(row)}>
+                <PageIcon controller={controller} icon={row.page.icon} size={14} />
+                <span className="truncate">{row.page.title || t("docs.untitled")}</span>
+              </MenuRow>
+            </Fragment>
           ))}
         </ul>
       )}
@@ -961,6 +1086,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       {blockMenu && (
         <FloatingBox rect={blockMenu.rect} onClose={() => { setBlockMenu(null); editorRef.current?.commands.focus(); }} width={240}>
           <BlockMenu node={editorRef.current?.state.doc.nodeAt(blockMenu.pos) ?? null} canWrap={containerDepthAt(editorRef.current, blockMenu.pos) < 2} onPick={blockAction} />
+        </FloatingBox>
+      )}
+      {turnMenu && (
+        <FloatingBox rect={turnMenu.rect} onClose={() => { setTurnMenu(null); editorRef.current?.commands.focus(); }} width={240}>
+          <TurnIntoList current={turnMenu.current} canWrap={turnMenu.canWrap} onPick={pickTurn} />
         </FloatingBox>
       )}
       {mathEdit && <MathBox key={mathEdit.pos} rect={mathEdit.rect} tex={mathEdit.tex} onClose={closeMath} />}
@@ -1073,7 +1203,7 @@ function FloatingBox({ rect, onClose, width, children }: { rect: DOMRect; onClos
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
   const top = Math.min(rect.bottom + 6, window.innerHeight - 120);
   return (
-    <div ref={box} className="fixed z-50 rounded-xl border border-line bg-canvas p-2 shadow-xl" style={{ left, top, width }}>
+    <div ref={box} data-pe-popover="" className="fixed z-50 rounded-xl border border-line bg-canvas p-2 shadow-xl" style={{ left, top, width }}>
       {children}
     </div>
   );
@@ -1172,61 +1302,26 @@ function containerDepth(editor: Editor | null): number {
   return depth;
 }
 
-/** How many callouts / toggles the block at `pos` would be in if it were wrapped in one more (theirs and its own). */
-function containerDepthAt(editor: Editor | null, pos: number): number {
-  if (!editor) return 0;
-  const $pos = editor.state.doc.resolve(pos);
-  let depth = 0;
-  for (let d = 1; d <= $pos.depth; d++) if ($pos.node(d).type.name === "callout" || $pos.node(d).type.name === "toggle") depth++;
-  const inner = (node: PMNode): number => {
-    let deepest = 0;
-    node.forEach((child) => (deepest = Math.max(deepest, inner(child))));
-    return deepest + (node.type.name === "callout" || node.type.name === "toggle" ? 1 : 0);
-  };
-  const node = editor.state.doc.nodeAt(pos);
-  return depth + (node ? inner(node) : 0);
-}
-
-/** The kinds a line turns into from the handle's menu (the `/` menu's kinds of line). */
-const TURN_INTO: ReadonlyArray<{ key: SlashKey | "text"; label: MessageKey }> = [
-  { key: "text", label: "docs.wysiwyg.text" },
-  { key: "h1", label: "docs.slash.h1" },
-  { key: "h2", label: "docs.slash.h2" },
-  { key: "h3", label: "docs.slash.h3" },
-  { key: "bullets", label: "docs.slash.bullets" },
-  { key: "numbered", label: "docs.slash.numbered" },
-  { key: "tasks", label: "docs.slash.tasks" },
-  { key: "quote", label: "docs.slash.quote" },
-  { key: "callout", label: "docs.slash.callout" },
-  { key: "toggle", label: "docs.slash.toggle" },
-  { key: "code", label: "docs.slash.code" },
-  { key: "math", label: "docs.slash.math" },
-];
-
 /** ⌘⇧ (macOS) or Ctrl+Shift+ (the others), before an arrow. */
 const moveKeys = () => (modKey() === "⌘" ? "⌘⇧" : "Ctrl+Shift+");
 
-type BlockMenuAction = "select" | "duplicate" | "delete" | "up" | "down" | SlashKey | "text";
+type BlockMenuAction = "select" | "duplicate" | "delete" | "up" | "down" | TurnKey;
 
-/** The ⋮⋮ handle's menu: turn into (lines), select (M154), duplicate, delete, move up / down. */
+/** The ⋮⋮ handle's menu: turn into (lines; M155: with the `/` menu's icons), select (M154), duplicate, delete, move up / down. */
 function BlockMenu({ node, canWrap, onPick }: { node: PMNode | null; canWrap: boolean; onPick: (action: BlockMenuAction) => void }) {
   const line = !!node && ["paragraph", "heading", "listLine", "codeBlock", "mathBlock"].includes(node.type.name);
   const item = "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-panel focus-visible:bg-panel focus-visible:outline-none";
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => menu.current?.querySelector<HTMLButtonElement>("button")?.focus(), []);
   return (
-    <div ref={menu} role="menu" aria-label={t("docs.wysiwyg.blockMenu")} className="max-h-[70vh] overflow-y-auto" onKeyDown={(event) => {
-      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-      event.preventDefault();
-      const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-      const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-      buttons[(at + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus();
-    }}>
+    <div ref={menu} role="menu" aria-label={t("docs.wysiwyg.blockMenu")} className="max-h-[70vh] overflow-y-auto" onKeyDown={(event) => stepMenuFocus(menu.current, event)}>
       {line && (
         <>
           <div className="px-2 pb-0.5 pt-1 text-[11px] font-semibold text-muted">{t("docs.wysiwyg.turnInto")}</div>
           {TURN_INTO.filter((kind) => canWrap || (kind.key !== "callout" && kind.key !== "toggle")).map((kind) => (
-            <button key={kind.key} type="button" role="menuitem" className={item} onClick={() => onPick(kind.key)}>{t(kind.label)}</button>
+            <button key={kind.key} type="button" role="menuitem" className={item} onClick={() => onPick(kind.key)}>
+              <span className="text-muted" aria-hidden="true">{slashIcon(kind.key, 14)}</span> {t(kind.label)}
+            </button>
           ))}
           <div className="my-1 border-t border-line" />
         </>

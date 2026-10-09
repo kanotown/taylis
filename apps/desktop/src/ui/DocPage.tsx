@@ -367,7 +367,8 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={null} />
               </div>
             )}>
-              <LazyPageEditor key={pageId} controller={controller} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} onTitle={focusTitle} className="mt-3" />
+              {/* M155: the formatting row takes the byline's place, so the body starts where the reading view's does. */}
+              <LazyPageEditor key={pageId} controller={controller} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} onTitle={focusTitle} className="mt-[3px]" />
             </Suspense>
           </article>
         </div>
