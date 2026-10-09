@@ -14,10 +14,11 @@ import type { AppController } from "../state/app";
 import { readableSnippet } from "./CanvasSearch";
 import { pageTitle } from "./docsActions";
 import { useWikiHub } from "./DocsTree";
-import { highlightPieces, leadToFirstHit } from "./highlight";
+import { leadToFirstHit } from "./highlight";
 import { isImeKeyEvent } from "./ime";
-import { LIVE_DEBOUNCE_MS } from "./LiveSearch";
+import { type LiveQuery, useLiveQuery } from "./liveQuery";
 import { plainText } from "./markdown";
+import { marked } from "./marked";
 import { mentionsToNames } from "./mentions";
 import { PageIcon } from "./PageIcon";
 import { cn } from "./primitives";
@@ -26,64 +27,25 @@ import { t } from "../i18n";
 /** How many pages the box lists while typing. */
 export const SIDEBAR_LIMIT = 8;
 
-export interface LivePages {
-  /** idle: nothing typed (no request); loading: asked (the previous words' hits stay meanwhile); error: it failed. */
-  status: "idle" | "loading" | "done" | "error";
-  /** The words the hits are for. */
-  query: string;
+export interface LivePageHits {
   hits: PageSearchHit[];
   keywords: string[];
 }
 
-const IDLE: LivePages = { status: "idle", query: "", hits: [], keywords: [] };
+export type LivePages = LiveQuery<LivePageHits>;
+
+const NOTHING: LivePageHits = { hits: [], keywords: [] };
 
 /**
- * The best few pages for the typed words, asked once typing pauses for LIVE_DEBOUNCE_MS and never while `paused` (an
- * open IME composition). A late answer to older words is dropped; words seen before are answered from memory until
- * `version` (the tree's) changes, since a page renamed, moved or shared changes the answer.
+ * The best few pages for the typed words, asked once typing pauses (useLiveQuery: the debounce, the IME, dropped late
+ * answers, the box's memory, which `version` — the tree's — empties, since a page renamed, moved or shared changes
+ * the answer).
  */
 export function useLivePages(controller: AppController, text: string, paused: boolean, version: number): LivePages {
-  const q = text.trim();
-  const [state, setState] = useState<LivePages>(IDLE);
-  const request = useRef(0);
-  const memory = useRef(new Map<string, LivePages>());
-  const seen = useRef(version);
-  if (seen.current !== version) {
-    seen.current = version;
-    memory.current.clear();
-  }
-
-  useEffect(() => {
-    if (paused) return;
-    const id = ++request.current;
-    const api = controller.api;
-    if (!q || !api) {
-      setState(IDLE);
-      return;
-    }
-    const known = memory.current.get(q);
-    if (known) {
-      setState(known);
-      return;
-    }
-    setState((current) => ({ ...current, status: "loading" }));
-    const timer = setTimeout(() => {
-      void api.searchWikiPages({ q, limit: SIDEBAR_LIMIT, offset: 0 }).then(
-        (result) => {
-          const done: LivePages = { status: "done", query: q, hits: result.hits.slice(0, SIDEBAR_LIMIT), keywords: result.keywords };
-          memory.current.set(q, done);
-          if (id === request.current) setState(done);
-        },
-        () => {
-          // Said in the list only (no toast): 「すべて見る」 reports its own errors.
-          if (id === request.current) setState({ ...IDLE, status: "error", query: q });
-        },
-      );
-    }, LIVE_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [q, paused, controller.api, version]);
-
-  return state;
+  return useLiveQuery(controller, text, paused, async (api, q) => {
+    const result = await api.searchWikiPages({ q, limit: SIDEBAR_LIMIT, offset: 0 });
+    return { hits: result.hits.slice(0, SIDEBAR_LIMIT), keywords: result.keywords };
+  }, NOTHING, version);
 }
 
 export function DocsSidebarSearch({ controller, text, onText, selectedId, onOpen, onSearchAll, children }: {
@@ -141,7 +103,6 @@ export function DocsSidebarSearch({ controller, text, onText, selectedId, onOpen
     }
   };
 
-  const mark = (value: string) => highlightPieces(value, live.keywords).map((piece, i) => (piece.hit ? <mark key={i} className="rounded bg-warning/35 px-0.5 text-ink">{piece.text}</mark> : <span key={i}>{piece.text}</span>));
   const store = controller.store;
 
   return (
@@ -205,11 +166,11 @@ export function DocsSidebarSearch({ controller, text, onText, selectedId, onOpen
                 >
                   <PageIcon controller={controller} icon={page.icon} kind={page.kind} size={14} className="mt-0.5 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ink">{mark(pageTitle(page, t("docs.untitled")))}</span>
+                    <span className="block truncate text-ink">{marked(pageTitle(page, t("docs.untitled")), live.keywords)}</span>
                     {parent && (
                       <span className="flex items-center gap-1 truncate text-[11px] text-muted"><Table2 size={10} className="shrink-0" /> {t("docs.find.rowOf", { title: pageTitle(parent, t("docs.untitled")) })}</span>
                     )}
-                    {body && <span className="line-clamp-2 break-words text-xs text-muted">{mark(body)}</span>}
+                    {body && <span className="line-clamp-2 break-words text-xs text-muted">{marked(body, live.keywords)}</span>}
                   </span>
                 </li>
               );
