@@ -131,3 +131,30 @@ describe("ThreadsView card", () => {
     w.engine.stop();
   });
 });
+
+describe("ThreadsView 「すべて既読にする」 (THREADS.md §3.2)", () => {
+  it("is enabled while a followed thread has unread replies and reads them all", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    const w = await world();
+    w.store.setMe({ ...w.server.users.get(w.bob.id)!, id: w.bob.id } as unknown as UserMe);
+    const controller = {
+      store: w.store, engine: null, api: { baseUrl: "http://server", fetchBlob: vi.fn(async () => new Blob(["png"])) }, version: 0, setError: vi.fn(), messageFocus: null,
+      subscribe: () => () => {},
+      markAllThreadsRead: vi.fn(() => w.engine.markAllThreadsRead()),
+    };
+    function View() {
+      useSyncExternalStore((l) => w.store.subscribe(l), () => w.store.version);
+      return <ThreadsView controller={controller as unknown as AppController} selectedId={null} onOpen={vi.fn()} onOpenChannel={vi.fn()} />;
+    }
+    render(<View />);
+    const button = screen.getByRole("button", { name: "すべて既読にする" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(controller.markAllThreadsRead).toHaveBeenCalledTimes(1);
+    await w.engine.idle();
+    expect(w.store.threadSummary.unread_count).toBe(0);
+    expect((screen.getByRole("button", { name: "すべて既読にする" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(w.server.threadState(w.bob.id, w.parent.id).unread_count).toBe(0);
+    w.engine.stop();
+  });
+});

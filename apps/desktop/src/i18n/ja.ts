@@ -2433,6 +2433,7 @@ export const ja = {
   "threads.openChannel": "チャンネルを開く",
   "threads.openConversation": "会話を開く",
   "threads.openThread": "スレッドを開く",
+  "threads.markAllReadTitle": "フォロー中のスレッドの返信をすべて既読にする",
   "threads.moreReplies": "他 {count} 件の返信",
   "threads.replyFrom": "{name} さんの返信、スレッドで開く",
   "status.changeEmoji": "絵文字を変更",

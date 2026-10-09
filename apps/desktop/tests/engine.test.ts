@@ -906,6 +906,83 @@ describe("followed threads (M11a)", () => {
     expect(fresh.threadSummary.unread_count).toBe(2);
     paged.stop();
   });
+
+  /** bob (me) follows two topics with unread replies from alice, one mentioning him; the list is loaded. */
+  async function twoUnreadThreads() {
+    const w = await setup();
+    await w.engine.start();
+    await w.engine.openChannel(w.channel.id);
+    for (const topic of ["topic 1", "topic 2"]) {
+      await w.engine.send(w.channel.id, topic);
+      await w.engine.idle();
+    }
+    const one = w.server.messageByBody(w.channel.id, "topic 1");
+    const two = w.server.messageByBody(w.channel.id, "topic 2");
+    w.server.post(w.channel.id, w.alice.id, "re 1", undefined, one.id);
+    w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> re 2`, undefined, two.id);
+    await w.engine.flushThreads();
+    await w.engine.loadThreads("all");
+    expect(w.store.threadSummary).toEqual({ unread_count: 2, mention_count: 1 });
+    return { ...w, one, two };
+  }
+
+  it("「すべて既読にする」 reads every followed thread at once, then takes the server's answer (THREADS.md §3.2)", async () => {
+    const w = await twoUnreadThreads();
+    const api = w.server.apiFor(w.bob.id);
+    let answer!: () => void;
+    const gate = new Promise<void>((resolve) => (answer = resolve));
+    useApi(w.engine, { ...api, readAllThreads: async () => { await gate; return api.readAllThreads!(); } });
+    const done = w.engine.markAllThreadsRead();
+    // Optimistic: the rows and the badge before the server answers.
+    expect(w.store.threadSummary).toEqual({ unread_count: 0, mention_count: 0 });
+    expect(w.store.threadList("unread")).toEqual([]);
+    expect(w.store.threads.get(w.two.id)?.state).toMatchObject({ unread_count: 0, mention_count: 0 });
+    answer();
+    await done;
+    const re2 = w.server.messageByBody(w.channel.id, `<@${w.bob.id}> re 2`);
+    expect(w.server.threadState(w.bob.id, w.two.id).last_read_seq).toBe(re2.seq);
+    expect(w.store.threads.get(w.two.id)?.state).toMatchObject({ last_read_seq: re2.seq, unread_count: 0 });
+    expect(w.store.threadSummary).toEqual({ unread_count: 0, mention_count: 0 });
+    // Nothing left: the second call moves nothing.
+    expect((await api.readAllThreads!()).threads).toEqual([]);
+    w.engine.stop();
+  });
+
+  it("a refused 「すべて既読にする」 puts the rows and the badge back", async () => {
+    const w = await twoUnreadThreads();
+    const api = w.server.apiFor(w.bob.id);
+    useApi(w.engine, api);
+    api.failNext(new ApiError(503, "http_503", "Request failed"));
+    await expect(w.engine.markAllThreadsRead()).rejects.toBeInstanceOf(ApiError);
+    expect(w.store.threadSummary).toEqual({ unread_count: 2, mention_count: 1 });
+    expect(w.store.threads.get(w.one.id)?.state).toMatchObject({ last_read_seq: 0, unread_count: 1 });
+    expect(w.store.threads.get(w.two.id)?.state).toMatchObject({ unread_count: 1, mention_count: 1 });
+    expect(w.server.threadState(w.bob.id, w.two.id).last_read_seq).toBe(0);
+    w.engine.stop();
+  });
+
+  it("another device follows with threads.read_all and never moves a position back", async () => {
+    const w = await twoUnreadThreads();
+    const fresh = new Store();
+    const other = new SyncEngine({ api: w.server.apiFor(w.bob.id), connect: w.server.connectorFor(w.bob.id), store: fresh, getAccessToken: () => "t", sleep: async () => {} }, {});
+    await other.start();
+    await other.loadThreads("all");
+    expect(fresh.threadSummary.unread_count).toBe(2);
+
+    await w.engine.markAllThreadsRead();
+    await other.idle();
+    expect(fresh.threadSummary).toEqual({ unread_count: 0, mention_count: 0 });
+    const re1 = w.server.messageByBody(w.channel.id, "re 1");
+    expect(fresh.threads.get(w.one.id)?.state).toMatchObject({ last_read_seq: re1.seq, unread_count: 0 });
+
+    // A stale event (a lower position) leaves the position where it is.
+    const emit = (w.server as unknown as { emit: (users: Set<string>, frame: unknown) => void }).emit.bind(w.server);
+    emit(new Set([w.bob.id]), { type: "event", id: 9999, event: "threads.read_all", ts: new Date().toISOString(), channel_id: null, seq: null, data: { summary: { unread_count: 0, mention_count: 0 }, threads: [{ parent_id: w.one.id, channel_id: w.channel.id, last_read_seq: 1, unread_count: 0, mention_count: 0 }] } });
+    await other.idle();
+    expect(fresh.threads.get(w.one.id)?.state.last_read_seq).toBe(re1.seq);
+    other.stop();
+    w.engine.stop();
+  });
 });
 
 describe("presence and typing (M11b)", () => {

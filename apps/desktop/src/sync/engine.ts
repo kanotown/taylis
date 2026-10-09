@@ -14,7 +14,7 @@ import { TimesFeedHub } from "./timesFeed";
 import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadsReadAllOut, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
 import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
@@ -68,6 +68,8 @@ export interface SyncApi {
   threadState(messageId: string): Promise<ThreadState>;
   markThreadRead(messageId: string, lastReadSeq: number): Promise<ThreadState>;
   setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
+  /** THREADS.md §3.2: every followed thread read to its newest reply. Optional (older fakes). */
+  readAllThreads?(): Promise<ThreadsReadAllOut>;
   /** M15f: a conversation's link bar. Optional (older fakes). */
   channelLinks?(channelId: string): Promise<ChannelLinkOut[]>;
   /** M112: the workspace's reservation pools. Optional (older fakes). */
@@ -1121,6 +1123,13 @@ export class SyncEngine {
         if (data.reason === "read") this.scheduleActivityRefresh(); // MOBILE_UI.md §6.4: its replies read in the thread
         return;
       }
+      case "threads.read_all": {
+        // THREADS.md §3.2: 「すべて既読にする」 of the threads list on another device (or this one's answer, again).
+        this.applyThreadsReadAll(frame.data as ThreadsReadAllOut);
+        this.scheduleThreadRefresh();
+        this.scheduleActivityRefresh(); // MOBILE_UI.md §6.4: those replies are read in their threads
+        return;
+      }
       case "activity.read": {
         // M39: my read position moved on another device (or by this one's PUT): the dots and the badge follow.
         const data = frame.data as { read_at: string };
@@ -1984,6 +1993,39 @@ export class SyncEngine {
       const state = await this.deps.api.setThreadFollow(parentId, following);
       this.deps.store.applyThreadState(this.withFloor(state));
     });
+  }
+
+  /**
+   * 「すべて既読にする」 of the threads list (THREADS.md §3.2): every held followed row and the badge read at once, then
+   * the server's answer; put back when the server refuses (the caller shows the error).
+   */
+  async markAllThreadsRead(): Promise<void> {
+    const api = this.deps.api;
+    if (!api.readAllThreads) return;
+    const store = this.deps.store;
+    const undo = store.markAllThreadsReadLocally();
+    let out: ThreadsReadAllOut;
+    try {
+      out = await api.readAllThreads();
+    } catch (err) {
+      store.restoreThreadsRead(undo);
+      throw err;
+    }
+    await this.enqueue(async () => this.applyThreadsReadAll(out));
+    this.refreshActivityNow();
+  }
+
+  /** The answer or threads.read_all: positions only move forward, the counts are the server's, the badge its summary. */
+  private applyThreadsReadAll(data: ThreadsReadAllOut): void {
+    const store = this.deps.store;
+    for (const moved of data.threads) {
+      store.noteThreadRead(moved.parent_id, moved.last_read_seq); // the activity list's replies lose their dots
+      const entry = store.threads.get(moved.parent_id);
+      if (!entry) continue;
+      const lastReadSeq = Math.max(entry.state.last_read_seq, moved.last_read_seq);
+      store.applyThreadState(this.withFloor({ ...entry.state, last_read_seq: lastReadSeq, unread_count: moved.unread_count, mention_count: moved.mention_count }));
+    }
+    store.setThreadSummary(data.summary);
   }
 
   private scheduleThreadRefresh(): void {

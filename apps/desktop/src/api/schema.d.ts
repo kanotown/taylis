@@ -4674,6 +4674,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/threads/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark All Threads Read
+         * @description 「すべて既読にする」 of the threads list: every followed thread in my channels is read to
+         *     its newest reply (THREADS.md §3). The activity's own read-all does not touch threads.
+         */
+        post: operations["mark_all_threads_read_api_v1_threads_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/times": {
         parameters: {
             query?: never;
@@ -12879,6 +12900,29 @@ export interface components {
             last_read_seq: number;
         };
         /**
+         * ThreadReadPosition
+         * @description One thread moved by POST /threads/read-all, with its counts after the move (a reply
+         *     committed during the call stays unread and is counted here).
+         */
+        ThreadReadPosition: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Last Read Seq */
+            last_read_seq: number;
+            /** Mention Count */
+            mention_count: number;
+            /**
+             * Parent Id
+             * Format: uuid
+             */
+            parent_id: string;
+            /** Unread Count */
+            unread_count: number;
+        };
+        /**
          * ThreadState
          * @description One user's view of one thread (THREADS.md §3).
          */
@@ -12920,6 +12964,16 @@ export interface components {
             mention_count: number;
             /** Unread Count */
             unread_count: number;
+        };
+        /**
+         * ThreadsReadAllOut
+         * @description POST /threads/read-all (THREADS.md §3): the new badge and the threads that moved. The
+         *     same shape is the payload of threads.read_all to my other devices.
+         */
+        ThreadsReadAllOut: {
+            summary: components["schemas"]["ThreadSummary"];
+            /** Threads */
+            threads: components["schemas"]["ThreadReadPosition"][];
         };
         /** TimesFeedOut */
         TimesFeedOut: {
@@ -22940,6 +22994,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_threads_read_api_v1_threads_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadsReadAllOut"];
                 };
             };
         };

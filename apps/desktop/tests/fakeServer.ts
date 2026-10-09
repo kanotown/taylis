@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, ThreadsReadAllOut, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
@@ -372,6 +372,30 @@ export class FakeServer {
       this.emitThread(parent.id, [userId], "read");
     }
     return this.threadState(userId, parent.id);
+  }
+
+  /** POST /threads/read-all (THREADS.md §3.2): followed threads in my channels to their newest live reply. */
+  readAllThreads(userId: string): ThreadsReadAllOut {
+    const threads: ThreadsReadAllOut["threads"] = [];
+    for (const row of this.threadFollows.values()) {
+      if (row.userId !== userId || !row.following) continue;
+      let found: { record: ChannelRecord; parent: MessageOut };
+      try {
+        found = this.threadParent(row.parentId);
+      } catch {
+        continue; // the parent was deleted
+      }
+      const { record, parent } = found;
+      if (!record.members.has(userId)) continue;
+      const newest = Math.max(0, ...record.messages.filter((m) => m.parent_id === parent.id && !m.deleted).map((m) => m.seq));
+      if (newest <= row.lastReadSeq) continue;
+      row.lastReadSeq = newest;
+      const state = this.threadState(userId, parent.id);
+      threads.push({ parent_id: parent.id, channel_id: record.channel.id, last_read_seq: newest, unread_count: state.unread_count, mention_count: state.mention_count });
+    }
+    const out = { summary: this.threadSummary(userId), threads };
+    if (threads.length > 0) this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "threads.read_all", ts: now(), channel_id: null, seq: null, data: out });
+    return out;
   }
 
   setThreadFollow(userId: string, messageId: string, following: boolean): ThreadState {
@@ -1908,6 +1932,10 @@ export class FakeServer {
       setThreadFollow: async (messageId, following): Promise<ThreadState> => {
         maybeFail();
         return this.setThreadFollow(userId, messageId, following);
+      },
+      readAllThreads: async (): Promise<ThreadsReadAllOut> => {
+        maybeFail();
+        return this.readAllThreads(userId);
       },
       channel: async (channelId: string): Promise<ChannelOut> => {
         maybeFail();

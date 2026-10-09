@@ -1,5 +1,5 @@
 import { ContextMenu } from "radix-ui";
-import { MessagesSquare } from "lucide-react";
+import { CheckCheck, MessagesSquare } from "lucide-react";
 import { useEffect } from "react";
 
 import type { AppController } from "../state/app";
@@ -38,6 +38,7 @@ export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, emb
   const filter = store.threadsFilter;
   const rows = store.threadList(filter);
   const summary = store.threadSummary;
+  const anyUnread = summary.unread_count > 0 || rows.some((entry) => entry.state.following && entry.state.unread_count > 0);
 
   useEffect(() => {
     void engine?.loadThreads(store.threadsFilter).catch((error) => controller.setError(error));
@@ -75,6 +76,19 @@ export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, emb
             </button>
           ))}
         </div>
+        {/* THREADS.md §3.2: only the followed threads; the activity's own read-all leaves them alone. No confirmation, as the sidebar's. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          title={t("threads.markAllReadTitle")}
+          aria-label={t("sidebar.markAllRead")}
+          disabled={!anyUnread}
+          onClick={() => void controller.markAllThreadsRead()}
+        >
+          <CheckCheck size={14} />
+          <span className={cn("max-md:hidden", embedded && "hidden")}>{t("sidebar.markAllRead")}</span>
+        </Button>
       </header>
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (

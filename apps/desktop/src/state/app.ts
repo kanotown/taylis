@@ -1266,6 +1266,16 @@ export class AppController {
     return null;
   }
 
+  /** 「スレッド」 list's 「すべて既読にする」 (THREADS.md §3.2); the rows and the badge go back when refused. */
+  async markAllThreadsRead(): Promise<void> {
+    if (!this.engine) return;
+    try {
+      await this.engine.markAllThreadsRead();
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
   /** M12a 「すべて既読にする」. */
   async markAllRead(scope?: ReadAllScope): Promise<void> {
     if (!this.engine) return;
