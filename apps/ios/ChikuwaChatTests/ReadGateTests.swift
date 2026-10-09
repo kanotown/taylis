@@ -193,6 +193,25 @@ final class ReadGateTests: XCTestCase {
         XCTAssertEqual(ReadGate.newBelow(v2, seenSeq: nil, meId: "bob"), 0)
     }
 
+    /// 「新着 N 件」 takes the list to the first of the N rows (with the divider above it when it is there), then, once that
+    /// row is on screen, to the newest edge; the plain ↓ goes to the newest edge (testers, build 110).
+    func testNewRowsJumpGoesToTheFirstNewRowFirst() {
+        let rows = (81...130).map { row($0) } + [row(131, sender: "bob")]
+        // Opened at the divider (read to 100): the first new row is 101, under the divider.
+        let atDivider = Timeline.build(rows, firstUnreadAfterSeq: 100, meId: "bob", grouping: false)
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-120"]),
+                       .firstNew(scrollId: "unread", rowId: "id-101"))
+        // Already on screen: on to the newest edge.
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-100", "id-101"]), .newest)
+        // Rows arrived since the bottom was seen (no divider there): the first of them, by its row key.
+        let plain = Timeline.build(rows + [row(132)], firstUnreadAfterSeq: nil, meId: "bob", grouping: false)
+        XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: 130, meId: "bob", onScreenIds: ["id-90"]),
+                       .firstNew(scrollId: "cmid-132", rowId: "id-132"))
+        // My own row (131) is not new; nothing new from others: the newest edge.
+        XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: 132, meId: "bob", onScreenIds: []), .newest)
+        XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: nil, meId: "bob", onScreenIds: []), .newest)
+    }
+
     /// §10.1 7.: a reader who scrolled before the view was placed is left there; 「新着 N 件」 counts from the divider when
     /// it can be drawn, and never from the read position of a range that is not held (it would say 50 for 2,000 unread).
     func testSeenLeftInPlaceNeverCountsAPartialRange() {

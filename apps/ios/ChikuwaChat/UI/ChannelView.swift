@@ -61,6 +61,8 @@ struct ChannelView: View {
     /// The row the list is kept at (SwiftUI's scroll position): up in the conversation, a row arriving below does not move
     /// what is on screen; at the newest edge it is the edge's marker, so arrivals show (UpsideDownList.swift).
     @State private var keptRowId: String?
+    /// 「新着 N 件」 on its way to the first new row (jumpTapped); the reader's finger stops it.
+    @State private var newRowsJump: Task<Void, Never>?
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
 
@@ -220,7 +222,30 @@ struct ChannelView: View {
     @ViewBuilder
     private func jumpButton(_ proxy: ScrollViewProxy) -> some View {
         if !atBottom && focus == nil && !veiled {
-            JumpToNewestButton(unseen: unseenBelow, latestLabel: "最新のメッセージへ") { UpsideDown.jumpToNewest($keptRowId, proxy) }
+            JumpToNewestButton(unseen: unseenBelow, latestLabel: "最新のメッセージへ") { jumpTapped(proxy) }
+        }
+    }
+
+    /// 「新着 N 件」 shows the first of the N rows at the top (the divider above it when it is there), as a landing does;
+    /// ↓, or the pill once that row is on screen, goes to the newest edge (ReadGate.newRowsJump). Not animated: an
+    /// animated scroll over a long stretch spun through every row on the way.
+    private func jumpTapped(_ proxy: ScrollViewProxy) {
+        newRowsJump?.cancel()
+        newRowsJump = nil
+        let onScreen = Set(visibleFrames.compactMap { partlyShown($0.value) ? $0.key : nil })
+        switch ReadGate.newRowsJump(items, seenSeq: seenSeq, meId: controller.store.me?.id, onScreenIds: onScreen) {
+        case .newest:
+            UpsideDown.jumpToNewest($keptRowId, proxy)
+        case .firstNew(let scrollId, let rowId):
+            newRowsJump = Task {
+                // LazyVStack places by estimated heights, so one scroll can stop short of a row far away: again while it
+                // is not on screen in full (as the landing does).
+                for _ in 0..<3 {
+                    UpsideDown.scroll(to: scrollId, anchor: UpsideDown.anchor(.top), $keptRowId, proxy)
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    if Task.isCancelled || fullyShown(visibleFrames[rowId]) { return }
+                }
+            }
         }
     }
 
@@ -420,7 +445,7 @@ struct ChannelView: View {
                             // Upside down (UpsideDownList.swift): the newest edge first, then the rows newest first, then
                             // what is at the top of the conversation; each flipped back the right way up.
                             LazyVStack(alignment: .leading, spacing: 0) {
-                                NewestEdgeMarker { atBottom = $0 }
+                                NewestEdgeMarker { atBottom = $0 }.id(UpsideDown.newest)
                                 ForEach(Timeline.rows(items).reversed()) { row in
                                     // A day's separator is part of the row under it: they come and move together.
                                     VStack(alignment: .leading, spacing: 0) {
@@ -478,6 +503,7 @@ struct ChannelView: View {
                         .onUserScroll {
                             if !positioned && !messages.isEmpty { userScrolled = true }
                             if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
+                            newRowsJump?.cancel()
                             olderStalled = false // M25: the reader scrolled: the top row may try again
                         }
                         .onScrollMotion { moving in
