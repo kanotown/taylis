@@ -1022,7 +1022,10 @@ final class Store {
     /// refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
     /// elsewhere) are dropped.
     func setThreadPage(filter: String, items: [ThreadItem], cursor: String?, append: Bool, pageSize: Int) {
-        if !append {
+        // A page for the filter the list has left (switched again while it was on its way): its rows are news, its
+        // cursor and gaps are not.
+        let stale = filter != threadsFilter
+        if !append && !stale {
             let listed = Set(items.map(\.parent.id))
             let oldest = items.count >= pageSize ? (items.last?.state.lastReplyAt ?? "") : ""
             for (id, entry) in threads where !listed.contains(id) && entry.state.following {
@@ -1033,10 +1036,21 @@ final class Store {
         for item in items {
             threads[item.parent.id] = ThreadEntry(parent: item.parent, state: item.state, latestReplies: item.latestReplies?.map { MessageState($0) })
         }
+        if stale { return }
         threadsFilter = filter
         threadsLoaded = true
         threadsCursor = cursor
         threadsHasMore = items.count >= pageSize
+    }
+
+    /// 「すべて」/「未読」 tapped: the list filters the rows held here at once (`threadList`), and the first page of the
+    /// new filter, fetched next, completes it. Before, the segment and the rows waited for that fetch (a network round
+    /// trip, testers: slow). 「さらに表示」 waits for the new page's cursor.
+    func selectThreadsFilter(_ filter: String) {
+        guard filter != threadsFilter else { return }
+        threadsFilter = filter
+        threadsCursor = nil
+        threadsHasMore = false
     }
 
     /// How many newest replies a threads-list card shows (the server's LATEST_REPLIES, THREADS.md §5).
