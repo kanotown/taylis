@@ -7,12 +7,12 @@
  * (never a title or a count) and stay when I change the cell (the server keeps them).
  */
 import { ArrowUpRight, Calendar, CaseSensitive, Check, CircleChevronDown, Clock, Hash, Link2, Loader2, Lock, Plus, SquareCheck, Tags, Trash2, Type, User, UserPen, X } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { DatabaseOut, DbDateValue, DbOption, DbProperty, DbPropType, DbRow, DbRowRef, DbSchemaOp } from "../api/types";
 import type { AppController } from "../state/app";
 import { getLocale, intlLocale, t, type MessageKey } from "../i18n";
-import { isPlainEnter } from "./ime";
+import { isImeKeyEvent, isPlainEnter } from "./ime";
 import { Avatar } from "./Avatar";
 import { PageIcon } from "./PageIcon";
 import { Button, cn, Field, Input, Modal } from "./primitives";
@@ -179,8 +179,12 @@ export function CellDisplay({ ctx, prop, row, wrap = false }: { ctx: Pick<DbCtx,
 
 // --- editors -------------------------------------------------------------------------------------------------------
 
-/** The editor of one cell (in a popover or the row page). `onDone` closes it. */
-export function CellEditor({ ctx, prop, row, onDone }: { ctx: DbCtx; prop: DbProperty; row: DbRow; onDone: () => void }) {
+/**
+ * The editor of one cell (in a popover or the row page). `onDone` closes it. `seed`: what was typed on the table's
+ * selected cell to start editing (added after a text's value; the option search's first words). `commitRef`: the table
+ * sets it to end a text edit at once (a click outside commits; the blur that may follow saves nothing more).
+ */
+export function CellEditor({ ctx, prop, row, onDone, seed = "", commitRef }: { ctx: DbCtx; prop: DbProperty; row: DbRow; onDone: () => void; seed?: string; commitRef?: { current: (() => void) | null } }) {
   const value = cellValue(prop, row);
   const set = (next: unknown, close = true) => {
     void ctx.setCell(row, prop.id, next);
@@ -190,12 +194,12 @@ export function CellEditor({ ctx, prop, row, onDone }: { ctx: DbCtx; prop: DbPro
     case "title":
     case "text":
     case "url":
-      return <TextEditor initial={(value as string | null) ?? ""} kind={prop.type} onCommit={(text) => set(prop.type === "title" ? text : text.trim() === "" ? null : text)} onCancel={onDone} />;
+      return <TextEditor initial={(value as string | null) ?? ""} seed={seed} kind={prop.type} commitRef={commitRef} onCommit={(text) => set(prop.type === "title" ? text : text.trim() === "" ? null : text)} onCancel={onDone} />;
     case "number":
-      return <TextEditor initial={value === null ? "" : String(value)} kind="number" onCommit={(text) => set(text.trim() === "" ? null : Number(text))} onCancel={onDone} />;
+      return <TextEditor initial={value === null ? "" : String(value)} seed={/^[0-9.-]$/.test(seed) ? seed : ""} kind="number" commitRef={commitRef} onCommit={(text) => set(text.trim() === "" ? null : Number(text))} onCancel={onDone} />;
     case "select":
     case "multi_select":
-      return <OptionEditor ctx={ctx} prop={prop} value={value} onSet={(next) => set(next, prop.type === "select")} />;
+      return <OptionEditor ctx={ctx} prop={prop} value={value} seed={seed} onSet={(next) => set(next, prop.type === "select")} />;
     case "date":
       return <DateEditor value={isToday(value) ? null : asDate(value)} onSet={(next) => set(next, false)} onDone={onDone} onToday={ctx.template ? () => set({ start: TODAY, end: null, time: false }) : null} />;
     case "person":
@@ -209,8 +213,9 @@ export function CellEditor({ ctx, prop, row, onDone }: { ctx: DbCtx; prop: DbPro
   }
 }
 
-function TextEditor({ initial, kind, onCommit, onCancel }: { initial: string; kind: "title" | "text" | "url" | "number"; onCommit: (text: string) => void; onCancel: () => void }) {
-  const [text, setText] = useState(initial);
+function TextEditor({ initial, seed = "", kind, commitRef, onCommit, onCancel }: { initial: string; seed?: string; kind: "title" | "text" | "url" | "number"; commitRef?: { current: (() => void) | null }; onCommit: (text: string) => void; onCancel: () => void }) {
+  const [text, setText] = useState(initial + seed);
+  // Enter, Esc, a click outside (commitRef) and the blur after it may all arrive: the first one ends the edit.
   const done = useRef(false);
   const commit = () => {
     if (done.current) return;
@@ -218,9 +223,21 @@ function TextEditor({ initial, kind, onCommit, onCancel }: { initial: string; ki
     if (text !== initial) onCommit(text);
     else onCancel();
   };
+  if (commitRef) commitRef.current = commit;
+  // The caret after the text (typing on a selected cell goes on after its value).
+  // (Once, when it appears: a new callback each render would move the caret back to the end on every key.)
+  const caretAtEnd = useCallback((node: HTMLInputElement | null) => {
+    if (!node || node.type === "number") return;
+    try {
+      node.setSelectionRange(node.value.length, node.value.length);
+    } catch {
+      /* not a text field */
+    }
+  }, []);
   return (
     <div className="p-1.5">
       <Input
+        ref={caretAtEnd}
         autoFocus
         aria-label={t("docs.db.editCell")}
         type={kind === "number" ? "number" : kind === "url" ? "url" : "text"}
@@ -233,7 +250,9 @@ function TextEditor({ initial, kind, onCommit, onCancel }: { initial: string; ki
           if (isPlainEnter(event)) {
             event.preventDefault();
             commit();
-          } else if (event.key === "Escape") {
+          } else if (event.key === "Escape" && !isImeKeyEvent(event)) {
+            // Cancels this edit only (the screen's own Esc waits for the next one).
+            event.preventDefault();
             done.current = true;
             onCancel();
           }
@@ -245,8 +264,8 @@ function TextEditor({ initial, kind, onCommit, onCancel }: { initial: string; ki
   );
 }
 
-function OptionEditor({ ctx, prop, value, onSet }: { ctx: DbCtx; prop: DbProperty; value: unknown; onSet: (next: unknown) => void }) {
-  const [q, setQ] = useState("");
+function OptionEditor({ ctx, prop, value, seed = "", onSet }: { ctx: DbCtx; prop: DbProperty; value: unknown; seed?: string; onSet: (next: unknown) => void }) {
+  const [q, setQ] = useState(seed);
   const multi = prop.type === "multi_select";
   const chosen = multi ? ((value as string[] | null) ?? []) : value ? [value as string] : [];
   const shown = prop.options.filter((o) => o.name.toLowerCase().includes(q.trim().toLowerCase()));

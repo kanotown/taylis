@@ -106,7 +106,7 @@ describe("the table", () => {
     const { controller } = fakeController(fake);
     render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
     await settle();
-    const second = document.querySelector("[data-row='r2'] [data-cell='done'] button") as HTMLElement;
+    const second = document.querySelector("[data-row='r2'] [data-cell='done'] [role='checkbox']") as HTMLElement;
     fireEvent.click(second);
     await settle();
     expect(fake.setWikiCells).toHaveBeenCalledWith("r2", { done: true }, expect.any(String));
@@ -138,7 +138,99 @@ describe("the table", () => {
     render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
     await settle();
     expect(screen.queryByText("新規")).toBeNull();
-    expect(document.querySelector("[data-row='r2'] [data-cell='done'] button")).toBeNull();
+    expect(document.querySelector("[data-row='r2'] [data-cell='done'] [role='checkbox']")).toBeNull();
+  });
+});
+
+describe("the table's selected cell (WIKI.md §29)", () => {
+  const box = (rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'] [data-cell='${propId}'] [data-cell-focus]`) as HTMLElement;
+  const td = (rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'] [data-cell='${propId}']`) as HTMLElement;
+  /** A mouse click as the browser sends it: pointerdown (where Radix closes an open editor), mousedown, click. */
+  const press = async (el: HTMLElement) => {
+    fireEvent.pointerDown(el);
+    fireEvent.mouseDown(el);
+    fireEvent.click(el);
+    await settle(20);
+  };
+  const editor = () => screen.queryByLabelText("値を編集") as HTMLInputElement | null;
+  const open = async () => {
+    const { api: fake } = api(TABLE);
+    const { controller } = fakeController(fake);
+    render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
+    await settle();
+    return fake;
+  };
+
+  it("a click elsewhere while editing saves the edit once and only selects the clicked cell; a second click edits it", async () => {
+    const fake = await open();
+    await press(box("r1", "title"));
+    expect(editor()?.value).toBe("Attention");
+    fireEvent.change(editor()!, { target: { value: "Attention!" } });
+    await press(box("r2", "title"));
+    expect(fake.setWikiCells).toHaveBeenCalledTimes(1);
+    expect(fake.setWikiCells).toHaveBeenCalledWith("r1", { title: "Attention!" }, expect.any(String));
+    expect(editor()).toBeNull();
+    expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
+    expect(td("r1", "title").getAttribute("aria-selected")).toBe("false");
+    // The second click on the selected cell edits it; Esc cancels without saving.
+    await press(box("r2", "title"));
+    expect(editor()?.value).toBe("BERT");
+    fireEvent.change(editor()!, { target: { value: "BERT?" } });
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    await settle(20);
+    expect(editor()).toBeNull();
+    expect(fake.setWikiCells).toHaveBeenCalledTimes(1);
+    expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("a checkbox clicked while another cell is edited is only selected; the next click flips it", async () => {
+    const fake = await open();
+    await press(box("r1", "title"));
+    expect(editor()).toBeTruthy();
+    await press(box("r2", "done"));
+    expect(editor()).toBeNull();
+    expect(fake.setWikiCells).not.toHaveBeenCalled(); // the title did not change: nothing to save
+    expect(td("r2", "done").getAttribute("aria-selected")).toBe("true");
+    await press(box("r2", "done"));
+    expect(fake.setWikiCells).toHaveBeenCalledWith("r2", { done: true }, expect.any(String));
+  });
+
+  it("arrows move the selection, Enter and typing edit it, Esc clears it", async () => {
+    const fake = await open();
+    await press(box("r1", "title"));
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    await settle(20);
+    expect(td("r1", "title").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(box("r1", "title"), { key: "ArrowDown" });
+    expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(box("r2", "title"));
+    fireEvent.keyDown(box("r2", "title"), { key: "ArrowDown" }); // the last line: stays
+    expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(box("r2", "title"), { key: "ArrowRight" });
+    expect(td("r2", "stage").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(box("r2", "stage"), { key: "Enter" });
+    await settle(20);
+    expect(screen.getByLabelText("選択肢を探す")).toBeTruthy();
+    fireEvent.keyDown(screen.getByLabelText("選択肢を探す"), { key: "Escape" });
+    await settle(20);
+    // Typing on a selected text cell edits it, going on after its value; Enter saves once.
+    fireEvent.keyDown(box("r2", "stage"), { key: "ArrowLeft" });
+    fireEvent.keyDown(box("r2", "title"), { key: "s" });
+    await settle(20);
+    expect(editor()?.value).toBe("BERTs");
+    const input = editor()!;
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input); // a late blur saves nothing more
+    await settle(20);
+    expect(fake.setWikiCells).toHaveBeenCalledTimes(1);
+    expect(fake.setWikiCells).toHaveBeenCalledWith("r2", { title: "BERTs" }, expect.any(String));
+    // An IME's key does not type into the cell; ⌘ shortcuts are left alone.
+    fireEvent.keyDown(box("r2", "title"), { key: "a", metaKey: true });
+    fireEvent.keyDown(box("r2", "title"), { key: "Process", keyCode: 229 });
+    expect(editor()).toBeNull();
+    const esc = fireEvent.keyDown(box("r2", "title"), { key: "Escape" });
+    expect(esc).toBe(false); // handled (the screen's Esc waits)
+    expect(td("r2", "title").getAttribute("aria-selected")).toBe("false");
   });
 });
 
