@@ -1249,13 +1249,14 @@ CREATE UNIQUE INDEX message_templates_user_name ON message_templates (owner_id, 
 CREATE TABLE workflows (
   id                   uuid PRIMARY KEY,
   name                 varchar(40) NOT NULL,              -- 1〜40。/名前 で開く
-  emoji                varchar(32),                       -- NULL なら ⚡
+  emoji                varchar(34),                       -- NULL なら ⚡。カスタム絵文字は `:名前:`（名前は 32 文字まで。0113 で 32 → 34）
   description          text NOT NULL DEFAULT '',          -- 200 文字まで
   channel_id           uuid NOT NULL REFERENCES channels(id),  -- 送り先 (公開・非公開)
   offered_channel_ids  uuid[] NOT NULL DEFAULT '{}',      -- メニューに出すチャンネル (送り先を含む、最大 10)
   fields               jsonb NOT NULL DEFAULT '[]',       -- [{key, label, type, required, help, options, multiple, default}]、最大 20
   template             text NOT NULL,                     -- 1〜4000。{{key}} を値で置き換える
   enabled              boolean NOT NULL DEFAULT true,
+  confirm              boolean NOT NULL DEFAULT true,     -- 実行するときに確認する（false：項目の無いワークフローは選んだらすぐ投稿。移行 0112、WORKFLOWS.md §11）
   created_by           uuid NOT NULL REFERENCES users(id),
   created_at, updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at           timestamptz                        -- 論理削除 (投稿の workflow_id が残る)
