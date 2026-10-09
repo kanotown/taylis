@@ -17,11 +17,16 @@
  * turn into, duplicate, move, delete; ＋ opens the `/` menu on a new line under it), ⌘⇧↑ / ⌘⇧↓ (ui/pageEditorBlocks.ts);
  * table cells edited in place with the table's tools above it (ui/pageEditorTable.ts); HTML from Notion, Word and
  * Google Docs made into callouts, toggles, tables, list lines and checklists (ui/pagePaste.ts).
+ *
+ * M154 (WIKI.md §30.1): Esc selects the block (ui/pageEditorSelection.ts: the arrows, Shift, ⌘A, Enter, Delete, ⌘D,
+ * the clipboard; ⌘V pastes after the blocks), Shift and the handle extend the selection, the handle's menu has 「選択」;
+ * Enter in the title puts the caret at the start of the body (`focusStart`), ↑ on the body's first line goes back
+ * (`onTitle`).
  */
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Columns3, Rows3, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Columns3, Rows3, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, BoxSelect, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
@@ -48,7 +53,8 @@ import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
 import { cellPlace, editTable, type TableEdit } from "./pageEditorTable";
 import { blockPosAt, type BlockUnit, canPlace, deleteUnit, duplicateUnit, lineAfter, moveUnit, stepBlocks, unitAt } from "./pageEditorBlocks";
 import { applyMerge, caretLine, createPageDocument, placeCaretAtLine } from "./pageEditorDoc";
-import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, SourceMap, untied } from "./pageEditorSchema";
+import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, sliceMarkdown, SourceMap, untied } from "./pageEditorSchema";
+import { BlockSelection, clearedSelection, extendTo, pasteAfterBlocks } from "./pageEditorSelection";
 import { PageIcon } from "./PageIcon";
 import { pageHtmlFromPaste } from "./pagePaste";
 import { PageLinkChip } from "./PageLinkChip";
@@ -58,10 +64,12 @@ import { type MessageKey, t } from "../i18n";
 /** How long typing pauses before the document is written to Markdown (the save loop then waits its own 2 s). */
 export const WRITE_DELAY_MS = 300;
 
-/** What the page asks of the editor (switching to Markdown: the text written now, the caret's line). */
+/** What the page asks of the editor (switching to Markdown: the text written now, the caret's line; Enter in the title). */
 export interface PageEditorHandle {
   commit(): void;
   caretLine(): number;
+  /** M154: the caret at the start of the body (the first text in it; the body always has a line). */
+  focusStart(): void;
 }
 
 type Menu =
@@ -72,13 +80,15 @@ type Menu =
 const SLASH_AT = /(?:^|\s)\/([^\s/]{0,20})$/u;
 const LINK_AT = /(!?)\[\[([^[\]\n]{0,80})$/;
 
-export default function PageEditor({ controller, saver, links, initialLine = null, handle, className }: {
+export default function PageEditor({ controller, saver, links, initialLine = null, handle, onTitle, className }: {
   controller: AppController;
   saver: CanvasSaver<SavedDoc>;
   links: DocEditorLinks;
   /** The body line to put the caret on (coming from the Markdown editor); null: the start. */
   initialLine?: number | null;
   handle?: MutableRefObject<PageEditorHandle | null>;
+  /** M154: ↑ on the body's first line (← at its very start): the page puts the caret at the end of its title. */
+  onTitle?: () => void;
   className?: string;
 }) {
   const store = controller.store;
@@ -133,8 +143,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   commitRef.current = commit;
 
   // The page around the nodes (portals, dialogs); read through a ref so the editor is built once.
-  const live = useRef({ controller, links });
-  live.current = { controller, links };
+  const live = useRef({ controller, links, onTitle });
+  live.current = { controller, links, onTitle };
   const host = useMemo<PageEditorHost>(() => ({
     portals,
     sources,
@@ -161,6 +171,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       void saver.flush();
     },
     link: () => openLink(),
+    focusTitle: () => live.current.onTitle?.(),
     text: {
       placeholder: t("docs.wysiwyg.placeholder"),
       editTable: t("docs.wysiwyg.editTable"),
@@ -190,8 +201,10 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         scrollThreshold: { top: 60, bottom: 120, left: 0, right: 0 },
         scrollMargin: { top: 60, bottom: 120, left: 0, right: 0 },
         handleKeyDown: (view, event) => keyDown(event, view.composing),
-        handlePaste: (view, event) => {
+        handlePaste: (view, event, slice) => {
           const files = Array.from(event.clipboardData?.files ?? []);
+          // M154: on a block selection the clipboard's blocks go after the selected ones.
+          if (files.length === 0 && pasteAfterBlocks(view, slice)) return true;
           if (files.length === 0 && view.state.selection.$from.parent.type.name === "tableCell") {
             // M151: a cell holds one line: what is pasted, its lines joined.
             const text = (event.clipboardData?.getData("text/plain") ?? "").replace(/\s*\r?\n\s*/g, " ").trim();
@@ -212,11 +225,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         },
         // Text pasted is read as page Markdown (blocks, marks, links); the editor's own copies keep their HTML.
         clipboardTextParser: (text) => markdownSlice(editorRef.current!, text, isEmoji),
-        // What a copy puts on the clipboard as text: the Markdown of what was selected.
-        clipboardTextSerializer: (slice) => {
-          const doc = editorRef.current!.schema.topNodeType.create(null, slice.content.childCount > 0 && slice.content.firstChild?.isInline ? editorRef.current!.schema.nodes.paragraph!.create(null, slice.content) : slice.content);
-          return editorMarkdown(doc, new SourceMap()).text;
-        },
+        // What a copy puts on the clipboard as text: the Markdown of what was selected (whole untouched blocks as read).
+        clipboardTextSerializer: (slice) => sliceMarkdown(editorRef.current!, slice, sources),
         // M151: Notion, Word, Google Docs and web pages: callouts, toggles, tables, lists, checkboxes (ui/pagePaste.ts).
         transformPastedHTML: (html) => pageHtmlFromPaste(html, containerDepth(editorRef.current)),
         handleDOMEvents: {
@@ -224,7 +234,9 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
             saver.compositionEnded();
             return false;
           },
-          blur: () => {
+          blur: (view) => {
+            // M154: a block selection ends with the focus (a click elsewhere, the title); the caret goes to its first block.
+            if (view.state.selection instanceof BlockSelection) view.dispatch(view.state.tr.setSelection(clearedSelection(view.state)));
             commitRef.current();
             void saver.flush();
             return false;
@@ -251,7 +263,18 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     if (initialLine !== null && initialLine > 0) placeCaretAtLine(editor, sources, initialLine);
     editor.commands.focus(initialLine !== null && initialLine > 0 ? undefined : "start");
     element.setAttribute("data-open-ms", String(Math.round(performance.now() - started)));
-    if (handle) handle.current = { commit: () => commitRef.current(), caretLine: () => caretLine(editor, sources) };
+    if (handle) {
+      handle.current = {
+        commit: () => commitRef.current(),
+        caretLine: () => caretLine(editor, sources),
+        focusStart: () => {
+          const { doc } = editor.state;
+          const first = Selection.findFrom(doc.resolve(0), 1, true) ?? Selection.atStart(doc);
+          editor.view.dispatch(editor.state.tr.setSelection(first).scrollIntoView());
+          editor.commands.focus();
+        },
+      };
+    }
     // The loop must not put a merged body in while a composition is open or an edit waits to be written.
     saver.canReplace = () => {
       const ok = !editor.view.composing && !pending.current;
@@ -362,10 +385,10 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       }
     }
     if (event.key === "Escape") {
-      // Leaves the editor only (the screen's Esc would switch back to the messages).
+      // M154: selects the block (the extension: once more its container, then leaves the editor). Never the screen's Esc
+      // (that would switch back to the messages).
       event.stopPropagation();
-      editorRef.current?.commands.blur();
-      return true;
+      return false;
     }
     return false;
   }
@@ -416,7 +439,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     const tr = editorState.tr;
     const textblock = $from.parent;
     let pos: number;
-    if (textblock.type.name === "paragraph" && textblock.content.size === 0) {
+    if (editorState.selection instanceof BlockSelection) {
+      // M154: after the selected blocks.
+      pos = editorState.selection.to;
+      tr.insert(pos, node);
+    } else if (textblock.type.name === "paragraph" && textblock.content.size === 0) {
       pos = $from.before();
       tr.replaceWith(pos, $from.after(), node);
     } else {
@@ -722,6 +749,13 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     const editor = editorRef.current;
     if (!editor || !hovered || event.button !== 0) return;
     event.preventDefault();
+    if (event.shiftKey) {
+      // M154: Shift and the handle extend a block selection to this block (or start one on it).
+      const next = extendTo(editor.state, hovered.pos) ?? BlockSelection.create(editor.state.doc, hovered.pos);
+      editor.view.dispatch(editor.state.tr.setSelection(next));
+      editor.commands.focus();
+      return;
+    }
     const unit = unitAt(editor.state.doc, hovered.pos);
     const start = { x: event.clientX, y: event.clientY };
     const button = event.currentTarget;
@@ -766,7 +800,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   }
 
   /** What the handle's menu does with its block. */
-  function blockAction(action: "duplicate" | "delete" | "up" | "down" | SlashKey | "text") {
+  function blockAction(action: BlockMenuAction) {
     const editor = editorRef.current;
     const session = blockMenu;
     setBlockMenu(null);
@@ -774,7 +808,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     const node = editor.state.doc.nodeAt(session.pos);
     if (!node) return;
     const unit = unitAt(editor.state.doc, session.pos);
-    if (action === "duplicate") editor.view.dispatch(duplicateUnit(editor.state, unit, untied));
+    if (action === "select") editor.view.dispatch(editor.state.tr.setSelection(BlockSelection.create(editor.state.doc, session.pos)));
+    else if (action === "duplicate") editor.view.dispatch(duplicateUnit(editor.state, unit, untied));
     else if (action === "delete") editor.view.dispatch(deleteUnit(editor.state, unit));
     else if (action === "up" || action === "down") {
       editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(session.pos + 1))));
@@ -1171,8 +1206,10 @@ const TURN_INTO: ReadonlyArray<{ key: SlashKey | "text"; label: MessageKey }> = 
 /** ⌘⇧ (macOS) or Ctrl+Shift+ (the others), before an arrow. */
 const moveKeys = () => (modKey() === "⌘" ? "⌘⇧" : "Ctrl+Shift+");
 
-/** The ⋮⋮ handle's menu: turn into (lines), duplicate, delete, move up / down. */
-function BlockMenu({ node, canWrap, onPick }: { node: PMNode | null; canWrap: boolean; onPick: (action: "duplicate" | "delete" | "up" | "down" | SlashKey | "text") => void }) {
+type BlockMenuAction = "select" | "duplicate" | "delete" | "up" | "down" | SlashKey | "text";
+
+/** The ⋮⋮ handle's menu: turn into (lines), select (M154), duplicate, delete, move up / down. */
+function BlockMenu({ node, canWrap, onPick }: { node: PMNode | null; canWrap: boolean; onPick: (action: BlockMenuAction) => void }) {
   const line = !!node && ["paragraph", "heading", "listLine", "codeBlock", "mathBlock"].includes(node.type.name);
   const item = "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-panel focus-visible:bg-panel focus-visible:outline-none";
   const menu = useRef<HTMLDivElement>(null);
@@ -1194,7 +1231,8 @@ function BlockMenu({ node, canWrap, onPick }: { node: PMNode | null; canWrap: bo
           <div className="my-1 border-t border-line" />
         </>
       )}
-      <button type="button" role="menuitem" className={item} onClick={() => onPick("duplicate")}><Copy size={14} /> {t("docs.wysiwyg.duplicate")}</button>
+      <button type="button" role="menuitem" className={item} onClick={() => onPick("select")}><BoxSelect size={14} /> {t("docs.wysiwyg.select")}<span className="ml-auto text-xs text-muted">Esc</span></button>
+      <button type="button" role="menuitem" className={item} onClick={() => onPick("duplicate")}><Copy size={14} /> {t("docs.wysiwyg.duplicate")}<span className="ml-auto text-xs text-muted">{modKey()}D</span></button>
       <button type="button" role="menuitem" className={item} onClick={() => onPick("up")}><ArrowUp size={14} /> {t("docs.wysiwyg.moveUp")}<span className="ml-auto text-xs text-muted">{moveKeys()}↑</span></button>
       <button type="button" role="menuitem" className={item} onClick={() => onPick("down")}><ArrowDown size={14} /> {t("docs.wysiwyg.moveDown")}<span className="ml-auto text-xs text-muted">{moveKeys()}↓</span></button>
       <button type="button" role="menuitem" className={cn(item, "text-danger")} onClick={() => onPick("delete")}><Trash2 size={14} /> {t("docs.wysiwyg.deleteBlock")}</button>

@@ -393,6 +393,9 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .page-editor .pe-toggle-title { font-weight: 500; min-height: 1.75rem; }
 .page-editor .pe-atom { margin: 6px 0; border-radius: 8px; }
 .page-editor .ProseMirror-selectednode { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
+/* M154: the selected blocks (Esc), tinted with the accent; the text caret is hidden by ProseMirror-hideselection. */
+.page-editor .pe-selected { background-color: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 4px; }
+.page-editor .pe-callout.pe-selected, .page-editor .pe-table.pe-selected, .page-editor .pe-atom.pe-selected, .page-editor .pe-hr.pe-selected, .page-editor .pe-toggle.pe-selected, .page-editor pre.pe-selected { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
 .page-editor .pe-inline-atom { display: inline; }
 .page-editor .rich-math { font-family: var(--font-code); font-size: 0.9em; color: var(--accent); }
 .page-editor .rich-math::before, .page-editor .rich-math::after { content: "$"; color: var(--muted-fg); }

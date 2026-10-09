@@ -10,6 +10,8 @@
  *
  * M151 (WIKI.md §28): tables are rows of cells edited in place (ui/pageEditorTable.ts; 「表を編集」 still opens the
  * table dialog), ⌘⇧↑ / ⌘⇧↓ move blocks (ui/pageEditorBlocks.ts).
+ * M154 (WIKI.md §30.1): Esc selects blocks (ui/pageEditorSelection.ts); ↑ on the first line and ← at the very start
+ * go to the page's title; Backspace at the very start does nothing.
  */
 import { Extension, InputRule, type JSONContent, Node, textblockTypeInputRule, wrappingInputRule, type Editor, type NodeViewRenderer } from "@tiptap/core";
 import { Blockquote } from "@tiptap/extension-blockquote";
@@ -20,13 +22,14 @@ import { Paragraph } from "@tiptap/extension-paragraph";
 import { Text } from "@tiptap/extension-text";
 import { UndoRedo } from "@tiptap/extensions/undo-redo";
 import { Fragment, type Node as PMNode, type NodeType, Slice } from "@tiptap/pm/model";
-import { NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { AddMarkStep, RemoveMarkStep, ReplaceStep } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { ReactNode } from "react";
 
 import { calloutTone, listMarker } from "./markdown";
 import { stepBlocks } from "./pageEditorBlocks";
+import { BlockSelectionKeys } from "./pageEditorSelection";
 import { stepCell, tableShape, verticalCell } from "./pageEditorTable";
 import { listRun, pageToDoc, type RichNode, serializePage, type SourceView } from "./pageMarkdown";
 import { InlineCode, OnlyBold, OnlyItalic, OnlyLink, OnlyStrike } from "./RichEditor";
@@ -87,6 +90,8 @@ export interface PageEditorHost {
   save(): void;
   /** ⌘K: the link of the selection. */
   link(): void;
+  /** M154: ↑ on the body's first line (or ← at its very start): the caret to the end of the page's title. */
+  focusTitle(): void;
   text: { placeholder: string; editTable: string; raw: string; toggleOpen: string; toggleClose: string; checkbox: string; changeIcon: string; untitledToggle: string };
   /** Whether the editor may change things (false: read only). */
   editable(): boolean;
@@ -864,7 +869,24 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
           return editor.commands.setNode("paragraph");
         }
         if (node.type.name === "heading") return editor.commands.setNode("paragraph");
-        return false;
+        // M154: at the very start of the page there is nothing to join with (the browser must not touch the DOM).
+        return $from.depth === 1 && $from.pos === Selection.atStart(editor.state.doc).from;
+      },
+      // M154: ↑ on the first line of the page (the first block all the way in), ← at its very start: the title.
+      ArrowUp: () => {
+        const { selection } = editor.state;
+        if (!(selection instanceof TextSelection) || !selection.empty) return false;
+        const { $from } = selection;
+        for (let d = 0; d < $from.depth; d++) if ($from.index(d) !== 0) return false;
+        if (!editor.view.endOfTextblock("up")) return false;
+        host.focusTitle();
+        return true;
+      },
+      ArrowLeft: () => {
+        const { selection, doc } = editor.state;
+        if (!(selection instanceof TextSelection) || !selection.empty || selection.from !== Selection.atStart(doc).from) return false;
+        host.focusTitle();
+        return true;
       },
       "Shift-Enter": () => {
         const above = verticalCell(editor.state, -1);
@@ -989,6 +1011,7 @@ export function pageExtensions(host: PageEditorHost) {
       shouldAutoLink: (url) => /^https?:\/\//i.test(url),
     }),
     ListMarkers,
+    BlockSelectionKeys.configure({ untie: untied, editable: () => host.editable() }),
     PageKeys.configure({ host }),
     UndoRedo,
     CaretPlaceholder.configure({ host }),
@@ -1042,6 +1065,17 @@ export class SourceMap {
 /** The Markdown of the editor's document (untouched blocks as they were read). */
 export function editorMarkdown(doc: PMNode, sources: SourceMap): { text: string; starts: number[] } {
   return serializePage(doc, sources.view());
+}
+
+/**
+ * What a copy puts on the clipboard as text: the Markdown of the slice. Whole blocks are the nodes of the document, so
+ * untouched ones are written as they were read (M154: blocks selected and copied keep their bytes); text cut out of a
+ * line is a new paragraph in the canonical form.
+ */
+export function sliceMarkdown(editor: Editor, slice: Slice, sources: SourceMap): string {
+  const { schema } = editor;
+  const content = slice.content.childCount > 0 && slice.content.firstChild?.isInline ? schema.nodes.paragraph!.create(null, slice.content) : slice.content;
+  return editorMarkdown(schema.topNodeType.create(null, content), sources).text;
 }
 
 /** Text pasted into the page editor: read as page Markdown (new blocks, tied to nothing). */
