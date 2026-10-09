@@ -685,7 +685,7 @@ export function Composer({
                 </>
               ) : hit.kind === "workflow" ? (
                 <>
-                  <WorkflowEmoji workflow={hit.workflow} className="self-center" />
+                  <WorkflowEmoji workflow={hit.workflow} className="self-center" controller={controller} />
                   <strong className="shrink-0 font-mono">{/\s/.test(hit.workflow.name) ? `/wf ${hit.workflow.name}` : `/${hit.workflow.name}`}</strong>
                   <span className="min-w-0 flex-1 truncate text-muted">{hit.workflow.description || t("composer.workflow")}</span>
                   {!hit.workflow.can_run && <span className="ml-auto shrink-0 text-[10px] text-warning">{t("composer.unavailable")}</span>}
