@@ -2860,3 +2860,85 @@ fonts/          KaTeX の woff2 20 個（296 KB）
   アイコンの検索が名前だけになる。実機の読み込み時間を見て決める。
 - `editor.js` は 1 つのファイル（1.5 MB）。WebView の JIT は遅延コンパイルなので立ち上がりは 100 ms 前後だが、実機で測る。
 - カスタム絵文字の文字のピル（`kind: "text"`）は色の名前を `color` で受けるだけ（Desktop の `TextEmojiPill` を使う）。
+
+### 30.5 M153a：Android の試作（同梱エディタの組み込みと判定、2026-10-10）
+
+§22.7 の表「M153a 試作」の Android の分。§30.3 の成果物を Android アプリに同梱し、ページの編集を WebView の同じエディタで行う
+最小の試作を作って、エミュレータで IME・選択・キーボード・10 万字・初回の表示・画像・テーマ・回転・メモリを測った。方言・サーバ・API・
+Desktop の成果物の変更なし。端末ごとの設定（既定はオフ）の裏にあり、Markdown のエディタが既定のまま。
+
+**部品**
+
+| ファイル | 役目 |
+| --- | --- |
+| `app/build.gradle.kts`（`copyMobileEditor`） | `apps/shared/mobile-editor/dist` を生成物の assets の根（`build/generated/mobileEditor/editor/`、APK では `assets/editor/`）に写すタスク。variant API の `sources.assets.addGeneratedSourceDirectory` で全 variant の assets に入るので、assets を読む全タスク（merge・lint・package）がこのタスクに依存し、`src/` には何も書かない（コミットのしようがない。`src/main/assets` に写すと Gradle 9 が lint のモデルの暗黙の依存を断る）。dist が無ければ作り方（`cd apps/desktop && npm ci && npm run build:mobile-editor`）を書いて失敗する。依存に `androidx.webkit`（`WebViewAssetLoader`）を足した |
+| `editor/EditorBridgeMessages.kt` | §30.3 の全メッセージの kotlinx.serialization のモデル（`NativeMessage` / `WebMessage` の sealed class、`type` で見分ける）、`EditorTheme`・`EditorCommand` の enum、`EditorBridgeCodec`（`providePages.query` の null は書き出す：エディタは「鍵が無い」ではなく `null` を見る。`load.title` などの null の既定は書かない）、`receiveCall`（JSON を JS の文字列リテラル 1 つにして `window.taylisEditor.receive(...)`。`"`・`\`・改行・U+2028 / U+2029・制御文字をエスケープ） |
+| `editor/EditorBridge.kt` | 運び役。アプリ → エディタは `EditorPort.evaluate`（`WebView.evaluateJavascript`）、エディタ → アプリは `post(json)`（`TaylisBridge` の JavascriptInterface。WebView の JS スレッドで来るので main looper に順に渡す）。読めないメッセージは `refused` へ（投げない） |
+| `editor/EditorSession.kt` | 1 回の編集と `CanvasSaver` の間。`ready` → `setTheme`・`setViewport {0}`・`providePeople`・`provideEmoji`・`providePages {null, 木の全部}`・`load`（人と絵文字は本文の前：チップの名前は読むときに決まる）。`changed` → `saver.edit`。`saver.revision` が動いて `text` が最後に見た / 書いた本文と違えば `replace`（マージ・相手の版・閲覧でのチェック）。`requestBody` → `bodyRequested` で `edit` + `flush`（離れる・背景）/ `edit` だけ（Markdown へ）と `caretLine`。`needPages` は木から、`pickImage`・`openLink`・`log`・版違いはアプリへ |
+| `ui/MobileEditor.kt` | `MobileEditorHost`：ページの画面が開いたときに 1 つ作って `https://appassets.androidplatform.net/editor/index.html` を読ませておく（温め）。`shouldInterceptRequest` で `/editor/*` は `AssetsPathHandler`（接頭辞を剥がして assets の根から引くので `/` に登録し、`/editor/` だけ通す）、`/attachment/<uuid>` と `/emoji/<uuid>` は `AppController.editorImage` / `editorEmojiImage`（セッション付きで API から取り、画像のときだけ。種類は先頭バイトで判定）、それ以外は 404。`shouldOverrideUrlLoading` は bundle 以外を止める。`onRenderProcessGone` で WebView を捨てて `failed`（画面は Markdown に戻る）。画像は `LruCache`（16 MB、ホストごと）。`MobileEditor` composable：`AndroidView` に WebView、その下にアプリの行（元に戻す・やり直す・`@`・画像・キーボードを閉じる）、`imePadding()`。`WysiwygEditing`（設定と、ページの最後の選択） |
+| `ui/DocPage.kt` | 設定がオンで編集できるページなら、画面を開いたときにホストを作る。編集中は 「見たまま | Markdown」 のセグメント（Desktop と同じ）。Markdown へは `requestBody`（flush なし）で本文と行をもらってから、見たままへは Markdown の欄の行（`EditorCaretLink`）を `load.caretLine` に。ホストが壊れたら Markdown に戻して通知。`CanvasEditorField` に `caret`（開く行・今の行） |
+| `ui/YouScreens.kt`・`AppController` | 「表示」の 「ドキュメント」 に 「ドキュメントの見たまま編集（試作）」 のスイッチ（端末だけ、既定オフ、`docs_wysiwyg`） |
+| `test/EditorBridgeTest.kt`（8）・`test/EditorSessionTest.kt`（13） | `bridge_messages.json` の全メッセージ（ネイティブ → エディタは復号して符号化し直して同じ JSON、エディタ → ネイティブは型まで、断る例は断る、未知の鍵は無視）、enum の名前、JS のリテラル（JSON としても読める）、別スレッドからの順序。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：`ready` の順と中身、`changed` → 2 秒後の保存と「自分の本文は返さない」、マージ → `replace`、閲覧のチェック → `replace`、`load` の前は `replace` しない、`requestBody`（flush あり / なし、`load` の前は即答）、`caret` と WebView の再起動、ページ・人・画像・リンク・ログ・コマンド・テーマ・blur、`EditorCaretLink`、画像の種類 |
+
+**設定と切り替え**：「自分」→「表示」→「ドキュメント」→ 「ドキュメントの見たまま編集（試作）」（既定オフ、この端末だけ）。オンにすると、
+編集できるページの編集画面に 「見たまま | Markdown」 が出て、既定は見たまま。選んだ方は端末に残る（`docs_wysiwyg_choice`）。オフなら
+今までどおり Markdown だけ。WebView が使えない・落ちた・同梱の版が合わないときは Markdown に戻して通知を出す。
+
+**キーボードの上のツールバーの選択**：書式の行は同梱エディタ自身の行（`env.toolbar: "bottom"`、WebView の下端に固定）をそのまま使い、
+アプリは Compose の 1 行（元に戻す・やり直す・`@`・画像・キーボードを閉じる）をその下に足した。理由：(1) 書式の行は WebView の中に
+あるので、押してもフォーカスが WebView を離れず Gboard が閉じない。マークの ON / OFF の状態を出せる（橋には `selection` が無い）。
+Desktop・iOS と同じ道具で、狭い幅は 「…」 に畳む。(2) 元に戻す・やり直す・写真・キーボードを閉じるは Web の行に無く、ネイティブの
+機能（フォトピッカー、IME を閉じる）なので Compose。Compose のボタンはタッチでフォーカスを取らないので Gboard は閉じない
+（計測：キーボードを出したまま `@` を押す → IME は出たまま、エディタにフォーカスが残り、`@` が入って候補が開く）。縦向きで
+2 行は収まるが、横向きではエディタがほぼ消える（下の制限）。
+
+**計測**（エミュレータ ChikuwaChat_Pixel_9、API 36 Play arm64、SwiftShader、Gboard 18.4.1、M5 Max。実機ではない：数字は上限の目安。
+Chrome DevTools（デバッグビルドの `setWebContentsDebuggingEnabled`）と `MobileEditor` の logcat で測った）
+
+| 項目 | 結果 |
+| --- | --- |
+| ページの立ち上がり（WebView の作成 → `ready`） | 冷えたレンダラ 310 ms（アプリ起動後の最初のページ）、温まった後 36〜69 ms。画面を開いたときに作るので、「編集」を押すときには済んでいる |
+| 本文の表示（Kotlin の `load` → 最初の `height`、端から端） | 見本のページ（235 字）50〜67 ms。10 万字（1,609 行、100,023 px）711 ms（そのプロセスでの初回）、回転後の読み直し 394〜399 ms |
+| 10 万字の `load` → 次のフレーム（ページ内、§30.3 の `measureLoad` と同じ） | 242〜250 ms（ヘッドレス Chrome の M5 Max は 77〜142 ms）。§22.7 の目標 300 ms の中 |
+| 打鍵（10 万字のページ、CDP `Input.insertText` で日本語 + 英数 22 字） | 取引から次のフレームまで 中央値 6.4 ms・p90 12.8 ms・最大 16.2 ms（60 Hz の 1 フレーム以内） |
+| スクロール（10 万字、フリック 3 回） | 222 フレーム、中央値 17 ms・p90 17 ms・最大 50 ms、50 ms 超なし |
+| メモリ（PSS） | アプリ 223 MB（見本を編集中）→ 258 MB（10 万字）。WebView のレンダラ（`sandboxed_process`）106 MB → 174 MB |
+| 日本語の IME（12 キー、フリック） | 「にほんご」が行内で変換中（下線）、候補の列（日本語 / 日本語は / ニホンゴ …）がキーボードの上。候補で「日本語」。「あ」2 回 → 「い」の変換中、変換中の Backspace は消えて変換が終わる（残骸なし）、「か」+ Enter で確定。WebView は `CursorAnchorInfo`（変換中の文字と位置）を IME に返している |
+| 日本語の IME（QWERTY、ローマ字） | "nihongo" → 「にほんご」、スペースで変換、Enter で「日本語」。重複・欠けなし |
+| 変換中の `replace` | 「て」を変換中に別の端末が「> 引用」の行を変える → 保存がマージされ `replace` が来るが、エディタは保留（相手の行は出ない）→ Enter で確定した直後に出る。「て」はそのまま |
+| 選択のハンドルと OS のメニュー | 長押しで OS のハンドルと操作メニュー（翻訳 / 切り取り / コピー / すべて選択 / ⋮）。**浮くツールバー（M155）はその下に隠れる**（下の制限） |
+| キーボードの出し入れ | 2 つの行がキーボードの上に付いて動く（`imePadding`：ページの枠は自分で IME の分を足す。MainScreen は scaffold の inset を消費している）。JS の `focus()` ではキーボードは出ない（Android の WebView は操作のない focus で IME を出さない）：本文をタップで出る |
+| テーマ | 「表示」の設定（端末に合わせる / ライト / ダーク）に `setTheme` で追う。ライト `rgb(255,255,255)`、ダーク `rgb(23,24,29)` |
+| 回転 | Activity が作り直され、ホストも作り直して本文を読み直す（`ready` 48〜69 ms、10 万字 394〜399 ms）。編集中と 見たまま / Markdown の選択は残る（`rememberSaveable`）。カーソルの位置は失う |
+| 画像 | アプリの行の「画像」→ フォトピッカー → `uploadCanvasImage`（pending）→ `insertImage` → `![](attachment:<id>)` が本文に入り、`https://appassets.androidplatform.net/attachment/<id>` を `shouldInterceptRequest` がセッション付きで返して表示（1080 × 2424 の写真）。保存した本文にその行がある |
+| 保存の状態機械 | 10 万字に 22 字足すとサーバの 100,000 字の上限で `BLOCKED` → 「保存できませんでした」の帯と「本文をコピー」（Markdown と同じ経路） |
+| 見たまま ↔ Markdown | 「2 段目」にカーソル → Markdown は 5 行目で開く → 見たままに戻すと「2 段目」。`load` の後の `focus` を送らないようにして通った（下） |
+
+試作の途中で直したもの：`AssetsPathHandler` は接頭辞を剥がして assets の根から引く（`/editor/` に登録すると `index.html` を根に探して
+`ERR_INVALID_RESPONSE`）。ページの枠は IME の分を自分で足す（MainScreen は scaffold の inset を消費する。足さないと 2 つの行が
+キーボードの下に隠れる）。`load` の後の `focus` は送らない：Android の WebView ではフォーカスの無いエディタへの `focus()` が
+DOM のカーソルを先頭に置き（`load.caretLine` で置いたカーソルが消える）、キーボードも出ない。英語の 「WYSIWYG | Markdown」 が
+折り返したので 1 行に。
+
+**判定**（§22.7 の表「M153a 試作」の基準：「Markdown の編集より明らかに良い・壊れない」）
+
+Android は**基準を満たす**（エミュレータの範囲で）。日本語の IME は 12 キーも QWERTY も、行内の変換・候補・変換中の削除・確定が
+正しく、重複も欠けも無い。変換中のマージは保留されて確定後に入る。10 万字は 0.25 秒で立ち上がり、打鍵は 1 フレーム、スクロールは
+60 Hz。見たままの編集は Markdown の編集より明らかに良い（表・コールアウト・画像・チェックがその場で見え、`/`・`[[`・`@` が
+使える）。壊れない：保存・マージ・衝突・上限・オフラインはネイティブの状態機械のまま。M153c（Android の仕上げ）に進んでよい。
+残るのは実機（Pixel / 低い端末）の数字と、下の制限。
+
+**制限（M153c へ）**
+
+- OS の選択メニューが浮くツールバー（M155）を隠す。同梱エディタは `pointer: coarse` で浮くツールバーを出さない（書式は下の行にある）か、
+  選択の下に出す（Desktop の成果物の変更。iOS と共通）。
+- 同梱エディタの `focus` はフォーカスの無いときに選択を保つべき（`editor.commands.focus(selection.from)`）。それまで Android は送らない。
+- 横向きでは上の帯 + 2 つの行 + 下のナビでエディタがほぼ消える（10 万字の帯つきで 36 CSS px）。横向きではアプリの行を隠す、または
+  書式の行だけにする。
+- 回転でカーソルの位置を失う（`caret` をホストに残して `load.caretLine` に渡せば済む）。
+- 画像のキャッシュはホストごと（ページを開き直すと取り直す）。`LruCache` 16 MB。
+- `height` と `focusTitle` は使っていない。`needPeople` は毎回全部を送り直す。
+- 子ページ・データベース・埋め込みの作成は出ない（§30.3 のとおり）。既にある埋め込みはカード。
+- CI：`.github/workflows/ci.yml` の android ジョブは bundle を作らないので、`apps/desktop` で `npm ci && npm run build:mobile-editor` を
+  先に走らせる 1 手（または desktop ジョブの成果物を渡す）が要る（この試作では ci.yml を触っていない）。
+- エミュレータ（SwiftShader）の数字で、実機は未計測。Gboard 以外の IME（ATOK・Samsung）も未計測。
