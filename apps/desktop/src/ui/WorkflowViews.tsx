@@ -143,7 +143,7 @@ export function ChannelWorkflowsDialog({ controller, channel, onClose, manage = 
   const [running, setRunning] = useState<WorkflowOut | null>(null);
   const canManage = manage && canManageWorkflows(channel, controller.isAdmin);
   const [managing, setManaging] = useState(false);
-  if (running) return <WorkflowRunDialog controller={controller} workflow={running} here={channel.id} onClose={onClose} />;
+  if (running) return <WorkflowRunDialog key={running.id} controller={controller} workflow={running} here={channel.id} onClose={onClose} />;
   return (
     <Modal onClose={onClose} title={t("composer.workflow")} description={managing ? t("workflow.manageDescription", { name: channel.name ?? "" }) : t("workflow.useDescription")} className="w-[560px]">
       {canManage && (
@@ -173,13 +173,18 @@ export function canManageWorkflows(channel: ChannelState | undefined, isAdmin: b
  * Fills and posts one workflow. One idempotency key per open form: pressing 投稿 again after a failure never posts twice.
  * A workflow that does not ask first (`confirm` off and no fields, WORKFLOWS.md §11) posts as soon as this opens and
  * shows nothing; only when that fails does the dialog appear, with the reason and the same key for 投稿.
+ *
+ * The state is made once per mount, so a site that can swap the workflow keys this by `workflow.id`: the next
+ * workflow gets its own form and key, and the one it replaced never closes it.
  */
-export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
+export function WorkflowRunDialog({ controller, workflow, here, onClose, confirmAlways = false }: {
   controller: AppController;
   workflow: WorkflowOut;
   /** The conversation it was opened from: posting elsewhere says where it went. */
   here?: string;
   onClose: () => void;
+  /** The form even for a workflow that does not ask (the 「⚡ name」 label on a message: a look, not a re-post). */
+  confirmAlways?: boolean;
 }) {
   const store = controller.store;
   const me = store.me?.id ?? null;
@@ -188,10 +193,15 @@ export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const key = useRef<string>(crypto.randomUUID());
-  const quick = postsWithoutAsking(workflow);
+  const quick = !confirmAlways && postsWithoutAsking(workflow);
   // Hidden while the immediate post is under way; shown when it failed (or for every workflow that asks).
   const [shown, setShown] = useState(!quick);
   const started = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const preview = useMemo(() => renderPreview(workflow.template, workflow.fields, values), [workflow, values]);
   const target = channelLabel(controller, workflow.channel_id);
   const set = (fieldKey: string, value: FieldValue) => {
@@ -214,9 +224,17 @@ export function WorkflowRunDialog({ controller, workflow, here, onClose }: {
     }
     setBusy(true);
     const result = await controller.submitWorkflow(workflow.id, checked.values, key.current);
+    const posted = result.ok && !!here && result.message.channel_id !== here;
+    if (!mounted.current) {
+      // Replaced by another workflow's form while posting: the post still went through (or not), but this form is
+      // gone, so only the toasts remain, and onClose would close the form that took its place.
+      if (posted) controller.setNotice(t("workflow.posted", { target }));
+      else if (!result.ok) controller.setError(result.error);
+      return;
+    }
     setBusy(false);
     if (result.ok) {
-      if (here && result.message.channel_id !== here) controller.setNotice(t("workflow.posted", { target }));
+      if (posted) controller.setNotice(t("workflow.posted", { target }));
       onClose();
       return;
     }
@@ -391,7 +409,11 @@ function PeoplePicker({ controller, id, multiple, value, onChange }: { controlle
   );
 }
 
-/** Above a message a workflow posted: 「⚡ name」; it opens that workflow's form when I can still use it. */
+/**
+ * Above a message a workflow posted: 「⚡ name」; it opens that workflow's form when I can still use it. Always the form
+ * (WORKFLOWS.md §11.3): a label on an old message is looked at far more often than meant as a post, so even a workflow
+ * that posts at once from the menu asks here.
+ */
 export function WorkflowLabel({ controller, message }: { controller: AppController; message: MessageState }) {
   const workflow = message.workflow;
   const [open, setOpen] = useState<WorkflowOut | null>(null);
@@ -413,7 +435,7 @@ export function WorkflowLabel({ controller, message }: { controller: AppControll
         <Zap size={11} className="shrink-0 text-warning" />
         <span className="truncate">{workflow.name}</span>
       </button>
-      {open && <WorkflowRunDialog controller={controller} workflow={open} onClose={() => setOpen(null)} />}
+      {open && <WorkflowRunDialog key={open.id} controller={controller} workflow={open} confirmAlways onClose={() => setOpen(null)} />}
     </>
   );
 }

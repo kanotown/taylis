@@ -11,7 +11,7 @@ import { ApiError } from "../src/api/errors";
 import type { ChannelOut, MessageOut, UserMe, UserPublic, WorkflowOut, WorkflowTemplateOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import type { ChannelState } from "../src/sync/types";
+import type { ChannelState, MessageState } from "../src/sync/types";
 import { Composer } from "../src/ui/Composer";
 import { MessageRow } from "../src/ui/Timeline";
 import { ChannelWorkflowsDialog, invalidateWorkflowLists, WorkflowManager, WorkflowRunDialog } from "../src/ui/WorkflowViews";
@@ -56,6 +56,8 @@ const WORKFLOW: WorkflowOut = {
   can_run: true,
   run_blocked: null,
 };
+/** No fields and 「確認」 off: posts as soon as it is chosen (WORKFLOWS.md §11). */
+const QUICK: WorkflowOut = { ...WORKFLOW, id: "w-quick", name: "出勤", emoji: "🏢", description: "", fields: [], template: "出勤しました", confirm: false };
 
 function makeStore(): { store: Store; channel: ChannelState } {
   const store = new Store();
@@ -136,8 +138,6 @@ describe("the form", () => {
 });
 
 describe("「確認を求める」 (confirm, WORKFLOWS.md §11)", () => {
-  const QUICK: WorkflowOut = { ...WORKFLOW, id: "w-quick", name: "出勤", emoji: "🏢", description: "", fields: [], template: "出勤しました", confirm: false };
-
   it("a workflow that does not ask posts as soon as it is chosen, with no dialog", async () => {
     const { store } = makeStore();
     const controller = controllerFor(store, {});
@@ -204,20 +204,25 @@ describe("「確認を求める」 (confirm, WORKFLOWS.md §11)", () => {
 });
 
 describe("the label on a posted message", () => {
-  it("shows 「⚡ name」 and opens the form", async () => {
-    const { store } = makeStore();
+  const rowExtras = { messageFocus: null, editing: null, sendKey: "shift-enter", linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {} };
+  /** A message in #報告-ゼミ欠席, posted by `workflow` (none for an ordinary one). */
+  function posted(store: Store, id: string, workflow: { id: string; name: string } | null): MessageState {
     const message = {
-      id: "m1", channel_id: "c-report", sender_id: ME, parent_id: null, seq: 1, updated_seq: 1, client_msg_id: null, type: "user",
+      id, channel_id: "c-report", sender_id: ME, parent_id: null, seq: 1, updated_seq: 1, client_msg_id: null, type: "user",
       body: "*【報告者】* <@" + ME + ">", mentioned_user_ids: [ME], mention_all: false, reactions: [], attachments: [], reply_count: 0,
       last_reply_at: null, reply_user_ids: [], created_at: "2026-10-04T01:00:00Z", edited_at: null, deleted: false, poll: null, priority: null,
-      ack_requested: false, acks: [], workflow: { id: "w1", name: "ゼミ欠席報告" },
+      ack_requested: false, acks: [], workflow,
     } as unknown as MessageOut;
     store.upsertMessage(message);
+    return store.getMessage("c-report", id)!;
+  }
+
+  it("shows 「⚡ name」 and opens the form", async () => {
+    const { store } = makeStore();
+    const message = posted(store, "m1", { id: "w1", name: "ゼミ欠席報告" });
     const api = { baseUrl: "http://server", getWorkflow: vi.fn(async () => WORKFLOW) };
-    const controller = controllerFor(store, api, {
-      messageFocus: null, editing: null, sendKey: "shift-enter", linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {},
-    });
-    render(<MessageRow controller={controller} message={store.getMessage("c-report", "m1")!} />);
+    const controller = controllerFor(store, api, rowExtras);
+    render(<MessageRow controller={controller} message={message} />);
     const label = screen.getByRole("button", { name: "ゼミ欠席報告" });
     fireEvent.click(label);
     await flush();
@@ -225,17 +230,25 @@ describe("the label on a posted message", () => {
     expect(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" })).toBeTruthy();
   });
 
+  it("opens the form even for a workflow that does not ask: a look at an old message is not a re-post (§11.3)", async () => {
+    const { store } = makeStore();
+    const message = posted(store, "m1", { id: QUICK.id, name: QUICK.name });
+    const api = { baseUrl: "http://server", getWorkflow: vi.fn(async () => QUICK) };
+    const controller = controllerFor(store, api, rowExtras);
+    render(<MessageRow controller={controller} message={message} />);
+    fireEvent.click(screen.getByRole("button", { name: "出勤" }));
+    await flush();
+    const dialog = within(screen.getByRole("dialog", { name: "🏢 出勤" }));
+    expect(dialog.getByRole("button", { name: "投稿" })).toBeTruthy();
+    expect(controller.submitWorkflow).not.toHaveBeenCalled();
+    expect(controller.setNotice).not.toHaveBeenCalled();
+  });
+
   it("an ordinary message has no label", () => {
     const { store } = makeStore();
-    store.upsertMessage({
-      id: "m2", channel_id: "c-report", sender_id: ME, parent_id: null, seq: 2, updated_seq: 2, client_msg_id: null, type: "user", body: "hi",
-      mentioned_user_ids: [], mention_all: false, reactions: [], attachments: [], reply_count: 0, last_reply_at: null, reply_user_ids: [],
-      created_at: "2026-10-04T01:00:00Z", edited_at: null, deleted: false,
-    } as unknown as MessageOut);
-    const controller = controllerFor(store, { baseUrl: "http://server" }, {
-      messageFocus: null, editing: null, sendKey: "shift-enter", linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {},
-    });
-    const { container } = render(<MessageRow controller={controller} message={store.getMessage("c-report", "m2")!} />);
+    const message = posted(store, "m2", null);
+    const controller = controllerFor(store, { baseUrl: "http://server" }, rowExtras);
+    const { container } = render(<MessageRow controller={controller} message={message} />);
     expect(container.querySelector("[data-workflow-label]")).toBeNull();
   });
 });
@@ -405,7 +418,7 @@ describe("the composer (`/name`, `/wf name`)", () => {
   });
 
   it("`/name` of a workflow that does not ask posts at once", async () => {
-    const { type, sendKey, channel, submitWorkflow } = await world([], [{ ...WORKFLOW, id: "w-quick", name: "出勤", fields: [], template: "出勤しました", confirm: false }]);
+    const { type, sendKey, channel, submitWorkflow } = await world([], [QUICK]);
     type("/出勤");
     await sendKey();
     await flush();
@@ -413,6 +426,34 @@ describe("the composer (`/name`, `/wf name`)", () => {
     expect(submitWorkflow).toHaveBeenCalledTimes(1);
     expect(submitWorkflow.mock.calls[0]!.slice(0, 2)).toEqual(["w-quick", {}]);
     expect(channel.id).toBeTruthy();
+  });
+
+  it("`/b` while `/a` (posting at once) is still under way: B's own form and key, which A's answer does not close", async () => {
+    const asks: WorkflowOut = { ...WORKFLOW, id: "w-asks", name: "退勤", fields: [], template: "退勤しました" };
+    const { type, sendKey, channel, submitWorkflow } = await world([], [QUICK, asks]);
+    type Answer = Awaited<ReturnType<typeof submitWorkflow>>;
+    let answerA: (value: Answer) => void = () => {};
+    submitWorkflow.mockImplementationOnce(() => new Promise<Answer>((resolve) => { answerA = resolve; }));
+    type("/出勤");
+    await sendKey();
+    await flush();
+    expect(submitWorkflow).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    type("/退勤");
+    await sendKey();
+    const dialog = within(screen.getByRole("dialog", { name: "🙇 退勤" }));
+    // A's post answers now: B's form stays open.
+    await act(async () => answerA({ ok: true, message: { id: "m1", channel_id: channel.id } }));
+    await flush();
+    expect(screen.getByRole("dialog", { name: "🙇 退勤" })).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: "投稿" }));
+    await flush();
+    expect(submitWorkflow).toHaveBeenCalledTimes(2);
+    const [a, b] = submitWorkflow.mock.calls as unknown as Array<[string, Record<string, unknown>, string]>;
+    expect(a![0]).toBe("w-quick");
+    expect(b![0]).toBe("w-asks");
+    expect(b![2]).not.toBe(a![2]);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("`/wf name` opens a name with spaces", async () => {
