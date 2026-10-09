@@ -1,5 +1,5 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
-import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceLook, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import type { ActionListOut, ActionStatusListOut, ActionStatusOut, ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 import { statusKey } from "../ui/actions";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
@@ -8,6 +8,7 @@ import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
 import type { CanvasPendingState } from "./canvasSave";
 import { restoredDmPins } from "./dmCloses";
 import { ownNotification } from "./notifications";
+import { isIndefiniteDnd, presenceLook } from "../ui/presence";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -535,7 +536,10 @@ export class Store {
     } catch {
       this.activity = null; // corrupt: the next bootstrap brings it
     }
-    for (const user of snapshot.users) this.users.set(user.id, user);
+    for (const user of snapshot.users) {
+      this.users.set(user.id, user);
+      this.noteDndEnd(user.dnd_until);
+    }
     for (const channel of snapshot.channels) this.channels.set(channel.id, restoredChannel(channel));
     for (const message of snapshot.messages) this.bucket(message.channel_id).set(message.id, { ...message });
     this.outbox.push(...snapshot.outbox.map((i) => ({ ...i })));
@@ -640,6 +644,7 @@ export class Store {
 
   upsertUser(user: UserPublic): void {
     this.users.set(user.id, user);
+    this.noteDndEnd(user.dnd_until);
     this.persist((p) => p.saveUser(user));
     this.emitRows();
   }
@@ -1269,12 +1274,39 @@ export class Store {
 
   // --- presence / typing (volatile, SYNC_PROTOCOL.md §5.2) ---------------------------------
 
-  presenceOf(userId: string): PresenceStatus {
+  /** What avatars show (docs/PRESENCE.md §11): 取り込み中 while the person's dnd_until is ahead, else the frames' status. */
+  presenceOf(userId: string, now = Date.now()): PresenceLook {
+    return presenceLook(this.connectionOf(userId), this.users.get(userId), now);
+  }
+
+  /** The `presence` frames' status alone (online / away / offline). */
+  connectionOf(userId: string): PresenceStatus {
     return this.presence.get(userId) ?? "offline";
   }
 
+  /**
+   * 取り込み中 ends by the clock, with no event: redraw when the soonest dnd_until passes (one timer for everyone; a
+   * far one re-arms after a day; the indefinite pause never ends by itself).
+   */
+  private dndTimer: ReturnType<typeof setTimeout> | null = null;
+  private dndTimerAt = Number.POSITIVE_INFINITY;
+  private noteDndEnd(until: string | null | undefined): void {
+    if (!until || isIndefiniteDnd(until)) return;
+    const at = Date.parse(until);
+    const now = Date.now();
+    if (Number.isNaN(at) || at <= now || at >= this.dndTimerAt) return;
+    if (this.dndTimer) clearTimeout(this.dndTimer);
+    this.dndTimerAt = at;
+    this.dndTimer = setTimeout(() => {
+      this.dndTimer = null;
+      this.dndTimerAt = Number.POSITIVE_INFINITY;
+      for (const user of this.users.values()) this.noteDndEnd(user.dnd_until);
+      this.emitRows();
+    }, Math.min(at - now + 50, 24 * 60 * 60 * 1000));
+  }
+
   setPresence(userId: string, status: PresenceStatus): void {
-    if (this.presenceOf(userId) === status) return;
+    if (this.connectionOf(userId) === status) return;
     if (status === "offline") this.presence.delete(userId);
     else this.presence.set(userId, status);
     this.emit();

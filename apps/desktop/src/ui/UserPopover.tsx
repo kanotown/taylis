@@ -10,6 +10,7 @@ import { useStoreUpdates } from "./hooks";
 import { displayTitle, supervisorLabel } from "./roster";
 import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
+import { dndLine } from "./presence";
 import { activeStatus } from "./users";
 import { ProblemReportDialog } from "./ModerationDialogs";
 import { Button, cn, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
@@ -157,7 +158,7 @@ function UserCard({ controller, userId, onClose, onReport }: { controller: AppCo
             <div className="truncate text-xs text-muted">@{user?.username ?? ""}{title ? ` · ${title}` : ""}</div>
             {user?.role === "guest" && <div className="mt-0.5 text-xs text-muted">{t("popover.guest")}</div>}
             {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">{controller.store.aiAgentOf(userId) ? t("ai.badgeTitle") : t("popover.webhookBot")}</div>}
-            <div className="mt-0.5 text-xs text-muted">{presenceLabel(presence)}</div>
+            <div data-card-presence className="mt-0.5 text-xs text-muted">{presence === "dnd" && user?.dnd_until ? dndLine(user.dnd_until) : presenceLabel(presence)}</div>
             {/* M140: 在室状況, when the workspace has the board on and the person set one. */}
             <AttendanceChip controller={controller} userId={userId} className="mt-1" />
             {dndActive(user) && (

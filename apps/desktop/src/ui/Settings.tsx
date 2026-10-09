@@ -12,6 +12,8 @@ import { WorkspaceIcon } from "./workspaceIcons";
 import { AdminBody } from "./AdminDialog";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar } from "./Avatar";
+import { MyStatusMenu } from "./MyStatusMenu";
+import { currentMe, myPresenceLine } from "./presence";
 import { OVERALL_LEVEL_LABELS, overallLevel, overallLevelNote } from "./channels";
 import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18n";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
@@ -165,7 +167,17 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
     <div className={cn(page ? "space-y-5 pb-6" : "space-y-3")}>
       {me && (
         <div className={cn("flex items-center gap-3", page ? "px-4 pt-5" : "px-1.5 pt-1")}>
-          <Avatar id={me.id} name={me.display_name} size={page ? 64 : 40} className="rounded-2xl" />
+          {/* PRESENCE.md §11: my picture opens the quick status menu here too (the phone-width 「自分」). */}
+          <MyStatusMenu controller={controller}>
+            <button
+              type="button"
+              data-my-status-trigger
+              aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(controller.store)) })}
+              className="shrink-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+            >
+              <Avatar id={me.id} name={me.display_name} size={page ? 64 : 40} className="rounded-2xl" presence={controller.store.presenceOf(me.id)} showOffline />
+            </button>
+          </MyStatusMenu>
           <div className="min-w-0 flex-1">
             <div className={cn("truncate font-semibold", page ? "text-lg" : "text-sm")}>{me.display_name}</div>
             <div className={cn("truncate text-muted", page ? "text-sm" : "text-xs")}>@{me.username}{myTitle ? ` · ${myTitle}` : ""}</div>
