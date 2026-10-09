@@ -138,6 +138,11 @@ struct WorkflowFormView: View {
         self.target = target
         self.api = api
         _values = State(initialValue: Workflows.initialValues(target.workflow.fields, today: .today(), me: controller.store.me?.id))
+        // Opened because posting without asking failed: the reason, and the key that post used.
+        _problem = State(initialValue: target.problem)
+        if let key = target.clientMsgId, let client = api ?? controller.api {
+            _submitter = State(initialValue: WorkflowSubmitter(api: client, clientMsgId: key))
+        }
     }
 
     private var workflow: WorkflowOut { target.workflow }

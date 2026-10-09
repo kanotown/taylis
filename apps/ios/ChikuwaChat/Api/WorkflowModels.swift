@@ -76,17 +76,20 @@ struct WorkflowOut: Codable, Equatable, Identifiable {
     var fields: [WorkflowField] = []
     let template: String
     var enabled = true
+    /// 「確認を求める」 (WORKFLOWS.md §11): off, a workflow without fields posts as soon as it is chosen. An older server
+    /// leaves it out, and those workflows always asked.
+    var confirm = true
     var canManage = false
     var canRun = true
     var runBlocked: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, emoji, description, channelId, offeredChannelIds, fields, template, enabled, canManage, canRun, runBlocked
+        case id, name, emoji, description, channelId, offeredChannelIds, fields, template, enabled, confirm, canManage, canRun, runBlocked
     }
 
     init(id: String, name: String, emoji: String? = nil, description: String = "", channelId: String, offeredChannelIds: [String] = [],
-         fields: [WorkflowField] = [], template: String, enabled: Bool = true, canManage: Bool = false, canRun: Bool = true,
-         runBlocked: String? = nil) {
+         fields: [WorkflowField] = [], template: String, enabled: Bool = true, confirm: Bool = true, canManage: Bool = false,
+         canRun: Bool = true, runBlocked: String? = nil) {
         self.id = id
         self.name = name
         self.emoji = emoji
@@ -96,6 +99,7 @@ struct WorkflowOut: Codable, Equatable, Identifiable {
         self.fields = fields
         self.template = template
         self.enabled = enabled
+        self.confirm = confirm
         self.canManage = canManage
         self.canRun = canRun
         self.runBlocked = runBlocked
@@ -112,6 +116,7 @@ struct WorkflowOut: Codable, Equatable, Identifiable {
         fields = try c.decodeIfPresent([WorkflowField].self, forKey: .fields) ?? []
         template = try c.decode(String.self, forKey: .template)
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        confirm = try c.decodeIfPresent(Bool.self, forKey: .confirm) ?? true
         canManage = try c.decodeIfPresent(Bool.self, forKey: .canManage) ?? false
         canRun = try c.decodeIfPresent(Bool.self, forKey: .canRun) ?? true
         runBlocked = try c.decodeIfPresent(String.self, forKey: .runBlocked)
@@ -119,6 +124,9 @@ struct WorkflowOut: Codable, Equatable, Identifiable {
 
     /// The menu's mark (⚡ when the workflow has no emoji of its own).
     var mark: String { emoji ?? Workflows.defaultEmoji }
+
+    /// Choosing it posts at once, without the form: 「確認」 off, nothing to fill, and I can run it (as on the desktop).
+    var postsWithoutAsking: Bool { !confirm && fields.isEmpty && canRun && runBlocked == nil }
 }
 
 /// 400 workflow_values_invalid with its `details.fields` (key → required / invalid / too_long / not_an_option /
