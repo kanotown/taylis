@@ -48,7 +48,7 @@ export function decodeMentions(text: string, users: Map<string, UserPublic>, gro
 }
 
 /** Mention tokens as display names, for notifications and previews (`@Toru Kano`, `@channel`). */
-export function mentionsToNames(text: string, users: Map<string, UserPublic>, groups: ReadonlyMap<string, GroupOut> = new Map()): string {
+export function mentionsToNames(text: string, users: ReadonlyMap<string, UserPublic>, groups: ReadonlyMap<string, GroupOut> = new Map()): string {
   return text
     .replace(USER_TOKEN, (whole: string, id: string) => {
       const user = users.get(id);

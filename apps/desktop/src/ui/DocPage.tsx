@@ -37,6 +37,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { sinceLabel } from "./format";
 import { PageIcon } from "./PageIcon";
 import type { PageEditorHandle } from "./PageEditor";
+import { desktopPageEditorEnv } from "./pageEditorDesktopEnv";
 import { PageFindBar, type PageFindHandle, usePageFindKeys } from "./PageFind";
 import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSplit, type DocsEditorMode, docsEditorModeOf, readCanvasSplit, writeCanvasSplit } from "./prefs";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
@@ -185,6 +186,8 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const crumbs = cached?.breadcrumbs ?? [];
   const title = pageTitle(meta, t("docs.untitled"));
 
+  // M153a: the editor sees the app through PageEditorEnv (the same editor is bundled for the phones).
+  const editorEnv = useMemo(() => desktopPageEditorEnv(controller), [controller]);
   const docLinks = useMemo(() => ({
     lookup: (q: string) => lookupPages(controller, q),
     createChild: () => createChildRef(controller, pageId),
@@ -368,7 +371,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
               </div>
             )}>
               {/* M155: the formatting row takes the byline's place, so the body starts where the reading view's does. */}
-              <LazyPageEditor key={pageId} controller={controller} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} onTitle={focusTitle} className="mt-[3px]" />
+              <LazyPageEditor key={pageId} env={editorEnv} saver={saver} links={docLinks} initialLine={caretLine} handle={pageEditor} onTitle={focusTitle} className="mt-[3px]" />
             </Suspense>
           </article>
         </div>

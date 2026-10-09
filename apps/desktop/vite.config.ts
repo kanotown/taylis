@@ -7,7 +7,7 @@ import { defineConfig } from "vitest/config";
  * KaTeX's stylesheet (ui/MathView.tsx, loaded only for a body with math) lists each font as woff2, woff and ttf; every
  * browser the app runs in reads woff2, so the others are left out of the build (about 40 files fewer).
  */
-function katexWoff2Only(): Plugin {
+export function katexWoff2Only(): Plugin {
   return {
     name: "katex-woff2-only",
     enforce: "pre",

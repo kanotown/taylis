@@ -2795,6 +2795,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "docs.wysiwyg.changeIcon": "Change icon",
   "docs.wysiwyg.toggleTitle": "Toggle heading",
   "docs.wysiwyg.mathEmpty": "Write a formula (TeX)",
+  "docs.wysiwyg.imageLimit": "A page can hold up to 100 images.",
+  "docs.wysiwyg.embedInApp": "Open in the app",
   "docs.wysiwyg.mathTex": "Formula (TeX)",
   "docs.wysiwyg.mathEmptyRemoves": "Leave it empty to remove the formula",
   "docs.wysiwyg.linkApply": "Link",

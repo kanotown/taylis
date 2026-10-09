@@ -1,0 +1,31 @@
+/* M153a (WIKI.md §30.3): the stylesheet of the page editor bundled for the phones. The app's tokens, theme and
+   component rules are app.css (shared with styles.css); Tailwind scans only the editor's sources here, so the bundle
+   carries the utilities the editor uses and none of the app's. */
+@import "tailwindcss" source(none);
+@source "../src/ui/PageEditor.tsx";
+@source "../src/ui/pageEditorToolbar.tsx";
+@source "../src/ui/pageEditorSchema.ts";
+@source "../src/ui/pageEditorSelection.ts";
+@source "../src/ui/OverflowToolbar.tsx";
+@source "../src/ui/primitives.tsx";
+@source "../src/ui/CanvasTableDialog.tsx";
+@source "../src/ui/MathView.tsx";
+@source "../src/ui/customEmoji.tsx";
+@source "../src/mobileEditor";
+@import "../src/app.css";
+
+/* The document itself scrolls (the WebView's own scroll view): native can observe it, inset it for the keyboard, and
+   the editor's scrollIntoView reaches it. Under the body: room for the formatting row, the keyboard (`setViewport`,
+   when the WebView is not resized above it) and the home indicator. */
+html, body, #root { height: auto; min-height: 100%; overflow: visible; }
+body { padding-bottom: calc(var(--keyboard-height, 0px) + 3.25rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px))); -webkit-tap-highlight-color: transparent; }
+.mobile-editor { padding: 0 16px; }
+.mobile-editor .page-editor { min-height: 60vh; }
+/* The formatting row, fixed at the bottom of the screen above the keyboard (PageEditor: env.toolbar "bottom"). */
+.pe-toolbar-bottom { bottom: var(--keyboard-height, 0px); padding-bottom: calc(0.25rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px))); }
+/* Finger-sized rows in the menus. */
+.mobile-editor [role="listbox"] [role="option"] { min-height: 2.5rem; }
+/* The block handle and the drop line are for a pointer; a finger has the keyboard, the menus and the toolbar. */
+@media (pointer: coarse) {
+  .pe-handle, [data-drop-line] { display: none; }
+}

@@ -84,6 +84,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx vite build
+      # M153a: the page editor bundled for the phones (apps/shared/mobile-editor/dist) still builds.
+      - run: npm run build:mobile-editor
 
   android:
     # Not deployed by a release: release.yml only waits for the server and the web client.

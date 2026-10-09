@@ -39,8 +39,9 @@ const CUT_TYPE = "application/x-chikuwachat-canvas";
 export interface DocEditorLinks {
   /** The `[[` suggestions: pages I can read whose title contains `q`. */
   lookup(q: string): Promise<PageRef[]>;
-  /** The `/` menu's 「子ページ」: a new page below this one (null: refused, the error shown). */
-  createChild(): Promise<PageRef | null>;
+  /** The `/` menu's 「子ページ」: a new page below this one (null: refused, the error shown). M153a: absent where the app
+   *  around the editor cannot make pages (the phones' bundle); the item is not offered then. */
+  createChild?(): Promise<PageRef | null>;
   /** The `/` menu's 「データベース」 (M123): a new database below this page. */
   createDatabase?(): Promise<PageRef | null>;
   /** M149: `![[` (「データベースを埋め込む」) — databases I can read whose title contains `q`. */
@@ -389,7 +390,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       if (isPickBusy(picker.current)) controller.setError(t("canvasEditor.stillReading"));
       else picker.current?.click();
     } else if ((result.kind === "childPage" || result.kind === "database") && doc) {
-      const create = result.kind === "database" && doc.createDatabase ? doc.createDatabase() : doc.createChild();
+      const create = result.kind === "database" && doc.createDatabase ? doc.createDatabase() : doc.createChild ? doc.createChild() : Promise.resolve(null);
       setChildBusy(true);
       void create.then((page) => {
         setChildBusy(false);
