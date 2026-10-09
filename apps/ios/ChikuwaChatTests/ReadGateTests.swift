@@ -197,9 +197,9 @@ final class ReadGateTests: XCTestCase {
     /// row is on screen, to the newest edge; the plain ↓ goes to the newest edge (testers, build 110).
     func testNewRowsJumpGoesToTheFirstNewRowFirst() {
         let rows = (81...130).map { row($0) } + [row(131, sender: "bob")]
-        // Opened at the divider (read to 100): the first new row is 101, under the divider.
+        // Opened at the divider (read to 100): the first new row is 101, under the divider, below the rows on screen.
         let atDivider = Timeline.build(rows, firstUnreadAfterSeq: 100, meId: "bob", grouping: false)
-        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-120"]),
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-90"]),
                        .firstNew(scrollId: "unread", rowId: "id-101"))
         // Already on screen: on to the newest edge.
         XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-100", "id-101"]), .newest)
@@ -210,6 +210,32 @@ final class ReadGateTests: XCTestCase {
         // My own row (131) is not new; nothing new from others: the newest edge.
         XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: 132, meId: "bob", onScreenIds: []), .newest)
         XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: nil, meId: "bob", onScreenIds: []), .newest)
+    }
+
+    /// The reader scrolled on past the first new row (seenSeq moves only at the newest edge, so it still counts): the
+    /// jump never goes back up to it. Above the screen (older than every row on it), it goes on to the first new row
+    /// below the screen (newer than every row on it), or to the newest edge; below the screen or on it, as before.
+    /// The same rule on Android (Timeline.newRowsTarget).
+    func testNewRowsJumpNeverGoesBackAboveTheScreen() {
+        let rows = (81...130).map { row($0) } + [row(131, sender: "bob")]
+        let atDivider = Timeline.build(rows, firstUnreadAfterSeq: 100, meId: "bob", grouping: false)
+        // 101 is above the screen (110–112 on it): on to 113, the first new row below the screen, without the divider.
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-110", "id-111", "id-112"]),
+                       .firstNew(scrollId: "cmid-113", rowId: "id-113"))
+        // Nothing new below the screen (131 is mine): the newest edge.
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-129", "id-130"]), .newest)
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-130", "id-131"]), .newest)
+        // Below the screen: the first new row with its divider; on the screen: the newest edge.
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-90", "id-91"]),
+                       .firstNew(scrollId: "unread", rowId: "id-101"))
+        XCTAssertEqual(ReadGate.newRowsJump(atDivider, seenSeq: 100, meId: "bob", onScreenIds: ["id-100", "id-101"]), .newest)
+        // Rows that arrived while the reader was up (no divider): the first above the screen is passed over the same way.
+        let plain = Timeline.build(rows + [row(132), row(133), row(134)], firstUnreadAfterSeq: nil, meId: "bob", grouping: false)
+        XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: 125, meId: "bob", onScreenIds: ["id-130", "id-131", "id-132"]),
+                       .firstNew(scrollId: "cmid-133", rowId: "id-133"))
+        XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: 125, meId: "bob", onScreenIds: ["id-133", "id-134"]), .newest)
+        XCTAssertEqual(ReadGate.newRowsJump(plain, seenSeq: 125, meId: "bob", onScreenIds: ["id-120"]),
+                       .firstNew(scrollId: "cmid-126", rowId: "id-126"))
     }
 
     /// §10.1 7.: a reader who scrolled before the view was placed is left there; 「新着 N 件」 counts from the divider when
