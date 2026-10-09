@@ -121,6 +121,25 @@ final class PresenceMenuTests: XCTestCase {
         XCTAssertEqual(PresenceRules.myLine(me(), now: now, calendar: calendar), "オンライン（自動）")
     }
 
+    /// §11.5: someone's look in words, the pause with its end (the profile card, and a 1:1 DM's header, which said
+    /// 「取り込み中」 alone); the settings' pause test is the same one.
+    func testTheLookLabelAndTheDmHeaderSayWhenThePauseEnds() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let now = try XCTUnwrap(parseIsoDate("2026-10-09T01:00:00Z"))
+        XCTAssertEqual(PresenceRules.lookLabel("dnd", dndUntil: "2026-10-09T06:30:00Z", now: now, calendar: calendar), "取り込み中（〜15:30）")
+        XCTAssertEqual(PresenceRules.lookLabel("dnd", dndUntil: "9999-12-31T00:00:00Z", now: now, calendar: calendar), "取り込み中（解除するまで）")
+        XCTAssertEqual(PresenceRules.lookLabel("dnd", dndUntil: nil, now: now, calendar: calendar), "取り込み中") // an older device's look, no end known
+        XCTAssertEqual(PresenceRules.lookLabel("online", dndUntil: nil, now: now, calendar: calendar), "オンライン")
+        XCTAssertEqual(PresenceRules.lookLabel("away", dndUntil: "2026-10-09T00:30:00Z", now: now, calendar: calendar), "離席中") // the pause is over
+        XCTAssertEqual(PresenceRules.dmSubtitle(look: "dnd", dndUntil: "2026-10-09T06:30:00Z", status: (emoji: "🍤", text: "昼休み"), now: now, calendar: calendar),
+                       "取り込み中（〜15:30） · 🍤 昼休み")
+        XCTAssertEqual(PresenceRules.dmSubtitle(look: "offline", dndUntil: nil, status: nil, now: now, calendar: calendar), "オフライン")
+        XCTAssertTrue(DND.paused("2026-10-09T06:30:00Z", now: now))
+        XCTAssertFalse(DND.paused("2026-10-09T00:30:00Z", now: now))
+        XCTAssertFalse(DND.paused(nil, now: now))
+    }
+
     // MARK: the store
 
     private func me(dndUntil: String? = nil, hidden: Bool = false, manual: String? = nil, updatedAt: String = "2026-10-01T00:00:00Z") -> UserMe {

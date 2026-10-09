@@ -36,7 +36,7 @@ enum DND {
 
     static func isActive(_ user: UserPublic?, now: Date = Date()) -> Bool {
         guard let user else { return false }
-        if let raw = user.dndUntil, let until = parseIsoDate(raw), until > now { return true }
+        if PresenceRules.activeDnd(user.dndUntil, now: now) != nil { return true }
         if let hours = user.quietHours { return inQuietHours(hours, now: now) }
         return false
     }

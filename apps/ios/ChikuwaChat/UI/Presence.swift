@@ -66,6 +66,7 @@ enum PresenceRules {
     }
 
     /// The manual pause (取り込み中) still running, else nil. Quiet hours are not 取り込み中 (they keep the 🔕 only).
+    /// The one test of a running pause: the settings' DND.paused and the in-app notices' DND.isActive read it too.
     static func activeDnd(_ until: String?, now: Date = Date()) -> String? {
         guard let until, let at = parseIsoDate(until), at > now else { return nil }
         return until
@@ -133,6 +134,21 @@ enum PresenceRules {
         let choice = myChoice(me, now: now)
         guard choice == .dnd, let until = activeDnd(me?.dndUntil, now: now) else { return choice.label }
         return dndLine(until, now: now, calendar: calendar)
+    }
+
+    /// The words for someone's look (§11.5): 「取り込み中（〜15:30）」 / 「取り込み中（解除するまで）」 while their pause
+    /// runs, else 「オンライン」 / 「離席中」 / 「オフライン」 (the profile card, a 1:1 DM's header; Android's lookLabel).
+    static func lookLabel(_ look: String, dndUntil: String?, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if look == "dnd", let until = activeDnd(dndUntil, now: now) { return dndLine(until, now: now, calendar: calendar) }
+        return presenceLabel(look)
+    }
+
+    /// A 1:1 DM's header line: the other person's look, then their custom status (M11d) when they have one.
+    static func dmSubtitle(look: String, dndUntil: String?, status: (emoji: String, text: String)?, now: Date = Date(),
+                           calendar: Calendar = .current) -> String {
+        let presence = lookLabel(look, dndUntil: dndUntil, now: now, calendar: calendar)
+        guard let status else { return presence }
+        return "\(presence) · \(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces)
     }
 
     /// The body of `PUT /users/me/presence` (§11.4): 取り込み中 with its length and the device's zone, the others alone.

@@ -42,15 +42,14 @@ extension DND {
         }
     }
 
-    /// Whether a manual pause is running (a past `dnd_until` is none).
-    static func paused(_ dndUntil: String?, now: Date = Date()) -> Bool {
-        guard let dndUntil, let until = parseIsoDate(dndUntil) else { return false }
-        return until > now
-    }
+    /// Whether a manual pause is running (a past `dnd_until` is none): the quick status menu's test (PresenceRules.activeDnd).
+    static func paused(_ dndUntil: String?, now: Date = Date()) -> Bool { PresenceRules.activeDnd(dndUntil, now: now) != nil }
 
-    /// The pause row's value: 「オフ」, or when it ends (「15:30 まで」, 「明日 8:00 まで」, 「10月2日 9:00 まで」).
+    /// The pause row's value: 「オフ」, or when it ends (「15:30 まで」, 「明日 8:00 まで」, 「10月2日 9:00 まで」). The quick
+    /// status menu says 「〜15:30」 / 「10/10 23:59」 instead (PresenceRules.endLabel, the shared vectors): a row's value
+    /// against a line's end.
     static func pauseSummary(_ dndUntil: String?, now: Date = Date(), calendar: Calendar = .current) -> String {
-        guard paused(dndUntil, now: now), let dndUntil, let until = parseIsoDate(dndUntil) else { return tr("オフ") }
+        guard let dndUntil = PresenceRules.activeDnd(dndUntil, now: now), let until = parseIsoDate(dndUntil) else { return tr("オフ") }
         // PRESENCE.md §11.2: the menu's 「解除するまで」 (9999-12-31), not 「9999年12月31日 9:00 まで」.
         if PresenceRules.isIndefinite(dndUntil) { return tr("解除するまで") }
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: until)
