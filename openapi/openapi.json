@@ -20864,8 +20864,8 @@
           "emoji": {
             "anyOf": [
               {
-                "maxLength": 32,
-                "pattern": "^(:[a-z0-9_+\\-]{1,30}:|[^\\x00-\\x7f]{1,16})$",
+                "maxLength": 34,
+                "pattern": "^(:[a-z0-9_+\\-]{1,32}:|[^\\x00-\\x7f]{1,16})$",
                 "type": "string"
               },
               {
@@ -21222,8 +21222,8 @@
           "emoji": {
             "anyOf": [
               {
-                "maxLength": 32,
-                "pattern": "^(:[a-z0-9_+\\-]{1,30}:|[^\\x00-\\x7f]{1,16})$",
+                "maxLength": 34,
+                "pattern": "^(:[a-z0-9_+\\-]{1,32}:|[^\\x00-\\x7f]{1,16})$",
                 "type": "string"
               },
               {
@@ -33255,9 +33255,9 @@
             "name": "emoji",
             "required": true,
             "schema": {
-              "maxLength": 32,
+              "maxLength": 34,
               "minLength": 1,
-              "pattern": "^(:[a-z0-9_+\\-]{1,30}:|[^\\x00-\\x7f]{1,16})$",
+              "pattern": "^(:[a-z0-9_+\\-]{1,32}:|[^\\x00-\\x7f]{1,16})$",
               "title": "Emoji",
               "type": "string"
             }
@@ -33313,9 +33313,9 @@
             "name": "emoji",
             "required": true,
             "schema": {
-              "maxLength": 32,
+              "maxLength": 34,
               "minLength": 1,
-              "pattern": "^(:[a-z0-9_+\\-]{1,30}:|[^\\x00-\\x7f]{1,16})$",
+              "pattern": "^(:[a-z0-9_+\\-]{1,32}:|[^\\x00-\\x7f]{1,16})$",
               "title": "Emoji",
               "type": "string"
             }

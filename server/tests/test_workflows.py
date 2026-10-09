@@ -3,7 +3,7 @@ posted as the submitter."""
 
 import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.models import OutboxEvent
 from app.modules.audit.models import AuditLog
+from app.modules.emoji.service import NAME as EMOJI_NAME
 from app.modules.messages.models import Message
 from app.modules.users.models import User
 from app.modules.workflows.render import (
@@ -656,7 +657,7 @@ async def test_confirm_defaults_on_and_can_be_switched_off(
     assert on.status_code == 200 and on.json()["confirm"] is True
     bad = await client.patch(f"/api/v1/workflows/{wf['id']}", json={"confirm": None})
     assert bad.status_code == 422
-    details = (
+    details: Sequence[dict[str, Any]] = (
         (
             await db.execute(
                 select(AuditLog.details)
@@ -674,3 +675,28 @@ async def test_confirm_defaults_on_and_can_be_switched_off(
     posted = await _submit(client, wf["id"], {})
     assert posted.status_code == 201, posted.text
     assert posted.json()["body"] == "出勤しました"
+
+
+async def test_emoji_takes_the_longest_custom_name(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """The editor's picker offers every custom emoji (WORKFLOWS.md §11.3), and their names are up
+    to 32 characters (emoji.service.NAME): such a `:name:` is stored, not a 422 (nor a 500 from
+    the column, migration 0113)."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = await _channel(client, "emoji", [])
+    longest = "a" * 32
+    assert EMOJI_NAME.match(longest) and not EMOJI_NAME.match(longest + "a")
+    created = await _create(client, cid, emoji=f":{longest}:")
+    assert created.status_code == 201, created.text
+    wid = created.json()["id"]
+    assert created.json()["emoji"] == f":{longest}:"
+    assert (await client.get(f"/api/v1/workflows/{wid}")).json()["emoji"] == f":{longest}:"
+    changed = await client.patch(f"/api/v1/workflows/{wid}", json={"emoji": ":" + "b" * 32 + ":"})
+    assert changed.status_code == 200 and changed.json()["emoji"] == ":" + "b" * 32 + ":"
+    # Longer than any custom emoji's name: refused as before.
+    too_long = await _create(client, cid, name="長すぎ", emoji=":" + "a" * 33 + ":")
+    assert too_long.status_code == 422
+    kept = await client.patch(f"/api/v1/workflows/{wid}", json={"emoji": ":" + "a" * 33 + ":"})
+    assert kept.status_code == 422

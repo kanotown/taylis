@@ -82,14 +82,7 @@ class RealtimeHub:
             queue=asyncio.Queue(self.queue_size),
             visible=visible,
         )
-        if presence_hidden:
-            self._hidden.add(user_id)
-        else:
-            self._hidden.discard(user_id)
-        if presence_away:
-            self._away.add(user_id)
-        else:
-            self._away.discard(user_id)
+        self._set_flags(user_id, hidden=presence_hidden, away=presence_away)
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
         # Connecting counts as activity (last_active starts now): apps connect in the foreground.
@@ -150,22 +143,24 @@ class RealtimeHub:
         for conn in self._by_user.get(user_id, ()):
             conn.request_close(CLOSE_RECONNECT)
 
-    def set_presence_hidden(self, user_id: uuid.UUID, hidden: bool) -> None:
-        """L4: from now on this user is announced as offline (or as they are again)."""
-        if hidden:
-            self._hidden.add(user_id)
-        else:
-            self._hidden.discard(user_id)
+    def set_presence_flags(self, user_id: uuid.UUID, *, hidden: bool, away: bool) -> None:
+        """The status menu (PRESENCE.md §11.4): both flags at once and one announcement, so
+        invisible → 離席中 never shows a passing online. `hidden` (L4 在席を隠す / オフライン表示):
+        offline to everyone from now on. `away` (離席中): away while connected, however active
+        (activity still counts for pushes, is_active). Neither: as the activity says again."""
+        self._set_flags(user_id, hidden=hidden, away=away)
         self._announce(user_id)
 
-    def set_presence_away(self, user_id: uuid.UUID, away: bool) -> None:
-        """PRESENCE.md §11 離席中: announced as away while connected (activity still counts for
-        pushes, is_active), or as the activity says again."""
-        if away:
-            self._away.add(user_id)
-        else:
-            self._away.discard(user_id)
-        self._announce(user_id)
+    def set_presence_hidden(self, user_id: uuid.UUID, hidden: bool) -> None:
+        """L4 (PATCH /users/me presence_hidden): only the hidden flag changes."""
+        self.set_presence_flags(user_id, hidden=hidden, away=user_id in self._away)
+
+    def _set_flags(self, user_id: uuid.UUID, *, hidden: bool, away: bool) -> None:
+        for flag, users in ((hidden, self._hidden), (away, self._away)):
+            if flag:
+                users.add(user_id)
+            else:
+                users.discard(user_id)
 
     def sweep_presence(self) -> None:
         """Periodic: announce users whose activity window lapsed (online → away)."""

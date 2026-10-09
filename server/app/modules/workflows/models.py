@@ -34,7 +34,8 @@ class Workflow(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
-    emoji: Mapped[str | None] = mapped_column(String(32))
+    # A unicode emoji or the :name: of a custom emoji (names are up to 32 characters; 0113).
+    emoji: Mapped[str | None] = mapped_column(String(34))
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     # Where the message is posted (a public or private channel).
     channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id"))
