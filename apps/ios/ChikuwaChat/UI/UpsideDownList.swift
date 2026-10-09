@@ -52,6 +52,18 @@ enum UpsideDown {
         markerMinY <= viewportHeight + nearNewest
     }
 
+    /// Scrolls to a row at once, letting go of the kept row: kept, `scrollPosition(id:)` took the list back to it right
+    /// after a scroll that ended at the newest edge (the first of a few new rows, which cannot go up to the screen's top).
+    @MainActor
+    static func scroll(to id: String, anchor: UnitPoint, _ kept: Binding<String?>, _ proxy: ScrollViewProxy) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            kept.wrappedValue = nil
+            proxy.scrollTo(id, anchor: anchor)
+        }
+    }
+
     /// Takes the list to its newest edge at once (my post, the jump button) and keeps it there: the kept row becomes the
     /// edge's marker. A `scrollTo` alone left the kept row where the reader had been.
     @MainActor
@@ -115,12 +127,16 @@ private struct NewestEdgeDetector: ViewModifier {
 /// The marker at the newest edge; on iOS 17 its appearing is what says the list is there (a LazyVStack makes it only
 /// near the screen). A plain VStack (a thread's rows) makes it once, on screen or not: there `placed` gives the coordinate
 /// space outside the flip and the viewport's height, and on iOS 17 it says so from where it is on screen.
+///
+/// Its id (`UpsideDown.newest`) goes on the marker where the stack holds it (`NewestEdgeMarker { … }.id(UpsideDown.newest)`),
+/// not inside its body: a LazyVStack sees only its children's own ids until it has made them, so with the marker far off
+/// screen `scrollTo` and `scrollPosition(id:)` found no such row and the jump button did nothing (testers, build 110).
 struct NewestEdgeMarker: View {
     var placed: (space: String, viewportHeight: CGFloat)?
     let action: (Bool) -> Void
 
     var body: some View {
-        Color.clear.frame(height: 1).id(UpsideDown.newest)
+        Color.clear.frame(height: 1)
             .onAppear { if #unavailable(iOS 18.0), placed == nil { action(true) } }
             .onDisappear { if #unavailable(iOS 18.0) { action(false) } }
             .onGeometryChange(for: Bool.self) { geometry in

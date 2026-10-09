@@ -291,13 +291,13 @@ struct ThreadView: View {
     private func rowStack(_ viewportHeight: CGFloat) -> some View {
         if replies.count > Self.lazyFrom {
             LazyVStack(alignment: .leading, spacing: 0) {
-                NewestEdgeMarker { atBottom = $0 }
+                NewestEdgeMarker { atBottom = $0 }.id(UpsideDown.newest)
                 rows()
             }
             .scrollTargetLayout()
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                NewestEdgeMarker(placed: ("threadViewport", viewportHeight)) { atBottom = $0 }
+                NewestEdgeMarker(placed: ("threadViewport", viewportHeight)) { atBottom = $0 }.id(UpsideDown.newest)
                 rows()
             }
             .scrollTargetLayout()

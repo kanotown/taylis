@@ -363,6 +363,31 @@ enum ReadGate {
         return rows.filter { ($0.seq ?? 0) > seenSeq && $0.senderId != meId }.count
     }
 
+    /// Where a tap on 「新着 N 件」 / ↓ takes the list.
+    enum NewRowsJump: Equatable {
+        /// The first of the N rows at the top of the screen (`scrollId`: the 「新着メッセージ」 divider when it is right
+        /// above the row, else the row's key; `rowId` is the message, for its frame).
+        case firstNew(scrollId: String, rowId: String)
+        /// The newest edge.
+        case newest
+    }
+
+    /// 「新着 N 件」 goes to the first of the N rows, not to the newest one, so nothing is passed unseen (Slack; testers,
+    /// build 110). With that row already on screen (the second tap, or a landing that put it there) it goes on to the
+    /// newest edge; with nothing new (the plain ↓) straight there.
+    static func newRowsJump(_ items: [TimelineItem], seenSeq: Int?, meId: String?, onScreenIds: Set<String>) -> NewRowsJump {
+        guard let seenSeq else { return .newest }
+        var previous: TimelineItem?
+        for item in items {
+            defer { if case .date = item {} else { previous = item } }
+            guard case .message(let message, _) = item, (message.seq ?? 0) > seenSeq, message.senderId != meId else { continue }
+            if onScreenIds.contains(message.id) { return .newest }
+            if case .unread = previous { return .firstNew(scrollId: TimelineItem.unread.id, rowId: message.id) }
+            return .firstNew(scrollId: message.rowKey, rowId: message.id)
+        }
+        return .newest
+    }
+
     /// Being at the bottom sees the newest row, but only once the view is placed and no landing is on its way (§10.1
     /// 7.): the list starts at the bottom before it is placed, and counting that as seen would make 「新着 N 件」 0 for
     /// a view that opens at the divider.
