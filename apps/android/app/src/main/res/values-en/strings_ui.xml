@@ -1768,4 +1768,31 @@
         <item quantity="one">%1$,d result</item>
         <item quantity="other">%1$,d results</item>
     </plurals>
+    <!-- docs/PRESENCE.md §11: the quick status menu -->
+    <string name="presence_menu">My status</string>
+    <string name="presence_choice_auto">Online (automatic)</string>
+    <string name="presence_choice_away">Away</string>
+    <string name="presence_choice_dnd">Do not disturb</string>
+    <string name="presence_choice_invisible">Appear offline</string>
+    <string name="presence_hint_auto">Follows whether you are using the app</string>
+    <string name="presence_hint_away">Shows you as away even while you use the app</string>
+    <string name="presence_hint_dnd">Pauses your notifications</string>
+    <string name="presence_hint_invisible">Others see you as offline</string>
+    <string name="presence_duration_title">Do not disturb for</string>
+    <string name="presence_duration_30m">30 minutes</string>
+    <string name="presence_duration_1h">1 hour</string>
+    <string name="presence_duration_2h">2 hours</string>
+    <string name="presence_duration_4h">4 hours</string>
+    <string name="presence_duration_today">Until the end of today</string>
+    <string name="presence_duration_tomorrow">Until the end of tomorrow</string>
+    <string name="presence_duration_forever">Until I turn it off</string>
+    <string name="presence_until_cleared">Until turned off</string>
+    <string name="presence_dnd_until">Do not disturb (until %1$s)</string>
+    <string name="presence_dnd_forever">Do not disturb (until turned off)</string>
+    <string name="presence_clear">Turn off</string>
+    <string name="presence_clear_label">Turn off do not disturb and resume notifications</string>
+    <string name="presence_set_status">Set a status</string>
+    <string name="presence_attendance">Attendance: %1$s</string>
+    <string name="presence_attendance_none">Set attendance</string>
+    <string name="presence_open_menu">Change my status (%1$s)</string>
 </resources>

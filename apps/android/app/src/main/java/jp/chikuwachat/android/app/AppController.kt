@@ -2664,6 +2664,23 @@ class AppController(private val app: Application) {
     /** L4 (M31): 「在席を隠す」; others always see me offline. */
     suspend fun setPresenceHidden(hidden: Boolean): Boolean = updateProfileJson(buildJsonObject { put("presence_hidden", hidden) })
 
+    /**
+     * docs/PRESENCE.md §11.4: the status menu's choice. The answer's UserMe replaces me at once (my other devices read
+     * it again on user.updated); a refusal (an older server: 404) is said and nothing changes here.
+     */
+    suspend fun setMyPresence(choice: jp.chikuwachat.android.ui.PresenceChoice, duration: jp.chikuwachat.android.ui.DndDuration? = null): Boolean = attempt {
+        val updated = api!!.setMyPresence(jp.chikuwachat.android.ui.PresenceRules.body(choice, duration))
+        me = updated
+        store.setMe(updated)
+        store.upsertUser(updated.asPublic)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** The menu closes at once; the change runs here, so leaving the screen does not cancel it. */
+    fun chooseMyPresence(choice: jp.chikuwachat.android.ui.PresenceChoice, duration: jp.chikuwachat.android.ui.DndDuration? = null) {
+        scope.launch { setMyPresence(choice, duration) }
+    }
+
     /** M15b: public → private (owner / admin) or private → public (an admin who is a member, L4). */
     suspend fun convertChannel(channelId: String, type: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, type = type))

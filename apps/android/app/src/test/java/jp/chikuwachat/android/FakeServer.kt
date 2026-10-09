@@ -83,6 +83,34 @@ class FakeServer {
     val keywords = mutableMapOf<String, List<String>>()
     /** M35: users.notification_default per user (absent = "mentions"), in UserMe at bootstrap. */
     val notificationDefaults = mutableMapOf<String, String>()
+    /** docs/PRESENCE.md §11: my 離席中 ("away") and オフライン表示, private to me (in UserMe only). */
+    val presenceManual = mutableMapOf<String, String>()
+    val presenceHidden = mutableSetOf<String>()
+
+    /** UserMe as GET /users/me and the bootstrap answer it. */
+    fun meOf(userId: String): UserMe {
+        val user = users.getValue(userId)
+        return UserMe(
+            user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false,
+            dndUntil = user.dndUntil, notifyKeywords = keywords[userId] ?: emptyList(), notificationDefault = notificationDefaults[userId] ?: "mentions",
+            presenceHidden = userId in presenceHidden, presenceManual = presenceManual[userId],
+        )
+    }
+
+    /**
+     * PUT /users/me/presence (docs/PRESENCE.md §11.4), with the end already worked out: one choice at a time, updated_at
+     * moves and user.updated (the public user) goes to everyone.
+     */
+    fun setMyPresence(userId: String, status: String, dndUntil: String? = null): UserMe {
+        val user = users.getValue(userId)
+        users[userId] = user.copy(dndUntil = if (status == "dnd") dndUntil else null, updatedAt = now())
+        if (status == "away") presenceManual[userId] = "away" else presenceManual.remove(userId)
+        if (status == "invisible") presenceHidden.add(userId) else presenceHidden.remove(userId)
+        emit(sockets.map { it.userId }.toSet(), event("user.updated", null, null, buildJsonObject {
+            put("user", Codec.snake.encodeToJsonElement(UserPublic.serializer(), users.getValue(userId)))
+        }))
+        return meOf(userId)
+    }
 
     inner class Socket(val userId: String) : WsTransport {
         override var onMessage: ((String) -> Unit)? = null
@@ -142,6 +170,11 @@ class FakeServer {
     }
 
     inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
+        override suspend fun me(): UserMe {
+            maybeFail()
+            return meOf(userId)
+        }
+
         // --- M69 iCal feeds (CALENDAR.md §10.3, §10.6): 5 per person, the URL only in the answer that makes one ---
 
         override suspend fun calendarFeeds(): List<CalendarFeedOut> {
@@ -1273,7 +1306,7 @@ class FakeServer {
 
     fun bootstrap(userId: String): BootstrapOut {
         val user = users.getValue(userId)
-        val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false, notifyKeywords = keywords[userId] ?: emptyList(), notificationDefault = notificationDefaults[userId] ?: "mentions")
+        val me = meOf(user.id)
         val mine = channels.values.filter { userId in it.members }.map { record -> memberView(userId, record) }
         val connected = sockets.filter { it.authed }.map { it.userId }.distinct().sorted()
         return BootstrapOut(

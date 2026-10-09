@@ -119,6 +119,8 @@ object YouSettings {
     /** The list row's value: 「オフ」, or 「15:30 まで」 / 「明日 08:00 まで」 / 「10/2 09:00 まで」. */
     fun pauseSummary(dndUntil: String?, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String {
         val until = parse(dndUntil)?.takeIf { it.isAfter(now) } ?: return L10n.str(R.string.common_off)
+        // PRESENCE.md §11.2: 取り込み中「解除するまで」 is the same pause with no end (not 「12/31 09:00 まで」).
+        if (!until.isBefore(PresenceRules.INDEFINITE_FROM)) return L10n.str(R.string.presence_until_cleared)
         val end = until.atZone(zone)
         val today = now.atZone(zone).toLocalDate()
         val time = end.format(HHMM)

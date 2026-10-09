@@ -277,6 +277,12 @@ class ApiClient(
     /** M11d: profile card fields; JsonNull clears a field, omitted fields keep their value. */
     suspend fun updateProfile(fields: JsonObject): UserMe = request("PATCH", "/api/v1/users/me", fields)
 
+    /**
+     * docs/PRESENCE.md §11.4: the status menu's choice (auto / away / dnd / invisible; dnd with `duration` and `tz`),
+     * built by [jp.chikuwachat.android.ui.PresenceRules.body]. A server before it answers 404.
+     */
+    suspend fun setMyPresence(body: JsonObject): UserMe = request("PUT", "/api/v1/users/me/presence", body)
+
     /** M96: a new username (409 username_taken / username_reserved, 429 username_change_limited). */
     suspend fun updateUsername(username: String): UserMe =
         request("PATCH", "/api/v1/users/me", buildJsonObject { put("username", username) })

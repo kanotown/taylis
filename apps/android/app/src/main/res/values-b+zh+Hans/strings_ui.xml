@@ -1759,4 +1759,31 @@
     <plurals name="search_results_count">
         <item quantity="other">%1$,d 条</item>
     </plurals>
+    <!-- docs/PRESENCE.md §11: the quick status menu -->
+    <string name="presence_menu">我的状态</string>
+    <string name="presence_choice_auto">在线（自动）</string>
+    <string name="presence_choice_away">离开</string>
+    <string name="presence_choice_dnd">请勿打扰</string>
+    <string name="presence_choice_invisible">显示为离线</string>
+    <string name="presence_hint_auto">根据是否在使用应用自动切换</string>
+    <string name="presence_hint_away">即使在使用应用也显示为离开</string>
+    <string name="presence_hint_dnd">暂停通知</string>
+    <string name="presence_hint_invisible">其他人看到你是离线</string>
+    <string name="presence_duration_title">请勿打扰的时长</string>
+    <string name="presence_duration_30m">30 分钟</string>
+    <string name="presence_duration_1h">1 小时</string>
+    <string name="presence_duration_2h">2 小时</string>
+    <string name="presence_duration_4h">4 小时</string>
+    <string name="presence_duration_today">直到今天结束</string>
+    <string name="presence_duration_tomorrow">直到明天结束</string>
+    <string name="presence_duration_forever">直到我关闭</string>
+    <string name="presence_until_cleared">直到关闭</string>
+    <string name="presence_dnd_until">请勿打扰（至 %1$s）</string>
+    <string name="presence_dnd_forever">请勿打扰（直到关闭）</string>
+    <string name="presence_clear">解除</string>
+    <string name="presence_clear_label">解除请勿打扰并恢复通知</string>
+    <string name="presence_set_status">设置状态</string>
+    <string name="presence_attendance">在室状况：%1$s</string>
+    <string name="presence_attendance_none">设置在室状况</string>
+    <string name="presence_open_menu">更改我的状态（%1$s）</string>
 </resources>

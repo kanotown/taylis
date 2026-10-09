@@ -1361,6 +1361,7 @@ class SyncEngine(
         val channel = store.channel(mention.channelId) ?: return
         if (!channel.isMember) return
         if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, involved = true)) return
+        if (pausedNow()) return
         onCanvasMention?.invoke(mention, channel)
     }
 
@@ -1378,7 +1379,18 @@ class SyncEngine(
         val facts = NotificationLevels.facts(message, me.id, me.notifyKeywords, thread, followingHeld)
         if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, facts)) return
         if (isActive() && currentChannelId == channel.id) return
+        if (pausedNow()) return
         onNotify?.invoke(message, channel)
+    }
+
+    /**
+     * docs/PRESENCE.md §11.7: while I am 取り込み中 (my dnd_until ahead, the server holds the pushes too) the app says
+     * nothing either. The public copy counts when it is newer (user.updated from my other device, before GET /users/me).
+     */
+    private fun pausedNow(): Boolean {
+        val me = store.me ?: return false
+        val current = jp.chikuwachat.android.ui.PresenceRules.currentMe(me, store.users[me.id])
+        return jp.chikuwachat.android.ui.PresenceRules.dndUntil(current?.dndUntil, java.time.Instant.now()) != null
     }
 
     /**
