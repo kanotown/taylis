@@ -68,6 +68,11 @@ data class UserMe(
     /** L4 (M31): others always see me offline (the server never sends my presence). */
     val presenceHidden: Boolean = false,
     /**
+     * docs/PRESENCE.md §11: 「離席中」 chosen in the status menu ("away"; null = automatic). Absent from servers before it
+     * (null); a value this app does not know reads as null ([jp.chikuwachat.android.ui.PresenceRules.myChoice]).
+     */
+    val presenceManual: String? = null,
+    /**
      * M35: what channels without a level of their own notify me of ("all" / "mentions" / "none"; PUSH_NOTIFICATIONS.md
      * §4). Pushes only: the unread rules never read it (SYNC_PROTOCOL.md §10.5).
      */

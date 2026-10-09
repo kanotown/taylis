@@ -1759,4 +1759,31 @@
     <plurals name="search_results_count">
         <item quantity="other">%1$,d 件</item>
     </plurals>
+    <!-- docs/PRESENCE.md §11: the quick status menu -->
+    <string name="presence_menu">自分のステータス</string>
+    <string name="presence_choice_auto">オンライン（自動）</string>
+    <string name="presence_choice_away">離席中</string>
+    <string name="presence_choice_dnd">取り込み中</string>
+    <string name="presence_choice_invisible">オフライン表示</string>
+    <string name="presence_hint_auto">使っているかどうかで自動で切り替わります</string>
+    <string name="presence_hint_away">使っていても離席中に見えます</string>
+    <string name="presence_hint_dnd">通知を止めます</string>
+    <string name="presence_hint_invisible">ほかの人にはオフラインに見えます</string>
+    <string name="presence_duration_title">取り込み中にする長さ</string>
+    <string name="presence_duration_30m">30 分</string>
+    <string name="presence_duration_1h">1 時間</string>
+    <string name="presence_duration_2h">2 時間</string>
+    <string name="presence_duration_4h">4 時間</string>
+    <string name="presence_duration_today">今日の終わりまで</string>
+    <string name="presence_duration_tomorrow">明日まで</string>
+    <string name="presence_duration_forever">解除するまで</string>
+    <string name="presence_until_cleared">解除するまで</string>
+    <string name="presence_dnd_until">取り込み中（〜%1$s）</string>
+    <string name="presence_dnd_forever">取り込み中（解除するまで）</string>
+    <string name="presence_clear">解除</string>
+    <string name="presence_clear_label">取り込み中を解除して通知を再開</string>
+    <string name="presence_set_status">ステータスを設定</string>
+    <string name="presence_attendance">在室状況：%1$s</string>
+    <string name="presence_attendance_none">在室状況を設定</string>
+    <string name="presence_open_menu">自分のステータスを変える（%1$s）</string>
 </resources>

@@ -139,12 +139,14 @@ fun YouTab(
     onOpen: (SettingsPage) -> Unit,
     onClose: () -> Unit,
     onLogout: () -> Unit,
+    /** docs/PRESENCE.md §11.7: my picture at the top opens the status menu. */
+    onStatusMenu: (() -> Unit)? = null,
 ) {
     val page = MainNav.settingsPage(stack)
     if (twoPane) {
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.width(360.dp).fillMaxHeight()) {
-                YouList(controller, version, listScroll, selected = MainNav.settingsRow(stack), onOpen = onSelect, onLogout = onLogout)
+                YouList(controller, version, listScroll, selected = MainNav.settingsRow(stack), onOpen = onSelect, onLogout = onLogout, onStatusMenu = onStatusMenu)
             }
             VerticalDivider()
             Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -163,7 +165,7 @@ fun YouTab(
     } else if (page != null) {
         key(page) { SettingsScreen(controller, version, page, onOpen, onClose) }
     } else {
-        YouList(controller, version, listScroll, selected = null, onOpen = onSelect, onLogout = onLogout)
+        YouList(controller, version, listScroll, selected = null, onOpen = onSelect, onLogout = onLogout, onStatusMenu = onStatusMenu)
     }
 }
 
@@ -189,7 +191,7 @@ private fun meOf(controller: AppController): UserMe? = controller.store.me ?: co
 // --- the list ---
 
 @Composable
-private fun YouList(controller: AppController, version: Int, scroll: ScrollState, selected: SettingsPage?, onOpen: (SettingsPage) -> Unit, onLogout: () -> Unit) {
+private fun YouList(controller: AppController, version: Int, scroll: ScrollState, selected: SettingsPage?, onOpen: (SettingsPage) -> Unit, onLogout: () -> Unit, onStatusMenu: (() -> Unit)? = null) {
     val me = remember(version, controller.me) { meOf(controller) }
     val public = remember(version, me) { me?.let { controller.store.users[it.id] ?: it.asPublic } }
     val scope = rememberCoroutineScope()
@@ -200,7 +202,9 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
                 Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.common_edit_profile)) { onOpen(SettingsPage.PROFILE) }.padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Avatar(me.id, me.displayName, size = 64.dp)
+                // PRESENCE.md §11.7: my picture (with my dot) opens the status menu; the rest of the row edits the profile.
+                if (onStatusMenu != null) MyStatusButton(controller, version, size = 64.dp, onClick = onStatusMenu)
+                else Avatar(me.id, me.displayName, size = 64.dp)
                 Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Text(me.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(YouSettings.handle(me.username, Roster.displayTitle(me.title, controller.store.roster[me.id])), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

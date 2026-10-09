@@ -1619,10 +1619,25 @@ class Store(private val persistence: Persistence? = null) {
 
     // --- presence / typing (volatile, SYNC_PROTOCOL.md §5.2) ---------------------------------
 
-    fun presenceOf(userId: String): String = presence[userId] ?: "offline"
+    /**
+     * What avatars show (docs/PRESENCE.md §11.5): "dnd" (取り込み中) while the person's dnd_until is ahead, else the
+     * frames' status. Lists that sort by who is connected use [connectionOf].
+     */
+    fun presenceOf(userId: String, now: java.time.Instant = java.time.Instant.now()): String =
+        jp.chikuwachat.android.ui.PresenceRules.look(connectionOf(userId), users[userId]?.dndUntil, now)
+
+    /** The `presence` frames' status alone (online / away / offline). */
+    fun connectionOf(userId: String): String = presence[userId] ?: "offline"
+
+    /** When the soonest 取り込み中 ends (§11.3: no event comes then); the screen redraws at that time ([dndEnded]). */
+    fun nextDndEnd(now: java.time.Instant = java.time.Instant.now()): java.time.Instant? =
+        jp.chikuwachat.android.ui.PresenceRules.nextDndEnd(users.values.map { it.dndUntil } + listOf(me?.dndUntil), now)
+
+    /** A pause ran out: everything that draws a presence reads it again. */
+    fun dndEnded() = emit()
 
     fun setPresence(userId: String, status: String) {
-        if (presenceOf(userId) == status) return
+        if (connectionOf(userId) == status) return
         if (status == "offline") presence.remove(userId) else presence[userId] = status
         emit()
     }

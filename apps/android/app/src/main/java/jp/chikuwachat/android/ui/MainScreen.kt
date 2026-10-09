@@ -191,6 +191,9 @@ fun MainScreen(controller: AppController) {
     var confirmReadAll by rememberSaveable { mutableStateOf(false) }
     // M40: 「ログアウト」 asks first (the 自分 list's red row and the ⋮ menus).
     var confirmLogout by rememberSaveable { mutableStateOf(false) }
+    // docs/PRESENCE.md §11.7: my avatar's status menu (the top bar's, and the one at the top of 「自分」).
+    var statusMenu by rememberSaveable { mutableStateOf(false) }
+    DndExpiryTimer(controller, version)
     // M40: from this width the 自分 tab shows its list and the chosen screen side by side.
     val youTwoPane = with(LocalDensity.current) { YouSettings.twoPane(LocalWindowInfo.current.containerSize.width.toDp().value) }
     // T1 (MOBILE_UI.md §12): the phone's pages, or a tablet's panes; read again whenever the window changes size (a
@@ -806,10 +809,9 @@ fun MainScreen(controller: AppController) {
                         back != null -> IconButton(onClick = back) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                         }
-                        // M34: my avatar opens the 自分 tab (the settings were a dialog). T1: wide, the rail has it.
-                        me != null && top != Route.You && layout == PaneLayout.PHONE -> IconButton(onClick = { selectMainTab(MainTab.YOU) }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.common_you) }) {
-                            Avatar(me.id, me.displayName, size = 32.dp)
-                        }
+                        // M34: my avatar (T1: wide, the rail has 自分). PRESENCE.md §11.7: it opens the status menu, whose
+                        // 設定 (and the bottom bar's 自分) still go to the 自分 tab.
+                        me != null && top != Route.You && layout == PaneLayout.PHONE -> MyStatusButton(controller, version, size = 32.dp, onClick = { statusMenu = true }, modifier = Modifier.padding(start = 12.dp, end = 8.dp))
                     }
                 },
                 actions = {
@@ -1225,6 +1227,7 @@ fun MainScreen(controller: AppController) {
                         onOpen = { page -> focusManager.clearFocus(); stack = MainNav.openSettings(stack, page) },
                         onClose = { focusManager.clearFocus(); goBack() },
                         onLogout = { confirmLogout = true },
+                        onStatusMenu = { statusMenu = true },
                     )
                 } else {
                     // M37 (MOBILE_UI.md §6.1): 移動・検索, the tiles and the sections. 「メンション」 is the activity tab's (M34).
@@ -1377,6 +1380,20 @@ fun MainScreen(controller: AppController) {
         })
     }
     if (confirmLogout) LogoutConfirmDialog(controller, onDismiss = { confirmLogout = false })
+    if (statusMenu) {
+        MyStatusSheet(
+            controller, version,
+            onDismiss = { statusMenu = false },
+            onOpenSettings = { page ->
+                focusManager.clearFocus()
+                tabs = if (page == null) MainTabs.withStack(tabs, MainTab.YOU, listOf(Route.You)).copy(selected = MainTab.YOU)
+                else MainTabs.openSettings(tabs, page)
+            },
+            onOpenAttendance = ::openAttendanceBoard,
+            // On 「自分」 itself 設定 would lead nowhere new.
+            showSettings = top != Route.You && top !is Route.Settings,
+        )
+    }
     confirmCallIn?.let { id ->
         // Outside the screen's scope: leaving the conversation does not cancel a call being started.
         StartCallDialog(onDismiss = { confirmCallIn = null }, onConfirm = { confirmCallIn = null; controller.scope.launch { controller.startCall(id) } })
@@ -1581,7 +1598,7 @@ private const val BANNER_GRACE_MS = 2_000L
 internal fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != store.me?.id }
     if (others.size != 1) return null
-    val presence = presenceLabel(store.presenceOf(others[0]))
+    val presence = PresenceRules.lookLabel(store.presenceOf(others[0]), store.users[others[0]]?.dndUntil)
     val status = jp.chikuwachat.android.api.activeStatus(store.users[others[0]]) ?: return presence
     return "$presence · ${status.first} ${status.second}".trim()
 }

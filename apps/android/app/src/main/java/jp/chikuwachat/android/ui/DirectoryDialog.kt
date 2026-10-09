@@ -48,7 +48,8 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
     val version by store.version.collectAsState()
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
-    fun rank(user: UserPublic): Int = if (user.role == "bot") 3 else when (store.presenceOf(user.id)) { "online" -> 0; "away" -> 1; else -> 2 }
+    // PRESENCE.md §11.5: sorted by the connection underneath (取り込み中 too).
+    fun rank(user: UserPublic): Int = if (user.role == "bot") 3 else when (store.connectionOf(user.id)) { "online" -> 0; "away" -> 1; else -> 2 }
     val q = query.trim().lowercase()
     val roster = store.roster
     val headed = roster.isNotEmpty()
@@ -69,7 +70,7 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
         )
         if (parts.isNotEmpty()) return parts.joinToString(" · ")
         if (user.role == "bot") return L10n.str(R.string.directory_dialog_incoming_webhook)
-        return when (store.presenceOf(user.id)) { "online" -> L10n.str(R.string.common_online); "away" -> L10n.str(R.string.common_away); else -> L10n.str(R.string.common_offline) }
+        return presenceLabel(store.presenceOf(user.id))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
