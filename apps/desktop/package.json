@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "build:mobile-editor": "vite build --config vite.mobile-editor.config.ts",
+    "preview:mobile-editor": "vite preview --config vite.mobile-editor.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "i18n:leftovers": "node scripts/i18n-leftovers.mjs",

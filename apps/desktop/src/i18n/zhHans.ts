@@ -2795,6 +2795,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "docs.wysiwyg.changeIcon": "更换图标",
   "docs.wysiwyg.toggleTitle": "折叠标题",
   "docs.wysiwyg.mathEmpty": "编写公式（TeX）",
+  "docs.wysiwyg.imageLimit": "一个页面最多可包含 100 个图片。",
+  "docs.wysiwyg.embedInApp": "在应用中打开",
   "docs.wysiwyg.mathTex": "公式（TeX）",
   "docs.wysiwyg.mathEmptyRemoves": "留空即删除公式",
   "docs.wysiwyg.linkApply": "链接",

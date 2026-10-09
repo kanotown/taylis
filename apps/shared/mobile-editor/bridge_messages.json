@@ -1,0 +1,49 @@
+{
+  "_comment": "M153a (docs/WIKI.md §30.3): one example of every message of the editor bridge (apps/shared/mobile-editor/src/bridge.ts). The JS test (apps/desktop/tests/mobileEditorBridge.test.ts) parses every native message and sends every web one; the iOS and Android tests decode and encode the same examples.",
+  "version": 1,
+  "native_to_web": [
+    { "type": "load", "body": "# 手順\n\n最初の行\n", "title": "マニュアル", "theme": "dark", "readOnly": false, "caretLine": 2, "locale": "ja", "attachmentUrl": "taylis-editor://app/attachment/{id}" },
+    { "type": "load", "body": "" },
+    { "type": "replace", "body": "# 手順\n\n最初の行（直した）\n" },
+    { "type": "setTheme", "theme": "light" },
+    { "type": "setViewport", "keyboardHeight": 336, "safeBottom": 34 },
+    { "type": "setViewport", "keyboardHeight": 0 },
+    { "type": "insertImage", "attachmentId": "0190a2b4-0000-7000-8000-00000000a001", "url": "taylis-editor://app/attachment/0190a2b4-0000-7000-8000-00000000a001", "alt": "" },
+    { "type": "providePeople", "people": [
+      { "id": "0190a2b4-0000-7000-8000-0000000000e2", "username": "hanako", "display_name": "花子" },
+      { "id": "0190a2b4-0000-7000-8000-0000000000e9", "username": "assistant", "display_name": "アシスタント", "ai": true },
+      { "id": "0190a2b4-0000-7000-8000-0000000000f1", "username": "m2", "display_name": "M2", "kind": "group", "members": 4, "description": "修士 2 年" }
+    ] },
+    { "type": "providePages", "query": "設計", "pages": [ { "id": "0190a2b4-0000-7000-8000-0000000000c1", "title": "設計メモ", "icon": "📐", "kind": "page" } ] },
+    { "type": "providePages", "query": null, "pages": [] },
+    { "type": "provideEmoji", "emoji": [
+      { "name": "lab", "url": "taylis-editor://app/emoji/lab", "label": "研究室", "kind": "image", "width": 32, "height": 32 },
+      { "name": "ok", "label": "OK", "kind": "text", "color": "green" }
+    ] },
+    { "type": "focus" },
+    { "type": "blur" },
+    { "type": "requestBody" },
+    { "type": "command", "name": "bold" }
+  ],
+  "web_to_native": [
+    { "type": "ready", "version": 1 },
+    { "type": "changed", "body": "# 手順\n\n最初の行を直した\n", "dirty": true },
+    { "type": "bodyRequested", "body": "# 手順\n\n最初の行\n", "dirty": false, "caretLine": 2 },
+    { "type": "caret", "line": 2 },
+    { "type": "height", "px": 1240 },
+    { "type": "needPeople", "query": "ha" },
+    { "type": "needPages", "query": "設計" },
+    { "type": "pickImage" },
+    { "type": "openLink", "url": "page:0190a2b4-0000-7000-8000-0000000000c1" },
+    { "type": "openLink", "url": "https://example.com/" },
+    { "type": "focusTitle" },
+    { "type": "log", "level": "warn", "message": "message refused: unknown type \"ping\"" }
+  ],
+  "refused": [
+    { "raw": "{not json", "error": "not JSON" },
+    { "raw": { "type": "ping" }, "error": "unknown type \"ping\"" },
+    { "raw": { "type": "load", "body": 1 }, "error": "load: body must be a string" },
+    { "raw": { "type": "setTheme", "theme": "sepia" }, "error": "setTheme: theme \"sepia\"" },
+    { "raw": { "type": "command", "name": "explode" }, "error": "command: unknown name \"explode\"" }
+  ]
+}

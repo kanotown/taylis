@@ -26,6 +26,12 @@
  * M155 (WIKI.md §30.2): a toolbar floats over a text selection (ui/pageEditorToolbar.tsx: the marks, inline math, the
  * link box, 「変換 ▾」); ⌘/ opens the 「変換」 list for the caret's block or the selected blocks; the `/` menu has icons,
  * a line of help, sections and 「最近使ったもの」 (this device's localStorage); `@` offers pages after the people.
+ *
+ * M153a (WIKI.md §30.3): the app around the editor is a PageEditorEnv (ui/pageEditorEnv.tsx: the people, the custom
+ * emoji, what the atoms draw, uploads, errors) and the save loop a PageEditorSink, so the same editor is bundled for
+ * the phones' WebView (src/mobileEditor/) without the controller, the store or the API client. The handle gained
+ * `focus`, `blur`, `insertImage` and `command` for the native bridge; the formatting row can sit at the bottom of the
+ * screen, above the keyboard (`env.toolbar`).
  */
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -34,35 +40,26 @@ import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, Between
 import { Fragment, type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
-import { ApiError } from "../api/errors";
 import type { PageRef } from "../api/types";
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
-import type { AppController } from "../state/app";
-import type { CanvasSaver, SavedDoc } from "../sync/canvasSave";
 import { isImeKeyEvent } from "./ime";
-import { DatabaseEmbed } from "./CanvasBody";
 import type { DocEditorLinks } from "./CanvasEditor";
-import { CanvasImage } from "./CanvasImage";
 import { parseTable, sameTable, serializeTable, type Table } from "./canvasTable";
 import { CanvasTableDialog } from "./CanvasTableDialog";
 import { attachmentRefs, MAX_CANVAS_IMAGES } from "./canvasText";
-import { CustomEmojiImage } from "./customEmoji";
 import { readSlashRecents, rememberSlashKey, type SlashKey, slashSections } from "./docEditor";
-import { emojiByShortcode, replaceShortcodes } from "./emoji";
-import { EmojiPicker } from "./EmojiPicker";
+import { emojiByShortcode } from "./emoji";
 import { loadKatex, MathView } from "./MathView";
-import { aiBotIds, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery, mentionsToNames } from "./mentions";
-import { inline } from "./MessageBody";
+import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery, mentionsToNames } from "./mentions";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
+import type { EditorCommand, PageEditorEnv, PageEditorSink } from "./pageEditorEnv";
 import { cellPlace, editTable, type TableEdit } from "./pageEditorTable";
 import { blockPosAt, type BlockUnit, canPlace, deleteUnit, duplicateUnit, lineAfter, moveUnit, stepBlocks, unitAt } from "./pageEditorBlocks";
 import { applyMerge, caretLine, createPageDocument, placeCaretAtLine } from "./pageEditorDoc";
 import { editorMarkdown, markdownSlice, pageExtensions, type PageEditorHost, PortalRegistry, sliceMarkdown, SourceMap, untied } from "./pageEditorSchema";
 import { BlockSelection, clearedSelection, extendTo, pasteAfterBlocks } from "./pageEditorSelection";
 import { containerDepthAt, kindOf, mathSelectable, SelectionToolbar, setKind, slashIcon, stepMenuFocus, toolbarState, type ToolbarPlace, TURN_INTO, turnBlocks, TurnIntoList, type TurnKey, turnRange, wrapMath } from "./pageEditorToolbar";
-import { PageIcon } from "./PageIcon";
 import { pageHtmlFromPaste } from "./pagePaste";
-import { PageLinkChip } from "./PageLinkChip";
 import { cn, modKey } from "./primitives";
 import { type MessageKey, t } from "../i18n";
 
@@ -75,6 +72,15 @@ export interface PageEditorHandle {
   caretLine(): number;
   /** M154: the caret at the start of the body (the first text in it; the body always has a line). */
   focusStart(): void;
+  /** M153a (the native bridge): the keyboard's focus into and out of the body. */
+  focus(): void;
+  blur(): void;
+  /** M153a: an image native uploaded, as a block at the caret (the `/` menu's image). */
+  insertImage(attachmentId: string, alt: string): void;
+  /** M153a: a native toolbar's button; false when the name is not one of the editor's. */
+  command(name: EditorCommand): boolean;
+  /** M153a: the caret scrolled clear of the keyboard (after the viewport changed). */
+  revealCaret(): void;
 }
 
 type Menu =
@@ -97,9 +103,9 @@ interface TurnMenu {
 const SLASH_AT = /(?:^|\s)\/([^\s/]{0,20})$/u;
 const LINK_AT = /(!?)\[\[([^[\]\n]{0,80})$/;
 
-export default function PageEditor({ controller, saver, links, initialLine = null, handle, onTitle, className }: {
-  controller: AppController;
-  saver: CanvasSaver<SavedDoc>;
+export default function PageEditor({ env, saver, links, initialLine = null, handle, onTitle, className }: {
+  env: PageEditorEnv;
+  saver: PageEditorSink;
   links: DocEditorLinks;
   /** The body line to put the caret on (coming from the Markdown editor); null: the start. */
   initialLine?: number | null;
@@ -108,7 +114,6 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   onTitle?: () => void;
   className?: string;
 }) {
-  const store = controller.store;
   const hostElement = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const sources = useRef(new SourceMap()).current;
@@ -144,8 +149,10 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   const picker = useRef<HTMLInputElement>(null);
   useSyncExternalStore((listener) => portals.subscribe(listener), () => portals.version);
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
+  // M153a: the people, pages and emoji the app offers (on a phone they arrive after the body).
+  useSyncExternalStore((listener) => env.subscribe(listener), () => env.version());
 
-  const isEmoji = (name: string) => !!emojiByShortcode(name) || store.customEmoji.has(name);
+  const isEmoji = (name: string) => !!emojiByShortcode(name) || env.isCustomEmoji(name);
 
   /** The document written as Markdown and handed to the save loop (nothing when it is what the loop holds). */
   const commit = () => {
@@ -167,27 +174,25 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
   commitRef.current = commit;
 
   // The page around the nodes (portals, dialogs); read through a ref so the editor is built once.
-  const live = useRef({ controller, links, onTitle });
-  live.current = { controller, links, onTitle };
+  const live = useRef({ env, links, onTitle });
+  live.current = { env, links, onTitle };
   const host = useMemo<PageEditorHost>(() => ({
     portals,
     sources,
     render: {
-      pageLink: (id, label) => <PageLinkChip controller={live.current.controller} pageId={id} label={label || undefined} />,
-      emoji: (md) => {
-        const name = md.slice(1, -1);
-        const custom = store.customEmoji.get(name);
-        if (custom) return <CustomEmojiImage controller={live.current.controller} emoji={custom} size="1.375em" inline />;
-        return <span>{replaceShortcodes(md)}</span>;
-      },
-      image: (attachmentId, alt) => <CanvasImage controller={live.current.controller} attachmentId={attachmentId} alt={alt} />,
-      embed: (pageId, viewId) => <DatabaseEmbed controller={live.current.controller} pageId={pageId} viewId={viewId} />,
+      pageLink: (id, label) => live.current.env.render.pageLink(id, label),
+      emoji: (md) => live.current.env.render.emoji(md),
+      image: (attachmentId, alt) => live.current.env.render.image(attachmentId, alt),
+      embed: (pageId, viewId) => live.current.env.render.embed(pageId, viewId),
       inlineMath: (tex) => <InlineMathView tex={tex} />,
       math: (tex) => (tex.trim() ? <MathView tex={tex.trim()} display /> : <span className="text-xs text-muted">{t("docs.wysiwyg.mathEmpty")}</span>),
-      calloutIcon: (icon) => (icon ? <span aria-hidden="true">{inline([{ kind: "text", text: icon }], store.users, { customEmoji: store.customEmoji, controller: live.current.controller })}</span> : <span className="text-muted" aria-hidden="true">＋</span>),
+      calloutIcon: (icon) => live.current.env.render.calloutIcon(icon),
     },
-    mentionLabel: (md) => mentionsToNames(md, store.users, store.groups),
-    isEmoji: (name) => !!emojiByShortcode(name) || store.customEmoji.has(name),
+    mentionLabel: (md) => {
+      const people = live.current.env.people();
+      return mentionsToNames(md, people.users, people.groups);
+    },
+    isEmoji: (name) => !!emojiByShortcode(name) || live.current.env.isCustomEmoji(name),
     pickIcon: (pos, anchor) => setIconPick({ pos, rect: anchor.getBoundingClientRect() }),
     editMath: (pos) => openMath(pos),
     save: () => {
@@ -207,7 +212,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       changeIcon: t("docs.wysiwyg.changeIcon"),
       untitledToggle: t("docs.wysiwyg.toggleTitle"),
     },
-    editable: () => true,
+    editable: () => !live.current.env.readOnly(),
     // Built once; the latest page is read through `live`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
@@ -220,6 +225,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       element,
       extensions: pageExtensions(host),
       content: createPageDocument(saver.text, isEmoji) as JSONContent,
+      editable: !env.readOnly(),
       editorProps: {
         attributes: { "aria-label": t("docs.wysiwyg.body"), "aria-multiline": "true", role: "textbox", class: "body page-editor", spellcheck: "false" },
         // The caret is kept clear of the window's edges (the sticky toolbar above, the menus below).
@@ -304,7 +310,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     sources.add(editor.state.doc);
     editorRef.current = editor;
     if (initialLine !== null && initialLine > 0) placeCaretAtLine(editor, sources, initialLine);
-    editor.commands.focus(initialLine !== null && initialLine > 0 ? undefined : "start");
+    // M153a: a phone's keyboard comes when native asks (`focus`), not with the page.
+    if (env.autoFocus !== false) editor.commands.focus(initialLine !== null && initialLine > 0 ? undefined : "start");
     element.setAttribute("data-open-ms", String(Math.round(performance.now() - started)));
     if (handle) {
       handle.current = {
@@ -316,6 +323,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
           editor.view.dispatch(editor.state.tr.setSelection(first).scrollIntoView());
           editor.commands.focus();
         },
+        focus: () => editor.commands.focus(),
+        blur: () => editor.view.dom.blur(),
+        insertImage: (attachmentId, alt) => putBlockRef.current({ type: "image", attrs: { attachmentId, alt } }),
+        command: (name) => commandRef.current(name),
+        revealCaret: () => editor.commands.scrollIntoView(),
       };
     }
     // The loop must not put a merged body in while a composition is open or an edit waits to be written.
@@ -397,6 +409,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     if (!menu || (menu.kind !== "link" && menu.kind !== "mention") || dismissed === menuKey) return;
     const key = menuKey!;
     const query = menu.query.trim();
+    // M153a: a phone's native side may have more people for this query.
+    if (menu.kind === "mention") env.onMentionQuery?.(query);
     const timer = setTimeout(() => {
       void (menu.kind === "link" && menu.embed && links.lookupDatabases ? links.lookupDatabases(query) : links.lookup(query)).then((pages) => setLinkResults({ key, pages }), () => setLinkResults({ key, pages: [] }));
     }, 120);
@@ -406,14 +420,16 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
 
   const open = !!menu && dismissed !== menuKey;
   const depth = containerDepth(editorRef.current);
-  // M155: the `/` menu in sections (「最近使ったもの」 first); its rows flat for the keys.
-  const sections = open && menu.kind === "slash" ? slashSections(menu.query, recents, (item) => (item.key !== "callout" && item.key !== "toggle") || depth < 2) : [];
+  // M155: the `/` menu in sections (「最近使ったもの」 first); its rows flat for the keys. M153a: what the app around the
+  // editor cannot do (a child page, a database, an embed on a phone) is not offered.
+  const sections = open && menu.kind === "slash" ? slashSections(menu.query, recents, (item) => slashAvailable(item.key, depth)) : [];
   const slashList = sections.flatMap((section) => section.items);
   const pageList = open && menu.kind === "link" && linkResults?.key === menuKey ? linkResults.pages : [];
   // M155: `@` offers pages after the people and groups (three of the pages `[[` finds).
+  const people = env.people();
   const mentionList: MentionRow[] = open && menu.kind === "mention"
     ? [
-        ...mentionCandidates(menu.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store)).filter((c) => c.kind !== "all").map((candidate): MentionRow => ({ kind: "mention", candidate })),
+        ...mentionCandidates(menu.query, [...people.users.values()], [...people.groups.values()], 8, people.aiBotIds).filter((c) => c.kind !== "all").map((candidate): MentionRow => ({ kind: "mention", candidate })),
         ...(linkResults?.key === menuKey ? linkResults.pages.slice(0, 3) : []).map((page): MentionRow => ({ kind: "page", page })),
       ]
     : [];
@@ -486,7 +502,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     const editor = editorRef.current;
     if (!editor) return;
     const { from, to } = editor.state.selection;
-    void controller.copyMessageText(editor.state.doc.textBetween(from, to, "\n", "￼"));
+    env.copyText(editor.state.doc.textBetween(from, to, "\n", "￼"));
   }
 
   /** M155: the 「変換」 list (⌘/, the toolbar's 「変換 ▾」) for the caret's block or the selected blocks; `anchor`: under it, else at the caret. */
@@ -548,7 +564,8 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       return;
     }
     const { candidate } = row;
-    const md = encodeMentions(`@${candidate.username}`, store.users.values(), store.groups.values());
+    const known = env.people();
+    const md = encodeMentions(`@${candidate.username}`, known.users.values(), known.groups.values());
     const user = /^<@([0-9a-f-]{36})>$/.exec(md);
     const group = /^<@group:([0-9a-f-]{36})>$/.exec(md);
     const atom = user ? { md, kind: "user", id: user[1] } : group ? { md, kind: "group", id: group[1] } : null;
@@ -589,6 +606,24 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     editor.view.dispatch(tr.scrollIntoView());
     editor.commands.focus();
   }
+  const putBlockRef = useRef(putBlock);
+  putBlockRef.current = putBlock;
+
+  /** Which `/` items the app around the editor can serve (callouts and toggles nest two deep). */
+  function slashAvailable(key: SlashKey, depth: number): boolean {
+    if (key === "callout" || key === "toggle") return depth < 2;
+    if (key === "childPage") return !!links.createChild;
+    if (key === "database") return !!links.createDatabase;
+    if (key === "embedDatabase") return !!links.lookupDatabases;
+    return true;
+  }
+
+  /** The image picker: native's on a phone (the image comes back through the handle), else the file input. */
+  function openImagePicker() {
+    if (env.pickImage) env.pickImage();
+    else if (isPickBusy(picker.current)) env.showError(t("canvasEditor.stillReading"));
+    else picker.current?.click();
+  }
 
   function pickSlash(key: SlashKey) {
     const editor = editorRef.current;
@@ -622,13 +657,12 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         return;
       case "image":
         chain.run();
-        if (isPickBusy(picker.current)) controller.setError(t("canvasEditor.stillReading"));
-        else picker.current?.click();
+        openImagePicker();
         return;
       case "childPage":
       case "database": {
         chain.run();
-        const create = key === "database" && links.createDatabase ? links.createDatabase() : links.createChild();
+        const create = key === "database" && links.createDatabase ? links.createDatabase() : links.createChild ? links.createChild() : Promise.resolve(null);
         setBusy(true);
         void create.then((page) => {
           setBusy(false);
@@ -649,23 +683,23 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     const images = list.filter((file) => file.type.startsWith("image/"));
     if (images.length === 0) {
       release();
-      if (list.length > 0) controller.setError(t("canvasEditor.imagesOnly"));
+      if (list.length > 0) env.showError(t("canvasEditor.imagesOnly"));
       return;
     }
     if (attachmentRefs(saver.text).size + images.length > MAX_CANVAS_IMAGES) {
       release();
-      controller.setError(new ApiError(400, "too_many_canvas_images", "Too many images"));
+      env.showError(env.imageLimitError());
       return;
     }
     const refusal = refusePicked(images, { maxFiles: MAX_CANVAS_IMAGES, maxBytes: ATTACHMENT_MAX_BYTES });
     if (refusal) {
       release();
-      controller.setError(refusal);
+      env.showError(refusal);
       return;
     }
     setUploading((n) => n + images.length);
     const insert = async (file: File) => {
-      const uploaded = await controller.uploadCanvasImage(file);
+      const uploaded = await env.uploadImage(file);
       setUploading((n) => n - 1);
       if (uploaded) putBlock({ type: "image", attrs: { attachmentId: uploaded.id, alt: "" } });
     };
@@ -675,7 +709,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     }
     await forEachPicked(images, insert, release, (error) => {
       setUploading((n) => n - 1);
-      controller.setError(error);
+      env.showError(error);
     });
   }
 
@@ -941,8 +975,39 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     { icon: <AtSign size={16} />, label: t("nav.mentions"), run: run((e) => e.chain().focus().insertContent(/\S$/.test(e.state.selection.$from.parent.textBetween(0, e.state.selection.$from.parentOffset)) ? " @" : "@").run()) },
     { icon: <Minus size={16} />, label: t("canvasEditor.rule"), run: () => putBlock({ type: "horizontalRule" }) },
     { icon: <TableIcon size={16} />, label: t("canvasEditor.table"), run: () => setTableEdit({ table: newTableFor(), isNew: true, pos: null }) },
-    { icon: <ImagePlus size={16} />, label: t("canvasEditor.image"), run: () => { if (isPickBusy(picker.current)) controller.setError(t("canvasEditor.stillReading")); else picker.current?.click(); } },
+    { icon: <ImagePlus size={16} />, label: t("canvasEditor.image"), run: openImagePicker },
   ];
+
+  /** M153a: a native toolbar's button (the bridge's `command`), the same actions as the row above / below the body. */
+  function runCommand(name: EditorCommand): boolean {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    switch (name) {
+      case "bold": return editor.chain().focus().toggleBold().run();
+      case "italic": return editor.chain().focus().toggleItalic().run();
+      case "strike": return editor.chain().focus().toggleStrike().run();
+      case "code": return editor.chain().focus().toggleCode().run();
+      case "h1": case "h2": case "h3": return editor.chain().focus().toggleHeading({ level: Number(name[1]) as 1 | 2 | 3 }).run();
+      case "bullet": lineKind("bullet")(); return true;
+      case "ordered": lineKind("ordered", { number: 1 })(); return true;
+      case "task": lineKind("task")(); return true;
+      case "quote": return editor.isActive("blockquote") ? editor.chain().focus().lift("blockquote").run() : editor.chain().focus().wrapIn("blockquote").run();
+      case "codeBlock": return editor.chain().focus().toggleCodeBlock().run();
+      case "divider": putBlock({ type: "horizontalRule" }); return true;
+      case "link": openLink(); return true;
+      case "mention": return editor.chain().focus().insertContent(/\S$/.test(editor.state.selection.$from.parent.textBetween(0, editor.state.selection.$from.parentOffset)) ? " @" : "@").run();
+      case "slash": return editor.chain().focus().insertContent(/\S$/.test(editor.state.selection.$from.parent.textBetween(0, editor.state.selection.$from.parentOffset)) ? " /" : "/").run();
+      case "image": openImagePicker(); return true;
+      case "table": setTableEdit({ table: newTableFor(), isNew: true, pos: null }); return true;
+      case "undo": return editor.chain().focus().undo().run();
+      case "redo": return editor.chain().focus().redo().run();
+      case "indent": return editor.commands.keyboardShortcut("Tab");
+      case "outdent": return editor.commands.keyboardShortcut("Shift-Tab");
+      default: return false;
+    }
+  }
+  const commandRef = useRef(runCommand);
+  commandRef.current = runCommand;
 
   const menuAt = (() => {
     const editor = editorRef.current;
@@ -952,10 +1017,11 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     const height = Math.min(menu.kind === "slash" ? 400 : 320, listLength * (menu.kind === "slash" ? 46 : 34) + headings * 26 + 10);
     try {
       const coords = editor.view.coordsAtPos(menu.from);
-      // Under the line, or above it when the window ends first.
-      return coords.bottom + 4 + height > window.innerHeight && coords.top - 4 - height > 0
+      // Under the line, or above it when the window (what the keyboard leaves of it, on a phone) ends first.
+      const bottomEdge = viewportHeight();
+      return coords.bottom + 4 + height > bottomEdge && coords.top - 4 - height > 0
         ? { left: coords.left, top: coords.top - 4 - height, height }
-        : { left: coords.left, top: Math.min(coords.bottom + 4, window.innerHeight - height - 8), height };
+        : { left: coords.left, top: Math.min(coords.bottom + 4, bottomEdge - height - 8), height };
     } catch {
       // No layout to measure (a hidden pane): under the editor's top.
       const box = editor.view.dom.getBoundingClientRect();
@@ -963,9 +1029,14 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
     }
   })();
 
+  // M153a: on a phone the formatting row is fixed at the bottom of the screen, above the keyboard (mobile.css).
+  const formatting = env.toolbar === "bottom"
+    ? <OverflowToolbar tools={tools} label={t("composer.formatting")} className="pe-toolbar-bottom fixed inset-x-0 z-10 border-t border-line bg-canvas px-2 py-1" buttonClassName="h-9 w-9 shrink-0 text-muted hover:text-ink" />
+    : <OverflowToolbar tools={tools} label={t("composer.formatting")} className="sticky top-0 z-10 shrink-0 border-b border-line bg-canvas px-2 py-1" buttonClassName="h-7 w-7 shrink-0 text-muted hover:text-ink" />;
+
   return (
-    <div className={cn("relative flex min-h-0 flex-col", className)} data-page-editor="">
-      <OverflowToolbar tools={tools} label={t("composer.formatting")} className="sticky top-0 z-10 shrink-0 border-b border-line bg-canvas px-2 py-1" buttonClassName="h-7 w-7 shrink-0 text-muted hover:text-ink" />
+    <div className={cn("relative flex min-h-0 flex-col", className)} data-page-editor="" data-toolbar={env.toolbar}>
+      {env.toolbar === "top" && formatting}
       <div ref={wrapper} className="relative" onMouseMove={hover} onMouseLeave={(event) => { if (!dragging.current && !blockMenu && !(event.relatedTarget instanceof globalThis.Node && wrapper.current?.contains(event.relatedTarget))) setHovered(null); }}>
         <div ref={hostElement} className="page-editor-host min-h-[40vh] px-0 pb-3" />
         {hovered && (
@@ -985,7 +1056,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
           editor?.commands.focus();
         }} onDialog={openTable} />}
         {dropLine && <div className="pointer-events-none absolute z-20 h-0.5 rounded bg-accent" style={{ top: dropLine.top - 1, left: dropLine.left, width: dropLine.width }} data-drop-line="" />}
-        {bubble && editorRef.current && wrapper.current && (
+        {bubble && editorRef.current && wrapper.current && !env.readOnly() && (
           <SelectionToolbar
             editor={editorRef.current}
             wrapper={wrapper.current}
@@ -1001,6 +1072,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
           />
         )}
       </div>
+      {env.toolbar === "bottom" && formatting}
       {portals.entries().map(([key, { dom, node }]) => createPortal(node, dom, key))}
       <input
         ref={picker}
@@ -1024,7 +1096,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
         >
           {pageList.map((page, index) => (
             <MenuRow key={page.id} active={index === active} onPick={() => pickPage(page)}>
-              <PageIcon controller={controller} icon={page.icon} size={14} />
+              {env.render.pageIcon(page.icon, 14)}
               <span className="truncate">{page.title || t("docs.untitled")}</span>
             </MenuRow>
           ))}
@@ -1056,7 +1128,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
             <Fragment key={`p:${row.page.id}`}>
               {(index === 0 || mentionList[index - 1]!.kind === "mention") && <li role="presentation" className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-semibold text-muted">{t("docs.wysiwyg.mentionPages")}</li>}
               <MenuRow active={index === active} onPick={() => pickMention(row)}>
-                <PageIcon controller={controller} icon={row.page.icon} size={14} />
+                {env.render.pageIcon(row.page.icon, 14)}
                 <span className="truncate">{row.page.title || t("docs.untitled")}</span>
               </MenuRow>
             </Fragment>
@@ -1073,14 +1145,14 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       )}
       {iconPick && (
         <FloatingBox rect={iconPick.rect} onClose={() => setIconPick(null)} width={340}>
-          <EmojiPicker controller={controller} custom={[...store.customEmoji.values()]} onPick={(entry) => {
+          {env.render.emojiPicker((entry) => {
             const icon = entry.category === "custom" || !entry.glyph ? `:${entry.shortcode}:` : entry.glyph;
             const editor = editorRef.current;
             const node = editor?.state.doc.nodeAt(iconPick.pos);
             if (editor && node?.type.name === "callout") editor.view.dispatch(editor.state.tr.setNodeMarkup(iconPick.pos, undefined, { ...node.attrs, icon }));
             setIconPick(null);
             editor?.commands.focus();
-          }} />
+          })}
         </FloatingBox>
       )}
       {blockMenu && (
@@ -1096,7 +1168,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
       {mathEdit && <MathBox key={mathEdit.pos} rect={mathEdit.rect} tex={mathEdit.tex} onClose={closeMath} />}
       {linkEdit && (
         <FloatingBox rect={linkEdit.rect} onClose={() => { setLinkEdit(null); editorRef.current?.commands.focus(); }} width={340}>
-          <LinkBox controller={controller} href={linkEdit.href} lookup={links.lookup} onUrl={applyLink} onPage={applyPageLink} />
+          <LinkBox env={env} href={linkEdit.href} lookup={links.lookup} onUrl={applyLink} onPage={applyPageLink} />
         </FloatingBox>
       )}
     </div>
@@ -1107,7 +1179,7 @@ export default function PageEditor({ controller, saver, links, initialLine = nul
  * M151: ⌘K's box: one field that takes a URL (a link as before) or finds a page (the pages `[[` finds); ↑↓ and Enter
  * pick a page, Enter on a URL links it, an empty field takes the link away.
  */
-function LinkBox({ controller, href, lookup, onUrl, onPage }: { controller: AppController; href: string; lookup: (q: string) => Promise<PageRef[]>; onUrl: (href: string) => void; onPage: (page: PageRef) => void }) {
+function LinkBox({ env, href, lookup, onUrl, onPage }: { env: PageEditorEnv; href: string; lookup: (q: string) => Promise<PageRef[]>; onUrl: (href: string) => void; onPage: (page: PageRef) => void }) {
   const [query, setQuery] = useState(href);
   const [pages, setPages] = useState<PageRef[]>([]);
   const [active, setActive] = useState(0);
@@ -1154,7 +1226,7 @@ function LinkBox({ controller, href, lookup, onUrl, onPage }: { controller: AppC
         <ul role="listbox" aria-label={t("docs.linkSuggestions")} className="max-h-60 overflow-y-auto">
           {pages.map((page, index) => (
             <MenuRow key={page.id} active={index === active} onPick={() => onPage(page)}>
-              <PageIcon controller={controller} icon={page.icon} size={14} />
+              {env.render.pageIcon(page.icon, 14)}
               <span className="truncate">{page.title || t("docs.untitled")}</span>
             </MenuRow>
           ))}
@@ -1201,7 +1273,7 @@ function FloatingBox({ rect, onClose, width, children }: { rect: DOMRect; onClos
     };
   }, [onClose]);
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-  const top = Math.min(rect.bottom + 6, window.innerHeight - 120);
+  const top = Math.min(rect.bottom + 6, viewportHeight() - 120);
   return (
     <div ref={box} data-pe-popover="" className="fixed z-50 rounded-xl border border-line bg-canvas p-2 shadow-xl" style={{ left, top, width }}>
       {children}
@@ -1286,6 +1358,11 @@ function MathBox({ rect, tex, onClose }: { rect: DOMRect; tex: string; onClose: 
       </form>
     </FloatingBox>
   );
+}
+
+/** How tall the window is for the boxes and menus: what the keyboard leaves of it on a phone (the visual viewport). */
+function viewportHeight(): number {
+  return window.visualViewport?.height ?? window.innerHeight;
 }
 
 /** A page's title as a link or embed label (brackets would end the link). */

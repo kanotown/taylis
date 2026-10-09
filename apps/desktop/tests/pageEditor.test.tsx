@@ -598,9 +598,9 @@ describe("M155: the floating toolbar, ⌘/, the `/` menu's sections, `@` pages, 
   });
 
   it("the editing look is the reading look: blank lines, headings, lists, checklists, rules, callouts, quotes, tables and toggles have the reader's margins", async () => {
-    // The editor's rules from styles.css go into the document: jsdom hands back what they declare. The reader's Tailwind
+    // The editor's rules from app.css go into the document: jsdom hands back what they declare. The reader's Tailwind
     // classes are read as the scale they name (0.25rem a step), so the two sides are compared in pixels.
-    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "styles.css"), "utf8");
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "app.css"), "utf8");
     const style = document.createElement("style");
     style.textContent = (css.match(/\.page-editor[^{}]*\{[^}]*\}/g) ?? []).join("\n");
     document.head.append(style);

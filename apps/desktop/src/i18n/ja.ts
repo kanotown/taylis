@@ -2794,6 +2794,8 @@ export const ja = {
   "docs.wysiwyg.changeIcon": "アイコンを変える",
   "docs.wysiwyg.toggleTitle": "トグルの見出し",
   "docs.wysiwyg.mathEmpty": "数式（TeX）を書く",
+  "docs.wysiwyg.imageLimit": "1 つのページに入れられる画像は 100 件までです",
+  "docs.wysiwyg.embedInApp": "アプリで開く",
   "docs.wysiwyg.mathTex": "数式（TeX）",
   "docs.wysiwyg.mathEmptyRemoves": "空にすると数式を消します",
   "docs.wysiwyg.linkApply": "リンク",

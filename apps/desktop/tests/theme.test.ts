@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { applyFont, applyPalette, applySidebarTone, applyTheme, DEFAULT_PALETTE, FONT_OPTIONS, readFont, writeFont, PALETTES, paletteLabel, readPalette, readSidebarTone, readTheme, SIDEBAR_TONES, themeLabel, writePalette, writeSidebarTone, writeTheme } from "../src/ui/theme";
 
-const css = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+const css = readFileSync(resolve(__dirname, "../src/app.css"), "utf8");
 
 afterEach(() => {
   localStorage.clear();
