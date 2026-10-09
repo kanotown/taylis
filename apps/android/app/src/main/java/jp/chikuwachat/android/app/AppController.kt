@@ -2326,6 +2326,12 @@ class AppController(private val app: Application) {
         try { engine.markAllRead(scope) } catch (e: Exception) { report(e) }
     }
 
+    /** 「すべて既読にする」 on the 「スレッド」 list (THREADS.md §3.2); a failure puts the rows back and is reported. */
+    suspend fun markAllThreadsRead() {
+        val engine = engine ?: return
+        try { engine.markAllThreadsRead() } catch (e: Exception) { report(e) }
+    }
+
     /** M37 pull to refresh: the engine's bootstrap and catch-up again (a reconnect when offline); a failure is reported. */
     suspend fun resync() {
         val engine = engine ?: return

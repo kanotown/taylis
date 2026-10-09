@@ -38,6 +38,7 @@ import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.ThreadItem
 import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.ThreadSummary
+import jp.chikuwachat.android.api.ThreadReadAllRow
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 // M49: the preview's rule is plain text work shared with the rows that show it (DmPreview.kt).
@@ -1246,6 +1247,62 @@ class Store(private val persistence: Persistence? = null) {
                 maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
             )
         }
+        emit()
+    }
+
+    /** What [readAllThreadsLocally] changed: each row's state before and after, and the badge before. */
+    data class ThreadsReadAllUndo(val before: Map<String, ThreadState>, val after: Map<String, ThreadState>, val summary: ThreadSummary)
+
+    /**
+     * 「すべて既読にする」 on the 「スレッド」 list (THREADS.md §3.2), before the server answers: every followed row held
+     * has no unread, its position at least its newest reply held here, and the badge is 0 / 0.
+     */
+    fun readAllThreadsLocally(): ThreadsReadAllUndo {
+        val before = HashMap<String, ThreadState>()
+        val after = HashMap<String, ThreadState>()
+        for ((id, entry) in threads) {
+            val state = entry.state
+            if (!state.following) continue
+            val held = replies(state.channelId, id).mapNotNull { it.seq } + (entry.latestReplies?.mapNotNull { it.seq } ?: emptyList())
+            val next = state.copy(lastReadSeq = maxOf(state.lastReadSeq, held.maxOrNull() ?: 0), unreadCount = 0, mentionCount = 0)
+            if (next == state) continue
+            before[id] = state
+            after[id] = next
+        }
+        after.forEach { (id, state) -> threads[id]?.let { threads[id] = it.copy(state = state) } }
+        val undo = ThreadsReadAllUndo(before, after, threadSummary)
+        threadSummary = ThreadSummary()
+        emit()
+        return undo
+    }
+
+    /** The read-all failed: rows still as [readAllThreadsLocally] left them go back, and the badge if nothing moved it since. */
+    fun restoreThreadsReadAll(undo: ThreadsReadAllUndo) {
+        undo.before.forEach { (id, state) ->
+            val entry = threads[id] ?: return@forEach
+            if (entry.state == undo.after[id]) threads[id] = entry.copy(state = state)
+        }
+        if (threadSummary == ThreadSummary()) threadSummary = undo.summary
+        emit()
+    }
+
+    /**
+     * The read-all's answer or threads.read_all (THREADS.md §4): each listed thread held moves forward (never behind its
+     * position here nor `floor`, a read still on its way) and takes the counts given; the activity list's dots follow
+     * (held thread or not); the badge is `summary`.
+     */
+    fun applyThreadsReadAll(rows: List<ThreadReadAllRow>, summary: ThreadSummary, floor: (String) -> Int? = { null }) {
+        for (row in rows) {
+            val position = maxOf(row.lastReadSeq, floor(row.parentId) ?: 0)
+            if (position > (threadReadSeqs[row.parentId] ?: 0)) threadReadSeqs[row.parentId] = position
+            if (row.parentId in deletedRoots) continue
+            val entry = threads[row.parentId] ?: continue
+            val state = entry.state
+            threads[row.parentId] = entry.copy(
+                state = state.copy(lastReadSeq = maxOf(state.lastReadSeq, position), unreadCount = row.unreadCount, mentionCount = row.mentionCount),
+            )
+        }
+        threadSummary = summary
         emit()
     }
 

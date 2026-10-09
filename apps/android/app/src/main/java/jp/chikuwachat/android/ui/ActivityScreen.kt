@@ -596,7 +596,7 @@ private fun StageA(
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (shown) {
-                ActivitySegment.THREADS -> ThreadsPane(controller, version, onOpen = onOpenThread, listState = threadsState, onOpenConversation = onOpenThreadConversation)
+                ActivitySegment.THREADS -> ThreadsPane(controller, version, onOpen = onOpenThread, listState = threadsState, onOpenConversation = onOpenThreadConversation, showReadAll = false)
                 else -> MentionsPane(controller, version, onOpen = onOpenMessage, listState = mentionsState)
             }
         }
