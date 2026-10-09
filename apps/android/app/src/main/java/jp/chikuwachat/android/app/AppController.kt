@@ -2599,13 +2599,34 @@ class AppController(private val app: Application) {
     /** 「#name」 of a workflow's target, or words for one this device does not know. */
     fun workflowTarget(channelId: String): String = store.channel(channelId)?.channel?.name?.let { "#$it" } ?: L10n.str(R.string.app_controller_the_destination_channel)
 
-    /** Opens the form, or says why it cannot run (the desktop's runBlockedText). `here`: the conversation it is opened from. */
+    /** The workflows being posted without asking: a second tap meanwhile does not post again. */
+    private val postingWorkflows = mutableSetOf<String>()
+
+    /**
+     * Opens the form, or says why it cannot run (the desktop's runBlockedText). `here`: the conversation it is opened from.
+     * One that does not ask first (`confirm` off, no fields: WORKFLOWS.md §11) posts at once instead; when that fails its
+     * form opens with the reason and the same key, so 投稿 there retries without posting twice.
+     */
     fun openWorkflow(workflow: jp.chikuwachat.android.api.WorkflowOut, here: String?) {
         if (!workflow.canRun) {
             error = jp.chikuwachat.android.ui.Workflows.runBlockedText(workflow.runBlocked, workflowTarget(workflow.channelId)) ?: L10n.str(R.string.common_this_workflow_cant_be_used)
             return
         }
-        workflowForm = jp.chikuwachat.android.ui.WorkflowSession(workflow, here, java.time.LocalDate.now(), store.me?.id)
+        val session = jp.chikuwachat.android.ui.WorkflowSession(workflow, here, java.time.LocalDate.now(), store.me?.id)
+        if (!workflow.postsWithoutAsking) {
+            workflowForm = session
+            return
+        }
+        val api = api ?: return
+        if (!postingWorkflows.add(workflow.id)) return
+        scope.launch {
+            try {
+                val message = session.submit({ id, body -> api.submitWorkflow(id, body) }, ::describe)
+                if (message != null) workflowPosted(session, message) else workflowForm = session
+            } finally {
+                postingWorkflows.remove(workflow.id)
+            }
+        }
     }
 
     /** The 「⚡ name」 label: the workflow as it is now (it may have changed, stopped or gone since the message). */
@@ -2622,6 +2643,10 @@ class AppController(private val app: Application) {
     suspend fun submitWorkflow(session: jp.chikuwachat.android.ui.WorkflowSession) {
         val api = api ?: return
         val message = session.submit({ id, body -> api.submitWorkflow(id, body) }, ::describe) ?: return
+        workflowPosted(session, message)
+    }
+
+    private fun workflowPosted(session: jp.chikuwachat.android.ui.WorkflowSession, message: jp.chikuwachat.android.api.MessageOut) {
         engine?.postedFromHere(message) ?: store.upsertMessage(message)
         postedHere = message.id
         if (workflowForm === session) workflowForm = null
