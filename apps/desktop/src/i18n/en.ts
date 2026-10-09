@@ -2434,6 +2434,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "threads.openChannel": "Open channel",
   "threads.openConversation": "Open conversation",
   "threads.openThread": "Open thread",
+  "threads.markAllReadTitle": "Mark every reply in the threads you follow as read",
   "threads.moreReplies": "{count, plural, one {# more reply} other {# more replies}}",
   "threads.replyFrom": "Reply from {name}, open in thread",
   "status.changeEmoji": "Change emoji",

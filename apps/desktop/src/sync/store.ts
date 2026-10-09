@@ -11,6 +11,12 @@ import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
+/** What the threads list's optimistic 「すべて既読にする」 changed (THREADS.md §3.2), to put back on failure. */
+export interface ThreadsReadUndo {
+  rows: Map<string, { before: ThreadState; after: ThreadState }>;
+  summary: ThreadSummary;
+}
+
 export interface Persistence {
   loadAll(): Promise<Snapshot>;
   saveMeta(key: string, value: string | null): Promise<void>;
@@ -970,6 +976,38 @@ export class Store {
         mention_count: Math.max(0, this.threadSummary.mention_count + mention),
       };
     }
+    this.emit();
+  }
+
+  /**
+   * 「すべて既読にする」 of the threads list before the server answers (THREADS.md §3.2): every held followed row is
+   * read to the newest reply held here (never backwards) with no unread, and the badge is 0. Returns what
+   * `restoreThreadsRead` puts back when the call fails.
+   */
+  markAllThreadsReadLocally(): ThreadsReadUndo {
+    const rows = new Map<string, { before: ThreadState; after: ThreadState }>();
+    for (const [id, entry] of this.threads) {
+      if (!entry.state.following) continue;
+      const held = [...this.replies(entry.state.channel_id, id), ...(entry.latestReplies ?? [])].map((r) => r.seq ?? 0);
+      const lastReadSeq = Math.max(entry.state.last_read_seq, ...held);
+      if (lastReadSeq === entry.state.last_read_seq && entry.state.unread_count === 0 && entry.state.mention_count === 0) continue;
+      const after = { ...entry.state, last_read_seq: lastReadSeq, unread_count: 0, mention_count: 0 };
+      rows.set(id, { before: entry.state, after });
+      entry.state = after;
+    }
+    const undo = { rows, summary: this.threadSummary };
+    this.threadSummary = { unread_count: 0, mention_count: 0 };
+    this.emit();
+    return undo;
+  }
+
+  /** The read-all was refused: rows (and the badge) nothing else changed meanwhile go back as they were. */
+  restoreThreadsRead(undo: ThreadsReadUndo): void {
+    for (const [id, { before, after }] of undo.rows) {
+      const entry = this.threads.get(id);
+      if (entry && entry.state === after) entry.state = before;
+    }
+    if (this.threadSummary.unread_count === 0 && this.threadSummary.mention_count === 0) this.threadSummary = undo.summary;
     this.emit();
   }
 

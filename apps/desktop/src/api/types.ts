@@ -82,6 +82,8 @@ export type ThreadItem = components["schemas"]["ThreadItem"];
 export type ThreadListOut = components["schemas"]["ThreadListOut"];
 export type ThreadSummary = components["schemas"]["ThreadSummary"];
 export type ThreadFilter = "all" | "unread";
+/** POST /threads/read-all's answer and the threads.read_all payload (THREADS.md §3.2). */
+export type ThreadsReadAllOut = components["schemas"]["ThreadsReadAllOut"];
 /** thread.updated payload: the state plus why it changed (SYNC_PROTOCOL.md §6). */
 export type ThreadUpdated = ThreadState & { reason: "reply" | "deleted" | "read" | "follow" };
 
