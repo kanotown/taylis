@@ -1519,6 +1519,22 @@ struct ThreadSummary: Codable, Equatable {
     var mentionCount: Int
 }
 
+/// One thread a POST /threads/read-all moved (THREADS.md §3.2): its position and counts after the move.
+struct ThreadReadStateOut: Codable, Equatable {
+    let parentId: String
+    let channelId: String
+    let lastReadSeq: Int
+    let unreadCount: Int
+    let mentionCount: Int
+}
+
+/// POST /threads/read-all's answer and the threads.read_all event's data (THREADS.md §3.2, §4): `threads` lists only
+/// the threads whose position moved; `summary` is the badge after it.
+struct ThreadsReadAllOut: Codable, Equatable {
+    let summary: ThreadSummary
+    let threads: [ThreadReadStateOut]
+}
+
 struct ThreadListOut: Codable {
     let items: [ThreadItem]
     /// Pass back as `cursor` for the next page; nil when the page was empty.

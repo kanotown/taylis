@@ -601,6 +601,9 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("PUT", "/api/v1/messages/\(messageId)/thread/read", body: .object(["last_read_seq": .number(Double(lastReadSeq))]))
     }
 
+    /// POST /threads/read-all (THREADS.md §3.2): every followed thread read to its newest reply.
+    func readAllThreads() async throws -> ThreadsReadAllOut { try await request("POST", "/api/v1/threads/read-all", body: .object([:])) }
+
     func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState {
         try await request("PUT", "/api/v1/messages/\(messageId)/thread/follow", body: .object(["following": .bool(following)]))
     }

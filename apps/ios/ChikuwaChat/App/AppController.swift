@@ -1267,6 +1267,12 @@ final class AppController {
         do { try await engine.markAllRead() } catch { self.error = describe(error) }
     }
 
+    /// THREADS.md §3.2: 「スレッド」's 「すべて既読にする」 (every followed thread; the activity's own read is separate).
+    func markAllThreadsRead() async {
+        guard let engine else { return }
+        do { try await engine.markAllThreadsRead() } catch { self.error = describe(error) }
+    }
+
     /// L8 (TIMES_FEED.md §4): the Times feed's 「すべて既読にする」: only its channels (member, not muted) are read to
     /// their end; the rows apply like read.updated.
     func markTimesRead() async {

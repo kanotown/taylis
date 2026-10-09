@@ -408,6 +408,22 @@
         }
       }
     },
+    "スレッドをすべて既読にしますか？" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark all threads as read?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要将所有话题标为已读吗？"
+          }
+        }
+      }
+    },
     "セレクト" : {
       "localizations" : {
         "en" : {
@@ -628,6 +644,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视图"
+          }
+        }
+      }
+    },
+    "フォロー中のスレッドの返信をすべて既読にします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marks every reply in the threads you follow as read."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将关注的话题中的所有回复标为已读。"
           }
         }
       }

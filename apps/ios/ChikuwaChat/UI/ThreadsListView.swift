@@ -8,6 +8,8 @@ struct ThreadsListView: View {
 
     @Bindable var controller: AppController
     @State private var target: Target?
+    /// 「すべて既読にする」 asks first, as the home's does (THREADS.md §3.2).
+    @State private var confirmReadAll = false
     /// M34: inside the activity tab, whose title it keeps.
     var embedded = false
     /// The conversation of a row, its parent message revealed (MainView: on this tab's stack); nil shows no link.
@@ -20,6 +22,8 @@ struct ThreadsListView: View {
 
     private var store: Store { controller.store }
     private var rows: [ThreadEntry] { store.threadList() }
+    /// Something to read: the badge's count, or a held row (the badge may lag behind the list).
+    private var hasUnread: Bool { store.threadSummary.unreadCount > 0 || !store.threadList(filter: "unread").isEmpty }
 
     /// A reply under a card: its thread, landing on the reply (the thread view scrolls to and marks the focused reply).
     /// The focus comes first, as an activity reply's does; the thread opens at its usual place when it cannot be had.
@@ -73,6 +77,22 @@ struct ThreadsListView: View {
         .listStyle(.plain)
         .navigationTitle(embedded ? "アクティビティ" : "スレッド")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                // THREADS.md §3.2: every followed thread read (the activity's own 「すべて既読にする」 leaves threads alone).
+                Button { confirmReadAll = true } label: {
+                    Label("すべて既読にする", systemImage: "checkmark.circle")
+                        .labelStyle(.titleOnly)
+                }
+                .disabled(!hasUnread)
+            }
+        }
+        .alert("スレッドをすべて既読にしますか？", isPresented: $confirmReadAll) {
+            Button("既読にする") { Task { await controller.markAllThreadsRead() } }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("フォロー中のスレッドの返信をすべて既読にします。")
+        }
         .task(id: controller.engine?.status) { await controller.engine?.loadThreads(filter: store.threadsFilter) }
         .refreshable { await controller.engine?.loadThreads(filter: store.threadsFilter) }
         // M29: pushed, like a thread opened from its channel.

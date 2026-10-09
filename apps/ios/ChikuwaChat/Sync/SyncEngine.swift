@@ -23,6 +23,8 @@ protocol SyncApi: AnyObject {
     func threadState(messageId: String) async throws -> ThreadState
     func markThreadRead(messageId: String, lastReadSeq: Int) async throws -> ThreadState
     func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState
+    /// THREADS.md §3.2: 「スレッド」's 「すべて既読にする」.
+    func readAllThreads() async throws -> ThreadsReadAllOut
     /// M49: one of my conversations as its member sees it (GET /channels/{id}, with `last_message`).
     func channel(id: String) async throws -> ChannelOut
     /// M111: my private settings again (GET /users/me) after another of my devices changed them.
@@ -912,6 +914,13 @@ final class SyncEngine {
             // MOBILE_UI.md §6.4 (2026-10-06): my position in the thread moved, its replies and mentions read there
             // leave the activity badge.
             if frame.data["reason"]?.stringValue == "read" { scheduleActivityRefreshAfterRead() }
+        case "threads.read_all":
+            // THREADS.md §3.2 / §4: my threads read to their end (on another device, or this one's own call): the rows
+            // held move forward, the badge is the summary; the list and the activity badge are fetched again, as after
+            // thread.updated ("read").
+            applyThreadsReadAll(try frame.data.decode(ThreadsReadAllOut.self))
+            scheduleThreadRefresh()
+            scheduleActivityRefreshAfterRead()
         case "notification_preference.updated":
             // M35: follows_default and muted ride along (absent from older servers: decoded as before).
             let pref = try frame.data.decode(NotificationPreferenceOut.self)
@@ -1509,6 +1518,65 @@ final class SyncEngine {
             done = true
         }.value
         return done
+    }
+
+    /// 「スレッド」's 「すべて既読にする」 (THREADS.md §3.2). Every followed row held here reads at once (to the newest reply held
+    /// for it, if further) and the badge drops to 0; the server's answer then applies as threads.read_all does. On a
+    /// failure the rows not changed meanwhile and the badge go back, and the error is the caller's to show.
+    func markAllThreadsRead() async throws {
+        let summaryBefore = store.threadSummary
+        var before: [String: ThreadState] = [:]
+        var shown: [String: ThreadState] = [:]
+        for (id, entry) in store.threads where entry.state.following {
+            var state = entry.state
+            let newest = store.replies(state.channelId, parentId: id).compactMap(\.seq).max() ?? 0
+            state.lastReadSeq = max(state.lastReadSeq, newest)
+            state.unreadCount = 0
+            state.mentionCount = 0
+            guard state != entry.state else { continue }
+            before[id] = entry.state
+            shown[id] = state
+            store.applyThreadState(state)
+        }
+        let cleared = ThreadSummary(unreadCount: 0, mentionCount: 0)
+        store.setThreadSummary(cleared)
+        onBadge?(store.badgeCount)
+        let out: ThreadsReadAllOut
+        do {
+            out = try await api.readAllThreads()
+        } catch {
+            for (id, state) in before where store.threads[id]?.state == shown[id] { store.applyThreadState(state) }
+            if store.threadSummary == cleared { store.setThreadSummary(summaryBefore) }
+            onBadge?(store.badgeCount)
+            throw error
+        }
+        applyThreadsReadAll(out)
+        // The replies and mentions read here leave the activity badge (MOBILE_UI.md §6.4), now rather than after the event.
+        if (store.activity?.unreadCount ?? 0) > 0 {
+            activityRefreshTask?.cancel()
+            await refreshActivity()
+        }
+    }
+
+    /// POST /threads/read-all's answer or threads.read_all (THREADS.md §3.2): each listed thread held here moves forward
+    /// only (never below this device's position or read floor) and takes the counts after the move; the badge is the
+    /// summary. The activity dots follow the thread positions (ActivityRules.conversationRead).
+    func applyThreadsReadAll(_ out: ThreadsReadAllOut) {
+        for row in out.threads {
+            guard var state = store.threads[row.parentId]?.state else { continue }
+            if row.lastReadSeq >= state.lastReadSeq {
+                state.lastReadSeq = row.lastReadSeq
+                state.unreadCount = row.unreadCount
+                state.mentionCount = row.mentionCount
+            } else {
+                // This device read further: the server's counts are from an older position.
+                state.unreadCount = min(state.unreadCount, row.unreadCount)
+                state.mentionCount = min(state.mentionCount, row.mentionCount)
+            }
+            applyThreadState(state)
+        }
+        store.setThreadSummary(out.summary)
+        onBadge?(store.badgeCount)
     }
 
     /// §10.2: a thread's state from the server (thread.updated, GET state, the threads list, the PUT read and follow
