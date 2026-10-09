@@ -44,6 +44,13 @@ object Dnd {
         return user.quietHours?.let { inQuietHours(it, now) } ?: false
     }
 
+    /**
+     * The quiet hours running now, else null: the profile card's 「🔕 通知を一時停止中 · 22:00〜07:00」 line. The manual
+     * pause (`dnd_until`) is not this: it is 取り込み中, which the card says on its presence line (PRESENCE.md §11.1, §11.5),
+     * and saying it twice for the same `dnd_until` was the review's finding.
+     */
+    fun activeQuietHours(user: UserPublic?, now: Instant = Instant.now()): QuietHours? = user?.quietHours?.takeIf { inQuietHours(it, now) }
+
     /** ISO time a pause chosen from PAUSE_OPTIONS ends. */
     fun pauseUntil(choice: String, now: ZonedDateTime = ZonedDateTime.now()): String = when (choice) {
         "30m" -> now.plusMinutes(30)

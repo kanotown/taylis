@@ -138,7 +138,9 @@ fun MyStatusSheet(
                 }
                 if (choice == PresenceChoice.DND) {
                     val clearLabel = stringResource(R.string.presence_clear_label)
-                    OutlinedButton(onClick = { choose(PresenceChoice.AUTO) }, modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = clearLabel }) {
+                    // Ends the pause only (Settings' 「再開」, PATCH {dnd_until: null}): 「オンライン（自動）」 would also drop
+                    // 離席中 / 「在席を隠す」 set in Settings underneath it (§11.1 reads the columns in order).
+                    OutlinedButton(onClick = { controller.clearMyPause(); close() }, modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = clearLabel }) {
                         Text(stringResource(R.string.presence_clear))
                     }
                 }
