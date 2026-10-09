@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /**
  * M123 database screens (WIKI.md §5): the table (cells per type, a checkbox written in place, a new row, a header's
- * sort reaching the server's query), the relation picker (readable rows and candidates, one 「アクセスできないページ」 for
- * the rest, never their titles), the calendar's multi-day bars, and a row's properties above its body.
+ * sort reaching the server's query), the selected cell (WIKI.md §29.1: a click that ends an edit only selects, the
+ * keys on the focused cell, a press that brings no click, a grouped line that leaves the screen mid-edit), the relation
+ * picker (readable rows and candidates, one 「アクセスできないページ」 for the rest, never their titles), the calendar's
+ * multi-day bars, and a row's properties above its body.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,21 +15,25 @@ import { Store } from "../src/sync/store";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { DatabaseView } from "../src/ui/DatabaseView";
 import { type DbCtx, PropertyDialog, RelationPicker } from "../src/ui/DbCells";
+import { cellDomKey, cellFromDomKey, cellSelector } from "../src/ui/dbTableNav";
 import { RowProperties } from "../src/ui/RowProperties";
 
 let compact = false;
 beforeEach(() => {
   compact = false;
+  vi.useFakeTimers();
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === COMPACT_QUERY ? compact : false, addEventListener: () => {}, removeEventListener: () => {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   localStorage.clear();
 });
 
-const settle = (ms = 40) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+/** Lets the fake clock run `ms` (Radix's deferred listeners, the pickers' debounce) and the mocked API's promises settle. */
+const settle = (ms = 40) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 
 function fakeController(api: Record<string, unknown>) {
   const store = new Store();
@@ -53,8 +59,8 @@ const PROPS: DbProperty[] = [
   p("authors", "著者", "relation", { relation: { database_id: "people", database_title: "著者", pair_id: "papers", primary: true } }),
 ];
 
-function database(views: DatabaseOut["views"], level: DatabaseOut["my_level"] = "full"): DatabaseOut {
-  return { page_id: "db", schema_version: 3, properties: PROPS, views, my_level: level, row_count: 2, limits: { rows: 5000, properties: 50, options: 200, views: 20 } };
+function database(views: DatabaseOut["views"], level: DatabaseOut["my_level"] = "full", properties: DbProperty[] = PROPS): DatabaseOut {
+  return { page_id: "db", schema_version: 3, properties, views, my_level: level, row_count: 2, limits: { rows: 5000, properties: 50, options: 200, views: 20 } };
 }
 
 const row = (id: string, title: string, props: Record<string, unknown>, extra: Partial<DbRow> = {}): DbRow => ({
@@ -84,6 +90,21 @@ function api(views: DatabaseOut["views"], extra: Record<string, unknown> = {}) {
 
 const TABLE = [{ id: "v1", name: "", type: "table" as const, columns: [], sort: [], filter: null, date_prop_id: null, cover: "body" as const, card_size: "medium" as const }];
 const CALENDAR = [{ id: "cal", name: "締め切り", type: "calendar" as const, columns: [], sort: [], filter: null, date_prop_id: "due", cover: "body" as const, card_size: "medium" as const }];
+
+const box = (rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'] [data-cell='${propId}'] [data-cell-focus]`) as HTMLElement;
+const td = (rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'] [data-cell='${propId}']`) as HTMLElement;
+/** A mouse click as the browser sends it: pointerdown (where a press while editing is noted), mousedown and the focus
+ * it gives the box, pointerup, click (where Radix closes an open editor). */
+const press = async (el: HTMLElement) => {
+  fireEvent.pointerDown(el);
+  fireEvent.mouseDown(el);
+  act(() => el.focus());
+  fireEvent.pointerUp(el);
+  fireEvent.mouseUp(el);
+  fireEvent.click(el);
+  await settle(20);
+};
+const editor = () => screen.queryByLabelText("値を編集") as HTMLInputElement | null;
 
 describe("the table", () => {
   it("shows each type, the readable linked rows and one placeholder for the rest", async () => {
@@ -124,7 +145,7 @@ describe("the table", () => {
     await settle();
     expect(queries[0]).toMatchObject({ view_id: "v1", sort: [], limit: 200 });
     fireEvent.click(screen.getByRole("button", { name: /並べ替え/ }));
-    fireEvent.click(await screen.findByText("並べ替えを追加"));
+    fireEvent.click(screen.getByText("並べ替えを追加"));
     await settle(400);
     expect(queries.at(-1)?.sort).toEqual([{ prop_id: "title", direction: "asc" }]);
     fireEvent.click(screen.getByRole("button", { name: /ビューを保存/ }));
@@ -143,16 +164,6 @@ describe("the table", () => {
 });
 
 describe("the table's selected cell (WIKI.md §29)", () => {
-  const box = (rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'] [data-cell='${propId}'] [data-cell-focus]`) as HTMLElement;
-  const td = (rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'] [data-cell='${propId}']`) as HTMLElement;
-  /** A mouse click as the browser sends it: pointerdown (where Radix closes an open editor), mousedown, click. */
-  const press = async (el: HTMLElement) => {
-    fireEvent.pointerDown(el);
-    fireEvent.mouseDown(el);
-    fireEvent.click(el);
-    await settle(20);
-  };
-  const editor = () => screen.queryByLabelText("値を編集") as HTMLInputElement | null;
   const open = async () => {
     const { api: fake } = api(TABLE);
     const { controller } = fakeController(fake);
@@ -172,6 +183,7 @@ describe("the table's selected cell (WIKI.md §29)", () => {
     expect(editor()).toBeNull();
     expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
     expect(td("r1", "title").getAttribute("aria-selected")).toBe("false");
+    expect(document.activeElement).toBe(box("r2", "title")); // the closed editor did not take the focus back to r1
     // The second click on the selected cell edits it; Esc cancels without saving.
     await press(box("r2", "title"));
     expect(editor()?.value).toBe("BERT");
@@ -181,6 +193,7 @@ describe("the table's selected cell (WIKI.md §29)", () => {
     expect(editor()).toBeNull();
     expect(fake.setWikiCells).toHaveBeenCalledTimes(1);
     expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(box("r2", "title"));
   });
 
   it("a checkbox clicked while another cell is edited is only selected; the next click flips it", async () => {
@@ -231,6 +244,140 @@ describe("the table's selected cell (WIKI.md §29)", () => {
     const esc = fireEvent.keyDown(box("r2", "title"), { key: "Escape" });
     expect(esc).toBe(false); // handled (the screen's Esc waits)
     expect(td("r2", "title").getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("a cell reached by Tab (no click) is selected: Enter edits it, and typing edits it rather than the cell selected before", async () => {
+    const fake = await open();
+    act(() => box("r1", "title").focus());
+    expect(td("r1", "title").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(box("r1", "title"), { key: "Enter" });
+    await settle(20);
+    expect(editor()?.value).toBe("Attention");
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    await settle(20);
+    expect(editor()).toBeNull();
+    expect(document.activeElement).toBe(box("r1", "title"));
+    // Tab on to r2's title and type: the editor opens on r2 (the focused cell), not on r1.
+    act(() => box("r2", "title").focus());
+    expect(td("r2", "title").getAttribute("aria-selected")).toBe("true");
+    expect(td("r1", "title").getAttribute("aria-selected")).toBe("false");
+    fireEvent.keyDown(box("r2", "title"), { key: "x" });
+    await settle(20);
+    expect(editor()?.value).toBe("BERTx");
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    await settle(20);
+    expect(fake.setWikiCells).not.toHaveBeenCalled();
+    // Space on a checkbox reached by Tab flips it.
+    act(() => box("r2", "done").focus());
+    fireEvent.keyDown(box("r2", "done"), { key: " " });
+    await settle(20);
+    expect(fake.setWikiCells).toHaveBeenCalledWith("r2", { done: true }, expect.any(String));
+  });
+
+  it("Enter on the 「開く」 button inside a cell opens the row, not the editor", async () => {
+    await open();
+    act(() => box("r1", "title").focus());
+    const openRow = within(td("r1", "title")).getByRole("button", { name: "行をページとして開く" });
+    act(() => openRow.focus());
+    expect(td("r1", "title").getAttribute("aria-selected")).toBe("true");
+    expect(fireEvent.keyDown(openRow, { key: "Enter" })).toBe(true); // not taken by the table: the button's own Enter clicks it
+    expect(editor()).toBeNull();
+    fireEvent.click(openRow);
+    await settle(20);
+    expect(document.querySelector("[data-row-peek='r1']")).toBeTruthy();
+  });
+
+  it("a press that brings no click (a right button, a release elsewhere) leaves no mark for a later click to find", async () => {
+    const fake = await open();
+    await press(box("r1", "title"));
+    expect(editor()).toBeTruthy();
+    // A right click on another cell: Radix closes the editor on the press itself, and no click follows.
+    fireEvent.pointerDown(box("r2", "title"), { button: 2 });
+    fireEvent.pointerUp(box("r2", "title"), { button: 2 });
+    await settle(20);
+    expect(editor()).toBeNull();
+    // A click that arrives without a press of its own (assistive technology, a synthesized click) edits at once; a mark
+    // left by the right button would have made it select only.
+    fireEvent.click(box("r2", "title"));
+    await settle(20);
+    expect(editor()?.value).toBe("BERT");
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    await settle(20);
+    // A primary press released somewhere else: the click lands on the table, not on a cell.
+    await press(box("r1", "title"));
+    expect(editor()?.value).toBe("Attention");
+    fireEvent.pointerDown(box("r2", "title"));
+    fireEvent.pointerUp(document.body);
+    fireEvent.click(document.querySelector("[data-db-table] table")!);
+    await settle(20);
+    expect(editor()).toBeNull();
+    fireEvent.click(box("r2", "title"));
+    await settle(20);
+    expect(editor()?.value).toBe("BERT");
+    expect(fake.setWikiCells).not.toHaveBeenCalled();
+  });
+});
+
+describe("a grouped table and the edited cell (WIKI.md §29.1)", () => {
+  const TAGS = p("tags", "タグ", "multi_select", { options: [{ id: "t1", name: "A", color: "blue" }, { id: "t2", name: "B", color: "green" }] });
+  const GROUPED = [{ ...TABLE[0]!, group_by: { prop_id: "tags", date_unit: null, hidden: [], hide_empty: false } }];
+  const line = (group: string, rowId: string, propId: string) => document.querySelector(`[data-row='${rowId}'][data-group='${group}'] [data-cell='${propId}'] [data-cell-focus]`) as HTMLElement;
+
+  it("an edit that takes the row out of its group ends the edit with the line: the next click edits, keys work", async () => {
+    const tags: Record<string, string[]> = { r1: ["t1", "t2"], r2: ["t2"] };
+    const titles: Record<string, string> = { r1: "Attention", r2: "BERT" };
+    const answer = (): DbRowQueryOut => {
+      const rows: DbRow[] = [];
+      const row_groups: string[] = [];
+      for (const key of ["t1", "t2"]) for (const id of ["r1", "r2"]) if (tags[id]!.includes(key)) { rows.push(row(id, titles[id]!, { tags: tags[id] })); row_groups.push(key); }
+      const groups = ["t1", "t2"].map((key) => ({ key, count: row_groups.filter((g) => g === key).length, hidden: false }));
+      return { rows, row_groups, groups, refs: [], total: 2, next_cursor: null, schema_version: 3 };
+    };
+    const { api: fake } = api(GROUPED, {
+      wikiDatabase: vi.fn(async () => database(GROUPED, "full", [PROPS[0]!, TAGS])),
+      queryWikiRows: vi.fn(async () => answer()),
+      setWikiCells: vi.fn(async (rowId: string, values: Record<string, unknown>) => {
+        tags[rowId] = (values.tags as string[] | null) ?? [];
+        return { row: row(rowId, titles[rowId]!, { tags: tags[rowId] }), refs: [] };
+      }),
+    });
+    const { controller } = fakeController(fake);
+    render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
+    await settle();
+    expect(document.querySelectorAll("[data-row='r1']")).toHaveLength(2); // a line in A and one in B
+    await press(line("t2", "r1", "tags"));
+    expect(screen.getByLabelText("選択肢を探す")).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: "B" })); // off: r1 leaves the group B it is being edited in
+    await settle();
+    expect(fake.setWikiCells).toHaveBeenCalledWith("r1", { tags: ["t1"] }, expect.any(String));
+    expect(document.querySelectorAll("[data-row='r1']")).toHaveLength(1);
+    expect(screen.queryByLabelText("選択肢を探す")).toBeNull(); // gone with its line, without a word
+    // The edit is over with it: a click on another cell edits it at once, and the keys work.
+    await press(line("t2", "r2", "title"));
+    expect(editor()?.value).toBe("BERT");
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    await settle(20);
+    expect(editor()).toBeNull();
+    fireEvent.keyDown(line("t2", "r2", "title"), { key: "Enter" });
+    await settle(20);
+    expect(editor()?.value).toBe("BERT");
+  });
+});
+
+describe("the cells' DOM keys (dbTableNav)", () => {
+  it("a box's key reads back as its cell, and one selector finds the box whatever the ids hold", () => {
+    const cell = { rowId: "r1", propId: 'p"q', group: "g\\h i" };
+    expect(cellFromDomKey(cellDomKey(cell))).toEqual(cell);
+    expect(cellFromDomKey("nope")).toBeNull();
+    const div = document.createElement("div");
+    div.setAttribute("data-cell-focus", cellDomKey(cell));
+    document.body.append(div);
+    try {
+      expect(document.querySelector(cellSelector(cell))).toBe(div);
+      expect(document.querySelector(cellSelector({ ...cell, group: "" }))).toBeNull();
+    } finally {
+      div.remove();
+    }
   });
 });
 
@@ -304,35 +451,27 @@ describe("who shapes the database (M144)", () => {
 
 describe("the calendar", () => {
   it("asks for the six weeks on screen; a range spans its days across weeks", async () => {
-    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 7, 12) });
-    try {
-      const { api: fake, queries } = api(CALENDAR);
-      const { controller } = fakeController(fake);
-      render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
-      await settle();
-      expect(queries[0]?.range).toEqual({ prop_id: "due", start: "2026-09-28", end: "2026-11-08" });
-      const bars = document.querySelectorAll("[data-bar='r1']");
-      expect(bars).toHaveLength(2); // 10/05-10/11 and 10/12-10/13
-      expect((bars[0] as HTMLElement).closest("[data-week]")?.getAttribute("data-week")).toBe("2026-10-05");
-      expect((bars[1] as HTMLElement).closest("[data-week]")?.getAttribute("data-week")).toBe("2026-10-12");
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.setSystemTime(new Date(2026, 9, 7, 12));
+    const { api: fake, queries } = api(CALENDAR);
+    const { controller } = fakeController(fake);
+    render(<DatabaseView controller={controller} databaseId="db" compact={false} renderPeek={() => null} onOpenRowPage={() => {}} />);
+    await settle();
+    expect(queries[0]?.range).toEqual({ prop_id: "due", start: "2026-09-28", end: "2026-11-08" });
+    const bars = document.querySelectorAll("[data-bar='r1']");
+    expect(bars).toHaveLength(2); // 10/05-10/11 and 10/12-10/13
+    expect((bars[0] as HTMLElement).closest("[data-week]")?.getAttribute("data-week")).toBe("2026-10-05");
+    expect((bars[1] as HTMLElement).closest("[data-week]")?.getAttribute("data-week")).toBe("2026-10-12");
   });
 
   it("a narrow screen shows the month as an agenda", async () => {
-    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 7, 12) });
-    try {
-      const { api: fake } = api(CALENDAR);
-      const { controller } = fakeController(fake);
-      render(<DatabaseView controller={controller} databaseId="db" compact renderPeek={() => null} onOpenRowPage={() => {}} />);
-      await settle();
-      const list = document.querySelector("[data-db-agenda]") as HTMLElement;
-      expect(within(list).getAllByText("Attention")).toHaveLength(9); // 10/05 … 10/13
-      expect(within(list).getAllByText("BERT")).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.setSystemTime(new Date(2026, 9, 7, 12));
+    const { api: fake } = api(CALENDAR);
+    const { controller } = fakeController(fake);
+    render(<DatabaseView controller={controller} databaseId="db" compact renderPeek={() => null} onOpenRowPage={() => {}} />);
+    await settle();
+    const list = document.querySelector("[data-db-agenda]") as HTMLElement;
+    expect(within(list).getAllByText("Attention")).toHaveLength(9); // 10/05 … 10/13
+    expect(within(list).getAllByText("BERT")).toHaveLength(1);
   });
 });
 

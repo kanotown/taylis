@@ -13,8 +13,25 @@ export interface CellKey {
 export const sameCell = (a: CellKey | null, b: CellKey | null): boolean =>
   !!a && !!b && a.rowId === b.rowId && a.propId === b.propId && a.group === b.group;
 
-/** The DOM id of a cell's focusable box (to move the focus with the selection). */
-export const cellDomKey = (cell: CellKey): string => `${cell.group}\u001f${cell.rowId}\u001f${cell.propId}`;
+/** Between the parts of a DOM key: a control character, never in a row id (uuid), a property id or a group's key. */
+const SEP = "\u001f";
+
+/** The DOM key of a cell's focusable box (`data-cell-focus`: to move the focus with the selection, and to know the
+ * cell a key was pressed on). The group comes last, so that a key is read back from its first two separators. */
+export const cellDomKey = (cell: CellKey): string => `${cell.rowId}${SEP}${cell.propId}${SEP}${cell.group}`;
+
+/** The cell of a box's DOM key (null for anything else). */
+export function cellFromDomKey(key: string): CellKey | null {
+  const first = key.indexOf(SEP);
+  if (first < 0) return null;
+  const second = key.indexOf(SEP, first + 1);
+  if (second < 0) return null;
+  return { rowId: key.slice(0, first), propId: key.slice(first + 1, second), group: key.slice(second + 1) };
+}
+
+/** One selector for a cell's box: the key quoted as a CSS string (the separator, quotes and backslashes escaped). */
+export const cellSelector = (cell: CellKey): string =>
+  `[data-cell-focus="${cellDomKey(cell).replace(/[\0-\x1f"\\\x7f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}"]`;
 
 /**
  * The cell an arrow key moves to from `from`, in the lines on screen (`lines`: each row of each open group, top to
