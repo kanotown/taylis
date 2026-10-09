@@ -5,6 +5,7 @@ Slack の「ワークフロー」のように、決まった形の投稿をフ�
 できるようにしたい」。
 
 **状態**: M94 (サーバと Desktop / Web、移行 0075) と M95 (iOS build 84・Android) は実装済み (2026-10-04)。定期の入力の催促などは §9。
+絵文字のピッカーと「実行するときに確認する」（移行 0112）は §11（2026-10-09）。
 
 ## 1. 問題
 
@@ -46,6 +47,7 @@ M30 の投稿テンプレートは入力欄に文を入れるだけなので、�
 | fields jsonb | 項目の配列 (§3.1)。最大 20 |
 | template text (1〜4000) | 本文の雛形 (§3.2) |
 | enabled | 止めている間は一覧に出るが実行できない (`409 workflow_disabled`) |
+| confirm（移行 0112） | 実行するときに確認する（既定 true）。false で項目が無ければ、選んだらすぐに投稿する（§11） |
 
 `messages` に 2 列を足す: `workflow_id uuid NULL REFERENCES workflows(id)`、`workflow_name varchar(40) NULL`。
 
@@ -109,12 +111,12 @@ M30 の投稿テンプレートは入力欄に文を入れるだけなので、�
 | `GET /workflows` | ログインした人 | **自分が管理できる**ワークフロー (管理画面の一覧)、名前の順。止めたものも |
 | `GET /channels/{id}/workflows` | そのチャンネルを読める人 | そのチャンネルに出すワークフローのうち、送り先を読めるもの (メニューと `/` の候補)、名前の順。止めたものも (`enabled`) |
 | `GET /workflows/{id}` | 送り先を読める人 | 1 件 |
-| `POST /workflows` | 管理できる人 | `{name, emoji?, description?, channel_id, offered_channel_ids?, fields, template, enabled?}` → 201 |
+| `POST /workflows` | 管理できる人 | `{name, emoji?, description?, channel_id, offered_channel_ids?, fields, template, enabled?, confirm?}` → 201 |
 | `PATCH /workflows/{id}` | 管理できる人 | 同じ項目の一部。送り先を変えるときは新しい送り先も管理できること |
 | `DELETE /workflows/{id}` | 管理できる人 | 論理削除 → 204。投稿は残り、ラベルは投稿した時の名前のまま |
 | `POST /workflows/{id}/submit` | 送り先に投稿できる人 | `{client_msg_id, values}` → `MessageOut` (新しく作れば 201、同じ `client_msg_id` の再送なら 200 で同じメッセージ) |
 
-`WorkflowOut` = `{id, name, emoji, description, channel_id, offered_channel_ids, fields, template, enabled, created_by,
+`WorkflowOut` = `{id, name, emoji, description, channel_id, offered_channel_ids, fields, template, enabled, confirm, created_by,
 created_at, updated_at, can_manage, can_run, run_blocked}`。`run_blocked` は自分が実行できない理由
 (`disabled` / `archived` / `not_a_member` / `posting_restricted`、実行できるなら null。ゲストもメンバーなら実行できる)。メニューは理由を添えて
 灰色にする。一覧の変更はイベントを出さない (定期投稿と同じく、メニューを開くたび・`/` を打つたびに読む。端末は 1 分だけ覚える)。
@@ -165,7 +167,7 @@ Android の `ignoreUnknownKeys` は知らない欄を無視する。確認済み
   消された・実行できないものはその理由をトーストで知らせる)。消したメッセージには出さない。
 - **狭い画面**: チャンネル詳細の「ワークフロー」から同じダイアログ (使う / 管理)。
 - **管理**: 管理 →「ワークフロー」のタブ (管理者) と、チャンネルの ⋯ →「ワークフロー…」の「管理」(オーナー・管理者)。
-  一覧 (名前・送り先・項目の数・停止中)、作成 / 編集のダイアログ: 名前・絵文字・説明・送り先・出す先 (追加のチャンネル)、
+  一覧 (名前・送り先・項目の数・停止中)、作成 / 編集のダイアログ: 名前・絵文字（§11 からはアプリの絵文字のピッカー）・説明・送り先・出す先 (追加のチャンネル)、
   項目のエディタ (追加・上下の並べ替え・削除、種類ごとの設定、既定値)、雛形 (「項目を挿入」のボタンで `{{キー}}` を入れる) と
   その場のプレビュー (既定値と例の値で描く)、「テンプレートから作成」、止める / 再開、削除 (確認あり)。
 
@@ -259,3 +261,58 @@ Android の `ignoreUnknownKeys` は知らない欄を無視する。確認済み
   送らない、一覧と 1 件の呼び出し)。
 - **注意**: 正規表現に `(?U)` は使えない (Android の ICU は構文エラーで、JVM の単体テストは通ってしまう)。JavaScript の `\s` に
   当たる空白は文字の一覧で書いた (`Workflows.WS`)。エミュレータで見つけた。
+
+## 11. 絵文字のピッカーと「実行するときに確認する」（2026-10-09）
+
+利用者の要望：ワークフローの絵文字を選びにくい（エディタは文字を打つ欄だった）。実行するときに確認するかどうかを作る人が
+選べるようにしたい。
+
+### 11.1 前の動き
+
+- 実行（入力欄の「＋」、`/名前`・`/wf 名前`、チャンネル詳細・ヘッダーの ⋯、投稿の「⚡ 名前」）は、3 端末とも**必ず**
+  フォームを開いた。項目の無いワークフローでも、プレビューと「投稿」だけのフォームが出て、「投稿」を押すまで何も送らない。
+  つまりフォームがいつも確認の役をしていた。フォームの「投稿」の後に別の確認のダイアログは無い。
+- アクションボタン（ACTIONS.md D8）には `confirm`（既定 true）と `confirm_text`（確認の文）がある。
+
+### 11.2 決めたこと
+
+- `workflows.confirm boolean NOT NULL DEFAULT true`（移行 0112）。既存のワークフローは true で、動きは変わらない。
+- **true**：前のまま。選ぶとフォーム（プレビューと「投稿」）が出る。
+- **false**：**項目が無く**、実行できる（`can_run`）なら、選んだらすぐに投稿する。どの入口（「＋」、`/名前`、チャンネル詳細、
+  「⚡ 名前」）でも同じ。送り先が開いている会話と違えば「#送り先 に投稿しました」と出す。項目があるワークフローは、
+  入力が要るのでオフでもフォームが出る（エディタはそう添える）。
+- 確認の文（`confirm_text`）は足さない。確認はフォームそのもので、そこには説明（`description`）とプレビューが出るので、
+  別の文を持つ場所が無い。
+- すぐの投稿が失敗したら（通信・権限・止められた など）、フォームを開いて理由を出し、その投稿に使った `client_msg_id` を
+  そのまま使う。フォームの「投稿」で押し直しても二重に投稿しない（サーバは同じキーの再送に同じメッセージを返す）。
+  投稿の途中にもう一度選んでも、2 回目は送らない。
+- サーバは `confirm` を保存して返すだけで、送信（`POST /workflows/{id}/submit`）の扱いは変わらない。`PATCH` で
+  `confirm: null` は `422`。変えたら `workflow.updated` の監査に `confirm` が残る。
+
+### 11.3 画面
+
+- **Desktop / Web のエディタ**：絵文字は打つ欄をやめ、ステータスやセクションと同じアプリの絵文字のピッカー
+  （最近使ったもの・検索・カスタム絵文字・パック）から選ぶ。「絵文字を外す」で ⚡ に戻る。カスタム絵文字は `:名前:` で
+  保存され、一覧とメニューでは画像で出る（入力欄の `/` の候補の帯は、入力欄の部品が絵文字の描き方を受け取っていないので
+  `:名前:` の文字のまま。実行のダイアログの題もカスタム絵文字のときは名前だけ）。
+  有効のスイッチの下に「実行するときに確認する（フォームとプレビューを出してから投稿）」のスイッチ（既定オン）。
+  オフにすると「オフにすると、メニューや /名前 で選んだらすぐに投稿します」、項目があれば
+  「項目があるので、オフでも入力のフォームは出ます」と添える。
+- **iOS / Android**：エディタは無い（§8 5.）。実行の入口はすべて `AppController.runWorkflow`（iOS）・`openWorkflow`
+  （Android）を通るので、そこで `confirm` を見る（iOS は `WorkflowOut.postsWithoutAsking`、Android も同じ名前）。
+
+### 11.4 古い端末
+
+- 古い端末は `confirm` を知らず（iOS の Codable・Android の `ignoreUnknownKeys` は知らない欄を無視する）、**いつも
+  フォームを出す**（＝ 確認する）。オフにしたワークフローも、古い端末では前と同じくフォームから投稿でき、投稿は同じになる。
+- 新しい端末は、`confirm` の無い答え（古いサーバ）を true とみなす。
+
+### 11.5 試験
+
+- サーバ `tests/test_workflows.py::test_confirm_defaults_on_and_can_be_switched_off`（既定 true、作成・一覧・PATCH・null の拒否・
+  監査、送信は変わらない、カスタム絵文字の `:名前:`）。
+- Desktop `tests/workflows.test.ts`（`postsWithoutAsking`）、`tests/workflowsUi.test.tsx`（ダイアログを出さずに投稿・送り先が
+  別なら知らせる、失敗でダイアログと同じキー、オン・項目あり・古いサーバはダイアログ、チャンネルのメニューから、`/名前`、
+  エディタのピッカー（Unicode とカスタム）・外す・スイッチと添え書き・保存の本文）。
+- iOS `WorkflowsTests`（`confirm` のデコードと判定、すぐの投稿・送り先の知らせ・失敗でフォームと同じキー、確認するものはフォーム）。
+- Android `WorkflowsTest.confirmDecidesWhetherChoosingItAsksFirst`（デコードと判定、空の値の送信、失敗の理由とキー）。
