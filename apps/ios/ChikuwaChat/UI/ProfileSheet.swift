@@ -16,10 +16,7 @@ struct ProfileSheet: View {
     private var blocked: Bool { controller.store.isBlocked(userId) }
     private var isMe: Bool { controller.store.me?.id == userId }
     private var presenceLine: String {
-        let look = controller.store.presenceOf(userId)
-        let dndUntil = isMe ? controller.store.currentMe?.dndUntil : user?.dndUntil
-        if look == "dnd", let until = PresenceRules.activeDnd(dndUntil) { return PresenceRules.dndLine(until) }
-        return presenceLabel(look)
+        PresenceRules.lookLabel(controller.store.presenceOf(userId), dndUntil: isMe ? controller.store.currentMe?.dndUntil : user?.dndUntil)
     }
 
     var body: some View {

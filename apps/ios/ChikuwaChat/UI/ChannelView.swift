@@ -752,12 +752,12 @@ struct ChannelView: View {
     private func headerSubtitle(_ channel: ChannelState) -> String? {
         if let topic = channel.channel.topic, !topic.isEmpty { return topic }
         if channel.channel.isDm {
-            // 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2) and custom status (M11d).
+            // 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2; 「取り込み中（〜15:30）」 with its end, as the
+            // profile card, PRESENCE.md §11.5) and custom status (M11d).
             let others = (channel.channel.dmUserIds ?? []).filter { $0 != controller.store.me?.id }
             guard others.count == 1 else { return nil }
-            let presence = presenceLabel(controller.store.presenceOf(others[0]))
-            if let status = activeStatus(controller.store.users[others[0]]) { return "\(presence) · \(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces) }
-            return presence
+            let other = controller.store.users[others[0]]
+            return PresenceRules.dmSubtitle(look: controller.store.presenceOf(others[0]), dndUntil: other?.dndUntil, status: activeStatus(other))
         }
         return channel.isMember && !channel.channel.archived ? tr("トピックを設定") : nil
     }
