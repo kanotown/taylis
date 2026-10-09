@@ -120,8 +120,16 @@ export function useScrollRow<T extends HTMLElement>(): (node: T | null) => void 
     node.addEventListener("scroll", mark, { passive: true });
     node.addEventListener("focusin", onFocus);
     node.addEventListener("keydown", onKey);
-    // The selected tab changes (a click, the keys, the owner); tabs come and go (permissions load).
-    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver(revealSelected);
+    // The selected tab changes (a click, the keys, the owner); tabs come and go (permissions load). Nothing else in
+    // the row (a conversation's link chips beside its tabs) brings the selected tab back when it changes: the row may
+    // have been scrolled away from it on purpose.
+    const isTab = (element: Node) => element.nodeType === 1 && (element as Element).matches("[role='tab']");
+    const hasTab = (element: Node) => isTab(element) || (element.nodeType === 1 && (element as Element).querySelector("[role='tab']") !== null);
+    const tabsChanged = (record: MutationRecord) =>
+      record.type === "attributes" ? isTab(record.target) : [...record.addedNodes, ...record.removedNodes].some(hasTab);
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      if (records.some(tabsChanged)) revealSelected();
+    });
     mutations?.observe(node, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-selected"] });
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(revealSelected);
     resize?.observe(node);

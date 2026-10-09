@@ -61,6 +61,49 @@ describe("a sideways row of tabs (管理, 検索, a conversation's tabs)", () =>
     expect(tab("a").getAttribute("aria-selected")).toBe("true");
   });
 
+  it("leaves a row scrolled away from the selected tab where it is when something other than a tab changes", async () => {
+    render(
+      <UnderlineTabRow aria-label="row">
+        <div role="tablist">
+          <button type="button" role="tab" aria-selected>a</button>
+          <button type="button" role="tab" aria-selected={false}>b</button>
+        </div>
+        <div data-testid="chips" />
+      </UnderlineTabRow>,
+    );
+    const row = screen.getByLabelText("row");
+    Object.defineProperty(row, "clientWidth", { configurable: true, value: 300 });
+    Object.defineProperty(row, "scrollWidth", { configurable: true, value: 900 });
+    // The tabs are 80 px wide at the row's start; the rects follow the scrolling.
+    const at = (x: number) => ({ left: x - row.scrollLeft, right: x - row.scrollLeft + 80, width: 80, top: 0, bottom: 36, height: 36, x: x - row.scrollLeft, y: 0, toJSON: () => ({}) });
+    const [a, b] = screen.getAllByRole("tab");
+    a!.getBoundingClientRect = () => at(0);
+    b!.getBoundingClientRect = () => at(80);
+    const observed = () => act(async () => { await Promise.resolve(); });
+    row.scrollLeft = 300; // scrolled away by hand, to the links beside the tabs
+    const chip = document.createElement("a");
+    chip.textContent = "link";
+    screen.getByTestId("chips").append(chip); // a conversation's link chip appended: not a tab
+    await observed();
+    expect(row.scrollLeft).toBe(300);
+    chip.remove();
+    await observed();
+    expect(row.scrollLeft).toBe(300);
+    // A tab added (permissions loaded): the selected one is brought back into view.
+    const tab = document.createElement("button");
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", "false");
+    screen.getByRole("tablist").append(tab);
+    await observed();
+    expect(row.scrollLeft).toBe(0);
+    // The selection moving: the newly selected tab, clear of the fade.
+    row.scrollLeft = 300;
+    a!.setAttribute("aria-selected", "false");
+    b!.setAttribute("aria-selected", "true");
+    await observed();
+    expect(row.scrollLeft).toBe(80 - 24);
+  });
+
   it("marks the edges that fade as it scrolls", () => {
     render(
       <UnderlineTabRow role="tablist" aria-label="tabs">
