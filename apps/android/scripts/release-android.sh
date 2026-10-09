@@ -95,6 +95,12 @@ MAPPING="$ANDROID/app/build/outputs/mapping/release/mapping.txt"
 
 # --- 2. build ------------------------------------------------------------------------------------------
 
+# M153a (docs/WIKI.md §30.3): Gradle copies the bundled page editor from apps/shared/mobile-editor/dist into the
+# assets, so the desktop build has to have made it (it is not in git).
+step "Bundled page editor: npm run build:mobile-editor"
+run npm --prefix "$REPO_ROOT/apps/desktop" ci --prefer-offline --no-audit --no-fund
+run npm --prefix "$REPO_ROOT/apps/desktop" run build:mobile-editor
+
 TASKS=(:app:bundleRelease)
 if ((!SKIP_CHECKS)); then TASKS=(:app:testDebugUnitTest :app:lintRelease "${TASKS[@]}"); fi
 step "Gradle: ${TASKS[*]}"
