@@ -1426,7 +1426,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{t("common.people", { count: dmOther.length + 1 })}</span>}
               {!isChannel && dmOther.length === 1 && dmOther[0] && (
                 <span className="flex items-center gap-1.5 text-xs text-muted" title={t("main.presence")}>
-                  <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : "bg-line")} />
+                  <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : store.presenceOf(dmOther[0]) === "dnd" ? "bg-danger" : "bg-line")} />
                   {presenceLabel(store.presenceOf(dmOther[0]))}
                   {activeStatus(store.users.get(dmOther[0])) && (
                     <span className="ml-1 truncate">

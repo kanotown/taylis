@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { AttendanceChip } from "./AttendanceChip";
-import { Avatar } from "./Avatar";
+import { Avatar, presenceLabel } from "./Avatar";
 import { Badge, Button, Input, Modal } from "./primitives";
 import { compareByRoster, rosterLabel, rosterSection, titleExtra } from "./roster";
 import { EmojiText } from "./UserPopover";
@@ -29,7 +29,7 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
 
   function rank(user: UserPublic): number {
     if (user.role === "bot") return 3;
-    const presence = store.presenceOf(user.id);
+    const presence = store.connectionOf(user.id); // 取り込み中 sorts by the connection under it
     return presence === "online" ? 0 : presence === "away" ? 1 : 2;
   }
 
@@ -76,7 +76,7 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                     </div>
                     <div className="truncate text-xs text-muted">
                       {/* A custom status emoji as its image (EmojiText), not its `:name:`. */}
-                      <EmojiText controller={controller} text={[titleExtra(user.title, line), line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? (controller.store.aiAgentOf(user.id) ? t("directory.aiBot") : t("directory.webhook")) : presence === "online" ? t("connection.online") : presence === "away" ? t("directory.away") : t("connection.offline"))} />
+                      <EmojiText controller={controller} text={[titleExtra(user.title, line), line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? (controller.store.aiAgentOf(user.id) ? t("directory.aiBot") : t("directory.webhook")) : presenceLabel(presence))} />
                     </div>
                   </div>
                   {user.id !== me && user.role !== "bot" && (

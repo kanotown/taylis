@@ -5,7 +5,7 @@ import type { AttendanceAdminSettingsOut, AttendanceBoardOut, AttendanceDelivery
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, LegacyCallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmCloseStateOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, ThreadsReadAllOut, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate, AdminPageOut, PageCreate, PageItem, PageMeta, PageMove, PageOut, PageRef, PageRevisionMeta, PageRevisionOut, PageRevisionPage, PageSaveIn, PageSaveOut, PageSearchOut, PageUpdate, WikiAccessOut, WikiAccessUpdate, WikiChangesOut, WikiMoveOut, WikiTreeOut, DatabaseOut, DbSchemaChange, DbViewIn, DbRowQuery, DbRowQueryOut, DbRowCreate, DbRowWithRefs, DbRowMove, DbRowDetail, DbRowRef, WikiTemplatesOut, PageDuplicate, PageDuplicateOut, PageTemplateApply } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
-import type { TestNotificationOut } from "./types";
+import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 
@@ -260,6 +260,11 @@ export class ApiClient {
 
   updateMe(patch: UserUpdate): Promise<UserMe> {
     return this.request("PATCH", "/api/v1/users/me", patch);
+  }
+
+  /** The quick status menu (docs/PRESENCE.md §11): auto / away / dnd (duration or until) / invisible. */
+  setPresence(body: PresenceUpdate): Promise<UserMe> {
+    return this.request("PUT", "/api/v1/users/me/presence", body);
   }
 
   members(channelId: string): Promise<MemberOut[]> {

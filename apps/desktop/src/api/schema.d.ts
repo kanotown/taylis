@@ -4852,6 +4852,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update My Presence
+         * @description The quick status menu (docs/PRESENCE.md §11): auto / away / dnd (with duration or until) /
+         *     invisible. One at a time; user.updated tells the others and my other devices.
+         */
+        put: operations["update_my_presence_api_v1_users_me_presence_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me/test-notification": {
         parameters: {
             query?: never;
@@ -11070,6 +11091,28 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * PresenceUpdate
+         * @description PUT /users/me/presence. `dnd` takes exactly one of `duration` (the menu's choices; the
+         *     server works out 「今日の終わり」 / 「明日まで」 in `tz`) or `until` (a custom instant, ahead of
+         *     now). The other choices take neither.
+         */
+        PresenceUpdate: {
+            /** Duration */
+            duration?: ("30m" | "1h" | "2h" | "4h" | "today" | "tomorrow" | "forever") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "auto" | "away" | "dnd" | "invisible";
+            /**
+             * Tz
+             * @description IANA zone for today / tomorrow; else my quiet hours' zone, else Asia/Tokyo
+             */
+            tz?: string | null;
+            /** Until */
+            until?: string | null;
+        };
         /** PropertyOut */
         PropertyOut: {
             /** Id */
@@ -13193,6 +13236,8 @@ export interface components {
              * @default false
              */
             presence_hidden: boolean;
+            /** Presence Manual */
+            presence_manual?: "away" | null;
             /** Quick Reactions */
             quick_reactions?: string[] | null;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
@@ -23266,6 +23311,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_my_presence_api_v1_users_me_presence_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMe"];
+                };
             };
             /** @description Validation Error */
             422: {

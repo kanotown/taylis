@@ -15,6 +15,8 @@ import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji, UserPopover } from "./UserPopover";
+import { MyStatusMenu } from "./MyStatusMenu";
+import { currentMe, myPresenceLine } from "./presence";
 import { t } from "../i18n";
 
 interface Props {
@@ -212,11 +214,23 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 flex-col overflow-y-auto border-r border-sidebar-edge bg-sidebar px-2 pb-4 text-sidebar-fg">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
       <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-sidebar-line bg-sidebar px-4 py-3">
-        {/* M93: my picture and name open my own profile card (status, title, 「プロフィールを編集」). */}
+        {/* PRESENCE.md §11: my picture opens the quick status menu; M93: my name opens my own profile card. */}
         {me ? (
-          <UserPopover controller={controller} userId={me.id} className="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-1 hover:bg-sidebar-strong/10">
-            <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} />
-          </UserPopover>
+          <>
+            <MyStatusMenu controller={controller} onSettings={onSettings} onOpenAttendance={onAttendance}>
+              <button
+                type="button"
+                data-my-status-trigger
+                aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(store)) })}
+                className="-my-1 -ml-1.5 shrink-0 rounded-xl p-0.5 outline-none hover:bg-sidebar-strong/10 focus-visible:ring-2 focus-visible:ring-accent/60"
+              >
+                <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" showOffline />
+              </button>
+            </MyStatusMenu>
+            <UserPopover controller={controller} userId={me.id} className="-my-1 -ml-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 pl-1 pr-1 hover:bg-sidebar-strong/10">
+              <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} withAvatar={false} />
+            </UserPopover>
+          </>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <SidebarIdentity controller={controller} meId={null} name="" status={status} />
@@ -810,10 +824,10 @@ const CHANNEL_DRAG = "application/x-chikuwa-channel";
 export const SECTION_DRAG = "application/x-chikuwa-section";
 
 /** The pinned header's picture, name and connection state (inside the button that opens my profile card). */
-function SidebarIdentity({ controller, meId, name, status }: { controller: AppController; meId: string | null; name: string; status: string }) {
+function SidebarIdentity({ controller, meId, name, status, withAvatar = true }: { controller: AppController; meId: string | null; name: string; status: string; withAvatar?: boolean }) {
   return (
     <>
-      {meId && <Avatar id={meId} name={name} size={34} className="rounded-xl" />}
+      {meId && withAvatar && <Avatar id={meId} name={name} size={34} className="rounded-xl" />}
       <span className="block min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1">
           <span className="truncate text-sm font-semibold text-sidebar-strong">{name}</span>

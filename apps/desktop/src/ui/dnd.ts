@@ -1,5 +1,6 @@
 import type { UserPublic } from "../api/types";
 import { t, weekdayName, labelled } from "../i18n";
+import { DND_INDEFINITE_FROM } from "./presence";
 
 /** Do not disturb (M12c): a manual pause or the daily quiet hours, evaluated in the user's own zone. */
 
@@ -110,6 +111,8 @@ export function pauseValue(until: string | null | undefined, now = new Date()): 
   if (!until) return t("dnd.off");
   const at = new Date(until);
   if (Number.isNaN(at.getTime()) || at.getTime() <= now.getTime()) return t("dnd.off");
+  // PRESENCE.md §11: 取り込み中「解除するまで」 (the same pause, with no end).
+  if (at.getTime() >= DND_INDEFINITE_FROM) return t("presence.untilCleared");
   const sameDay = at.toDateString() === now.toDateString();
   return sameDay ? t("dnd.until", { when: hhmm(at) }) : t("dnd.until", { when: `${at.getMonth() + 1}/${at.getDate()} ${hhmm(at)}` });
 }

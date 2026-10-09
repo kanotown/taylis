@@ -89,6 +89,8 @@ export type ThreadUpdated = ThreadState & { reason: "reply" | "deleted" | "read"
 
 /** Volatile WebSocket frames (SYNC_PROTOCOL.md §5.2, M11b). */
 export type PresenceStatus = "online" | "away" | "offline";
+/** What an avatar shows (PRESENCE.md §11): the frame's status, or 取り込み中 while the person's dnd_until is ahead. */
+export type PresenceLook = PresenceStatus | "dnd";
 export interface PresenceEntry {
   user_id: string;
   status: PresenceStatus;
@@ -158,6 +160,10 @@ export type AccountDeletion = components["schemas"]["AccountDeletion"];
 
 /** PATCH /users/me body (M11d, M12c). */
 export type UserUpdate = components["schemas"]["UserUpdate"];
+/** PUT /users/me/presence (docs/PRESENCE.md §11): the quick status menu's choice. */
+export type PresenceUpdate = components["schemas"]["PresenceUpdate"];
+export type PresenceChoice = PresenceUpdate["status"];
+export type DndDuration = NonNullable<PresenceUpdate["duration"]>;
 
 /** Scheduled messages (M12d). */
 export type ScheduledOut = components["schemas"]["ScheduledOut"];
