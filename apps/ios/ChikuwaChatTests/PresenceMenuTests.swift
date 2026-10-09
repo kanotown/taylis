@@ -284,6 +284,31 @@ final class PresenceMenuTests: XCTestCase {
         XCTAssertFalse(ok)
         XCTAssertNotNil(controller.error)
         XCTAssertEqual(PresenceRules.myChoice(controller.store.currentMe), .auto)
+        // The sheet takes the reason for its own line (the toast is behind the sheet) and leaves the toast nothing.
+        let reason = controller.takeError()
+        XCTAssertNotNil(reason)
+        XCTAssertNil(controller.error)
+        XCTAssertNil(controller.takeError())
+    }
+
+    /// 「解除」 ends the pause alone (the settings' 「通知を再開」: PATCH /users/me {dnd_until: null}, §11.1); `status: auto`
+    /// would also clear 離席中 and 「在席を隠す」 chosen in the settings.
+    func testClearingEndsThePauseAlone() async throws {
+        var sent: [(String, String, [String: JSONValue])] = []
+        let controller = controller { request in
+            sent.append((request.httpMethod ?? "", request.url?.path ?? "", Self.body(request)))
+            let json = #"{"id": "me", "username": "me", "display_name": "わたし", "role": "member", "deactivated_at": null, "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-09T00:00:00Z", "email": null, "must_change_password": false, "presence_hidden": false, "presence_manual": "away", "dnd_until": null}"#
+            return (200, Data(json.utf8))
+        }
+        controller.store.setMe(me(dndUntil: "9999-12-31T00:00:00Z", manual: "away"))
+        XCTAssertEqual(PresenceRules.myChoice(controller.store.currentMe), .dnd)
+        let ok = await controller.endMyPause()
+        XCTAssertTrue(ok)
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?.0, "PATCH")
+        XCTAssertEqual(sent.first?.1, "/api/v1/users/me")
+        XCTAssertEqual(sent.first?.2, ["dnd_until": .null], "only the pause")
+        XCTAssertEqual(PresenceRules.myChoice(controller.store.currentMe), .away, "離席中 from the settings stays")
     }
 
     // MARK: user.updated from another of my devices

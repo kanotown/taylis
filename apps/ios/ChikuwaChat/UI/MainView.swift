@@ -15,9 +15,9 @@ struct MainView: View {
     @State private var sidebarAutoHidden = false
     /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
     @State private var youPath: [YouRoute] = []
-    /// PRESENCE.md §11.7: the quick status menu from my picture, and where it sends me once it is gone.
+    /// PRESENCE.md §11.7: the quick status menu from my picture at the home's top left (either layout; `myStatusSheet`
+    /// remembers where it sends me until it is gone).
     @State private var myStatusShown = false
-    @State private var afterMyStatus: MyStatusDestination?
     /// The home list's tap (ChannelListView's selection), turned into a screen on the home stack.
     @State private var homeSelection: String?
     /// The home list's width: the room of its header's title and 在室状況 pill (PRESENCE.md §9.1).
@@ -178,6 +178,16 @@ struct MainView: View {
                 land(id)
             }
         }
+        // The home's picture opens the quick status menu on the phone and in the split alike (the home list is the
+        // first screen of both); its rows lead to 自分 (the tab, or the sheet over the split) or the 在室状況 page.
+        .myStatusSheet(isPresented: $myStatusShown, controller: controller) { destination in
+            switch destination {
+            case .setStatus: openYou(.status)
+            case .editProfile: openYou(.profile)
+            case .settings: openYou()
+            case .attendanceBoard: openAttendance()
+            }
+        }
         // M45: a canvas link tapped in a message (CANVAS.md §4.13).
         .sheet(item: $controller.canvasLink) { target in
             CanvasLinkSheet(controller: controller, canvasId: target.id)
@@ -282,7 +292,7 @@ struct MainView: View {
 
     /// The hardware keyboard's shortcuts (KeyCommand), only with nothing presented over the screen.
     private func keyCommand(_ command: KeyCommand) {
-        guard sheet == nil, !jumpShown, !nav.youSheet else { return }
+        guard sheet == nil, !jumpShown, !nav.youSheet, !myStatusShown else { return }
         switch command {
         case .jump: jumpShown = true
         case .compose: sheet = .compose
@@ -584,19 +594,6 @@ struct MainView: View {
         }
         .sheet(isPresented: $nav.youSheet) {
             YouView(controller: controller, path: $youPath, onClose: { nav.youSheet = false }, onOpenAttendance: openAttendance)
-        }
-        .sheet(isPresented: $myStatusShown, onDismiss: {
-            // Once the sheet is gone: the 自分 sheet (split) cannot open while this one is still closing.
-            guard let destination = afterMyStatus else { return }
-            afterMyStatus = nil
-            switch destination {
-            case .setStatus: openYou(.status)
-            case .editProfile: openYou(.profile)
-            case .settings: openYou()
-            case .attendanceBoard: openAttendance()
-            }
-        }) {
-            MyStatusSheet(controller: controller) { afterMyStatus = $0 }
         }
     }
 

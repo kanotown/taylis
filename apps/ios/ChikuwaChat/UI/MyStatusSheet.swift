@@ -5,11 +5,44 @@ enum MyStatusDestination: Equatable {
     case setStatus, editProfile, settings, attendanceBoard
 }
 
+extension View {
+    /// Presents the quick status menu (MyStatusSheet) over this view, and goes where one of its rows pointed only once
+    /// the sheet is gone: the 自分 sheet of the split cannot open while this one is still closing, and a tab switch
+    /// under a closing sheet looked odd. Both presenters (MainView for the home's picture in either layout, YouView for
+    /// the one at the top of 自分) share this; each says what the destinations mean where it is.
+    func myStatusSheet(isPresented: Binding<Bool>, controller: AppController, showsSettings: Bool = true, showsAttendanceBoard: Bool = true,
+                       go: @escaping (MyStatusDestination) -> Void) -> some View {
+        modifier(MyStatusPresenter(controller: controller, shown: isPresented, showsSettings: showsSettings,
+                                   showsAttendanceBoard: showsAttendanceBoard, go: go))
+    }
+}
+
+private struct MyStatusPresenter: ViewModifier {
+    @Bindable var controller: AppController
+    @Binding var shown: Bool
+    let showsSettings: Bool
+    let showsAttendanceBoard: Bool
+    let go: (MyStatusDestination) -> Void
+    /// The row's destination, remembered until the sheet has closed.
+    @State private var destination: MyStatusDestination?
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $shown, onDismiss: {
+            guard let destination else { return }
+            self.destination = nil
+            go(destination)
+        }) {
+            MyStatusSheet(controller: controller, showsSettings: showsSettings, showsAttendanceBoard: showsAttendanceBoard) { destination = $0 }
+        }
+    }
+}
+
 /// The quick status menu (docs/PRESENCE.md §11.6 / §11.7), from my picture at the home's top left and at the top of
 /// 自分: a sheet like the 在室状況 pill's. On top my picture with its dot, my name and the current state
 /// (「取り込み中（〜15:30）」 with 「解除」); my custom status; the four choices — オンライン（自動）, 離席中, 取り込み中
 /// (opens its lengths in place), オフライン表示 — each one tap, then the sheet closes; then 「ステータスを設定」,
-/// 在室状況 (my states in place, while the board is on for me), 「プロフィールを編集」 and 設定.
+/// 在室状況 (my states in place, while the board is on for me), 「プロフィールを編集」 and 設定. A refused choice (an
+/// older server's 404, the network) keeps the sheet open with the reason in a line at its bottom.
 struct MyStatusSheet: View {
     @Bindable var controller: AppController
     /// 設定 (the 自分 screen); off where the sheet is opened from that screen.
@@ -23,6 +56,8 @@ struct MyStatusSheet: View {
     @State private var attendanceShown = false
     @State private var fitted: CGFloat?
     @State private var detent: PresentationDetent = .large
+    /// The last refusal's reason, shown in the sheet (the toast would be behind it); the next tap clears it.
+    @State private var problem: String?
 
     private var store: Store { controller.store }
     private var me: UserMe? { store.currentMe ?? controller.me }
@@ -63,6 +98,7 @@ struct MyStatusSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) { SheetProblemLine(problem: problem) }
             .modifier(ContentHeightProbe { height in
                 // Once, as the sheet opens (a later change, such as the lengths opening, would move it under the finger).
                 guard fitted == nil, height > 0 else { return }
@@ -86,7 +122,7 @@ struct MyStatusSheet: View {
             Spacer(minLength: 8)
             if choice == .dnd {
                 // Keyed: the catalog's 「解除」 is 「Unblock」 in English (the block list's).
-                Button(tr(LocalizedStringResource("presence.clear", defaultValue: "解除"))) { choose(.auto) }  // i18n-ignore: keyed (presence.clear)
+                Button(tr(LocalizedStringResource("presence.clear", defaultValue: "解除"))) { endPause() }  // i18n-ignore: keyed (presence.clear)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(busy)
@@ -213,27 +249,52 @@ struct MyStatusSheet: View {
 
     /// One tap changes it; the sheet closes once the server took it (a refusal shows the reason and stays).
     private func choose(_ choice: PresenceChoice, duration: DndDuration? = nil) {
-        guard !busy else { return }
-        busy = true
-        Task {
-            let ok = await controller.setMyPresence(choice, duration: duration)
-            busy = false
-            if ok { dismiss() }
-        }
+        run { await controller.setMyPresence(choice, duration: duration) }
+    }
+
+    /// 「解除」: the pause alone ends (the settings' 「通知を再開」, PRESENCE.md §11.1), not 離席中 or 「在席を隠す」 chosen
+    /// in the settings, which `auto` would clear too.
+    private func endPause() {
+        run { await controller.endMyPause() }
     }
 
     private func chooseAttendance(_ state: AttendanceStateOut) {
+        run { await controller.switchMyAttendance(to: state) }
+    }
+
+    /// One change at a time: the sheet closes once the server took it, else it stays with the reason.
+    private func run(_ change: @escaping () async -> Bool) {
         guard !busy else { return }
         busy = true
+        problem = nil
         Task {
-            let ok = await controller.switchMyAttendance(to: state)
+            let ok = await change()
             busy = false
-            if ok { dismiss() }
+            if ok { dismiss() } else { problem = controller.takeError() }
         }
     }
 
     private func go(_ destination: MyStatusDestination) {
         onGo(destination)
         dismiss()
+    }
+}
+
+/// A sheet's own line for a refusal's reason, along its bottom edge (over the rows, so it shows whatever the sheet's
+/// height and scroll): the toast (ErrorToast) is drawn behind a presented sheet. Nothing while there is none.
+struct SheetProblemLine: View {
+    let problem: String?
+
+    var body: some View {
+        if let problem {
+            Text(problem)
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(.bar)
+                .accessibilityIdentifier("sheet.problem")
+        }
     }
 }
