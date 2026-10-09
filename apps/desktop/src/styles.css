@@ -348,25 +348,55 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 
 /* M150 (WIKI.md §22.6): the 見たまま page editor (PageEditor.tsx), drawn as the page is (CanvasBody): one paragraph
    per body line, flat list lines indented by level with the renderer's markers, callouts, toggles and atoms. */
-.page-editor { outline: none; font-size: 15px; line-height: 1.75rem; min-height: 40vh; padding: 0 2px 2rem; }
-.page-editor p { margin: 0; min-height: 1.75rem; }
-.page-editor h1, .page-editor h2, .page-editor h3 { margin: 1rem 0 0.25rem; font-weight: 700; line-height: 1.25; }
-.page-editor h1 { font-size: 1.5rem; }
-.page-editor h2 { font-size: 1.25rem; }
-.page-editor h3 { font-size: 1.125rem; }
-.page-editor > :first-child { margin-top: 0; }.page-editor [data-list-line] { display: flex; align-items: flex-start; padding-left: calc(var(--pe-level, 0) * 24px); }
+.page-editor { outline: none; font-size: 15px; line-height: 1.75rem; min-height: 40vh; padding: 0 0 2rem; }
+.page-editor p { margin: 0; }
+/* M155 (WIKI.md §30.2): the editor's spacing is the reading view's (CanvasBody / MessageBody, paragraphLayout), so
+   switching between 閲覧 and 編集 moves nothing. A blank line beside a line of text is the 0.625rem gap the reader draws:
+   a margin on a box of no height whose <br> (ProseMirror's) is hidden so it holds no line box and the margins
+   collapse through it — several blank lines are one gap, and a gap before a heading or a list collapses into their
+   own margins exactly as the reader's `mt-2.5` / `mb-2.5` do. A blank line between two blocks that are not lines of
+   text (a heading and a list, a rule and a callout), the only line in a callout or toggle, or the page's first line
+   is the reader's real 0.625rem box (`h-2.5`). The blank line the caret is on is a full line (the caret and the
+   placeholder need one). */
+.page-editor p:has(> .ProseMirror-trailingBreak:only-child) { height: 0; min-height: 0; margin-top: 0.625rem; }
+.page-editor p:has(> .ProseMirror-trailingBreak:only-child) > .ProseMirror-trailingBreak { display: none; }
+.page-editor :not(p) + p:has(> .ProseMirror-trailingBreak:only-child):has(+ :not(p)),
+.page-editor :not(p) + p:has(> .ProseMirror-trailingBreak:only-child):has(+ p > .ProseMirror-trailingBreak:only-child),
+.page-editor .pe-callout-body > p:first-child:has(> .ProseMirror-trailingBreak:only-child),
+.page-editor .pe-toggle-title + p:has(> .ProseMirror-trailingBreak:only-child),
+.page-editor > p:first-child:has(> .ProseMirror-trailingBreak:only-child) { height: 0.625rem; margin-top: 0; }
+.page-editor p:has(> .ProseMirror-trailingBreak:only-child) + p:has(> .ProseMirror-trailingBreak:only-child) { margin-top: 0; }
+.page-editor p.is-empty:has(> .ProseMirror-trailingBreak:only-child) { height: auto; min-height: 1.75rem; margin-top: 0; }
+.page-editor p.is-empty:has(> .ProseMirror-trailingBreak:only-child) > .ProseMirror-trailingBreak { display: inline; }
+/* The reader's headings keep the line height of their size (Tailwind's text-2xl / xl / lg: 2rem, 1.75rem, 1.75rem). */
+.page-editor h1, .page-editor h2, .page-editor h3 { margin: 1rem 0 0.25rem; font-weight: 700; }
+.page-editor h1 { font-size: 1.5rem; line-height: 2rem; }
+.page-editor h2 { font-size: 1.25rem; line-height: 1.75rem; }
+.page-editor h3 { font-size: 1.125rem; line-height: 1.75rem; }
+.page-editor > :first-child, .page-editor .pe-callout-body > :first-child, .page-editor .pe-toggle-body > :nth-child(2) { margin-top: 0; }
+.page-editor [data-list-line] { display: flex; align-items: flex-start; padding-left: calc(var(--pe-level, 0) * 24px); }
+/* The reader's lists have 0.125rem above and below a run of items (`my-0.5`), checklists 0.25rem (`my-1`). */
+.page-editor [data-list-line]:not([data-list-line] + *) { margin-top: 0.125rem; }
+.page-editor [data-list-line]:not(:has(+ [data-list-line])) { margin-bottom: 0.125rem; }
+.page-editor [data-kind="task"]:not([data-kind="task"] + *) { margin-top: 0.25rem; }
+.page-editor [data-kind="task"]:not(:has(+ [data-kind="task"])) { margin-bottom: 0.25rem; }
+/* The reader draws a bulleted run and a numbered run at the top level as two lists, 0.125rem apart (the list plugin
+   marks the line a new one starts on: pageEditorSchema.listMarkers). */
+.page-editor [data-list-line][data-group-start] { margin-top: 0.125rem; }
 .page-editor pre code { background: none; box-shadow: none; padding: 0; font-size: inherit; border-radius: 0; }
-.page-editor .pe-marker { flex: none; min-width: 24px; padding-right: 6px; text-align: right; user-select: none; font-variant-numeric: tabular-nums; }
+/* The marker sits in the reader's 1.5rem list padding (`pl-6`): the text starts 24px in, the number ends 4px before it. */
+.page-editor .pe-marker { flex: none; box-sizing: border-box; width: 24px; padding-right: 4px; text-align: right; user-select: none; font-variant-numeric: tabular-nums; }
 .page-editor .pe-line-text { flex: 1; min-width: 0; }
-.page-editor [data-kind="bullet"] > .pe-marker { font-size: 0; line-height: 1.75rem; }
+.page-editor [data-kind="bullet"] > .pe-marker { font-size: 0; line-height: 1.75rem; padding-right: 8px; }
 .page-editor [data-kind="bullet"] > .pe-marker::before {
   content: ""; display: inline-block; box-sizing: border-box; width: 6px; height: 6px; vertical-align: middle; position: relative; top: -1px;
   border-radius: 50%; background: currentColor; font-size: 15px;
 }
 .page-editor [data-kind="bullet"][data-level="1"] > .pe-marker::before { background: transparent; border: 1.5px solid currentColor; }
 .page-editor [data-kind="bullet"][data-level="2"] > .pe-marker::before { width: 5px; height: 5px; border-radius: 1px; }
-.page-editor [data-kind="task"] > .pe-marker { display: flex; justify-content: flex-end; }
-.page-editor [data-kind="task"] > .pe-marker input { width: 1rem; height: 1rem; margin-top: 6px; accent-color: var(--accent); cursor: pointer; }
+/* A checklist's box as the reader draws it: 2px in, 1rem wide, the text 0.5rem after it. */
+.page-editor [data-kind="task"] > .pe-marker { display: flex; justify-content: flex-start; width: 26px; padding: 0 0 0 2px; }
+.page-editor [data-kind="task"] > .pe-marker input { width: 1rem; height: 1rem; margin-top: 7px; accent-color: var(--accent); cursor: pointer; }
 .page-editor [data-done] > .pe-line-text { color: var(--muted-fg); text-decoration: line-through; }
 .page-editor blockquote { margin: 4px 0; border-left: 3px solid var(--line); padding-left: 12px; color: var(--muted-fg); }
 .page-editor .pe-math { margin: 4px 0; }
@@ -374,24 +404,28 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .page-editor .pe-math-preview { padding: 4px 2px 0; }
 .page-editor pre.pe-raw { position: relative; border-style: dashed; color: var(--muted-fg); padding-top: 18px; }
 .page-editor pre.pe-raw::before { content: attr(data-label); position: absolute; top: 2px; left: 12px; font-family: var(--font-sans, inherit); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
-.page-editor .pe-hr { padding: 10px 0; }
+/* The rule's 0.75rem margins (the reader's `my-3`) collapse with the blank lines around it; a wider box catches the click. */
+.page-editor .pe-hr { position: relative; margin: 0.75rem 0; }
+.page-editor .pe-hr::before { content: ""; position: absolute; inset: -10px 0; }
 .page-editor .pe-hr hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
-.page-editor .pe-callout { display: flex; gap: 0.6rem; border-radius: 8px; padding: 6px 14px; margin: 8px 0; }
-.page-editor .pe-callout-icon { flex: none; min-width: 1.5rem; height: 1.75rem; font-size: 1.15em; line-height: 1.75rem; border-radius: 6px; cursor: pointer; }
+.page-editor .pe-callout { display: flex; gap: 0.625rem; border-radius: 8px; padding: 8px 14px; margin: 8px 0; }
+.page-editor .pe-callout-icon { flex: none; min-width: 1.25rem; height: 1.75rem; font-size: 1.15em; line-height: 1.75rem; border-radius: 6px; cursor: pointer; }
 .page-editor .pe-callout-icon:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .page-editor .pe-callout-body { flex: 1; min-width: 0; }
-.page-editor .pe-toggle { display: flex; gap: 2px; margin: 2px 0; }
-.page-editor .pe-toggle-chevron { flex: none; width: 1.25rem; height: 1.75rem; border-radius: 4px; position: relative; cursor: pointer; }
+.page-editor .pe-toggle { display: flex; gap: 4px; margin: 4px 0; }
+.page-editor .pe-toggle-chevron { flex: none; width: 1rem; height: 1.75rem; margin-top: 2px; border-radius: 4px; position: relative; cursor: pointer; }
 .page-editor .pe-toggle-chevron:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .page-editor .pe-toggle-chevron::before {
-  content: ""; position: absolute; left: 6px; top: 10px; width: 7px; height: 7px;
+  content: ""; position: absolute; left: 4px; top: 10px; width: 7px; height: 7px;
   border-right: 2px solid var(--muted-fg); border-bottom: 2px solid var(--muted-fg); transform: rotate(-45deg); transition: transform 120ms;
 }
 .page-editor .pe-toggle[data-open] > .pe-toggle-chevron::before { transform: rotate(45deg); top: 8px; }
 .page-editor .pe-toggle-body { flex: 1; min-width: 0; }
 .page-editor .pe-toggle:not([data-open]) > .pe-toggle-body > :not(:first-child) { display: none; }
-.page-editor .pe-toggle-title { font-weight: 500; min-height: 1.75rem; }
-.page-editor .pe-atom { margin: 6px 0; border-radius: 8px; }
+/* The reader's summary row has 0.125rem above and below the title (`py-0.5`). */
+.page-editor .pe-toggle-title { font-weight: 500; min-height: 1.75rem; padding: 2px 0; }
+/* An image's own 0.5rem margins (CanvasImage) and an embed's (DatabaseView) are the reader's: nothing more around them. */
+.page-editor .pe-atom { margin: 0; border-radius: 8px; }
 .page-editor .ProseMirror-selectednode { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
 /* M154: the selected blocks (Esc), tinted with the accent; the text caret is hidden by ProseMirror-hideselection. */
 .page-editor .pe-selected { background-color: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 4px; }

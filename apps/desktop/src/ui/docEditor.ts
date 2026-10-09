@@ -49,33 +49,99 @@ export function slashQuery(text: string, caret: number): { start: number; query:
 
 export type SlashKey = "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "callout" | "toggle" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage" | "database" | "embedDatabase";
 
-interface SlashItem {
+/** M155 (WIKI.md §30.2): the sections of the page editor's `/` menu (the Markdown editor's list stays flat). */
+export type SlashGroup = "basic" | "list" | "media" | "embed" | "advanced";
+
+export interface SlashItem {
   key: SlashKey;
   label: MessageKey;
-  /** Typed after `/` to find it (English and romaji; the label in the UI language matches too). */
+  /** M155: one line under the label (what the block is for). */
+  hint: MessageKey;
+  group: SlashGroup;
+  /** Typed after `/` to find it (English names and aliases, romaji; the label in the UI language matches too). */
   words: readonly string[];
 }
 
 export const SLASH_ITEMS: readonly SlashItem[] = [
-  { key: "h1", label: "docs.slash.h1", words: ["h1", "heading", "midashi", "見出し"] },
-  { key: "h2", label: "docs.slash.h2", words: ["h2", "heading", "midashi", "見出し"] },
-  { key: "h3", label: "docs.slash.h3", words: ["h3", "heading", "midashi", "見出し"] },
-  { key: "bullets", label: "docs.slash.bullets", words: ["list", "bullet", "ul", "risuto", "箇条書き", "リスト"] },
-  { key: "numbered", label: "docs.slash.numbered", words: ["numbered", "ol", "number", "bangou", "番号"] },
-  { key: "tasks", label: "docs.slash.tasks", words: ["todo", "task", "check", "checklist", "chekku", "チェック", "タスク"] },
-  { key: "quote", label: "docs.slash.quote", words: ["quote", "inyou", "引用"] },
-  { key: "callout", label: "docs.slash.callout", words: ["callout", "note", "info", "warning", "ko-ruauto", "コールアウト", "注意", "メモ"] },
-  { key: "toggle", label: "docs.slash.toggle", words: ["toggle", "details", "collapse", "fold", "toguru", "トグル", "折りたたみ"] },
-  { key: "table", label: "docs.slash.table", words: ["table", "hyou", "表"] },
-  { key: "code", label: "docs.slash.code", words: ["code", "ko-do", "コード"] },
-  { key: "math", label: "docs.slash.math", words: ["math", "equation", "tex", "suushiki", "数式"] },
-  { key: "divider", label: "docs.slash.divider", words: ["divider", "rule", "hr", "line", "kugiri", "区切り"] },
-  { key: "image", label: "docs.slash.image", words: ["image", "picture", "photo", "gazou", "画像"] },
-  { key: "pageLink", label: "docs.slash.pageLink", words: ["link", "page", "rinku", "リンク", "ページ"] },
-  { key: "childPage", label: "docs.slash.childPage", words: ["page", "child", "subpage", "new", "pe-ji", "子ページ", "ページ"] },
-  { key: "database", label: "docs.slash.database", words: ["database", "db", "calendar", "board", "de-tabe-su", "データベース", "カレンダー"] },
-  { key: "embedDatabase", label: "docs.slash.embedDatabase", words: ["embed", "database", "db", "view", "linked", "umekomi", "埋め込み", "データベース"] },
+  { key: "h1", label: "docs.slash.h1", hint: "docs.slash.hint.h1", group: "basic", words: ["h1", "heading", "title", "midashi", "見出し"] },
+  { key: "h2", label: "docs.slash.h2", hint: "docs.slash.hint.h2", group: "basic", words: ["h2", "heading", "midashi", "見出し"] },
+  { key: "h3", label: "docs.slash.h3", hint: "docs.slash.hint.h3", group: "basic", words: ["h3", "heading", "midashi", "見出し"] },
+  { key: "bullets", label: "docs.slash.bullets", hint: "docs.slash.hint.bullets", group: "list", words: ["list", "bullet", "bulleted", "ul", "risuto", "箇条書き", "リスト"] },
+  { key: "numbered", label: "docs.slash.numbered", hint: "docs.slash.hint.numbered", group: "list", words: ["numbered", "ordered", "ol", "number", "bangou", "番号"] },
+  { key: "tasks", label: "docs.slash.tasks", hint: "docs.slash.hint.tasks", group: "list", words: ["todo", "to-do", "task", "check", "checkbox", "checklist", "chekku", "チェック", "タスク"] },
+  { key: "quote", label: "docs.slash.quote", hint: "docs.slash.hint.quote", group: "basic", words: ["quote", "blockquote", "inyou", "引用"] },
+  { key: "callout", label: "docs.slash.callout", hint: "docs.slash.hint.callout", group: "basic", words: ["callout", "note", "info", "warning", "ko-ruauto", "コールアウト", "注意", "メモ"] },
+  { key: "toggle", label: "docs.slash.toggle", hint: "docs.slash.hint.toggle", group: "basic", words: ["toggle", "details", "collapse", "fold", "toguru", "トグル", "折りたたみ"] },
+  { key: "table", label: "docs.slash.table", hint: "docs.slash.hint.table", group: "media", words: ["table", "grid", "hyou", "表"] },
+  { key: "code", label: "docs.slash.code", hint: "docs.slash.hint.code", group: "advanced", words: ["code", "pre", "snippet", "ko-do", "コード"] },
+  { key: "math", label: "docs.slash.math", hint: "docs.slash.hint.math", group: "advanced", words: ["math", "equation", "formula", "tex", "latex", "suushiki", "数式"] },
+  { key: "divider", label: "docs.slash.divider", hint: "docs.slash.hint.divider", group: "basic", words: ["divider", "rule", "hr", "line", "separator", "kugiri", "区切り"] },
+  { key: "image", label: "docs.slash.image", hint: "docs.slash.hint.image", group: "media", words: ["image", "img", "picture", "photo", "gazou", "画像"] },
+  { key: "pageLink", label: "docs.slash.pageLink", hint: "docs.slash.hint.pageLink", group: "embed", words: ["link", "page", "rinku", "リンク", "ページ"] },
+  { key: "childPage", label: "docs.slash.childPage", hint: "docs.slash.hint.childPage", group: "embed", words: ["page", "child", "subpage", "new", "pe-ji", "子ページ", "ページ"] },
+  { key: "database", label: "docs.slash.database", hint: "docs.slash.hint.database", group: "embed", words: ["database", "db", "calendar", "board", "de-tabe-su", "データベース", "カレンダー"] },
+  { key: "embedDatabase", label: "docs.slash.embedDatabase", hint: "docs.slash.hint.embedDatabase", group: "embed", words: ["embed", "database", "db", "view", "linked", "umekomi", "埋め込み", "データベース"] },
 ];
+
+/** The sections of the page editor's `/` menu, in order, with their headings. */
+export const SLASH_GROUPS: ReadonlyArray<{ group: SlashGroup; label: MessageKey }> = [
+  { group: "basic", label: "docs.slash.group.basic" },
+  { group: "list", label: "docs.slash.group.list" },
+  { group: "media", label: "docs.slash.group.media" },
+  { group: "embed", label: "docs.slash.group.embed" },
+  { group: "advanced", label: "docs.slash.group.advanced" },
+];
+
+export interface SlashSection {
+  group: SlashGroup | "recent";
+  label: MessageKey;
+  items: SlashItem[];
+}
+
+/**
+ * M155: the `/` menu's sections for what was typed: 「最近使ったもの」 first (only while nothing is typed), then each group
+ * that has a matching item. `keep` leaves items out (a callout where containers go no deeper).
+ */
+export function slashSections(query: string, recents: readonly SlashKey[], keep: (item: SlashItem) => boolean = () => true): SlashSection[] {
+  const matching = slashItems(query).filter(keep);
+  const out: SlashSection[] = [];
+  if (!query.trim() && recents.length > 0) {
+    const items = recents.map((key) => matching.find((item) => item.key === key)).filter((item): item is SlashItem => !!item);
+    if (items.length > 0) out.push({ group: "recent", label: "docs.slash.group.recent", items });
+  }
+  for (const { group, label } of SLASH_GROUPS) {
+    const items = matching.filter((item) => item.group === group);
+    if (items.length > 0) out.push({ group, label, items });
+  }
+  return out;
+}
+
+/** M155: the `/` items picked most recently on this device (newest first, at most five; localStorage, never the server). */
+export const SLASH_RECENT_MAX = 5;
+const SLASH_RECENTS_KEY = "taylis.docs.slashRecents";
+
+export function readSlashRecents(): SlashKey[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(SLASH_RECENTS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const known = new Set<string>(SLASH_ITEMS.map((item) => item.key));
+    return parsed.filter((key): key is SlashKey => typeof key === "string" && known.has(key)).slice(0, SLASH_RECENT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+/** `key` moved to the front of the recents (the list written back; returned for the open menu). */
+export function rememberSlashKey(key: SlashKey): SlashKey[] {
+  const next = [key, ...readSlashRecents().filter((k) => k !== key)].slice(0, SLASH_RECENT_MAX);
+  try {
+    globalThis.localStorage?.setItem(SLASH_RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    /* per-device convenience only */
+  }
+  return next;
+}
 
 /** "\n" when text follows `at` on its line (a container's close must be a line of its own). */
 function lineBreakAfter(text: string, at: number): string {

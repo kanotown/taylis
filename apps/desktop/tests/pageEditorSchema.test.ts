@@ -13,8 +13,10 @@ import { closeHistory } from "@tiptap/pm/history";
 import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { readSlashRecents, rememberSlashKey, slashSections } from "../src/ui/docEditor";
 import { blockPosAt, canPlace, deleteUnit, duplicateUnit, moveUnit, unitAt } from "../src/ui/pageEditorBlocks";
 import { BlockSelection, extendTo, pasteAfterBlocks } from "../src/ui/pageEditorSelection";
+import { containerDepthAt, kindOf, mathSelectable, toolbarState, turnBlocks, turnRange, wrapMath } from "../src/ui/pageEditorToolbar";
 import { cellPos, editTable } from "../src/ui/pageEditorTable";
 import { pageHtmlFromPaste } from "../src/ui/pagePaste";
 import { jsonView, readsAsShown, type RichNode } from "../src/ui/pageMarkdown";
@@ -48,6 +50,7 @@ export function fakeHost(): PageEditorHost {
     save: () => {},
     link: () => {},
     focusTitle: () => {},
+    turnMenu: () => {},
     text: { placeholder: "", editTable: "", raw: "Markdown", toggleOpen: "open", toggleClose: "close", checkbox: "done", changeIcon: "icon", untitledToggle: "" },
     editable: () => true,
   };
@@ -926,5 +929,200 @@ describe("M154: block selection (WIKI.md §30.1)", () => {
     expect(selection.getBookmark().resolve(editor.state.doc).eq(selection)).toBe(true);
     expect(() => BlockSelection.fromJSON(editor.state.doc, { anchor: 1, head: 1 })).toThrow(RangeError);
     expect(BlockSelection.valid(editor.state.doc, before(editor, 1), before(editor, 5) + 1)).toBe(false); // different holders
+  });
+});
+
+describe("M155: the floating toolbar, ⌘/ and 「変換」, the `/` sections, Enter in a heading, Shift+Enter (WIKI.md §30.2)", () => {
+  const LINES = ["# 題", "本文の行 **太い** 文字", "- 項目", "::: callout 💡", "中の行", ":::", "> 引用の行", "```", "code()", "```", "| a | b |", "| --- | --- |", "| 1 | 2 |", "::: toggle 見出し", "中", ":::", "![](attachment:0190a2b4-0000-7000-8000-0000000000aa)", "絵 :smile: 文", "最後"];
+  const BODY_TB = LINES.join("\n");
+  const select = (editor: Editor, from: number, to: number) => editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)));
+  const indexOf = (editor: Editor, type: string) => editor.state.doc.content.content.findIndex((n) => n.type.name === type);
+
+  it("shows over text selected inside one block (the marks and 「変換」); never collapsed, composing, across blocks, on a block selection or an atom", () => {
+    const { editor } = open(BODY_TB);
+    const line = before(editor, 1) + 1;
+    select(editor, line, line + 3);
+    expect(toolbarState(editor.state)).toEqual({ from: line, to: line + 3, kind: "block" });
+    expect(toolbarState(editor.state, true)).toBeNull();
+    editor.commands.setTextSelection(line);
+    expect(toolbarState(editor.state)).toBeNull();
+    select(editor, line, before(editor, 2) + 2);
+    expect(toolbarState(editor.state)).toBeNull();
+    editor.view.dispatch(editor.state.tr.setSelection(BlockSelection.create(editor.state.doc, before(editor, 1))));
+    expect(toolbarState(editor.state)).toBeNull();
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, before(editor, indexOf(editor, "image")))));
+    expect(toolbarState(editor.state)).toBeNull();
+  });
+
+  it("in a code block only 「コピー」; in a table's cell, a toggle's title and a quote only the marks; in a callout the block's kinds too", () => {
+    const { editor } = open(BODY_TB);
+    const code = before(editor, indexOf(editor, "codeBlock"));
+    select(editor, code + 1, code + 3);
+    expect(toolbarState(editor.state)?.kind).toBe("code");
+    const table = before(editor, indexOf(editor, "table"));
+    select(editor, table + 3, table + 4);
+    expect(toolbarState(editor.state)?.kind).toBe("marks");
+    const toggle = before(editor, indexOf(editor, "toggle"));
+    select(editor, toggle + 2, toggle + 4);
+    expect(toolbarState(editor.state)?.kind).toBe("marks");
+    const quote = before(editor, indexOf(editor, "blockquote"));
+    select(editor, quote + 2, quote + 4);
+    expect(toolbarState(editor.state)?.kind).toBe("marks");
+    const callout = before(editor, indexOf(editor, "callout"));
+    select(editor, callout + 2, callout + 4);
+    expect(toolbarState(editor.state)?.kind).toBe("block");
+  });
+
+  it("the marks and inline math from the toolbar write only that line (canonical); spaces stay outside the formula; an atom or a `$` refuses it", () => {
+    const { editor, markdown } = open(BODY_TB);
+    const line = before(editor, 1) + 1;
+    select(editor, line, line + 4);
+    editor.chain().focus().toggleMark("bold").run();
+    expect(markdown()).toBe(BODY_TB.replace("本文の行 **太い** 文字", "**本文の行** **太い** 文字"));
+    select(editor, line + 7, line + 10); // " 文字"
+    expect(mathSelectable(editor.state)).toBe(true);
+    expect(wrapMath(editor)).toBe(true);
+    expect(markdown()).toBe(BODY_TB.replace("本文の行 **太い** 文字", "**本文の行** **太い** $文字$"));
+    expect(editor.state.selection.from).toBe(line + 9); // after the formula
+    const emoji = before(editor, indexOf(editor, "image") + 1) + 1; // 「絵 :smile: 文」
+    select(editor, emoji, emoji + 3); // 絵 :smile:
+    expect(mathSelectable(editor.state)).toBe(false);
+    expect(wrapMath(editor)).toBe(false);
+    const { editor: dollars } = open("a $ b");
+    select(dollars, 1, 6);
+    expect(mathSelectable(dollars.state)).toBe(false);
+  });
+
+  it("⌘/ asks the host for the 「変換」 list; the range is the caret's line (none in a cell or a quote) or the selected blocks", () => {
+    const calls: number[] = [];
+    const { editor, host } = open(BODY_TB);
+    host.turnMenu = () => {
+      calls.push(1);
+    };
+    caretInBlock(editor, 1);
+    press(editor, "/", { ctrlKey: true });
+    expect(calls).toHaveLength(1);
+    expect(turnRange(editor.state)).toEqual({ from: before(editor, 1), to: before(editor, 2) });
+    expect(kindOf(editor.state.doc.child(1))).toBe("text");
+    expect(kindOf(editor.state.doc.child(0))).toBe("h1");
+    expect(kindOf(editor.state.doc.child(2))).toBe("bullets");
+    expect(kindOf(editor.state.doc.nodeAt(before(editor, indexOf(editor, "image"))))).toBeNull();
+    const table = before(editor, indexOf(editor, "table"));
+    editor.commands.setTextSelection(table + 3);
+    expect(turnRange(editor.state)).toBeNull();
+    const quote = before(editor, indexOf(editor, "blockquote"));
+    editor.commands.setTextSelection(quote + 2);
+    expect(turnRange(editor.state)).toBeNull();
+    const callout = before(editor, indexOf(editor, "callout"));
+    editor.commands.setTextSelection(callout + 2);
+    expect(turnRange(editor.state)).toEqual({ from: callout + 1, to: callout + 1 + editor.state.doc.nodeAt(callout)!.child(0).nodeSize });
+    editor.view.dispatch(editor.state.tr.setSelection(BlockSelection.create(editor.state.doc, before(editor, 1), before(editor, 2))));
+    expect(turnRange(editor.state)).toEqual({ from: before(editor, 1), to: before(editor, 3) });
+  });
+
+  it("「変換」 keeps the text selection on a line; selected blocks become one callout; a toggle takes the first line as its title; lists and quotes; no third container", () => {
+    const { editor, markdown } = open(BODY_TB);
+    const line = before(editor, 1) + 1;
+    select(editor, line, line + 2);
+    turnBlocks(editor, before(editor, 1), before(editor, 2), "h2", { from: line, to: line + 2 });
+    expect(markdown()).toBe(BODY_TB.replace("本文の行 **太い** 文字", "## 本文の行 **太い** 文字"));
+    expect([editor.state.selection.from, editor.state.selection.to]).toEqual([line, line + 2]);
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    turnBlocks(editor, before(editor, 1), before(editor, 3), "callout");
+    expect(markdown()).toBe(BODY_TB.replace("本文の行 **太い** 文字\n- 項目", "::: callout 💡\n## 本文の行 **太い** 文字\n- 項目\n:::"));
+    expect(editor.state.selection.$from.parent.type.name).toBe("listLine"); // the caret at the end of the last block
+    editor.commands.undo();
+    expect(markdown()).toBe(BODY_TB.replace("本文の行 **太い** 文字", "## 本文の行 **太い** 文字"));
+
+    const two = open("一\n二");
+    turnBlocks(two.editor, 0, two.editor.state.doc.content.size, "toggle");
+    expect(two.markdown()).toBe("::: toggle 一\n二\n:::");
+    const bullets = open("一\n二");
+    turnBlocks(bullets.editor, 0, bullets.editor.state.doc.content.size, "bullets");
+    expect(bullets.markdown()).toBe("- 一\n- 二");
+    expect(bullets.editor.state.selection.$from.parent.textContent).toBe("二");
+    const quoted = open("# 一\n二");
+    turnBlocks(quoted.editor, 0, quoted.editor.state.doc.content.size, "quote");
+    expect(quoted.markdown()).toBe("> 一\n> 二");
+    const deep = open("::: callout 💡\n::: toggle 題\n中\n:::\n:::");
+    expect(containerDepthAt(deep.editor, 0, deep.editor.state.doc.content.size)).toBe(2);
+    turnBlocks(deep.editor, 0, deep.editor.state.doc.content.size, "callout");
+    expect(deep.markdown()).toBe("::: callout 💡\n::: toggle 題\n中\n:::\n:::");
+  });
+
+  it("the `/` menu's sections: the groups in order, filtering by label / English name / alias, recents first while nothing is typed (five, newest first, this device)", () => {
+    localStorage.clear();
+    expect(readSlashRecents()).toEqual([]);
+    const all = slashSections("", []);
+    expect(all.map((section) => section.group)).toEqual(["basic", "list", "media", "embed", "advanced"]);
+    expect(all[0]!.items.map((item) => item.key)).toEqual(["h1", "h2", "h3", "quote", "callout", "toggle", "divider"]);
+    expect(all.flatMap((section) => section.items)).toHaveLength(18);
+    const keys = (query: string, recents: ReturnType<typeof readSlashRecents> = []) => slashSections(query, recents).flatMap((section) => section.items.map((item) => item.key));
+    expect(slashSections("todo", []).map((section) => [section.group, section.items.map((item) => item.key)])).toEqual([["list", ["tasks"]]]);
+    expect(keys("img")).toEqual(["image"]);
+    expect(keys("h1")).toEqual(["h1"]);
+    expect(keys("見出し")).toEqual(["h1", "h2", "h3"]);
+    expect(keys("formula")).toEqual(["math"]);
+    expect(keys("bulleted")).toEqual(["bullets"]);
+    expect(slashSections("", [], (item) => item.key !== "callout" && item.key !== "toggle")[0]!.items.map((item) => item.key)).toEqual(["h1", "h2", "h3", "quote", "divider"]);
+    rememberSlashKey("tasks");
+    rememberSlashKey("h2");
+    rememberSlashKey("tasks");
+    expect(readSlashRecents()).toEqual(["tasks", "h2"]);
+    for (const key of ["code", "math", "image", "table", "quote"] as const) rememberSlashKey(key);
+    expect(readSlashRecents()).toEqual(["quote", "table", "image", "math", "code"]);
+    const withRecents = slashSections("", readSlashRecents());
+    expect(withRecents[0]!.group).toBe("recent");
+    expect(withRecents[0]!.items.map((item) => item.key)).toEqual(["quote", "table", "image", "math", "code"]);
+    expect(withRecents).toHaveLength(6);
+    expect(slashSections("code", readSlashRecents())[0]!.group).toBe("advanced");
+    localStorage.setItem("taylis.docs.slashRecents", '["nope", 3, "h1"]');
+    expect(readSlashRecents()).toEqual(["h1"]);
+    localStorage.clear();
+  });
+
+  it("Enter inside a heading leaves the rest as a paragraph; at its end a paragraph; at its start an empty line above it (the heading's bytes stay)", () => {
+    const { editor, markdown, sources } = open(BODY);
+    const lines = BODY.split("\r\n");
+    const replaced = (index: number, line: string[]) => [...lines.slice(0, index), ...line, ...lines.slice(index + 1)].join("\r\n");
+    caretInBlock(editor, 0, "start");
+    editor.commands.setTextSelection(editor.state.selection.from + 3);
+    press(editor, "Enter");
+    expect(markdown()).toBe(replaced(0, ["# 研究室", "マニュアル"]));
+    expect(editor.state.doc.child(1).type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parent.textContent).toBe("マニュアル");
+    editor.commands.undo();
+    expect(markdown()).toBe(BODY);
+    caretInBlock(editor, 0, "end");
+    press(editor, "Enter");
+    type(editor, "次");
+    expect(markdown()).toBe(replaced(0, ["# 研究室マニュアル", "次"]));
+    expect(editor.state.doc.child(1).type.name).toBe("paragraph");
+    editor.commands.undo();
+    editor.commands.undo();
+    expect(markdown()).toBe(BODY);
+    caretInBlock(editor, 0, "start");
+    press(editor, "Enter");
+    expect(markdown()).toBe(replaced(0, ["", "# 研究室マニュアル"]));
+    expect(sources.original(editor.state.doc.child(1))).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("heading");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+  });
+
+  it("Shift+Enter is Enter: a new line after a paragraph, a new item after a list line, a line break inside a code block", () => {
+    const { editor, markdown } = open("段落\n- 項目\n```\ncode\n```");
+    caretInBlock(editor, 0);
+    press(editor, "Enter", { shiftKey: true });
+    type(editor, "次");
+    expect(markdown()).toBe("段落\n次\n- 項目\n```\ncode\n```");
+    caretInBlock(editor, 2);
+    press(editor, "Enter", { shiftKey: true });
+    type(editor, "二");
+    expect(markdown()).toBe("段落\n次\n- 項目\n- 二\n```\ncode\n```");
+    caretInBlock(editor, 4);
+    press(editor, "Enter", { shiftKey: true });
+    type(editor, "more");
+    expect(markdown()).toBe("段落\n次\n- 項目\n- 二\n```\ncode\nmore\n```");
+    expect(editor.state.doc.childCount).toBe(5);
   });
 });

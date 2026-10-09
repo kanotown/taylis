@@ -12,6 +12,8 @@
  * table dialog), ⌘⇧↑ / ⌘⇧↓ move blocks (ui/pageEditorBlocks.ts).
  * M154 (WIKI.md §30.1): Esc selects blocks (ui/pageEditorSelection.ts); ↑ on the first line and ← at the very start
  * go to the page's title; Backspace at the very start does nothing.
+ * M155 (WIKI.md §30.2): Enter inside a heading leaves the rest as a paragraph (at its start: an empty line above it);
+ * Shift+Enter is Enter (the dialect has no line break inside a block); ⌘/ opens the 「変換」 list (the host).
  */
 import { Extension, InputRule, type JSONContent, Node, textblockTypeInputRule, wrappingInputRule, type Editor, type NodeViewRenderer } from "@tiptap/core";
 import { Blockquote } from "@tiptap/extension-blockquote";
@@ -92,6 +94,8 @@ export interface PageEditorHost {
   link(): void;
   /** M154: ↑ on the body's first line (or ← at its very start): the caret to the end of the page's title. */
   focusTitle(): void;
+  /** M155: ⌘/ — the 「変換」 list for the caret's block (or the selected blocks). */
+  turnMenu(): void;
   text: { placeholder: string; editTable: string; raw: string; toggleOpen: string; toggleClose: string; checkbox: string; changeIcon: string; untitledToggle: string };
   /** Whether the editor may change things (false: read only). */
   editable(): boolean;
@@ -191,15 +195,16 @@ export const ListLine = Node.create<{ host: PageEditorHost }>({
       let current = node;
       listElements.set(node, dom);
       let box: HTMLInputElement | null = null;
-      /** The marker and drawn level the list plugin worked out for this line (as the renderer numbers it). */
-      let shown = { marker: "•", level: node.attrs.level as number };
+      /** The marker, drawn level and group start the list plugin worked out for this line (as the renderer draws it). */
+      let shown = { marker: "•", level: node.attrs.level as number, groupStart: false };
       const place = () => {
         dom.setAttribute("data-level", String(shown.level));
         dom.style.setProperty("--pe-level", String(shown.level));
+        dom.toggleAttribute("data-group-start", shown.groupStart);
         if (current.attrs.kind !== "task") marker.textContent = shown.marker;
       };
       dom.pageListMarker = (next) => {
-        if (next.marker === shown.marker && next.level === shown.level) return;
+        if (next.marker === shown.marker && next.level === shown.level && next.groupStart === shown.groupStart) return;
         shown = next;
         place();
       };
@@ -664,23 +669,31 @@ export const InlineMathNode = Node.create<{ host: PageEditorHost }>({
 // --- list markers, keys and input rules -----------------------------------------------------------------------------------
 
 /** A list line's element: the list plugin tells it its marker and drawn level. */
-type ListLineElement = HTMLDivElement & { pageListMarker?: (shown: { marker: string; level: number }) => void };
+type ListLineElement = HTMLDivElement & { pageListMarker?: (shown: { marker: string; level: number; groupStart: boolean }) => void };
 /** Each list line's element by the node it shows now (`view.nodeDOM` per line would walk the page each time). */
 const listElements = new WeakMap<PMNode, ListLineElement>();
 
 const listKey = new PluginKey<number>("pageListMarkers");
 
-/** Every run of list lines with the markers (• ◦ ▪, 1. a. i.) and drawn levels the renderer gives them. */
-export function listMarkers(doc: PMNode): Array<{ node: PMNode; pos: number; marker: string; level: number }> {
-  const out: Array<{ node: PMNode; pos: number; marker: string; level: number }> = [];
+/**
+ * Every run of list lines with the markers (• ◦ ▪, 1. a. i.) and drawn levels the renderer gives them. M155: `groupStart`
+ * marks a top-level line whose kind differs from the top-level line before it (the reader draws a new list there,
+ * 0.125rem apart: MessageBody.listGroups).
+ */
+export function listMarkers(doc: PMNode): Array<{ node: PMNode; pos: number; marker: string; level: number; groupStart: boolean }> {
+  const out: Array<{ node: PMNode; pos: number; marker: string; level: number; groupStart: boolean }> = [];
   const scan = (parent: PMNode, start: number) => {
     let run: Array<{ node: PMNode; pos: number }> = [];
     const flush = () => {
       if (run.length === 0) return;
       const marks = listRun(run.map(({ node }) => ({ kind: node.attrs.kind, level: node.attrs.level, number: node.attrs.number })));
+      let topKind: string | null = null;
       run.forEach(({ node, pos }, k) => {
         const mark = marks[k]!;
-        out.push({ node, pos, level: mark.level, marker: node.attrs.kind === "task" ? "" : listMarker(node.attrs.kind === "ordered", mark.level, mark.number) });
+        const kind = node.attrs.kind as string;
+        const groupStart = mark.level === 0 && topKind !== null && topKind !== kind;
+        if (mark.level === 0) topKind = kind;
+        out.push({ node, pos, level: mark.level, groupStart, marker: kind === "task" ? "" : listMarker(kind === "ordered", mark.level, mark.number) });
       });
       run = [];
     };
@@ -717,7 +730,7 @@ const ListMarkers = Extension.create({
         let seen = -1;
         const mark = () => {
           seen = listKey.getState(view.state) ?? 0;
-          for (const { node, marker, level } of listMarkers(view.state.doc)) listElements.get(node)?.pageListMarker?.({ marker, level });
+          for (const { node, marker, level, groupStart } of listMarkers(view.state.doc)) listElements.get(node)?.pageListMarker?.({ marker, level, groupStart });
         };
         mark();
         return {
@@ -799,67 +812,76 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
       if (tr) editor.view.dispatch(tr);
       return true;
     };
+    const enter = () => {
+      // M151: inline math selected (the arrows select it): its TeX.
+      const { selection } = editor.state;
+      if (selection instanceof NodeSelection && selection.node.type.name === "inlineMath") {
+        host.editMath(selection.from);
+        return true;
+      }
+      // M151: in a table, the cell below (a cell holds one line).
+      const below = verticalCell(editor.state, 1);
+      if (below) {
+        editor.view.dispatch(below);
+        return true;
+      }
+      const { state } = editor;
+      const { $from, empty } = state.selection;
+      const node = $from.parent;
+      if (node.type.name === "toggleTitle") {
+        // Into the toggle's first block.
+        const after = $from.after();
+        return editor.chain().setTextSelection(after + 1).run();
+      }
+      if (node.type.name === "listLine") {
+        if (empty && node.content.size === 0) {
+          // An empty item ends the list (a nested one goes up a level first).
+          if (node.attrs.level > 0) return editor.commands.updateAttributes("listLine", { level: node.attrs.level - 1 });
+          return editor.commands.setNode("paragraph");
+        }
+        const tr = state.tr.deleteSelection();
+        const at = tr.mapping.map($from.pos);
+        tr.split(at, 1, [{ type: node.type, attrs: { ...untied(node.attrs), eol: node.attrs.eol || "\n", checked: false, number: null } }]);
+        editor.view.dispatch(tr.scrollIntoView());
+        return true;
+      }
+      if (node.type.name === "paragraph" && empty && node.content.size === 0 && $from.depth > 1) {
+        // An empty last line in a quote, callout or toggle leaves it: the caret goes to a new line under it.
+        const container = $from.node($from.depth - 1);
+        const index = $from.index($from.depth - 1);
+        if (index === container.childCount - 1 && container.type.name !== "doc") {
+          const tr = state.tr;
+          const after = $from.after($from.depth - 1);
+          if (container.childCount > 1) tr.delete($from.before(), $from.after());
+          const at = tr.mapping.map(after);
+          tr.insert(at, state.schema.nodes.paragraph!.create());
+          tr.setSelection(TextSelection.create(tr.doc, at + 1));
+          editor.view.dispatch(tr.scrollIntoView());
+          return true;
+        }
+      }
+      if (node.type.name === "paragraph" || node.type.name === "heading") {
+        const heading = node.type.name === "heading";
+        if (heading && empty && $from.parentOffset === 0 && node.content.size > 0) {
+          // M155: at the start of a heading, an empty line above it; the heading stays as it is (Notion).
+          const tr = state.tr.insert($from.before(), state.schema.nodes.paragraph!.create({ eol: node.attrs.eol || "\n" }));
+          tr.setSelection(TextSelection.create(tr.doc, $from.pos + 2));
+          editor.view.dispatch(tr.scrollIntoView());
+          return true;
+        }
+        // A new line without the old one's tie or hidden markers; what follows the caret in a heading is a paragraph
+        // (M155: in its middle too, not a second heading; at its end as before).
+        const type = heading ? state.schema.nodes.paragraph! : node.type;
+        const tr = state.tr.deleteSelection();
+        const at = tr.mapping.map($from.pos);
+        tr.split(at, 1, [{ type, attrs: type === node.type ? { ...untied(node.attrs), eol: node.attrs.eol || "\n" } : { eol: node.attrs.eol || "\n" } }]);
+        editor.view.dispatch(tr.scrollIntoView());
+        return true;
+      }
+      return false;
+    };
     return {
-      Enter: () => {
-        // M151: inline math selected (the arrows select it): its TeX.
-        const { selection } = editor.state;
-        if (selection instanceof NodeSelection && selection.node.type.name === "inlineMath") {
-          host.editMath(selection.from);
-          return true;
-        }
-        // M151: in a table, the cell below (a cell holds one line).
-        const below = verticalCell(editor.state, 1);
-        if (below) {
-          editor.view.dispatch(below);
-          return true;
-        }
-        const { state } = editor;
-        const { $from, empty } = state.selection;
-        const node = $from.parent;
-        if (node.type.name === "toggleTitle") {
-          // Into the toggle's first block.
-          const after = $from.after();
-          return editor.chain().setTextSelection(after + 1).run();
-        }
-        if (node.type.name === "listLine") {
-          if (empty && node.content.size === 0) {
-            // An empty item ends the list (a nested one goes up a level first).
-            if (node.attrs.level > 0) return editor.commands.updateAttributes("listLine", { level: node.attrs.level - 1 });
-            return editor.commands.setNode("paragraph");
-          }
-          const tr = state.tr.deleteSelection();
-          const at = tr.mapping.map($from.pos);
-          tr.split(at, 1, [{ type: node.type, attrs: { ...untied(node.attrs), eol: node.attrs.eol || "\n", checked: false, number: null } }]);
-          editor.view.dispatch(tr.scrollIntoView());
-          return true;
-        }
-        if (node.type.name === "paragraph" && empty && node.content.size === 0 && $from.depth > 1) {
-          // An empty last line in a quote, callout or toggle leaves it: the caret goes to a new line under it.
-          const container = $from.node($from.depth - 1);
-          const index = $from.index($from.depth - 1);
-          if (index === container.childCount - 1 && container.type.name !== "doc") {
-            const tr = state.tr;
-            const after = $from.after($from.depth - 1);
-            if (container.childCount > 1) tr.delete($from.before(), $from.after());
-            const at = tr.mapping.map(after);
-            tr.insert(at, state.schema.nodes.paragraph!.create());
-            tr.setSelection(TextSelection.create(tr.doc, at + 1));
-            editor.view.dispatch(tr.scrollIntoView());
-            return true;
-          }
-        }
-        if (node.type.name === "paragraph" || node.type.name === "heading") {
-          // A new line without the old one's tie or hidden markers; after a heading's end, a paragraph.
-          const atEnd = $from.parentOffset === node.content.size;
-          const type = node.type.name === "heading" && atEnd ? state.schema.nodes.paragraph! : node.type;
-          const tr = state.tr.deleteSelection();
-          const at = tr.mapping.map($from.pos);
-          tr.split(at, 1, [{ type, attrs: type === node.type ? { ...untied(node.attrs), eol: node.attrs.eol || "\n" } : { eol: node.attrs.eol || "\n" } }]);
-          editor.view.dispatch(tr.scrollIntoView());
-          return true;
-        }
-        return false;
-      },
+      Enter: enter,
       Backspace: () => {
         const { $from, empty } = editor.state.selection;
         if (!empty || $from.parentOffset !== 0) return false;
@@ -891,7 +913,9 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
       "Shift-Enter": () => {
         const above = verticalCell(editor.state, -1);
         if (above) editor.view.dispatch(above);
-        return !!above || lineHere().type.name === "tableCell";
+        if (above || lineHere().type.name === "tableCell") return true;
+        // M155: the dialect has no line break inside a block: Shift+Enter is Enter (the page's Enter, then the editor's).
+        return enter() || editor.commands.keyboardShortcut("Enter");
       },
       Tab: () => {
         const cell = stepCell(editor.state, 1);
@@ -925,6 +949,11 @@ const PageKeys = Extension.create<{ host: PageEditorHost }>({
       },
       "Mod-k": () => {
         host.link();
+        return true;
+      },
+      // M155: the 「変換」 list for the caret's block (the selected blocks).
+      "Mod-/": () => {
+        host.turnMenu();
         return true;
       },
     };
