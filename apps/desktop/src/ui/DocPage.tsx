@@ -35,6 +35,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { sinceLabel } from "./format";
 import { PageIcon } from "./PageIcon";
 import type { PageEditorHandle } from "./PageEditor";
+import { PageFindBar, type PageFindHandle, usePageFindKeys } from "./PageFind";
 import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSplit, type DocsEditorMode, docsEditorModeOf, readCanvasSplit, writeCanvasSplit } from "./prefs";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { useCanvasScrollSync } from "./useCanvasScrollSync";
@@ -103,6 +104,14 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [saver]);
+  // WIKI.md §29.3: ⌘F / Ctrl+F finds in this page (the app has no other find for it).
+  const sectionRef = useRef<HTMLElement>(null);
+  const [finding, setFinding] = useState(false);
+  const find = useRef<PageFindHandle | null>(null);
+  usePageFindKeys(sectionRef, embedded, finding, () => {
+    if (finding) find.current?.focus();
+    else setFinding(true);
+  }, (step) => find.current?.step(step));
 
   const cached: PageOut | null = hub.cachedPage(pageId);
   const listed = hub.page(pageId);
@@ -242,7 +251,8 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   }
 
   return (
-    <section aria-label={t("docs.pageWithTitle", { title })} className="flex min-h-0 flex-1 flex-col" data-doc-page={pageId}>
+    <section ref={sectionRef} aria-label={t("docs.pageWithTitle", { title })} className="relative flex min-h-0 flex-1 flex-col" data-doc-page={pageId}>
+      {finding && <PageFindBar section={sectionRef} handle={find} onClose={() => setFinding(false)} className="absolute right-3 top-12 z-20" />}
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-line px-2">
         {onBack && (
           <button type="button" aria-label={t("common.back")} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6" onClick={onBack}>
@@ -329,7 +339,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
         <TemplateBanner kind="page" canEdit={rights.edit} isDefault={null} onUse={() => void useTemplate()} onUnset={() => void setTemplate(false)} onDefault={null} />
       )}
       {editing && editorMode === "wysiwyg" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")} data-wysiwyg-page="">
+        <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")} data-wysiwyg-page="" data-find-root="">
           <article className={cn("mx-auto max-w-3xl px-6 pb-16 pt-6 max-md:px-4 max-md:pt-4", embedded && "px-4 pt-4")}>
             <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable />
             {kind === "row" && <RowProperties controller={controller} rowId={pageId} version={meta?.version ?? 0} onOpenPage={onOpenPage} template={isTemplate} />}
@@ -346,7 +356,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
         <>
           <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable compact />
           <EditorSplit compact={compact} editor={<CanvasEditor controller={controller} saver={saver} onTextArea={setEditorArea} doc={docLinks} initialCaretLine={caretLine} caretLineRef={markdownCaret} className="h-full min-w-0" />} preview={(
-            <div ref={setPreviewBox} className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")}>
+            <div ref={setPreviewBox} className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")} data-find-root="">
               <div className="mx-auto max-w-3xl px-6 py-4">
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("composer.preview")}</div>
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} />
@@ -356,7 +366,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
         </>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")}>
+          <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("docs.content")} data-find-root="">
             <article className={cn("mx-auto px-6 py-6 max-md:px-4 max-md:py-4", kind === "database" ? "max-w-none" : "max-w-3xl", embedded && "px-4 py-4")}>
               <TitleRow controller={controller} pageId={pageId} title={meta?.title ?? ""} icon={meta?.icon ?? null} editable={rights.edit && !!loaded} />
               {meta && <Byline controller={controller} page={meta} />}

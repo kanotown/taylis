@@ -250,6 +250,9 @@
   body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
   ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  /* WIKI.md §29.3: a Docs page's find (findInPage.ts), painted without touching the page's DOM. */
+  ::highlight(doc-find) { background-color: color-mix(in srgb, var(--warning) 35%, transparent); color: inherit; }
+  ::highlight(doc-find-current) { background-color: var(--warning); color: #000; }
   /* Tailwind v4's preflight leaves buttons with the platform's default arrow; a chat UI wants the hand. */
   button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [role="menuitem"], [role="menuitemradio"], [role="option"], [cmdk-item], a[href], label:has(input[type="checkbox"]), summary { cursor: pointer; }
   button:disabled { cursor: not-allowed; }

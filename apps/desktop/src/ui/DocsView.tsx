@@ -13,17 +13,20 @@ import { BackButton } from "./compact";
 import { DocPage } from "./DocPage";
 import { createPage, moveDryRun, movePage, pageTitle, type TemplateChoice, trashPage } from "./docsActions";
 import { DocsTrashDialog, MoveDialog, ShareDialog } from "./DocsDialogs";
+import { DocsSidebarSearch } from "./DocsSidebarSearch";
 import { TemplateGallery } from "./DocsTemplates";
 import { DocsTree, useWikiHub } from "./DocsTree";
 import { Button, cn, Modal } from "./primitives";
 import { t } from "../i18n";
 
-export function DocsView({ controller, pageId, onOpenPage, compact }: {
+export function DocsView({ controller, pageId, onOpenPage, compact, onSearchAll }: {
   controller: AppController;
   /** The page on screen (null: the tree alone on a phone, a prompt on a wide screen). */
   pageId: string | null;
   onOpenPage: (pageId: string | null) => void;
   compact: boolean;
+  /** WIKI.md §29.2: the sidebar box's 「すべて見る」 (the search's 「ドキュメント」 tab with these words). */
+  onSearchAll?: (q: string) => void;
 }) {
   const hub = useWikiHub(controller);
   const [fresh, setFresh] = useState<string | null>(null);
@@ -33,6 +36,8 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
   const [trashOpen, setTrashOpen] = useState(false);
   /** M145 (WIKI.md §22.3): a new page starts in the gallery (白紙, built-in templates, everyone's templates). */
   const [gallery, setGallery] = useState<{ parentId: string | null; access: "workspace" | "private" } | null>(null);
+  /** The sidebar's search words (kept here so they stay while a result is open, and on a phone's way back). */
+  const [find, setFind] = useState("");
 
   const open = (id: string | null) => {
     setFresh(null);
@@ -117,8 +122,13 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
       onMove={(id, target) => void move(id, target)}
       onTrash={(page) => setTrashing(page)}
       onOpenTrash={() => setTrashOpen(true)}
-      className={compact ? "flex-1" : "h-full"}
+      className="flex-1"
     />
+  );
+  const sidebar = (
+    <DocsSidebarSearch controller={controller} text={find} onText={setFind} selectedId={pageId} onOpen={open} onSearchAll={onSearchAll}>
+      {tree}
+    </DocsSidebarSearch>
   );
   const page = pageId ? (
     <DocPage
@@ -145,7 +155,7 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
               <FileText size={18} className="text-muted" />
               <strong className="flex-1 text-[15px]">{t("nav.docs")}</strong>
             </header>
-            {tree}
+            {sidebar}
           </>
         )}
         {dialogs}
@@ -160,7 +170,7 @@ export function DocsView({ controller, pageId, onOpenPage, compact }: {
           <FileText size={16} className="text-muted" />
           <strong className="flex-1 text-sm">{t("nav.docs")}</strong>
         </header>
-        {tree}
+        {sidebar}
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {page ?? (

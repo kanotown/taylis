@@ -1306,7 +1306,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
           }}
         />
       ) : view === "docs" ? (
-        <DocsView controller={controller} pageId={docsPageId} onOpenPage={setDocsPageId} compact={compact} />
+        <DocsView
+          controller={controller}
+          pageId={docsPageId}
+          onOpenPage={setDocsPageId}
+          compact={compact}
+          onSearchAll={(q) => {
+            runSearch({ ...EMPTY_SEARCH, q });
+            setSearchTab("docs");
+          }}
+        />
       ) : view === "calendar" ? (
         <CalendarView controller={controller} />
       ) : view === "tasks" ? (
