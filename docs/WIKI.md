@@ -1440,7 +1440,7 @@ devadmin の表・行のペイン・関係の候補と双方向の表示・読�
 - **安全**：CSP は `default-src 'self'; connect-src 'none'`（エディタは自分で通信しない）、ほかのページへの移動はすべて止め、リンクは
   ネイティブに渡して開く。**アクセストークンを JS に渡さない**。画像は同じスキームの `/attachment/<id>` をネイティブが認証付きで取って
   返す。
-- **ブリッジ**（メッセージの形は `apps/shared/editor_bridge.json` に書き、両 OS と JS のテストで同じケースを読む）：
+- **ブリッジ**（設計時の下書き。実装した形は §30.3 が正：メッセージの名前は `replace`・`insertImage`・`providePeople` / `providePages` / `provideEmoji`・`needPeople` / `needPages` に、例は `apps/shared/mobile-editor/bridge_messages.json` に。両 OS と JS のテストで同じケースを読む）：
   - ネイティブ → エディタ：`load {body, readOnly, locale, theme}`、`replaceBlocks {body}`（マージの後。変わったブロックだけ差し替え）、
     `insert {markdown}`（写真・ファイル・メンション）、`command {name}`（ツールバーの太字・チェック・見出しなど）、`candidates {kind, items}`。
   - エディタ → ネイティブ：`ready`、`changed {body}`（入力が止まったとき。保存はネイティブの `CanvasSaver` が今と同じ状態機械・
@@ -2713,3 +2713,150 @@ CANVAS.md §4.2・§18.2、`apps/desktop/src/ui/` のエディタ一式、iOS / 
 - ⌘/ はエディタの中ではアプリのショートカットの一覧（⌘/）を奪う。エディタの外では今までどおり。
 - ヘッドレス Chrome では背景のタブに描画のフレームが来ず、TipTap の `focus()`（requestAnimationFrame 待ち）が動かない：確認の道具は
   CDP の `Page.bringToFront` を要る（アプリの変更はしていない）。
+
+### 30.3 M153a：同梱エディタと橋（Desktop / Web の成果物、2026-10-10）
+
+§22.7 の（B）の第 1 段（3 つのうちの 1 つ目）。Desktop / Web のページエディタ（`PageEditor.tsx`）を AppController・Store・API から
+切り離し、同じエディタを 1 つの HTML + JS + CSS に束ねて `apps/shared/mobile-editor/dist/` に書き出す。iOS（M153b）と Android
+（M153c）はこの成果物を WKWebView / WebView に入れ、ここで決めた橋（JSON のメッセージ）で話す。方言・サーバ・API・イベントの
+変更なし。§27.2 の不変条件（開いて閉じただけなら 1 バイトも変わらない）は橋を通しても同じテストで守る。判断は ARCHITECTURE.md D28。
+
+**部品**
+
+| ファイル | 役目 |
+| --- | --- |
+| `ui/pageEditorEnv.tsx` | エディタが周りに求めるもの `PageEditorEnv`（人とグループ・カスタム絵文字・アトムの描画（ページのチップ・絵文字・画像・埋め込み・コールアウトのアイコン・ページのアイコン・絵文字ピッカー）・コピー・エラー・画像のアップロード / ネイティブのピッカー・ツールバーの位置・読み取り専用・自動フォーカス）と、保存の状態機械の見え方 `PageEditorSink`（`text`・`textRevision`・`canReplace`・`subscribe`・`edit`・`flush`・`compositionEnded`）。型だけ（React もアプリも読まない） |
+| `ui/pageEditorDesktopEnv.tsx` | Desktop / Web の実装（controller と store）。`PageLinkChip`・`CanvasImage`・`DatabaseEmbed`・`CustomEmojiImage`・`EmojiPicker`・`PageIcon`・`inline()` はここから描く（`PageEditor.tsx` はもう読まない） |
+| `ui/PageEditor.tsx` | `controller` / `saver: CanvasSaver` の代わりに `env` / `saver: PageEditorSink`（`CanvasSaver` は構造的に `PageEditorSink`）。ハンドルに `focus`・`blur`・`insertImage`・`command`・`revealCaret`。書式の行を画面の下（`env.toolbar: "bottom"`、キーボードの上）に置ける。`/` の「子ページ」「データベース」「埋め込み」は `links` にその機能があるときだけ出す。メニューと箱の高さは `visualViewport`（キーボードが残した分） |
+| `ui/DocPage.tsx`・`CanvasEditor.tsx` | `desktopPageEditorEnv(controller)` を組み立てて渡す。`DocEditorLinks.createChild` は任意に |
+| `src/styles.css` → `src/app.css` | Tailwind の読み込み（`@import "tailwindcss"`）だけを styles.css に残し、トークン・テーマ・部品の規則を app.css に移した（Desktop の CSS の出力は 1 バイトも変わらない。`tests/theme.test.ts`・`pageEditor.test.tsx` は app.css を読む）。同梱のエディタの `mobile.css` は `@import "tailwindcss" source(none)` + `@source`（エディタのファイルだけ）+ app.css |
+| `apps/shared/mobile-editor/src/bridge.ts` | 橋の契約：メッセージの型、transport の検出（iOS / Android / なし）、受け取りの検証と待ち行列、`window.taylisEditor`、ページのエラーを `log` に。依存なし（Swift / Kotlin が写す仕様そのもの） |
+| `apps/shared/mobile-editor/bridge_messages.json` | すべてのメッセージの例と、断る例。`tests/mobileEditorBridge.test.ts` が読み、iOS / Android のテストも同じものを読む |
+| `mobile-editor/index.html`・`main.tsx`・`mobile.css`、`vite.mobile-editor.config.ts` | 第 2 のビルド（`npm run build:mobile-editor`。root は `mobile-editor/`、出力は `../shared/mobile-editor/dist`）。1 つの classic script（module でない：`file://`・独自スキームでも読める）、CSP の差し込み、KaTeX の同梱（フォントは woff2 だけ `fonts/`）、辞書の刈り込み（下） |
+| `src/mobileEditor/bridgeEnv.tsx` | `BridgeDirectory`（人・ページ・絵文字・画像の URL。`needPages` → `providePages` の待ち合わせ）、`BridgeSink`（`changed` を出す、`replace` を入れる / 保留する）、`bridgePageEditorEnv`（チップ・画像・埋め込みのカード・簡単な絵文字ピッカー） |
+| `src/mobileEditor/MobileEditorApp.tsx` | メッセージ → 動作（`load` は新しいエディタ、`requestBody` は同じタスクの中で答える）、`ready`、`height` |
+| `src/mobileEditor/devHarness.ts` | `?dev=1`：ネイティブの代わり（見本のページ・人・絵文字・ページの検索・写真）と、計測の入口（`window.__taylis`） |
+
+**成果物**（`apps/shared/mobile-editor/dist/`、生成物。コミットしない。CI の desktop ジョブが作れることを確かめる）
+
+```text
+index.html      <meta http-equiv="Content-Security-Policy">、<script defer src="./editor.js">、<link href="./editor.css">
+editor.js       1,483 KB（gzip 445 KB、brotli 371 KB）：React・TipTap / ProseMirror・KaTeX・エディタ一式・絵文字の表・刈り込んだ辞書
+editor.css      72 KB（gzip 13 KB）：app.css のトークンと規則 + エディタが使う Tailwind のユーティリティ + KaTeX
+fonts/          KaTeX の woff2 20 個（296 KB）
+```
+
+- 相対パス（`./`）なので、どのスキーム・どのディレクトリからでも読める。`editor.js` の大半は Desktop の `RichEditor` チャンク
+  （TipTap、369 KB / gzip 118 KB）・KaTeX（259 KB / gzip 78 KB）・絵文字の表（`emojiData.ts` 333 KB：`:name:` の判定・変換と
+  コールアウトのアイコンの検索に使う）・React で、エディタ自身は Desktop の `PageEditor` チャンク（110 KB / gzip 34 KB）と同じ。
+  API クライアント・Store・画面・ルーターは入らない（`fetchBlob` などが無いことをテストしていないので、ビルドの後に
+  `grep` で確かめた）。
+- **辞書の刈り込み**：`src/i18n/{ja,en,zhHans}.ts`（3,200 の文言 × 3 言語 = 550 KB）は、このビルドではチャンクに入った
+  モジュールが文字列リテラルで名指すキー（`t("docs.wysiwyg.raw")`・`label: "docs.slash.h1"`）だけに切り詰める
+  （`prunedDictionaries`：`transform` で印に置き換え、`renderChunk` で `chunk.moduleIds` の元のファイルを読んで集める）。
+  エディタは動的なキーを使わない。使う人は plugin に例外を書く。
+- **CSP**（index.html に差し込む）：`default-src 'none'; script-src 'self' taylis-editor:; style-src 'self' taylis-editor: 'unsafe-inline'
+  (React と KaTeX の style 属性); img-src 'self' taylis-editor: data:; font-src 'self' taylis-editor:; connect-src 'none'; base-uri 'none';
+  form-action 'none'`。エディタは自分では一切通信しない。アクセストークンは JS に渡さない。
+
+**組み込み方**（M153b / M153c の入口。ここで決めたことは橋と同じく契約）
+
+| | iOS | Android |
+| --- | --- | --- |
+| 置き場所 | `dist/` をそのままアプリのバンドルに（フォルダの参照。`editor/` などの名前で） | `dist/` を `app/src/main/assets/editor/` に |
+| 読み込み | `WKURLSchemeHandler` を `taylis-editor` に登録し、`taylis-editor://app/index.html` を `load`。handler は `index.html`・`editor.js`・`editor.css`・`fonts/*` をバンドルから返す（`Content-Type` を正しく）。代わりに `loadFileURL(_:allowingReadAccessTo:)` でも動く（CSP の `taylis-editor:` が余るだけ） | `WebViewAssetLoader` に `AssetsPathHandler("/editor/")` を付け、`https://appassets.androidplatform.net/editor/index.html` を `loadUrl`。`shouldInterceptRequest` で loader に渡す |
+| web → native | `WKUserContentController.add(handler, name: "taylis")`。`WKScriptMessage.body` は JSON の文字列（`String`）で、`JSONDecoder` で型に | `addJavascriptInterface(obj, "TaylisBridge")`、`@JavascriptInterface fun post(json: String)`。別スレッドで来るので UI へ post する |
+| native → web | `evaluateJavaScript("window.taylisEditor.receive(\(文字列リテラル))")`。JSON を 1 つの JS の文字列リテラルにして渡す（`JSONSerialization` でエスケープした文字列をさらに `"…"` で包む）か、オブジェクトリテラルのまま渡す | `evaluateJavascript("window.taylisEditor.receive(…)", null)`。同じ |
+| 画像 | `load.attachmentUrl` に `taylis-editor://app/attachment/{id}`。同じ handler が `/attachment/<id>` を受け、API からセッション付きで取って返す（キャッシュはアプリ側）。カスタム絵文字の `url` も同じ要領（`/emoji/<name>`） | `attachmentUrl` に `https://appassets.androidplatform.net/attachment/{id}`。`shouldInterceptRequest` でそのパスを見て、API から取った `WebResourceResponse` を返す |
+| 移動の禁止 | `WKNavigationDelegate.decidePolicyFor`：`taylis-editor://app/` 以外は `.cancel`（リンクは `openLink` で来る） | `shouldOverrideUrlLoading` で bundle 以外は `true`（開かない） |
+| キーボード | WebView の下端を `keyboardLayoutGuide` に合わせて縮めるのが簡単（`setViewport {keyboardHeight: 0}`）。縮めないなら高さを `setViewport` で送る（書式の行が上に乗り、本文の下に余白が入り、カーソルを見える所へ） | `WindowInsets.ime` で同じ。`adjustResize` 相当なら 0 |
+| 温め | 画面を開いたときに WebView を 1 つ作って `index.html` を読ませ、`ready` を待っておく。「編集」で `load` だけ | 同じ |
+| 設定 | `isTextInteractionEnabled` は既定のまま。`scrollView.contentInsetAdjustmentBehavior = .never`。ダークは `setTheme`（`prefers-color-scheme` でも追う） | `javaScriptEnabled = true`。`forceDark` は使わず `setTheme` |
+
+**橋のメッセージ**（`bridge.ts`。JSON の `type` で見分ける。版は `ready.version` = `BRIDGE_VERSION` = 1）
+
+ネイティブ → エディタ（`window.taylisEditor.receive(json)`。JSON の文字列でもオブジェクトでも。エディタが聞く前に来たものは順に待つ）：
+
+| type | 中身 | いつ・何が起きる |
+| --- | --- | --- |
+| `load` | `body`、`title?`、`theme?`（light / dark / system）、`readOnly?`、`caretLine?`（Markdown のエディタから来た行）、`locale?`（ja / en / zh-Hans）、`attachmentUrl?`（`{id}` を含む画像の URL の型） | 新しいエディタ。`ready` の後、`providePeople` / `provideEmoji` の後に（チップの名前と `:name:` のアトムは読むときに決まる） |
+| `replace` | `body` | マージの後の本文。変わったトップレベルのブロックだけ差し替え、履歴に入れない（Desktop の `applyMerge` そのまま）。IME の変換中と書き出し待ちの編集があるあいだは保留（下） |
+| `setTheme` | `theme` | `<html data-theme>` |
+| `setViewport` | `keyboardHeight`（CSS px）、`safeBottom?` | `--keyboard-height` / `--safe-bottom`。書式の行がその上に、本文の下にその分の余白、カーソルを見える所へ |
+| `insertImage` | `attachmentId`、`url?`（その画像だけの URL）、`alt?` | `pickImage` の答え。カーソルの位置に画像のブロック（空の行ならその行に） |
+| `providePeople` | `people: [{id, username, display_name, kind?: user / group, ai?, members?, description?}]` | `@` の候補と `<@id>` の名前。全部を送る（変わるたびに全部） |
+| `providePages` | `query`（`needPages` のもの。null なら木の全部）、`pages: [{id, title, icon?, kind?}]` | `[[`・`@`・⌘K の候補、チップの題名とアイコン。null で送れば以後の検索はエディタの中で済む |
+| `provideEmoji` | `emoji: [{name, url?, label?, kind?, color?, width?, height?}]` | `:name:` をアトムに（画像、または文字のピル） |
+| `focus` / `blur` | | キーボードを出す / しまう（エディタは自分からはフォーカスしない） |
+| `requestBody` | | 今の本文を同じタスクの中で `bodyRequested` で返す（書き出し待ちがあれば今書く。`changed` は出さない） |
+| `command` | `name`（`EDITOR_COMMANDS`：bold・italic・strike・code・h1〜h3・bullet・ordered・task・quote・codeBlock・divider・link・mention・slash・image・table・undo・redo・indent・outdent） | ネイティブのツールバー用。エディタの書式の行と同じ動作 |
+
+エディタ → ネイティブ（JSON の文字列 1 つ。iOS は `webkit.messageHandlers.taylis.postMessage`、Android は `TaylisBridge.post`）：
+
+| type | 中身 | いつ |
+| --- | --- | --- |
+| `ready` | `version` | ページが立ち上がって聞き始めた（`load` はこの後） |
+| `changed` | `body`、`dirty`（最後の load / replace から変わったか） | 打鍵が 300 ms 止まった、フォーカスが外れた。保存はネイティブの `CanvasSaver`（待ち・マージ・再送はそのまま） |
+| `bodyRequested` | `body`、`dirty`、`caretLine` | `requestBody` の答え |
+| `caret` | `line` | フォーカスが外れたとき（Markdown のエディタに持ち越す行） |
+| `height` | `px` | 文書の高さが変わったとき（1 フレームに 1 回）。中身に合わせて WebView を伸ばすなら |
+| `needPeople` | `query` | `@` が開いた・絞り込みが変わった（送り直すかは任意） |
+| `needPages` | `query` | `[[`・`@`・⌘K がページを探す。同じ `query` の `providePages` で答える（15 秒で諦める） |
+| `pickImage` | | 画像のボタン・`/画像`。ネイティブが選んで上げ、`insertImage` |
+| `openLink` | `url`（`https://…`・`page:<id>`・`attachment:<id>`） | ページのチップ・画像・埋め込みのカードをタップ |
+| `focusTitle` | | 本文の最初の行で ↑（先頭で ←） |
+| `log` | `level`、`message`、`detail?` | ページのエラー、読めなかったメッセージ、断った動作（貼り付けの画像など） |
+
+**約束**（テストで固定）
+
+- `load` → `requestBody` は本文をそのままのバイトで返す（apps/shared の全フィクスチャの文字列と docs の Markdown、CRLF も）。
+  `changed` は出ない。
+- `replace` は Desktop の `canReplace` と同じ規則：IME の変換中、または書き出し待ち（打鍵から 300 ms 以内）のあいだは入れない。
+  変換が終わると 50 ms 後に入れる（ProseMirror が自分の compositionend の処理を終えてから。Desktop は読み直しで同じ間が空く）。
+  待っている間に編集が書き出されたら保留は捨てる（`changed` をネイティブがマージして、また `replace` を送る）。編集が結局
+  何も変えなかったときは、その時点で入れる。
+- `requestBody` は同じ JS のタスクの中で答える（`load` の直後でもよい：`flushSync` でエディタを先に立てる）。
+- 人・絵文字は `load` の前に。後から来た `providePeople` は `@` の候補にだけ効く（既にあるチップの名前は変わらない）。
+- 子ページ・データベースの作成・データベースの埋め込みはスマホでは出ない（`links` に無い）。既にある埋め込みはカード
+  （題名、タップで `openLink page:`）のまま、本文のバイトは変わらない。貼り付け・ドロップの画像は上げられない（`log` に
+  warn）。画像のボタンは `pickImage`。
+- `?dev=1`：ネイティブの代わり。`?dev=1&quiet=1` は見本を読まずに `window.__taylis.measureLoad(body)` などを待つ。
+
+**大きさと速さ**（ヘッドレス Chrome 155、390 × 844 のモバイルのエミュレーション、M5 Max の開発機、`vite preview` の本番ビルド、CDP）
+
+- ページの立ち上がり（移動 → `ready`、1.5 MB のスクリプトの読み込み・解析・React）：94〜111 ms（DOMContentLoaded 67〜84 ms）。
+  温めた WebView なら「編集」で `load` だけになる。
+- 10 万文字のページ（docs の Markdown を 8,000 字ずつつないだもの、1,175 ブロック）：`load` → エディタが描かれた次のフレームまで
+  初回 106〜142 ms（エディタの組み立て 62〜91 ms、長いタスク 1 回 102〜130 ms）、2 回目以降 77〜85 ms（組み立て 44〜50 ms、長い
+  タスク 1 回 75〜82 ms）。§22.7 の目標（初回の表示 300 ms 以内）の中。
+- 打鍵（CDP の `Input.insertText` で 20 文字、日本語と英数字）：各取引から次のフレームまで 0〜18 ms（60 Hz の 1 フレーム以内。
+  Desktop §27.6 の 13〜18 ms と同じ）。止まって 300 ms の書き出し（10 万字の Markdown 化 + JSON）は 1 回 76 ms のタスク
+  （Desktop の書き出しと同じ仕事。メインスレッドを塞ぐのは 300 ms に 1 度）。
+- 実機（iPhone・Pixel）の数字と IME・選択のハンドル・キーボードの上のツールバーの判定は M153b / M153c で（§22.7 の表の
+  「M153a 試作」の判定の残り）。
+
+**テスト**
+
+- `tests/mobileEditorBridge.test.ts`（11）：iOS / Android / なしの transport、フィクスチャの全メッセージ（オブジェクトと JSON の
+  文字列）、断る例とその理由の `log`、全コマンド、聞く前の待ち行列と止め方、投げる handler、`installBridge`（`window.taylisEditor`
+  とページのエラー）。
+- `tests/mobileEditor.test.tsx`（21）：`ready` と `load`（題名・テーマ・言語）、全フィクスチャと docs のコーパスの `load` → `requestBody`
+  （CRLF も）、300 ms の `changed`（編集した行だけ、`dirty`）、直後の `requestBody`、`replace`（触っていないノードが同じまま、履歴に
+  入らない）、IME の変換中の保留と 50 ms 後の反映、書き出し待ちの保留と破棄 / 反映、`caret`、2 回目の `load`、`providePeople`
+  （`needPeople`、候補、`<@id>`）、`providePages`（`needPages` → 候補 → チップ → `openLink`）、木の全部、`provideEmoji`、画像（`attachmentUrl`、
+  `pickImage`、`insertImage`）、スマホで出ない `/` の項目、`setTheme` / `setViewport`、下のツールバーと `focus` / `blur`、`command`
+  （太字・見出し・元に戻す・知らない名前）、読み取り専用、`focusTitle`、JSON でないメッセージ。
+- 既存：`pageEditor.test.tsx`・`pageEditorSchema.test.ts`・`theme.test.ts`（app.css）はそのまま緑。`npx tsc --noEmit`、`vite build`
+  （Desktop の CSS は分割の前後で同一）、`npm run build:mobile-editor`。
+
+**制限（M153b / M153c へ）**
+
+- ツールバーの状態（`selection`：マークとブロックの種類）は送っていない（`command` はある）。`caret` はフォーカスが外れたときだけ。
+- ⋮⋮ のハンドルとドラッグはポインタ専用（`pointer: coarse` では隠す）。浮くツールバー（M155）は OS の選択メニューと同じ場所に出る
+  （端末で見て決める）。
+- 自動フォーカスしない（ネイティブの `focus`）。iOS の WKWebView は利用者の操作なしに JS からキーボードを出せないことがある
+  （M153b で確かめる）。
+- 絵文字の表（検索語つき、gzip で 90 KB ほど）は丸ごと入れている。名前と字だけに刈ればおよそ 1/4 になるが、コールアウトの
+  アイコンの検索が名前だけになる。実機の読み込み時間を見て決める。
+- `editor.js` は 1 つのファイル（1.5 MB）。WebView の JIT は遅延コンパイルなので立ち上がりは 100 ms 前後だが、実機で測る。
+- カスタム絵文字の文字のピル（`kind: "text"`）は色の名前を `color` で受けるだけ（Desktop の `TextEmojiPill` を使う）。

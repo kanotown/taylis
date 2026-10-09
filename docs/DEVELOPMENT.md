@@ -57,6 +57,7 @@ AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `opena
 | OpenAPI | `cd server && uv run python -m app.cli export-openapi`、Web の型は `cd apps/desktop && npm run gen:api` |
 | エラー文言 | `cd apps/shared && python3 gen_errors.py` (Web・iOS・Android の表を作り直す) |
 | Desktop / Web | `cd apps/desktop && npm run typecheck && npx vitest run && npx vite build` |
+| スマホに同梱するページエディタ (M153a、WIKI.md §30.3) | `cd apps/desktop && npm run build:mobile-editor` → `apps/shared/mobile-editor/dist/` (index.html・editor.js・editor.css・fonts/。生成物なのでコミットしない。iOS / Android のビルドが写す)。`npm run preview:mobile-editor` で http://localhost:1422/?dev=1 (ネイティブの代わりの harness) として試せる。CI の desktop ジョブも作る |
 | iOS | `xcodebuild -project apps/ios/ChikuwaChat.xcodeproj -scheme ChikuwaChat -destination 'id=<シミュレータの ID>' test`。途中は `-only-testing:ChikuwaChatTests/<Class>` で絞り、全体はコミット前に 1 回。「Application failed preflight checks (Busy)」は、シミュレータの起動し直しとアプリの削除で直る |
 | Android | `ANDROID_HOME=$HOME/Library/Android/sdk apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`。正規表現のフラグなど、JVM の単体テストでは通るが Android で落ちるものがあるのでエミュレータでも確かめる |
 
