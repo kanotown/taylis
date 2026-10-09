@@ -190,6 +190,19 @@ ThreadState
     `ui/ThreadPane.tsx`・`state/app.ts`（`deleteMessage` の `fromThread`）。iOS `Sync/Store.swift`（`threadRootDeleted`）・
     `UI/ThreadView.swift`（`ThreadRootWatch`）・`App/AppController.swift`。Android `sync/Store.kt`（`dropDeletedRoot`）・
     `ui/ThreadRootWatch.kt`・`ui/MainNav.kt`（`threadGone`）・`app/AppController.kt`。
+- すべて既読（2026-10-09、3 端末。§3.2）：一覧の見出しに「すべて既読にする」。フォロー中のスレッドに未読の返信が
+  あるときだけ押せる。確認はチャンネルの「すべて既読」に合わせる（Desktop / Web はサイドバーと同じく確認なし、iOS /
+  Android は確認のあと）。押すと保持している行（フォロー中）の未読と位置（手元にある最新の返信まで、下げない）と
+  バッジをすぐ既読にし、応答の位置・数・`summary` を当てる。失敗したら（その間に他で変わっていない）行とバッジを戻し、
+  いつものエラーを出す。他端末の `threads.read_all` も同じく当て（位置は下げない）、一覧とバッジの取り直しと
+  アクティビティのバッジの取り直しを予約する。アクティビティの「すべて既読」はスレッドに触れない。
+  - 実装：Desktop / Web `ui/ThreadsView.tsx`・`sync/engine.ts`（`markAllThreadsRead`・`applyThreadsReadAll`）・
+    `sync/store.ts`（`markAllThreadsReadLocally`・`restoreThreadsRead`）。見出しのボタン。
+  - iOS `UI/ThreadsListView.swift`（ツールバーのボタンと確認）・`Sync/SyncEngine.swift`（`markAllThreadsRead`・
+    `applyThreadsReadAll`）・`App/AppController.swift`。
+  - Android `ui/ThreadsPane.kt`（フィルタの行の右端のボタンと確認。アクティビティの段階 A の中では出さない）・
+    `sync/SyncEngine.kt`（`markAllThreadsRead`）・`sync/Store.kt`（`readAllThreadsLocally`・`restoreThreadsReadAll`・
+    `applyThreadsReadAll`）・`app/AppController.kt`。
 - 既読: チャンネルと同じく「表示できた返信の `seq`」で送る。開いただけでは既読にしない。
 - スレッドのスクロール（iOS、2026-10-07）：チャンネルと同じ規則（MOBILE_UI.md 6.6「iOS の新しい行」）。最新の返信に
   いるとき来た返信は見え、上から自分が返信すると最新の端へ飛び（途中をくぐるアニメーションはしない）、古い返信を
