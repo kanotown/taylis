@@ -123,13 +123,34 @@ class ReadGateTest {
     @Test fun newRowsTargetIsTheFirstNewRowThenTheNewest() {
         val rows = (81..130).map { row(it) } + row(131, bob)
         val items = Timeline.build(rows, 100, bob, now.toLocalDate(), zone).asReversed()
-        val target = Timeline.newRowsTarget(items, rows, 100, bob, setOf("id-125"))
+        // Below the viewport (the reader is on 85..95): the first new row, 101, at the top with its divider.
+        val target = Timeline.newRowsTarget(items, rows, 100, bob, ids(rows.filter { it.seq!! in 85..95 }))
         assertTrue(items[target] is TimelineItem.UnreadSeparator)
         assertEquals(101, (items[target - 1] as TimelineItem.Message).message.seq)
         assertEquals(0, Timeline.newRowsTarget(items, rows, 100, bob, setOf("id-101"))) // on screen: on to the newest
+        assertEquals(0, Timeline.newRowsTarget(items, rows, 100, bob, ids(rows.filter { it.seq!! in 95..105 }))) // partly on screen too
         val plain = Timeline.build(rows + row(132), null, bob, now.toLocalDate(), zone).asReversed()
         assertEquals(132, (plain[Timeline.newRowsTarget(plain, rows + row(132), 130, bob, emptySet())] as TimelineItem.Message).message.seq)
         assertEquals(0, Timeline.newRowsTarget(plain, rows + row(132), 132, bob, emptySet())) // nothing new (my 131 is not)
+    }
+
+    /**
+     * seenSeq advances only at the bottom: a reader who scrolled up to the divider and read on past the first new row
+     * still has it counted. Pressing then must not go back up to it (it was 「新着 30 件」 scrolling backwards): the
+     * target is the first new row below the rows on screen, or the newest row when they are the newest.
+     */
+    @Test fun newRowsTargetNeverGoesBackToNewRowsAlreadyPassed() {
+        val rows = (81..130).map { row(it) } + row(131, bob)
+        val items = Timeline.build(rows, 100, bob, now.toLocalDate(), zone).asReversed()
+        // The reader passed 101..109 and is on 110..120 (none of them is the first new row, which is above): 121 at the top.
+        val onScreen = ids(rows.filter { it.seq!! in 110..120 })
+        val target = Timeline.newRowsTarget(items, rows, 100, bob, onScreen)
+        assertEquals(121, (items[target] as TimelineItem.Message).message.seq)
+        assertTrue(items[target + 1] !is TimelineItem.UnreadSeparator) // the divider stays with 101
+        // My own row below the viewport is not a target: the newest row.
+        assertEquals(0, Timeline.newRowsTarget(items, rows, 100, bob, ids(rows.filter { it.seq!! in 125..130 })))
+        // Without rows on screen (nothing laid out yet) the first new row is the target, as before.
+        assertTrue(items[Timeline.newRowsTarget(items, rows, 100, bob, emptySet())] is TimelineItem.UnreadSeparator)
     }
 
     @Test fun v2_notCoveredOpensAtTheBottomWithoutDividerAndOnlyTheReadButton() {
