@@ -389,7 +389,13 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
             if (showJump && focus == null && onScreen) {
                 if (unseenBelow > 0) {
                     ExtendedFloatingActionButton(
-                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        // The first of the N rows at the top (Timeline.newRowsTarget); the newest row once it is on screen.
+                        onClick = {
+                            scope.launch {
+                                val target = Timeline.newRowsTarget(items, messages, seenSeq, me, listState.layoutInfo.onScreenIds(items))
+                                if (target == 0) listState.animateScrollToItem(0) else listState.showAtTop(target)
+                            }
+                        },
                         icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
                         text = { Text(L10n.str(R.string.common_new, unseenBelow)) },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),

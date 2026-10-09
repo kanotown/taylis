@@ -119,6 +119,19 @@ class ReadGateTest {
         assertFalse(ReadGate.bannerShown(false, positioned = true, unreadCount = 30, anchored = true, held = false))
     }
 
+    /** 「新着 N 件」 goes to the first of the N rows (its divider above it), then, once it is on screen, to the newest row. */
+    @Test fun newRowsTargetIsTheFirstNewRowThenTheNewest() {
+        val rows = (81..130).map { row(it) } + row(131, bob)
+        val items = Timeline.build(rows, 100, bob, now.toLocalDate(), zone).asReversed()
+        val target = Timeline.newRowsTarget(items, rows, 100, bob, setOf("id-125"))
+        assertTrue(items[target] is TimelineItem.UnreadSeparator)
+        assertEquals(101, (items[target - 1] as TimelineItem.Message).message.seq)
+        assertEquals(0, Timeline.newRowsTarget(items, rows, 100, bob, setOf("id-101"))) // on screen: on to the newest
+        val plain = Timeline.build(rows + row(132), null, bob, now.toLocalDate(), zone).asReversed()
+        assertEquals(132, (plain[Timeline.newRowsTarget(plain, rows + row(132), 130, bob, emptySet())] as TimelineItem.Message).message.seq)
+        assertEquals(0, Timeline.newRowsTarget(plain, rows + row(132), 132, bob, emptySet())) // nothing new (my 131 is not)
+    }
+
     @Test fun v2_notCoveredOpensAtTheBottomWithoutDividerAndOnlyTheReadButton() {
         val rows = (2951..3000).map { row(it) }
         val state = channel(lastRead = 1000, unread = 2000, oldest = 2951)

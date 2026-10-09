@@ -162,6 +162,17 @@ object Timeline {
     }
 
     /**
+     * Where 「新着 N 件」 goes (testers, 2026-10-09; Slack): the first of the N rows at the top of the screen, its divider
+     * above it when it has one, so nothing is passed unseen; once that row is on screen (the second press), or with
+     * nothing new, the newest row (0). `items` are reversed, as on screen.
+     */
+    fun newRowsTarget(items: List<TimelineItem>, rows: List<MessageState>, seenSeq: Int, meId: String?, onScreenIds: Set<String>): Int {
+        val first = ReadGate.firstUnreadRow(rows, seenSeq, meId) ?: return 0
+        if (first.id in onScreenIds) return 0
+        return topOf(items, first.id).coerceAtLeast(0)
+    }
+
+    /**
      * SYNC_PROTOCOL.md §10.1 rule 4: a focus (search hit, permalink) is centred; else the row the divider precedes
      * goes to the top; else the newest row. `items` are the reversed build of `rows` with divider `mark` (null when
      * not drawn).
