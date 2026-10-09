@@ -466,6 +466,8 @@ struct AppearanceView: View {
     @AppStorage(Timeline.groupingKey) private var grouping = false
     @AppStorage(SwipeNav.settingKey) private var swipeNavigation = true
     @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
+    /// M153a (docs/WIKI.md §30.4): the bundled 見たまま editor for Docs pages, a prototype off by default.
+    @AppStorage(MobileEditorSettings.enabledKey) private var docsWysiwyg = false
     /// The slot whose emoji the picker is choosing.
     @State private var slot: Int?
 
@@ -561,6 +563,17 @@ struct AppearanceView: View {
             Text("操作")
         } footer: {
             Text("会話で右へスワイプすると一覧へ戻り、一覧で左へスワイプすると最後に開いていた会話へ進みます。この端末だけの設定です。")
+        }
+        // M153a (WIKI.md §30.4): the prototype of the 見たまま editor on the phone; a build without the bundle has no row.
+        if MobileEditorBundle.isAvailable {
+            Section {
+                Toggle("ドキュメントの見たまま編集（試作）", isOn: $docsWysiwyg)
+                    .accessibilityIdentifier("docs-wysiwyg-toggle")
+            } header: {
+                Text("ドキュメント")
+            } footer: {
+                Text("ページを Desktop / Web と同じ見たままの形で編集します。試作のため、うまく動かないときはページの「Markdown」に切り替えてください。この端末だけの設定です。")
+            }
         }
     }
 }
