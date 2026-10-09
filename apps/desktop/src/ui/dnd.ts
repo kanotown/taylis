@@ -1,8 +1,10 @@
 import type { UserPublic } from "../api/types";
 import { t, weekdayName, labelled } from "../i18n";
-import { DND_INDEFINITE_FROM } from "./presence";
 
-/** Do not disturb (M12c): a manual pause or the daily quiet hours, evaluated in the user's own zone. */
+/**
+ * Do not disturb (M12c): a manual pause or the daily quiet hours, evaluated in the user's own zone. The pause is also
+ * the quick status menu's 取り込み中 (docs/PRESENCE.md §11, ui/presence.ts builds on the clock rules here).
+ */
 
 export interface QuietHours {
   start: string;
@@ -98,23 +100,36 @@ export function quietHoursLabel(hours: QuietHours): string {
   return `${hours.start}${t("common.rangeTo")}${hours.end}${days}`;
 }
 
-/** The manual pause still running (dnd_until in the future), else null. */
+/** The manual pause still running (dnd_until in the future), else null. Quiet hours are not a pause (🔕 only). */
 export function pausedUntil(user: Pick<UserPublic, "dnd_until"> | undefined | null, now = new Date()): string | null {
   const until = user?.dnd_until;
   return until && Date.parse(until) > now.getTime() ? until : null;
 }
 
+/** A dnd_until at or after this instant means 「解除するまで」 (PRESENCE.md §11.2: the server stores 9999-12-31T00:00:00Z). */
+export const DND_INDEFINITE_FROM = Date.UTC(9999, 0, 1);
+
+export function isIndefiniteDnd(until: string | null | undefined): boolean {
+  if (!until) return false;
+  const at = Date.parse(until);
+  return !Number.isNaN(at) && at >= DND_INDEFINITE_FROM;
+}
+
 const hhmm = (at: Date) => `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 
-/** M40, 「通知を一時停止」's value: 「オフ」, 「〜 15:30 まで」 today, 「〜 10/1 08:00 まで」 on another day. */
-export function pauseValue(until: string | null | undefined, now = new Date()): string {
-  if (!until) return t("dnd.off");
+/** The pause's end on the clock, in the device's zone: 「15:30」 today, 「10/1 08:00」 on another day. */
+export function clockLabel(until: string, now = new Date()): string {
   const at = new Date(until);
-  if (Number.isNaN(at.getTime()) || at.getTime() <= now.getTime()) return t("dnd.off");
+  return at.toDateString() === now.toDateString() ? hhmm(at) : `${at.getMonth() + 1}/${at.getDate()} ${hhmm(at)}`;
+}
+
+/** M40, 「通知を一時停止」's value: 「オフ」, 「〜 15:30 まで」 today, 「〜 10/1 08:00 まで」 on another day, 「解除するまで」. */
+export function pauseValue(until: string | null | undefined, now = new Date()): string {
+  const running = pausedUntil({ dnd_until: until ?? null }, now);
+  if (!running) return t("dnd.off");
   // PRESENCE.md §11: 取り込み中「解除するまで」 (the same pause, with no end).
-  if (at.getTime() >= DND_INDEFINITE_FROM) return t("presence.untilCleared");
-  const sameDay = at.toDateString() === now.toDateString();
-  return sameDay ? t("dnd.until", { when: hhmm(at) }) : t("dnd.until", { when: `${at.getMonth() + 1}/${at.getDate()} ${hhmm(at)}` });
+  if (isIndefiniteDnd(running)) return t("presence.untilCleared");
+  return t("dnd.until", { when: clockLabel(running, now) });
 }
 
 /** M40, 「おやすみ時間」's value: 「22:00〜07:00」 (with the days when not every day) or 「オフ」. */

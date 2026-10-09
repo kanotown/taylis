@@ -1,38 +1,23 @@
-import type { DndDuration, PresenceChoice, PresenceLook, PresenceStatus, UserMe, UserPublic } from "../api/types";
+import type { DndDuration, PresenceChoice, PresenceLook, PresenceStatus, PresenceUpdate, UserMe, UserPublic } from "../api/types";
+import { clockLabel, deviceTimeZone, isIndefiniteDnd, pausedUntil } from "./dnd";
 import { t, type MessageKey } from "../i18n";
 
 /**
- * The quick status menu (docs/PRESENCE.md §11). 取り込み中 is `dnd_until` (the M12c pause, public), オフライン表示 is
- * `presence_hidden` (L4), 離席中 is `presence_manual: "away"` (the hub then announces me as away). The rules here are
- * the ones the phones copy.
+ * The quick status menu (docs/PRESENCE.md §11). 取り込み中 is `dnd_until` (the M12c pause, public; its clock rules —
+ * still running, 「解除するまで」, the end's time — are dnd.ts's), オフライン表示 is `presence_hidden` (L4), 離席中 is
+ * `presence_manual: "away"` (the hub then announces me as away). The rules here are the ones the phones copy
+ * (apps/shared/presence-rules.json).
  */
-
-/** A dnd_until at or after this instant means 「解除するまで」 (the server stores 9999-12-31T00:00:00Z). */
-export const DND_INDEFINITE_FROM = Date.UTC(9999, 0, 1);
-
-export function isIndefiniteDnd(until: string | null | undefined): boolean {
-  if (!until) return false;
-  const at = Date.parse(until);
-  return !Number.isNaN(at) && at >= DND_INDEFINITE_FROM;
-}
-
-/** The manual pause (取り込み中) still running, else null. Quiet hours are not 取り込み中 (they keep the 🔕 only). */
-export function dndUntil(user: Pick<UserPublic, "dnd_until"> | null | undefined, now = Date.now()): string | null {
-  const until = user?.dnd_until;
-  if (!until) return null;
-  const at = Date.parse(until);
-  return !Number.isNaN(at) && at > now ? until : null;
-}
 
 /** What an avatar shows: 取り込み中 beats the connection (online, away or offline alike, as in Mattermost). */
 export function presenceLook(status: PresenceStatus, user: Pick<UserPublic, "dnd_until"> | null | undefined, now = Date.now()): PresenceLook {
-  return dndUntil(user, now) ? "dnd" : status;
+  return pausedUntil(user, new Date(now)) ? "dnd" : status;
 }
 
 /** My choice in the menu: 取り込み中 > オフライン表示 > 離席中 > 自動 (the same order others see it in). */
 export function myPresenceChoice(me: Pick<UserMe, "dnd_until" | "presence_hidden" | "presence_manual"> | null | undefined, now = Date.now()): PresenceChoice {
   if (!me) return "auto";
-  if (dndUntil(me, now)) return "dnd";
+  if (pausedUntil(me, new Date(now))) return "dnd";
   if (me.presence_hidden) return "invisible";
   if (me.presence_manual === "away") return "away";
   return "auto";
@@ -53,9 +38,10 @@ export function currentMe(store: { me: UserMe | null; users: ReadonlyMap<string,
 export const DND_DURATIONS: readonly DndDuration[] = ["30m", "1h", "2h", "4h", "today", "tomorrow", "forever"];
 
 const DURATION_KEYS: Record<DndDuration, MessageKey> = {
-  "30m": "presence.duration.30m",
-  "1h": "presence.duration.1h",
-  "2h": "presence.duration.2h",
+  // The first three are the settings' 「通知を一時停止」 lengths, with their texts.
+  "30m": "dnd.30m",
+  "1h": "dnd.1h",
+  "2h": "dnd.2h",
   "4h": "presence.duration.4h",
   today: "presence.duration.today",
   tomorrow: "presence.duration.tomorrow",
@@ -77,20 +63,24 @@ export function choiceLabel(choice: PresenceChoice): string {
   return t(CHOICE_KEYS[choice]);
 }
 
-const hhmm = (at: Date) => `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+/**
+ * The body of PUT /users/me/presence (§11.4): 取り込み中 carries its length and this device's zone (the server works out
+ * 今日 / 明日 in it); the other choices carry the status alone.
+ */
+export function presenceRequest(choice: PresenceChoice, duration?: DndDuration, tz = deviceTimeZone()): PresenceUpdate {
+  return choice === "dnd" ? { status: "dnd", duration, tz } : { status: choice };
+}
 
 /** 「15:30」 today, 「10/10 23:59」 on another day, 「解除するまで」 for the indefinite pause (device's zone). */
 export function dndEndLabel(until: string, now = new Date()): string {
-  if (isIndefiniteDnd(until)) return t("presence.untilCleared");
-  const at = new Date(until);
-  return at.toDateString() === now.toDateString() ? hhmm(at) : `${at.getMonth() + 1}/${at.getDate()} ${hhmm(at)}`;
+  return isIndefiniteDnd(until) ? t("presence.untilCleared") : clockLabel(until, now);
 }
 
 /** The menu header's line: 「取り込み中（〜15:30）」, 「取り込み中（解除するまで）」, 「離席中」… */
 export function myPresenceLine(me: Pick<UserMe, "dnd_until" | "presence_hidden" | "presence_manual"> | null | undefined, now = new Date()): string {
   const choice = myPresenceChoice(me, now.getTime());
   if (choice !== "dnd") return choiceLabel(choice);
-  return dndLine(dndUntil(me, now.getTime())!, now);
+  return dndLine(pausedUntil(me, now)!, now);
 }
 
 /** 「取り込み中（〜15:30）」 / 「取り込み中（解除するまで）」 (my menu, anyone's profile card). */

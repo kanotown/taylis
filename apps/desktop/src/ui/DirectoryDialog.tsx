@@ -5,6 +5,7 @@ import type { UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { AttendanceChip } from "./AttendanceChip";
 import { Avatar, presenceLabel } from "./Avatar";
+import { pausedUntil } from "./dnd";
 import { Badge, Button, Input, Modal } from "./primitives";
 import { compareByRoster, rosterLabel, rosterSection, titleExtra } from "./roster";
 import { EmojiText } from "./UserPopover";
@@ -70,7 +71,8 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       {user.role === "manager" && <Badge tone="accent">{t("admin.users.role.manager")}</Badge>}
                       {user.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                       {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
-                      {user.dnd_until && <span title={t("popover.paused")}>🔕</span>}
+                      {/* By the clock, like the dot: the store redraws when the pause ends, and dnd_until stays set until the next user.updated. */}
+                      {pausedUntil(user) && <span title={t("popover.paused")}>🔕</span>}
                       <AttendanceChip controller={controller} userId={user.id} />
                       {user.id === me && <span className="text-xs text-muted">{t("calendar.me")}</span>}
                     </div>
