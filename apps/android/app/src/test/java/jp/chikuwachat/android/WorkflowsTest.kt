@@ -234,6 +234,35 @@ class WorkflowsTest {
         assertTrue(WorkflowSession(absence, "c1", LocalDate.of(2026, 10, 4), me).clientMsgId != session.clientMsgId)
     }
 
+    @Test fun confirmDecidesWhetherChoosingItAsksFirst() = runBlocking {
+        fun decode(extra: String) = Codec.snake.decodeFromString(
+            WorkflowOut.serializer(),
+            """{"id":"w9","name":"出勤","channel_id":"c1","template":"出勤しました","can_run":true$extra}""",
+        )
+        // An older server leaves it out: those always asked (the form opens).
+        assertTrue(decode("").confirm)
+        assertFalse(decode("").postsWithoutAsking)
+        val quick = decode(""","confirm":false""")
+        assertTrue(quick.postsWithoutAsking)
+        val field = WorkflowField(key = "a", label = "A", type = "text")
+        assertFalse(quick.copy(fields = listOf(field)).postsWithoutAsking) // something to fill: the form
+        assertFalse(quick.copy(canRun = false, runBlocked = "disabled").postsWithoutAsking)
+
+        // Posting it at once sends no values; a failure leaves the reason and the key for the form that then opens.
+        val session = WorkflowSession(quick, "c1", LocalDate.of(2026, 10, 9), me)
+        val keys = ArrayList<String>()
+        val bodies = ArrayList<String>()
+        val failed = session.submit({ _, body ->
+            keys += body["client_msg_id"]!!.jsonPrimitive.content
+            bodies += body["values"].toString()
+            throw IOException("lost")
+        }, { "network" })
+        assertNull(failed)
+        assertEquals("network", session.problem)
+        assertEquals(listOf("{}"), bodies)
+        assertEquals(listOf(session.clientMsgId), keys)
+    }
+
     @Test fun valuesThatDoNotCheckOutAreNotSent() = runBlocking {
         val session = WorkflowSession(absence, "c1", LocalDate.of(2026, 10, 4), null) // no `me`: 報告者 is empty
         var sent = 0

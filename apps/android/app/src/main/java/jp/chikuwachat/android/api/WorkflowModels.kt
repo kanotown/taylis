@@ -48,10 +48,15 @@ data class WorkflowOut(
     val fields: List<WorkflowField> = emptyList(),
     val template: String = "",
     val enabled: Boolean = true,
+    /** 「確認を求める」 (WORKFLOWS.md §11). An older server leaves it out, and those workflows always asked. */
+    val confirm: Boolean = true,
     val createdBy: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
     val canManage: Boolean = false,
     val canRun: Boolean = false,
     val runBlocked: String? = null,
-)
+) {
+    /** Choosing it posts at once, without the form: 「確認」 off, nothing to fill, and I can run it (as on the desktop). */
+    val postsWithoutAsking: Boolean get() = !confirm && fields.isEmpty() && canRun && runBlocked == null
+}
