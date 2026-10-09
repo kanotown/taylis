@@ -8,6 +8,7 @@ import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
+import { keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, linkFromPaste, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { AiBadge } from "./ai";
@@ -104,6 +105,9 @@ export function Composer({
       if (inputHeight.current > 0) box.style.minHeight = `${inputHeight.current}px`;
       el.style.height = "auto";
       if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
+      // Scrolled by the caret's line, not by the browser's reveal of its glyph (composerScroll.ts); nothing to scroll
+      // while the draft fits.
+      keepLineInView(el, el.scrollHeight > 0 && el.ownerDocument.activeElement === el ? textAreaCaretLine(el) : null);
     }
     box.style.minHeight = "";
     shownRich.current = rich;
@@ -598,6 +602,7 @@ export function Composer({
       }}
       aria-label={parentId ? t("composer.threadReply") : t("composer.message")}
       onKeyDown={onKeyDown}
+      onScroll={(e) => settle(e.currentTarget)}
       onKeyUp={(e) => syncCaret(e.currentTarget)}
       onClick={(e) => syncCaret(e.currentTarget)}
       onCompositionStart={() => {
