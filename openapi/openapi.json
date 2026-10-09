@@ -19102,6 +19102,42 @@
         "title": "ThreadRead",
         "type": "object"
       },
+      "ThreadReadPosition": {
+        "description": "One thread moved by POST /threads/read-all, with its counts after the move (a reply\ncommitted during the call stays unread and is counted here).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "last_read_seq": {
+            "title": "Last Read Seq",
+            "type": "integer"
+          },
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "parent_id": {
+            "format": "uuid",
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parent_id",
+          "channel_id",
+          "last_read_seq",
+          "unread_count",
+          "mention_count"
+        ],
+        "title": "ThreadReadPosition",
+        "type": "object"
+      },
       "ThreadState": {
         "description": "One user's view of one thread (THREADS.md §3).",
         "properties": {
@@ -19187,6 +19223,27 @@
           "mention_count"
         ],
         "title": "ThreadSummary",
+        "type": "object"
+      },
+      "ThreadsReadAllOut": {
+        "description": "POST /threads/read-all (THREADS.md §3): the new badge and the threads that moved. The\nsame shape is the payload of threads.read_all to my other devices.",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/ThreadSummary"
+          },
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadReadPosition"
+            },
+            "title": "Threads",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "threads"
+        ],
+        "title": "ThreadsReadAllOut",
         "type": "object"
       },
       "TimesFeedOut": {
@@ -36763,6 +36820,33 @@
           }
         ],
         "summary": "List Threads",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/api/v1/threads/read-all": {
+      "post": {
+        "description": "「すべて既読にする」 of the threads list: every followed thread in my channels is read to\nits newest reply (THREADS.md §3). The activity's own read-all does not touch threads.",
+        "operationId": "mark_all_threads_read_api_v1_threads_read_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadsReadAllOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark All Threads Read",
         "tags": [
           "threads"
         ]
