@@ -95,8 +95,9 @@ fun ThreadsPane(
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = filter == "all", onClick = { load("all") }, label = { Text(stringResource(R.string.common_all)) })
-                FilterChip(selected = filter == "unread", onClick = { load("unread") }, label = { Text(stringResource(R.string.common_unread)) })
+                // The rows held are filtered at once; the new filter's first page completes them.
+                FilterChip(selected = filter == "all", onClick = { store.selectThreadsFilter("all"); load("all") }, label = { Text(stringResource(R.string.common_all)) })
+                FilterChip(selected = filter == "unread", onClick = { store.selectThreadsFilter("unread"); load("unread") }, label = { Text(stringResource(R.string.common_unread)) })
             }
         }
         if (rows.isEmpty()) {
