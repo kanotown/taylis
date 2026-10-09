@@ -48,6 +48,9 @@ class Workflow(Base):
     )
     template: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Running it opens the form (with the preview and 投稿) first. False: a workflow without fields
+    # posts as soon as it is chosen; one with fields still opens its form (WORKFLOWS.md §11).
+    confirm: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
