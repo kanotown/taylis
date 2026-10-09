@@ -33,6 +33,7 @@ import { UndoRedo } from "@tiptap/extensions/undo-redo";
 import { Fragment, Slice } from "@tiptap/pm/model";
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { contentLine, keepLineInView, lineHeightOf, settle } from "./composerScroll";
 import { docToMarkdown, markdownToDoc, plainTextToNodes, type RichNode } from "./richMarkdown";
 import type { RichEditorApi, RichFormat, RichFormatState } from "./richEditorApi";
 
@@ -165,7 +166,10 @@ export interface RichEditorProps {
   ariaLabel: string;
   autoFocus?: boolean;
   className?: string;
-  /** How tall it grows before it scrolls (the composer's cap follows a phone's keyboard). */
+  /**
+   * How tall it grows before it scrolls (the composer's cap follows a phone's keyboard). With a cap the box scrolls
+   * itself, by the caret's line (composerScroll.ts), and nothing around it.
+   */
   maxHeight?: number;
   /**
    * How tall the input it replaces was (the composer's text area, also while this editor was loading): the editor is
@@ -194,6 +198,9 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
   // The latest callbacks, read by the editor's handlers (created once).
   const props = useRef({ onChange, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus, placeholder });
   props.current = { onChange, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus, placeholder };
+  const capped = maxHeight !== undefined;
+  const cappedRef = useRef(capped);
+  cappedRef.current = capped;
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -220,6 +227,13 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
         clipboardTextParser: (text, _context, _plain, view) => {
           const nodes = plainTextToNodes(text).map((node) => view.state.schema.nodeFromJSON(node));
           return new Slice(Fragment.fromArray(nodes), 1, 1);
+        },
+        // In the capped box, by the caret's line rather than ProseMirror's glyph box and margin (composerScroll.ts).
+        handleScrollToSelection: (view) => {
+          const box = host.current;
+          if (!box || !cappedRef.current) return false;
+          keepLineInView(box, caretLine(box, view));
+          return true;
         },
         handleDOMEvents: {
           compositionend: () => {
@@ -264,6 +278,24 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
     if (dom) dom.setAttribute("aria-label", ariaLabel);
   }, [ariaLabel]);
 
+  // The capped box has nothing to scroll while the draft fits: no scrollbar, and back at the top if the browser's own
+  // reveal (the IME's, at a zoom that rounds) moved it a pixel. Again whenever the text or the cap changes its height.
+  useLayoutEffect(() => {
+    const box = host.current;
+    const dom = editorRef.current?.view.dom;
+    if (!box || !dom || !capped) return;
+    settle(box);
+    const onScroll = () => settle(box);
+    box.addEventListener("scroll", onScroll);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => settle(box));
+    observer?.observe(box);
+    observer?.observe(dom);
+    return () => {
+      box.removeEventListener("scroll", onScroll);
+      observer?.disconnect();
+    };
+  }, [capped]);
+
   function report(editor: Editor) {
     const { onContext: context, onFormat: format } = props.current;
     if (format) format(formatState(editor));
@@ -279,6 +311,19 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
   }
 
   return <div ref={host} className={className} style={{ maxHeight, minHeight: held > 0 ? held : undefined }} />;
+}
+
+/** The line of the selection's head, in the box's content coordinates; null when ProseMirror cannot place it. */
+function caretLine(box: HTMLElement, view: Editor["view"]): { top: number; bottom: number } | null {
+  try {
+    const head = view.state.selection.head;
+    const rect = view.coordsAtPos(head);
+    const { node } = view.domAtPos(head);
+    const element = node.nodeType === 1 ? (node as Element) : node.parentElement;
+    return contentLine(box, rect, lineHeightOf(element ?? view.dom));
+  } catch {
+    return null;
+  }
 }
 
 function formatState(editor: Editor): RichFormatState {
