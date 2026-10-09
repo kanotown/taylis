@@ -2,7 +2,7 @@ import type { ChannelLinkOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { canEditLinks, ChannelLinkChips } from "./ChannelLinks";
-import { cn, useSidewaysWheel } from "./primitives";
+import { cn, useScrollRow } from "./primitives";
 import { t, labelled } from "../i18n";
 
 /**
@@ -41,9 +41,9 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   onEditLink: (link: ChannelLinkOut) => void;
 }) {
   const hasLinks = controller.store.linksOf(channel.id).length > 0 || canEditLinks(channel, controller);
-  const wheel = useSidewaysWheel<HTMLDivElement>();
+  const row = useScrollRow<HTMLDivElement>();
   return (
-    <div ref={wheel} className="flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2 [scrollbar-width:none]">
+    <div ref={row} className="scroll-row flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2">
       <div role="tablist" aria-label={t("main.view")} className="flex shrink-0 items-center">
         {TABS.filter(([value]) => (value !== "events" && value !== "tasks") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button

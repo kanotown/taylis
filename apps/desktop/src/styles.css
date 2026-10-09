@@ -462,6 +462,18 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .rx-drop[data-state="open"] { animation: rx-drop-in 140ms ease-out; }
 [cmdk-group-heading] { padding: 8px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-fg); }
 
+/* Rows of tabs that scroll sideways (primitives.tsx, useScrollRow: 管理, 検索, a conversation's tabs on a phone). No
+   scrollbar: under the tabs it ran over the selected tab's underline (2026-10-09). The wheel, a trackpad, a swipe and
+   the arrow keys scroll the row, the selected tab is brought into view, and an edge fades where more tabs are. */
+.scroll-row { scrollbar-width: none; }
+.scroll-row::-webkit-scrollbar { display: none; }
+.scroll-row[data-more="start"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 24px); mask-image: linear-gradient(to right, transparent, #000 24px); }
+.scroll-row[data-more="end"] { -webkit-mask-image: linear-gradient(to left, transparent, #000 24px); mask-image: linear-gradient(to left, transparent, #000 24px); }
+.scroll-row[data-more="both"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
 /* M25: on a touch screen a long press on a message opens its action sheet, not the browser's text selection or link
    callout (「テキストをコピー」 is in the sheet). The inline editor stays selectable. */
 @media (hover: none) {

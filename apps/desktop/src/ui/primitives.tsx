@@ -16,7 +16,7 @@ export function cn(...inputs: ClassValue[]): string {
  * overflowed by one pixel, so the row scrolled up and down a little. The row's line is an inset shadow instead, which
  * the tabs' own 2 px underline (`UNDERLINE_TAB`) covers from inside the row.
  */
-export const UNDERLINE_TAB_ROW = "flex shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain shadow-[inset_0_-1px_0_var(--line)]";
+export const UNDERLINE_TAB_ROW = "scroll-row flex shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain shadow-[inset_0_-1px_0_var(--line)]";
 /**
  * A mouse wheel's vertical turn scrolls a sideways row (2026-10-04: the 管理 tabs could only be scrolled with a trackpad
  * or a horizontal wheel). Only while the row overflows and the turn is mostly vertical; at either end the page keeps
@@ -46,10 +46,100 @@ export function useSidewaysWheel<T extends HTMLElement>(): (node: T | null) => v
   }, []);
 }
 
-/** The row of `UNDERLINE_TAB_ROW` as an element, with the wheel scrolling it sideways (管理, 検索). */
+/** How wide the fade at a sideways row's edge is (styles.css, `.scroll-row`): a tab brought into view clears it. */
+export const SCROLL_ROW_FADE = 24;
+
+/**
+ * Where a sideways row scrolls to show the span `start`..`end` (in its content's coordinates) clear of the fades at its
+ * edges, moving as little as possible; at the row's ends there is no fade to clear.
+ */
+export function revealInRow(row: { scrollLeft: number; clientWidth: number; scrollWidth: number }, start: number, end: number, fade = SCROLL_ROW_FADE): number {
+  const max = Math.max(0, row.scrollWidth - row.clientWidth);
+  const left = start - fade;
+  const right = end + fade;
+  let next = row.scrollLeft;
+  if (right - left > row.clientWidth || left < next) next = left;
+  else if (right > next + row.clientWidth) next = right - row.clientWidth;
+  return Math.min(max, Math.max(0, next));
+}
+
+/** Which edges of a sideways row have more beyond them (the `data-more` its fades follow). */
+export function rowMore(row: { scrollLeft: number; clientWidth: number; scrollWidth: number }): "start" | "end" | "both" | null {
+  const start = row.scrollLeft > 1;
+  const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+  return start && end ? "both" : start ? "start" : end ? "end" : null;
+}
+
+/**
+ * A callback ref for a row of tabs that scrolls sideways (`.scroll-row`, styles.css): no scrollbar, which ran over the
+ * selected tab's underline; the wheel scrolls it (useSidewaysWheel); its edges fade where there is more; the selected
+ * tab, and a tab the keyboard focuses, are brought into view clear of the fades; ←/→/Home/End go from tab to tab and
+ * select it (the WAI-ARIA tabs pattern, automatic activation).
+ */
+export function useScrollRow<T extends HTMLElement>(): (node: T | null) => void {
+  const wheel = useSidewaysWheel<T>();
+  const detach = useRef<(() => void) | null>(null);
+  return useCallback((node: T | null) => {
+    wheel(node);
+    detach.current?.();
+    detach.current = null;
+    if (!node) return;
+    const tabs = () => Array.from(node.querySelectorAll<HTMLElement>("[role='tab']"));
+    const mark = () => {
+      const more = rowMore(node);
+      if (more) node.dataset.more = more;
+      else delete node.dataset.more;
+    };
+    const reveal = (tab: Element | null) => {
+      if (tab) {
+        const box = node.getBoundingClientRect();
+        const rect = tab.getBoundingClientRect();
+        const start = rect.left - box.left - node.clientLeft + node.scrollLeft;
+        const next = revealInRow(node, start, start + rect.width);
+        if (Math.abs(next - node.scrollLeft) >= 1) node.scrollLeft = next;
+      }
+      mark();
+    };
+    const revealSelected = () => reveal(node.querySelector("[role='tab'][aria-selected='true']"));
+    const onFocus = (event: FocusEvent) => {
+      const tab = (event.target as Element | null)?.closest?.("[role='tab']");
+      if (tab && node.contains(tab)) reveal(tab);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const current = (event.target as Element | null)?.closest?.("[role='tab']");
+      if (!current || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const list = tabs().filter((tab) => !(tab as HTMLButtonElement).disabled);
+      const at = list.indexOf(current as HTMLElement);
+      if (at < 0) return;
+      const to = event.key === "ArrowRight" ? list[(at + 1) % list.length] : event.key === "ArrowLeft" ? list[(at - 1 + list.length) % list.length] : event.key === "Home" ? list[0] : event.key === "End" ? list[list.length - 1] : null;
+      if (!to) return;
+      event.preventDefault();
+      to.focus();
+      to.click();
+    };
+    node.addEventListener("scroll", mark, { passive: true });
+    node.addEventListener("focusin", onFocus);
+    node.addEventListener("keydown", onKey);
+    // The selected tab changes (a click, the keys, the owner); tabs come and go (permissions load).
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver(revealSelected);
+    mutations?.observe(node, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-selected"] });
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(revealSelected);
+    resize?.observe(node);
+    revealSelected();
+    detach.current = () => {
+      node.removeEventListener("scroll", mark);
+      node.removeEventListener("focusin", onFocus);
+      node.removeEventListener("keydown", onKey);
+      mutations?.disconnect();
+      resize?.disconnect();
+    };
+  }, [wheel]);
+}
+
+/** The row of `UNDERLINE_TAB_ROW` as an element, scrolling sideways without a scrollbar (useScrollRow: 管理, 検索). */
 export function UnderlineTabRow({ className, ...props }: ComponentProps<"div">) {
-  const wheel = useSidewaysWheel<HTMLDivElement>();
-  return <div ref={wheel} className={cn(UNDERLINE_TAB_ROW, className)} {...props} />;
+  const row = useScrollRow<HTMLDivElement>();
+  return <div ref={row} className={cn(UNDERLINE_TAB_ROW, className)} {...props} />;
 }
 
 export const UNDERLINE_TAB = "shrink-0 whitespace-nowrap rounded-t-md border-b-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
