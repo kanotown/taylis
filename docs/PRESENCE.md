@@ -485,7 +485,7 @@ Mattermost のように、**自分のアイコンを押すと 1 回で** 在席�
 本人が選ぶ 3 つの状態を重ねる。ステータス（絵文字と一言、M11d）と在室状況（本書 §1〜§10）は別のまま残し、同じメニューから行ける
 ようにする。
 
-**状態**：設計（本節）と、サーバ・Desktop / Web を実装（2026-10-09、移行 0111）。iOS・Android はこの節のとおり後で作る。
+**状態**：設計（本節）と、サーバ・Desktop / Web・iOS・Android を実装（2026-10-09、移行 0111）。
 
 ### 11.1 選べるもの
 
@@ -588,9 +588,9 @@ Mattermost のように、**自分のアイコンを押すと 1 回で** 在席�
 - 実装：`ui/presence.ts`（規則）、`ui/MyStatusMenu.tsx`（メニュー）、`Avatar` の点、`Store.presenceOf`（見た目）と
   `Store.connectionOf`（フレームの値）。テスト：`tests/presenceMenu.test.tsx`。
 
-### 11.7 iOS / Android（これから）
+### 11.7 iOS / Android（2026-10-09 に実装）
 
-Web と同じ規則（§11.1〜§11.6）で作る：
+Web と同じ規則（§11.1〜§11.6）で作った：
 
 - **データ**：`UserMe.presence_manual`（`"away"` か null。知らない値は null と同じに扱う）を読む。`dnd_until` は UserPublic のまま。
   自分の選択は §11.1 の優先順で決める。「解除するまで」は `dnd_until >= 9999-01-01T00:00:00Z`。
@@ -602,7 +602,17 @@ Web と同じ規則（§11.1〜§11.6）で作る：
   長さの選択に進む）。見出しの「取り込み中（〜15:30）」と「解除」も。
 - 設定の「通知を一時停止」はそのまま残し、「解除するまで」を正しく出す（「〜12/31 まで」にしない）。
 - 文言は ja / en / zh-Hans（§11.1・§11.2 の表のとおり）。
-- 取り込み中の間は、アプリの中の通知（バナー）も出さない（今の `dnd_until` の判定のまま）。
+- 取り込み中の間は、アプリの中の通知（バナー）も出さない（今の `dnd_until` の判定のまま）。Android にはこの判定が無かったので
+  足した（手動の `dnd_until` だけを見る。おやすみ時間とリマインダーは今まで通り）。
+- 実装：
+  - iOS：シート（在室状況のピルの `AttendanceQuickSheet` と同じ形。ネイティブの Menu では見出しの「解除」と、長さに進む行の
+    チェックが出せないため）。ホームの左上のアイコン（`HomeAvatarButton`、今までは「自分」を開いていた）と「自分」の見出しの
+    アイコンから開く。「自分」へは下のタブ（iPad はシートの「設定」）。点は `PresenceDot`、`Store.presenceOf` / `connectionOf`。
+    テスト：`PresenceMenuTests.swift`。
+  - Android：Material 3 の `ModalBottomSheet`（在室状況のシートと同じ形）。スマホ幅の上部バーの自分のアイコン（今までは自分タブ）と
+    自分タブの見出しのアイコンから開く。規則は `ui/Presence.kt`（`PresenceRules`）、期限は `DndExpiryTimer`。テスト：`PresenceTest`。
+  - 共有のベクタ：`apps/shared/presence-rules.json`（自分の選択・見た目・解除するまで・終わりの表示・一番早い期限・送る本文・長さ）。
+    今は iOS だけが読む。
 
 ### 11.8 やらないこと（今は）
 
