@@ -20,9 +20,11 @@ import { saveDownload } from "../platform/download";
 import type { AppController } from "../state/app";
 import { getLocale, intlLocale, t, weekdayName, type MessageKey } from "../i18n";
 import { CellDisplay, CellEditor, type DbCtx, PropertyDialog, PropIcon, propName } from "./DbCells";
+import { type CellKey, cellDomKey, sameCell, stepCell, typedSeed } from "./dbTableNav";
 import { BoardEmpty, BoardView, GalleryView, type Grouping, LayoutButton, ListView, SectionHeader, ViewFooter, viewIcon } from "./DbViews";
 import { localZone, pageTitle } from "./docsActions";
 import { useWikiHub } from "./DocsTree";
+import { isImeKeyEvent, isPlainEnter } from "./ime";
 import { Button, cn, Input, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import {
   agenda,
@@ -892,16 +894,97 @@ function TableView({ ctx, columns, rows, grouping, total, hasMore, onMore, onCol
   onSort: (propId: string, direction: "asc" | "desc") => void;
 }) {
   const shown = columns.filter((c) => !c.hidden);
-  // A row in several groups (a multi-select, people) is a line in each: the cell edited is the one of its group.
-  const [editing, setEditing] = useState<{ rowId: string; propId: string; group: string } | null>(null);
+  // WIKI.md §29: a selected cell (highlighted) and at most one cell being edited, as in a spreadsheet. A click on a cell
+  // edits it, except the click that ends another cell's edit: that one commits the edit and only selects. A second
+  // click, Enter or typing then edits; the arrows move the selection; Esc cancels an edit, then clears the selection.
+  // A row in several groups (a multi-select, people) is a line in each: the cell is the one of its group.
+  const [selected, setSelected] = useState<CellKey | null>(null);
+  const [editing, setEditing] = useState<(CellKey & { seed: string }) | null>(null);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  /** Set by a cell's pointerdown when an edit was open then (that click ends it, Radix closing it on the same press). */
+  const endedEdit = useRef(false);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const lines = grouping
+    ? grouping.sections.filter((s) => !s.hidden && !grouping.collapsed.has(s.key)).flatMap((s) => s.rows.map((row) => ({ rowId: row.id, group: s.key })))
+    : rows.map((row) => ({ rowId: row.id, group: "" }));
+  const rowOf = (id: string) => rows.find((r) => r.id === id) ?? grouping?.sections.flatMap((s) => s.rows).find((r) => r.id === id);
+  const propOf = (id: string) => shown.find((c) => c.prop.id === id)?.prop;
+  const focusCell = (cell: CellKey) =>
+    [...(tableRef.current?.querySelectorAll<HTMLElement>("[data-cell-focus]") ?? [])].find((el) => el.dataset.cellFocus === cellDomKey(cell))?.focus({ preventScroll: false });
+  const editable = (prop: DbProperty) => ctx.canEdit && !READ_ONLY_TYPES.has(prop.type);
+  /** Enter, a second click or typing on a cell: a checkbox flips, another editable cell opens its editor. */
+  const activate = (cell: CellKey, seed = "") => {
+    const prop = propOf(cell.propId);
+    const row = rowOf(cell.rowId);
+    if (!prop || !row || !editable(prop)) return;
+    if (prop.type === "checkbox") {
+      if (!seed) void ctx.setCell(row, prop.id, !row.props[prop.id]);
+      return;
+    }
+    setEditing({ ...cell, seed });
+  };
+  const clickCell = (cell: CellKey) => {
+    const ended = endedEdit.current;
+    endedEdit.current = false;
+    setSelected(cell);
+    if (!ended) activate(cell);
+  };
+  const endEdit = (cell: CellKey) => setEditing((current) => (sameCell(current, cell) ? null : current));
+  // A press outside the table (empty space, the toolbar) clears the selection; an edit commits by its own outside click.
+  useEffect(() => {
+    if (!selected) return;
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && tableRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-radix-popper-content-wrapper]")) return;
+      setSelected(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [selected]);
+  const onTableKey = (event: React.KeyboardEvent<HTMLTableElement>) => {
+    // Only keys on a cell's own box: an editor (a popover, portalled elsewhere in the DOM) keeps its keys.
+    const box = (event.target as Element).closest?.("[data-cell-focus]");
+    if (!box || !tableRef.current?.contains(box) || !selected || editingRef.current) return;
+    if (event.key.startsWith("Arrow")) {
+      const next = stepCell(selected, event.key, lines, shown.map((c) => c.prop.id));
+      event.preventDefault();
+      if (next) {
+        setSelected(next);
+        focusCell(next);
+      }
+    } else if (isPlainEnter(event) || (event.key === " " && propOf(selected.propId)?.type === "checkbox")) {
+      event.preventDefault();
+      activate(selected);
+    } else if (event.key === "Escape" && !isImeKeyEvent(event)) {
+      // Handled here: the screen's Esc (back to messages, mark read) waits for the next one.
+      event.preventDefault();
+      setSelected(null);
+      (box as HTMLElement).blur();
+    } else {
+      const seed = isImeKeyEvent(event) ? null : typedSeed(event);
+      if (seed === null) return;
+      event.preventDefault();
+      activate(selected, seed);
+    }
+  };
   const renderRow = (row: DbRow, group: string) => (
     <tr key={`${group}:${row.id}`} className="group border-b border-line/70 hover:bg-panel/50" data-row={row.id}>
-      {shown.map((column) => (
-        <Cell key={column.prop.id} ctx={ctx} prop={column.prop} row={row}
-          editing={editing?.rowId === row.id && editing.propId === column.prop.id && editing.group === group}
-          onEdit={(on) => setEditing(on ? { rowId: row.id, propId: column.prop.id, group } : null)}
-        />
-      ))}
+      {shown.map((column) => {
+        const cell = { rowId: row.id, propId: column.prop.id, group };
+        const isEditing = sameCell(editing, cell);
+        return (
+          <Cell key={column.prop.id} ctx={ctx} prop={column.prop} row={row} cellKey={cell}
+            selected={sameCell(selected, cell)}
+            editing={isEditing}
+            seed={isEditing ? editing!.seed : ""}
+            onPress={() => { endedEdit.current = editingRef.current !== null; }}
+            onClick={() => clickCell(cell)}
+            onEdit={(on) => (on ? setEditing({ ...cell, seed: "" }) : endEdit(cell))}
+          />
+        );
+      })}
       {onAddProp && <td />}
     </tr>
   );
@@ -926,7 +1009,7 @@ function TableView({ ctx, columns, rows, grouping, total, hasMore, onMore, onCol
   return (
     <div className="mt-1">
       <div className="overflow-x-auto overscroll-x-contain" data-db-table>
-        <table className="table-fixed border-collapse text-sm" style={{ width }}>
+        <table ref={tableRef} className="table-fixed border-collapse text-sm" style={{ width }} onKeyDown={onTableKey}>
           <colgroup>{shown.map((c) => <col key={c.prop.id} style={{ width: c.width }} />)}{onAddProp && <col style={{ width: ADD_COLUMN_WIDTH }} />}</colgroup>
           <thead>
             <tr className="border-b border-line text-left">
@@ -998,8 +1081,42 @@ function TableView({ ctx, columns, rows, grouping, total, hasMore, onMore, onCol
   );
 }
 
-function Cell({ ctx, prop, row, editing, onEdit }: { ctx: DbCtx; prop: DbProperty; row: DbRow; editing: boolean; onEdit: (on: boolean) => void }) {
-  const editable = ctx.canEdit && prop.type !== "created_time" && prop.type !== "updated_time" && prop.type !== "created_by" && prop.type !== "updated_by";
+/** Properties the server computes (never edited in a cell). */
+const READ_ONLY_TYPES = new Set<DbProperty["type"]>(["created_time", "updated_time", "created_by", "updated_by"]);
+
+function Cell({ ctx, prop, row, cellKey, selected, editing, seed, onPress, onClick, onEdit }: {
+  ctx: DbCtx;
+  prop: DbProperty;
+  row: DbRow;
+  cellKey: CellKey;
+  selected: boolean;
+  editing: boolean;
+  /** What was typed to start this edit (TableView). */
+  seed: string;
+  /** Pointerdown on the cell (before Radix closes another cell's editor on the same press). */
+  onPress: () => void;
+  onClick: () => void;
+  /** The editor closing (false) or asking to open (true). */
+  onEdit: (on: boolean) => void;
+}) {
+  const editable = ctx.canEdit && !READ_ONLY_TYPES.has(prop.type);
+  const commitRef = useRef<(() => void) | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const tdClass = cn("border-r border-line/60 p-0 last:border-r-0", selected && !editing && "outline outline-2 -outline-offset-2 outline-accent/70");
+  /** The cell's focusable box: selected by a click, moved with the arrows (TableView's key handler). */
+  const box = (children: ReactNode, extra: Record<string, unknown> = {}) => (
+    <div
+      ref={boxRef}
+      tabIndex={0}
+      data-cell-focus={cellDomKey(cellKey)}
+      className="cursor-default outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
+      onPointerDown={onPress}
+      onClick={onClick}
+      {...extra}
+    >
+      {children}
+    </div>
+  );
   const body = (
     <div className="flex h-9 min-w-0 items-center gap-1 px-2">
       <CellDisplay ctx={ctx} prop={prop} row={row} />
@@ -1010,26 +1127,37 @@ function Cell({ ctx, prop, row, editing, onEdit }: { ctx: DbCtx; prop: DbPropert
       )}
     </div>
   );
-  if (!editable) return <td className="border-r border-line/60 p-0 last:border-r-0" data-cell={prop.id}>{body}</td>;
+  if (!editable) return <td className={tdClass} data-cell={prop.id} aria-selected={selected}>{box(body)}</td>;
   if (prop.type === "checkbox") {
+    // A checkbox flips in place (a click, Enter or Space on the selected cell; TableView), with no editor.
     return (
-      <td className="border-r border-line/60 p-0 last:border-r-0" data-cell={prop.id}>
-        <button type="button" className="flex h-9 w-full items-center px-2" aria-label={propName(prop)} onClick={() => void ctx.setCell(row, prop.id, !row.props[prop.id])}>
-          <CellDisplay ctx={ctx} prop={prop} row={row} />
-        </button>
+      <td className={tdClass} data-cell={prop.id} aria-selected={selected}>
+        {box(<div className="flex h-9 w-full items-center px-2"><CellDisplay ctx={ctx} prop={prop} row={row} /></div>, { role: "checkbox", "aria-checked": !!row.props[prop.id], "aria-label": propName(prop) })}
       </td>
     );
   }
   return (
-    <td className="border-r border-line/60 p-0 last:border-r-0" data-cell={prop.id}>
+    <td className={tdClass} data-cell={prop.id} aria-selected={selected}>
       <PopoverRoot open={editing} onOpenChange={onEdit}>
         <PopoverAnchor asChild>
-          <div role="button" tabIndex={0} className="cursor-default outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50" onClick={() => onEdit(true)} onKeyDown={(event) => { if (event.key === "Enter") onEdit(true); }} aria-label={t("docs.db.editCellOf", { name: propName(prop) })}>
-            {body}
-          </div>
+          {box(body, { role: "button", "aria-label": t("docs.db.editCellOf", { name: propName(prop) }) })}
         </PopoverAnchor>
-        <PopoverContent align="start" sideOffset={-36} className="p-0">
-          {editing && <CellEditor ctx={ctx} prop={prop} row={row} onDone={() => onEdit(false)} />}
+        <PopoverContent
+          align="start"
+          sideOffset={-36}
+          className="p-0"
+          // A press or focus outside ends a text edit with a save now (not only by the input's blur, which a removed
+          // input may never send); the editor's guard keeps it to one save.
+          onInteractOutside={() => commitRef.current?.()}
+          // Back to the cell (still selected) after Enter or Esc, so the arrows go on from there. Radix calls this a tick
+          // after the editor is gone: a click that ended the edit has focused the clicked cell by then, which keeps it.
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const active = document.activeElement;
+            if (!active || active === document.body) boxRef.current?.focus({ preventScroll: true });
+          }}
+        >
+          {editing && <CellEditor ctx={ctx} prop={prop} row={row} seed={seed} commitRef={commitRef} onDone={() => onEdit(false)} />}
         </PopoverContent>
       </PopoverRoot>
     </td>
