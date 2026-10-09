@@ -11,7 +11,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { canonicalPage, docToPage, listRun, pageToDoc, type RichNode, sameShape, shapeOf, splitSourceLines } from "../src/ui/pageMarkdown";
 
@@ -76,6 +76,10 @@ function fuzzBody(next: () => number): string {
   });
   return next() < 0.2 ? body + "\n" : body;
 }
+
+// The corpus (every Markdown file of docs/ and website/) keeps growing; CI's runner took past vitest's 5 s on the
+// idempotency pass (2026-10-10). The functions themselves are timed below (the 100,000-character page).
+vi.setConfig({ testTimeout: 60_000 });
 
 describe("the round trip: a page opened and closed is the same bytes", () => {
   it(`every string of the apps/shared fixtures (${fixtureStrings.length})`, () => {
