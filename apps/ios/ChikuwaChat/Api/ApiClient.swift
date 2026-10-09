@@ -284,6 +284,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("PATCH", "/api/v1/users/me", body: .object(["username": .string(username)]))
     }
 
+    /// PRESENCE.md §11.4: the quick status menu's choice (auto / away / dnd with a duration and tz / invisible).
+    func setPresence(_ body: [String: JSONValue]) async throws -> UserMe {
+        try await request("PUT", "/api/v1/users/me/presence", body: .object(body))
+    }
+
     /// M11d: profile card fields; `.null` clears a field, omitted fields keep their value.
     func updateProfile(_ fields: [String: JSONValue]) async throws -> UserMe {
         try await request("PATCH", "/api/v1/users/me", body: .object(fields))

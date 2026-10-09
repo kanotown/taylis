@@ -51,7 +51,7 @@ extension AppController {
     /// task.assigned / task.due while the app is open: the push's words in the notice, unless I turned task
     /// notifications off or do not want to be disturbed now (the push is held back then too, TASKS.md §5).
     func sayTaskNotice(_ notice: TaskNotice) {
-        let me = store.me ?? self.me
+        let me = currentMe
         guard me?.taskNotices ?? true, !DND.isActive(me?.asPublic) else { return }
         switch notice {
         case .assigned(let data):

@@ -13,8 +13,7 @@ extension AppController {
     /// wiki.mentioned / wiki.shared while the app is open: the push's words, unless I do not want to be disturbed now
     /// or the page is on screen already. Tapping the notice opens the page.
     func sayWikiNotice(_ notice: WikiNotice, shared: Bool) {
-        let me = store.me ?? self.me
-        guard !DND.isActive(me?.asPublic), !(wiki?.isShown(notice.pageId) ?? false) else { return }
+        guard !DND.isActive(currentMe?.asPublic), !(wiki?.isShown(notice.pageId) ?? false) else { return }
         let text = "📄 " + notice.text(shared: shared) { [store] id in store.users[id]?.displayName }
         noticePage = (text, notice.pageId)
         self.notice = text

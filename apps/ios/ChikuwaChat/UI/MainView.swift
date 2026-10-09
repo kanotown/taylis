@@ -15,6 +15,9 @@ struct MainView: View {
     @State private var sidebarAutoHidden = false
     /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
     @State private var youPath: [YouRoute] = []
+    /// PRESENCE.md §11.7: the quick status menu from my picture, and where it sends me once it is gone.
+    @State private var myStatusShown = false
+    @State private var afterMyStatus: MyStatusDestination?
     /// The home list's tap (ChannelListView's selection), turned into a screen on the home stack.
     @State private var homeSelection: String?
     /// The home list's width: the room of its header's title and 在室状況 pill (PRESENCE.md §9.1).
@@ -409,12 +412,12 @@ struct MainView: View {
             // glass washed the badge's colour out (testers, 2026-09-30).
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .topBarLeading) {
-                    HomeAvatarButton(controller: controller, status: status) { openYou() }
+                    HomeAvatarButton(controller: controller, status: status) { myStatusShown = true }
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
                 ToolbarItem(placement: .topBarLeading) {
-                    HomeAvatarButton(controller: controller, status: status) { openYou() }
+                    HomeAvatarButton(controller: controller, status: status) { myStatusShown = true }
                 }
             }
             ToolbarItem(placement: .topBarTrailing) { homeMenu }
@@ -438,8 +441,9 @@ struct MainView: View {
         }
     }
 
-    /// My picture at the home's top left: the 自分 tab, or 自分 as a sheet over the split.
-    private func openYou() {
+    /// 自分 (the tab, or the sheet over the split), at its first screen or at `route` (the quick status menu's rows).
+    private func openYou(_ route: YouRoute? = nil) {
+        youPath = route.map { [$0] } ?? []
         if nav.layout == .split { nav.youSheet = true } else { nav.tab = .you }
     }
 
@@ -580,6 +584,19 @@ struct MainView: View {
         }
         .sheet(isPresented: $nav.youSheet) {
             YouView(controller: controller, path: $youPath, onClose: { nav.youSheet = false }, onOpenAttendance: openAttendance)
+        }
+        .sheet(isPresented: $myStatusShown, onDismiss: {
+            // Once the sheet is gone: the 自分 sheet (split) cannot open while this one is still closing.
+            guard let destination = afterMyStatus else { return }
+            afterMyStatus = nil
+            switch destination {
+            case .setStatus: openYou(.status)
+            case .editProfile: openYou(.profile)
+            case .settings: openYou()
+            case .attendanceBoard: openAttendance()
+            }
+        }) {
+            MyStatusSheet(controller: controller) { afterMyStatus = $0 }
         }
     }
 
@@ -775,28 +792,35 @@ private extension String {
     }
 }
 
-/// What the badge on my picture at the home's top left says (M38): my presence as others see it while connected (DND
-/// over it, as the 🔕 beside names), else the connection, which the green dot it replaced stood for alone.
+/// What the badge on my picture at the home's top left says (M38): my presence as others see it while connected
+/// (取り込み中's red dot over it, PRESENCE.md §11.5; then the quiet hours' 🔕; then the grey ring of オフライン表示),
+/// else the connection, which the green dot it replaced stood for alone.
 enum HomeAvatarBadge: Equatable {
-    case online, away, dnd, connecting, offline, none
+    case online, away, dnd, quiet, invisible, connecting, offline, none
 
-    static func of(status: EngineStatus, presence: String, dnd: Bool) -> HomeAvatarBadge {
+    /// `presence`: my look (Store.presenceOf, "dnd" while my pause runs); `quiet`: the quiet hours hold my pushes now;
+    /// `invisible`: I chose オフライン表示.
+    static func of(status: EngineStatus, presence: String, quiet: Bool = false, invisible: Bool = false) -> HomeAvatarBadge {
         switch status {
         case .offline: return .offline
         case .connecting: return .connecting
         case .online:
-            if dnd { return .dnd }
+            if presence == "dnd" { return .dnd }
+            if quiet { return .quiet }
+            if invisible { return .invisible }
             return presence == "online" ? .online : presence == "away" ? .away : .none
         case .idle, .signedOut: return .none
         }
     }
 
-    /// What VoiceOver says after 「自分」.
+    /// What VoiceOver says after 「自分のステータスを変える」.
     var spoken: String? {
         switch self {
         case .online: tr("オンライン")
         case .away: tr("離席中")
-        case .dnd: tr("通知を一時停止中")
+        case .dnd: tr("取り込み中")
+        case .quiet: tr("通知を一時停止中")
+        case .invisible: tr("オフライン表示")
         case .connecting: tr("接続中")
         case .offline: tr("オフライン、再接続中")
         case .none: nil
@@ -807,9 +831,9 @@ enum HomeAvatarBadge: Equatable {
     var disconnected: Bool { self == .offline || self == .connecting }
 }
 
-/// M38: the home's top left: my picture, a tap to the 自分 tab, and a badge at its bottom right (HomeAvatarBadge).
-/// While the connection is down the picture fades and the badge is an orange ring; the strip at the top
-/// (ConnectionBanner) says it in words after 2 s.
+/// M38: the home's top left: my picture, a tap to the quick status menu (PRESENCE.md §11.7, whose 設定 leads to 自分),
+/// and a badge at its bottom right (HomeAvatarBadge). While the connection is down the picture fades and the badge is
+/// an orange ring; the strip at the top (ConnectionBanner) says it in words after 2 s.
 struct HomeAvatarButton: View {
     @Bindable var controller: AppController
     let status: EngineStatus
@@ -819,7 +843,10 @@ struct HomeAvatarButton: View {
     var body: some View {
         let store = controller.store
         let meId = store.me?.id ?? ""
-        let badge = HomeAvatarBadge.of(status: status, presence: store.presenceOf(meId), dnd: DND.isActive(store.me?.asPublic))
+        let me = store.currentMe
+        let quiet = me?.quietHours.map { DND.inQuietHours($0) } ?? false
+        let badge = HomeAvatarBadge.of(status: status, presence: store.presenceOf(meId), quiet: quiet,
+                                       invisible: PresenceRules.myChoice(me) == .invisible)
         Button(action: action) {
             AvatarView(id: meId, name: store.me?.displayName ?? "?", size: Self.size)
                 .opacity(badge.disconnected ? 0.5 : 1)
@@ -828,18 +855,17 @@ struct HomeAvatarButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel([tr("自分"), badge.spoken].compactMap { $0 }.joined(separator: tr("、")))
+        .accessibilityLabel(badge.spoken.map { tr("自分のステータスを変える（\($0)）") } ?? tr("自分のステータスを変える"))
     }
 
     @ViewBuilder
     private func dot(_ badge: HomeAvatarBadge) -> some View {
         let side: CGFloat = 11
         switch badge {
-        case .online, .away:
-            Circle().fill(badge == .online ? Color.green : Color.orange)
-                .frame(width: side, height: side)
+        case .online, .away, .dnd, .invisible:
+            PresenceDot(style: badge == .online ? .online : badge == .away ? .away : badge == .dnd ? .dnd : .offline, side: side)
                 .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
-        case .dnd:
+        case .quiet:
             Image(systemName: "bell.slash.fill")
                 .font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
                 .frame(width: side + 2, height: side + 2)

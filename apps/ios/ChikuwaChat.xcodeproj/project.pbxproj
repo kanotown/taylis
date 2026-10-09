@@ -30,6 +30,8 @@
 		A1400001C0FFEE0000000002 /* Attendance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000002 /* Attendance.swift */; };
 		A1430001C0FFEE0000000002 /* Actions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1430002C0FFEE0000000002 /* Actions.swift */; };
 		A1430001C0FFEE0000000004 /* ActionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1430002C0FFEE0000000004 /* ActionStatus.swift */; };
+		B1500001C0FFEE0000000002 /* MyStatusSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1500002C0FFEE0000000002 /* MyStatusSheet.swift */; };
+		B1500001C0FFEE0000000001 /* Presence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1500002C0FFEE0000000001 /* Presence.swift */; };
 		A1400001C0FFEE0000000005 /* AttendanceIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000005 /* AttendanceIcons.swift */; };
 		B1170001C0FFEE0000000001 /* Calls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1170002C0FFEE0000000001 /* Calls.swift */; };
 		0ECCCE363BA13FDFDB89F930 /* ScheduleSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */; };
@@ -97,6 +99,7 @@
 		A1400001C0FFEE0000000006 /* AttendanceIconsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1400002C0FFEE0000000006 /* AttendanceIconsTests.swift */; };
 		B1180001C0FFEE0000000001 /* DmPinsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1180002C0FFEE0000000001 /* DmPinsTests.swift */; };
 		B1410001C0FFEE0000000001 /* DmClosesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1410002C0FFEE0000000001 /* DmClosesTests.swift */; };
+		B1500001C0FFEE0000000003 /* PresenceMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1500002C0FFEE0000000003 /* PresenceMenuTests.swift */; };
 		B1170001C0FFEE0000000002 /* CallsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1170002C0FFEE0000000002 /* CallsTests.swift */; };
 		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
 		A1BAD00000000000000000A1 /* MainNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BAD00000000000000000A2 /* MainNavigation.swift */; };
@@ -383,6 +386,8 @@
 		A1400002C0FFEE0000000002 /* Attendance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attendance.swift; sourceTree = "<group>"; };
 		A1430002C0FFEE0000000002 /* Actions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Actions.swift; sourceTree = "<group>"; };
 		A1430002C0FFEE0000000004 /* ActionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionStatus.swift; sourceTree = "<group>"; };
+		B1500002C0FFEE0000000002 /* MyStatusSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyStatusSheet.swift; sourceTree = "<group>"; };
+		B1500002C0FFEE0000000001 /* Presence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Presence.swift; sourceTree = "<group>"; };
 		A1400002C0FFEE0000000005 /* AttendanceIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceIcons.swift; sourceTree = "<group>"; };
 		B1170002C0FFEE0000000001 /* Calls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Calls.swift; sourceTree = "<group>"; };
 		278043686D3BDC38186699E5 /* Recurring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recurring.swift; sourceTree = "<group>"; };
@@ -579,6 +584,7 @@
 		A1400002C0FFEE0000000006 /* AttendanceIconsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceIconsTests.swift; sourceTree = "<group>"; };
 		B1180002C0FFEE0000000001 /* DmPinsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmPinsTests.swift; sourceTree = "<group>"; };
 		B1410002C0FFEE0000000001 /* DmClosesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmClosesTests.swift; sourceTree = "<group>"; };
+		B1500002C0FFEE0000000003 /* PresenceMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceMenuTests.swift; sourceTree = "<group>"; };
 		B1170002C0FFEE0000000002 /* CallsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallsTests.swift; sourceTree = "<group>"; };
 		DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareMessageSheet.swift; sourceTree = "<group>"; };
 		DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverProbeTests.swift; sourceTree = "<group>"; };
@@ -786,6 +792,7 @@
 				A1400002C0FFEE0000000006 /* AttendanceIconsTests.swift */,
 				B1180002C0FFEE0000000001 /* DmPinsTests.swift */,
 				B1410002C0FFEE0000000001 /* DmClosesTests.swift */,
+				B1500002C0FFEE0000000003 /* PresenceMenuTests.swift */,
 				B1170002C0FFEE0000000002 /* CallsTests.swift */,
 				72879EA8557DCBD4F44B68E7 /* DMPreviewTests.swift */,
 				C0FFEE02A1B2C3D4E5F60718 /* CopyFeedbackTests.swift */,
@@ -908,6 +915,8 @@
 				A1400002C0FFEE0000000002 /* Attendance.swift */,
 				A1430002C0FFEE0000000002 /* Actions.swift */,
 				A1430002C0FFEE0000000004 /* ActionStatus.swift */,
+				B1500002C0FFEE0000000002 /* MyStatusSheet.swift */,
+				B1500002C0FFEE0000000001 /* Presence.swift */,
 				A1400002C0FFEE0000000005 /* AttendanceIcons.swift */,
 				B1170002C0FFEE0000000001 /* Calls.swift */,
 				7787A42779309636F0D889A4 /* DirectoryView.swift */,
@@ -1218,6 +1227,7 @@
 				A1400001C0FFEE0000000006 /* AttendanceIconsTests.swift in Sources */,
 				B1180001C0FFEE0000000001 /* DmPinsTests.swift in Sources */,
 				B1410001C0FFEE0000000001 /* DmClosesTests.swift in Sources */,
+				B1500001C0FFEE0000000003 /* PresenceMenuTests.swift in Sources */,
 				B1170001C0FFEE0000000002 /* CallsTests.swift in Sources */,
 				F6B0289DCC3A8F13206BE205 /* DraftSyncTests.swift in Sources */,
 				D0B2472E5BD47A5F644307EF /* DraftsTests.swift in Sources */,
@@ -1365,6 +1375,8 @@
 				A1400001C0FFEE0000000002 /* Attendance.swift in Sources */,
 				A1430001C0FFEE0000000002 /* Actions.swift in Sources */,
 				A1430001C0FFEE0000000004 /* ActionStatus.swift in Sources */,
+				B1500001C0FFEE0000000002 /* MyStatusSheet.swift in Sources */,
+				B1500001C0FFEE0000000001 /* Presence.swift in Sources */,
 				A1400001C0FFEE0000000005 /* AttendanceIcons.swift in Sources */,
 				B1170001C0FFEE0000000001 /* Calls.swift in Sources */,
 				BD01E7FD93BC7A0D72CA8F47 /* DirectoryView.swift in Sources */,

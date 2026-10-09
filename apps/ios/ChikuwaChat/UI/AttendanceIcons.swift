@@ -312,8 +312,8 @@ struct AttendanceGlyphTile: View {
 }
 
 /// The height a sheet needs for its list's whole content (AttendanceRules.quickSheetHeight), from the list's scroll
-/// geometry (iOS 18; nothing on iOS 17).
-private struct ContentHeightProbe: ViewModifier {
+/// geometry (iOS 18; nothing on iOS 17). Also the quick status menu's sheet (MyStatusSheet).
+struct ContentHeightProbe: ViewModifier {
     let measured: (CGFloat) -> Void
 
     func body(content: Content) -> some View {

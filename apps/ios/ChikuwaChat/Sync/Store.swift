@@ -782,6 +782,7 @@ final class Store {
         guard let persistence, let snapshot = try? persistence.loadAll() else { return }
         apply(snapshot)
         loadCanvasCache()
+        noteDndEnds()
     }
 
     /// Sign-out: the database is closed before its files are deleted; later writes fail quietly.
@@ -821,6 +822,7 @@ final class Store {
 
     func setMe(_ me: UserMe?) {
         self.me = me
+        noteDndEnd(me?.dndUntil)
         let encoded = me.flatMap { try? JSON.plainEncoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) }
         persist { try $0.saveMeta(key: "me", value: encoded) }
     }
@@ -828,6 +830,7 @@ final class Store {
     func upsertUser(_ user: UserPublic) {
         AvatarCache.shared.note(user)  // M14a
         users[user.id] = user
+        noteDndEnd(user.dndUntil)
         persist { try $0.saveUser(user) }
     }
 
@@ -1344,7 +1347,53 @@ final class Store {
 
     // MARK: presence / typing (volatile, SYNC_PROTOCOL.md §5.2)
 
-    func presenceOf(_ userId: String) -> String { presence[userId] ?? "offline" }
+    /// What the person's dot shows (PRESENCE.md §11.5): "dnd" while their `dnd_until` is ahead (whatever the
+    /// connection), else "online" / "away" / "offline". Lists that sort by the connection use `connectionOf`.
+    func presenceOf(_ userId: String) -> String {
+        _ = dndClock  // redraw when the soonest pause ends
+        return PresenceRules.look(connection: connectionOf(userId), dndUntil: dndUntilOf(userId))
+    }
+
+    /// The `presence` frames' status alone (online / away / offline).
+    func connectionOf(_ userId: String) -> String { presence[userId] ?? "offline" }
+
+    /// Me with the newest public fields: the directory's copy wins when it is newer (user.updated from another of my
+    /// devices arrives before GET /users/me answers, PRESENCE.md §11.6).
+    var currentMe: UserMe? { PresenceRules.currentMe(me, shared: me.flatMap { users[$0.id] }) }
+
+    private func dndUntilOf(_ userId: String) -> String? {
+        if let me, me.id == userId { return currentMe?.dndUntil }
+        return users[userId]?.dndUntil
+    }
+
+    /// PRESENCE.md §11.3: 取り込み中 ends by the clock, with no event. One timer for the soonest end among everyone;
+    /// it bumps `dndClock` (every dot reads it) and arms the next. A far one re-arms after a day; the indefinite pause
+    /// never ends by itself.
+    private(set) var dndClock = 0
+    @ObservationIgnored private var dndTimer: Task<Void, Never>?
+    @ObservationIgnored private var dndTimerAt = Date.distantFuture
+
+    func noteDndEnd(_ until: String?) {
+        let now = Date()
+        guard let at = PresenceRules.soonestEnd([until], now: now), at < dndTimerAt else { return }
+        dndTimer?.cancel()
+        dndTimerAt = at
+        let delay = min(at.timeIntervalSince(now) + 0.05, 24 * 3600)
+        dndTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.dndTimer = nil
+            self.dndTimerAt = .distantFuture
+            self.dndClock += 1
+            self.noteDndEnds()
+        }
+    }
+
+    /// Arms the timer for everyone held (after a cache load, and when it fired).
+    func noteDndEnds() {
+        for user in users.values { noteDndEnd(user.dndUntil) }
+        noteDndEnd(me?.dndUntil)
+    }
 
     /// Whose status emoji to show for this user: my own profile as I last saved it for me (M38: my DM with myself), else
     /// the directory's.

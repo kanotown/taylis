@@ -5,17 +5,18 @@ struct AvatarView: View {
     let id: String
     let name: String
     var size: CGFloat = 36
-    /// "online" / "away" adds the status dot (SYNC_PROTOCOL.md §5.2); nil or "offline" shows none.
+    /// The dot (SYNC_PROTOCOL.md §5.2, PRESENCE.md §11.5): "online" / "away" / "dnd" (取り込み中: a red disc with a
+    /// white bar); nil or "offline" shows none.
     var presence: String? = nil
+    /// "offline" as a grey ring (my own picture while I appear offline, PRESENCE.md §11.6).
+    var showOffline = false
 
     var body: some View {
         face
             .frame(width: size, height: size)
             .overlay(alignment: .bottomTrailing) {
-                if let presence, presence != "offline" {
-                    Circle()
-                        .fill(presence == "online" ? Color.green : Color.orange)
-                        .frame(width: size * 0.3, height: size * 0.3)
+                if let style = PresenceDot.Style(look: presence, showOffline: showOffline) {
+                    PresenceDot(style: style, side: size * 0.3)
                         .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
                         .offset(x: size * 0.08, y: size * 0.08)
                 }
@@ -43,10 +44,61 @@ struct AvatarView: View {
     }
 }
 
+/// The presence dot alone (an avatar's corner, the quick status menu's choices): green, orange, 取り込み中's red disc
+/// with a white bar (as on Desktop / Web), or a grey ring.
+struct PresenceDot: View {
+    enum Style: Equatable {
+        case online, away, dnd, offline
+
+        /// The dot for a look; "offline" (or none) draws nothing unless `showOffline`.
+        init?(look: String?, showOffline: Bool = false) {
+            switch look {
+            case "online": self = .online
+            case "away": self = .away
+            case "dnd": self = .dnd
+            default:
+                guard showOffline else { return nil }
+                self = .offline
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .online: .green
+            case .away: .orange
+            case .dnd: .red
+            case .offline: .gray
+            }
+        }
+    }
+
+    let style: Style
+    var side: CGFloat = 10
+
+    var body: some View {
+        Group {
+            if style == .offline {
+                Circle().strokeBorder(style.color, lineWidth: max(1.5, side * 0.2))
+                    .background(Circle().fill(Color(.systemBackground)))
+            } else {
+                Circle().fill(style.color)
+                    .overlay {
+                        if style == .dnd {
+                            Capsule().fill(Color.white).frame(width: side * 0.62, height: max(1.5, side * 0.2))
+                        }
+                    }
+            }
+        }
+        .frame(width: side, height: side)
+        .accessibilityHidden(true)
+    }
+}
+
 func presenceLabel(_ status: String) -> String {
     switch status {
     case "online": return tr("オンライン")
     case "away": return tr("離席中")
+    case "dnd": return tr("取り込み中")
     default: return tr("オフライン")
     }
 }

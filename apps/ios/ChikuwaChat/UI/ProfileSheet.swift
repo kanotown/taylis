@@ -15,6 +15,12 @@ struct ProfileSheet: View {
     private var user: UserPublic? { controller.store.users[userId] }
     private var blocked: Bool { controller.store.isBlocked(userId) }
     private var isMe: Bool { controller.store.me?.id == userId }
+    private var presenceLine: String {
+        let look = controller.store.presenceOf(userId)
+        let dndUntil = isMe ? controller.store.currentMe?.dndUntil : user?.dndUntil
+        if look == "dnd", let until = PresenceRules.activeDnd(dndUntil) { return PresenceRules.dndLine(until) }
+        return presenceLabel(look)
+    }
 
     var body: some View {
         NavigationStack {
@@ -29,7 +35,8 @@ struct ProfileSheet: View {
                             Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
                             // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
                             if let title = Roster.displayTitle(user?.title, controller.store.roster[userId]) { Text(title).font(.footnote).foregroundStyle(.secondary) }
-                            Text(presenceLabel(controller.store.presenceOf(userId))).font(.caption).foregroundStyle(.secondary)
+                            // PRESENCE.md §11.5: 「取り込み中（〜15:30）」 / 「取り込み中（解除するまで）」.
+                            Text(presenceLine).font(.caption).foregroundStyle(.secondary)
                             // M140 (docs/PRESENCE.md §9): the 在室状況 chip, its note and since when.
                             if !controller.isGuest, let chip = AttendanceRules.chip(controller.store.attendance, userId) {
                                 HStack(spacing: 6) {
