@@ -8,6 +8,7 @@ from app.modules.auth.deps import CurrentUser
 from app.modules.channels import service as channels  # M13e guest visibility (ARCHITECTURE.md §5)
 from app.modules.users import service
 from app.modules.users import username as usernames
+from app.modules.users.presence import PresenceUpdate, set_presence
 from app.modules.users.schemas import UserMe, UserPublic, UserUpdate, to_user_me, to_user_public
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -50,6 +51,22 @@ async def update_me(request: Request, user: CurrentUser, body: UserUpdate, db: D
     if body.presence_hidden is not None:
         # L4: the hub (process-local presence) announces me as offline, or as I am again.
         request.app.state.hub.set_presence_hidden(updated.id, updated.presence_hidden)
+    return to_user_me(updated)
+
+
+@router.put("/me/presence", response_model=UserMe)
+async def update_my_presence(
+    request: Request, user: CurrentUser, body: PresenceUpdate, db: Db
+) -> UserMe:
+    """The quick status menu (docs/PRESENCE.md §11): auto / away / dnd (with duration or until) /
+    invisible. One at a time; user.updated tells the others and my other devices."""
+    locked = await service.get_user(db, user.id, for_update=True)
+    if locked is None:
+        raise not_found("user_not_found", "User not found")
+    updated = await set_presence(db, locked, body)
+    hub = request.app.state.hub
+    hub.set_presence_hidden(updated.id, updated.presence_hidden)
+    hub.set_presence_away(updated.id, updated.presence_manual == "away")
     return to_user_me(updated)
 
 

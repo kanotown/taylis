@@ -64,6 +64,8 @@ class RealtimeHub:
         self._announced: dict[uuid.UUID, PresenceStatus] = {}
         # L4 (M31): users who hide their presence; they are always offline to everyone.
         self._hidden: set[uuid.UUID] = set()
+        # PRESENCE.md §11: users who chose 離席中; away while connected, however active.
+        self._away: set[uuid.UUID] = set()
 
     def new_connection(
         self,
@@ -72,6 +74,7 @@ class RealtimeHub:
         *,
         visible: frozenset[uuid.UUID] | None = None,
         presence_hidden: bool = False,
+        presence_away: bool = False,
     ) -> Connection:
         conn = Connection(
             user_id=user_id,
@@ -83,6 +86,10 @@ class RealtimeHub:
             self._hidden.add(user_id)
         else:
             self._hidden.discard(user_id)
+        if presence_away:
+            self._away.add(user_id)
+        else:
+            self._away.discard(user_id)
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
         # Connecting counts as activity (last_active starts now): apps connect in the foreground.
@@ -125,6 +132,8 @@ class RealtimeHub:
     def presence_status(self, user_id: uuid.UUID) -> PresenceStatus:
         if user_id not in self._by_user or user_id in self._hidden:
             return "offline"
+        if user_id in self._away:
+            return "away"
         return "online" if self.is_active(user_id, self.away_seconds) else "away"
 
     def presence_snapshot(self) -> list[tuple[uuid.UUID, PresenceStatus]]:
@@ -147,6 +156,15 @@ class RealtimeHub:
             self._hidden.add(user_id)
         else:
             self._hidden.discard(user_id)
+        self._announce(user_id)
+
+    def set_presence_away(self, user_id: uuid.UUID, away: bool) -> None:
+        """PRESENCE.md §11 離席中: announced as away while connected (activity still counts for
+        pushes, is_active), or as the activity says again."""
+        if away:
+            self._away.add(user_id)
+        else:
+            self._away.discard(user_id)
         self._announce(user_id)
 
     def sweep_presence(self) -> None:

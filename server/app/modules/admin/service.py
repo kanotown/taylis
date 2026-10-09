@@ -332,6 +332,7 @@ async def anonymize_in_tx(
     user.status_expires_at = None
     user.notify_keywords = None
     user.dnd_until = None
+    user.presence_manual = None
     user.quiet_hours_start = user.quiet_hours_end = None
     user.quiet_hours_days = None
     user.quiet_hours_tz = None

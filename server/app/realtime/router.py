@@ -179,6 +179,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         context.session.id,
         visible=visible,
         presence_hidden=context.user.presence_hidden,
+        presence_away=context.user.presence_manual == "away",
     )
     await _send(
         websocket,
