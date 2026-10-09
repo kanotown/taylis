@@ -14,7 +14,7 @@ import { readableSnippet } from "./CanvasSearch";
 import { pageTitle } from "./docsActions";
 import { useWikiHub } from "./DocsTree";
 import { sinceLabel } from "./format";
-import { highlightPieces } from "./highlight";
+import { marked } from "./marked";
 import { mentionsToNames } from "./mentions";
 import { PageIcon } from "./PageIcon";
 import { Button } from "./primitives";
@@ -75,7 +75,6 @@ export function PageResults({ controller, params, onOpen }: { controller: AppCon
 
   const store = controller.store;
   const pages = hub ? [...hub.pages.values()].sort((a, b) => pageTitle(a, "").localeCompare(pageTitle(b, ""))) : [];
-  const mark = (text: string) => highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i} className="rounded bg-warning/35 px-0.5 text-ink">{piece.text}</mark> : <span key={i}>{piece.text}</span>));
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" aria-label={t("docs.search.results")}>
       <label className="mb-3 flex max-w-3xl items-center gap-2 text-xs text-muted">
@@ -121,8 +120,8 @@ export function PageResults({ controller, params, onOpen }: { controller: AppCon
                     <div className="mt-1 flex items-start gap-2.5">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><PageIcon controller={controller} icon={page.icon} size={16} className={page.icon ? undefined : "text-accent"} /></span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-ink">{mark(pageTitle(page, t("docs.untitled")))}</div>
-                        {snippet && <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink/90">{mark(readableSnippet(mentionsToNames(snippet, store.users, store.groups)))}</div>}
+                        <div className="truncate text-sm font-semibold text-ink">{marked(pageTitle(page, t("docs.untitled")), keywords)}</div>
+                        {snippet && <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink/90">{marked(readableSnippet(mentionsToNames(snippet, store.users, store.groups)), keywords)}</div>}
                       </div>
                       <span className="self-center whitespace-nowrap text-xs text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">{t("docs.open")}</span>
                     </div>

@@ -11,8 +11,8 @@ import type { CanvasMeta, CanvasSearchHit } from "../api/types";
 import type { AppController } from "../state/app";
 import { taskProgress } from "./canvasText";
 import { sinceLabel } from "./format";
-import { highlightPieces } from "./highlight";
 import { channelTitle } from "./MainScreen";
+import { marked } from "./marked";
 import { mentionsToNames } from "./mentions";
 import { Button } from "./primitives";
 import { dateRange, type SearchParams, totalLabel } from "./search";
@@ -74,7 +74,6 @@ export function CanvasResults({ controller, params, onOpen }: { controller: AppC
   }, [key, controller.api]);
 
   const store = controller.store;
-  const mark = (text: string) => highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i} className="rounded bg-warning/35 px-0.5 text-ink">{piece.text}</mark> : <span key={i}>{piece.text}</span>));
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" aria-label={t("canvasSearch.results")}>
       {empty ? (
@@ -117,10 +116,10 @@ export function CanvasResults({ controller, params, onOpen }: { controller: AppC
                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><FileText size={16} /></span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-semibold text-ink">{mark(canvas.title)}</span>
+                            <span className="truncate text-sm font-semibold text-ink">{marked(canvas.title, keywords)}</span>
                             {progress && <span className="shrink-0 text-[11px] text-muted">{progress}</span>}
                           </div>
-                          {snippet && <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink/90">{mark(readableSnippet(mentionsToNames(snippet, store.users, store.groups)))}</div>}
+                          {snippet && <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink/90">{marked(readableSnippet(mentionsToNames(snippet, store.users, store.groups)), keywords)}</div>}
                         </div>
                         <span className="self-center whitespace-nowrap text-xs text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">{t("tasks.dialog.openCanvas")}</span>
                       </div>
