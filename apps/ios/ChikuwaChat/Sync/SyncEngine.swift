@@ -1522,7 +1522,8 @@ final class SyncEngine {
 
     /// 「スレッド」's 「すべて既読にする」 (THREADS.md §3.2). Every followed row held here reads at once (to the newest reply held
     /// for it, if further) and the badge drops to 0; the server's answer then applies as threads.read_all does. On a
-    /// failure the rows not changed meanwhile and the badge go back, and the error is the caller's to show.
+    /// failure the rows not changed meanwhile and the badge go back (and the server is asked again a moment later, for
+    /// whatever changed meanwhile), and the error is the caller's to show.
     func markAllThreadsRead() async throws {
         let summaryBefore = store.threadSummary
         var before: [String: ThreadState] = [:]
@@ -1546,8 +1547,12 @@ final class SyncEngine {
             out = try await api.readAllThreads()
         } catch {
             for (id, state) in before where store.threads[id]?.state == shown[id] { store.applyThreadState(state) }
-            if store.threadSummary == cleared { store.setThreadSummary(summaryBefore) }
+            // The rows put back moved the summary with them (Store.applyThreadState counts a row's unread in and out),
+            // so it is the held rows' count now, not the server's (which counts the threads not held here too): the
+            // summary from before, as Android's restoreThreadsReadAll; the refresh then takes the server's word again.
+            store.setThreadSummary(summaryBefore)
             onBadge?(store.badgeCount)
+            scheduleThreadRefresh()
             throw error
         }
         applyThreadsReadAll(out)

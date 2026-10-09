@@ -1918,7 +1918,18 @@ extension SyncEngineTests {
 
     func testAFailedAllThreadsReadPutsTheRowsAndTheBadgeBack() async throws {
         let (w, first, second) = try await readAllWorld()
-        let before = (w.store.threads[first.id]?.state, w.store.threads[second.id]?.state, w.store.threadSummary)
+        // A third unread thread held here (its reply mentions bob)...
+        await w.engine.send(w.channel.id, body: "topic 3")
+        await settle(w.engine)
+        let third = try w.server.messageByBody(w.channel.id, "topic 3")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> d", parentId: third.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threads[third.id]?.state.unreadCount, 1)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 3, mentionCount: 2))
+        // ...while the server's summary counts two more unread threads this device does not hold.
+        let summary = ThreadSummary(unreadCount: 5, mentionCount: 2)
+        w.store.setThreadSummary(summary)
+        let before = (w.store.threads[first.id]?.state, w.store.threads[second.id]?.state, w.store.threads[third.id]?.state)
         w.api.failures["readAllThreads"] = [ApiError.network(URLError(.notConnectedToInternet))]
         do {
             try await w.engine.markAllThreadsRead()
@@ -1926,9 +1937,18 @@ extension SyncEngineTests {
         } catch {}
         XCTAssertEqual(w.store.threads[first.id]?.state, before.0)
         XCTAssertEqual(w.store.threads[second.id]?.state, before.1)
-        XCTAssertEqual(w.store.threadSummary, before.2)
-        XCTAssertEqual(w.store.badgeCount, 1) // the thread mention again
+        XCTAssertEqual(w.store.threads[third.id]?.state, before.2)
+        // The badge is the server's count from before, not the held rows' (3, 2) that putting the rows back added up.
+        XCTAssertEqual(w.store.threadSummary, summary)
+        XCTAssertEqual(w.store.badgeCount, 2) // the thread mentions again
         XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: first.id).lastReadSeq, 0)
+        // Then the server is asked again (for whatever changed meanwhile), as after a thread.updated.
+        let threadCallsBefore = w.api.calls.filter { $0 == "threads" }.count
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        XCTAssertGreaterThan(w.api.calls.filter { $0 == "threads" }.count, threadCallsBefore)
+        XCTAssertEqual(w.store.threadSummary, w.server.threadSummary(for: w.bob.id))
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 3, mentionCount: 2))
         w.engine.stop()
     }
 
