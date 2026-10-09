@@ -20850,6 +20850,11 @@
             "title": "Channel Id",
             "type": "string"
           },
+          "confirm": {
+            "default": true,
+            "title": "Confirm",
+            "type": "boolean"
+          },
           "description": {
             "default": "",
             "maxLength": 200,
@@ -20999,6 +21004,10 @@
             "title": "Channel Id",
             "type": "string"
           },
+          "confirm": {
+            "title": "Confirm",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -21089,6 +21098,7 @@
           "fields",
           "template",
           "enabled",
+          "confirm",
           "created_by",
           "created_at",
           "updated_at",
@@ -21185,6 +21195,17 @@
               }
             ],
             "title": "Channel Id"
+          },
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
           },
           "description": {
             "anyOf": [

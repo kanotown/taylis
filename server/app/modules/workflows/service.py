@@ -245,6 +245,7 @@ async def create(db: AsyncSession, actor: User, data: WorkflowCreate) -> Workflo
         fields=fields,
         template=data.template,
         enabled=data.enabled,
+        confirm=data.confirm,
         created_by=actor.id,
         created_at=now,
         updated_at=now,
@@ -293,6 +294,8 @@ async def update(
         row.offered_channel_ids = await _offered(db, actor, channel, wanted)
     if data.enabled is not None:
         row.enabled = data.enabled
+    if data.confirm is not None:
+        row.confirm = data.confirm
     row.updated_at = utcnow()
     await _flush(db)
     await audit.record_in_tx(

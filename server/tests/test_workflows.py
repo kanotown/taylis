@@ -621,3 +621,56 @@ async def test_templates_and_slash_lookup_lists(
     names = [w["name"] for w in (await client.get(f"/api/v1/channels/{cid}/workflows")).json()]
     assert sorted(names) == sorted(s["name"] for s in seeds)
     assert (await client.get(f"/api/v1/channels/{other}/workflows")).json() == []
+
+
+async def test_confirm_defaults_on_and_can_be_switched_off(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """`confirm` (WORKFLOWS.md §11): on by default; the server stores it and posts the same way
+    either way (asking first is the clients' part)."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = await _channel(client, "attendance", [])
+    asking = (await _create(client, cid)).json()
+    assert asking["confirm"] is True
+
+    quick = await _create(
+        client,
+        cid,
+        name="出勤",
+        emoji=":custom_party:",
+        fields=[],
+        template="出勤しました",
+        confirm=False,
+    )
+    assert quick.status_code == 201, quick.text
+    wf = quick.json()
+    assert wf["confirm"] is False and wf["emoji"] == ":custom_party:"
+    listed = (await client.get(f"/api/v1/channels/{cid}/workflows")).json()
+    assert {w["name"]: w["confirm"] for w in listed} == {"ゼミ欠席報告": True, "出勤": False}
+
+    # Left out of a PATCH it stays; sent it changes and is audited; null is refused.
+    kept = await client.patch(f"/api/v1/workflows/{wf['id']}", json={"description": "x"})
+    assert kept.json()["confirm"] is False
+    on = await client.patch(f"/api/v1/workflows/{wf['id']}", json={"confirm": True})
+    assert on.status_code == 200 and on.json()["confirm"] is True
+    bad = await client.patch(f"/api/v1/workflows/{wf['id']}", json={"confirm": None})
+    assert bad.status_code == 422
+    details = (
+        (
+            await db.execute(
+                select(AuditLog.details)
+                .where(AuditLog.target_id == wf["id"], AuditLog.action == "workflow.updated")
+                .order_by(AuditLog.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert details[-1] == {"fields": ["confirm"]}
+
+    # Posting is unchanged.
+    await client.patch(f"/api/v1/workflows/{wf['id']}", json={"confirm": False})
+    posted = await _submit(client, wf["id"], {})
+    assert posted.status_code == 201, posted.text
+    assert posted.json()["body"] == "出勤しました"

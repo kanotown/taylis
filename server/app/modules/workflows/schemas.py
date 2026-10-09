@@ -191,6 +191,8 @@ class WorkflowCreate(BaseModel):
     fields: list[WorkflowField] = Field(default_factory=list, max_length=MAX_FIELDS)
     template: str = Field(min_length=1, max_length=MAX_TEMPLATE_LENGTH)
     enabled: bool = True
+    # Ask first (the form with its preview); false = a workflow without fields posts at once.
+    confirm: bool = True
 
     @field_validator("name")
     @classmethod
@@ -226,6 +228,7 @@ class WorkflowUpdate(BaseModel):
     fields: list[WorkflowField] | None = Field(default=None, max_length=MAX_FIELDS)
     template: str | None = Field(default=None, min_length=1, max_length=MAX_TEMPLATE_LENGTH)
     enabled: bool | None = None
+    confirm: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -257,6 +260,7 @@ class WorkflowUpdate(BaseModel):
             "fields",
             "template",
             "enabled",
+            "confirm",
         ):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null")
@@ -284,6 +288,8 @@ class WorkflowOut(BaseModel):
     fields: list[WorkflowField]
     template: str
     enabled: bool
+    # Whether running it asks first (WORKFLOWS.md §11). Clients that do not know it always ask.
+    confirm: bool
     created_by: UUID
     created_at: datetime
     updated_at: datetime
@@ -317,6 +323,7 @@ def to_workflow_out(
         fields=[WorkflowField.model_validate(field) for field in row.fields],
         template=row.template,
         enabled=row.enabled,
+        confirm=row.confirm,
         created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,
