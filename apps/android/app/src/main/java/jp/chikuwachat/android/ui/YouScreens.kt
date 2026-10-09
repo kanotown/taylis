@@ -634,6 +634,13 @@ private fun AppearanceScreen(controller: AppController, version: Int) {
             stringResource(R.string.you_screens_swipe_back_forward_detail),
             checked = controller.swipeNavigation,
         ) { controller.changeSwipeNavigation(it) }
+        // M153a (WIKI.md §30.5): the bundled 見たまま editor for pages — a prototype, per device, off by default.
+        SectionTitle(stringResource(R.string.docs_title))
+        SwitchRow(
+            stringResource(R.string.docs_wysiwyg_setting),
+            stringResource(R.string.docs_wysiwyg_setting_detail),
+            checked = controller.wysiwygEditing,
+        ) { controller.changeWysiwygEditing(it) }
         Hint(stringResource(R.string.you_screens_this_setting_is_only_for_this), Modifier.padding(top = 4.dp))
         // Only against a server that sends the field (null or a list): an older one would drop what is saved here.
         if (me != null && me.knowsQuickReactions) QuickReactionsSection(controller, me)

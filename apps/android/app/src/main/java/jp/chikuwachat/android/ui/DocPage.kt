@@ -37,6 +37,9 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -171,11 +174,43 @@ private fun DocPageView(
     var applyingTemplate by remember(pageId) { mutableStateOf(false) }
     var askTopLevel by remember(pageId) { mutableStateOf(false) }
     var usingTemplate by remember(pageId) { mutableStateOf(false) }
+    // M153a (WIKI.md §30.5): the bundled 見たまま editor, a prototype per device (MobileEditor.kt WysiwygEditing); its
+    // WebView is warmed when the screen opens, so 「編集」 only loads the body. The page's 「見たまま / Markdown」 switch
+    // keeps the caret's line (like Desktop's); a WebView that failed leaves the Markdown editor.
+    val wysiwygEnabled = controller.wysiwygEditing && rights.edit
+    val host = if (wysiwygEnabled) rememberMobileEditorHost(controller, pageId) else null
+    var wysiwyg by rememberSaveable(pageId) { mutableStateOf(!WysiwygEditing.prefersMarkdown(controller.prefs)) }
+    var caretLine by remember(pageId) { mutableStateOf<Int?>(null) }
+    val markdownCaret = remember(pageId) { EditorCaretLink() }
+    val hostFailed = host?.failed
+    LaunchedEffect(hostFailed) { if (hostFailed != null) controller.notice = L10n.str(R.string.docs_wysiwyg_failed) }
+    fun switchEditor(toWysiwyg: Boolean) {
+        if (toWysiwyg == wysiwyg) return
+        WysiwygEditing.writeChoice(controller.prefs, markdown = !toWysiwyg)
+        if (toWysiwyg) {
+            caretLine = markdownCaret.current()
+            wysiwyg = true
+            return
+        }
+        val session = host?.current
+        if (session == null) {
+            wysiwyg = false
+            return
+        }
+        // The body as the editor holds it, and the caret's line, before the Markdown editor opens there.
+        session.requestBody(flush = false) { line ->
+            caretLine = line
+            markdownCaret.initialLine = line
+            wysiwyg = false
+        }
+    }
     LaunchedEffect(status) { if (status == CanvasSaveStatus.CONFLICT || status == CanvasSaveStatus.EXPIRED) conflictOpen = true }
     val loadError = saver.loadError?.takeIf { status != CanvasSaveStatus.GONE }
     val gone = status == CanvasSaveStatus.GONE
     val usable = status != CanvasSaveStatus.LOADING && !gone && loadError == null
     val editing = rights.edit && mode == CanvasMode.EDIT && usable
+    // M153a: the bundled editor takes the page while editing in 見たまま (any width: it needs no preview beside it).
+    val editorHost = if (editing && wysiwygEnabled && wysiwyg) host?.takeIf { it.failed == null } else null
     // WIKI.md §4.1: view may not even tick (no canvas-style 「チェックだけは誰でも」).
     val onToggle: ((Int, Boolean) -> Unit)? = if (rights.edit && usable) { line, done ->
         CanvasText.toggleTaskLine(saver.text, line, done)?.let { next ->
@@ -227,6 +262,7 @@ private fun DocPageView(
                     if (rights.edit || status != CanvasSaveStatus.SAVED) SaveState(saver, onOpenConflict = { conflictOpen = true })
                     if (!wide && !editing && headings.size >= 3) OutlineMenu(headings) { entry -> scope.launch { scrollToHeading(listState, text, entry.line) } }
                     if (rights.edit && !gone && loadError == null) ModeSwitch(mode) { mode = it }
+                    if (editing && wysiwygEnabled && host != null && host.failed == null) EditorChoiceSwitch(wysiwyg, ::switchEditor)
                 }
                 PageMenu(
                     controller, pageId, title, rights, gone, saver,
@@ -248,6 +284,7 @@ private fun DocPageView(
                     Spacer(Modifier.weight(1f))
                     if (!editing && headings.size >= 3) OutlineMenu(headings) { entry -> scope.launch { scrollToHeading(listState, text, entry.line) } }
                     if (rights.edit && !gone && loadError == null) ModeSwitch(mode) { mode = it }
+                    if (editing && wysiwygEnabled && host != null && host.failed == null) EditorChoiceSwitch(wysiwyg, ::switchEditor)
                 }
             }
             HorizontalDivider()
@@ -274,13 +311,17 @@ private fun DocPageView(
                 }
                 status == CanvasSaveStatus.LOADING -> CanvasEmpty(stringResource(R.string.common_loading), null, loading = true)
                 gone && text.isEmpty() -> CanvasEmpty(stringResource(R.string.docs_page_gone), null)
+                editorHost != null -> MobileEditor(
+                    controller, editorHost, saver, title, readOnly = false, caretLine = caretLine, onOpenPage = onOpenPage,
+                    onCaret = { caretLine = it }, modifier = Modifier.fillMaxSize(),
+                )
                 editing && wide -> Row(Modifier.fillMaxSize()) {
                     // The editor and the preview scroll together (the side last touched drives), as for a canvas.
                     val sync = remember(pageId) { CanvasScrollLink() }
                     val previewState = rememberLazyListState()
                     val spans = remember(text) { parseBlockSpans(text, canvas = true) }
                     CanvasScrollSyncEffect(sync, previewState, spans)
-                    CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight(), scroll = sync, presence = false)
+                    CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight(), scroll = sync, presence = false, caret = markdownCaret)
                     VerticalDivider()
                     PageReader(
                         controller, saver, version, icon, title, page, rights, onToggle, null, previewState,
@@ -288,7 +329,7 @@ private fun DocPageView(
                         children = emptyList(), backlinks = null, onOpenPage = onOpenPage, onStartWriting = {}, spans = spans,
                     )
                 }
-                editing -> CanvasEditorField(controller, saver, null, Modifier.fillMaxSize(), presence = false)
+                editing -> CanvasEditorField(controller, saver, null, Modifier.fillMaxSize(), presence = false, caret = markdownCaret)
                 else -> Row(Modifier.fillMaxSize()) {
                     // M124: on a tablet a database's rows and the open row sit side by side.
                     val sideBySide = wide && dbSession != null
@@ -392,6 +433,23 @@ private fun Breadcrumbs(crumbs: List<Pair<String?, String>>, modifier: Modifier,
                     modifier = Modifier.semantics { contentDescription = L10n.str(R.string.docs_hidden_ancestor) }.padding(horizontal = 2.dp),
                 )
             }
+        }
+    }
+}
+
+/** M153a: 「見たまま | Markdown」 while editing with the bundled editor on for this device (Desktop's switch). */
+@Composable
+private fun EditorChoiceSwitch(wysiwyg: Boolean, onChange: (Boolean) -> Unit) {
+    SingleChoiceSegmentedButtonRow(
+        Modifier.height(36.dp).padding(start = 6.dp).semantics { contentDescription = L10n.str(R.string.docs_editor_mode) },
+    ) {
+        listOf(true to stringResource(R.string.docs_editor_wysiwyg), false to stringResource(R.string.docs_editor_markdown)).forEachIndexed { index, (value, label) ->
+            SegmentedButton(
+                selected = wysiwyg == value,
+                onClick = { onChange(value) },
+                shape = SegmentedButtonDefaults.itemShape(index, 2),
+                icon = {},
+            ) { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false) }
         }
     }
 }
