@@ -162,14 +162,23 @@ object Timeline {
     }
 
     /**
-     * Where 「新着 N 件」 goes (testers, 2026-10-09; Slack): the first of the N rows at the top of the screen, its divider
-     * above it when it has one, so nothing is passed unseen; once that row is on screen (the second press), or with
-     * nothing new, the newest row (0). `items` are reversed, as on screen.
+     * Where 「新着 N 件」 goes (testers, 2026-10-09; Slack; SYNC_PROTOCOL.md §10.1 rule 7, MOBILE_UI.md §6.6): the first of
+     * the N rows at the top of the screen, its divider above it when it has one, so nothing is passed unseen; once that
+     * row is on screen (the second press), or with nothing new, the newest row (0). seenSeq advances only at the bottom,
+     * so a reader who scrolled up past the first new row still counts it: when it lies above the viewport (older than
+     * every row on screen) the target is the first new row below the newest row on screen, or the newest row when there
+     * is none — never back up to rows already passed. `items` are reversed, as on screen; `onScreenIds` are the ids of
+     * the rows at least partly on screen.
      */
     fun newRowsTarget(items: List<TimelineItem>, rows: List<MessageState>, seenSeq: Int, meId: String?, onScreenIds: Set<String>): Int {
         val first = ReadGate.firstUnreadRow(rows, seenSeq, meId) ?: return 0
         if (first.id in onScreenIds) return 0
-        return topOf(items, first.id).coerceAtLeast(0)
+        val onScreen = rows.filter { it.id in onScreenIds }.mapNotNull { it.seq }
+        val oldestOnScreen = onScreen.minOrNull()
+        val target = if (oldestOnScreen != null && (first.seq ?: 0) < oldestOnScreen) {
+            ReadGate.firstUnreadRow(rows, onScreen.max(), meId) ?: return 0 // passed already: the next one below, or the newest
+        } else first
+        return topOf(items, target.id).coerceAtLeast(0)
     }
 
     /**
