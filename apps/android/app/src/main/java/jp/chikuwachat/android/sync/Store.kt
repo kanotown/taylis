@@ -1166,7 +1166,10 @@ class Store(private val persistence: Persistence? = null) {
      * elsewhere) are dropped, except those in `keep` (threads on screen).
      */
     fun setThreadPage(filter: String, items: List<ThreadItem>, cursor: String?, append: Boolean, pageSize: Int, keep: Set<String> = emptySet()) {
-        if (!append) {
+        // A page for the filter the list has left (switched again while it was on its way): its rows are news, its
+        // cursor and gaps are not.
+        val stale = filter != threadsFilter
+        if (!append && !stale) {
             val listed = items.map { it.parent.id }.toSet()
             val oldest = if (items.size >= pageSize) items.last().state.lastReplyAt ?: "" else ""
             threads.entries.removeAll { (id, entry) ->
@@ -1176,10 +1179,25 @@ class Store(private val persistence: Persistence? = null) {
             }
         }
         items.filter { it.parent.id !in deletedRoots }.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state, it.latestReplies?.map { reply -> MessageState.from(reply) }) }
+        if (!stale) {
+            threadsFilter = filter
+            threadsLoaded = true
+            threadsCursor = cursor
+            threadsHasMore = items.size >= pageSize
+        }
+        emit()
+    }
+
+    /**
+     * 「すべて」/「未読」 tapped: the list filters the rows held here at once ([threadList]), and the first page of the new
+     * filter, fetched next, completes it. Before, the chip and the rows waited for that fetch (a network round trip,
+     * testers: slow). 「さらに表示」 waits for the new page's cursor.
+     */
+    fun selectThreadsFilter(filter: String) {
+        if (filter == threadsFilter) return
         threadsFilter = filter
-        threadsLoaded = true
-        threadsCursor = cursor
-        threadsHasMore = items.size >= pageSize
+        threadsCursor = null
+        threadsHasMore = false
         emit()
     }
 

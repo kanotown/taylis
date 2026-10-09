@@ -103,4 +103,32 @@ class ThreadPreviewsTest {
         store.setBlocked("u2", true)
         assertEquals(emptyList<String>(), ThreadCardRules.replies(store.threads["p"]!!, "me") { store.isBlocked(it) }!!.replies.map { it.message.id })
     }
+
+    @Test fun theFilterSwitchesLocallyBeforeTheFetch() {
+        // 「すべて」/「未読」: the rows held are filtered at once; a page for the filter left meanwhile only adds rows.
+        val store = Store()
+        fun item(id: String, unread: Int, minute: Int): ThreadItem {
+            val at = "2026-10-07T01:%02d:00Z".format(minute)
+            val parent = MessageOut(id = id, channelId = "c1", senderId = "me", seq = minute, updatedSeq = minute, body = id, createdAt = at, deleted = false, replyCount = 1)
+            return ThreadItem(parent, ThreadState(id, "c1", following = true, lastReadSeq = 0, unreadCount = unread, mentionCount = 0, replyCount = 1, lastReplyAt = at), null)
+        }
+        store.setThreadPage("all", listOf(item("a", 1, 3), item("b", 0, 2), item("c", 2, 1)), "next", append = false, pageSize = 3)
+        assertEquals(true, store.threadsHasMore)
+        store.selectThreadsFilter("unread")
+        assertEquals("unread", store.threadsFilter)
+        assertEquals(listOf("a", "c"), store.threadList().map { it.parent.id })
+        assertEquals(false, store.threadsHasMore) // 「さらに表示」 waits for the unread page's cursor
+        assertNull(store.threadsCursor)
+        store.selectThreadsFilter("all")
+        assertEquals(listOf("a", "b", "c"), store.threadList().map { it.parent.id })
+        // The unread page arrives after the switch back: its rows merge; the filter, cursor and held rows stay.
+        store.setThreadPage("unread", listOf(item("d", 1, 4)), "u", append = false, pageSize = 1)
+        assertEquals("all", store.threadsFilter)
+        assertNull(store.threadsCursor)
+        assertEquals(listOf("d", "a", "b", "c"), store.threadList().map { it.parent.id })
+        // The page of the filter shown sets it all, as before.
+        store.setThreadPage("all", listOf(item("d", 1, 4)), "n2", append = false, pageSize = 1)
+        assertEquals("n2", store.threadsCursor)
+        assertEquals(true, store.threadsHasMore)
+    }
 }
