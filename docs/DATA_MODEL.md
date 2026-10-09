@@ -84,13 +84,14 @@ CREATE TABLE users (
   status_text           text,                             -- M11d: カスタムステータス。期限切れは無いものとして返す
   status_emoji          text,
   status_expires_at     timestamptz,
-  dnd_until             timestamptz,            -- M12c 通知を一時停止 (過ぎたら無いものとして返す)
+  dnd_until             timestamptz,            -- M12c 通知を一時停止 (過ぎたら無いものとして返す)。= ステータスのメニューの「取り込み中」。9999-12-31T00:00:00Z は「解除するまで」(PRESENCE.md §11)
   quiet_hours_start     smallint,               -- M12c 分 (0-1439)、start > end なら日をまたぐ
   quiet_hours_end       smallint,
   quiet_hours_days      smallint[],             -- 0 = 月 … 6 = 日 (NULL = 毎日)
   quiet_hours_tz        text,                   -- IANA タイムゾーン。API では quiet_hours {start, end, days, tz}
   notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
-  presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える
+  presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える。ステータスのメニューの「オフライン表示」(PRESENCE.md §11)
+  presence_manual       varchar(16) CHECK (presence_manual IN ('away')),  -- 移行 0111、PRESENCE.md §11: 'away' = 自分で選んだ「離席中」(つながっている間 hub が away と配る)。NULL = 自動。UserMe だけに載る
   notification_default  text NOT NULL DEFAULT 'mentions', -- M35 通知の全体設定 'all' | 'mentions' | 'none' (UserMe と PATCH /users/me)
   activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (「すべて既読にする」。進むだけ)。メンション・スレッドの返信は read_states / thread_follows の last_read_seq で読んだものも既読 (2026-10-06)。開いた項目は activity_item_reads (2026-10-07、MOBILE_UI.md §6.4)
   notify_reactions      boolean NOT NULL DEFAULT false,   -- M39 自分の投稿へのリアクションをプッシュする (アクティビティには常に出る)
