@@ -372,6 +372,15 @@ class AppController(private val app: Application) {
         groupPosts = on
     }
 
+    /** M153a (WIKI.md §30.5): 「ドキュメントの見たまま編集（試作）」, kept on this device, off by default. */
+    var wysiwygEditing by mutableStateOf(jp.chikuwachat.android.ui.WysiwygEditing.read(prefs))
+        private set
+
+    fun changeWysiwygEditing(on: Boolean) {
+        jp.chikuwachat.android.ui.WysiwygEditing.write(prefs, on)
+        wysiwygEditing = on
+    }
+
     /** Issue #1: 「スワイプで戻る・進む」 (on by default), kept on this device. */
     var swipeNavigation by mutableStateOf(jp.chikuwachat.android.ui.SwipeNavigation.read(prefs))
         private set
@@ -2129,6 +2138,28 @@ class AppController(private val app: Application) {
         canvasAttachments[attachmentId]?.let { return it }
         val api = api ?: return null
         return attempt { api.attachment(attachmentId) }.getOrNull()?.also { canvasAttachments[attachmentId] = it }
+    }
+
+    /**
+     * M153a (WIKI.md §30.5): a picture for the bundled page editor (the WebView's `/attachment/<id>`), fetched with
+     * the session off the main thread: its type and bytes (the thumbnail where there is one, as the reading view
+     * shows), or null when it cannot be seen or is not an image. No error is shown: the editor draws a box instead.
+     */
+    suspend fun editorImage(attachmentId: String): Pair<String, ByteArray>? {
+        val api = api ?: return null
+        val meta = runCatching { api.attachment(attachmentId) }.getOrNull() ?: return null
+        if (!meta.contentType.startsWith("image/")) return null
+        val path = if (meta.hasThumbnail) "/api/v1/attachments/$attachmentId/thumbnail" else "/api/v1/attachments/$attachmentId/content?inline=1"
+        val bytes = runCatching { api.fetchBytes(path) }.getOrNull() ?: return null
+        return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: meta.contentType) to bytes
+    }
+
+    /** M153a: a custom emoji's image for the bundled page editor (`/emoji/<id>`), off the main thread. */
+    suspend fun editorEmojiImage(emojiId: String): Pair<String, ByteArray>? {
+        val api = api ?: return null
+        val emoji = store.customEmoji.values.firstOrNull { it.id == emojiId }?.takeIf { !it.isText } ?: return null
+        val bytes = runCatching { api.fetchBytes("/api/v1/emoji/$emojiId/image") }.getOrNull() ?: return null
+        return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: emoji.contentType) to bytes
     }
 
     /**

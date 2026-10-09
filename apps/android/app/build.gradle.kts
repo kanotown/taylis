@@ -1,4 +1,5 @@
 import java.util.Properties
+import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.android.application)
@@ -108,6 +109,54 @@ android {
     }
 }
 
+// M153a (docs/WIKI.md §30.3 / §30.5): the page editor bundled for the phones is built by the desktop project
+// (`cd apps/desktop && npm ci && npm run build:mobile-editor` → apps/shared/mobile-editor/dist, a generated directory
+// that is not committed) and copied by this task into a generated assets root (build/generated/mobileEditor, so
+// `assets/editor/` in the APK) that every variant's assets include. Nothing is written under src/, so nothing can be
+// committed by mistake and every task that reads the assets (merge, lint, package) depends on the copy through the
+// variant API. A checkout without the bundle fails here with the command to run.
+abstract class CopyMobileEditorTask : DefaultTask() {
+    /** apps/shared/mobile-editor/dist (a missing directory is reported below, not by Gradle's input check). */
+    @get:Internal
+    abstract val dist: Property<File>
+
+    /** The files of `dist`, for the up-to-date check. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val distFiles: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:Inject
+    abstract val fs: FileSystemOperations
+
+    @TaskAction
+    fun copy() {
+        val source = dist.get()
+        check(File(source, "index.html").isFile && File(source, "editor.js").isFile) {
+            "The bundled page editor is missing: ${source.absolutePath} has no index.html / editor.js. " +
+                "Build it first: cd apps/desktop && npm ci && npm run build:mobile-editor (docs/WIKI.md §30.3)."
+        }
+        fs.sync {
+            from(source)
+            into(outputDir.get().dir("editor"))
+        }
+    }
+}
+val mobileEditorDist = rootProject.file("../shared/mobile-editor/dist")
+val copyMobileEditor by tasks.registering(CopyMobileEditorTask::class) {
+    description = "Copies the bundled page editor (apps/shared/mobile-editor/dist) into the generated assets as editor/"
+    dist.set(mobileEditorDist)
+    distFiles.from(fileTree(mobileEditorDist))
+    outputDir.set(layout.buildDirectory.dir("generated/mobileEditor"))
+}
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyMobileEditor, CopyMobileEditorTask::outputDir)
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -115,6 +164,8 @@ dependencies {
     implementation(libs.androidx.fragment)
     // Custom Tabs for Google sign-in (M48, docs/SSO.md §6): Jetpack; falls back to the default browser by itself.
     implementation(libs.androidx.browser)
+    // M153a (docs/WIKI.md §30.3 / §30.5): WebViewAssetLoader serves the bundled page editor (assets/editor) to the WebView.
+    implementation(libs.androidx.webkit)
     // TeX math in messages (ui/MathRender.kt; MIT, THIRD_PARTY_NOTICES.md). Its POM lists test and AppCompat artifacts
     // as runtime dependencies it never uses; only the library itself (Kotlin's stdlib is the app's own).
     implementation(libs.androidmath) { isTransitive = false }

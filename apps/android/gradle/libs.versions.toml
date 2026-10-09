@@ -16,12 +16,15 @@ firebaseBom = "34.19.0"
 fragment = "1.9.1"
 browser = "1.10.0"
 androidMath = "v1.1.0"
+webkit = "1.17.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
+# M153a: WebViewAssetLoader for the page editor bundled in assets/editor (ui/MobileEditor.kt).
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }

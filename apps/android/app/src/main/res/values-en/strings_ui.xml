@@ -1795,4 +1795,16 @@
     <string name="presence_attendance">Attendance: %1$s</string>
     <string name="presence_attendance_none">Set attendance</string>
     <string name="presence_open_menu">Change my status (%1$s)</string>
+    <!-- M153a (docs/WIKI.md §30.5): the bundled WYSIWYG page editor (a prototype, per device) -->
+    <string name="docs_wysiwyg_setting">WYSIWYG page editing (preview)</string>
+    <string name="docs_wysiwyg_setting_detail">Edit pages as they look. The page\'s “Markdown” goes back to Markdown editing</string>
+    <string name="docs_editor_mode">Editing mode</string>
+    <string name="docs_editor_wysiwyg">WYSIWYG</string>
+    <string name="docs_editor_markdown">Markdown</string>
+    <string name="docs_wysiwyg_body">Page body (WYSIWYG)</string>
+    <string name="docs_wysiwyg_undo">Undo</string>
+    <string name="docs_wysiwyg_redo">Redo</string>
+    <string name="docs_wysiwyg_done">Close the keyboard</string>
+    <string name="docs_wysiwyg_failed">WYSIWYG editing could not open. Markdown editing is available</string>
+    <string name="docs_wysiwyg_unsupported">The bundled editor\'s version does not match the app. Markdown editing is available</string>
 </resources>

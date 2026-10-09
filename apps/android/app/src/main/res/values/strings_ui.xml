@@ -1786,4 +1786,16 @@
     <string name="presence_attendance">在室状況：%1$s</string>
     <string name="presence_attendance_none">在室状況を設定</string>
     <string name="presence_open_menu">自分のステータスを変える（%1$s）</string>
+    <!-- M153a (docs/WIKI.md §30.5): the bundled 見たまま page editor (a prototype, per device) -->
+    <string name="docs_wysiwyg_setting">ドキュメントの見たまま編集（試作）</string>
+    <string name="docs_wysiwyg_setting_detail">ページを見た目のまま編集する。Markdown の編集にはページの「Markdown」で戻れる</string>
+    <string name="docs_editor_mode">編集のしかた</string>
+    <string name="docs_editor_wysiwyg">見たまま</string>
+    <string name="docs_editor_markdown">Markdown</string>
+    <string name="docs_wysiwyg_body">ページの本文（見たまま）</string>
+    <string name="docs_wysiwyg_undo">元に戻す</string>
+    <string name="docs_wysiwyg_redo">やり直す</string>
+    <string name="docs_wysiwyg_done">キーボードを閉じる</string>
+    <string name="docs_wysiwyg_failed">見たまま編集を開けませんでした。Markdown で編集できます</string>
+    <string name="docs_wysiwyg_unsupported">同梱のエディタの版がアプリと合いません。Markdown で編集できます</string>
 </resources>

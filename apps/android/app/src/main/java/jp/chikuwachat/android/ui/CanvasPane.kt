@@ -656,6 +656,40 @@ internal fun OutlineColumn(headings: List<CanvasText.OutlineEntry>, modifier: Mo
 /** The stored text the editor last showed or wrote, and the section's lines in it (null: the whole body). */
 private class EditorLink(var wire: String, var range: IntRange?)
 
+/**
+ * M153a (WIKI.md §30.5): the caret's line across the page's 「見たまま / Markdown」 switch — where the Markdown editor
+ * opens ([initialLine], from the bundled editor), and where its caret is now ([current], for the bundled editor).
+ */
+internal class EditorCaretLink {
+    var initialLine: Int? = null
+    var current: () -> Int = { 0 }
+
+    companion object {
+        /** The 0-based line `offset` is on. */
+        fun lineOf(text: String, offset: Int): Int {
+            val end = offset.coerceIn(0, text.length)
+            var count = 0
+            var at = text.indexOf('\n')
+            while (at in 0 until end) {
+                count += 1
+                at = text.indexOf('\n', at + 1)
+            }
+            return count
+        }
+
+        /** Where the 0-based `line` starts (the end of the text past the last line). */
+        fun startOfLine(text: String, line: Int): Int {
+            var at = 0
+            repeat(line.coerceAtLeast(0)) {
+                val next = text.indexOf('\n', at)
+                if (next < 0) return text.length
+                at = next + 1
+            }
+            return at
+        }
+    }
+}
+
 private val HEADING_IN_SECTION = Regex("""(?m)^#{1,3}\s+\S""")
 
 /**
@@ -680,6 +714,8 @@ internal fun CanvasEditorField(
     autoFocus: Boolean = false, onSectionGone: () -> Unit = {}, scroll: CanvasScrollLink? = null,
     /** M122: 「編集中」 (canvas_presence) is a canvas's; a page's editor says nothing (WIKI.md §7.3: presence comes later). */
     presence: Boolean = true,
+    /** M153a: the caret's line across the page's 「見たまま / Markdown」 switch (null: not linked). */
+    caret: EditorCaretLink? = null,
 ) {
     val store = controller.store
     val markers = remember(saver, section) { CanvasMarkers.Table() }
@@ -695,8 +731,11 @@ internal fun CanvasEditorField(
     val link = remember(saver, section) { window(saver.text).let { EditorLink(saver.text, it?.first) } }
     var field by remember(saver, section) {
         val shown = decode(window(saver.text)?.second ?: "")
-        mutableStateOf(TextFieldValue(shown, TextRange(if (section != null) shown.length else 0)))
+        // M153a: opened from the 見たまま editor on its caret's line (the whole body only).
+        val start = caret?.initialLine?.takeIf { section == null }?.let { EditorCaretLink.startOfLine(shown, it) }
+        mutableStateOf(TextFieldValue(shown, TextRange(start ?: if (section != null) shown.length else 0)))
     }
+    caret?.current = { EditorCaretLink.lineOf(field.text, field.selection.start) }
     val revision by saver.revision.collectAsState()
     // An IME composition must not have its text replaced under it; nor a section that now holds a heading of its own
     // (it would be cut there). The loop keeps a merged body for later meanwhile.

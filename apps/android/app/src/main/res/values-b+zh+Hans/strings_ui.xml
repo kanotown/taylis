@@ -1786,4 +1786,16 @@
     <string name="presence_attendance">在室状况：%1$s</string>
     <string name="presence_attendance_none">设置在室状况</string>
     <string name="presence_open_menu">更改我的状态（%1$s）</string>
+    <!-- M153a (docs/WIKI.md §30.5): the bundled WYSIWYG page editor (a prototype, per device) -->
+    <string name="docs_wysiwyg_setting">文档的所见即所得编辑（试作）</string>
+    <string name="docs_wysiwyg_setting_detail">按页面的外观直接编辑。页面上的「Markdown」可切回 Markdown 编辑</string>
+    <string name="docs_editor_mode">编辑方式</string>
+    <string name="docs_editor_wysiwyg">所见即所得</string>
+    <string name="docs_editor_markdown">Markdown</string>
+    <string name="docs_wysiwyg_body">页面正文（所见即所得）</string>
+    <string name="docs_wysiwyg_undo">撤销</string>
+    <string name="docs_wysiwyg_redo">重做</string>
+    <string name="docs_wysiwyg_done">收起键盘</string>
+    <string name="docs_wysiwyg_failed">无法打开所见即所得编辑。可以用 Markdown 编辑</string>
+    <string name="docs_wysiwyg_unsupported">内置编辑器的版本与应用不一致。可以用 Markdown 编辑</string>
 </resources>
