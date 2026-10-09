@@ -2605,15 +2605,16 @@ class AppController(private val app: Application) {
     /**
      * Opens the form, or says why it cannot run (the desktop's runBlockedText). `here`: the conversation it is opened from.
      * One that does not ask first (`confirm` off, no fields: WORKFLOWS.md §11) posts at once instead; when that fails its
-     * form opens with the reason and the same key, so 投稿 there retries without posting twice.
+     * form opens with the reason and the same key, so 投稿 there retries without posting twice. `confirmAlways` (the
+     * 「⚡ name」 label on a message, [openWorkflowById]) opens the form whatever the workflow says ([Workflows.postsAtOnce]).
      */
-    fun openWorkflow(workflow: jp.chikuwachat.android.api.WorkflowOut, here: String?) {
+    fun openWorkflow(workflow: jp.chikuwachat.android.api.WorkflowOut, here: String?, confirmAlways: Boolean = false) {
         if (!workflow.canRun) {
             error = jp.chikuwachat.android.ui.Workflows.runBlockedText(workflow.runBlocked, workflowTarget(workflow.channelId)) ?: L10n.str(R.string.common_this_workflow_cant_be_used)
             return
         }
         val session = jp.chikuwachat.android.ui.WorkflowSession(workflow, here, java.time.LocalDate.now(), store.me?.id)
-        if (!workflow.postsWithoutAsking) {
+        if (!jp.chikuwachat.android.ui.Workflows.postsAtOnce(workflow, confirmAlways)) {
             workflowForm = session
             return
         }
@@ -2629,10 +2630,13 @@ class AppController(private val app: Application) {
         }
     }
 
-    /** The 「⚡ name」 label: the workflow as it is now (it may have changed, stopped or gone since the message). */
+    /**
+     * The 「⚡ name」 label: the workflow as it is now (it may have changed, stopped or gone since the message), always as
+     * its form — a look at it, never a post, even for one that posts without asking from the ＋ menu (WORKFLOWS.md §11).
+     */
     suspend fun openWorkflowById(workflowId: String, here: String?) {
         attempt { api!!.workflow(workflowId) }
-            .onSuccess { openWorkflow(it, here) }
+            .onSuccess { openWorkflow(it, here, confirmAlways = true) }
             .onFailure { report(it) }
     }
 

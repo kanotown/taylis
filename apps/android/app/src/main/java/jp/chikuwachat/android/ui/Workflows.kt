@@ -80,6 +80,14 @@ object Workflows {
 
     fun validKey(key: String): Boolean = key == nfc(key) && KEY.matches(key)
 
+    /**
+     * WORKFLOWS.md §11 (every client, 2026-10-09): whether choosing `workflow` posts at once instead of opening the form.
+     * The ＋ menu, `/name` and the channel details do when it asks nothing ([WorkflowOut.postsWithoutAsking]); the
+     * 「⚡ name」 label on a message never does (`confirmAlways`): tapping it is a look at the workflow that posted the
+     * message, and posting it again from there was a surprise.
+     */
+    fun postsAtOnce(workflow: WorkflowOut, confirmAlways: Boolean): Boolean = !confirmAlways && workflow.postsWithoutAsking
+
     /** The keys of `{{key}}`, in order of first appearance. */
     fun placeholders(template: String): List<String> =
         PLACEHOLDER.findAll(template).map { nfc(it.groupValues[1]) }.distinct().toList()

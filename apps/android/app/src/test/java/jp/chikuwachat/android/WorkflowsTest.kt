@@ -247,6 +247,12 @@ class WorkflowsTest {
         val field = WorkflowField(key = "a", label = "A", type = "text")
         assertFalse(quick.copy(fields = listOf(field)).postsWithoutAsking) // something to fill: the form
         assertFalse(quick.copy(canRun = false, runBlocked = "disabled").postsWithoutAsking)
+        // The ＋ menu, /name and the channel details post it at once; the 「⚡ name」 label on a message (confirmAlways)
+        // always opens the form instead — a look at the workflow, not another post (WORKFLOWS.md §11, every client).
+        assertTrue(Workflows.postsAtOnce(quick, confirmAlways = false))
+        assertFalse(Workflows.postsAtOnce(quick, confirmAlways = true))
+        assertFalse(Workflows.postsAtOnce(decode(""), confirmAlways = false))
+        assertFalse(Workflows.postsAtOnce(quick.copy(fields = listOf(field)), confirmAlways = false))
 
         // Posting it at once sends no values; a failure leaves the reason and the key for the form that then opens.
         val session = WorkflowSession(quick, "c1", LocalDate.of(2026, 10, 9), me)
