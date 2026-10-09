@@ -627,7 +627,7 @@ export function Composer({
     >
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
       {pollForm && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} initial={pollForm} onClose={() => setPollForm(null)} />}
-      {workflowRun && <WorkflowRunDialog controller={controller} workflow={workflowRun} here={channel.id} onClose={() => setWorkflowRun(null)} />}
+      {workflowRun && <WorkflowRunDialog key={workflowRun.id} controller={controller} workflow={workflowRun} here={channel.id} onClose={() => setWorkflowRun(null)} />}
       {workflowMenu && <ChannelWorkflowsDialog controller={controller} channel={channel} onClose={() => setWorkflowMenu(false)} />}
       {scheduleForm && <ScheduleDialog controller={controller} channelId={channel.id} parentId={parentId} initial={scheduleForm} onClose={() => setScheduleForm(null)} />}
       {emojiHits.length > 0 && (
