@@ -12,17 +12,22 @@ import type { PageSearchHit } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { DocsSidebarSearch } from "../src/ui/DocsSidebarSearch";
-import { findRanges, stepIndex } from "../src/ui/findInPage";
+import { findRanges, revealDelta, revealRange, stepIndex, visibleBand } from "../src/ui/findInPage";
 import { PageFindBar, type PageFindHandle, usePageFindKeys } from "../src/ui/PageFind";
 import { item } from "./wikiFixtures";
 
+beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
-const settle = (ms = 0) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+/** Lets `ms` of the clock pass (the box's debounce, the recount's wait) after what is queued already (an observer's callback) has run. */
+const settle = (ms = 0) => act(async () => {
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(ms);
+});
 
 describe("findRanges", () => {
   const dom = (html: string) => {
@@ -50,12 +55,89 @@ describe("findRanges", () => {
     root.remove();
   });
 
+  it("a hard break (<br>) is a break too: the words on either side of it do not join", () => {
+    const root = dom("<p>設計<br>会議</p><p>設計会議</p><p>a<br><br>b</p>");
+    expect(findRanges(root, "設計会議")).toHaveLength(1);
+    expect(findRanges(root, "設計").map((r) => r.toString())).toEqual(["設計", "設計"]);
+    expect(findRanges(root, "会議")).toHaveLength(2);
+    expect(findRanges(root, "ab")).toHaveLength(0);
+    expect(findRanges(root, "b")).toHaveLength(1);
+    root.remove();
+  });
+
   it("steps wrap at both ends", () => {
     expect(stepIndex(-1, 3, 1)).toBe(0);
     expect(stepIndex(-1, 3, -1)).toBe(2);
     expect(stepIndex(2, 3, 1)).toBe(0);
     expect(stepIndex(0, 3, -1)).toBe(2);
     expect(stepIndex(0, 0, 1)).toBe(-1);
+  });
+});
+
+describe("revealing the current match", () => {
+  const rect = (top: number, bottom: number, left = 0, right = 800): DOMRect => ({ top, bottom, left, right, height: bottom - top, width: right - left, x: left, y: top, toJSON: () => ({}) });
+
+  it("takes what floats over the box (the find bar) off the edge it sits at", () => {
+    const box = { top: 44, bottom: 644 };
+    expect(visibleBand(box, [{ top: 48, bottom: 84 }])).toEqual({ top: 84, bottom: 644 });
+    expect(visibleBand(box, [{ top: 600, bottom: 660 }])).toEqual({ top: 44, bottom: 600 });
+    expect(visibleBand(box, [{ top: 0, bottom: 40 }])).toEqual(box); // not over it
+  });
+
+  it("scrolls nothing while the match is in view clear of the edges, else to the middle; a tall match to the top", () => {
+    const view = { top: 84, bottom: 644 }; // its middle: 364
+    expect(revealDelta({ top: 200, bottom: 220 }, view)).toBe(0);
+    expect(revealDelta({ top: 60, bottom: 80 }, view)).toBe(70 - 364); // under the bar: up
+    expect(revealDelta({ top: 86, bottom: 100 }, view)).toBe(93 - 364); // at the edge
+    expect(revealDelta({ top: 700, bottom: 720 }, view)).toBe(710 - 364); // below: down
+    expect(revealDelta({ top: 700, bottom: 1400 }, view)).toBe(700 - 84 - 8); // taller than the view
+  });
+
+  it("scrolls the box (data-find-root) by the match's own rectangle, from under the bar, and a box inside it first", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<section><div role='search' data-find-skip>bar</div><div data-find-root><p>設計の話</p><div data-inner style='overflow-y: auto'><p>中の設計</p></div></div></section>";
+    document.body.append(root);
+    const bar = root.querySelector("[role='search']") as HTMLElement;
+    const box = root.querySelector("[data-find-root]") as HTMLElement;
+    const inner = root.querySelector("[data-inner]") as HTMLElement;
+    bar.getBoundingClientRect = () => rect(48, 84, 500, 780);
+    box.getBoundingClientRect = () => rect(44, 644);
+    inner.getBoundingClientRect = () => rect(200, 400);
+    Object.defineProperty(inner, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(inner, "clientHeight", { configurable: true, value: 200 });
+    const proto = Range.prototype as { getBoundingClientRect?: () => DOMRect };
+    const original = proto.getBoundingClientRect;
+    let match = rect(60, 80, 600, 640);
+    proto.getBoundingClientRect = () => match;
+    const rangeIn = (p: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(p.firstChild!);
+      return range;
+    };
+    try {
+      const outer = rangeIn(box.querySelector("p")!);
+      box.scrollTop = 500;
+      revealRange(outer, [bar]); // under the bar, at the box's top right: brought to the middle
+      expect(box.scrollTop).toBe(500 + (70 - 364));
+      box.scrollTop = 500;
+      match = rect(60, 80, 10, 50); // the same height at the left, where the bar is not: in view
+      revealRange(outer, [bar]);
+      expect(box.scrollTop).toBe(500);
+      match = rect(700, 720, 10, 50); // clipped below the box, though inside the window
+      revealRange(outer, [bar]);
+      expect(box.scrollTop).toBe(500 + (710 - 344));
+      // A match in a box scrolling inside the page (a database's table): that box first, then the page's.
+      box.scrollTop = 500;
+      inner.scrollTop = 0;
+      match = rect(450, 470, 10, 50);
+      revealRange(rangeIn(inner.querySelector("p")!), [bar]);
+      expect(inner.scrollTop).toBe(460 - 300);
+      expect(box.scrollTop).toBe(500); // in the page's view already
+    } finally {
+      if (original) proto.getBoundingClientRect = original;
+      else delete proto.getBoundingClientRect;
+      root.remove();
+    }
   });
 });
 

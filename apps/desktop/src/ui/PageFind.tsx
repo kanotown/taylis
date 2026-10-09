@@ -66,6 +66,8 @@ export function PageFindBar({ section, onClose, handle, className }: {
   const ranges = useRef<Range[]>([]);
   const root = useCallback(() => section.current?.querySelector("[data-find-root]") ?? null, [section]);
   const input = useRef<HTMLInputElement>(null);
+  /** The bar itself: it floats over the page's top right, so a match under it is brought out from under it. */
+  const bar = useRef<HTMLDivElement>(null);
   const currentRef = useRef(current);
   currentRef.current = current;
 
@@ -74,7 +76,7 @@ export function PageFindBar({ section, onClose, handle, className }: {
     const painted = paintMatches(ranges.current, index);
     const range = ranges.current[index];
     if (!range) return;
-    if (reveal) revealRange(range);
+    if (reveal) revealRange(range, bar.current ? [bar.current] : []);
     if (!painted && reveal) {
       // No highlight API: the current match is shown as the selection (the find box keeps the focus).
       const selection = window.getSelection();
@@ -176,7 +178,7 @@ export function PageFindBar({ section, onClose, handle, className }: {
 
   const label = !query.trim() ? "" : count === 0 ? t("docs.find.noMatch") : t("docs.find.count", { n: current + 1, total: count });
   return (
-    <div role="search" aria-label={t("docs.find.inPage")} data-find-skip="" className={cn("flex h-9 items-center gap-1 rounded-lg border border-line bg-canvas px-2 shadow-lg", className)}>
+    <div ref={bar} role="search" aria-label={t("docs.find.inPage")} data-find-skip="" className={cn("flex h-9 items-center gap-1 rounded-lg border border-line bg-canvas px-2 shadow-lg", className)}>
       <Search size={14} className="shrink-0 text-muted" />
       <input
         ref={input}
