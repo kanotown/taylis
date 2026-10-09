@@ -354,10 +354,44 @@ private struct TabBarProbe: UIViewControllerRepresentable {
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
-            // Back to the tab's first screen (not a thread or details pushed over this page, not another tab).
-            guard let navigation = navigationController, navigation.viewControllers.count <= 1 else { return }
-            tabBarController?.setTabBarHidden(false, animated: animated)
+            guard let navigation = navigationController, let tabs = tabBarController else { return }
+            let reveal = { [self] in
+                if Self.revealsTabBar(remaining: navigation.viewControllers, leaving: self) { tabs.setTabBarHidden(false, animated: animated) }
+            }
+            // With the transition, once the screen underneath has laid out: a conversation pushed under its thread (a
+            // thread draft, a reply from 保存) has no probe in it until it first shows.
+            if let coordinator = transitionCoordinator {
+                coordinator.animate(alongsideTransition: { _ in reveal() })
+            } else {
+                reveal()
+            }
         }
+
+        /// Whether the bar comes back as this page goes: it left the stack (a pop, or a stack replaced) and none of the
+        /// screens left hides the bar. A thread or details pushed over it, another tab or a sheet keep this page on the
+        /// stack. Back to a list (下書き, 保存, ファイル… pushed on the home tab) brings the bar back as Back to the tab's
+        /// first screen does; the old test (one screen left) kept it hidden there and on the home after it (testers,
+        /// build 110).
+        static func revealsTabBar(remaining: [UIViewController], leaving probe: UIViewController) -> Bool {
+            if remaining.contains(where: { probe.isDescendant(of: $0) }) { return false }
+            return !remaining.contains { hidesTabBar($0) }
+        }
+
+        /// A screen with a probe in it (MainView's conversations, threads and wiki pages).
+        static func hidesTabBar(_ controller: UIViewController) -> Bool {
+            controller is Probe || controller.children.contains { hidesTabBar($0) }
+        }
+    }
+}
+
+private extension UIViewController {
+    func isDescendant(of ancestor: UIViewController) -> Bool {
+        var current: UIViewController? = self
+        while let controller = current {
+            if controller === ancestor { return true }
+            current = controller.parent
+        }
+        return false
     }
 }
 
