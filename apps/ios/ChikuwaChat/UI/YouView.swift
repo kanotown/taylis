@@ -20,8 +20,8 @@ struct YouView: View {
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
     @State private var confirmLogout = false
     @State private var reportingProblem = false
+    /// PRESENCE.md §11.7: the quick status menu from my picture at the top.
     @State private var myStatusShown = false
-    @State private var afterMyStatus: MyStatusDestination?
 
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var mePublic: UserPublic? { me.map { controller.store.users[$0.id] ?? $0.asPublic } }
@@ -89,17 +89,13 @@ struct YouView: View {
             }
             .navigationDestination(for: YouRoute.self) { route in destination(route) }
             .sheet(isPresented: $reportingProblem) { ReportProblemSheet(controller: controller) }
-            .sheet(isPresented: $myStatusShown, onDismiss: {
-                guard let destination = afterMyStatus else { return }
-                afterMyStatus = nil
+            .myStatusSheet(isPresented: $myStatusShown, controller: controller, showsSettings: false, showsAttendanceBoard: onOpenAttendance != nil) { destination in
                 switch destination {
                 case .setStatus: path = [.status]
                 case .editProfile: path = [.profile]
                 case .settings: path = []
                 case .attendanceBoard: onOpenAttendance?()
                 }
-            }) {
-                MyStatusSheet(controller: controller, showsSettings: false, showsAttendanceBoard: onOpenAttendance != nil) { afterMyStatus = $0 }
             }
             .alert("ログアウトしますか？", isPresented: $confirmLogout) {
                 Button("キャンセル", role: .cancel) {}

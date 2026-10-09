@@ -1552,6 +1552,18 @@ final class AppController {
         }
     }
 
+    /// The quick status menu's 「解除」 and the settings' 「通知を再開」 (PRESENCE.md §11.1): the pause alone ends,
+    /// `PATCH /users/me {dnd_until: null}`. 離席中 and 「在席を隠す」 chosen in the settings stay (`status: "auto"` would
+    /// clear them too).
+    func endMyPause() async -> Bool { await updateProfile(dndUntil: .some(nil)) }
+
+    /// The reason the last refusal left for the toast, taken off it: a sheet shows it in its own line instead (the
+    /// toast is drawn behind the sheet). nil when the last call left none.
+    func takeError() -> String? {
+        defer { error = nil }
+        return error
+    }
+
     /// PRESENCE.md §11: the quick status menu (PUT /users/me/presence). 取り込み中 sends its length and this device's
     /// zone; the answer replaces me (my other devices hear user.updated and read /users/me again). An older server
     /// answers 404: the reason is shown and nothing changes (the settings' 「通知を一時停止」 still works).

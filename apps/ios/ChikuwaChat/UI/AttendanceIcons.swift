@@ -192,6 +192,8 @@ struct AttendanceQuickSheet: View {
     @State private var detent: PresentationDetent = .medium
     /// M143: the 操作ボタン rows (when the workspace shows them here); the sheet closes once a press answered.
     @State private var actionPresser = ActionPresser()
+    /// The last refusal's reason, shown in the sheet (the toast would be behind it); the next tap clears it.
+    @State private var problem: String?
 
     private var meId: String? { controller.store.me?.id ?? controller.me?.id }
 
@@ -235,6 +237,7 @@ struct AttendanceQuickSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) { SheetProblemLine(problem: problem) }
             .actionConfirmation(actionPresser, controller: controller)
             .onAppear {
                 note = mine?.note ?? ""
@@ -277,23 +280,24 @@ struct AttendanceQuickSheet: View {
     }
 
     private func choose(_ state: AttendanceStateOut) {
-        guard !busy else { return }
-        busy = true
-        Task {
-            let ok = await controller.switchMyAttendance(to: state)
-            busy = false
-            if ok { dismiss() }
-        }
+        run { await controller.switchMyAttendance(to: state) }
     }
 
     private func saveNote(_ mine: AttendanceEntryOut) {
         guard !busy else { return }
         noteFocused = false
+        run { await controller.setMyAttendance(stateId: mine.stateId, note: AttendanceRules.cleanNote(note)) }
+    }
+
+    /// One change at a time: the sheet closes once the server took it, else it stays with the reason (SheetProblemLine).
+    private func run(_ change: @escaping () async -> Bool) {
+        guard !busy else { return }
         busy = true
+        problem = nil
         Task {
-            let ok = await controller.setMyAttendance(stateId: mine.stateId, note: AttendanceRules.cleanNote(note))
+            let ok = await change()
             busy = false
-            if ok { dismiss() }
+            if ok { dismiss() } else { problem = controller.takeError() }
         }
     }
 }
