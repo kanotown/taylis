@@ -17,6 +17,16 @@ jobs:
         working-directory: apps/ios
     steps:
       - uses: actions/checkout@v7
+      # M153a (docs/WIKI.md §30.3): the page editor bundled into the app is generated from the desktop sources
+      # (apps/shared/mobile-editor/dist, a folder reference; the Xcode build stops without it).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Bundled page editor
+        working-directory: apps/desktop
+        run: npm ci && npm run build:mobile-editor
       - run: brew install xcodegen
       - run: xcodegen generate
       - name: Tests (iOS Simulator)

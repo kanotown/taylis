@@ -545,8 +545,20 @@ struct WikiPageDocument: View {
     @State private var duplicating = false
     @State private var duplicateKey: String?
     @State private var offerTopLevel = false
+    /// M153a (docs/WIKI.md §30.4): the bundled 見たまま editor behind the per-device switch (自分 → 表示, off by default),
+    /// warmed up while the page is read (the WebView made and its page loaded; 編集 only sends the body); the form last
+    /// chosen (見たまま / Markdown) is kept on the device; the caret's line crosses the switch both ways.
+    @AppStorage(MobileEditorSettings.enabledKey) private var wysiwygEnabled = false
+    @AppStorage(MobileEditorSettings.modeKey) private var editorModeRaw = MobileEditorMode.wysiwyg.rawValue
+    @State private var editorSession: MobileEditorSession?
+    @State private var switchLine: Int?
+    @State private var markdownCaret: Int?
+    @State private var leaving = false
 
     private var item: WikiPageItem? { hub.item(pageId) }
+    private var editorMode: MobileEditorMode { MobileEditorMode(rawValue: editorModeRaw) ?? .wysiwyg }
+    private var wysiwygOffered: Bool { wysiwygEnabled && MobileEditorBundle.isAvailable }
+    private var wysiwygActive: Bool { wysiwygOffered && editorMode == .wysiwyg && editorSession != nil }
     private var page: WikiPageOut? { hub.pages[pageId] ?? hub.keptPage(pageId)?.page }
     private var rights: WikiRights { WikiRights.of(hub.level(of: pageId)) }
 
@@ -580,7 +592,7 @@ struct WikiPageDocument: View {
             } else if saver.loadFailed {
                 CanvasLoadFailed(detail: saver.error.map { controller.describe($0) }) { await saver.reload() }
             } else if editing {
-                CanvasEditor(controller: controller, saver: saver, isPage: true)
+                editorArea
             } else {
                 reader(rights: rights, status: status)
             }
@@ -593,9 +605,10 @@ struct WikiPageDocument: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if rights.edit && status != .gone && status != .loading {
-                    Button { mode = mode == .edit ? .view : .edit } label: {
+                    Button { toggleEditing() } label: {
                         Text(mode == .edit ? "完了" : "編集")
                     }
+                    .disabled(leaving)
                     .accessibilityIdentifier("wiki-edit-toggle")
                 }
                 if status != .gone { menu(rights: rights) }
@@ -606,6 +619,9 @@ struct WikiPageDocument: View {
             choiceOpen = true
             KeyboardBehavior.dismiss()
         }
+        .onAppear { warmUpEditor() }
+        .onChange(of: wysiwygEnabled) { _, _ in warmUpEditor() }
+        .onDisappear { editorSession = nil }
         .sheet(item: $section) { target in
             CanvasSectionSheet(controller: controller, saver: saver, line: target.line, isPage: true)
         }
@@ -638,6 +654,94 @@ struct WikiPageDocument: View {
             Text("親のページを編集できないため、隣には置けません。写しをドキュメントの最上位に作ります。")
         }
         .task(id: pageId) { await loadBacklinks() }
+    }
+
+    // MARK: editing (M153a: 見たまま / Markdown)
+
+    /// The editor in the form chosen: the bundled 見たまま editor (MobileEditorView) or the Markdown editor, with the
+    /// switch above them while the prototype is on.
+    @ViewBuilder
+    private var editorArea: some View {
+        if wysiwygOffered {
+            Picker("編集の形", selection: Binding(get: { editorMode }, set: { switchEditor(to: $0) })) {
+                ForEach(MobileEditorMode.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .disabled(leaving)
+            .accessibilityIdentifier("wiki-editor-mode")
+            Divider()
+        }
+        if wysiwygActive, let session = editorSession {
+            MobileEditorView(controller: controller, saver: saver, session: session, caretLine: switchLine, onOpenPage: onOpenPage)
+        } else {
+            CanvasEditor(controller: controller, saver: saver, isPage: true, initialLine: wysiwygOffered ? switchLine : nil,
+                         onCaretLine: wysiwygOffered ? { markdownCaret = $0 } : nil)
+        }
+    }
+
+    /// The WebView made and its page read while the page is still being read (§30.3 温め), when the prototype is on.
+    private func warmUpEditor() {
+        guard wysiwygOffered else {
+            editorSession = nil
+            return
+        }
+        guard editorSession == nil else { return }
+        let web = MobileEditorController()
+        web.schemeHandler.assets = controller
+        web.onError = { message in print("mobile editor: \(message)") }
+        let session = MobileEditorSession(transport: web, host: controller)
+        session.onLog = { line in print("mobile editor: \(line)") }
+        web.start()
+        editorSession = session
+    }
+
+    /// 編集 / 完了. Leaving the 見たまま editor first takes the body as it holds it (`requestBody`), so the reading view
+    /// shows the last words typed.
+    private func toggleEditing() {
+        guard mode == .edit else {
+            switchLine = nil
+            markdownCaret = nil
+            mode = .edit
+            return
+        }
+        guard wysiwygActive, let session = editorSession else {
+            mode = .view
+            return
+        }
+        leaving = true
+        Task {
+            await session.commit()
+            leaving = false
+            mode = .view
+        }
+    }
+
+    /// 見たまま ⇄ Markdown: the body goes through the saver (the same text both read), the caret's line goes along.
+    private func switchEditor(to next: MobileEditorMode) {
+        guard next != editorMode, !leaving else { return }
+        if next == .markdown, wysiwygActive, let session = editorSession {
+            leaving = true
+            Task {
+                switchLine = await session.commit()
+                leaving = false
+                editorModeRaw = next.rawValue
+            }
+            return
+        }
+        switchLine = markdownCaret
+        editorModeRaw = next.rawValue
+    }
+
+    /// 「セクションを編集」 from the reading view: the Markdown section sheet, or (見たまま) the whole page at that heading.
+    private func editSection(_ line: Int) {
+        if wysiwygActive {
+            switchLine = line
+            mode = .edit
+        } else {
+            section = WikiSectionTarget(line: line)
+        }
     }
 
     /// M146: the template's line, with 「このテンプレートでページを作成」 for a page template.
@@ -763,7 +867,7 @@ struct WikiPageDocument: View {
                         }
                     } else {
                         CanvasBodyView(body: saver.text, controller: controller, onToggleTask: rights.tick && status != .gone ? toggle : nil,
-                                       onEditSection: rights.edit && status != .gone ? { section = WikiSectionTarget(line: $0) } : nil,
+                                       onEditSection: rights.edit && status != .gone ? editSection : nil,
                                        onOpenPage: onOpenPage)
                             .padding(.top, 10)
                     }

@@ -16,6 +16,10 @@ struct CanvasEditor: View {
     /// M122 (docs/WIKI.md §7.1): a wiki page's body — the same editor and save loop, without the canvas's 「編集中」 frames
     /// (canvas_presence, M126 for pages) and 「タスクにする」 (a task's source is a canvas).
     var isPage = false
+    /// M153a (WIKI.md §30.4): the body line to put the caret on when the editor opens (coming from the 見たまま editor).
+    var initialLine: Int? = nil
+    /// M153a: the body line the caret is on, whenever it moves (handed to the 見たまま editor on the switch).
+    var onCaretLine: ((Int) -> Void)? = nil
     @State private var model = CanvasEditorModel()
     /// M58: 「画像」 (§4.10): the photo library or the camera; pictures are uploaded and put in at the caret.
     @State private var showPhotoPicker = false
@@ -30,7 +34,7 @@ struct CanvasEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                CanvasTextView(model: model, autoFocus: autoFocus)
+                CanvasTextView(model: model, autoFocus: autoFocus, initialLine: initialLine)
                 if model.shown.isEmpty {
                     Text(sectionLine == nil ? "# 見出し\n本文を書きます。\n- [ ] チェックリスト\n@名前 でメンション" : "## 見出し\n本文を書きます。")
                         .foregroundStyle(.tertiary)
@@ -76,6 +80,7 @@ struct CanvasEditor: View {
         }
         .onAppear {
             model.attach(saver: saver, store: controller.store, sectionLine: sectionLine)
+            model.onCaretLine = onCaretLine
             if isPage { return }
             // M73 (§18.2): 「編集中」 for the others while the text view has the focus.
             let canvasId = saver.id
@@ -223,6 +228,8 @@ final class CanvasEditorModel {
     @ObservationIgnored var onPresence: ((Bool, String?) -> Void)?
     /// M73 (§18.3): 「タスクにする」 on an open checklist item: the stored body and the item's line in it.
     @ObservationIgnored var onMakeTask: ((String, Int) -> Void)?
+    /// M153a: the body line the caret is on, as it moves (the whole-body editor; a section's lines start at its heading).
+    @ObservationIgnored var onCaretLine: ((Int) -> Void)?
     /// The text view has the focus (and the app is in front).
     @ObservationIgnored private(set) var focused = false
     @ObservationIgnored private var inFront = true
@@ -428,6 +435,10 @@ final class CanvasEditorModel {
         if textView?.isFirstResponder == true { caretPlaced = true }
         updateCandidates()
         if focused { announce(true, soon: true) }
+        if let onCaretLine, let tv = textView {
+            let offset = section.map { CanvasText.lineIndex(wire, at: $0.location) } ?? 0
+            onCaretLine(offset + CanvasText.lineIndex(tv.text, at: tv.selectedRange.location))
+        }
     }
 
     // MARK: 「編集中」 (M73, CANVAS.md §18.2)
@@ -514,6 +525,8 @@ final class CanvasEditorModel {
 struct CanvasTextView: UIViewRepresentable {
     let model: CanvasEditorModel
     var autoFocus = false
+    /// M153a: the caret on this line of the shown text (and the keyboard up) when the view is made.
+    var initialLine: Int? = nil
     static let inset = UIEdgeInsets(top: 12, left: 12, bottom: 24, right: 12)
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
@@ -537,7 +550,16 @@ struct CanvasTextView: UIViewRepresentable {
         view.accessibilityIdentifier = "canvas-editor"
         view.text = model.shown
         model.textView = view
-        if autoFocus { DispatchQueue.main.async { view.becomeFirstResponder() } }
+        if let initialLine {
+            let offset = CanvasTable.offset(ofLine: initialLine, in: model.shown)
+            view.selectedRange = NSRange(location: offset, length: 0)
+            DispatchQueue.main.async {
+                view.becomeFirstResponder()
+                view.scrollRangeToVisible(NSRange(location: offset, length: 0))
+            }
+        } else if autoFocus {
+            DispatchQueue.main.async { view.becomeFirstResponder() }
+        }
         return view
     }
 

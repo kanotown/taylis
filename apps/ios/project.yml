@@ -30,6 +30,25 @@ targets:
     sources:
       - path: ChikuwaChat
         excludes: ["Info.plist", "ChikuwaChat.entitlements"]
+      # M153a (docs/WIKI.md §30.3 / §30.4): the bundled page editor (one HTML + JS + CSS + KaTeX fonts), a folder
+      # reference copied into the app as `dist/` (Xcode keeps the on-disk name) and served to a WKWebView at
+      # taylis-editor://app/ (MobileEditorWebView).
+      # Generated, not committed: `cd apps/desktop && npm ci && npm run build:mobile-editor`. The pre-build script
+      # below stops the build with that instruction when it is missing.
+      - path: ../shared/mobile-editor/dist
+        name: editor
+        type: folder
+        buildPhase: resources
+        optional: true
+    preBuildScripts:
+      - name: "Check the bundled page editor (apps/shared/mobile-editor/dist)"
+        basedOnDependencyAnalysis: false
+        script: |
+          DIST="$SRCROOT/../shared/mobile-editor/dist"
+          if [ ! -f "$DIST/index.html" ] || [ ! -f "$DIST/editor.js" ] || [ ! -f "$DIST/editor.css" ]; then
+            echo "error: apps/shared/mobile-editor/dist is missing: the bundled page editor (docs/WIKI.md §30.3) is generated, not committed. Build it first: cd apps/desktop && npm ci && npm run build:mobile-editor"
+            exit 1
+          fi
     entitlements:
       path: ChikuwaChat/ChikuwaChat.entitlements
       properties:
