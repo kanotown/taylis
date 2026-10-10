@@ -1044,6 +1044,8 @@ data class SearchRequest(
     val isThread: Boolean = false,
     /** L8: only times channels (the 「Times」 chip; a typed `is:times` stays in `q`). */
     val isTimes: Boolean = false,
+    /** Leave archived channels out (joined or not); the search covers them by default. */
+    val excludeArchived: Boolean = false,
     /** "relevance" or "newest"; a search without words is newest first whatever this says. */
     val sort: String = "relevance",
 )

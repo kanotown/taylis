@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Category
@@ -1102,7 +1103,7 @@ private fun EmptyResults(filtered: Boolean, onClear: () -> Unit) {
 @Composable
 private fun ResultRow(
     controller: AppController, version: Int, message: MessageOut, keywords: List<String>,
-    /** L8: the hit's channel from the answer when I am not a member (the store may not know it). */
+    /** The hit's channel from the answer when I am not a member (the store may not know it: an archived one). */
     outside: jp.chikuwachat.android.api.ChannelOut? = null,
     onOpen: () -> Unit,
 ) {
@@ -1127,6 +1128,13 @@ private fun ResultRow(
                     Spacer(Modifier.width(6.dp))
                     Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                         Text(stringResource(R.string.search_pane_thread_reply), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+                    }
+                }
+                // 「未参加」 / 「アーカイブ済み」: the search covers public channels I have not joined and archived ones.
+                channel?.let { Search.channelTag(it.channel.archived, it.isMember) }?.let { tag ->
+                    Spacer(Modifier.width(6.dp))
+                    Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(tag, style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
                     }
                 }
             }
@@ -1247,6 +1255,15 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
                     onClick = { onChange(params.copy(isTimes = !params.isTimes)) },
                     label = { Text("Times") },
                     leadingIcon = { Icon(if (params.isTimes) Icons.Default.Check else Icons.Default.DynamicFeed, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+                )
+            }
+            // Archived channels (Slack imports among them) are searched unless this leaves them out.
+            item(key = "exclude_archived") {
+                FilterChip(
+                    selected = params.excludeArchived,
+                    onClick = { onChange(params.copy(excludeArchived = !params.excludeArchived)) },
+                    label = { Text(stringResource(R.string.search_pane_exclude_archived)) },
+                    leadingIcon = { Icon(if (params.excludeArchived) Icons.Default.Check else Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
                 )
             }
         }

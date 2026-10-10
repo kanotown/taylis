@@ -97,6 +97,42 @@ class SearchTest {
         assertEquals("送信者：?", Search.describe(SearchParams(fromUserId = "gone"), { null }, { null }))
     }
 
+    /** The search covers public channels I have not joined and archived ones; 「アーカイブを除く」 leaves the archives out. */
+    @Test fun archivedChannelsCanBeLeftOutAndHitsAreTagged() = runBlocking {
+        val params = SearchParams(q = "設計", excludeArchived = true)
+        assertEquals(SearchRequest(q = "設計", excludeArchived = true, sort = Search.RELEVANCE), Search.toQuery(params, now))
+        // Alone it is no condition (the words are still needed), and clearing the filters drops it.
+        assertTrue(Search.isEmpty(SearchParams(excludeArchived = true)))
+        assertFalse(Search.cleared(params).excludeArchived)
+        assertEquals("設計 · アーカイブを除く", Search.describe(params, { null }, { null }))
+        // Remembered with the desktop's field name; searches saved before it read as off.
+        val key = RecentSearches.key("s|u")
+        val store = MemoryStore()
+        RecentSearches.push(store, key, params)
+        assertEquals(listOf(params), RecentSearches.read(store, key))
+        assertTrue(store.getString(key)!!.contains("\"excludeArchived\":true"))
+        assertFalse(RecentSearches.read(MemoryStore(mapOf(key to """[{"q":"x"}]""")), key).single().excludeArchived)
+
+        assertEquals("未参加", Search.channelTag(archived = false, joined = false))
+        assertEquals("未参加・アーカイブ済み", Search.channelTag(archived = true, joined = false))
+        assertEquals("アーカイブ済み", Search.channelTag(archived = true, joined = true))
+        assertNull(Search.channelTag(archived = false, joined = true))
+
+        var seen: okhttp3.HttpUrl? = null
+        val client = ApiClient("http://server", stubbed { request ->
+            seen = request.url
+            200 to """{"hits":[],"keywords":[],"filters":{"text":"設計","exclude_archived":true},"limit":20,"offset":0,"has_more":false,
+                "channels":[{"id":"c9","type":"public","name":"old-project","topic":null,"purpose":null,"archived":true,"created_by":null,
+                "last_seq":3,"last_message_at":null,"created_at":"","updated_at":"","membership":null,"dm_user_ids":null}]}"""
+        })
+        client.accessToken = "a"
+        val out = client.searchMessages(Search.toQuery(params, now))
+        assertEquals("true", seen!!.queryParameter("exclude_archived"))
+        assertTrue(out.channels.single().archived)
+        client.searchMessages(Search.toQuery(SearchParams(q = "設計"), now))
+        assertNull(seen!!.queryParameter("exclude_archived"))
+    }
+
     @Test fun recentSearchesAreNewestFirstWithoutDuplicatesAndPerAccount() {
         val store = MemoryStore()
         val key = RecentSearches.key("https://chat.example.com|alice")
