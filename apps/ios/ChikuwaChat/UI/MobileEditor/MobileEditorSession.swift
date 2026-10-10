@@ -36,7 +36,14 @@ final class MobileEditorSession {
     /// The editor said so (`log`), or a message failed: for the console and the trace.
     var onLog: ((String) -> Void)?
     @ObservationIgnored private var theme: EditorTheme = .light
-    @ObservationIgnored private var bodyWaiters: [CheckedContinuation<EditorWebMessage?, Never>] = []
+    @ObservationIgnored private var readOnly = false
+    /// The `requestBody`s waiting for their answer, by id (an answer to another id — one from before a reload — is not
+    /// theirs).
+    @ObservationIgnored private var bodyWaiters: [Int: CheckedContinuation<EditorWebMessage?, Never>] = [:]
+    @ObservationIgnored private var lastRequestId = 0
+    /// The page's web process ended (review v0.1.49 #2): the page is read again and has no editor until the next
+    /// `ready`, when the body (the saver's text) is loaded again. Until then nothing is asked of it.
+    @ObservationIgnored private(set) var pageLost = false
     @ObservationIgnored private var watching: CanvasSaver?
     @ObservationIgnored private(set) var loadCount = 0
     /// Whether the editor holds the keyboard focus (the WebView's content view is the first responder). While it does,
@@ -50,12 +57,14 @@ final class MobileEditorSession {
     static let quietAfter: TimeInterval = 1
 
     /// No composition can be open and no edit can be waiting to be written in the editor: not focused, and nothing
-    /// reported or commanded for `quietAfter`. Only then may the saver move its base to a merged body and send it as
-    /// `replace` (the editor applies it at once then). While typing, a `replace` the editor held back (IME) is dropped
-    /// by its next edit, and that edit — written on the body before the merge — saved on the merged version deleted
-    /// the other person's lines (seen on the simulator, 2026-10-10, docs/WIKI.md §30.4). Kept back instead, every save
-    /// goes on the version the editor's body was written on and the server merges it; the merged body comes in when
-    /// the editor lets go of the focus (`caret`).
+    /// reported or commanded for `quietAfter`. Only then does the saver put a merged body in and send it as `replace`
+    /// (the editor applies it at once then); while typing, every save goes on the version the editor's body was written
+    /// on and the server merges it, and the merged body comes in when the editor lets go of the focus (`caret`).
+    /// A `replace` the editor held back (IME, an edit about to be written) is dropped by its next edit, and that edit —
+    /// written on the body before the merge — saved on the merged version deleted the other person's lines (seen on the
+    /// simulator, 2026-10-10, docs/WIKI.md §30.4). This rule made that rare; what makes it impossible is the body's
+    /// generation (`load.gen` / `replace.gen` → `baseGen`): a text written on an earlier body is saved on that body's
+    /// version whatever this guessed (review v0.1.49 #1: focus not seen, typing begun as the `replace` was on its way).
     var editorQuiet: Bool {
         !editorFocused() && now().timeIntervalSince(lastActivity) >= Self.quietAfter
     }
@@ -64,6 +73,7 @@ final class MobileEditorSession {
         self.transport = transport
         self.host = host
         transport.onMessage = { [weak self] message in self?.receive(message) }
+        transport.onPageLost = { [weak self] in self?.lostPage() }
     }
 
     // MARK: the page's body in and out
@@ -75,16 +85,26 @@ final class MobileEditorSession {
         self.saver = saver
         self.theme = theme
         self.caretLine = caretLine
+        self.readOnly = readOnly
+        pageLost = false // the load below goes to the page read again, once it is up
         // Not while the editor may be composing or about to write an edit (`editorQuiet`): the editor would hold the
-        // replacement back and drop it at its next edit, which the loop would then save over the merge.
+        // replacement back and drop it at its next edit. Nothing would be lost then (the edit's `baseGen` names the body
+        // it was written on and the loop saves it on that body's version), but the merge would come in only later.
         saver.canReplace = { [weak self] in self?.editorQuiet ?? true }
+        sendLoad(saver)
+        watch(saver)
+    }
+
+    /// The people, the emoji and the saver's text (with its generation) into a new editor.
+    private func sendLoad(_ saver: CanvasSaver) {
         if let host {
             transport.send(.providePeople(host.editorPeople()))
             transport.send(.provideEmoji(host.editorEmoji()))
         }
         loadCount += 1
         let load = EditorNativeMessage.load(body: saver.text, title: nil, theme: theme, readOnly: readOnly, caretLine: caretLine,
-                                            locale: host?.editorLocale, attachmentUrl: EditorBridge.attachmentURLTemplate)
+                                            locale: host?.editorLocale, attachmentUrl: EditorBridge.attachmentURLTemplate,
+                                            gen: saver.textLineage)
         if MobileEditorTrace.enabled, let controller = transport as? MobileEditorController, controller.isReady {
             // The measurements: `load` timed inside the page to the frame after the editor is painted.
             let chars = saver.text.count
@@ -101,39 +121,46 @@ final class MobileEditorSession {
             MobileEditorTrace.log("load.queued chars=\(saver.text.count)")
             transport.send(load)
         }
-        watch(saver)
     }
 
-    /// The saver's text changed by itself (a merge, someone else's version, a tick in the reading view): into the editor.
+    /// The saver's text changed by itself (a merge, someone else's version, a tick in the reading view): into the editor,
+    /// with its generation (the editor's next `changed` says whether it took it).
     func textReplaced() {
         guard let saver else { return }
-        transport.send(.replace(body: saver.text))
+        transport.send(.replace(body: saver.text, gen: saver.textLineage))
     }
 
     /// The body as the editor holds it now, into the saver (and the caret line kept): 完了, the Markdown switch, the
-    /// app going inactive. Waits for the editor's answer (`bodyRequested`) up to `timeout`; without one (the page is
-    /// gone) the saver keeps what it has.
+    /// app going inactive. Waits for the editor's answer (`bodyRequested` with this request's id) up to `timeout`;
+    /// without one (the page is gone), with a page that has no editor (`loaded: false`) or while the page is being read
+    /// again after its process ended, the saver keeps what it has — never an empty body for a missing one.
     @discardableResult
     func commit(timeout: TimeInterval = 1.5) async -> Int? {
         guard let saver else { return caretLine }
+        guard !pageLost else {
+            MobileEditorTrace.log("requestBody skipped: the page is being read again")
+            return caretLine
+        }
         if MobileEditorTrace.enabled, let controller = transport as? MobileEditorController {
             // The typing latency the hook gathered (MobileEditorTrace.timedLoadScript), before the body is asked.
             if let frames = try? await controller.evaluate("JSON.stringify(window.__taylisFrames || [])") as? String {
                 MobileEditorTrace.log("frames \(frames)")
             }
         }
-        MobileEditorTrace.log("requestBody")
-        transport.send(.requestBody)
+        lastRequestId += 1
+        let id = lastRequestId
+        MobileEditorTrace.log("requestBody id=\(id)")
         let answer = await withCheckedContinuation { (continuation: CheckedContinuation<EditorWebMessage?, Never>) in
-            bodyWaiters.append(continuation)
+            bodyWaiters[id] = continuation
+            transport.send(.requestBody(id: id))
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                self?.giveUpWaiting()
+                self?.answerWaiter(id, with: nil)
             }
         }
-        if case .bodyRequested(let body, _, let line)? = answer {
+        if case .bodyRequested(let body, _, let line, let baseGen, _)? = answer, self.saver === saver {
             caretLine = line
-            saver.edit(body)
+            saver.edit(body, basedOn: baseGen)
         }
         return caretLine
     }
@@ -150,10 +177,22 @@ final class MobileEditorSession {
         await saver.flush()
     }
 
-    private func giveUpWaiting() {
+    private func answerWaiter(_ id: Int, with answer: EditorWebMessage?) {
+        bodyWaiters.removeValue(forKey: id)?.resume(returning: answer)
+    }
+
+    private func answerAllWaiters(with answer: EditorWebMessage?) {
         let waiters = bodyWaiters
-        bodyWaiters = []
-        for waiter in waiters { waiter.resume(returning: nil) }
+        bodyWaiters = [:]
+        for waiter in waiters.values { waiter.resume(returning: answer) }
+    }
+
+    /// The web process ended (MobileEditorController reads the page again): what was asked of it will not be answered,
+    /// and the page has no editor until its `ready`, when the body is loaded again.
+    private func lostPage() {
+        pageLost = true
+        answerAllWaiters(with: nil)
+        onLog?("[warn] the editor's page ended; it is read again and the body loaded again")
     }
 
     // MARK: the screen's doings
@@ -193,16 +232,27 @@ final class MobileEditorSession {
     private func receive(_ message: EditorWebMessage) {
         switch message {
         case .ready:
-            break
-        case .changed(let body, let dirty):
-            MobileEditorTrace.log("changed chars=\(body.count) dirty=\(dirty)")
+            // The page read again after its process ended: the people, the emoji and the body (the saver's text, the
+            // caret's line) go in again — without them its editor does not exist and has nothing to give back.
+            guard pageLost else { break }
+            pageLost = false
+            if let saver { sendLoad(saver) }
+        case .changed(let body, let dirty, let baseGen):
+            MobileEditorTrace.log("changed chars=\(body.count) dirty=\(dirty) baseGen=\(baseGen.map(String.init) ?? "nil")")
             lastActivity = now()
-            saver?.edit(body)
-        case .bodyRequested(let body, let dirty, let line):
-            MobileEditorTrace.log("bodyRequested chars=\(body.count) dirty=\(dirty) caretLine=\(line)")
-            let waiters = bodyWaiters
-            bodyWaiters = []
-            for waiter in waiters { waiter.resume(returning: message) }
+            saver?.edit(body, basedOn: baseGen)
+        case .bodyRequested(let body, let dirty, let line, let baseGen, let id):
+            MobileEditorTrace.log("bodyRequested chars=\(body.count) dirty=\(dirty) caretLine=\(line) baseGen=\(baseGen.map(String.init) ?? "nil") id=\(id.map(String.init) ?? "nil")")
+            if let id {
+                answerWaiter(id, with: message) // an id no one waits for (asked before a reload, given up): ignored
+            } else {
+                answerAllWaiters(with: message)
+            }
+        case .bodyUnavailable(let id):
+            // A page without an editor: no body (never an empty one); the saver keeps its text.
+            onLog?("[warn] requestBody answered by a page without an editor")
+            if let id { answerWaiter(id, with: nil) } else { answerAllWaiters(with: nil) }
+            if let saver, !pageLost { sendLoad(saver) } // it should have one: the body goes in again
         case .caret(let line):
             caretLine = line
             catchUpAfterBlur()
