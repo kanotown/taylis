@@ -1,5 +1,5 @@
 import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, SmilePlus } from "lucide-react";
-import { Fragment, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
 import type { AppController } from "../state/app";
@@ -7,13 +7,15 @@ import type { SyncEngine } from "../sync/engine";
 import type { Store } from "../sync/store";
 import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnreadOffered, nextAnchored, passedUnseen, readRangeReady } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
-import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
+import { composerMaxHeight, keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { isImeKeyEvent } from "./ime";
 import { AckBar } from "./AckBar";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
 import { linkFromPaste, replaceThroughBrowser } from "./composerEdit";
+import { keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
+import { EDIT_MIN, editBoxHeight, editCap, editMax, type EditRoom, handleKeyHeight, readEditHeight, revealDelta, writeEditHeight } from "./editBox";
 import { bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { attachmentText, plainText } from "./markdown";
@@ -998,6 +1000,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         thread ? "grid-cols-[30px_minmax(0,1fr)]" : "grid-cols-[36px_minmax(0,1fr)]",
         compact ? "py-1" : "mt-1 py-1.5",
         highlighted && "highlighted",
+        editing && "bg-panel",
         message.pending && "opacity-60",
         message.failed && "opacity-100 shadow-[inset_3px_0_0_var(--danger)]",
       )}
@@ -1350,6 +1353,11 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
 /**
  * Inline editor: Enter saves, Esc cancels, focus returns to the composer afterwards. In 「リッチ」 mode (users.composer_mode)
  * the message opens in the rich editor (its Markdown read back into formats) and is saved as Markdown again.
+ *
+ * Its height (editBox.ts, user report 2026-10-10: a long message was hard to edit): it grows with the text up to 60 % of
+ * the conversation's pane, then scrolls by the caret's line as the composer does; it opens with its top in view; its
+ * bottom edge drags (or ↑ / ↓ on the focused handle) to a height remembered on this device. The buttons stay in view
+ * (sticky) when the box is taller than what the list shows.
  */
 function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
   const store = controller.store;
@@ -1361,6 +1369,14 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
   const latest = useRef(draft);
   latest.current = draft;
   const [saving, setSaving] = useState(false);
+  const block = useRef<HTMLDivElement>(null);
+  const boxWrap = useRef<HTMLDivElement>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const room = useEditRoom(block);
+  const [preferred, setPreferred] = useState(readEditHeight);
+  const [dragged, setDragged] = useState<number | null>(null);
+  const cap = editCap(room, preferred);
+  const fixed = dragged === null ? undefined : editBoxHeight(0, room, preferred, dragged);
   const finish = () => {
     controller.setEditing(null);
     requestAnimationFrame(() => document.querySelector<HTMLElement>(".composer [data-composer-input]")?.focus());
@@ -1374,14 +1390,112 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
     setSaving(false);
     if (saved) finish();
   };
+  // The text area (the Markdown mode, and the rich editor's stand-in while it loads) measures itself as the composer
+  // does: its wrapper held at the last height meanwhile, so the list does not shrink under it for a moment.
+  useLayoutEffect(() => {
+    const el = area.current;
+    const wrap = boxWrap.current;
+    if (!el || !wrap) return;
+    const held = wrap.offsetHeight;
+    if (held > 0) wrap.style.minHeight = `${held}px`;
+    el.style.height = "auto";
+    const content = el.scrollHeight;
+    el.style.height = content > 0 || fixed !== undefined ? `${editBoxHeight(content, room, preferred, dragged)}px` : "";
+    wrap.style.minHeight = "";
+    keepLineInView(el, () => (el.ownerDocument.activeElement === el ? textAreaCaretLine(el) : null));
+  }, [draft, room, preferred, dragged, rich, fixed]);
+  // In view on opening, top first (a long message opened at the bottom of the screen showed only its end); afterwards
+  // the view follows the box as it grows, never pulling a box whose top the reader scrolled away back down.
+  useLayoutEffect(() => {
+    const el = block.current;
+    const scroller = el?.closest<HTMLElement>("[data-message-list]");
+    if (!el || !scroller) return;
+    let opening = true;
+    const reveal = () => {
+      const view = scroller.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      // On opening, the row's name line too when the whole row fits (whose message is being edited).
+      const rowTop = opening ? el.closest("article")?.getBoundingClientRect().top : undefined;
+      const top = rowTop !== undefined && rowTop < box.top && box.bottom - rowTop + 16 <= view.bottom - view.top ? rowTop : box.top;
+      const delta = revealDelta(view, { top, bottom: box.bottom }, opening);
+      if (delta !== 0) scroller.scrollTop += delta;
+    };
+    reveal();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+    observer?.observe(el);
+    const settled = () => {
+      opening = false;
+    };
+    el.addEventListener("keydown", settled, true);
+    el.addEventListener("pointerdown", settled, true);
+    scroller.addEventListener("wheel", settled, { passive: true });
+    scroller.addEventListener("touchmove", settled, { passive: true });
+    return () => {
+      observer?.disconnect();
+      el.removeEventListener("keydown", settled, true);
+      el.removeEventListener("pointerdown", settled, true);
+      scroller.removeEventListener("wheel", settled);
+      scroller.removeEventListener("touchmove", settled);
+    };
+  }, []);
+  /** The box's height now (the text area or the rich editor's box). */
+  const shownHeight = () => (boxWrap.current?.firstElementChild as HTMLElement | null)?.offsetHeight || fixed || cap;
+  const choose = (height: number | null) => {
+    setDragged(height);
+    setPreferred(height);
+    writeEditHeight(height);
+  };
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault(); // the caret stays where it was
+    const startY = event.clientY;
+    const start = shownHeight();
+    let height = start;
+    const move = (e: PointerEvent) => {
+      height = editBoxHeight(0, room, preferred, start + e.clientY - startY);
+      setDragged(height);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      if (height !== start) choose(height);
+    };
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  const onHandleKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finish();
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      choose(null);
+      return;
+    }
+    const height = handleKeyHeight(event.key, event.shiftKey, shownHeight(), room);
+    if (height === null) return;
+    event.preventDefault();
+    choose(height);
+  };
+  const max = editMax(room);
   const textArea = (
       <Textarea
+        ref={area}
         value={draft}
         rows={3}
         autoFocus
         aria-label={t("timeline.editMessage")}
         onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
         onChange={(e) => setDraft(e.target.value)}
+        onScroll={(e) => settle(e.currentTarget)}
         onPaste={(e) => {
           // A URL pasted over selected text links it, as in the composer (composerEdit.linkFromPaste).
           const el = e.currentTarget;
@@ -1426,30 +1540,54 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
     return event.shiftKey || event.metaKey || event.ctrlKey ? api.newline() : false;
   };
   return (
-    <div className="mt-1 space-y-2">
-      {rich ? (
-        <Suspense fallback={textArea}>
-          <LazyRichEditor
-            value={draft}
-            apiRef={richApi}
-            ariaLabel={t("timeline.editMessage")}
-            autoFocus
-            className="max-h-[280px] overflow-y-auto rounded-lg border border-line bg-canvas px-3 py-2 text-[14.5px] leading-6 text-ink focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25"
-            onChange={(markdown) => {
-              latest.current = markdown;
-              setDraft(markdown);
-            }}
-            onKeyDown={onRichKeyDown}
-            onCompositionEnd={() => {
-              composedAt.current = Date.now();
-            }}
-          />
-        </Suspense>
-      ) : (
-        textArea
-      )}
-      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); the keys' hint on the left. */}
-      <div className="flex items-center gap-2">
+    <div ref={block} className="mt-1" data-edit-box="">
+      <div ref={boxWrap} className="relative">
+        {rich ? (
+          <Suspense fallback={textArea}>
+            <LazyRichEditor
+              value={draft}
+              apiRef={richApi}
+              ariaLabel={t("timeline.editMessage")}
+              autoFocus
+              className="overflow-y-auto rounded-lg border border-line bg-canvas px-3 py-2 text-[14.5px] leading-6 text-ink focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25"
+              maxHeight={fixed ?? cap}
+              height={fixed}
+              onChange={(markdown) => {
+                latest.current = markdown;
+                setDraft(markdown);
+              }}
+              onKeyDown={onRichKeyDown}
+              onCompositionEnd={() => {
+                composedAt.current = Date.now();
+              }}
+            />
+          </Suspense>
+        ) : (
+          textArea
+        )}
+        {/* The bottom edge drags (row-resize), as the sidebar's edge does; ↑ / ↓ when focused, double-click resets. */}
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t("timeline.editHeight")}
+          aria-valuemin={EDIT_MIN}
+          aria-valuemax={Number.isFinite(max) ? max : undefined}
+          aria-valuenow={Math.round(fixed ?? cap)}
+          aria-keyshortcuts="ArrowUp ArrowDown Home End Delete"
+          title={t("timeline.editResizeHint")}
+          tabIndex={0}
+          data-edit-handle=""
+          onPointerDown={startDrag}
+          onDoubleClick={() => choose(null)}
+          onKeyDown={onHandleKey}
+          className="group/handle absolute inset-x-2 -bottom-1.5 z-[2] flex h-3 cursor-row-resize touch-none items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        >
+          <span className="h-1 w-10 rounded-full bg-line transition-colors group-hover/handle:bg-accent/60 group-active/handle:bg-accent group-focus-visible/handle:bg-accent" />
+        </div>
+      </div>
+      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); the keys' hint on the left.
+          Sticky: a box taller than the list's view keeps them on screen. */}
+      <div className="sticky bottom-0 z-[1] -mx-2 mt-1 flex items-center gap-2 rounded-b-lg bg-panel px-2 py-1.5">
         <span className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-muted">
           <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
         </span>
@@ -1462,6 +1600,40 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
       </div>
     </div>
   );
+}
+
+/**
+ * The room the edit box lives in: its list's height (the conversation or the thread), the visible viewport (a phone's
+ * keyboard) and the composer's cap, followed as the window, the pane or the keyboard change.
+ */
+function useEditRoom(block: RefObject<HTMLElement | null>): EditRoom {
+  const measure = (): EditRoom => ({
+    pane: block.current?.closest<HTMLElement>("[data-message-list]")?.clientHeight ?? 0,
+    viewport: Math.round(window.visualViewport?.height ?? window.innerHeight ?? 0),
+    composerCap: composerMaxHeight(),
+  });
+  const [room, setRoom] = useState<EditRoom>(measure);
+  useLayoutEffect(() => {
+    const update = () =>
+      setRoom((was) => {
+        const now = measure();
+        return now.pane === was.pane && now.viewport === was.viewport && now.composerCap === was.composerCap ? was : now;
+      });
+    update();
+    const scroller = block.current?.closest<HTMLElement>("[data-message-list]");
+    const observer = typeof ResizeObserver === "undefined" || !scroller ? null : new ResizeObserver(update);
+    if (scroller) observer?.observe(scroller);
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+    };
+    // Measured once laid out, then followed by the listeners.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return room;
 }
 
 /** The intro line of a channel's history: who made it and when (both optional), public or private (M115). */

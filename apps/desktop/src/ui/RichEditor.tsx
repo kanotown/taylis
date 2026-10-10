@@ -171,6 +171,8 @@ export interface RichEditorProps {
    * itself, by the caret's line (composerScroll.ts), and nothing around it.
    */
   maxHeight?: number;
+  /** A fixed height (the edit box dragged to a size, editBox.ts); with `maxHeight` the box scrolls inside it. */
+  height?: number;
   /**
    * How tall the input it replaces was (the composer's text area, also while this editor was loading): the editor is
    * that tall at least until it is built. Empty for a moment, its box would let the list above grow and lose its
@@ -189,7 +191,7 @@ export interface RichEditorProps {
   onFocus?: () => void;
 }
 
-export default function RichEditor({ value, onChange, placeholder = "", ariaLabel, autoFocus = false, className, maxHeight, holdHeight, apiRef, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus }: RichEditorProps) {
+export default function RichEditor({ value, onChange, placeholder = "", ariaLabel, autoFocus = false, className, maxHeight, height, holdHeight, apiRef, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus }: RichEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const emitted = useRef(value);
@@ -310,7 +312,7 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
     }
   }
 
-  return <div ref={host} className={className} style={{ maxHeight, minHeight: held > 0 ? held : undefined }} />;
+  return <div ref={host} className={className} style={{ maxHeight, height, minHeight: held > 0 ? held : undefined }} />;
 }
 
 /** The line of the selection's head, in the box's content coordinates; null when ProseMirror cannot place it. */
