@@ -107,6 +107,9 @@ struct MyStatusSheet: View {
             })
         }
         .presentationDetents(fitted.map { [.height($0), .large] } ?? [.large], selection: $detent)
+        // Solid, not iOS 26's glass below full height (MOBILE_POLISH.md C4): the glass blended the dots with what lay
+        // under them (my picture showed through my dot) and tinted the rows with the screen behind.
+        .presentationBackground(Color(.systemGroupedBackground))
     }
 
     // MARK: rows

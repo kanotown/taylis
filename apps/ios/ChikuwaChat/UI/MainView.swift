@@ -845,9 +845,13 @@ struct HomeAvatarButton: View {
         let badge = HomeAvatarBadge.of(status: status, presence: store.presenceOf(meId), quiet: quiet,
                                        invisible: PresenceRules.myChoice(me) == .invisible)
         Button(action: action) {
+            let hole = Self.hole(badge)
             AvatarView(id: meId, name: store.me?.displayName ?? "?", size: Self.size)
                 .opacity(badge.disconnected ? 0.5 : 1)
-                .overlay(alignment: .bottomTrailing) { dot(badge).offset(x: 3, y: 3) }
+                // The badge sits in a hole cut out of the picture (badgeHole): the bar behind is its ring, and the
+                // picture does not show through it where iOS 26's bar blends what it draws.
+                .badgeHole(dot: hole.dot, gap: hole.gap, offset: hole.offset)
+                .overlay(alignment: .bottomTrailing) { dot(badge, side: hole.dot).offset(x: hole.offset, y: hole.offset) }
                 .padding(3)
                 .contentShape(Rectangle())
         }
@@ -855,27 +859,32 @@ struct HomeAvatarButton: View {
         .accessibilityLabel(badge.spoken.map { tr("自分のステータスを変える（\($0)）") } ?? tr("自分のステータスを変える"))
     }
 
+    /// The badge's diameter, the ring around it (the hole is that much wider) and how far it sits past the corner.
+    private static func hole(_ badge: HomeAvatarBadge) -> (dot: CGFloat, gap: CGFloat, offset: CGFloat) {
+        switch badge {
+        case .online, .away, .dnd, .invisible, .connecting: (9, 2, 2)
+        case .quiet: (11, 2, 2)
+        case .offline: (11, 0, 3)  // an orange ring right on the faded picture
+        case .none: (0, 0, 0)
+        }
+    }
+
     @ViewBuilder
-    private func dot(_ badge: HomeAvatarBadge) -> some View {
-        let side: CGFloat = 11
+    private func dot(_ badge: HomeAvatarBadge, side: CGFloat) -> some View {
         switch badge {
         case .online, .away, .dnd, .invisible:
             PresenceDot(style: badge == .online ? .online : badge == .away ? .away : badge == .dnd ? .dnd : .offline, side: side)
-                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
         case .quiet:
             Image(systemName: "bell.slash.fill")
                 .font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
-                .frame(width: side + 2, height: side + 2)
+                .frame(width: side, height: side)
                 .background(Color.gray, in: Circle())
-                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
         case .offline:
             Circle().strokeBorder(Color.orange, lineWidth: 2.5)
-                .background(Circle().fill(Color(.systemBackground)))
                 .frame(width: side, height: side)
         case .connecting:
             Circle().fill(Color.gray)
                 .frame(width: side, height: side)
-                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
         case .none:
             EmptyView()
         }
