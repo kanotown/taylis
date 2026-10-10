@@ -176,6 +176,12 @@ final class AiRulesTests: XCTestCase {
                        "AI（そる）が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます")
         XCTAssertTrue(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ", model: "claude-opus-5-5"),
                                       AiAgentPublic(id: "c", botUserId: "d", name: "そる", model: "gpt-6.1-sol")])!.contains("Anthropic と OpenAI の API"))
+        // docs/AI.md §14: a bot with web search adds where its search queries go (only the searching bots, their provider).
+        XCTAssertEqual(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ", model: "claude-opus-5-5", webSearch: true),
+                                       AiAgentPublic(id: "c", botUserId: "d", name: "そる", model: "gpt-6.1-sol")]),
+                       "AI（ちくわ・そる）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic と OpenAI の API に送られます。ちくわ はネット検索を使うため、会話から作った検索語も Anthropic を通じてウェブの検索に送られます")
+        let status = try? decode(AiStatusOut.self, #"{"available":true,"summary_available":true,"agents":[{"id":"a","bot_user_id":"b","name":"x","model":"gpt-6-astra","web_search":true},{"id":"c","bot_user_id":"d","name":"y"}]}"#)
+        XCTAssertEqual(status?.agents.map(\.webSearch), [true, false])
     }
 
     func testSummaryTargetLine() {

@@ -6623,6 +6623,28 @@
     "AI" : {
       "shouldTranslate" : false
     },
+    "。%@ はネット検索を使うため、会話から作った検索語も %@ を通じてウェブの検索に送られます" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "。%1$@ はネット検索を使うため、会話から作った検索語も %2$@ を通じてウェブの検索に送られます"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ". %1$@ can search the web, so search queries made from the conversation also go to the web through %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "。%1$@ 会使用网络搜索，因此根据对话生成的搜索词也会通过 %2$@ 发送到网络搜索"
+          }
+        }
+      }
+    },
     "AI（%@）が参加しています。メンションしたときと要約のときに、会話の一部が %@ の API に送られます" : {
       "localizations" : {
         "ja" : {
