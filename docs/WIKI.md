@@ -2773,14 +2773,14 @@ fonts/          KaTeX の woff2 20 個（296 KB）
 | 温め | 画面を開いたときに WebView を 1 つ作って `index.html` を読ませ、`ready` を待っておく。「編集」で `load` だけ | 同じ |
 | 設定 | `isTextInteractionEnabled` は既定のまま。`scrollView.contentInsetAdjustmentBehavior = .never`。ダークは `setTheme`（`prefers-color-scheme` でも追う） | `javaScriptEnabled = true`。`forceDark` は使わず `setTheme` |
 
-**橋のメッセージ**（`bridge.ts`。JSON の `type` で見分ける。版は `ready.version` = `BRIDGE_VERSION` = 1）
+**橋のメッセージ**（`bridge.ts`。JSON の `type` で見分ける。版は `ready.version` = `BRIDGE_VERSION` = 2。1 → 2 は下の「版 2」）
 
 ネイティブ → エディタ（`window.taylisEditor.receive(json)`。JSON の文字列でもオブジェクトでも。エディタが聞く前に来たものは順に待つ）：
 
 | type | 中身 | いつ・何が起きる |
 | --- | --- | --- |
-| `load` | `body`、`title?`、`theme?`（light / dark / system）、`readOnly?`、`caretLine?`（Markdown のエディタから来た行）、`locale?`（ja / en / zh-Hans）、`attachmentUrl?`（`{id}` を含む画像の URL の型） | 新しいエディタ。`ready` の後、`providePeople` / `provideEmoji` の後に（チップの名前と `:name:` のアトムは読むときに決まる） |
-| `replace` | `body` | マージの後の本文。変わったトップレベルのブロックだけ差し替え、履歴に入れない（Desktop の `applyMerge` そのまま）。IME の変換中と書き出し待ちの編集があるあいだは保留（下） |
+| `load` | `body`、`title?`、`theme?`（light / dark / system）、`readOnly?`、`caretLine?`（Markdown のエディタから来た行）、`locale?`（ja / en / zh-Hans）、`attachmentUrl?`（`{id}` を含む画像の URL の型）、`gen?`（この本文の世代。`baseGen` で返る） | 新しいエディタ。`ready` の後、`providePeople` / `provideEmoji` の後に（チップの名前と `:name:` のアトムは読むときに決まる） |
+| `replace` | `body`、`gen?` | マージの後の本文。変わったトップレベルのブロックだけ差し替え、履歴に入れない（Desktop の `applyMerge` そのまま）。IME の変換中と書き出し待ちの編集があるあいだは保留（下） |
 | `setTheme` | `theme` | `<html data-theme>` |
 | `setViewport` | `keyboardHeight`（CSS px）、`safeBottom?` | `--keyboard-height` / `--safe-bottom`。書式の行がその上に、本文の下にその分の余白、カーソルを見える所へ |
 | `insertImage` | `attachmentId`、`url?`（その画像だけの URL）、`alt?` | `pickImage` の答え。カーソルの位置に画像のブロック（空の行ならその行に） |
@@ -2788,7 +2788,7 @@ fonts/          KaTeX の woff2 20 個（296 KB）
 | `providePages` | `query`（`needPages` のもの。null なら木の全部）、`pages: [{id, title, icon?, kind?}]` | `[[`・`@`・⌘K の候補、チップの題名とアイコン。null で送れば以後の検索はエディタの中で済む |
 | `provideEmoji` | `emoji: [{name, url?, label?, kind?, color?, width?, height?}]` | `:name:` をアトムに（画像、または文字のピル） |
 | `focus` / `blur` | | キーボードを出す / しまう（エディタは自分からはフォーカスしない） |
-| `requestBody` | | 今の本文を同じタスクの中で `bodyRequested` で返す（書き出し待ちがあれば今書く。`changed` は出さない） |
+| `requestBody` | `id?`（答えに付けて返る） | 今の本文を同じタスクの中で `bodyRequested` で返す（書き出し待ちがあれば今書く。`changed` は出さない） |
 | `command` | `name`（`EDITOR_COMMANDS`：bold・italic・strike・code・h1〜h3・bullet・ordered・task・quote・codeBlock・divider・link・mention・slash・image・table・undo・redo・indent・outdent） | ネイティブのツールバー用。エディタの書式の行と同じ動作 |
 
 エディタ → ネイティブ（JSON の文字列 1 つ。iOS は `webkit.messageHandlers.taylis.postMessage`、Android は `TaylisBridge.post`）：
@@ -2796,8 +2796,8 @@ fonts/          KaTeX の woff2 20 個（296 KB）
 | type | 中身 | いつ |
 | --- | --- | --- |
 | `ready` | `version` | ページが立ち上がって聞き始めた（`load` はこの後） |
-| `changed` | `body`、`dirty`（最後の load / replace から変わったか） | 打鍵が 300 ms 止まった、フォーカスが外れた。保存はネイティブの `CanvasSaver`（待ち・マージ・再送はそのまま） |
-| `bodyRequested` | `body`、`dirty`、`caretLine` | `requestBody` の答え |
+| `changed` | `body`、`dirty`（最後の load / replace から変わったか）、`baseGen?`（取り込んだ最後の load / replace の `gen`） | 打鍵が 300 ms 止まった、フォーカスが外れた。保存はネイティブの `CanvasSaver`（待ち・マージ・再送はそのまま） |
+| `bodyRequested` | `body`、`dirty`、`caretLine`、`baseGen?`、`id?`。または `loaded: false`、`id?`（本文なし） | `requestBody` の答え。`load` がまだ無いページ（web プロセスが落ちて読み直したページなど）は `loaded: false` で答え、ネイティブはこれを本文（空の本文）として扱ってはいけない |
 | `caret` | `line` | フォーカスが外れたとき（Markdown のエディタに持ち越す行） |
 | `height` | `px` | 文書の高さが変わったとき（1 フレームに 1 回）。中身に合わせて WebView を伸ばすなら |
 | `needPeople` | `query` | `@` が開いた・絞り込みが変わった（送り直すかは任意） |
@@ -2813,14 +2813,33 @@ fonts/          KaTeX の woff2 20 個（296 KB）
   `changed` は出ない。
 - `replace` は Desktop の `canReplace` と同じ規則：IME の変換中、または書き出し待ち（打鍵から 300 ms 以内）のあいだは入れない。
   変換が終わると 50 ms 後に入れる（ProseMirror が自分の compositionend の処理を終えてから。Desktop は読み直しで同じ間が空く）。
-  待っている間に編集が書き出されたら保留は捨てる（`changed` をネイティブがマージして、また `replace` を送る）。その `changed` はマージの前の本文を元にしているので、ネイティブは保留されうる間（エディタにフォーカスがある間）に保存の基準の版をマージ済みの版へ進めてはいけない（進めると相手の行を消す保存になる。§30.4）。編集が結局
-  何も変えなかったときは、その時点で入れる。
-- `requestBody` は同じ JS のタスクの中で答える（`load` の直後でもよい：`flushSync` でエディタを先に立てる）。
+  待っている間に編集が書き出されたら保留は捨てる（`changed` をネイティブがマージして、また `replace` を送る）。編集が結局
+  何も変えなかったときは、その時点で入れる。捨てたときの `changed` はマージの前の本文を元にしている。その `baseGen` は
+  捨てた `replace` の `gen` ではなく、前に取り込んだ本文の `gen` のまま（下の「版 2」）。
+- `requestBody` は同じ JS のタスクの中で答える（`load` の直後でもよい：`flushSync` でエディタを先に立てる）。`id` が来たら
+  答えに付ける。`load` がまだ無ければ `{type: "bodyRequested", loaded: false}`（本文の欄なし）で答える。
 - 人・絵文字は `load` の前に。後から来た `providePeople` は `@` の候補にだけ効く（既にあるチップの名前は変わらない）。
 - 子ページ・データベースの作成・データベースの埋め込みはスマホでは出ない（`links` に無い）。既にある埋め込みはカード
   （題名、タップで `openLink page:`）のまま、本文のバイトは変わらない。貼り付け・ドロップの画像は上げられない（`log` に
   warn）。画像のボタンは `pickImage`。
 - `?dev=1`：ネイティブの代わり。`?dev=1&quiet=1` は見本を読まずに `window.__taylis.measureLoad(body)` などを待つ。
+
+**版 2**（2026-10-10、レビュー v0.1.49 の #1・#2。iOS は §30.4、Android は §30.5）
+
+- **本文の世代**：ネイティブは `load` と `replace` に `gen`（整数）を付ける。エディタは最後に**取り込んだ** `load` / `replace` の `gen` を
+  `baseGen` として `changed` と `bodyRequested` に付けて返す。保留した `replace` が編集で捨てられたら `baseGen` は動かない。
+  `replace` の本文が既にエディタの本文と同じなら、その `gen` に進む。
+- **ネイティブの規則**：保存の状態機械が本文を自分で入れ替えたら（マージの結果・相手の版・閲覧のチェック）新しい世代にし、前の
+  世代の文書を保存する基準の版を覚えておく。保存の答えでマージを取り込んだときは「送った本文そのものの版」（`submittedRevId`）、
+  相手の版を読んで取り込んだときは前の基準の版。エディタの `baseGen` が今の世代より前なら、その世代の基準の版の上に保存し直し、
+  サーバがもう一度マージする。こうすると、マージを取り込んだかどうかをエディタが確かめるまで、基準の版をマージ済みの版へ進めた
+  ことにならない。フォーカス・時間の推測（§30.4 の `editorQuiet`）は、`replace` をいつ送るかの見た目の判断だけになる。
+- **読み直したページ**：`load` の無いページの `requestBody` は `loaded: false` で答える（版 1 は `{body: "", dirty: false}` を返し、
+  ネイティブが空の本文を保存していた）。ネイティブは web プロセスが落ちたら（iOS の `webViewWebContentProcessDidTerminate`、
+  Android の `onRenderProcessGone`）、次の `ready` で `providePeople` / `provideEmoji` / `load`（状態機械の今の本文・世代・カーソルの
+  行）を送り直す。読み直しの間の `requestBody` は送らない。`requestBody` の `id` が待っているものと違う答えは捨てる。
+- `gen`・`id` の無いメッセージ（版 1 の形）も受け付ける（`baseGen` が無ければ今の世代として扱う）。ネイティブは `ready.version` が
+  違う束を断るので、アプリと束は同じ版で出す。
 
 **大きさと速さ**（ヘッドレス Chrome 155、390 × 844 のモバイルのエミュレーション、M5 Max の開発機、`vite preview` の本番ビルド、CDP）
 
@@ -2840,12 +2859,12 @@ fonts/          KaTeX の woff2 20 個（296 KB）
 - `tests/mobileEditorBridge.test.ts`（11）：iOS / Android / なしの transport、フィクスチャの全メッセージ（オブジェクトと JSON の
   文字列）、断る例とその理由の `log`、全コマンド、聞く前の待ち行列と止め方、投げる handler、`installBridge`（`window.taylisEditor`
   とページのエラー）。
-- `tests/mobileEditor.test.tsx`（21）：`ready` と `load`（題名・テーマ・言語）、全フィクスチャと docs のコーパスの `load` → `requestBody`
+- `tests/mobileEditor.test.tsx`（25）：`ready` と `load`（題名・テーマ・言語）、全フィクスチャと docs のコーパスの `load` → `requestBody`
   （CRLF も）、300 ms の `changed`（編集した行だけ、`dirty`）、直後の `requestBody`、`replace`（触っていないノードが同じまま、履歴に
   入らない）、IME の変換中の保留と 50 ms 後の反映、書き出し待ちの保留と破棄 / 反映、`caret`、2 回目の `load`、`providePeople`
   （`needPeople`、候補、`<@id>`）、`providePages`（`needPages` → 候補 → チップ → `openLink`）、木の全部、`provideEmoji`、画像（`attachmentUrl`、
   `pickImage`、`insertImage`）、スマホで出ない `/` の項目、`setTheme` / `setViewport`、下のツールバーと `focus` / `blur`、`command`
-  （太字・見出し・元に戻す・知らない名前）、読み取り専用、`focusTitle`、JSON でないメッセージ。
+  （太字・見出し・元に戻す・知らない名前）、読み取り専用、`focusTitle`、JSON でないメッセージ。版 2：`gen` → `baseGen`（捨てた `replace` では動かない、変換の後に入れたら進む、本文が同じ `replace` でも進む、`gen` が無ければ返さない）、`load` の前の `requestBody` は `loaded: false`、`id` を返す。
 - 既存：`pageEditor.test.tsx`・`pageEditorSchema.test.ts`・`theme.test.ts`（app.css）はそのまま緑。`npx tsc --noEmit`、`vite build`
   （Desktop の CSS は分割の前後で同一）、`npm run build:mobile-editor`。
 
@@ -2879,7 +2898,7 @@ API・Desktop の成果物の変更なし。端末ごとの設定（既定はオ
 | `WikiViews.swift`（`WikiPageDocument`） | 設定がオンなら画面を開いたときに WebView を 1 つ作って index.html を読ませておく（温め）。編集中は上に 「見たまま | Markdown」（端末に記憶）。完了は `commit` を待ってから閲覧へ。見たまま → Markdown は `commit` の行を `CanvasEditor(initialLine:)` へ、Markdown → 見たままは `onCaretLine` の行を `load.caretLine` へ。「セクションを編集」は見たままでは全体をその見出しの行で開く |
 | `YouView.swift` | 「表示」の 「ドキュメント」 に 「ドキュメントの見たまま編集（試作）」（端末だけ、既定オフ、`chikuwa.docs.wysiwyg`）。同梱エディタの無いビルドには出ない |
 | `project.yml`・`.github/workflows/ios.yml` | `../shared/mobile-editor/dist` をフォルダ参照で Resources に（アプリの中では `dist/`）。ビルド前のスクリプトが無ければ作り方（`cd apps/desktop && npm ci && npm run build:mobile-editor`）を書いて止める。CI は `xcodegen generate` の前に作る |
-| `ChikuwaChatTests/MobileEditorBridgeTests.swift`（13）・`MobileEditorSessionTests.swift`（15） | `bridge_messages.json` の全メッセージ（符号化・復号・断る例）、JS のリテラルを WebKit に評価させて同じ文字列が返る、scheme handler（Content-Type・画像の取得とキャッシュ・止めたタスク・バンドル外の 404）、待ち行列と版。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：送る順、マージ → `replace`、相手の版、閲覧のチェック、`changed` → 保存、`commit` / `detach`、ページ・人・画像・リンク・ログ、**フォーカス中のマージは保留して何も失わない**（下） |
+| `ChikuwaChatTests/MobileEditorBridgeTests.swift`（13）・`MobileEditorSessionTests.swift`（24） | `bridge_messages.json` の全メッセージ（符号化・復号・断る例）、JS のリテラルを WebKit に評価させて同じ文字列が返る、scheme handler（Content-Type・画像の取得とキャッシュ・止めたタスク・バンドル外の 404）、待ち行列と版。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：送る順、マージ → `replace`、相手の版、閲覧のチェック、`changed` → 保存、`commit` / `detach`、ページ・人・画像・リンク・ログ、**フォーカス中のマージは保留して何も失わない**、**捨てられた `replace` の後の編集はその前の世代の版で保存し直す**・**web プロセスが落ちた後は本文を入れ直し、空の本文を保存しない**（実際の束と WKWebView で。下） |
 
 **キーボードの上のツールバーの選択**：ネイティブの行（`MobileEditorToolbar`、SwiftUI）にし、WebKit の入力補助の欄（‹ › 完了）と
 同梱エディタ自身の下の行（`env.toolbar: "bottom"`、アプリ側の `WKUserScript` の style で隠す。束は変えない）は消した。WebView は
@@ -2927,6 +2946,23 @@ Compose の行の 2 段にしたが、iOS は WebKit の欄を消す仕組みが
 - **見たまま → Markdown でカーソルが文末に行く**。`CanvasTextView` は作るときに `initialLine` の位置にカーソルを置いていたが、直後の
   `onAppear` の `attach` が本文を入れ直してカーソルが末尾に動いていた。行の位置を次のランループ（本文が入った後）で計算して置く。
 - 計測のログに `load.caretLine` を足した（`MobileEditorTrace`、トレースのときだけ）。
+- **レビュー v0.1.49 #1：捨てられたマージの後の保存で相手の行が消える残り**。上の `editorQuiet` の後も、セッションが「静か」と判断して
+  `replace` を送った後でエディタがそれを保留して捨てると（フォーカスが取れなかった、`replace` が届く直前に打ち始めた、完了の直前の書き出し
+  待ち）、次の `changed` / `bodyRequested` がマージ済みの版の上に保存され、相手の行が戻った。`CanvasSaver` + `MobileEditorSession` +
+  `FakeCanvasServer` のテストで再現（元 `a\nb\nc`、自分 `A\nb\nc`、相手 `a\nb\nREMOTE`、答え `A\nb\nREMOTE`、捨てた後の `AA\nb\nc` で
+  サーバが `AA\nb\nc`）。フォーカス中の打鍵ではもう起きない（main で通る）。直し：橋の版 2（§30.3）。`CanvasSaver` に本文の世代
+  `textLineage`（自分で本文を入れ替えたら進む）と、前の世代の文書を保存する基準の版（マージを取り込んだときは `submittedRevId` と送った
+  本文、相手の版を読んだときは前の基準）を持たせ、`edit(_:basedOn:)` が前の世代を名指したらその版に戻して保存する（サーバがもう一度
+  マージ）。送信中に戻ったときは、その答えで基準を動かさない。セッションは `load` / `replace` に `gen`、`changed` / `bodyRequested` の
+  `baseGen` を `edit` に渡す。テスト：300 ms の書き出し待ち・変換中（捨てる / 終わって入れる）・すぐの `requestBody`（完了）・相手の版を
+  読んだ後、それぞれフォーカス中と「静か」の両方でサーバに `AA\nb\nREMOTE` が残る。
+- **レビュー v0.1.49 #2：web プロセスが落ちた後の完了で本文を空にする**。コントローラはページを読み直すが、セッションは新しい `ready` を
+  無視して `load` を送り直さず、エディタの無いページが `requestBody` に `{body: ""}` で答え、それを保存していた。直し：コントローラが
+  `onPageLost` で知らせ、セッションは待っている `requestBody` を諦め（状態機械の本文のまま）、読み直しの間は `requestBody` を送らず、
+  次の `ready` で人・絵文字・`load`（状態機械の今の本文・世代・カーソルの行）を送り直す。`requestBody` に `id` を付け、違う `id` の
+  答えは捨てる。`loaded: false` の答えは本文として扱わず、`load` を送り直す。テスト：偽の transport で読み直し・待っている要求・
+  本文の無い答え・違う `id`、実際の束と WKWebView・`MobileEditorController` で `webViewWebContentProcessDidTerminate` の後に
+  エディタが立ち直り、完了しても本文がそのまま（保存も起きない）、`load` の無いページが `loaded: false` で答える。
 
 **判定**（§22.7 の表「M153a 試作」の基準：「Markdown の編集より明らかに良い・壊れない」）
 
@@ -2940,9 +2976,9 @@ Android のエミュレータ 0.25 秒）。実機（Release）で測り、超�
 
 **制限（M153b へ）**
 
-- フォーカス中は相手の編集がエディタに出ない（キーボードを閉じると出る）。Desktop のように打鍵の合間にも出すには、エディタが変換中か・
-  `replace` を入れたか捨てたかを橋で知らせる（`composing {active}` や `changed` に最後に入れた `replace` の番号）必要がある。§30.3 の
-  契約の変更（3 端末）なので M153b / M153c で。Android も同じ扱い（§30.5）。
+- フォーカス中は相手の編集がエディタに出ない（キーボードを閉じると出る）。橋の版 2（§30.3）で、捨てられた `replace` があっても
+  相手の行は消えなくなったので、`canReplace` を `editorQuiet` から外せば Desktop のように打鍵の合間にも出せる（見た目の変更。
+  Android と合わせて M153b / M153c で決める）。
 - 書式の行が横スクロールの 1 行で、402 pt の幅では 「画像」 と 「キーボードを閉じる」 が画面の外（スクロールしないと押せない）。
   取り消し・やり直し・画像・閉じるを固定し、書式だけをスクロールにする。書式の状態（ON / OFF）は橋の `selection` が来てから。
 - iOS 26 では OS の選択メニューが浮くツールバー（M155）に重なる（18.6 は上下に分かれる）。同梱エディタは `pointer: coarse` で浮く
