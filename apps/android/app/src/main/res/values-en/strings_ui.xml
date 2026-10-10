@@ -1256,6 +1256,7 @@
     <string name="search_pane_clear_history">Clear history</string>
     <string name="search_pane_created_or_updated_by">Created or updated by</string>
     <string name="search_pane_date">Date</string>
+    <string name="search_pane_exclude_archived">Hide archived</string>
     <string name="search_pane_filter_by_conversation_name">Filter by conversation name</string>
     <string name="search_pane_filters">Filters</string>
     <string name="search_pane_search_for_end">”</string>
@@ -1286,6 +1287,9 @@
     <string name="search_pane_selected">Selected</string>
     <string name="search_pane_some_filters_dont_apply_to_canvases">"Some filters don\'t apply to canvases: "</string>
     <string name="search_pane_some_filters_matched_nothing">"Some filters matched nothing: "</string>
+    <string name="search_pane_tag_archived">Archived</string>
+    <string name="search_pane_tag_not_joined">Not joined</string>
+    <string name="search_pane_tag_not_joined_archived">Not joined · archived</string>
     <string name="search_pane_thread_reply">Thread reply</string>
     <string name="search_pane_times_posts_is_times">Times posts (is:times)</string>
     <string name="search_pane_try_different_or_shorter_words">Try different or shorter words.</string>

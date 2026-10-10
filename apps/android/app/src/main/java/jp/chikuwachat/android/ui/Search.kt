@@ -32,6 +32,8 @@ data class SearchParams(
     val isThread: Boolean = false,
     /** L8 (TIMES_FEED.md §6): times channels only, those I have not joined included (the 「Times」 chip). */
     val isTimes: Boolean = false,
+    /** 「アーカイブを除く」: leave archived channels out (`exclude_archived`); the search covers them, joined or not, by default. */
+    val excludeArchived: Boolean = false,
     /** "relevance" or "newest"; searches without words are always newest first. */
     val sort: String = Search.RELEVANCE,
 )
@@ -134,6 +136,7 @@ object Search {
             has = params.has.filter { it in HAS_FLAGS },
             isThread = params.isThread,
             isTimes = params.isTimes,
+            excludeArchived = params.excludeArchived,
             sort = if (q.isEmpty()) NEWEST else params.sort,
         )
     }
@@ -203,7 +206,19 @@ object Search {
         params.has.forEach { flag -> HAS_LABELS[flag]?.let(parts::add) }
         if (params.isThread) parts.add(L10n.str(R.string.common_in_threads))
         if (params.isTimes) parts.add("Times")
+        if (params.excludeArchived) parts.add(L10n.str(R.string.search_pane_exclude_archived))
         return parts.joinToString(" · ")
+    }
+
+    /**
+     * The tag of a hit's conversation: 「未参加」 for a public channel I have not joined (the search covers them; it opens
+     * as the preview), 「アーカイブ済み」 for an archived one, both when both; null for a live one of mine.
+     */
+    fun channelTag(archived: Boolean, joined: Boolean): String? = when {
+        !joined && archived -> L10n.str(R.string.search_pane_tag_not_joined_archived)
+        !joined -> L10n.str(R.string.search_pane_tag_not_joined)
+        archived -> L10n.str(R.string.search_pane_tag_archived)
+        else -> null
     }
 
     /** Width-insensitive, case-insensitive text for matching names (ｔａｎａｋａ = tanaka). */

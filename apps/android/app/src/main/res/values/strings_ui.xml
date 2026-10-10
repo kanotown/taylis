@@ -1251,6 +1251,7 @@
     <string name="search_pane_clear_history">履歴を消去</string>
     <string name="search_pane_created_or_updated_by">作成・更新した人</string>
     <string name="search_pane_date">期間</string>
+    <string name="search_pane_exclude_archived">アーカイブを除く</string>
     <string name="search_pane_filter_by_conversation_name">会話の名前で絞り込む</string>
     <string name="search_pane_filters">絞り込み</string>
     <string name="search_pane_search_for_end">」を検索</string>
@@ -1281,6 +1282,9 @@
     <string name="search_pane_selected">選択中</string>
     <string name="search_pane_some_filters_dont_apply_to_canvases">キャンバスには使えない条件があります：</string>
     <string name="search_pane_some_filters_matched_nothing">見つからない条件があります：</string>
+    <string name="search_pane_tag_archived">アーカイブ済み</string>
+    <string name="search_pane_tag_not_joined">未参加</string>
+    <string name="search_pane_tag_not_joined_archived">未参加・アーカイブ済み</string>
     <string name="search_pane_thread_reply">スレッドの返信</string>
     <string name="search_pane_times_posts_is_times">Times の投稿（is:times）</string>
     <string name="search_pane_try_different_or_shorter_words">別の言葉や、より短い言葉で試してください。</string>

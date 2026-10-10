@@ -372,8 +372,8 @@ class ApiClient(
     }
 
     /**
-     * GET /search/messages (M16b): words and / or structured filters across my channels (the server applies the
-     * membership filter, SECURITY.md). `has` repeats; typed before: / after: / on: dates are read in the caller's
+     * GET /search/messages (M16b): words and / or structured filters across what I can read (my conversations and,
+     * unless I am a guest, the public channels I have not joined, archived ones too; SECURITY.md). `has` repeats; typed before: / after: / on: dates are read in the caller's
      * zone (DATA_MODEL.md 検索), so the offset goes along.
      */
     suspend fun searchMessages(query: SearchRequest, limit: Int = 20, offset: Int = 0): SearchOut {
@@ -387,6 +387,7 @@ class ApiClient(
             query.has.forEach { add("has=" + Enc.encode(it, "UTF-8")) }
             if (query.isThread) add("is_thread=true")
             if (query.isTimes) add("is_times=true") // L8 (TIMES_FEED.md §6)
+            if (query.excludeArchived) add("exclude_archived=true")
             add("sort=" + Enc.encode(query.sort, "UTF-8"))
             add("tz_offset_minutes=$tzOffset")
             add("limit=$limit")

@@ -1251,6 +1251,7 @@
     <string name="search_pane_clear_history">清除历史</string>
     <string name="search_pane_created_or_updated_by">创建/更新者</string>
     <string name="search_pane_date">期间</string>
+    <string name="search_pane_exclude_archived">排除已归档</string>
     <string name="search_pane_filter_by_conversation_name">按会话名称筛选</string>
     <string name="search_pane_filters">筛选</string>
     <string name="search_pane_search_for_end">”</string>
@@ -1281,6 +1282,9 @@
     <string name="search_pane_selected">已选择</string>
     <string name="search_pane_some_filters_dont_apply_to_canvases">有不适用于画布的条件：</string>
     <string name="search_pane_some_filters_matched_nothing">有找不到的条件：</string>
+    <string name="search_pane_tag_archived">已归档</string>
+    <string name="search_pane_tag_not_joined">未加入</string>
+    <string name="search_pane_tag_not_joined_archived">未加入 · 已归档</string>
     <string name="search_pane_thread_reply">话题回复</string>
     <string name="search_pane_times_posts_is_times">Times 的帖子 (is:times)</string>
     <string name="search_pane_try_different_or_shorter_words">请尝试其他词语或更短的词语。</string>
