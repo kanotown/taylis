@@ -107,6 +107,9 @@ isFeedRow(m) = m.type == user and not deleted and (m.parent_id == null or m.also
 
 ## 6. 検索の `is:times`
 
+2026-10-10 から、ふつうの検索も未参加の公開チャンネル (アーカイブ済みも) を探す (SECURITY.md §3.2)。`is:times` は
+その範囲を times に絞る修飾子になった。下の「`is:times` のときだけ広げる」はその前の規則。
+
 - `is:times` (別名 `is:time`) を `is:thread` と同じ並びで受け付ける (`search/query.py` の `IS_ALIASES`)。ほかの条件と
   組み合わせられる (`is:times from:@sato 実験`、`is:times is:thread`)。
 - 範囲は **times のチャンネル**に絞る:
