@@ -683,6 +683,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "timeline.deleteTitle": "要删除此消息吗？",
   "timeline.deleteNote": "删除的消息无法恢复。",
   "timeline.editMessage": "编辑消息",
+  "timeline.editHeight": "编辑框高度",
+  "timeline.editResizeHint": "拖动调整高度，双击恢复",
   "timeline.escCancel": "取消",
   "common.reload": "重新加载",
   "common.change": "更改",

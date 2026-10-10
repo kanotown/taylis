@@ -683,6 +683,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "timeline.deleteTitle": "Delete this message?",
   "timeline.deleteNote": "A deleted message can't be restored.",
   "timeline.editMessage": "Edit message",
+  "timeline.editHeight": "Edit box height",
+  "timeline.editResizeHint": "Drag to resize, double-click to reset",
   "timeline.escCancel": "Cancel",
   "common.reload": "Reload",
   "common.change": "Change",

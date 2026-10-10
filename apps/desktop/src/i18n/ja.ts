@@ -682,6 +682,8 @@ export const ja = {
   "timeline.deleteTitle": "このメッセージを削除しますか？",
   "timeline.deleteNote": "削除したメッセージは元に戻せません。",
   "timeline.editMessage": "メッセージを編集",
+  "timeline.editHeight": "編集欄の高さ",
+  "timeline.editResizeHint": "ドラッグで高さを変更、ダブルクリックで元に戻す",
   "timeline.escCancel": "取り消し",
   "common.reload": "再読み込み",
   "common.change": "変更",
