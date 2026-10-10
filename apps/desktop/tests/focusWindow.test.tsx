@@ -115,7 +115,17 @@ function world(posts: number, loadedFrom: number | null) {
   if (loadedFrom !== null) for (const m of all.slice(loadedFrom - 1)) store.upsertMessage(m);
   store.updateChannel(channel.id, { lastSeq: posts, lastReadSeq: posts, hasOlder: loadedFrom !== null && loadedFrom > 1 });
   const engine = { send: vi.fn(), markRead: vi.fn(), sendTyping: vi.fn(), status: "online", unreadHold: new Map<string, number>(), reloadCount: () => 0 };
-  const controller = { store, engine, api: undefined, setError: vi.fn(), clearMessageFocus: vi.fn(), messageFocus: null as AppController["messageFocus"], editing: null, sendKey: "shift-enter" };
+  // Like AppController: clearing the focus re-renders the screen (its own emit, not the store's).
+  const focusListeners = new Set<() => void>();
+  let focusVersion = 0;
+  const controller = {
+    store, engine, api: undefined, setError: vi.fn(), messageFocus: null as AppController["messageFocus"], editing: null, sendKey: "shift-enter", postedHere: null as string | null,
+    clearMessageFocus: vi.fn(() => {
+      controller.messageFocus = null;
+      focusVersion += 1;
+      for (const listener of focusListeners) listener();
+    }),
+  };
   /** Opened at message `seq`, the server's window: `before` rows before it and `after` from it on (as /context sends). */
   const focusAt = (seq: number, before = 25, after = 26, messageId?: string) => {
     controller.messageFocus = { channelId: channel.id, messageId: messageId ?? all[seq - 1]!.id, parentId: messageId ? all[seq - 1]!.id : null, context: all.slice(Math.max(0, seq - 1 - before), seq - 1 + after) };
@@ -128,15 +138,27 @@ function world(posts: number, loadedFrom: number | null) {
     });
     return message;
   };
+  /** What SyncEngine.send does at once: my placeholder (no seq yet) at the end of the store's timeline. */
+  const send = (body: string, parentId: string | null = null) => {
+    const key = `c-${body}`;
+    act(() => {
+      store.putPlaceholder({ id: `local:${key}`, channel_id: channel.id, sender_id: me.id, seq: null, updated_seq: -1, client_msg_id: key, body, created_at: new Date().toISOString(), edited_at: null, deleted: false, pending: true, parent_id: parentId, also_in_channel: false } as MessageState);
+    });
+  };
+  const subscribeFocus = (listener: () => void) => {
+    focusListeners.add(listener);
+    return () => focusListeners.delete(listener);
+  };
   function View() {
     useSyncExternalStore(store.subscribe.bind(store), () => store.version);
+    useSyncExternalStore(subscribeFocus, () => focusVersion);
     return <Timeline controller={controller as unknown as AppController} channel={store.getChannel(channel.id)!} />;
   }
   const open = () => {
     const view = render(<View />);
     return { view, list: view.container.querySelector<HTMLElement>(".timeline")! };
   };
-  return { server, me, other, channel, all, store, engine, controller, focusAt, arrive, open };
+  return { server, me, other, channel, all, store, engine, controller, focusAt, arrive, send, open };
 }
 
 const banner = (list: HTMLElement) => list.textContent?.includes("最新の会話に戻る") ?? false;
@@ -231,5 +253,64 @@ describe("a conversation opened at a message", () => {
     w.open();
     w.arrive("new");
     expect(w.engine.markRead).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * User report 2026-10-10: jumped to a pinned message in a long channel, then sent a message: it did not appear (the
+ * window around the pin does not reach the newest rows); 「最新の会話に戻る」 showed it had been sent. A top-level post sent
+ * from here leaves the focus for the live conversation, at its newest row, as Slack does (SYNC_PROTOCOL.md §10.1 4.).
+ */
+describe("sending while a message's surroundings are shown", () => {
+  const sentRow = (list: HTMLElement) => [...list.querySelectorAll<HTMLElement>("article")].at(-1)?.textContent ?? "";
+
+  it("a window far from the newest rows: the newest rows come with the sent one at the end, at the bottom", () => {
+    const w = world(100, 81);
+    w.focusAt(30); // the window runs to 55; the store holds 81..100
+    const { list } = w.open();
+    expect(seqs(list).at(-1)).toBe(55);
+    w.send("from the pin");
+    expect(w.controller.clearMessageFocus).toHaveBeenCalledTimes(1);
+    expect(w.controller.messageFocus).toBeNull();
+    expect(seqs(list)[0]).toBe(81);
+    expect(seqs(list).at(-1)).toBe(100);
+    expect(sentRow(list)).toContain("from the pin");
+    expect(atEnd(list)).toBe(0);
+    expect(banner(list)).toBe(false);
+    expect(list.querySelector("article.highlighted")).toBeNull();
+  });
+
+  it("lands at the newest row even with the channel's unread divider loaded above", () => {
+    const w = world(100, 81);
+    w.store.updateChannel(w.channel.id, { lastReadSeq: 85, unreadCount: 15 });
+    w.focusAt(30);
+    const { list } = w.open();
+    w.send("from the pin");
+    expect(w.controller.messageFocus).toBeNull();
+    expect(sentRow(list)).toContain("from the pin");
+    expect(atEnd(list)).toBe(0);
+  });
+
+  it("a window joined to the live tail: the focus (and its highlight) is left too", () => {
+    const w = world(5, 1);
+    w.focusAt(3);
+    const { list } = w.open();
+    expect(list.querySelector("article.highlighted")).not.toBeNull();
+    w.send("joined");
+    expect(w.controller.messageFocus).toBeNull();
+    expect(list.querySelector("article.highlighted")).toBeNull();
+    expect(sentRow(list)).toContain("joined");
+  });
+
+  it("a reply sent in a thread, my failed placeholder kept from before and rows from others leave the window as it is", () => {
+    const w = world(100, 81);
+    w.send("failed before"); // a failed send stays a placeholder at the end
+    w.focusAt(30);
+    const { list } = w.open();
+    w.send("a reply", w.all[29]!.id);
+    w.arrive("from bob");
+    expect(w.controller.clearMessageFocus).not.toHaveBeenCalled();
+    expect(seqs(list).at(-1)).toBe(55);
+    expect(banner(list)).toBe(true);
   });
 });
