@@ -55,8 +55,9 @@ class EditorSession(
     private val now: () -> Long,
 ) {
     /**
-     * Whether the editor may be taking keys (MobileEditorHost.editorFocused: the WebView has the focus and a keyboard
-     * is up). While it may, an IME composition can be open and a `replace` would be held back and lost.
+     * Whether the editor may be taking keys (MobileEditorHost.editorFocused: the WebView has the focus, whatever the
+     * keyboard shows). While it may, an IME composition can be open or an edit wait to be written, and a `replace`
+     * would be held back and lost.
      */
     var editorFocused: () -> Boolean = { false }
     /** When the editor last wrote an edit or was handed a command or a picture (null: never). */
@@ -83,7 +84,10 @@ class EditorSession(
 
     /** The body the editor last showed or wrote: what differs from it in the loop is a merge to put on screen. */
     private var wire: String = saver.text
-    private val bodyWaiters = ArrayList<(WebMessage.BodyRequested) -> Unit>()
+
+    /** A `requestBody` waiting for its `bodyRequested`: whether to save at once, and who wants the caret's line. */
+    private class BodyWaiter(val flush: Boolean, val then: ((caretLine: Int) -> Unit)?)
+    private val bodyWaiters = ArrayList<BodyWaiter>()
 
     /** `ready` of a bundle this app does not know came: the screen falls back to Markdown. */
     var unsupported = false
@@ -106,9 +110,7 @@ class EditorSession(
             is WebMessage.BodyRequested -> {
                 take(message.body)
                 caretLine = message.caretLine
-                val waiting = bodyWaiters.toList()
-                bodyWaiters.clear()
-                waiting.forEach { it(message) }
+                answerWaiters(message.caretLine)
             }
             is WebMessage.Caret -> {
                 caretLine = message.line
@@ -168,6 +170,9 @@ class EditorSession(
      */
     fun letGo() {
         if (ended) return
+        // Letting go may write once more (a composition the closing keyboard committed, the edit its blur writes): that
+        // write is on the body before any merge, so the loop waits as after an edit.
+        lastActivity = now()
         catchUp?.cancel()
         catchUp = timers.schedule(QUIET_AFTER_MS + 100) {
             catchUp = null
@@ -201,15 +206,29 @@ class EditorSession(
             then?.invoke(caretLine ?: 0)
             return
         }
-        bodyWaiters.add { answer ->
-            if (flush) saver.flush()
-            then?.invoke(answer.caretLine)
-        }
+        bodyWaiters.add(BodyWaiter(flush, then))
         send(NativeMessage.RequestBody)
     }
 
     /** A `requestBody` is still unanswered (the WebView must stay for it). */
     val awaitingBody: Boolean get() = bodyWaiters.isNotEmpty()
+
+    /**
+     * The editor will not answer (its WebView is gone, or the answer took too long): what is known stands. The loop
+     * holds the editor's last `changed` (at most the last 300 ms of typing are missing) and saves it now; whoever waits
+     * for the caret gets the last known line. Nothing the loop holds is dropped, and the loop may replace the text again.
+     */
+    fun giveUp() {
+        if (bodyWaiters.isEmpty()) return
+        answerWaiters(caretLine ?: 0)
+    }
+
+    private fun answerWaiters(line: Int) {
+        val waiting = bodyWaiters.toList()
+        bodyWaiters.clear()
+        if (waiting.any { it.flush }) saver.flush()
+        waiting.forEach { it.then?.invoke(line) }
+    }
 
     fun setTheme(theme: EditorTheme) {
         if (loaded) send(NativeMessage.SetTheme(theme))
