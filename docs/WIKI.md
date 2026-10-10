@@ -2922,8 +2922,8 @@ Compose の行の 2 段にしたが、iOS は WebKit の欄を消す仕組みが
   responder でなく、最後の `changed` / `command` / `insertImage` から 1 秒）にした。フォーカス中は saver がマージ済みの本文を取り込まず、
   保存はいつもエディタの本文の元の版の上に送られてサーバがマージする。フォーカスが外れたら（`caret`）1 秒後に `flush`（書き出し待ちは保存、
   何も無ければマージされた版を読んで `replace`）。テスト `testWhileTheEditorIsFocusedAMergeWaitsAndNothingIsLost`。直した後はかな・ローマ字
-  ともに 「相手が足した行」 と自分の 「日本た」 が両方残る（iOS 18.6 / 26.5）。Android（§30.5）の `EditorSession` も `canReplace` は true の
-  ままで、同じ穴がある（Android の計測は変換を確定しただけで、変換中に次の打鍵をしていない）。
+  ともに 「相手が足した行」 と自分の 「日本た」 が両方残る（iOS 18.6 / 26.5）。Android（§30.5）にも同じ穴があり、同じ規則で直した
+  （§30.5 の「試作の途中で直したもの」）。
 - **見たまま → Markdown でカーソルが文末に行く**。`CanvasTextView` は作るときに `initialLine` の位置にカーソルを置いていたが、直後の
   `onAppear` の `attach` が本文を入れ直してカーソルが末尾に動いていた。行の位置を次のランループ（本文が入った後）で計算して置く。
 - 計測のログに `load.caretLine` を足した（`MobileEditorTrace`、トレースのときだけ）。
@@ -2942,7 +2942,7 @@ Android のエミュレータ 0.25 秒）。実機（Release）で測り、超�
 
 - フォーカス中は相手の編集がエディタに出ない（キーボードを閉じると出る）。Desktop のように打鍵の合間にも出すには、エディタが変換中か・
   `replace` を入れたか捨てたかを橋で知らせる（`composing {active}` や `changed` に最後に入れた `replace` の番号）必要がある。§30.3 の
-  契約の変更（3 端末）なので M153b / M153c で。Android にも同じ直しが要る（M153c）。
+  契約の変更（3 端末）なので M153b / M153c で。Android も同じ扱い（§30.5）。
 - 書式の行が横スクロールの 1 行で、402 pt の幅では 「画像」 と 「キーボードを閉じる」 が画面の外（スクロールしないと押せない）。
   取り消し・やり直し・画像・閉じるを固定し、書式だけをスクロールにする。書式の状態（ON / OFF）は橋の `selection` が来てから。
 - iOS 26 では OS の選択メニューが浮くツールバー（M155）に重なる（18.6 は上下に分かれる）。同梱エディタは `pointer: coarse` で浮く
@@ -2969,11 +2969,11 @@ Desktop の成果物の変更なし。端末ごとの設定（既定はオフ）
 | `app/build.gradle.kts`（`copyMobileEditor`） | `apps/shared/mobile-editor/dist` を生成物の assets の根（`build/generated/mobileEditor/editor/`、APK では `assets/editor/`）に写すタスク。variant API の `sources.assets.addGeneratedSourceDirectory` で全 variant の assets に入るので、assets を読む全タスク（merge・lint・package）がこのタスクに依存し、`src/` には何も書かない（コミットのしようがない。`src/main/assets` に写すと Gradle 9 が lint のモデルの暗黙の依存を断る）。dist が無ければ作り方（`cd apps/desktop && npm ci && npm run build:mobile-editor`）を書いて失敗する。依存に `androidx.webkit`（`WebViewAssetLoader`）を足した |
 | `editor/EditorBridgeMessages.kt` | §30.3 の全メッセージの kotlinx.serialization のモデル（`NativeMessage` / `WebMessage` の sealed class、`type` で見分ける）、`EditorTheme`・`EditorCommand` の enum、`EditorBridgeCodec`（`providePages.query` の null は書き出す：エディタは「鍵が無い」ではなく `null` を見る。`load.title` などの null の既定は書かない）、`receiveCall`（JSON を JS の文字列リテラル 1 つにして `window.taylisEditor.receive(...)`。`"`・`\`・改行・U+2028 / U+2029・制御文字をエスケープ） |
 | `editor/EditorBridge.kt` | 運び役。アプリ → エディタは `EditorPort.evaluate`（`WebView.evaluateJavascript`）、エディタ → アプリは `post(json)`（`TaylisBridge` の JavascriptInterface。WebView の JS スレッドで来るので main looper に順に渡す）。読めないメッセージは `refused` へ（投げない） |
-| `editor/EditorSession.kt` | 1 回の編集と `CanvasSaver` の間。`ready` → `setTheme`・`setViewport {0}`・`providePeople`・`provideEmoji`・`providePages {null, 木の全部}`・`load`（人と絵文字は本文の前：チップの名前は読むときに決まる）。`changed` → `saver.edit`。`saver.revision` が動いて `text` が最後に見た / 書いた本文と違えば `replace`（マージ・相手の版・閲覧でのチェック）。`requestBody` → `bodyRequested` で `edit` + `flush`（離れる・背景）/ `edit` だけ（Markdown へ）と `caretLine`。`needPages` は木から、`pickImage`・`openLink`・`log`・版違いはアプリへ |
+| `editor/EditorSession.kt` | 1 回の編集と `CanvasSaver` の間。`ready` → `setTheme`・`setViewport {0}`・`providePeople`・`provideEmoji`・`providePages {null, 木の全部}`・`load`（人と絵文字は本文の前：チップの名前は読むときに決まる）。`changed` → `saver.edit`。`saver.revision` が動いて `text` が最後に見た / 書いた本文と違えば `replace`（マージ・相手の版・閲覧でのチェック）。`requestBody` → `bodyRequested` で `edit` + `flush`（離れる・背景）/ `edit` だけ（Markdown へ）と `caretLine`。`needPages` は木から、`pickImage`・`openLink`・`log`・版違いはアプリへ。`start`〜`end` の間 saver の `canReplace` は `editorQuiet`（下の「試作の途中で直したもの」）。`caret` とキーボードが隠れたとき `letGo`（1.1 秒後、静かなら `flush`） |
 | `ui/MobileEditor.kt` | `MobileEditorHost`：ページの画面が開いたときに 1 つ作って `https://appassets.androidplatform.net/editor/index.html` を読ませておく（温め）。`shouldInterceptRequest` で `/editor/*` は `AssetsPathHandler`（接頭辞を剥がして assets の根から引くので `/` に登録し、`/editor/` だけ通す）、`/attachment/<uuid>` と `/emoji/<uuid>` は `AppController.editorImage` / `editorEmojiImage`（セッション付きで API から取り、画像のときだけ。種類は先頭バイトで判定）、それ以外は 404。`shouldOverrideUrlLoading` は bundle 以外を止める。`onRenderProcessGone` で WebView を捨てて `failed`（画面は Markdown に戻る）。画像は `LruCache`（16 MB、ホストごと）。`MobileEditor` composable：`AndroidView` に WebView、その下にアプリの行（元に戻す・やり直す・`@`・画像・キーボードを閉じる）、`imePadding()`。`WysiwygEditing`（設定と、ページの最後の選択） |
 | `ui/DocPage.kt` | 設定がオンで編集できるページなら、画面を開いたときにホストを作る。編集中は 「見たまま | Markdown」 のセグメント（Desktop と同じ）。Markdown へは `requestBody`（flush なし）で本文と行をもらってから、見たままへは Markdown の欄の行（`EditorCaretLink`）を `load.caretLine` に。ホストが壊れたら Markdown に戻して通知。`CanvasEditorField` に `caret`（開く行・今の行） |
 | `ui/YouScreens.kt`・`AppController` | 「表示」の 「ドキュメント」 に 「ドキュメントの見たまま編集（試作）」 のスイッチ（端末だけ、既定オフ、`docs_wysiwyg`） |
-| `test/EditorBridgeTest.kt`（8）・`test/EditorSessionTest.kt`（13） | `bridge_messages.json` の全メッセージ（ネイティブ → エディタは復号して符号化し直して同じ JSON、エディタ → ネイティブは型まで、断る例は断る、未知の鍵は無視）、enum の名前、JS のリテラル（JSON としても読める）、別スレッドからの順序。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：`ready` の順と中身、`changed` → 2 秒後の保存と「自分の本文は返さない」、マージ → `replace`、閲覧のチェック → `replace`、`load` の前は `replace` しない、`requestBody`（flush あり / なし、`load` の前は即答）、`caret` と WebView の再起動、ページ・人・画像・リンク・ログ・コマンド・テーマ・blur、`EditorCaretLink`、画像の種類 |
+| `test/EditorBridgeTest.kt`（8）・`test/EditorSessionTest.kt`（16） | `bridge_messages.json` の全メッセージ（ネイティブ → エディタは復号して符号化し直して同じ JSON、エディタ → ネイティブは型まで、断る例は断る、未知の鍵は無視）、enum の名前、JS のリテラル（JSON としても読める）、別スレッドからの順序。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：`ready` の順と中身、`changed` → 2 秒後の保存と「自分の本文は返さない」、マージ → `replace`、閲覧のチェック → `replace`、`load` の前は `replace` しない、`requestBody`（flush あり / なし、`load` の前は即答）、`caret` と WebView の再起動、ページ・人・画像・リンク・ログ・コマンド・テーマ・blur、`EditorCaretLink`、画像の種類、**フォーカス中のマージは保留して何も失わない**、離れるときの最後の本文、何も足していない答えはマージを戻さない |
 
 **設定と切り替え**：「自分」→「表示」→「ドキュメント」→ 「ドキュメントの見たまま編集（試作）」（既定オフ、この端末だけ）。オンにすると、
 編集できるページの編集画面に 「見たまま | Markdown」 が出て、既定は見たまま。選んだ方は端末に残る（`docs_wysiwyg_choice`）。オフなら
@@ -3000,7 +3000,8 @@ Chrome DevTools（デバッグビルドの `setWebContentsDebuggingEnabled`）�
 | メモリ（PSS） | アプリ 223 MB（見本を編集中）→ 258 MB（10 万字）。WebView のレンダラ（`sandboxed_process`）106 MB → 174 MB |
 | 日本語の IME（12 キー、フリック） | 「にほんご」が行内で変換中（下線）、候補の列（日本語 / 日本語は / ニホンゴ …）がキーボードの上。候補で「日本語」。「あ」2 回 → 「い」の変換中、変換中の Backspace は消えて変換が終わる（残骸なし）、「か」+ Enter で確定。WebView は `CursorAnchorInfo`（変換中の文字と位置）を IME に返している |
 | 日本語の IME（QWERTY、ローマ字） | "nihongo" → 「にほんご」、スペースで変換、Enter で「日本語」。重複・欠けなし |
-| 変換中の `replace` | 「て」を変換中に別の端末が「> 引用」の行を変える → 保存がマージされ `replace` が来るが、エディタは保留（相手の行は出ない）→ Enter で確定した直後に出る。「て」はそのまま |
+| 変換中の `replace` | 「て」を変換中に別の端末が「> 引用」の行を変える → 保存がマージされ `replace` が来るが、エディタは保留（相手の行は出ない）→ Enter で確定した直後に出る。「て」はそのまま。（直す前の計測。この手順では次の打鍵をしていないので下の消失は出なかった。直した後は下） |
+| 変換中のマージ（直した後） | 1 行目の末尾で 「にほん」 を変換中（CDP の `Input.imeSetComposition`、Gboard は出たまま）に android2 が API で 3 行目を変える → 保存はサーバがマージ（版 3）、エディタには何も入らない → 「日本」 で確定して 「た」 を打つ → 保存は版 3 の元の版の上に送られてマージ（版 4：「一行目日本た」 と 「三行目（相手が変えた）」 が両方残る）→ 戻るのジェスチャでキーボードを閉じる（WebView のフォーカスは残る）→ 約 1 秒で相手の行がエディタに出る。保存は増えない |
 | 選択のハンドルと OS のメニュー | 長押しで OS のハンドルと操作メニュー（翻訳 / 切り取り / コピー / すべて選択 / ⋮）。**浮くツールバー（M155）はその下に隠れる**（下の制限） |
 | キーボードの出し入れ | 2 つの行がキーボードの上に付いて動く（`imePadding`：ページの枠は自分で IME の分を足す。MainScreen は scaffold の inset を消費している）。JS の `focus()` ではキーボードは出ない（Android の WebView は操作のない focus で IME を出さない）：本文をタップで出る |
 | テーマ | 「表示」の設定（端末に合わせる / ライト / ダーク）に `setTheme` で追う。ライト `rgb(255,255,255)`、ダーク `rgb(23,24,29)` |
@@ -3015,16 +3016,29 @@ Chrome DevTools（デバッグビルドの `setWebContentsDebuggingEnabled`）�
 DOM のカーソルを先頭に置き（`load.caretLine` で置いたカーソルが消える）、キーボードも出ない。英語の 「WYSIWYG | Markdown」 が
 折り返したので 1 行に。
 
+**変換中のマージで相手の行が消える**（データの消失、§30.4 と同じ穴。コミット 「Android: …」）。`EditorSession` は saver の
+`canReplace` を true のままにしていた。保留された `replace` はエディタの次の編集で捨てられ、その `changed`（マージの前の本文）を
+`saver.edit` がマージ済みの版の上に保存して相手の行を消す（JVM のテストで再現：直す前は 3 行目が元に戻る）。直し：`start`〜`end` の
+間 `canReplace` を `editorQuiet` にした。静かとは、`editorFocused`（WebView にフォーカスがあり、IME が出ているか物理キーボードが
+ある）でなく、最後の `changed`・`command`・`insertImage` から 1 秒たち、答えを待つ `requestBody` が無いこと。フォーカス中の保存は
+エディタの本文の元の版の上に送られサーバがマージする。`caret`（エディタのフォーカスが外れた）と、キーボードが隠れたとき
+（戻るのジェスチャでは WebView にフォーカスが残り `caret` が来ないので、Compose の IME の inset で見る）に `letGo`：1.1 秒後に
+静かなら `flush`（書き出し待ちは保存、無ければマージされた版を読んで `replace`）。離れるときは最後の本文の答えまで保留し、
+答えた本文が最後に書いた / 渡した本文と同じなら saver に入れない（Markdown のエディタが先に取り込んだマージを戻さない）。
+`end` は saver の規則が自分のものなら true に戻す（Markdown のエディタが先に入れた規則は残す）。テスト
+`whileTheEditorIsFocusedAMergeWaitsAndNothingIsLost` ほか 2 つ。エミュレータでも上の表のとおり両方残る。
+
 **判定**（§22.7 の表「M153a 試作」の基準：「Markdown の編集より明らかに良い・壊れない」）
 
 Android は**基準を満たす**（エミュレータの範囲で）。日本語の IME は 12 キーも QWERTY も、行内の変換・候補・変換中の削除・確定が
-正しく、重複も欠けも無い。変換中のマージは保留されて確定後に入る。10 万字は 0.25 秒で立ち上がり、打鍵は 1 フレーム、スクロールは
+正しく、重複も欠けも無い。変換中のマージは失われず（保存はサーバがマージ）、キーボードを閉じると出る（上のデータの消失を直した後）。10 万字は 0.25 秒で立ち上がり、打鍵は 1 フレーム、スクロールは
 60 Hz。見たままの編集は Markdown の編集より明らかに良い（表・コールアウト・画像・チェックがその場で見え、`/`・`[[`・`@` が
 使える）。壊れない：保存・マージ・衝突・上限・オフラインはネイティブの状態機械のまま。M153c（Android の仕上げ）に進んでよい。
 残るのは実機（Pixel / 低い端末）の数字と、下の制限。
 
 **制限（M153c へ）**
 
+- フォーカス中は相手の編集がエディタに出ない（キーボードを閉じると出る）。iOS と同じ（§30.4 の制限、橋の契約の変更で）。
 - OS の選択メニューが浮くツールバー（M155）を隠す。同梱エディタは `pointer: coarse` で浮くツールバーを出さない（書式は下の行にある）か、
   選択の下に出す（Desktop の成果物の変更。iOS と共通）。
 - 同梱エディタの `focus` はフォーカスの無いときに選択を保つべき（`editor.commands.focus(selection.from)`）。それまで Android は送らない。
