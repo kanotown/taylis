@@ -27,7 +27,16 @@ from app.core.time import utcnow
 MAX_NAME_LENGTH = 80  # the bot's display name (users.display_name)
 MAX_CHARACTER_LENGTH = 4000
 # docs/AI.md §12: Anthropic and OpenAI models; the provider follows from the model (llm.py).
-MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5", "gpt-6.1-sol", "gpt-6-luna")
+# docs/AI.md §14 (2026-10-10): claude-fable-5-1 and gpt-6-astra added.
+MODELS = (
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-4-5",
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6-luna",
+)
 EFFORTS = ("low", "medium", "high")
 
 
@@ -47,6 +56,10 @@ class AiAgent(Base):
         Boolean, default=False, server_default=text("false")
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # docs/AI.md §14: mention replies may use the provider's web search tool (admin's choice).
+    web_search: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # docs/AI.md §14: the bot summaries and questions use when the conversation has none (one).
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
@@ -59,11 +72,17 @@ class AiAgent(Base):
     __table_args__ = (
         CheckConstraint(f"char_length(character) <= {MAX_CHARACTER_LENGTH}", name="character_len"),
         CheckConstraint(
-            "model IN ('claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5', "
-            "'gpt-6.1-sol', 'gpt-6-luna')",
+            "model IN ('claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', "
+            "'claude-haiku-4-5', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-luna')",
             name="model_values",
         ),
         CheckConstraint("effort IN ('low', 'medium', 'high')", name="effort_values"),
+        Index(
+            "ai_agents_default_uniq",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
     )
 
 
@@ -104,6 +123,10 @@ class AiRun(Base):
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), default=Decimal(0), server_default="0"
     )
+    # docs/AI.md §14: whether the run may search the web (fixed when it is made, from the bot), and
+    # how many searches the provider ran (priced apart, in cost_usd).
+    web_search: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    web_search_requests: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # The target, fixed when the run is created (review v0.1.18 #2): the worker calls this model
     # of this provider or fails the run, it never switches.
     model: Mapped[str | None] = mapped_column(String(64))

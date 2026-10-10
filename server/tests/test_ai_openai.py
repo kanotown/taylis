@@ -255,9 +255,18 @@ async def test_admin_models_and_providers(
         {
             "name": "anthropic",
             "configured": False,
-            "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
+            "models": [
+                "claude-fable-5-1",
+                "claude-opus-5-5",
+                "claude-sonnet-5-5",
+                "claude-haiku-4-5",
+            ],
         },
-        {"name": "openai", "configured": True, "models": ["gpt-6.1-sol", "gpt-6-luna"]},
+        {
+            "name": "openai",
+            "configured": True,
+            "models": ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"],
+        },
     ]
     sol = await _agent(client, "ai-sol", model="gpt-6.1-sol")
     assert sol["model"] == "gpt-6.1-sol"

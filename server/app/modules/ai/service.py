@@ -24,12 +24,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from fastapi import UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import Database
 from app.core.errors import AppError, bad_request, conflict, not_found
 from app.core.ids import uuid7
+from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
@@ -43,10 +45,13 @@ from app.modules.ai.llm import (
     OPENAI,
     OPENAI_REASONING_ROOM,
     PROVIDERS,
+    WEB_SEARCH_MAX_USES,
+    WEB_SEARCH_ROOM,
     AiRuntime,
     LlmError,
     LlmRequest,
     LlmResult,
+    WebSource,
     provider_of,
 )
 from app.modules.ai.models import AiAgent, AiRun
@@ -69,7 +74,9 @@ from app.modules.ai.schemas import (
     to_agent_public,
     to_run_out,
 )
+from app.modules.attachments.blobstore import BlobStore
 from app.modules.audit import service as audit
+from app.modules.avatars import service as avatars
 from app.modules.channels import service as channels
 from app.modules.channels.events import CHANNEL_MEMBER_REMOVED
 from app.modules.channels.models import Channel
@@ -140,11 +147,6 @@ def _channel_label(channel: Channel) -> str:
     return f"{kind} #{channel.name}"
 
 
-async def _username(db: AsyncSession, user_id: uuid.UUID) -> str:
-    user = await users.get_user(db, user_id)
-    return user.username if user is not None else ""
-
-
 async def _emit_run(db: AsyncSession, run: AiRun) -> None:
     """ai.run_updated to the requester's devices (summaries and questions; not mentions)."""
     if run.kind == "mention":
@@ -174,10 +176,14 @@ def _budget(runtime: AiRuntime) -> Decimal:
     return Decimal(str(runtime.monthly_budget_usd))
 
 
-def estimate_run(kind: str, model: str, input_text: str | None, system: str) -> Decimal:
+def estimate_run(
+    kind: str, model: str, input_text: str | None, system: str, *, web_search: bool = False
+) -> Decimal:
     """The reservation of a new run (docs/AI.md §3): the most one attempt is expected to cost
     (pricing.estimate_usd: the input and system prompt at two tokens a character, the whole
-    output allowance, OpenAI's reasoning room included), times the attempts it may make."""
+    output allowance, OpenAI's reasoning room included; with web search (§14) every allowed
+    search, its results as input and the room for the search work), times the attempts it may
+    make."""
     if input_text is None:
         return Decimal(0)
     max_output = {
@@ -186,8 +192,13 @@ def estimate_run(kind: str, model: str, input_text: str | None, system: str) -> 
     }.get(kind, prompts.SUMMARY_MAX_TOKENS)
     if provider_of(model) == OPENAI:
         max_output += OPENAI_REASONING_ROOM
+    if web_search:
+        max_output += WEB_SEARCH_ROOM
     per_attempt = estimate_usd(
-        model, input_chars=len(input_text) + len(system), max_output_tokens=max_output
+        model,
+        input_chars=len(input_text) + len(system),
+        max_output_tokens=max_output,
+        web_searches=WEB_SEARCH_MAX_USES if web_search else 0,
     )
     return per_attempt * MAX_ATTEMPTS
 
@@ -226,10 +237,13 @@ _LIMIT_NOTICES = {
 async def list_agents(db: AsyncSession) -> list[AiAgentOut]:
     agents = await repo.list_agents(db)
     bots = await users.get_users(db, [a.bot_user_id for a in agents])
-    return [
-        to_agent_out(a, bots[a.bot_user_id].username if a.bot_user_id in bots else "")
-        for a in agents
-    ]
+    return [_agent_out(a, bots.get(a.bot_user_id)) for a in agents]
+
+
+def _agent_out(agent: AiAgent, bot: User | None) -> AiAgentOut:
+    if bot is None:
+        return to_agent_out(agent, "")
+    return to_agent_out(agent, bot.username, bot.avatar_updated_at)
 
 
 async def create_agent(db: AsyncSession, actor: User, data: AiAgentCreate) -> AiAgentOut:
@@ -249,10 +263,15 @@ async def create_agent(db: AsyncSession, actor: User, data: AiAgentCreate) -> Ai
             effort=data.effort,
             allow_private=data.allow_private,
             enabled=data.enabled,
+            web_search=data.web_search,
             created_by=actor.id,
         )
         db.add(agent)
         await db.flush()
+        if data.is_default:  # docs/AI.md §14: one default bot
+            await repo.clear_default(db)
+            agent.is_default = True
+            await db.flush()
         await audit.record_in_tx(
             db,
             actor_id=actor.id,
@@ -289,10 +308,16 @@ async def update_agent(
         await db.flush()
         await emit_user_event(db, USER_UPDATED, bot)
     was_private, was_enabled = agent.allow_private, agent.enabled
-    for field in ("character", "model", "effort", "allow_private", "enabled"):
+    for field in ("character", "model", "effort", "allow_private", "enabled", "web_search"):
         value = getattr(data, field)
         if value is not None:
             setattr(agent, field, value)
+    if data.is_default is not None and data.is_default != agent.is_default:
+        # docs/AI.md §14: at most one default bot (a unique index); the other one steps down first.
+        if data.is_default:
+            await repo.clear_default(db, keep=agent.id)
+            await db.flush()
+        agent.is_default = data.is_default
     agent.updated_at = now
     await db.flush()
     # Review v0.1.18 #3: what the bot may no longer do is not sent from the queue either.
@@ -308,9 +333,62 @@ async def update_agent(
         target_id=agent.id,
         details={"fields": sorted(data.model_fields_set)},
     )
-    username = await _username(db, agent.bot_user_id)
+    bot_user = await users.get_user(db, agent.bot_user_id)
     await db.commit()
-    return to_agent_out(agent, username)
+    return _agent_out(agent, bot_user)
+
+
+async def _agent_bot(db: AsyncSession, agent_id: uuid.UUID) -> tuple[AiAgent, User]:
+    agent = await repo.get_agent(db, agent_id)
+    if agent is None:
+        raise not_found("ai_agent_not_found", "AI agent not found")
+    return agent, await users.require_user(db, agent.bot_user_id)
+
+
+async def set_agent_avatar(
+    db: AsyncSession,
+    actor: User,
+    agent_id: uuid.UUID,
+    file: UploadFile,
+    settings: Settings,
+    blobs: BlobStore,
+) -> AiAgentOut:
+    """docs/AI.md §14: the bot's picture, through the users' own path (a bot is a user): the
+    same checks, square 256px PNG, object store and user.updated to every device."""
+    agent, bot = await _agent_bot(db, agent_id)
+    agent_id_, bot_id = agent.id, bot.id
+    updated = await avatars.upload(db, bot, file, settings, blobs)  # commits
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="ai.agent_avatar_set",
+        target_type="ai_agent",
+        target_id=agent_id_,
+        details={"bot_user_id": str(bot_id)},
+    )
+    await db.commit()
+    agent, _ = await _agent_bot(db, agent_id_)
+    return _agent_out(agent, updated)
+
+
+async def clear_agent_avatar(
+    db: AsyncSession, actor: User, agent_id: uuid.UUID, blobs: BlobStore
+) -> AiAgentOut:
+    """docs/AI.md §14: the bot goes back to the drawn initial."""
+    agent, bot = await _agent_bot(db, agent_id)
+    agent_id_, bot_id = agent.id, bot.id
+    updated = await avatars.remove(db, bot, blobs)  # commits
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="ai.agent_avatar_cleared",
+        target_type="ai_agent",
+        target_id=agent_id_,
+        details={"bot_user_id": str(bot_id)},
+    )
+    await db.commit()
+    agent, _ = await _agent_bot(db, agent_id_)
+    return _agent_out(agent, updated)
 
 
 async def delete_agent(db: AsyncSession, actor: User, agent_id: uuid.UUID) -> None:
@@ -319,6 +397,7 @@ async def delete_agent(db: AsyncSession, actor: User, agent_id: uuid.UUID) -> No
     now = utcnow()
     agent.deleted_at = now
     agent.enabled = False
+    agent.is_default = False
     agent.updated_at = now
     await _cancel_open_runs(db, agent.id, AGENT_DELETED, now=now)
     for channel_id in await channels.member_channel_ids(db, agent.bot_user_id):
@@ -361,8 +440,9 @@ async def usage(db: AsyncSession, runtime: AiRuntime, month: str | None) -> AiUs
                 input_tokens=inp,
                 output_tokens=out,
                 cost_usd=float(cost),
+                web_search_requests=searches,
             )
-            for agent_id, name, runs, inp, out, cost in by_agent
+            for agent_id, name, runs, inp, out, cost, searches in by_agent
         ],
         by_user=[
             AiUsageByUser(user_id=user_id, runs=runs, cost_usd=float(cost))
@@ -407,8 +487,14 @@ async def check_private_allowed(
 
 
 async def _usable_agents(db: AsyncSession, runtime: AiRuntime) -> list[AiAgent]:
-    """Enabled bots whose provider has a key, oldest first (the first is the default bot)."""
+    """Enabled bots whose provider has a key, oldest first."""
     return [a for a in await repo.list_agents(db, enabled_only=True) if runtime.serves(a.model)]
+
+
+def _default_of(usable: list[AiAgent]) -> AiAgent:
+    """docs/AI.md §14: the default bot: the one the administrator chose (is_default) while it is
+    usable, else the oldest usable one (as before the setting). `usable` is not empty."""
+    return next((a for a in usable if a.is_default), usable[0])
 
 
 async def _summary_agent(
@@ -422,7 +508,7 @@ async def _summary_agent(
     usable = await _usable_agents(db, runtime)
     if not usable:
         return None, "ai_unavailable"
-    agent = usable[0]
+    agent = _default_of(usable)
     for candidate in usable:
         if await channels.membership_of(db, candidate.bot_user_id, channel.id) is not None:
             agent = candidate
@@ -619,7 +705,7 @@ async def _ask_agent(
     usable = await _usable_agents(db, runtime)
     if not usable:
         return None, "ai_unavailable"
-    return usable[0], None
+    return _default_of(usable), None
 
 
 def _tz(value: int | None) -> int:
@@ -851,8 +937,8 @@ async def handle_mention(
         problem = "ai_unavailable"
     else:
         text = await _mention_input(db, message, sender, channel)
-        system = prompts.mention_system(agent.name, agent.character)
-        reserve = estimate_run("mention", agent.model, text, system)
+        system = prompts.mention_system(agent.name, agent.character, web_search=agent.web_search)
+        reserve = estimate_run("mention", agent.model, text, system, web_search=agent.web_search)
         problem = await _admit(db, runtime, sender.id, now, reserve)
     if problem is not None:
         await _post_as_bot(
@@ -875,6 +961,8 @@ async def handle_mention(
             "model": agent.model,
             "provider": provider_of(agent.model),
             "reserved_usd": reserve,
+            # docs/AI.md §14: fixed with the target (its reservation counts the searches).
+            "web_search": agent.web_search,
             "requester_id": sender.id,
             "channel_id": channel.id,
             "thread_id": thread_root,
@@ -1105,12 +1193,14 @@ def _record_usage(run: AiRun, result: LlmResult) -> None:
     run.output_tokens += result.output_tokens
     run.cache_read_tokens += result.cache_read_tokens
     run.cache_write_tokens += result.cache_write_tokens
+    run.web_search_requests = (run.web_search_requests or 0) + result.web_search_requests
     spent = cost_usd(
         model,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         cache_read_tokens=result.cache_read_tokens,
         cache_write_tokens=result.cache_write_tokens,
+        web_search_requests=result.web_search_requests,
     )
     run.cost_usd = Decimal(run.cost_usd or 0) + spent
     run.reserved_usd = max(Decimal(run.reserved_usd or 0) - spent, Decimal(0))
@@ -1206,13 +1296,17 @@ async def _prepare(
                 ),
                 None,
             )
+        # docs/AI.md §14: searches only when the run was made with them (its reservation counts
+        # them) and the administrator has not turned them off since.
+        web_search = run.web_search and agent.web_search
         return (
             LlmRequest(
                 model=model,
                 effort=agent.effort,
-                system=prompts.mention_system(agent.name, agent.character),
+                system=prompts.mention_system(agent.name, agent.character, web_search=web_search),
                 user=run.input,
                 max_tokens=prompts.REPLY_MAX_TOKENS,
+                web_search=web_search,
             ),
             None,
         )
@@ -1284,8 +1378,13 @@ async def _execute(
             else:
                 if result.stop_reason == "max_tokens":
                     text += "\n\n(長さの上限に達したため、ここまでです)"
+                text += prompts.sources_section(_cited(result.sources))
                 await _finish(db, run, output=text, error=None, now=now)
         await db.commit()
+
+
+def _cited(sources: tuple[WebSource, ...]) -> list[tuple[str, str]]:
+    return [(s.url, s.title) for s in sources]
 
 
 async def process_due(

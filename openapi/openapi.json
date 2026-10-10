@@ -2454,11 +2454,18 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
           "model": {
             "enum": [
+              "claude-fable-5-1",
               "claude-opus-5-5",
               "claude-sonnet-5-5",
               "claude-haiku-4-5",
+              "gpt-6-astra",
               "gpt-6.1-sol",
               "gpt-6-luna"
             ],
@@ -2475,6 +2482,11 @@
             "pattern": "^[a-z0-9._-]{3,32}$",
             "title": "Username",
             "type": "string"
+          },
+          "web_search": {
+            "default": false,
+            "title": "Web Search",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2491,6 +2503,18 @@
           "allow_private": {
             "title": "Allow Private",
             "type": "boolean"
+          },
+          "avatar_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Updated At"
           },
           "bot_user_id": {
             "format": "uuid",
@@ -2524,11 +2548,18 @@
             "title": "Id",
             "type": "string"
           },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
           "model": {
             "enum": [
+              "claude-fable-5-1",
               "claude-opus-5-5",
               "claude-sonnet-5-5",
               "claude-haiku-4-5",
+              "gpt-6-astra",
               "gpt-6.1-sol",
               "gpt-6-luna"
             ],
@@ -2547,6 +2578,11 @@
           "username": {
             "title": "Username",
             "type": "string"
+          },
+          "web_search": {
+            "default": false,
+            "title": "Web Search",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2579,9 +2615,11 @@
           },
           "model": {
             "enum": [
+              "claude-fable-5-1",
               "claude-opus-5-5",
               "claude-sonnet-5-5",
               "claude-haiku-4-5",
+              "gpt-6-astra",
               "gpt-6.1-sol",
               "gpt-6-luna"
             ],
@@ -2591,6 +2629,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "web_search": {
+            "default": false,
+            "title": "Web Search",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2655,13 +2698,26 @@
             ],
             "title": "Enabled"
           },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          },
           "model": {
             "anyOf": [
               {
                 "enum": [
+                  "claude-fable-5-1",
                   "claude-opus-5-5",
                   "claude-sonnet-5-5",
                   "claude-haiku-4-5",
+                  "gpt-6-astra",
                   "gpt-6.1-sol",
                   "gpt-6-luna"
                 ],
@@ -2685,6 +2741,17 @@
               }
             ],
             "title": "Name"
+          },
+          "web_search": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Web Search"
           }
         },
         "title": "AiAgentUpdate",
@@ -2807,9 +2874,11 @@
           "models": {
             "items": {
               "enum": [
+                "claude-fable-5-1",
                 "claude-opus-5-5",
                 "claude-sonnet-5-5",
                 "claude-haiku-4-5",
+                "gpt-6-astra",
                 "gpt-6.1-sol",
                 "gpt-6-luna"
               ],
@@ -3254,6 +3323,11 @@
           },
           "runs": {
             "title": "Runs",
+            "type": "integer"
+          },
+          "web_search_requests": {
+            "default": 0,
+            "title": "Web Search Requests",
             "type": "integer"
           }
         },
@@ -4881,6 +4955,20 @@
           }
         },
         "title": "Body_import_pack_api_v1_emoji_packs_import_post",
+        "type": "object"
+      },
+      "Body_upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post",
         "type": "object"
       },
       "Body_upload_api_v1_attachments_post": {
@@ -22496,6 +22584,112 @@
           }
         ],
         "summary": "Update Agent",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/agents/{agent_id}/avatar": {
+      "delete": {
+        "description": "The bot goes back to its drawn initial (docs/AI.md §14).",
+        "operationId": "delete_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAgentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Agent Avatar",
+        "tags": [
+          "ai"
+        ]
+      },
+      "post": {
+        "description": "The bot's picture (docs/AI.md §14): as POST /users/me/avatar (a PNG / JPEG / GIF / WebP,\ncropped square and resized to 256px) for the bot user. 404 ai_agent_not_found.",
+        "operationId": "upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAgentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Agent Avatar",
         "tags": [
           "ai"
         ]

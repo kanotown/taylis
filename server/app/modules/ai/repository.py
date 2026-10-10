@@ -29,12 +29,20 @@ async def get_agent_any(db: AsyncSession, agent_id: uuid.UUID) -> AiAgent | None
 
 
 async def list_agents(db: AsyncSession, *, enabled_only: bool = False) -> list[AiAgent]:
-    """Live agents, oldest first (the first enabled one is the default for summaries)."""
+    """Live agents, oldest first (docs/AI.md §14: the default bot is chosen by the service)."""
     stmt = select(AiAgent).where(AiAgent.deleted_at.is_(None))
     if enabled_only:
         stmt = stmt.where(AiAgent.enabled.is_(True))
     stmt = stmt.order_by(AiAgent.created_at, AiAgent.id)
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def clear_default(db: AsyncSession, keep: uuid.UUID | None = None) -> None:
+    """docs/AI.md §14: no bot (but `keep`) is the default bot any more."""
+    stmt = update(AiAgent).where(AiAgent.is_default.is_(True))
+    if keep is not None:
+        stmt = stmt.where(AiAgent.id != keep)
+    await db.execute(stmt.values(is_default=False).execution_options(synchronize_session="fetch"))
 
 
 async def agents_for_bots(db: AsyncSession, bot_user_ids: list[uuid.UUID]) -> list[AiAgent]:
@@ -257,7 +265,7 @@ async def claim(
 
 async def usage_by_agent(
     db: AsyncSession, start: datetime, end: datetime
-) -> list[tuple[uuid.UUID, str, int, int, int, Decimal]]:
+) -> list[tuple[uuid.UUID, str, int, int, int, Decimal, int]]:
     stmt = (
         select(
             AiAgent.id,
@@ -268,6 +276,7 @@ async def usage_by_agent(
             ),
             func.coalesce(func.sum(AiRun.output_tokens), 0),
             func.coalesce(func.sum(AiRun.cost_usd), 0),
+            func.coalesce(func.sum(AiRun.web_search_requests), 0),
         )
         .join(AiAgent, AiAgent.id == AiRun.agent_id)
         .where(AiRun.created_at >= start, AiRun.created_at < end)
@@ -275,7 +284,7 @@ async def usage_by_agent(
         .order_by(func.sum(AiRun.cost_usd).desc(), AiAgent.name)
     )
     return [
-        (r[0], r[1], int(r[2]), int(r[3]), int(r[4]), Decimal(r[5]))
+        (r[0], r[1], int(r[2]), int(r[3]), int(r[4]), Decimal(r[5]), int(r[6]))
         for r in (await db.execute(stmt)).all()
     ]
 

@@ -21,17 +21,36 @@ ANTHROPIC = "anthropic"
 OPENAI = "openai"
 PROVIDERS = (ANTHROPIC, OPENAI)
 # docs/AI.md §12: the model decides the provider (no column of its own).
+# The order is the admin form's (docs/AI.md §14: Fable 5.1 and GPT-6 Astra added 2026-10-10).
 MODEL_PROVIDERS: dict[str, str] = {
+    "claude-fable-5-1": ANTHROPIC,
     "claude-opus-5-5": ANTHROPIC,
     "claude-sonnet-5-5": ANTHROPIC,
     "claude-haiku-4-5": ANTHROPIC,
+    "gpt-6-astra": OPENAI,
     "gpt-6.1-sol": OPENAI,
     "gpt-6-luna": OPENAI,
 }
 
 HAIKU = "claude-haiku-4-5"
-# Server-side fallback on a safety refusal (Opus 5.5 / Sonnet 5.5 only).
+# Server-side fallback on a safety refusal (Fable 5.1 / Opus 5.5 / Sonnet 5.5).
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+# docs/AI.md §14: the provider's own web search tool, at most this many searches per reply.
+WEB_SEARCH_MAX_USES = 5
+# Anthropic: the newest web search tool (dynamic filtering: the model filters the results in code
+# before they reach its context; response_inclusion drops those filtered result blocks from the
+# response) on Claude 4.6 and later; Haiku 4.5 keeps the basic version.
+# https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool
+ANTHROPIC_WEB_SEARCH = "web_search_20260318"
+ANTHROPIC_WEB_SEARCH_BASIC = "web_search_20250305"
+# Room for the model's work around the searches (queries, filtering code, reading), added to the
+# reply's output allowance when a request may search (the visible length stays set by the prompt).
+WEB_SEARCH_ROOM = 8000
+# A long search turn may pause (stop_reason pause_turn); it is sent back this many times at most.
+MAX_CONTINUATIONS = 3
+# Sources listed under a reply at most.
+MAX_SOURCES = 10
 
 
 @dataclass(frozen=True)
@@ -41,6 +60,17 @@ class LlmRequest:
     system: str
     user: str
     max_tokens: int
+    # docs/AI.md §14: the provider's web search tool is attached (mention replies of a bot with
+    # web_search on).
+    web_search: bool = False
+
+
+@dataclass(frozen=True)
+class WebSource:
+    """A web page an answer cites (docs/AI.md §14)."""
+
+    url: str
+    title: str
 
 
 @dataclass(frozen=True)
@@ -54,11 +84,21 @@ class LlmResult:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    # docs/AI.md §14: the searches the provider ran (priced apart) and the pages the answer cites.
+    web_search_requests: int = 0
+    sources: tuple[WebSource, ...] = ()
 
     @property
     def has_tokens(self) -> bool:
+        """Whether there is anything to record (tokens, or searches: both cost)."""
         return any(
-            (self.input_tokens, self.output_tokens, self.cache_read_tokens, self.cache_write_tokens)
+            (
+                self.input_tokens,
+                self.output_tokens,
+                self.cache_read_tokens,
+                self.cache_write_tokens,
+                self.web_search_requests,
+            )
         )
 
 
@@ -99,33 +139,53 @@ class AnthropicProvider:
         return self._client
 
     async def complete(self, request: LlmRequest) -> LlmResult:
-        client = self._get_client()
         # The system prompt is the same for every run of a bot: cache it.
         system: Any = [
             {"type": "text", "text": request.system, "cache_control": {"type": "ephemeral"}}
         ]
-        messages: Any = [{"role": "user", "content": request.user}]
+        messages: list[Any] = [{"role": "user", "content": request.user}]
+        responses: list[Any] = []
+        response = await self._create(request, system, messages)
+        responses.append(response)
+        # docs/AI.md §14: a long search turn may pause; it goes on when the paused assistant
+        # message is sent back unchanged (no extra user message).
+        while response.stop_reason == "pause_turn" and len(responses) <= MAX_CONTINUATIONS:
+            messages = [
+                messages[0],
+                {"role": "assistant", "content": [_block_param(b) for b in response.content]},
+            ]
+            response = await self._create(request, system, messages)
+            responses.append(response)
+        return _anthropic_result(responses, request.model)
+
+    async def _create(self, request: LlmRequest, system: Any, messages: list[Any]) -> Any:
+        client = self._get_client()
         output_config: Any = {"effort": request.effort}
+        max_tokens = request.max_tokens + (WEB_SEARCH_ROOM if request.web_search else 0)
+        extra: dict[str, Any] = {}
+        if request.web_search:
+            extra["tools"] = [anthropic_web_search_tool(request.model)]
         try:
-            response: Any
             if request.model == HAIKU:
-                response = await client.messages.create(
+                return await client.messages.create(
                     model=request.model,
-                    max_tokens=request.max_tokens,
+                    max_tokens=max_tokens,
                     system=system,
                     messages=messages,
+                    **extra,
                 )
-            else:
-                # Opus 5.5 always thinks (no `thinking` parameter); effort sets how much.
-                response = await client.beta.messages.create(
-                    model=request.model,
-                    max_tokens=request.max_tokens,
-                    system=system,
-                    messages=messages,
-                    output_config=output_config,
-                    betas=[FALLBACK_BETA],
-                    fallbacks="default",
-                )
+            # Fable 5.1 / Opus 5.5 / Sonnet 5.5 always think (no `thinking` parameter); effort
+            # sets how much.
+            return await client.beta.messages.create(
+                model=request.model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                output_config=output_config,
+                betas=[FALLBACK_BETA],
+                fallbacks="default",
+                **extra,
+            )
         except (
             anthropic.AuthenticationError,
             anthropic.PermissionDeniedError,
@@ -144,17 +204,71 @@ class AnthropicProvider:
             raise LlmError(f"API のエラー ({exc.status_code})", retryable=False) from exc
         except anthropic.APIConnectionError as exc:  # includes timeouts
             raise LlmError("API に接続できませんでした", retryable=True) from exc
-        text = "".join(block.text for block in response.content if block.type == "text")
+
+
+def anthropic_web_search_tool(model: str) -> dict[str, Any]:
+    """docs/AI.md §14: Anthropic's server-side web search, at most WEB_SEARCH_MAX_USES searches."""
+    if model == HAIKU:
+        return {
+            "type": ANTHROPIC_WEB_SEARCH_BASIC,
+            "name": "web_search",
+            "max_uses": WEB_SEARCH_MAX_USES,
+        }
+    return {
+        "type": ANTHROPIC_WEB_SEARCH,
+        "name": "web_search",
+        "max_uses": WEB_SEARCH_MAX_USES,
+        "response_inclusion": "excluded",
+    }
+
+
+def _block_param(block: Any) -> Any:
+    """A response content block as it is sent back (pause_turn): unchanged."""
+    to_dict = getattr(block, "to_dict", None)
+    return to_dict() if callable(to_dict) else block
+
+
+def _add_source(found: dict[str, WebSource], url: Any, title: Any) -> None:
+    if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+        return
+    if url not in found and len(found) < MAX_SOURCES:
+        found[url] = WebSource(url=url, title=title if isinstance(title, str) else "")
+
+
+def _anthropic_result(responses: list[Any], requested_model: str) -> LlmResult:
+    """The responses of one turn (more than one after pause_turn) as an LlmResult: the text of
+    every text block, the cited pages (web_search_result_location citations), the tokens and the
+    searches added up."""
+    text: list[str] = []
+    sources: dict[str, WebSource] = {}
+    inp = out = cache_read = cache_write = searches = 0
+    for response in responses:
+        for block in response.content:
+            if block.type != "text":
+                continue
+            text.append(block.text)
+            for citation in getattr(block, "citations", None) or []:
+                if getattr(citation, "type", None) == "web_search_result_location":
+                    _add_source(sources, citation.url, getattr(citation, "title", None))
         usage = response.usage
-        return LlmResult(
-            text=text,
-            stop_reason=response.stop_reason,
-            model=str(response.model or request.model),
-            input_tokens=_tokens(usage.input_tokens),
-            output_tokens=_tokens(usage.output_tokens),
-            cache_read_tokens=_tokens(getattr(usage, "cache_read_input_tokens", None)),
-            cache_write_tokens=_tokens(getattr(usage, "cache_creation_input_tokens", None)),
-        )
+        inp += _tokens(usage.input_tokens)
+        out += _tokens(usage.output_tokens)
+        cache_read += _tokens(getattr(usage, "cache_read_input_tokens", None))
+        cache_write += _tokens(getattr(usage, "cache_creation_input_tokens", None))
+        server_tools = getattr(usage, "server_tool_use", None)
+        searches += _tokens(getattr(server_tools, "web_search_requests", None))
+    last = responses[-1]
+    return LlmResult(
+        text="".join(text),
+        stop_reason=last.stop_reason,
+        model=str(last.model or requested_model),
+        input_tokens=inp,
+        output_tokens=out,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+        web_search_requests=searches,
+        sources=tuple(sources.values()),
+    )
 
 
 # Reasoning tokens count against max_output_tokens on OpenAI; the guide advises reserving at least
@@ -179,7 +293,7 @@ class OpenAIProvider:
         return self._client
 
     def build_request(self, request: LlmRequest) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "model": request.model,
             "instructions": request.system,
             "input": [{"role": "user", "content": request.user}],
@@ -187,6 +301,13 @@ class OpenAIProvider:
             "max_output_tokens": request.max_tokens + OPENAI_REASONING_ROOM,
             "store": False,
         }
+        if request.web_search:
+            # docs/AI.md §14: the Responses API's web search tool; max_tool_calls caps the calls
+            # of built-in tools in the response (further ones are ignored).
+            body["tools"] = [{"type": "web_search"}]
+            body["max_tool_calls"] = WEB_SEARCH_MAX_USES
+            body["max_output_tokens"] += WEB_SEARCH_ROOM
+        return body
 
     async def complete(self, request: LlmRequest) -> LlmResult:
         client = self._get_client()
@@ -245,7 +366,20 @@ def parse_openai_response(response: Any, requested_model: str) -> LlmResult:
             stop_reason = str(reason or "incomplete")
     if refused:
         stop_reason = "refusal"
-    return replace(usage, text=response.output_text or "", stop_reason=stop_reason)
+    sources: dict[str, WebSource] = {}
+    for output in response.output or []:
+        if getattr(output, "type", None) != "message":
+            continue
+        for item in output.content or []:
+            for note in getattr(item, "annotations", None) or []:
+                if getattr(note, "type", None) == "url_citation":
+                    _add_source(sources, note.url, getattr(note, "title", None))
+    return replace(
+        usage,
+        text=response.output_text or "",
+        stop_reason=stop_reason,
+        sources=tuple(sources.values()),
+    )
 
 
 def _openai_usage(response: Any, requested_model: str) -> LlmResult:
@@ -258,9 +392,16 @@ def _openai_usage(response: Any, requested_model: str) -> LlmResult:
         details_in = getattr(usage, "input_tokens_details", None)
         cached = _tokens(getattr(details_in, "cached_tokens", None))
         written = _tokens(getattr(details_in, "cache_write_tokens", None))
+    # docs/AI.md §14: every web_search_call item is one billed tool call.
+    searches = sum(
+        1
+        for output in (getattr(response, "output", None) or [])
+        if getattr(output, "type", None) == "web_search_call"
+    )
     return LlmResult(
         text="",
         stop_reason=None,
+        web_search_requests=searches,
         model=str(getattr(response, "model", None) or requested_model),
         # OpenAI's input_tokens includes the cached and the cache-write tokens.
         input_tokens=max(total_in - cached - written, 0),
@@ -281,6 +422,9 @@ class FakeProvider:
     reply: Callable[[LlmRequest], str] | None = None
     usage: tuple[int, int, int, int] = (1000, 200, 0, 0)
     requests: list[LlmRequest] = field(default_factory=list)
+    # docs/AI.md §14: what a request with web search gets back (ignored without it).
+    web_search_requests: int = 0
+    sources: tuple[WebSource, ...] = ()
 
     async def complete(self, request: LlmRequest) -> LlmResult:
         self.requests.append(request)
@@ -295,6 +439,8 @@ class FakeProvider:
             output_tokens=out,
             cache_read_tokens=cache_read,
             cache_write_tokens=cache_write,
+            web_search_requests=self.web_search_requests if request.web_search else 0,
+            sources=self.sources if request.web_search else (),
         )
 
 
