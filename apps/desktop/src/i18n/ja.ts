@@ -1190,6 +1190,8 @@ export const ja = {
   "dialogs.removeOwner": "オーナーから外す",
   "dialogs.makeOwner": "オーナーにする",
   "dialogs.removeFromChannel": "チャンネルから外す",
+  "dialogs.memberActions": "{name} さんの操作",
+  "dialogs.removeMemberConfirm": "{name} さんをこのチャンネルから外しますか？",
   "dialogs.topic": "トピック",
   "dialogs.topicDescription": "このチャンネルで何を話すのかを一行で。",
   "dialogs.topicPlaceholder": "例：週次の進捗共有",
