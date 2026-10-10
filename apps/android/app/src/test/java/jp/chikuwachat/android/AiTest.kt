@@ -80,6 +80,12 @@ class AiTest {
         )
         assertEquals(AiStatusOut(true, false, listOf(AiAgentPublic("a", "u", "ちくわ", "claude-opus-5-5"))), status)
         assertEquals(AiStatusOut(), Codec.snake.decodeFromString(AiStatusOut.serializer(), "{}"))
+        // docs/AI.md §14: web_search (absent on an older server: false).
+        val searching = Codec.snake.decodeFromString(
+            AiStatusOut.serializer(),
+            """{"agents":[{"id":"a","bot_user_id":"u","model":"gpt-6-astra","web_search":true}]}""",
+        )
+        assertTrue(searching.agents.single().webSearch)
 
         val run = Codec.snake.decodeFromString(
             AiRunOut.serializer(),
@@ -346,6 +352,14 @@ class AiTest {
         val sol = listOf(AiAgentPublic("s", "bot3", "そる", "gpt-6.1-sol"), AiAgentPublic("o", "bot4", "ちくわ", "claude-opus-5-5"))
         assertTrue(AiTexts.memberNotice(sol, listOf("bot3"))!!.contains("OpenAI の API"))
         assertTrue(AiTexts.memberNotice(sol, listOf("bot3", "bot4"))!!.contains("Anthropic と OpenAI の API"))
+        // docs/AI.md §14: the bots with web search are named with their provider; the others add nothing.
+        val searching = listOf(AiAgentPublic("s", "bot3", "そる", "gpt-6.1-sol", webSearch = true), AiAgentPublic("o", "bot4", "ちくわ", "claude-opus-5-5"))
+        assertEquals(
+            "AI（そる、ちくわ）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic と OpenAI の API に送られます" +
+                "。そる はネット検索を使うため、会話から作った検索語も OpenAI を通じてウェブの検索に送られます",
+            AiTexts.memberNotice(searching, listOf("bot3", "bot4")),
+        )
+        assertFalse(AiTexts.memberNotice(searching, listOf("bot4"))!!.contains("ネット検索"))
     }
 
     /** AI.md §2.1: people and the AI bots only, marked 「AI」; with the status read, only the AI bots it lists. */

@@ -82,11 +82,16 @@ object AiTexts {
         val names = present.map { it.name }.distinct()
         if (names.isEmpty()) return null
         // §12: each bot's model decides where its part goes (Anthropic, OpenAI or both), as on the web.
-        val where = listOfNotNull(
-            "Anthropic".takeIf { present.any { !it.model.startsWith("gpt-") } },
-            "OpenAI".takeIf { present.any { it.model.startsWith("gpt-") } },
+        fun where(bots: List<AiAgentPublic>) = listOfNotNull(
+            "Anthropic".takeIf { bots.any { !it.model.startsWith("gpt-") } },
+            "OpenAI".takeIf { bots.any { it.model.startsWith("gpt-") } },
         ).joinToString(L10n.str(R.string.ai_views_and))
-        return L10n.str(R.string.ai_views_ai_present, names.joinToString(L10n.str(R.string.common_list_separator)), where)
+        val separator = L10n.str(R.string.common_list_separator)
+        val text = L10n.str(R.string.ai_views_ai_present, names.joinToString(separator), where(present))
+        // §14: a bot with web search also sends queries made from the conversation to the web, through its provider.
+        val searchers = present.filter { it.webSearch }
+        if (searchers.isEmpty()) return text
+        return text + L10n.str(R.string.ai_views_ai_web_search, searchers.map { it.name }.distinct().joinToString(separator), where(searchers))
     }
 
     val PRIVATE_NOTE: String get() = L10n.str(R.string.ai_views_only_you_can_see_this_summary)

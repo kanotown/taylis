@@ -1727,6 +1727,7 @@
     <string name="recurring_due_after">%1$s 天后 %2$s 截止</string>
     <string name="activity_screen_mentioned_you_in_canvas">%1$s在“%2$s”中提及了你</string>
     <string name="ai_views_ai_present">AI (%1$s) 已加入。被提及和进行总结时，会话的一部分会发送到 %2$s 的 API</string>
+    <string name="ai_views_ai_web_search">。%1$s 会使用网络搜索，因此根据对话生成的搜索词也会通过 %2$s 发送到网络搜索</string>
     <string name="attachments_photo_named">照片 %1$s</string>
     <string name="attachments_file_named">文件 %1$s</string>
     <string name="channel_intro_by">" %1$s"</string>
