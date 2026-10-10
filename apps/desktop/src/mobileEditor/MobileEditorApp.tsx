@@ -50,7 +50,7 @@ export function MobileEditorApp({ bridge }: { bridge: Bridge }) {
           if (message.locale !== undefined) setLocale(normalizeLocale(message.locale) ?? deviceLocale());
           if (message.title !== undefined) document.title = message.title;
           directory.attachmentUrl = message.attachmentUrl ?? null;
-          const sink = new BridgeSink(bridge, message.body, () => handle.current?.caretLine() ?? 0);
+          const sink = new BridgeSink(bridge, message.body, () => handle.current?.caretLine() ?? 0, message.gen);
           const next: Session = { key: ++counter.current, sink, readOnly: !!message.readOnly, caretLine: message.caretLine ?? null };
           sessionRef.current = next;
           // The editor is up before the next message is read (a requestBody right after a load).
@@ -58,7 +58,7 @@ export function MobileEditorApp({ bridge }: { bridge: Bridge }) {
           break;
         }
         case "replace":
-          sessionRef.current?.sink.replace(message.body);
+          sessionRef.current?.sink.replace(message.body, message.gen);
           break;
         case "setTheme":
           applyEditorTheme(message.theme);
@@ -88,13 +88,16 @@ export function MobileEditorApp({ bridge }: { bridge: Bridge }) {
           break;
         case "requestBody": {
           const current = sessionRef.current;
+          const id = message.id === undefined ? {} : { id: message.id };
           if (!current) {
-            bridge.send({ type: "bodyRequested", body: "", dirty: false, caretLine: 0 });
+            // No `load` yet (a page read again after its web process ended): no body to give, and an empty one would
+            // be saved over the page.
+            bridge.send({ type: "bodyRequested", loaded: false, ...id });
             break;
           }
           // The document written now, without a `changed` of its own: the answer carries it.
           current.sink.quiet(() => handle.current?.commit());
-          bridge.send({ type: "bodyRequested", body: current.sink.text, dirty: current.sink.dirty, caretLine: handle.current?.caretLine() ?? 0 });
+          bridge.send({ type: "bodyRequested", body: current.sink.text, dirty: current.sink.dirty, caretLine: handle.current?.caretLine() ?? 0, ...current.sink.gen(), ...id });
           break;
         }
         case "command":
