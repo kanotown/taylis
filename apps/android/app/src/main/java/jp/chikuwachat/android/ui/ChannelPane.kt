@@ -148,7 +148,11 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     var userScrolled by rememberSaveable(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
     // The 「新着メッセージ」 divider stays where it was when the channel was opened (「最初の未読へ」 moves it). Leaving the
     // search view, however it is left, captures it again like a fresh open (§10.1 rule 4).
-    var capturedMark by rememberSaveable(channelId, reloadGen, focus?.messageId) { mutableStateOf(ReadGate.openMark(shown)) }
+    // Left by a post of mine (AppController.postedFromHere): no divider to land on, the newest row (where the post is).
+    var capturedMark by rememberSaveable(channelId, reloadGen, focus?.messageId) {
+        mutableStateOf(if (focus == null && controller.focusLeftByPost == channelId) null else ReadGate.openMark(shown))
+    }
+    LaunchedEffect(channelId, focus?.messageId) { if (focus == null && controller.focusLeftByPost == channelId) controller.focusLeftByPost = null }
     val heldUnread = controller.engine?.heldUnread(channelId)
     // §10.1 rule 2: visible rows are read only after the first unread row was on screen with every unread row held.
     var anchor by rememberSaveable(channelId, focus?.messageId, reloadGen, stateSaver = ReadAnchorSaver) { mutableStateOf(ReadAnchor.opened(shown, heldUnread)) }
