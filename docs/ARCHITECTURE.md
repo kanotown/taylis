@@ -352,7 +352,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | Server | `GET /server` (認証不要。ワークスペース名と `workspace_id`。WORKSPACES.md) |
 | Attachments | `POST /attachments` (multipart), `GET /attachments/{id}`, `GET /attachments/{id}/content`, `GET /attachments/{id}/thumbnail` |
 | Canvases (M41・M42、CANVAS.md §4.5) | `GET/POST /channels/{id}/canvases` (`?trashed=true` でゴミ箱), `GET /canvases` (自分の会話すべて、cursor), `GET/PATCH/DELETE /canvases/{id}` (GET は ETag / If-None-Match), `PUT /canvases/{id}/content` (保存: `base_rev_id` + 冪等キー、サーバ側マージ、409 `canvas_conflict` / `canvas_base_expired`), `POST /canvases/{id}/restore`, `POST /canvases/{id}/share` (M42: 会話へ共有。作成時の `share_to_channel` も), `GET /canvases/{id}/revisions`, `GET/PATCH/DELETE /canvases/{id}/revisions/{rev}`, `POST /canvases/{id}/revisions/{rev}/restore`, `GET /canvas-templates`, `GET/POST/PATCH/DELETE /admin/canvas-templates[/{id}]` |
-| Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset。応答は `hits[].message` と `keywords`)、`GET /search/canvases` (M42、CANVAS.md §4.8: 同じ引数と `sort`。自分がメンバーの会話のキャンバスだけ。応答は `hits[].canvas` (本文なし) と `snippet`、`keywords`) |
+| Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `has`, `is_thread`, `is_times`, `exclude_archived`, `sort`, `limit`, `offset`。ランキング結果なので offset。範囲は自分の会話と、ゲスト以外は未参加の公開チャンネル (アーカイブ済みも)。応答は `hits[].message`、`keywords`、未参加のチャンネルの `channels`)、`GET /search/canvases` (M42、CANVAS.md §4.8: 同じ引数と `sort`。自分がメンバーの会話のキャンバスだけ。応答は `hits[].canvas` (本文なし) と `snippet`、`keywords`) |
 | Health | `GET /healthz` (プロセス生存), `GET /readyz` (DB / オブジェクトストレージ到達性) |
 
 ### エラー形式と分類
