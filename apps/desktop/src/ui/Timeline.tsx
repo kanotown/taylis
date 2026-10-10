@@ -134,6 +134,11 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
 
   const positioned = useRef(false);
   const [isPositioned, setIsPositioned] = useState(false);
+  /**
+   * The channel whose message focus a post sent from here just left (below): its next positioning lands at the newest
+   * row, where the post is, not on the unread divider (SYNC_PROTOCOL.md §10.1 4.).
+   */
+  const endAfterSend = useRef<string | null>(null);
   /** Newest seq present when the view last positioned itself or followed new rows. */
   const followedSeq = useRef(0);
   /** The last row when the view positioned itself, until the follow effect below has seen that commit. */
@@ -283,9 +288,12 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     // on screen decides anchored as on any look (§10.1 2.), so rows below a position in the middle are not read.
     const requested = restoreFor.current === channel.id;
     restoreFor.current = null;
-    const decision = restoreDecision(requested && !focus ? scrollMemory.get(conversationScrollKey(channel.id)) : null, { explicit: !!focus, requested });
+    // A post sent from a message focus: the newest row, where the post is (whatever the divider or memory say).
+    const toEnd = !focus && endAfterSend.current === channel.id;
+    endAfterSend.current = null;
+    const decision = restoreDecision(requested && !focus && !toEnd ? scrollMemory.get(conversationScrollKey(channel.id)) : null, { explicit: !!focus, requested });
     const restoredRow = decision.kind === "anchor" ? document.getElementById(`timeline-${decision.rowKey}`) : null;
-    const unread = !focus && !restoredRow && mark !== null ? firstUnreadRow(messages, mark, me?.id) : null;
+    const unread = !focus && !toEnd && !restoredRow && mark !== null ? firstUnreadRow(messages, mark, me?.id) : null;
     const target = focus ? (focus.parentId ?? focus.messageId) : unread?.id;
     if (restoredRow && decision.kind === "anchor") rowAnchor.placeAt(restoredRow, decision.offset);
     else if (unread) showFromRow(unread);
@@ -307,6 +315,32 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     if (atBottom.current) markSeen();
     recordPosition();
   }, [channel.id, focus?.messageId, messages.length]);
+
+  // A top-level post sent from this device while the conversation shows a message's surroundings (a pin, a search hit, a
+  // permalink): the view leaves them for the live conversation and lands at its newest row, where the post is, as Slack
+  // does. A window far from the newest rows never shows the post (user report 2026-10-10: the sent message did not
+  // appear); one joined to the live tail did, but kept the focus highlight. The composer keeps no draft to lose (it was
+  // cleared on sending). Only a post newer than the focus counts: my failed placeholder kept from before does not.
+  const liveRows = store.messages(channel.id);
+  const liveLast = liveRows[liveRows.length - 1];
+  const posted = controller.postedHere;
+  const sentHere = liveLast && liveLast.sender_id === me?.id && !liveLast.parent_id && (liveLast.pending === true || liveLast.id === posted) ? rowKey(liveLast) : null;
+  const sentBefore = useRef<{ focus: string; row: string | null; posted: string | null } | null>(null);
+  useEffect(() => {
+    if (!focus) {
+      sentBefore.current = null;
+      return;
+    }
+    const before = sentBefore.current;
+    if (before?.focus !== focus.messageId) {
+      sentBefore.current = { focus: focus.messageId, row: sentHere, posted };
+      return;
+    }
+    // A poll (no placeholder) counts when it is the one posted since; an older one's row coming in with a page does not.
+    if (sentHere === null || sentHere === before.row || (liveLast?.pending !== true && posted === before.posted)) return;
+    endAfterSend.current = channel.id;
+    controller.clearMessageFocus();
+  }, [focus?.messageId, sentHere, posted]);
 
   // New messages while at the bottom, and a top-level post sent from this device, show the newest message. A layout
   // effect, so the ResizeObserver never pins the bottom first. Only that post reads the channel (§10.1 11.), so only it
