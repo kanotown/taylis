@@ -23,7 +23,7 @@ final class MobileEditorBridgeTests: XCTestCase {
     /// Every web → native example decodes, and encodes back to the same JSON.
     func testDecodesEveryWebMessageOfTheFixture() throws {
         let examples = try XCTUnwrap(try fixture()["web_to_native"] as? [[String: Any]])
-        XCTAssertEqual(examples.count, 12)
+        XCTAssertEqual(examples.count, 14)
         var types: [String] = []
         for example in examples {
             let json = String(decoding: try JSONSerialization.data(withJSONObject: example), as: UTF8.self)
@@ -35,16 +35,16 @@ final class MobileEditorBridgeTests: XCTestCase {
             XCTAssertEqual(message.type, example["type"] as? String)
             XCTAssertEqual(try object(try EditorBridge.json(message)), example as NSDictionary, "round trip of \(message.type)")
         }
-        XCTAssertEqual(types, ["ready", "changed", "bodyRequested", "caret", "height", "needPeople", "needPages", "pickImage", "openLink", "openLink", "focusTitle", "log"])
+        XCTAssertEqual(types, ["ready", "changed", "changed", "bodyRequested", "bodyRequested", "caret", "height", "needPeople", "needPages", "pickImage", "openLink", "openLink", "focusTitle", "log"])
     }
 
     /// Every native → web example is what the Swift messages encode to.
     func testEncodesEveryNativeMessageOfTheFixture() throws {
         let examples = try XCTUnwrap(try fixture()["native_to_web"] as? [[String: Any]])
         let messages: [EditorNativeMessage] = [
-            .load(body: "# 手順\n\n最初の行\n", title: "マニュアル", theme: .dark, readOnly: false, caretLine: 2, locale: "ja", attachmentUrl: "taylis-editor://app/attachment/{id}"),
+            .load(body: "# 手順\n\n最初の行\n", title: "マニュアル", theme: .dark, readOnly: false, caretLine: 2, locale: "ja", attachmentUrl: "taylis-editor://app/attachment/{id}", gen: 3),
             .load(body: ""),
-            .replace(body: "# 手順\n\n最初の行（直した）\n"),
+            .replace(body: "# 手順\n\n最初の行（直した）\n", gen: 4),
             .setTheme(.light),
             .setViewport(keyboardHeight: 336, safeBottom: 34),
             .setViewport(keyboardHeight: 0),
@@ -62,7 +62,8 @@ final class MobileEditorBridgeTests: XCTestCase {
             ]),
             .focus,
             .blur,
-            .requestBody,
+            .requestBody(),
+            .requestBody(id: 7),
             .command(.bold),
         ]
         XCTAssertEqual(messages.count, examples.count, "the fixture and this list name the same messages")
@@ -76,7 +77,7 @@ final class MobileEditorBridgeTests: XCTestCase {
     /// the reason.
     func testRefusedExamples() throws {
         let refused = try XCTUnwrap(try fixture()["refused"] as? [[String: Any]])
-        XCTAssertEqual(refused.count, 5)
+        XCTAssertEqual(refused.count, 7)
         XCTAssertEqual(EditorBridge.decode("{not json"), .failure(.notJSON))
         XCTAssertEqual(EditorBridge.decode(#"{"type":"ping"}"#), .failure(.unknownType("ping")))
         XCTAssertNil(EditorTheme(rawValue: "sepia"))
@@ -84,6 +85,13 @@ final class MobileEditorBridgeTests: XCTestCase {
         XCTAssertEqual(EditorCommand.allCases.count, 22)
         XCTAssertEqual(EditorBridge.decode(#"{"type":"changed","body":1,"dirty":true}"#), .failure(.badField("changed: body")))
         XCTAssertEqual(EditorBridge.decode(#"{"type":"caret"}"#), .failure(.badField("caret: line")))
+        XCTAssertEqual(EditorBridge.decode(#"{"type":"changed","body":"x","dirty":true,"baseGen":"1"}"#), .failure(.badField("changed: baseGen")))
+        XCTAssertEqual(EditorBridge.decode(#"{"type":"bodyRequested","body":"x","dirty":true,"caretLine":0,"id":1.5}"#), .failure(.badField("bodyRequested: id")))
+        // `loaded: false` is never a body (even with one beside it); a body without `loaded` (version 1) still is.
+        XCTAssertEqual(EditorBridge.decode(#"{"type":"bodyRequested","loaded":false}"#), .success(.bodyUnavailable()))
+        XCTAssertEqual(EditorBridge.decode(#"{"type":"bodyRequested","loaded":false,"body":"","dirty":false,"caretLine":0,"id":3}"#), .success(.bodyUnavailable(id: 3)))
+        XCTAssertEqual(EditorBridge.decode(#"{"type":"bodyRequested","body":"","dirty":false,"caretLine":0}"#), .success(.bodyRequested(body: "", dirty: false, caretLine: 0)))
+        XCTAssertEqual(EditorBridge.decode(#"{"type":"bodyRequested","loaded":true}"#), .failure(.badField("bodyRequested: body")))
         XCTAssertEqual(EditorBridge.decode(#"[1]"#), .failure(.notJSON))
         XCTAssertEqual(EditorBridge.decode(""), .failure(.notJSON))
     }

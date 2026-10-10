@@ -7,8 +7,10 @@ import Foundation
 /// apps/shared/mobile-editor/bridge_messages.json holds one example of every message; MobileEditorBridgeTests encodes and
 /// decodes them all.
 enum EditorBridge {
-    /// `ready.version`: a bundle of another version is refused (the messages' shapes changed).
-    static let version = 1
+    /// `ready.version`: a bundle of another version is refused (the messages' shapes changed). 2: the body's generation
+    /// (`load.gen` / `replace.gen` → `changed.baseGen` / `bodyRequested.baseGen`), the request's id and
+    /// `bodyRequested {loaded: false}` (review v0.1.49 #1 / #2, docs/WIKI.md §30.3).
+    static let version = 2
     /// The WKScriptMessageHandler's name: `window.webkit.messageHandlers.taylis.postMessage(json)`.
     static let messageHandler = "taylis"
     /// The WKURLSchemeHandler's scheme and host: the bundle's files, the pictures and the custom emoji.
@@ -148,11 +150,13 @@ struct BridgeEmoji: Codable, Equatable {
 /// Native → editor (`window.taylisEditor.receive`).
 enum EditorNativeMessage: Equatable {
     /// A page's body into a new editor. `caretLine`: the body line to put the caret on (from the Markdown editor).
-    /// `attachmentUrl`: where `![alt](attachment:<id>)` images load from, with `{id}` for the id.
-    case load(body: String, title: String? = nil, theme: EditorTheme? = nil, readOnly: Bool? = nil, caretLine: Int? = nil, locale: String? = nil, attachmentUrl: String? = nil)
+    /// `attachmentUrl`: where `![alt](attachment:<id>)` images load from, with `{id}` for the id. `gen`: the body's
+    /// generation (the saver's `textLineage`), given back as `baseGen`.
+    case load(body: String, title: String? = nil, theme: EditorTheme? = nil, readOnly: Bool? = nil, caretLine: Int? = nil, locale: String? = nil, attachmentUrl: String? = nil, gen: Int? = nil)
     /// The body as the server now holds it (a merge, someone else's version): the changed blocks are replaced, outside
-    /// the undo history; the editor holds it back while an IME composition is open or an edit waits to be written.
-    case replace(body: String)
+    /// the undo history; the editor holds it back while an IME composition is open or an edit waits to be written, and
+    /// an edit written first drops it (its `changed` then still carries the earlier `baseGen`). `gen` as in `load`.
+    case replace(body: String, gen: Int? = nil)
     case setTheme(EditorTheme)
     /// What the keyboard covers, in CSS px, when the WebView is not resized above it (0 when it is).
     case setViewport(keyboardHeight: Double, safeBottom: Double? = nil)
@@ -166,7 +170,8 @@ enum EditorNativeMessage: Equatable {
     case focus
     case blur
     /// The body as the editor holds it now, at once (`bodyRequested`): before saving on leave, before switching to Markdown.
-    case requestBody
+    /// `id`: given back in the answer (an answer to another request is not this one's).
+    case requestBody(id: Int? = nil)
     /// A native toolbar's button.
     case command(EditorCommand)
 
@@ -191,14 +196,14 @@ enum EditorNativeMessage: Equatable {
 extension EditorNativeMessage: Encodable {
     private enum Keys: String, CodingKey {
         case type, body, title, theme, readOnly, caretLine, locale, attachmentUrl, keyboardHeight, safeBottom
-        case attachmentId, url, alt, people, query, pages, emoji, name
+        case attachmentId, url, alt, people, query, pages, emoji, name, gen, id
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
         try c.encode(type, forKey: .type)
         switch self {
-        case .load(let body, let title, let theme, let readOnly, let caretLine, let locale, let attachmentUrl):
+        case .load(let body, let title, let theme, let readOnly, let caretLine, let locale, let attachmentUrl, let gen):
             try c.encode(body, forKey: .body)
             try c.encodeIfPresent(title, forKey: .title)
             try c.encodeIfPresent(theme, forKey: .theme)
@@ -206,8 +211,10 @@ extension EditorNativeMessage: Encodable {
             try c.encodeIfPresent(caretLine, forKey: .caretLine)
             try c.encodeIfPresent(locale, forKey: .locale)
             try c.encodeIfPresent(attachmentUrl, forKey: .attachmentUrl)
-        case .replace(let body):
+            try c.encodeIfPresent(gen, forKey: .gen)
+        case .replace(let body, let gen):
             try c.encode(body, forKey: .body)
+            try c.encodeIfPresent(gen, forKey: .gen)
         case .setTheme(let theme):
             try c.encode(theme, forKey: .theme)
         case .setViewport(let keyboardHeight, let safeBottom):
@@ -225,7 +232,9 @@ extension EditorNativeMessage: Encodable {
             try c.encode(pages, forKey: .pages)
         case .provideEmoji(let emoji):
             try c.encode(emoji, forKey: .emoji)
-        case .focus, .blur, .requestBody:
+        case .requestBody(let id):
+            try c.encodeIfPresent(id, forKey: .id)
+        case .focus, .blur:
             break
         case .command(let command):
             try c.encode(command, forKey: .name)
@@ -238,8 +247,14 @@ enum EditorWebMessage: Equatable {
     /// The page is up and listening: `load` may follow.
     case ready(version: Int)
     /// The body changed (typing paused 300 ms, or the editor lost the focus). `dirty`: differs from the last load / replace.
-    case changed(body: String, dirty: Bool)
-    case bodyRequested(body: String, dirty: Bool, caretLine: Int)
+    /// `baseGen`: the `gen` of the last `load` / `replace` the editor took — the body this text was written on (nil: a
+    /// message without it, as bridge version 1 sent).
+    case changed(body: String, dirty: Bool, baseGen: Int? = nil)
+    /// The answer to `requestBody` (`id` as asked), `baseGen` as in `changed`.
+    case bodyRequested(body: String, dirty: Bool, caretLine: Int, baseGen: Int? = nil, id: Int? = nil)
+    /// The answer to `requestBody` from a page that has no editor (no `load` since it was read, e.g. after its web
+    /// process ended): `{type: "bodyRequested", loaded: false}`. Never a body (an empty one would be saved over the page).
+    case bodyUnavailable(id: Int? = nil)
     /// The body line the caret's block starts on (when the editor loses the focus; the Markdown editor opens there).
     case caret(line: Int)
     /// The document's height in CSS px, when it changed.
@@ -261,7 +276,7 @@ enum EditorWebMessage: Equatable {
         switch self {
         case .ready: "ready"
         case .changed: "changed"
-        case .bodyRequested: "bodyRequested"
+        case .bodyRequested, .bodyUnavailable: "bodyRequested"
         case .caret: "caret"
         case .height: "height"
         case .needPeople: "needPeople"
@@ -276,7 +291,7 @@ enum EditorWebMessage: Equatable {
 
 extension EditorWebMessage: Codable {
     private enum Keys: String, CodingKey {
-        case type, version, body, dirty, caretLine, line, px, query, url, level, message, detail
+        case type, version, body, dirty, caretLine, line, px, query, url, level, message, detail, baseGen, id, loaded
     }
 
     init(from decoder: Decoder) throws {
@@ -289,11 +304,24 @@ extension EditorWebMessage: Codable {
                 throw EditorBridgeError.badField("\(type): \(key.rawValue)")
             }
         }
+        func optional<T: Decodable>(_ key: Keys, _ kind: T.Type) throws -> T? {
+            do {
+                return try c.decodeIfPresent(kind, forKey: key)
+            } catch {
+                throw EditorBridgeError.badField("\(type): \(key.rawValue)")
+            }
+        }
         switch type {
         case "ready": self = .ready(version: try field(.version, Int.self))
-        case "changed": self = .changed(body: try field(.body, String.self), dirty: try field(.dirty, Bool.self))
+        case "changed":
+            self = .changed(body: try field(.body, String.self), dirty: try field(.dirty, Bool.self), baseGen: try optional(.baseGen, Int.self))
         case "bodyRequested":
-            self = .bodyRequested(body: try field(.body, String.self), dirty: try field(.dirty, Bool.self), caretLine: try field(.caretLine, Int.self))
+            if try optional(.loaded, Bool.self) == false {
+                self = .bodyUnavailable(id: try optional(.id, Int.self))
+            } else {
+                self = .bodyRequested(body: try field(.body, String.self), dirty: try field(.dirty, Bool.self), caretLine: try field(.caretLine, Int.self),
+                                      baseGen: try optional(.baseGen, Int.self), id: try optional(.id, Int.self))
+            }
         case "caret": self = .caret(line: try field(.line, Int.self))
         case "height": self = .height(px: try field(.px, Double.self))
         case "needPeople": self = .needPeople(query: try field(.query, String.self))
@@ -313,13 +341,19 @@ extension EditorWebMessage: Codable {
         try c.encode(type, forKey: .type)
         switch self {
         case .ready(let version): try c.encode(version, forKey: .version)
-        case .changed(let body, let dirty):
+        case .changed(let body, let dirty, let baseGen):
             try c.encode(body, forKey: .body)
             try c.encode(dirty, forKey: .dirty)
-        case .bodyRequested(let body, let dirty, let caretLine):
+            try c.encodeIfPresent(baseGen, forKey: .baseGen)
+        case .bodyRequested(let body, let dirty, let caretLine, let baseGen, let id):
             try c.encode(body, forKey: .body)
             try c.encode(dirty, forKey: .dirty)
             try c.encode(caretLine, forKey: .caretLine)
+            try c.encodeIfPresent(baseGen, forKey: .baseGen)
+            try c.encodeIfPresent(id, forKey: .id)
+        case .bodyUnavailable(let id):
+            try c.encode(false, forKey: .loaded)
+            try c.encodeIfPresent(id, forKey: .id)
         case .caret(let line): try c.encode(line, forKey: .line)
         case .height(let px): try c.encode(px, forKey: .px)
         case .needPeople(let query), .needPages(let query): try c.encode(query, forKey: .query)

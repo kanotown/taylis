@@ -107,6 +107,10 @@ final class CanvasSaver {
     @ObservationIgnored private(set) var error: Error?
     /// Bumped when the saver itself changed `text` (a merge, someone else's version, a tick): the editor takes it.
     private(set) var textRevision = 0
+    /// M153a (review v0.1.49 #1, docs/WIKI.md §30.3): the generation of the body `text` is written on — the
+    /// `textRevision` that put it in, or an earlier one when an editor came back with a text written before a body it
+    /// dropped (`edit(_:basedOn:)`). The bundled editor gets it as `load.gen` / `replace.gen` and gives it back.
+    @ObservationIgnored private(set) var textLineage = 0
     /// The first read failed (not a 404: that is .gone): the screen offers 再読み込み instead of an empty canvas.
     private(set) var loadFailed = false
     /// M74 (CANVAS.md §19.1): the canvas on screen is the copy kept on this device, received from the server then; nil
@@ -128,6 +132,19 @@ final class CanvasSaver {
 
     @ObservationIgnored private var synced = ""
     @ObservationIgnored private var baseRevId: String?
+    /// A version of the server and its body: the base a save is written on.
+    private struct Base: Equatable {
+        let revId: String
+        let body: String
+    }
+    /// For the generations an editor may still write on after the saver put a newer body in (it held that body back and
+    /// dropped it): the version a text of that generation is saved on, so the server merges it with what came since
+    /// instead of taking it as written over the newer body. The current generation's base is `baseRevId` / `synced`.
+    @ObservationIgnored private var lineageBases: [Int: Base] = [:]
+    /// The generation of the text on the wire, and whether an editor went back to another generation since it went out
+    /// (its answer then is not the base of the text here).
+    @ObservationIgnored private var inFlightLineage: Int?
+    @ObservationIgnored private var inFlightDetached = false
     @ObservationIgnored private var version = 0
     @ObservationIgnored private var inFlight: CanvasInFlight?
     @ObservationIgnored private var again = false
@@ -344,23 +361,50 @@ final class CanvasSaver {
 
     /// The server's version becomes the text (nothing unsaved here).
     private func adopt(_ fresh: CanvasOut) {
+        let previous = baseRevId.map { Base(revId: $0, body: synced) }
         baseRevId = fresh.headRevId
         synced = fresh.body
-        if text != fresh.body {
-            text = fresh.body
-            textRevision += 1
-        }
+        if text != fresh.body { putText(fresh.body, previous: previous) }
         persistState()
+    }
+
+    /// The saver puts a body of its own in `text` (a merge, someone else's version, a tick): a new generation. A text an
+    /// editor wrote on the generation before (it did not take this body) is saved on `previous`.
+    private func putText(_ body: String, previous: Base?) {
+        if let previous { lineageBases[textLineage] = previous }
+        text = body
+        textRevision += 1
+        textLineage = textRevision
+        lineageBases = lineageBases.filter { $0.key > textRevision - 32 }
+    }
+
+    /// An editor's text was written on generation `lineage` (an earlier body it kept, having dropped the newer one):
+    /// it is saved on that generation's version, and the server merges it with the newer one again.
+    private func rebase(to lineage: Int, on base: Base) {
+        if let baseRevId { lineageBases[textLineage] = Base(revId: baseRevId, body: synced) }
+        textLineage = lineage
+        baseRevId = base.revId
+        synced = base.body
+        if inFlight != nil, inFlightLineage != lineage { inFlightDetached = true }
+        stale = true // the server holds more than this text: read again if it turns out unchanged
     }
 
     // MARK: editing and saving
 
     /// The editor's text changed: saved once typing pauses. `external`: the change came from elsewhere on the screen (a
-    /// box ticked in the reading view), so the editor takes it like a merge.
-    func edit(_ newText: String, external: Bool = false) {
+    /// box ticked in the reading view), so the editor takes it like a merge. `basedOn`: the generation (`textLineage`) of
+    /// the body the editor wrote this text on, when it says so (the bundled editor's `baseGen`); an earlier one than
+    /// `textLineage` means it dropped the bodies put in since, and the text is saved on that generation's version.
+    func edit(_ newText: String, external: Bool = false, basedOn lineage: Int? = nil) {
         guard !disposed, newText != text else { return }
-        text = newText
-        if external { textRevision += 1 }
+        if let lineage, lineage != textLineage, let base = lineageBases[lineage] {
+            rebase(to: lineage, on: base)
+        }
+        if external {
+            putText(newText, previous: baseRevId.map { Base(revId: $0, body: synced) })
+        } else {
+            text = newText
+        }
         if status == .blocked { error = nil } // an edit may fix it (a body that was too long)
         saveTimer?.cancel()
         saveTimer = Task { [weak self] in
@@ -403,6 +447,8 @@ final class CanvasSaver {
             return
         }
         inFlight = CanvasInFlight(clientSaveId: options.newId(), sent: text, baseRevId: base, onConflict: onConflict)
+        inFlightLineage = textLineage
+        inFlightDetached = false
         persistState()
         track { await self.send() }
     }
@@ -423,20 +469,29 @@ final class CanvasSaver {
     }
 
     private func landed(_ flight: CanvasInFlight, _ answer: CanvasSaveOut) {
+        let flightLineage = inFlightLineage ?? textLineage
+        let detached = inFlightDetached
         inFlight = nil
+        inFlightLineage = nil
+        inFlightDetached = false
         attempt = 0
         canvas = answer.canvas
         received?(answer.canvas)
         serverAnswered()
         version = max(version, answer.canvas.version)
-        if text == flight.sent && canReplace() {
-            // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen.
+        // The version holding exactly what was sent: the base of a text its editor writes on after it.
+        let submitted = Base(revId: answer.submittedRevId, body: flight.sent)
+        if detached {
+            // The editor went back to an earlier body after this went out: its text is not written on what was sent.
+            // The sent text's generation keeps this version; the text here goes on on its own base (merged again).
+            lineageBases[flightLineage] = submitted
+            if answer.canvas.body != text { stale = true }
+        } else if text == flight.sent && canReplace() {
+            // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen. Should the editor
+            // drop that body and write on, its text is saved on the version of what was sent (`putText`'s previous).
             baseRevId = answer.canvas.headRevId
             synced = answer.canvas.body
-            if text != answer.canvas.body {
-                text = answer.canvas.body
-                textRevision += 1
-            }
+            if text != answer.canvas.body { putText(answer.canvas.body, previous: submitted) }
             stale = false
         } else {
             // Typed on: the next save is written on the version holding exactly what was sent (§4.4).
@@ -531,6 +586,8 @@ final class CanvasSaver {
         guard let current = conflict, !disposed, choice != .fail else { return }
         conflict = nil
         inFlight = CanvasInFlight(clientSaveId: options.newId(), sent: text, baseRevId: current.baseRevId, onConflict: choice)
+        inFlightLineage = textLineage
+        inFlightDetached = false
         persistState()
         track { await self.send() }
         await settled()

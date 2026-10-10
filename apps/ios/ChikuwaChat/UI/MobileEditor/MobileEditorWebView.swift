@@ -149,6 +149,9 @@ protocol EditorTransport: AnyObject {
     /// Delivered once the page said `ready` (queued before).
     func send(_ message: EditorNativeMessage)
     var onMessage: ((EditorWebMessage) -> Void)? { get set }
+    /// The page is gone (its web process ended) and is being read again: what was sent to it is lost, and the next
+    /// `ready` is a page without an editor.
+    var onPageLost: (() -> Void)? { get set }
 }
 
 /// Owns the WKWebView that shows the editor: the scheme handler, the message handler, the queue of messages until the
@@ -161,6 +164,7 @@ final class MobileEditorController: NSObject, EditorTransport, WKNavigationDeleg
     private(set) var readyVersion: Int?
     private var queue: [EditorNativeMessage] = []
     var onMessage: ((EditorWebMessage) -> Void)?
+    var onPageLost: (() -> Void)?
     /// Something to look at when a message could not be sent (the page is gone, the script failed).
     var onError: ((String) -> Void)?
     /// MobileEditorTrace: when the WebView was made (the warm-up's clock).
@@ -308,10 +312,12 @@ final class MobileEditorController: NSObject, EditorTransport, WKNavigationDeleg
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        // The web process is gone (memory): the page is read again; the next `load` comes from the screen.
+        // The web process is gone (memory): the page is read again, and the session loads the body into it again on
+        // its `ready` (review v0.1.49 #2: without that the page had no editor and answered requestBody with nothing).
         isReady = false
         queue = []
         onError?("web content process terminated")
+        onPageLost?()
         webView.load(URLRequest(url: EditorBridge.indexURL))
     }
 
