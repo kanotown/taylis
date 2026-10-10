@@ -105,6 +105,8 @@ final class MobileEditorSessionTests: XCTestCase {
         h.transport.web(.changed(body: typed, dirty: true))
         XCTAssertEqual(h.saver.text, typed)
         XCTAssertEqual(h.saver.status, .editing)
+        // The editor is not focused and the edit is older than `quietAfter` when the save lands.
+        h.session.now = { Date().addingTimeInterval(MobileEditorSession.quietAfter + 1) }
         try h.server.saveOnHead("alice", h.canvas.id, Self.body.replacingOccurrences(of: "- [ ] 練習", with: "- [x] 練習"))
         await h.clock.advance(2)
         await h.saver.settled()
@@ -115,6 +117,43 @@ final class MobileEditorSessionTests: XCTestCase {
         XCTAssertEqual(h.saver.text, merged)
         XCTAssertEqual(h.transport.types.last, "replace")
         XCTAssertEqual(h.transport.sent.last, .replace(body: merged))
+    }
+
+    /// The simulator's data loss (2026-10-10, §30.4): a merge sent as `replace` while the editor composed was held back
+    /// by the editor and dropped at its next edit, and that edit (written on the body before the merge) was saved on the
+    /// merged version, deleting the other person's line. While the editor is focused the loop keeps the merge back and
+    /// saves on the version the editor's body was written on; the merge comes in after the blur.
+    @MainActor
+    func testWhileTheEditorIsFocusedAMergeWaitsAndNothingIsLost() async throws {
+        let h = await harness()
+        var focused = true
+        h.session.editorFocused = { focused }
+        let composing = Self.body.replacingOccurrences(of: "最初の行", with: "最初の行にほん")
+        h.transport.web(.changed(body: composing, dirty: true))
+        try h.server.saveOnHead("alice", h.canvas.id, Self.body + "\n相手の行\n")
+        await h.clock.advance(2)
+        await h.saver.settled()
+        await settle()
+        XCTAssertTrue(h.head.body.contains("相手の行") && h.head.body.contains("最初の行にほん"), h.head.body)
+        XCTAssertFalse(h.transport.types.contains("replace"), "nothing goes in while the editor is focused")
+        // The composition is converted: the editor's body is still the one before the merge.
+        let converted = Self.body.replacingOccurrences(of: "最初の行", with: "最初の行日本")
+        h.transport.web(.changed(body: converted, dirty: true))
+        await h.clock.advance(2)
+        await h.saver.settled()
+        await settle()
+        XCTAssertTrue(h.head.body.contains("相手の行"), "the other person's line survives: \(h.head.body)")
+        XCTAssertTrue(h.head.body.contains("最初の行日本") && !h.head.body.contains("にほん"), h.head.body)
+        XCTAssertFalse(h.transport.types.contains("replace"))
+        // The keyboard goes away (`caret`): once quiet, the merged body comes in.
+        focused = false
+        h.session.now = { Date().addingTimeInterval(MobileEditorSession.quietAfter + 1) }
+        h.transport.web(.caret(line: 3))
+        try await Task.sleep(nanoseconds: UInt64((MobileEditorSession.quietAfter + 0.4) * 1_000_000_000))
+        await h.saver.settled()
+        await settle()
+        XCTAssertEqual(h.saver.text, h.head.body)
+        XCTAssertEqual(h.transport.sent.last, .replace(body: h.head.body))
     }
 
     @MainActor
