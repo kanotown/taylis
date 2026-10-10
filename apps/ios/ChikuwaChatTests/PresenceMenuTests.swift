@@ -380,6 +380,59 @@ final class PresenceMenuTests: XCTestCase {
         XCTAssertLessThan(corner.a, 0.1, "a disc")
     }
 
+    /// The dot on a picture (the quick status menu's header, the lists) is solid in light and dark: the picture does not
+    /// show through it, and the ring around it is what is behind the picture (a hole cut out of the picture), not
+    /// systemBackground drawn over it (black on dark grouped rows) — iOS 26's glass sheet blended the dot with the
+    /// picture under it.
+    func testTheDotOnAPictureIsSolidWithTheGroundAsItsRing() throws {
+        let ground = (r: 1.0, g: 0.8, b: 0.0)
+        for scheme in [ColorScheme.light, .dark] {
+            for look in ["online", "away", "dnd", "offline"] {
+                // A 40 pt picture: the dot is 10 pt (40 × 0.3 − 2), its centre 2.2 pt past the corner (5 − 2.8), the
+                // hole 2 pt wider all round. Drawn at 4× with 8 pt around it.
+                let avatar = AvatarView(id: "u-dot", name: "加納", size: 40, presence: look, showOffline: true).padding(8)
+                let centre = 4 * (8 + 40 - 5 + 2.2), ringAt = 4 * (8 + 40 - 5 + 2.2 - 6 / 2.0.squareRoot())
+                let onGround = try render(avatar.background(Color(red: ground.r, green: ground.g, blue: ground.b)), scheme: scheme)
+                let alone = try render(avatar, scheme: scheme)
+                let label = "\(look) \(scheme)"
+
+                let ring = try pixel(onGround, x: Int(ringAt), y: Int(ringAt))
+                XCTAssertEqual(ring.a, 1, accuracy: 0.01, label)
+                XCTAssertEqual(ring.r, ground.r, accuracy: 0.03, "the ring is the ground: \(label)")
+                XCTAssertEqual(ring.g, ground.g, accuracy: 0.03, label)
+                XCTAssertEqual(ring.b, ground.b, accuracy: 0.03, label)
+                XCTAssertLessThan(try pixel(alone, x: Int(ringAt), y: Int(ringAt)).a, 0.05, "a hole in the picture: \(label)")
+                XCTAssertEqual(try pixel(alone, x: 4 * 20, y: 4 * 20).a, 1, accuracy: 0.01, "the picture: \(label)")
+
+                // The dot's middle: solid, and the same colour on the ground as alone (nothing under it blends in).
+                let dot = try pixel(onGround, x: Int(centre), y: Int(centre - 4 * 3))
+                let dotAlone = try pixel(alone, x: Int(centre), y: Int(centre - 4 * 3))
+                if look == "offline" {
+                    // The grey ring is hollow: its middle is the ground too.
+                    let middle = try pixel(onGround, x: Int(centre), y: Int(centre))
+                    XCTAssertEqual(middle.r, ground.r, accuracy: 0.03, label)
+                    XCTAssertEqual(middle.b, ground.b, accuracy: 0.03, label)
+                    continue
+                }
+                XCTAssertEqual(dotAlone.a, 1, accuracy: 0.01, "the dot is solid: \(label)")
+                XCTAssertEqual(dot.r, dotAlone.r, accuracy: 0.02, label)
+                XCTAssertEqual(dot.g, dotAlone.g, accuracy: 0.02, label)
+                XCTAssertEqual(dot.b, dotAlone.b, accuracy: 0.02, label)
+                switch look {
+                case "online": XCTAssertGreaterThan(dot.g, 0.7, label); XCTAssertLessThan(dot.r, 0.35, label)
+                case "away": XCTAssertGreaterThan(dot.r, 0.9, label); XCTAssertLessThan(dot.b, 0.2, label)
+                default: XCTAssertGreaterThan(dot.r, 0.9, label); XCTAssertLessThan(dot.g, 0.4, label)
+                }
+            }
+        }
+    }
+
+    private func render(_ view: some View, scheme: ColorScheme) throws -> CGImage {
+        let renderer = ImageRenderer(content: view.environment(\.colorScheme, scheme))
+        renderer.scale = 4
+        return try XCTUnwrap(renderer.cgImage)
+    }
+
     private func pixel(_ image: CGImage, x: Int, y: Int) throws -> (r: Double, g: Double, b: Double, a: Double) {
         var bytes = [UInt8](repeating: 0, count: 4)
         let context = try XCTUnwrap(CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,

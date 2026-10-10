@@ -623,7 +623,10 @@ Web と同じ規則（§11.1〜§11.6）で作った：
   - iOS：シート（在室状況のピルの `AttendanceQuickSheet` と同じ形。ネイティブの Menu では見出しの「解除」と、長さに進む行の
     チェックが出せないため）。ホームの左上のアイコン（`HomeAvatarButton`、今までは「自分」を開いていた）と「自分」の見出しの
     アイコンから開く。「自分」へは下のタブ（iPad はシートの「設定」）。点は `PresenceDot`、`Store.presenceOf` / `connectionOf`。
-    テスト：`PresenceMenuTests.swift`。
+    アイコンの上の点は、アイコンに点より 2 pt 大きい穴を開けて（`badgeHole`）その中に描く。縁はアイコンの後ろの色（行・
+    グループの行・シート・バー）になり、点はいつも不透明（以前は `systemBackground` の縁を描いていたので、ダークのグループの行では
+    黒い縁になり、iOS 26 のガラスのシートとバーでは点が下のアイコンと混ざって透けて見えた。iOS build 111 の報告）。クイックメニューの
+    シートは地を塗る（`.presentationBackground`、MOBILE_POLISH.md C4 と同じ）。テスト：`PresenceMenuTests.swift`。
   - Android：Material 3 の `ModalBottomSheet`（在室状況のシートと同じ形）。スマホ幅の上部バーの自分のアイコン（今までは自分タブ）と
     自分タブの見出しのアイコンから開く。規則は `ui/Presence.kt`（`PresenceRules`）、期限は `DndExpiryTimer`。テスト：`PresenceTest`。
   - 共有のベクタ：`apps/shared/presence-rules.json`（自分の選択・見た目・解除するまで・終わりの表示・一番早い期限・送る本文・長さ）。
