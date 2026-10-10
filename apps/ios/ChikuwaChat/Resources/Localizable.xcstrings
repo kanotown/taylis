@@ -32275,6 +32275,38 @@
           }
         }
       }
+    },
+    "未参加・アーカイブ済み" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not joined · archived"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未加入 · 已归档"
+          }
+        }
+      }
+    },
+    "アーカイブを除く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide archived"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除已归档"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
