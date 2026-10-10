@@ -1,6 +1,7 @@
-# The web image (infra/web.Dockerfile) needs only the desktop sources and the Caddyfile.
+# The web image (infra/web.Dockerfile) needs only the desktop sources, the editor bridge they import and the Caddyfile.
 *
 !apps/desktop
+!apps/shared/mobile-editor/src
 !infra/Caddyfile
 apps/desktop/node_modules
 apps/desktop/dist

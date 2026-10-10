@@ -2,6 +2,7 @@
 """Uploads a signed AAB (and its R8 mapping) to a Google Play track with the Play Developer API.
 
     apps/android/scripts/play-upload.py AAB [--mapping FILE] [--track internal] [--notes-ja FILE] [--notes-en FILE]
+                                         [--rollout 0.2] [--reuse]
                                          [--dry-run]
 
 The service account key is read from $TAYLIS_PLAY_SERVICE_ACCOUNT, else ~/.config/taylis/play-service-account.json
@@ -95,9 +96,15 @@ def main() -> None:
     ap.add_argument("--track", default="internal")
     ap.add_argument("--notes-ja")
     ap.add_argument("--notes-en")
+    ap.add_argument("--rollout", type=float, help="a staged rollout to this fraction of users (0 < f < 1, e.g. 0.2); "
+                    "raise it, or complete it, in Play Console")
+    ap.add_argument("--reuse", action="store_true",
+                    help="the bundle is on Play already (another track): put its versionCode on --track, upload nothing")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
+    if args.rollout is not None and not 0 < args.rollout < 1:
+        sys.exit("play-upload: --rollout is a fraction between 0 and 1 (e.g. 0.2)")
     if not zipfile.is_zipfile(args.aab):
         sys.exit(f"play-upload: not an AAB: {args.aab}")
     code = version_code(args.aab)
@@ -127,19 +134,24 @@ def main() -> None:
             track = call(token, "GET", f"{API}/edits/{edit_id}/tracks/{args.track}")
             print("  current releases:", [(r.get("name"), r.get("versionCodes"), r.get("status")) for r in track.get("releases", [])])
             return
-        with open(args.aab, "rb") as f:
-            bundle = call(token, "POST", f"{UPLOAD}/edits/{edit_id}/bundles?uploadType=media", data=f.read(),
-                          ctype="application/octet-stream")
-        print(f"  uploaded bundle versionCode {bundle.get('versionCode')}")
-        if int(bundle.get("versionCode", -1)) != code:
-            sys.exit(f"play-upload: Play read versionCode {bundle.get('versionCode')}, the file name says {code}")
-        if args.mapping:
+        if args.reuse:
+            print(f"  reusing versionCode {code} already on Play")
+        else:
+            with open(args.aab, "rb") as f:
+                bundle = call(token, "POST", f"{UPLOAD}/edits/{edit_id}/bundles?uploadType=media", data=f.read(),
+                              ctype="application/octet-stream")
+            print(f"  uploaded bundle versionCode {bundle.get('versionCode')}")
+            if int(bundle.get("versionCode", -1)) != code:
+                sys.exit(f"play-upload: Play read versionCode {bundle.get('versionCode')}, the file name says {code}")
+        if args.mapping and not args.reuse:
             with open(args.mapping, "rb") as f:
                 call(token, "POST",
                      f"{UPLOAD}/edits/{edit_id}/apks/{code}/deobfuscationFiles/proguard?uploadType=media",
                      data=f.read(), ctype="application/octet-stream")
             print("  uploaded the R8 mapping")
         release = {"versionCodes": [str(code)], "status": "completed"}
+        if args.rollout is not None:
+            release = {"versionCodes": [str(code)], "status": "inProgress", "userFraction": args.rollout}
         if notes:
             release["releaseNotes"] = notes
         call(token, "PUT", f"{API}/edits/{edit_id}/tracks/{args.track}", {"track": args.track, "releases": [release]})
