@@ -2969,11 +2969,12 @@ Desktop の成果物の変更なし。端末ごとの設定（既定はオフ）
 | `app/build.gradle.kts`（`copyMobileEditor`） | `apps/shared/mobile-editor/dist` を生成物の assets の根（`build/generated/mobileEditor/editor/`、APK では `assets/editor/`）に写すタスク。variant API の `sources.assets.addGeneratedSourceDirectory` で全 variant の assets に入るので、assets を読む全タスク（merge・lint・package）がこのタスクに依存し、`src/` には何も書かない（コミットのしようがない。`src/main/assets` に写すと Gradle 9 が lint のモデルの暗黙の依存を断る）。dist が無ければ作り方（`cd apps/desktop && npm ci && npm run build:mobile-editor`）を書いて失敗する。依存に `androidx.webkit`（`WebViewAssetLoader`）を足した |
 | `editor/EditorBridgeMessages.kt` | §30.3 の全メッセージの kotlinx.serialization のモデル（`NativeMessage` / `WebMessage` の sealed class、`type` で見分ける）、`EditorTheme`・`EditorCommand` の enum、`EditorBridgeCodec`（`providePages.query` の null は書き出す：エディタは「鍵が無い」ではなく `null` を見る。`load.title` などの null の既定は書かない）、`receiveCall`（JSON を JS の文字列リテラル 1 つにして `window.taylisEditor.receive(...)`。`"`・`\`・改行・U+2028 / U+2029・制御文字をエスケープ） |
 | `editor/EditorBridge.kt` | 運び役。アプリ → エディタは `EditorPort.evaluate`（`WebView.evaluateJavascript`）、エディタ → アプリは `post(json)`（`TaylisBridge` の JavascriptInterface。WebView の JS スレッドで来るので main looper に順に渡す）。読めないメッセージは `refused` へ（投げない） |
-| `editor/EditorSession.kt` | 1 回の編集と `CanvasSaver` の間。`ready` → `setTheme`・`setViewport {0}`・`providePeople`・`provideEmoji`・`providePages {null, 木の全部}`・`load`（人と絵文字は本文の前：チップの名前は読むときに決まる）。`changed` → `saver.edit`。`saver.revision` が動いて `text` が最後に見た / 書いた本文と違えば `replace`（マージ・相手の版・閲覧でのチェック）。`requestBody` → `bodyRequested` で `edit` + `flush`（離れる・背景）/ `edit` だけ（Markdown へ）と `caretLine`。`needPages` は木から、`pickImage`・`openLink`・`log`・版違いはアプリへ。`start`〜`end` の間 saver の `canReplace` は `editorQuiet`（下の「試作の途中で直したもの」）。`caret` とキーボードが隠れたとき `letGo`（1.1 秒後、静かなら `flush`） |
+| `editor/EditorSession.kt` | 1 回の編集と `CanvasSaver` の間。`ready` → `setTheme`・`setViewport {0}`・`providePeople`・`provideEmoji`・`providePages {null, 木の全部}`・`load`（人と絵文字は本文の前：チップの名前は読むときに決まる）。`changed` → `saver.edit`。`saver.revision` が動いて `text` が最後に見た / 書いた本文と違えば `replace`（マージ・相手の版・閲覧でのチェック）。`requestBody` → `bodyRequested` で `edit` + `flush`（離れる・背景）/ `edit` だけ（Markdown へ）と `caretLine`。`needPages` は木から、`pickImage`・`openLink`・`log`・版違いはアプリへ。`start`〜`end` の間 saver の `canReplace` は `editorQuiet`（下の「試作の途中で直したもの」）。`caret` とキーボードが隠れたとき `letGo`（1.1 秒後、静かなら `flush`）。答えが来ないときの `giveUp`（下の「レビュー v0.1.49」） |
+| `editor/EditorHostLifecycle.kt` | WebView がどのセッションと話すか、閉じかけ（最後の本文はまだ流れる）と破棄済み、離れるセッションの答えの待ち（1 秒）と `giveUp`。`MobileEditorHost` が持つ |
 | `ui/MobileEditor.kt` | `MobileEditorHost`：ページの画面が開いたときに 1 つ作って `https://appassets.androidplatform.net/editor/index.html` を読ませておく（温め）。`shouldInterceptRequest` で `/editor/*` は `AssetsPathHandler`（接頭辞を剥がして assets の根から引くので `/` に登録し、`/editor/` だけ通す）、`/attachment/<uuid>` と `/emoji/<uuid>` は `AppController.editorImage` / `editorEmojiImage`（セッション付きで API から取り、画像のときだけ。種類は先頭バイトで判定）、それ以外は 404。`shouldOverrideUrlLoading` は bundle 以外を止める。`onRenderProcessGone` で WebView を捨てて `failed`（画面は Markdown に戻る）。画像は `LruCache`（16 MB、ホストごと）。`MobileEditor` composable：`AndroidView` に WebView、その下にアプリの行（元に戻す・やり直す・`@`・画像・キーボードを閉じる）、`imePadding()`。`WysiwygEditing`（設定と、ページの最後の選択） |
 | `ui/DocPage.kt` | 設定がオンで編集できるページなら、画面を開いたときにホストを作る。編集中は 「見たまま | Markdown」 のセグメント（Desktop と同じ）。Markdown へは `requestBody`（flush なし）で本文と行をもらってから、見たままへは Markdown の欄の行（`EditorCaretLink`）を `load.caretLine` に。ホストが壊れたら Markdown に戻して通知。`CanvasEditorField` に `caret`（開く行・今の行） |
 | `ui/YouScreens.kt`・`AppController` | 「表示」の 「ドキュメント」 に 「ドキュメントの見たまま編集（試作）」 のスイッチ（端末だけ、既定オフ、`docs_wysiwyg`） |
-| `test/EditorBridgeTest.kt`（8）・`test/EditorSessionTest.kt`（16） | `bridge_messages.json` の全メッセージ（ネイティブ → エディタは復号して符号化し直して同じ JSON、エディタ → ネイティブは型まで、断る例は断る、未知の鍵は無視）、enum の名前、JS のリテラル（JSON としても読める）、別スレッドからの順序。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：`ready` の順と中身、`changed` → 2 秒後の保存と「自分の本文は返さない」、マージ → `replace`、閲覧のチェック → `replace`、`load` の前は `replace` しない、`requestBody`（flush あり / なし、`load` の前は即答）、`caret` と WebView の再起動、ページ・人・画像・リンク・ログ・コマンド・テーマ・blur、`EditorCaretLink`、画像の種類、**フォーカス中のマージは保留して何も失わない**、離れるときの最後の本文、何も足していない答えはマージを戻さない |
+| `test/EditorBridgeTest.kt`（8）・`test/EditorSessionTest.kt`（16）・`test/EditorMergeRaceTest.kt`（5）・`test/EditorHostLifecycleTest.kt`（7） | `bridge_messages.json` の全メッセージ（ネイティブ → エディタは復号して符号化し直して同じ JSON、エディタ → ネイティブは型まで、断る例は断る、未知の鍵は無視）、enum の名前、JS のリテラル（JSON としても読める）、別スレッドからの順序。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：`ready` の順と中身、`changed` → 2 秒後の保存と「自分の本文は返さない」、マージ → `replace`、閲覧のチェック → `replace`、`load` の前は `replace` しない、`requestBody`（flush あり / なし、`load` の前は即答）、`caret` と WebView の再起動、ページ・人・画像・リンク・ログ・コマンド・テーマ・blur、`EditorCaretLink`、画像の種類、**フォーカス中のマージは保留して何も失わない**、離れるときの最後の本文、何も足していない答えはマージを戻さない |
 
 **設定と切り替え**：「自分」→「表示」→「ドキュメント」→ 「ドキュメントの見たまま編集（試作）」（既定オフ、この端末だけ）。オンにすると、
 編集できるページの編集画面に 「見たまま | Markdown」 が出て、既定は見たまま。選んだ方は端末に残る（`docs_wysiwyg_choice`）。オフなら
@@ -3027,6 +3028,28 @@ DOM のカーソルを先頭に置き（`load.caretLine` で置いたカーソ�
 答えた本文が最後に書いた / 渡した本文と同じなら saver に入れない（Markdown のエディタが先に取り込んだマージを戻さない）。
 `end` は saver の規則が自分のものなら true に戻す（Markdown のエディタが先に入れた規則は残す）。テスト
 `whileTheEditorIsFocusedAMergeWaitsAndNothingIsLost` ほか 2 つ。エミュレータでも上の表のとおり両方残る。
+
+**レビュー v0.1.49 の #1・#3 への対応**（2026-10-10、コミット 「Android: …」）。
+- #1（書き出し待ちの間に届いたマージ）：指摘の手順（元 `a\nb\nc`、自分の `A\nb\nc` の保存中に `AA` が WebView の 300 ms 待ちにあり、
+  相手が `a\nb\nREMOTE`、応答は `A\nb\nREMOTE`）を `test/EditorMergeRaceTest.kt`（5）で再現した。BridgeSink の規則（300 ms の書き出し・
+  変換中と書き出し待ちの保留・書き出しで保留を捨てる・`requestBody` の即答・blur で書き出してから `caret`）を真似る WebView 役と、
+  本物の `CanvasSaver`・`EditorSession`・`FakeCanvasServer` を繋ぐ。打鍵中・変換中・直後の `requestBody`（前後どちらも）は、上の
+  `editorQuiet` の修正（907c66f3）の後の main で既に `AA\nb\nREMOTE` になり、次の保存の `baseRevId` は自分の `A\nb\nc` の側の版
+  （マージ後の head ではない）。**まだ消えた**のは、書き出し待ちのままキーボードを閉じた場合（戻るのジェスチャ、または閉じる IME が
+  変換を確定した直後）：`editorFocused` は IME の inset が消えた時点で偽になり、最後の `changed` から 1 秒たっていれば静かと見なされ、
+  その間に届いた応答で基準をマージ後へ進め、保留された `replace` が書き出しで捨てられて REMOTE が消えた。直し：(1) `editorFocused` は
+  WebView のフォーカスだけで見る（浮くキーボード・物理キーボード・閉じかけの IME は inset に出ない）。(2) キーボードが隠れたら
+  画面がエディタを blur（書き出してから `caret`）し、WebView のフォーカスを外す（`MobileEditorHost.letGoOfFocus`）。マージはそれまで
+  保留され、外れた後に来る（見え方は前と同じ：キーボードを閉じると約 1 秒で出る）。(3) `letGo` も編集と同じく 1 秒の静けさを
+  始める（その後の書き出しはマージの前の本文）。橋の契約（`bridge.ts`）は変えていない（本文の世代は使っていない）。
+- #3（閉じるときの最後の入力）：`release()` が先に `released` を立て、送る口も受ける口も閉じたため、WebView の 300 ms 待ちにある
+  最後の入力が保存されなかった。ホストの寿命を `editor/EditorHostLifecycle.kt` に分けた：**閉じかけ**（`release` 後。最後の
+  `requestBody` を送り、答えを受けて `CanvasSaver` に渡し、すぐ保存）と**破棄済み**（WebView が無い。何も送らず受けない）。
+  `detach` と `release` はどちらの順でも同じ終わり方（要求は 1 回）。1 秒以内に答えが無ければ `EditorSession.giveUp`：saver が持つ
+  最後の `changed` をそのまま保存し（捨てない）、待っていた側には最後の行を返す。レンダラが落ちたときも同じ。離れたセッションの
+  答えは、その後に開いたセッションより先に届くので、そのセッションに渡す（待っている間はマージも保留）。閉じる間はページの
+  保存の状態機械を `WikiHub.hold` で持ち続け、終わってから放す（放すと `flush`）。`test/EditorHostLifecycleTest.kt`（7）。
+  実機・エミュレータの instrumentation test はしていない（JVM のテストだけ）。
 
 **判定**（§22.7 の表「M153a 試作」の基準：「Markdown の編集より明らかに良い・壊れない」）
 
