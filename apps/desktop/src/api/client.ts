@@ -1548,6 +1548,31 @@ export class ApiClient {
     return this.request("DELETE", `/api/v1/admin/ai/agents/${agentId}`);
   }
 
+  /** docs/AI.md §14: the bot's picture (PNG / JPEG / GIF / WebP; the server crops it square, 256 px, like a person's). */
+  async adminUploadAiAgentAvatar(agentId: string, file: Blob, filename: string): Promise<AiAgentOut> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const form = new FormData();
+    form.append("file", file, filename);
+    const send = async (): Promise<Response> =>
+      this.rawFetch(`${this.baseUrl}/api/v1/admin/ai/agents/${agentId}/avatar`, {
+        method: "POST",
+        headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
+        body: form,
+      });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw await this.errorFromResponse(response);
+    return readJson<AiAgentOut>(response);
+  }
+
+  /** docs/AI.md §14: the bot back to its drawn initial. */
+  adminDeleteAiAgentAvatar(agentId: string): Promise<AiAgentOut> {
+    return this.request("DELETE", `/api/v1/admin/ai/agents/${agentId}/avatar`);
+  }
+
   /** `month` "YYYY-MM"; this month when left out. */
   adminAiUsage(month?: string): Promise<AiUsageOut> {
     return this.request("GET", `/api/v1/admin/ai/usage${month ? `?month=${encodeURIComponent(month)}` : ""}`);

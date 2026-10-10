@@ -1975,8 +1975,8 @@ export class FakeServer {
   aiUsage: AiUsageOut = { month: "2026-10", budget_usd: 30, total_cost_usd: 0, total_runs: 0, by_agent: [], by_user: [] };
   /** GET /admin/ai/providers (docs/AI.md §12); null: an older server (404). */
   aiProviders: AiProviderOut[] | null = [
-    { name: "anthropic", configured: true, models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"] },
-    { name: "openai", configured: false, models: ["gpt-6.1-sol", "gpt-6-luna"] },
+    { name: "anthropic", configured: true, models: ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"] },
+    { name: "openai", configured: false, models: ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"] },
   ];
 
   private aiGate(): void {
@@ -1994,7 +1994,7 @@ export class FakeServer {
     return {
       available,
       summary_available: available && this.aiBudgetLeft,
-      agents: enabled.map((a) => ({ id: a.id, bot_user_id: a.bot_user_id, name: a.name, model: a.model })),
+      agents: enabled.map((a) => ({ id: a.id, bot_user_id: a.bot_user_id, name: a.name, model: a.model, web_search: a.web_search ?? false })),
     };
   }
 
@@ -2017,10 +2017,23 @@ export class FakeServer {
       enabled: body.enabled ?? true,
       created_at: at,
       updated_at: at,
+      web_search: body.web_search ?? false,
+      is_default: false,
+      avatar_updated_at: null,
     };
+    if (body.is_default) this.makeDefaultAiAgent(agent);
     this.aiAgents.push(agent);
     return agent;
   }
+
+  /** docs/AI.md §14: one default bot. */
+  private makeDefaultAiAgent(agent: AiAgentOut): void {
+    for (const other of this.aiAgents) other.is_default = false;
+    agent.is_default = true;
+  }
+
+  /** The uploaded pictures of the bots, by agent id (POST /admin/ai/agents/{id}/avatar). */
+  readonly aiAgentPictures = new Map<string, string>();
 
   /** A summary's state changes (the worker): ai.run_updated to the one who asked, unless `emit` is false (a lost event). */
   updateAiRun(runId: string, patch: Partial<AiRunOut>, options: { emit?: boolean } = {}): AiRunOut {
@@ -2179,7 +2192,10 @@ export class FakeServer {
         const agent = this.aiAgents.find((a) => a.id === agentId);
         if (!agent) throw new ApiError(404, "not_found", "not found");
         if ("username" in patch) throw new ApiError(400, "validation_error", "username");
-        Object.assign(agent, patch, { updated_at: now() });
+        const { is_default: isDefault, ...rest } = patch;
+        Object.assign(agent, rest, { updated_at: now() });
+        if (isDefault === true) this.makeDefaultAiAgent(agent);
+        else if (isDefault === false) agent.is_default = false;
         const bot = this.users.get(agent.bot_user_id);
         if (bot && patch.name) bot.display_name = patch.name;
         return { ...agent };
@@ -2190,6 +2206,27 @@ export class FakeServer {
         if (index < 0) throw new ApiError(404, "not_found", "not found");
         const [agent] = this.aiAgents.splice(index, 1);
         for (const record of this.channels.values()) record.members.delete(agent!.bot_user_id);
+      },
+      adminUploadAiAgentAvatar: async (agentId, file, filename) => {
+        admin();
+        const agent = this.aiAgents.find((a) => a.id === agentId);
+        if (!agent) throw new ApiError(404, "ai_agent_not_found", "not found");
+        if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new ApiError(400, "avatar_not_image", "not an image");
+        this.aiAgentPictures.set(agentId, filename);
+        agent.avatar_updated_at = now();
+        const bot = this.users.get(agent.bot_user_id);
+        if (bot) bot.avatar_updated_at = agent.avatar_updated_at;
+        return { ...agent };
+      },
+      adminDeleteAiAgentAvatar: async (agentId) => {
+        admin();
+        const agent = this.aiAgents.find((a) => a.id === agentId);
+        if (!agent) throw new ApiError(404, "ai_agent_not_found", "not found");
+        this.aiAgentPictures.delete(agentId);
+        agent.avatar_updated_at = null;
+        const bot = this.users.get(agent.bot_user_id);
+        if (bot) bot.avatar_updated_at = null;
+        return { ...agent };
       },
       adminAiUsage: async (month) => {
         admin();
@@ -2226,6 +2263,8 @@ export interface FakeAiApi {
   adminCreateAiAgent(body: AiAgentCreate): Promise<AiAgentOut>;
   adminUpdateAiAgent(agentId: string, patch: AiAgentUpdate): Promise<AiAgentOut>;
   adminDeleteAiAgent(agentId: string): Promise<void>;
+  adminUploadAiAgentAvatar(agentId: string, file: Blob, filename: string): Promise<AiAgentOut>;
+  adminDeleteAiAgentAvatar(agentId: string): Promise<AiAgentOut>;
   adminAiUsage(month?: string): Promise<AiUsageOut>;
   adminAiProviders(): Promise<AiProviderOut[]>;
 }

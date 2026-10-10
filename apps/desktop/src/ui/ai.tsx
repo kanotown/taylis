@@ -27,17 +27,26 @@ export function AiBadge({ className }: { className?: string }) {
 export function aiNoticeText(store: Pick<Store, "aiAgentOf">, memberIds: Iterable<string>): string | null {
   const names: string[] = [];
   const providers = new Set<AiProviderName>();
+  const searchers: string[] = [];
+  const searchProviders = new Set<AiProviderName>();
   for (const id of memberIds) {
     const agent = store.aiAgentOf(id);
     if (agent) {
       names.push(agent.name);
       providers.add(aiProviderOf(agent.model));
+      if (agent.web_search) {
+        searchers.push(agent.name);
+        searchProviders.add(aiProviderOf(agent.model));
+      }
     }
   }
   if (names.length === 0) return null;
   // §12: each bot's model decides where its part goes (Anthropic, OpenAI or both).
-  const where = AI_PROVIDERS.filter((p) => providers.has(p.value)).map((p) => p.label).join(t("ai.and"));
-  return t("ai.notice", { names: names.join(t("common.listSeparator")), where });
+  const where = (set: Set<AiProviderName>) => AI_PROVIDERS.filter((p) => set.has(p.value)).map((p) => p.label).join(t("ai.and"));
+  const text = t("ai.notice", { names: names.join(t("common.listSeparator")), where: where(providers) });
+  if (searchers.length === 0) return text;
+  // §14: a bot with web search also sends queries made from the conversation to the web, through its provider.
+  return `${text}${t("ai.noticeWebSearch", { names: searchers.join(t("common.listSeparator")), where: where(searchProviders) })}`;
 }
 
 export function AiChannelNotice({ controller, memberIds }: { controller: AppController; memberIds: string[] | null }) {

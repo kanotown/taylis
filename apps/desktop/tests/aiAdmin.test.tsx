@@ -165,8 +165,8 @@ it("models are grouped by provider and a provider without a key is marked (§12)
   const select = within(dialog).getByLabelText("モデル") as HTMLSelectElement;
   const groups = Array.from(select.querySelectorAll("optgroup")).map((g) => [g.label, Array.from(g.querySelectorAll("option")).map((o) => o.value)]);
   expect(groups).toEqual([
-    ["Anthropic", ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"]],
-    ["OpenAI（キー未設定）", ["gpt-6.1-sol", "gpt-6-luna"]],
+    ["Anthropic", ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"]],
+    ["OpenAI（キー未設定）", ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"]],
   ]);
   fireEvent.change(select, { target: { value: "gpt-6-luna" } });
   expect(within(dialog).getByText(/OpenAI の API キーが設定されていません/)).toBeTruthy();
@@ -190,4 +190,77 @@ it("no 「AI」 tab on a server without AI", async () => {
   await setup({ aiMissing: true });
   expect(screen.queryByRole("tab", { name: "AI" })).toBeNull();
   expect(screen.getByRole("tab", { name: "Webhook" })).toBeTruthy();
+});
+
+it("web search and the default bot: set on create, shown on the row, changed on edit (§14)", async () => {
+  const { server } = await setup();
+  await openTab();
+  fireEvent.click(screen.getByRole("button", { name: /ボットを作成/ }));
+  await settle();
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText("アイコンは、作成したあとに「編集」で設定できます")).toBeTruthy();
+  const search = within(dialog).getByRole("checkbox", { name: /ネット検索を使う/ }) as HTMLInputElement;
+  expect(search.checked).toBe(false); // off unless the administrator turns it on
+  fireEvent.click(search);
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: /既定のボットにする/ }));
+  fireEvent.change(within(dialog).getByLabelText("名前（投稿者として表示されます）"), { target: { value: "しらべ" } });
+  fireEvent.change(within(dialog).getByLabelText(/ユーザー名/), { target: { value: "ai-shirabe" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "作成" }));
+  await settle();
+  expect(server.aiAgents.at(-1)).toMatchObject({ username: "ai-shirabe", web_search: true, is_default: true });
+  const row = within(screen.getByRole("list", { name: "AI のボット" })).getByText("しらべ").closest("li")!;
+  expect(within(row).getByText("既定")).toBeTruthy();
+  expect(within(row).getByText("ネット検索")).toBeTruthy();
+
+  // Making ちくわ the default moves the mark (one default bot).
+  const chikuwa = within(screen.getByRole("list", { name: "AI のボット" })).getByText("ちくわ").closest("li")!;
+  fireEvent.click(within(chikuwa).getByRole("button", { name: /編集/ }));
+  await settle();
+  const edit = screen.getByRole("dialog");
+  fireEvent.click(within(edit).getByRole("checkbox", { name: /既定のボットにする/ }));
+  fireEvent.click(within(edit).getByRole("button", { name: "保存" }));
+  await settle();
+  expect(server.aiAgents.map((a) => [a.name, a.is_default])).toEqual([["ちくわ", true], ["しらべ", false]]);
+});
+
+it("the new-bot form starts on GPT-6.1 Sol when the server has the OpenAI key (§14)", async () => {
+  const { server } = await setup();
+  server.aiProviders = [
+    { name: "anthropic", configured: true, models: [] },
+    { name: "openai", configured: true, models: [] },
+  ];
+  await openTab();
+  fireEvent.click(screen.getByRole("button", { name: /ボットを作成/ }));
+  await settle();
+  const select = within(screen.getByRole("dialog")).getByLabelText("モデル") as HTMLSelectElement;
+  expect(select.value).toBe("gpt-6.1-sol");
+  expect(Array.from(select.options).find((o) => o.value === "gpt-6.1-sol")?.textContent).toBe("GPT-6.1 Sol（既定）");
+});
+
+it("the bot's picture is uploaded and removed from the edit form (§14)", async () => {
+  const { server, agent, store } = await setup();
+  await openTab();
+  fireEvent.click(screen.getByRole("button", { name: /編集/ }));
+  await settle();
+  const picture = screen.getByTestId("ai-agent-picture");
+  expect(within(picture).queryByRole("button", { name: "アイコンを外す" })).toBeNull();
+  const file = new File([new Uint8Array([137, 80, 78, 71])], "bot.png", { type: "image/png" });
+  fireEvent.change(within(picture).getByLabelText("画像を選ぶ…"), { target: { files: [file] } });
+  await settle();
+  await settle();
+  expect(server.aiAgentPictures.get(agent.id)).toBe("bot.png");
+  expect(store.users.get(agent.bot_user_id)?.avatar_updated_at).toBeTruthy();
+  fireEvent.click(within(screen.getByTestId("ai-agent-picture")).getByRole("button", { name: "アイコンを外す" }));
+  await settle();
+  expect(server.aiAgentPictures.has(agent.id)).toBe(false);
+  expect(store.users.get(agent.bot_user_id)?.avatar_updated_at ?? null).toBeNull();
+});
+
+it("the usage shows the searches per bot once there are some (§14)", async () => {
+  const { server, agent } = await setup();
+  server.aiUsage = { ...server.aiUsage, by_agent: [{ agent_id: agent.id, name: "ちくわ", runs: 3, input_tokens: 9000, output_tokens: 600, cost_usd: 0.2, web_search_requests: 7 }] };
+  await openTab();
+  const table = screen.getByRole("table", { name: "ボットごと" });
+  expect(within(table).getByText("検索")).toBeTruthy();
+  expect(within(table).getByText("7")).toBeTruthy();
 });

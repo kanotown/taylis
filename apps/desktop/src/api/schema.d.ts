@@ -350,6 +350,31 @@ export interface paths {
         patch: operations["update_agent_api_v1_admin_ai_agents__agent_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/ai/agents/{agent_id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Agent Avatar
+         * @description The bot's picture (docs/AI.md §14): as POST /users/me/avatar (a PNG / JPEG / GIF / WebP,
+         *     cropped square and resized to 256px) for the bot user. 404 ai_agent_not_found.
+         */
+        post: operations["upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post"];
+        /**
+         * Delete Agent Avatar
+         * @description The bot goes back to its drawn initial (docs/AI.md §14).
+         */
+        delete: operations["delete_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/ai/providers": {
         parameters: {
             query?: never;
@@ -6635,19 +6660,31 @@ export interface components {
              */
             enabled: boolean;
             /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
              * Model
              * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
+            model: "claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-luna";
             /** Name */
             name: string;
             /** Username */
             username: string;
+            /**
+             * Web Search
+             * @default false
+             */
+            web_search: boolean;
         };
         /** AiAgentOut */
         AiAgentOut: {
             /** Allow Private */
             allow_private: boolean;
+            /** Avatar Updated At */
+            avatar_updated_at?: string | null;
             /**
              * Bot User Id
              * Format: uuid
@@ -6673,10 +6710,15 @@ export interface components {
              */
             id: string;
             /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
              * Model
              * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
+            model: "claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-luna";
             /** Name */
             name: string;
             /**
@@ -6686,6 +6728,11 @@ export interface components {
             updated_at: string;
             /** Username */
             username: string;
+            /**
+             * Web Search
+             * @default false
+             */
+            web_search: boolean;
         };
         /** AiAgentPublic */
         AiAgentPublic: {
@@ -6703,9 +6750,14 @@ export interface components {
              * Model
              * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
+            model: "claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-luna";
             /** Name */
             name: string;
+            /**
+             * Web Search
+             * @default false
+             */
+            web_search: boolean;
         };
         /**
          * AiAgentUpdate
@@ -6720,10 +6772,14 @@ export interface components {
             effort?: ("low" | "medium" | "high") | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Is Default */
+            is_default?: boolean | null;
             /** Model */
-            model?: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna") | null;
+            model?: ("claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-luna") | null;
             /** Name */
             name?: string | null;
+            /** Web Search */
+            web_search?: boolean | null;
         };
         /**
          * AiAskCreate
@@ -6763,7 +6819,7 @@ export interface components {
             /** Configured */
             configured: boolean;
             /** Models */
-            models: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna")[];
+            models: ("claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-luna")[];
             /**
              * Name
              * @enum {string}
@@ -6913,6 +6969,11 @@ export interface components {
             output_tokens: number;
             /** Runs */
             runs: number;
+            /**
+             * Web Search Requests
+             * @default 0
+             */
+            web_search_requests: number;
         };
         /** AiUsageByUser */
         AiUsageByUser: {
@@ -7470,6 +7531,11 @@ export interface components {
              * @default []
              */
             files: string[];
+        };
+        /** Body_upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post */
+        Body_upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post: {
+            /** File */
+            file: string;
         };
         /** Body_upload_api_v1_attachments_post */
         Body_upload_api_v1_attachments_post: {
@@ -14397,6 +14463,72 @@ export interface operations {
                 "application/json": components["schemas"]["AiAgentUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_avatar_api_v1_admin_ai_agents__agent_id__avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

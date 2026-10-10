@@ -9,7 +9,8 @@ import { errorMessageFor } from "./errors";
 import { ApiError, describeError } from "./errors";
 import { t } from "../i18n";
 
-export type AiModel = "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
+/** docs/AI.md §14 (2026-10-10): claude-fable-5-1 and gpt-6-astra added. */
+export type AiModel = "claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-luna";
 /** docs/AI.md §12: the model decides the provider. */
 export type AiProviderName = "anthropic" | "openai";
 export type AiEffort = "low" | "medium" | "high";
@@ -30,6 +31,12 @@ export interface AiAgentOut {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** docs/AI.md §14: mention replies may search the web. Absent on an older server. */
+  web_search?: boolean;
+  /** docs/AI.md §14: the bot summaries and questions use when the conversation has none. Absent on an older server. */
+  is_default?: boolean;
+  /** docs/AI.md §14: the bot user's picture version (null: none). Absent on an older server. */
+  avatar_updated_at?: string | null;
 }
 
 export interface AiAgentPublic {
@@ -37,6 +44,8 @@ export interface AiAgentPublic {
   bot_user_id: string;
   name: string;
   model: AiModel;
+  /** docs/AI.md §14: for the notice (§4). Absent on an older server. */
+  web_search?: boolean;
 }
 
 export interface AiStatusOut {
@@ -111,6 +120,8 @@ export interface AiUsageByAgent {
   input_tokens: number;
   output_tokens: number;
   cost_usd: number;
+  /** docs/AI.md §14: web searches (in cost_usd at $0.01 each). Absent on an older server. */
+  web_search_requests?: number;
 }
 
 export interface AiUsageByUser {
@@ -144,6 +155,9 @@ export interface AiAgentCreate {
   effort?: AiEffort;
   allow_private?: boolean;
   enabled?: boolean;
+  /** docs/AI.md §14. */
+  web_search?: boolean;
+  is_default?: boolean;
 }
 
 /** PATCH: only the fields sent change; the username never does. */
@@ -162,11 +176,13 @@ export interface AiRunUpdated {
   run: AiRunOut;
 }
 
-/** The choices of the admin form, grouped by provider (§1: Opus 5.5 is the default; §12: OpenAI). */
+/** The choices of the admin form, grouped by provider (§1: Opus 5.5; §12: OpenAI; §14: Fable 5.1 and GPT-6 Astra). */
 export const AI_MODELS: ReadonlyArray<{ value: AiModel; label: string; provider: AiProviderName }> = [
+  { value: "claude-fable-5-1", label: "Claude Fable 5.1", provider: "anthropic" },
   { value: "claude-opus-5-5", label: "Claude Opus 5.5", provider: "anthropic" },
   { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", provider: "anthropic" },
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "anthropic" },
+  { value: "gpt-6-astra", label: "GPT-6 Astra", provider: "openai" },
   { value: "gpt-6.1-sol", label: "GPT-6.1 Sol", provider: "openai" },
   { value: "gpt-6-luna", label: "GPT-6 Luna", provider: "openai" },
 ];
@@ -184,6 +200,15 @@ export function aiProviderLabel(name: AiProviderName): string {
   return AI_PROVIDERS.find((p) => p.value === name)?.label ?? name;
 }
 export const DEFAULT_AI_MODEL: AiModel = "claude-opus-5-5";
+export const DEFAULT_OPENAI_MODEL: AiModel = "gpt-6.1-sol";
+
+/**
+ * docs/AI.md §14: the model a new bot's form starts with: GPT-6.1 Sol when the server has the OpenAI key (only it, or both),
+ * Claude Opus 5.5 otherwise (and when the server does not say). The administrator picks any other in the list.
+ */
+export function defaultModelFor(providers: ReadonlyArray<{ name: AiProviderName; configured: boolean }> | null): AiModel {
+  return providers?.some((p) => p.name === "openai" && p.configured) ? DEFAULT_OPENAI_MODEL : DEFAULT_AI_MODEL;
+}
 
 export const AI_EFFORTS: ReadonlyArray<{ value: AiEffort; label: string }> = [
   { value: "low", get label() { return t("ai.effort.low"); } },

@@ -85,6 +85,17 @@ describe("rules", () => {
     expect(aiNoticeText(store, ["b3", "b1"])).toContain("Anthropic と OpenAI の API");
   });
 
+  it("the notice says a bot with web search sends queries to the web (§14)", () => {
+    const store = new Store();
+    store.setAiStatus({ available: true, summary_available: true, agents: [{ id: "a1", bot_user_id: "b1", name: "ちくわ", model: "claude-opus-5-5", web_search: true }, { id: "a3", bot_user_id: "b3", name: "ソル", model: "gpt-6.1-sol", web_search: false }] });
+    expect(aiNoticeText(store, ["b1"])).toBe(
+      "AI（ちくわ）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます。ちくわ はネット検索を使うため、会話から作った検索語も Anthropic を通じてウェブの検索に送られます",
+    );
+    // Only the searching bots are named, with their own provider; a bot without it adds nothing.
+    expect(aiNoticeText(store, ["b3", "b1"])).toContain("。ちくわ はネット検索を使うため、会話から作った検索語も Anthropic を通じて");
+    expect(aiNoticeText(store, ["b3"])).not.toContain("ネット検索");
+  });
+
   it("mention candidates mark the AI bots", () => {
     const users = [
       { id: "b1", username: "ai-chikuwa", display_name: "ちくわ", role: "bot" },
@@ -101,7 +112,14 @@ describe("rules", () => {
     const row = { id: "a1", bot_user_id: "b1", username: "ai-x", name: "X", character: "c", model: "claude-opus-5-5", effort: "medium", allow_private: false, enabled: true, created_at: "", updated_at: "" } as const;
     expect(agentPatch(row, agentForm(row))).toEqual({});
     expect(agentPatch(row, { ...agentForm(row), name: " Y ", effort: "high", allow_private: true })).toEqual({ name: "Y", effort: "high", allow_private: true });
-    expect(agentForm(null)).toMatchObject({ model: "claude-opus-5-5", effort: "medium", allow_private: false, enabled: true });
+    expect(agentForm(null)).toMatchObject({ model: "claude-opus-5-5", effort: "medium", allow_private: false, enabled: true, web_search: false, is_default: false });
+    // §14: web search and the default bot are sent only when changed (an older server's row has neither).
+    expect(agentPatch(row, { ...agentForm(row), web_search: true, is_default: true })).toEqual({ web_search: true, is_default: true });
+    expect(agentPatch({ ...row, web_search: true, is_default: true }, { ...agentForm(row), web_search: false, is_default: false })).toEqual({ web_search: false, is_default: false });
+    // §14: a new bot's form starts on GPT-6.1 Sol when the server has the OpenAI key (only it or both), else Opus 5.5.
+    expect(agentForm(null, [{ name: "anthropic", configured: true, models: [] }, { name: "openai", configured: true, models: [] }]).model).toBe("gpt-6.1-sol");
+    expect(agentForm(null, [{ name: "anthropic", configured: false, models: [] }, { name: "openai", configured: true, models: [] }]).model).toBe("gpt-6.1-sol");
+    expect(agentForm(null, [{ name: "anthropic", configured: true, models: [] }, { name: "openai", configured: false, models: [] }]).model).toBe("claude-opus-5-5");
     expect(formatUsd(1.234)).toBe("$1.23");
     expect(formatUsd(0.0012)).toBe("$0.0012");
   });
@@ -113,7 +131,7 @@ describe("the hub on the engine", () => {
     const before = store.rowsVersion;
     await engine.start();
     await settle(engine, () => store.aiStatus !== null);
-    expect(store.aiStatus).toEqual({ available: true, summary_available: true, agents: [{ id: agent!.id, bot_user_id: agent!.bot_user_id, name: "ちくわ", model: "claude-opus-5-5" }] });
+    expect(store.aiStatus).toEqual({ available: true, summary_available: true, agents: [{ id: agent!.id, bot_user_id: agent!.bot_user_id, name: "ちくわ", model: "claude-opus-5-5", web_search: false }] });
     expect(store.aiAgentOf(agent!.bot_user_id)?.name).toBe("ちくわ");
     expect(store.rowsVersion).toBeGreaterThan(before);
   });
