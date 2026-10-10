@@ -7,7 +7,14 @@ import kotlinx.serialization.Serializable
 
 /** An AI bot as everyone sees it: `bot_user_id` is its user (role "bot"), shown with 「AI」 instead of 「BOT」. */
 @Serializable
-data class AiAgentPublic(val id: String, val botUserId: String, val name: String = "", val model: String = "")
+data class AiAgentPublic(
+    val id: String,
+    val botUserId: String,
+    val name: String = "",
+    val model: String = "",
+    /** docs/AI.md §14: its mention replies may search the web (for the notice). False on an older server. */
+    val webSearch: Boolean = false,
+)
 
 /** GET /ai/status. `summary_available`: AI is on and this month's budget is not spent. */
 @Serializable

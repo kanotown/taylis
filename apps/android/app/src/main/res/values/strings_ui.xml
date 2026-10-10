@@ -1727,6 +1727,7 @@
     <string name="recurring_due_after">%1$s 日後 %2$s 締切</string>
     <string name="activity_screen_mentioned_you_in_canvas">%1$sが「%2$s」であなたをメンションしました</string>
     <string name="ai_views_ai_present">AI（%1$s）が参加しています。メンションしたときと要約のときに、会話の一部が %2$s の API に送られます</string>
+    <string name="ai_views_ai_web_search">。%1$s はネット検索を使うため、会話から作った検索語も %2$s を通じてウェブの検索に送られます</string>
     <string name="attachments_photo_named">写真 %1$s</string>
     <string name="attachments_file_named">ファイル %1$s</string>
     <string name="channel_intro_by">%1$s が</string>

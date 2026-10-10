@@ -1733,6 +1733,7 @@
     <string name="recurring_due_after">Due %1$s days later at %2$s</string>
     <string name="activity_screen_mentioned_you_in_canvas">%1$s mentioned you in \"%2$s\"</string>
     <string name="ai_views_ai_present">AI (%1$s) is in this conversation. When it is mentioned and when it summarizes, parts of the conversation are sent to the %2$s API</string>
+    <string name="ai_views_ai_web_search">. %1$s can search the web, so search queries made from the conversation also go to the web through %2$s</string>
     <string name="attachments_photo_named">Photo %1$s</string>
     <string name="attachments_file_named">File %1$s</string>
     <string name="channel_intro_by">" created by %1$s"</string>
