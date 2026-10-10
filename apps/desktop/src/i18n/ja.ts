@@ -1811,6 +1811,8 @@ export const ja = {
   "search.pickDates": "日付を指定",
   "search.applyDates": "この期間で絞り込む",
   "search.notJoinedArchived": "未参加・アーカイブ済み",
+  "search.excludeArchived": "アーカイブを除く",
+  "search.excludeArchivedHint": "アーカイブ済みのチャンネルのメッセージを結果から外す",
   "search.showInThread": "スレッドで表示",
   "search.showInConversation": "会話で表示",
   "search.nothingFound": "見つかりませんでした",

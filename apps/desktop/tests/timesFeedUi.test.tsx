@@ -243,7 +243,7 @@ function searchWorld() {
   const search = vi.fn(async (): Promise<SearchOut> => ({
     hits: [{ message: hit, score: 1 }],
     keywords: [],
-    filters: { text: "", has: [], is_thread: false, is_times: true, unresolved: [] },
+    filters: { text: "", has: [], is_thread: false, is_times: true, exclude_archived: false, unresolved: [] },
     limit: 30,
     offset: 0,
     has_more: false,

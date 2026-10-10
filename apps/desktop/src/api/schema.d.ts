@@ -12159,6 +12159,11 @@ export interface components {
             after?: string | null;
             /** Before */
             before?: string | null;
+            /**
+             * Exclude Archived
+             * @default false
+             */
+            exclude_archived: boolean;
             /** From Username */
             from_username?: string | null;
             /** Has */
@@ -22022,6 +22027,7 @@ export interface operations {
                 has?: ("file" | "link" | "pin" | "reaction" | "poll")[];
                 is_thread?: boolean;
                 is_times?: boolean;
+                exclude_archived?: boolean;
                 sort?: "relevance" | "newest";
                 tz_offset_minutes?: number;
                 limit?: number;

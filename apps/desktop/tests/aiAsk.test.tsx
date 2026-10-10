@@ -121,7 +121,7 @@ async function setup(options: { askRoute?: boolean; narrow?: boolean; target?: A
     { api: inner, connect: server.connectorFor(bob.id), store, getAccessToken: () => "t", sleep: async () => {}, random: () => 0.5, isActive: () => true },
     { reconnectMinMs: 0 },
   );
-  const empty: SearchOut = { hits: [], keywords: [], filters: { text: "", has: [], is_thread: false, is_times: false, unresolved: [] }, limit: 30, offset: 0, has_more: false, total: 0, total_capped: false };
+  const empty: SearchOut = { hits: [], keywords: [], filters: { text: "", has: [], is_thread: false, is_times: false, exclude_archived: false, unresolved: [] }, limit: 30, offset: 0, has_more: false, total: 0, total_capped: false };
   const target = { ...inner, baseUrl: "http://server", search: async () => empty } as unknown as Record<string, unknown>;
   const api = new Proxy(target, { get: (t, key: string) => t[key] ?? (async () => []) }) as unknown as ApiClient;
   await engine.start();

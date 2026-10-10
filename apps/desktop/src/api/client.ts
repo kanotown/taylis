@@ -1766,7 +1766,8 @@ export class ApiClient {
   }
 
   /**
-   * GET /search/messages (M16b): words and / or filters (the server applies the membership filter).
+   * GET /search/messages (M16b): words and / or filters. The server keeps to what I can read: my conversations and,
+   * unless I am a guest, the public channels I have not joined, archived ones too.
    * `has` repeats; typed before: / after: / on: dates are read in the caller's zone (DATA_MODEL.md 検索).
    */
   search(query: {
@@ -1779,6 +1780,8 @@ export class ApiClient {
     is_thread?: boolean;
     /** L8: only times (TIMES_FEED.md §6), as `is:times` in the words. */
     is_times?: boolean;
+    /** Leave archived channels out (joined or not); the search covers them by default. */
+    exclude_archived?: boolean;
     sort?: "relevance" | "newest";
     limit?: number;
     offset?: number;
@@ -1791,6 +1794,7 @@ export class ApiClient {
     for (const flag of query.has ?? []) params.append("has", flag);
     if (query.is_thread) params.set("is_thread", "true");
     if (query.is_times) params.set("is_times", "true");
+    if (query.exclude_archived) params.set("exclude_archived", "true");
     if (query.sort) params.set("sort", query.sort);
     params.set("tz_offset_minutes", String(-new Date().getTimezoneOffset()));
     return this.request("GET", `/api/v1/search/messages?${params}`);

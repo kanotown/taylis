@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Newspaper, Paperclip, Search, SearchX, User, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Newspaper, Paperclip, Search, SearchX, User, X } from "lucide-react";
 import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CanvasMeta, ChannelOut, FileItem, MessageOut, PageItem, SearchHit } from "../api/types";
@@ -18,7 +18,7 @@ import { mentionsToNames } from "./mentions";
 import { EmojiText } from "./UserPopover";
 import { BackButton, BackToList } from "./compact";
 import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
-import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
+import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, searchChannelTag, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 
@@ -307,6 +307,10 @@ function FilterBar({ controller, params, onChange, mode }: { controller: AppCont
               <Chip toggle active={!!params.isTimes} icon={<Newspaper size={13} />} title={t("search.timesOnly")} onClick={() => onChange({ ...params, isTimes: !params.isTimes })}>
                 Times
               </Chip>
+              {/* Archived channels (Slack imports among them) are searched unless this leaves them out. */}
+              <Chip toggle active={!!params.excludeArchived} icon={<Archive size={13} />} title={t("search.excludeArchivedHint")} onClick={() => onChange({ ...params, excludeArchived: !params.excludeArchived })}>
+                {t("search.excludeArchived")}
+              </Chip>
             </>
           )}
         </>
@@ -512,6 +516,7 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
   const store = controller.store;
   const channel = store.getChannel(message.channel_id) ?? (other ? { ...other, isMember: false } as ChannelState : undefined);
   const joined = store.getChannel(message.channel_id)?.isMember ?? false;
+  const tag = searchChannelTag(channel, joined);
   const sender = store.users.get(message.sender_id)?.display_name ?? "?";
   const text = plainText(mentionsToNames(message.body, store.users, store.groups));
   const files = message.attachments.map((a) => a.filename);
@@ -526,7 +531,7 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
         {channel && (channel.type === "private" ? <Lock size={12} /> : channel.type === "public" ? <Hash size={12} /> : <AtSign size={12} />)}
         <span className="min-w-0 truncate font-medium">{channel ? channelTitle(channel, controller).replace(/^#/, "") : "?"}</span>
         {message.parent_id && <Badge className="shrink-0 whitespace-nowrap">{t("composer.threadReply")}</Badge>}
-        {channel && !joined && <Badge className="shrink-0 whitespace-nowrap">{channel.archived ? t("search.notJoinedArchived") : t("admin.channels.notJoined")}</Badge>}
+        {tag && <Badge className="shrink-0 whitespace-nowrap">{tag}</Badge>}
         <time className="ml-auto shrink-0">{fullTimestamp(message.created_at)}</time>
       </div>
       <div className="mt-1.5 flex gap-2.5">

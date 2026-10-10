@@ -1812,6 +1812,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "search.pickDates": "Choose dates",
   "search.applyDates": "Filter by these dates",
   "search.notJoinedArchived": "Not joined · archived",
+  "search.excludeArchived": "Hide archived",
+  "search.excludeArchivedHint": "Leave messages in archived channels out of the results",
   "search.showInThread": "Show in thread",
   "search.showInConversation": "Show in conversation",
   "search.nothingFound": "Nothing found",

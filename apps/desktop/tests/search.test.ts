@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { UserPublic } from "../src/api/types";
 import type { ChannelState } from "../src/sync/types";
-import { dateLabel, dateRange, EMPTY_SEARCH, isEmptySearch, pushRecent, readRecent, recentKey, removeRecent, suggestions, toQuery, totalLabel } from "../src/ui/search";
+import { dateLabel, dateRange, EMPTY_SEARCH, isEmptySearch, pushRecent, readRecent, recentKey, removeRecent, searchChannelTag, suggestions, toQuery, totalLabel } from "../src/ui/search";
 
 const NOW = new Date(2026, 8, 27, 15, 30); // 2026-09-27 15:30 local
 
@@ -38,8 +38,19 @@ describe("search conditions", () => {
     const params = { ...EMPTY_SEARCH, q: "  ", fromUserId: "u1", has: ["file" as const], isThread: true, sort: "relevance" as const };
     expect(isEmptySearch(params)).toBe(false);
     expect(isEmptySearch({ ...EMPTY_SEARCH, q: " " })).toBe(true);
-    expect(toQuery(params, NOW)).toEqual({ q: "", channel_id: null, from_user_id: "u1", after: null, before: null, has: ["file"], is_thread: true, is_times: false, sort: "newest" });
+    expect(toQuery(params, NOW)).toEqual({ q: "", channel_id: null, from_user_id: "u1", after: null, before: null, has: ["file"], is_thread: true, is_times: false, exclude_archived: false, sort: "newest" });
     expect(toQuery({ ...params, q: "設計" }, NOW).sort).toBe("relevance");
+    expect(toQuery({ ...EMPTY_SEARCH, q: "設計", excludeArchived: true }, NOW).exclude_archived).toBe(true);
+    // A recent search saved before the filter existed searches the archives too.
+    expect(toQuery({ ...params, excludeArchived: undefined }, NOW).exclude_archived).toBe(false);
+  });
+
+  it("tags a hit's conversation: not joined, archived, or both", () => {
+    expect(searchChannelTag({ archived: false }, false)).toBe("未参加");
+    expect(searchChannelTag({ archived: true }, false)).toBe("未参加・アーカイブ済み");
+    expect(searchChannelTag({ archived: true }, true)).toBe("アーカイブ済み");
+    expect(searchChannelTag({ archived: false }, true)).toBeNull();
+    expect(searchChannelTag(undefined, false)).toBeNull();
   });
 });
 
