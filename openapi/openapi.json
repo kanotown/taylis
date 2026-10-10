@@ -16991,6 +16991,11 @@
             ],
             "title": "Before"
           },
+          "exclude_archived": {
+            "default": false,
+            "title": "Exclude Archived",
+            "type": "boolean"
+          },
           "from_username": {
             "anyOf": [
               {
@@ -35069,6 +35074,16 @@
             "schema": {
               "default": false,
               "title": "Is Times",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Exclude Archived",
               "type": "boolean"
             }
           },

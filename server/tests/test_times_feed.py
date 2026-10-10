@@ -183,9 +183,11 @@ async def test_is_times_searches_times_including_public_ones_not_joined(
     await _post(client, general, "general の校正メモ")
     await client.post(f"/api/v1/channels/{general}/members", json={"user_id": str(guest.id)})
 
-    # Without is:times only my channels; with it only times, the archived public one included.
-    assert [h["message"]["body"] for h in (await _search(client, "校正"))["hits"]] == [
-        "general の校正メモ"
+    # Without is:times my channels and the public ones (bob's archived times too); with it only
+    # times, the archived public one included.
+    assert sorted(h["message"]["body"] for h in (await _search(client, "校正"))["hits"]) == [
+        "general の校正メモ",
+        "装置の校正メモ",
     ]
     found = await _search(client, "校正 is:times")
     assert [h["message"]["body"] for h in found["hits"]] == ["装置の校正メモ"]

@@ -386,6 +386,8 @@ async def test_without_the_preview_only_members_read_a_public_channel(
         one = await client.get(f"{API}/channels/{cid}")
         assert one.status_code == 200 and one.json()["member_count"] == 1
         # Search keeps to my channels, is:times too.
+        plain = await client.get(f"{API}/search/messages", params={"q": "話題"})
+        assert plain.status_code == 200 and plain.json()["hits"] == []
         found = await client.get(f"{API}/search/messages", params={"q": "作業メモ is:times"})
         assert found.status_code == 200 and found.json()["hits"] == []
         assert found.json()["channels"] == []
@@ -402,6 +404,8 @@ async def test_without_the_preview_only_members_read_a_public_channel(
     assert (await client.get(f"{API}/channels/{cid}/messages")).status_code == 200
     found = await client.get(f"{API}/search/messages", params={"q": "作業メモ is:times"})
     assert [h["message"]["body"] for h in found.json()["hits"]] == ["作業メモ"]
+    plain = await client.get(f"{API}/search/messages", params={"q": "話題"})
+    assert [h["message"]["body"] for h in plain.json()["hits"]] == ["公開の話題"]
 
 
 async def test_attachments_of_a_public_channel_need_membership_without_the_preview(
