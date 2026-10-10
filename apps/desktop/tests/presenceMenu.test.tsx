@@ -165,8 +165,60 @@ describe("the dot", () => {
     const header = screen.getByTestId("sidebar-header");
     const trigger = within(header).getByRole("button", { name: "自分のステータスを変える（離席中）" });
     expect(trigger.querySelector('[data-presence="away"]')).toBeTruthy();
-    // The name still opens my profile card (M93).
-    expect(within(header).getByRole("button", { name: "自分のプロフィール（わたし）" })).toBeTruthy();
+    // Picture and name are one button (the name no longer opens a profile card of its own).
+    expect(within(trigger).getByText("わたし")).toBeTruthy();
+    expect(within(header).queryByRole("button", { name: "自分のプロフィール（わたし）" })).toBeNull();
+    expect(within(header).getAllByRole("button", { name: /自分のステータスを変える/ })).toHaveLength(1);
+    expect(trigger.querySelector("[data-my-presence-line]")!.textContent).toBe("離席中");
+  });
+
+  it("my header shows 取り込み中 the same way everywhere: the red dot, 「取り込み中（〜HH:MM）」, no green dot and no 「オンライン」", () => {
+    const until = inMinutes(90);
+    const store = storeWith(meWith({ dnd_until: until }));
+    store.setPresence(ME, "online"); // connected: the connection must not show through as オンライン
+    const controller = Object.assign(controllerFor(store), { engine: { status: "online" } });
+    render(<Sidebar controller={controller} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />);
+    const header = screen.getByTestId("sidebar-header");
+    expect(header.querySelectorAll("[data-presence]")).toHaveLength(1);
+    expect(header.querySelector('[data-presence="dnd"]')).toBeTruthy();
+    expect(header.querySelector('[data-presence="online"]')).toBeNull();
+    expect(header.querySelector(".bg-success")).toBeNull();
+    expect(header.querySelector("[data-connection-line]")).toBeNull();
+    expect(header.querySelector("[data-my-presence-line]")!.textContent).toBe(myPresenceLine(store.me));
+    expect(header.querySelector("[data-my-presence-line]")!.textContent).toMatch(/^取り込み中（〜/);
+    expect(within(header).queryByText("オンライン")).toBeNull();
+  });
+
+  it("my header: オフライン表示 is the hollow ring and its name; 自動 reads the look; a lost connection takes the line", () => {
+    const store = storeWith(meWith({ presence_hidden: true }));
+    store.setPresence(ME, "offline");
+    const engine = { status: "online" };
+    const controller = Object.assign(controllerFor(store), { engine });
+    const sidebar = () => <Sidebar controller={controller} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />;
+    const view = render(sidebar());
+    const header = () => screen.getByTestId("sidebar-header");
+    expect(header().querySelector('[data-presence="offline"]')).toBeTruthy();
+    expect(header().querySelector("[data-my-presence-line]")!.textContent).toBe("オフライン表示");
+    store.setMe(meWith());
+    store.setPresence(ME, "away"); // 自動, idle
+    view.rerender(sidebar());
+    expect(header().querySelector("[data-my-presence-line]")!.textContent).toBe("離席中");
+    engine.status = "offline";
+    view.rerender(sidebar());
+    expect(header().querySelector("[data-my-presence-line]")).toBeNull();
+    expect(header().querySelector("[data-connection-line]")!.textContent).toBe("再接続中…");
+    expect(header().querySelector("[data-connection-line] .rounded-full")).toBeNull(); // no second dot
+  });
+
+  it("my header: one press on the name opens the status menu", async () => {
+    const store = storeWith(meWith());
+    store.setPresence(ME, "online");
+    render(<Sidebar controller={controllerFor(store)} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />);
+    const header = screen.getByTestId("sidebar-header");
+    fireEvent.pointerDown(within(header).getByText("わたし"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("プロフィールを編集")).toBeTruthy();
+    expect(within(menu).getByText("離席中")).toBeTruthy();
   });
 
   it("the member directory's 🔕 ends with the pause, like the dot (dnd_until stays set until the next user.updated)", () => {
