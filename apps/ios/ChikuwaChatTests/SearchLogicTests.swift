@@ -106,6 +106,31 @@ final class SearchLogicTests: XCTestCase {
         XCTAssertTrue(path.contains("after=2026-09-27T00:00:00%2B09:00"), path)
     }
 
+    /// The search covers public channels I have not joined and archived ones; 「アーカイブを除く」 leaves the archives out.
+    func testArchivedChannelsCanBeLeftOutAndHitsAreTagged() throws {
+        let params = SearchParams(q: "設計", excludeArchived: true)
+        let request = SearchLogic.request(params, now: now, calendar: tokyo)
+        XCTAssertTrue(request.queryItems(limit: 30, offset: 0).contains(URLQueryItem(name: "exclude_archived", value: "true")))
+        XCTAssertFalse(request.canvasQueryItems(limit: 30, offset: 0).contains { $0.name == "exclude_archived" })
+        XCTAssertFalse(request.pageQueryItems(limit: 30, offset: 0).contains { $0.name == "exclude_archived" })
+        XCTAssertFalse(SearchLogic.request(SearchParams(q: "設計"), now: now, calendar: tokyo).queryItems(limit: 30, offset: 0)
+            .contains { $0.name == "exclude_archived" })
+        // Alone it is no condition (the words are still needed), and clearing the filters drops it.
+        XCTAssertTrue(SearchParams(excludeArchived: true).isEmpty)
+        XCTAssertFalse(params.withoutFilters.excludeArchived)
+        XCTAssertEqual(SearchLogic.describe(params, userName: { _ in nil }, channelTitle: { _ in nil }), "設計 · アーカイブを除く")
+        // Remembered searches keep it (the desktop's field name); ones saved before it read as off.
+        let encoded = try JSONEncoder().encode(params)
+        XCTAssertEqual(try JSONDecoder().decode(SearchParams.self, from: encoded), params)
+        XCTAssertEqual(try JSONDecoder().decode(SearchParams.self, from: Data(#"{"q":"a","excludeArchived":true}"#.utf8)).excludeArchived, true)
+        XCTAssertEqual(try JSONDecoder().decode(SearchParams.self, from: Data(#"{"q":"a"}"#.utf8)).excludeArchived, false)
+
+        XCTAssertEqual(SearchLogic.channelTag(archived: false, joined: false), "未参加")
+        XCTAssertEqual(SearchLogic.channelTag(archived: true, joined: false), "未参加・アーカイブ済み")
+        XCTAssertEqual(SearchLogic.channelTag(archived: true, joined: true), "アーカイブ済み")
+        XCTAssertNil(SearchLogic.channelTag(archived: false, joined: true))
+    }
+
     func testClearingFiltersKeepsTheWordsAndTokensFollowTheFilters() {
         let params = SearchParams(q: " 設計 ", fromUserId: "u1", channelId: "c1", date: .preset(.week), has: [.file], isThread: true, sort: .newest)
         XCTAssertTrue(params.hasFilters)

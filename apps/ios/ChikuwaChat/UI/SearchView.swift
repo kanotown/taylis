@@ -526,7 +526,8 @@ struct SearchView: View {
     }
 
     /// A result: its conversation around the message (or the thread for a reply), pushed on this screen. A channel I am
-    /// not in (a public times found with is:times, L8) opens as its preview (M27) on the main screen, around the message.
+    /// not in (a public channel, archived ones included: the search covers them) opens as its preview (M27) on the main
+    /// screen, around the message; an archived one read-only, as always.
     private func open(messageId: String, channelId: String, parentId: String?) {
         if store.channel(channelId)?.isMember != true {
             if store.channel(channelId) == nil {
@@ -854,6 +855,13 @@ struct SearchFilterBar: View {
                         }
                         .accessibilityAddTraits(params.isTimes ? .isSelected : [])
                     }
+                    // Archived channels (Slack imports among them) are searched unless this leaves them out.
+                    SearchChip(active: params.excludeArchived, onClear: nil) {
+                        Button { onUpdate { $0.excludeArchived.toggle() } } label: {
+                            SearchChipLabel(title: tr("アーカイブを除く"), systemImage: "archivebox", active: params.excludeArchived, menu: false)
+                        }
+                        .accessibilityAddTraits(params.excludeArchived ? .isSelected : [])
+                    }
                 }
                 if filesOnly ? params.channelId != nil : params.hasFilters {
                     Button("条件をクリア") { onUpdate { $0 = $0.withoutFilters } }
@@ -919,7 +927,7 @@ struct SearchResultRow: View {
     @Bindable var controller: AppController
     let message: MessageOut
     let keywords: [String]
-    /// L8: the hit's channel when the store does not know it (SearchOut.channels: an archived public times).
+    /// The hit's channel when the store does not know it (SearchOut.channels: a public channel I have not joined).
     var otherChannel: ChannelOut? = nil
 
     var body: some View {
@@ -931,8 +939,8 @@ struct SearchResultRow: View {
             HStack(spacing: 5) {
                 Image(systemName: conversationImage(channel?.channel ?? otherChannel)).imageScale(.small).foregroundStyle(.secondary)
                 Text(conversationName(channel)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-                if channel?.isMember != true && (channel != nil || otherChannel != nil) {
-                    Text("未参加")
+                if let tag = tag(channel) {
+                    Text(tag)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6).padding(.vertical, 1)
@@ -974,6 +982,12 @@ struct SearchResultRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+
+    private func tag(_ channel: ChannelState?) -> String? {
+        if let channel { return SearchLogic.channelTag(archived: channel.channel.archived, joined: channel.isMember) }
+        guard let otherChannel else { return nil }
+        return SearchLogic.channelTag(archived: otherChannel.archived, joined: false)
     }
 
     private func conversationName(_ channel: ChannelState?) -> String {

@@ -104,10 +104,12 @@ struct SearchParams: Hashable, Codable {
     var isThread = false
     /// L8 (TIMES_FEED.md §6): only times channels (the 「Times」 chip; is:times typed in the words works too).
     var isTimes = false
+    /// 「アーカイブを除く」: leave archived channels out (`exclude_archived`); the search covers them, joined or not, by default.
+    var excludeArchived = false
     var sort: SearchSort = .relevance
 
     init(q: String = "", fromUserId: String? = nil, channelId: String? = nil, date: SearchDate? = nil, has: [SearchHasFlag] = [],
-         isThread: Bool = false, isTimes: Bool = false, sort: SearchSort = .relevance) {
+         isThread: Bool = false, isTimes: Bool = false, excludeArchived: Bool = false, sort: SearchSort = .relevance) {
         self.q = q
         self.fromUserId = fromUserId
         self.channelId = channelId
@@ -115,10 +117,11 @@ struct SearchParams: Hashable, Codable {
         self.has = has
         self.isThread = isThread
         self.isTimes = isTimes
+        self.excludeArchived = excludeArchived
         self.sort = sort
     }
 
-    private enum CodingKeys: String, CodingKey { case q, fromUserId, channelId, date, has, isThread, isTimes, sort }
+    private enum CodingKeys: String, CodingKey { case q, fromUserId, channelId, date, has, isThread, isTimes, excludeArchived, sort }
 
     /// Lenient: a remembered search keeps what it can (unknown kinds are dropped, a bad date is forgotten).
     init(from decoder: Decoder) throws {
@@ -130,6 +133,7 @@ struct SearchParams: Hashable, Codable {
         has = ((try? c.decodeIfPresent([String].self, forKey: .has)) ?? []).compactMap(SearchHasFlag.init(rawValue:))
         isThread = (try? c.decodeIfPresent(Bool.self, forKey: .isThread)) ?? false
         isTimes = (try? c.decodeIfPresent(Bool.self, forKey: .isTimes)) ?? false
+        excludeArchived = (try? c.decodeIfPresent(Bool.self, forKey: .excludeArchived)) ?? false
         sort = (try? c.decodeIfPresent(SearchSort.self, forKey: .sort)) ?? .relevance
     }
 
@@ -153,6 +157,7 @@ struct SearchRequest: Equatable {
     var has: [SearchHasFlag]
     var isThread: Bool
     var isTimes = false
+    var excludeArchived = false
     var sort: SearchSort
     /// The caller's zone for typed before: / after: / on: dates (DATA_MODEL.md 検索).
     var tzOffsetMinutes: Int
@@ -170,6 +175,7 @@ struct SearchRequest: Equatable {
         for flag in has { items.append(URLQueryItem(name: "has", value: flag.rawValue)) }
         if isThread { items.append(URLQueryItem(name: "is_thread", value: "true")) }
         if isTimes { items.append(URLQueryItem(name: "is_times", value: "true")) }
+        if excludeArchived { items.append(URLQueryItem(name: "exclude_archived", value: "true")) }
         items.append(URLQueryItem(name: "sort", value: sort.rawValue))
         items.append(URLQueryItem(name: "tz_offset_minutes", value: String(tzOffsetMinutes)))
         items.append(URLQueryItem(name: "limit", value: String(limit)))
@@ -180,7 +186,7 @@ struct SearchRequest: Equatable {
     /// M58: GET /search/canvases takes the same words, person, conversation, dates and order; not has: / is:thread /
     /// is:times (a canvas has none of them: typed ones come back as unresolved).
     func canvasQueryItems(limit: Int, offset: Int) -> [URLQueryItem] {
-        let skipped: Set<String> = ["has", "is_thread", "is_times"]
+        let skipped: Set<String> = ["has", "is_thread", "is_times", "exclude_archived"]
         return queryItems(limit: limit, offset: offset).filter { !skipped.contains($0.name) }
     }
 
@@ -190,7 +196,7 @@ struct SearchRequest: Equatable {
     /// M122 (docs/WIKI.md §8.1): GET /search/pages takes the words (`in:<page title>` stays in them), the person (who made
     /// or last changed the page), the dates and the order; pages belong to no conversation.
     func pageQueryItems(limit: Int, offset: Int) -> [URLQueryItem] {
-        let skipped: Set<String> = ["has", "is_thread", "is_times", "channel_id"]
+        let skipped: Set<String> = ["has", "is_thread", "is_times", "exclude_archived", "channel_id"]
         return queryItems(limit: limit, offset: offset).filter { !skipped.contains($0.name) }
     }
 
@@ -248,15 +254,22 @@ enum SearchLogic {
     static func request(_ params: SearchParams, now: Date = Date(), calendar: Calendar = .current) -> SearchRequest {
         let range = dateRange(params.date, now: now, calendar: calendar)
         return SearchRequest(q: params.words, channelId: params.channelId, fromUserId: params.fromUserId, after: range.after, before: range.before,
-                             has: params.has, isThread: params.isThread, isTimes: params.isTimes, sort: params.effectiveSort,
+                             has: params.has, isThread: params.isThread, isTimes: params.isTimes, excludeArchived: params.excludeArchived,
+                             sort: params.effectiveSort,
                              tzOffsetMinutes: calendar.timeZone.secondsFromGMT(for: now) / 60, timeZone: calendar.timeZone)
     }
 
-    /// L8: a hit's channel the store does not know (SearchOut.channels): its bare name, 「(アーカイブ済み)」 after an
-    /// archived one; 「?」 without one.
+    /// A hit's channel the store does not know (SearchOut.channels: a public channel I have not joined, an archived
+    /// one among them): its bare name (the row's tag says 「未参加」 / 「アーカイブ済み」); 「?」 without one.
     static func otherChannelName(_ channel: ChannelOut?) -> String {
-        guard let channel, let name = channel.name else { return "?" }
-        return channel.archived ? tr("\(name)（アーカイブ済み）") : name
+        channel?.name ?? "?"
+    }
+
+    /// The tag of a hit's conversation: 「未参加」 for a public channel I have not joined (the search covers them; it
+    /// opens as the preview), 「アーカイブ済み」 for an archived one, both when both; nil for a live one of mine.
+    static func channelTag(archived: Bool, joined: Bool) -> String? {
+        if !joined { return archived ? tr("未参加・アーカイブ済み") : tr("未参加") }
+        return archived ? tr("アーカイブ済み") : nil
     }
 
     /// 「123 件」, or 「1,000 件以上」 when the server stopped counting.
@@ -277,6 +290,7 @@ enum SearchLogic {
         parts += params.has.map(\.label)
         if params.isThread { parts.append(tr("スレッド内")) }
         if params.isTimes { parts.append("Times") }
+        if params.excludeArchived { parts.append(tr("アーカイブを除く")) }
         return parts.joined(separator: " · ")
     }
 }

@@ -1634,8 +1634,8 @@ struct SearchOut: Codable {
     /// M16b: how many messages match; the server stops counting at 1,000 (`totalCapped`).
     var total: Int? = nil
     var totalCapped: Bool? = nil
-    /// L8 (M61): the hits' channels I am not a member of (public times reached with is:times; an archived one is in
-    /// no bootstrap), to name the hits and open their preview. nil from older servers.
+    /// The hits' channels I am not a member of (public channels, archived ones too: an archived one is in no
+    /// bootstrap), to name and tag the hits and open their preview. nil from older servers.
     var channels: [ChannelOut]? = nil
 }
 
