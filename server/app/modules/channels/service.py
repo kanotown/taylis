@@ -465,11 +465,13 @@ async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) 
     return out
 
 
-async def list_public_times_not_member(db: AsyncSession, actor: User) -> list[ChannelOut]:
-    """is:times (L8) widens the search to these; never for guests (M13e)."""
-    if actor.is_guest or not await preview_allowed(db):  # M88: no preview, no reading them
+async def list_public_searchable_not_member(db: AsyncSession, actor: User) -> list[ChannelOut]:
+    """The public channels, archived ones too, that the message search adds to the caller's own
+    (SECURITY.md §3.2: what they could read before joining, M27). Never for guests (M13e), and
+    none while the preview is off (M88)."""
+    if actor.is_guest or not await preview_allowed(db):
         return []
-    rows = await repo.list_public_times_not_member(db, actor.id)
+    rows = await repo.list_public_searchable_not_member(db, actor.id)
     counts = await repo.member_counts_for_channels(db, [c.id for c in rows])
     return [to_channel_out(c, None, None, counts.get(c.id, 0)) for c in rows]
 

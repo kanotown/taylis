@@ -71,14 +71,17 @@ async def list_public_channels_not_member(db: AsyncSession, user_id: uuid.UUID) 
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def list_public_times_not_member(db: AsyncSession, user_id: uuid.UUID) -> list[Channel]:
-    """Public times I have not joined, archived ones too (is:times, TIMES_FEED.md §6)."""
-    member_of = select(ChannelMember.channel_id).where(ChannelMember.user_id == user_id)
-    stmt = select(Channel).where(
-        Channel.type == "public",
-        Channel.times_owner_id.is_not(None),
-        Channel.id.not_in(member_of),
+async def list_public_searchable_not_member(db: AsyncSession, user_id: uuid.UUID) -> list[Channel]:
+    """Public channels I have not joined, archived ones too (the message search's reach for a
+    non-guest, SECURITY.md §3.2)."""
+    # NOT EXISTS, not NOT IN: whole rows with NOT IN (subquery) took about 40 ms for 50 channels
+    # through asyncpg, this about 1 ms.
+    member = (
+        select(ChannelMember.channel_id)
+        .where(ChannelMember.channel_id == Channel.id, ChannelMember.user_id == user_id)
+        .exists()
     )
+    stmt = select(Channel).where(Channel.type == "public", ~member)
     return list((await db.execute(stmt)).scalars().all())
 
 

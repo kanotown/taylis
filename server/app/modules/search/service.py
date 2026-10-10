@@ -1,5 +1,6 @@
-"""GET /search/messages and (M42) /search/canvases: full-text search limited to the caller's
-channels (SECURITY.md §3)."""
+"""GET /search/messages and (M42) /search/canvases: full-text search limited to what the caller
+can read (SECURITY.md §3): messages in their own conversations and, for non-guests, in every public
+channel (archived too) they have not joined; canvases in their own conversations only."""
 
 import asyncio
 import logging
@@ -120,10 +121,10 @@ class Resolved:
     text: str
     filters: SearchFilters
     scope: repo.Scope
-    # Every conversation in reach: the caller's own, and (is:times) the public times they have
-    # not joined, by id.
+    # Every conversation in reach: the caller's own, and the public channels they have not
+    # joined (non-guests, while the preview is on), by id. is:times keeps only the times.
     channels: dict[uuid.UUID, ChannelOut]
-    # The public times found by is:times that the caller is not a member of.
+    # The public channels in reach that the caller is not a member of.
     others: list[ChannelOut]
     # The one conversation the search was narrowed to (channel_id or in:#), else None.
     narrowed_to: uuid.UUID | None
@@ -137,16 +138,19 @@ async def resolve(db: AsyncSession, actor: User, params: SearchQuery) -> Resolve
     mine = await channels.list_channels(db, actor, include_public=False)
     parsed = parse_query(params.q, tz_offset_minutes=params.tz_offset_minutes)
     is_times = parsed.is_times or params.is_times
-    # L8 is:times (TIMES_FEED.md §6): my times plus the public times I have not joined (archived
-    # ones too: a graduate's log is kept for those who come after). Not for guests (M13e).
-    others: list[ChannelOut] = []
+    # My conversations plus every public channel I have not joined, archived ones too (what the
+    # preview lets me read, M27; Slack-imported archives have no members at all). Not for guests
+    # (M13e), nor while the preview is off (M88).
+    unjoined = await channels.list_public_searchable_not_member(db, actor)
+    others = unjoined
     if is_times:
-        others = await channels.list_public_times_not_member(db, actor)
+        # L8 is:times (TIMES_FEED.md §6): only the times, mine and the public ones.
         mine = [c for c in mine if c.times_owner_id is not None]
+        others = [c for c in unjoined if c.times_owner_id is not None]
     pool = [*mine, *others]
     narrowed_to: uuid.UUID | None = None
     if params.channel_id is not None:
-        if not any(c.id == params.channel_id for c in others):
+        if not any(c.id == params.channel_id for c in unjoined):
             await channels.require_member(db, actor.id, params.channel_id)
         # A channel outside is:times' range (not a times) finds nothing.
         channel_ids = (
@@ -165,6 +169,7 @@ async def resolve(db: AsyncSession, actor: User, params: SearchQuery) -> Resolve
         has=list(dict.fromkeys([*parsed.has, *params.has])),
         is_thread=parsed.is_thread or params.is_thread,
         is_times=is_times,
+        exclude_archived=params.exclude_archived,
         unresolved=list(parsed.unresolved),
     )
     from_user_id = params.from_user_id
@@ -183,6 +188,10 @@ async def resolve(db: AsyncSession, actor: User, params: SearchQuery) -> Resolve
             filters.in_channel = match.name
             channel_ids = [uuid.UUID(str(match.id))]
             narrowed_to = channel_ids[0]
+    if params.exclude_archived:
+        # Narrowing to an archived channel then finds nothing (like a non-times under is:times).
+        archived = {c.id for c in pool if c.archived}
+        channel_ids = [c for c in channel_ids if c not in archived]
     structured = bool(
         params.channel_id
         or params.from_user_id

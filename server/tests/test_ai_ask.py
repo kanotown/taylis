@@ -208,9 +208,10 @@ async def test_retrieval_reads_only_what_the_asker_may_search(
     await _work(app)
     sent = provider.requests[-1].user
     assert "general" in sent
-    for hidden in ("手順 lounge", "手順 secret", "手順 times"):
-        assert hidden not in sent  # not a member: never sent (as the search)
-    # is:times widens to the public times I have not joined, as the search does.
+    # As the search: the public channels I have not joined are in reach, a private one is not.
+    assert "手順 lounge" in sent and "手順 times" in sent
+    assert "手順 secret" not in sent
+    # is:times keeps the times, the public ones I have not joined included.
     await _ask(client, "校正の手順 is:times")
     await _work(app)
     sent = provider.requests[-1].user
