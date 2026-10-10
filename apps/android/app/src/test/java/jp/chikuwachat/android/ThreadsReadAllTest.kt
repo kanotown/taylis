@@ -1,9 +1,11 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.ActivityItem
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ThreadReadAllRow
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.api.ThreadsReadAllOut
+import jp.chikuwachat.android.sync.ActivityRules
 import jp.chikuwachat.android.sync.EngineOptions
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
@@ -16,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -97,6 +100,47 @@ class ThreadsReadAllTest {
         assertEquals(before, w.state(w.first))
         assertEquals(1, w.state(w.second).unreadCount)
         assertEquals(ThreadSummary(2, 1), w.store.threadSummary)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    /**
+     * Review v0.1.49 #4: the failed read-all put the list and the badge back but left the activity list's thread
+     * positions forward, so its replies showed read (and left 「未読のみ」), even after the list was fetched again.
+     */
+    @Test fun aFailureAlsoPutsTheActivityReadPositionsBack() = runBlocking {
+        val w = world()
+        val reply = w.server.messageByBody(w.channelId, "two <@${w.bob}>")
+        val item = ActivityItem(kind = "thread_reply", at = reply.createdAt, message = reply, actorIds = listOf(w.alice))
+        fun readHere() = ActivityRules.readInConversation(item, { w.store.channel(it)?.lastReadSeq }, { w.store.threadReadSeqs[it] })
+        assertFalse(readHere())
+        val positionBefore = w.store.threadReadSeqs[w.first]
+        w.api.pendingFailure = ApiException.Api(500, "internal", "boom")
+        try {
+            w.engine.markAllThreadsRead()
+            fail("expected the failure")
+        } catch (e: ApiException.Api) {
+            assertEquals(500, e.status)
+        }
+        settle(w.engine)
+        assertEquals(positionBefore, w.store.threadReadSeqs[w.first])
+        assertFalse("the reply is unread in the activity again", readHere())
+        // The list is fetched again (the failure schedules it): the positions are the server's, still unread.
+        w.engine.flushThreads(); settle(w.engine)
+        assertEquals(w.server.threadState(w.bob, w.first).lastReadSeq, w.store.threadReadSeqs[w.first])
+        assertFalse(readHere())
+        assertEquals(1, w.state(w.second).unreadCount)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    /** A newer read that came while the call was on its way (another device read the thread) is not undone. */
+    @Test fun aFailureKeepsANewerReadPosition() = runBlocking {
+        val w = world()
+        val undo = w.store.readAllThreadsLocally()
+        val newer = w.seq("two <@${w.bob}>") + 5
+        w.store.noteThreadRead(w.first, newer)
+        w.store.restoreThreadsReadAll(undo)
+        assertEquals(newer, w.store.threadReadSeqs[w.first])
+        assertEquals(undo.readSeqsBefore[w.second], w.store.threadReadSeqs[w.second])
         w.engine.stop(); w.scope.cancel()
     }
 

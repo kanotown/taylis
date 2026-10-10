@@ -1179,7 +1179,11 @@ class Store(private val persistence: Persistence? = null) {
                     (entry.state.lastReplyAt ?: "") >= oldest
             }
         }
-        items.filter { it.parent.id !in deletedRoots }.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state, it.latestReplies?.map { reply -> MessageState.from(reply) }) }
+        items.filter { it.parent.id !in deletedRoots }.forEach {
+            threads[it.parent.id] = ThreadEntry(it.parent, it.state, it.latestReplies?.map { reply -> MessageState.from(reply) })
+            // The activity list's dots follow the server's position too (the engine floors it by a read on its way).
+            threadReadSeqs[it.parent.id] = it.state.lastReadSeq
+        }
         if (!stale) {
             threadsFilter = filter
             threadsLoaded = true
@@ -1250,8 +1254,16 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
 
-    /** What [readAllThreadsLocally] changed: each row's state before and after, and the badge before. */
-    data class ThreadsReadAllUndo(val before: Map<String, ThreadState>, val after: Map<String, ThreadState>, val summary: ThreadSummary)
+    /**
+     * What [readAllThreadsLocally] changed: each row's state before and after, the badge before, and the activity list's
+     * read position of each of those threads before (null: none known) — the position after is the row's `after`.
+     */
+    data class ThreadsReadAllUndo(
+        val before: Map<String, ThreadState>,
+        val after: Map<String, ThreadState>,
+        val summary: ThreadSummary,
+        val readSeqsBefore: Map<String, Int?> = emptyMap(),
+    )
 
     /**
      * 「すべて既読にする」 on the 「スレッド」 list (THREADS.md §3.2), before the server answers: every followed row held
@@ -1269,7 +1281,7 @@ class Store(private val persistence: Persistence? = null) {
             before[id] = state
             after[id] = next
         }
-        val undo = ThreadsReadAllUndo(before, after, threadSummary)
+        val undo = ThreadsReadAllUndo(before, after, threadSummary, after.keys.associateWith { threadReadSeqs[it] })
         // Each row as a thread.updated would be applied (the entry, its position, the badge's arithmetic); the badge is then 0 / 0 outright.
         after.values.forEach { applyThreadState(it) }
         threadSummary = ThreadSummary()
@@ -1277,11 +1289,21 @@ class Store(private val persistence: Persistence? = null) {
         return undo
     }
 
-    /** The read-all failed: rows still as [readAllThreadsLocally] left them go back, and the badge if nothing moved it since. */
+    /**
+     * The read-all failed: rows still as [readAllThreadsLocally] left them go back, and the badge if nothing moved it
+     * since. So do the activity list's read positions it moved (review v0.1.49 #4: left forward, the activity showed
+     * those replies read and 「未読のみ」 dropped them), unless a newer read came meanwhile (a thread.updated, a reply
+     * read here).
+     */
     fun restoreThreadsReadAll(undo: ThreadsReadAllUndo) {
         undo.before.forEach { (id, state) ->
+            val after = undo.after[id]
+            if (after != null && id in undo.readSeqsBefore && threadReadSeqs[id] == after.lastReadSeq) {
+                val was = undo.readSeqsBefore[id]
+                if (was == null) threadReadSeqs.remove(id) else threadReadSeqs[id] = was
+            }
             val entry = threads[id] ?: return@forEach
-            if (entry.state == undo.after[id]) threads[id] = entry.copy(state = state)
+            if (entry.state == after) threads[id] = entry.copy(state = state)
         }
         if (threadSummary == ThreadSummary()) threadSummary = undo.summary
         emit()
