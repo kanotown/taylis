@@ -39,7 +39,7 @@ class EditorBridgeTest {
 
     @Test fun everyNativeMessageDecodesAndEncodesBackToTheFixture() {
         val examples = fixture.getValue("native_to_web").jsonArray
-        assertEquals(15, examples.size)
+        assertEquals(16, examples.size)
         val types = HashSet<String>()
         for (example in examples) {
             val raw = example.toString()
@@ -62,18 +62,21 @@ class EditorBridgeTest {
 
     @Test fun everyWebMessageDecodesToItsType() {
         val examples = fixture.getValue("web_to_native").jsonArray
-        assertEquals(12, examples.size)
+        assertEquals(14, examples.size)
         val seen = HashSet<String>()
+        val decoded = ArrayList<WebMessage>()
         for (example in examples) {
             val type = example.jsonObject.getValue("type").jsonPrimitive.content
             val message = EditorBridgeCodec.decodeWeb(example.toString()).getOrElse { fail("$type: ${it.message}"); return }
-            val back = EditorBridgeCodec.json.encodeToJsonElement(WebMessage.serializer(), message).jsonObject.getValue("type").jsonPrimitive.content
+            val back = Json.parseToJsonElement(EditorBridgeCodec.encodeWeb(message)).jsonObject.getValue("type").jsonPrimitive.content
             assertEquals(type, back)
             seen.add(type)
+            decoded.add(message)
             when (message) {
-                is WebMessage.Ready -> assertEquals(1, message.version)
+                is WebMessage.Ready -> assertEquals(2, message.version)
                 is WebMessage.Changed -> assertTrue(message.dirty)
                 is WebMessage.BodyRequested -> assertEquals(2, message.caretLine)
+                is WebMessage.BodyUnavailable -> assertEquals(8, message.id)
                 is WebMessage.Caret -> assertEquals(2, message.line)
                 is WebMessage.Height -> assertEquals(1240.0, message.px, 0.0)
                 is WebMessage.NeedPeople -> assertEquals("ha", message.query)
@@ -84,6 +87,29 @@ class EditorBridgeTest {
             }
         }
         assertEquals(setOf("ready", "changed", "bodyRequested", "caret", "height", "needPeople", "needPages", "pickImage", "openLink", "focusTitle", "log"), seen)
+        // Version 2's fields, and the shapes without them (version 1) still taken.
+        assertEquals(WebMessage.Changed("# 手順\n\n最初の行を直した\n", dirty = true, baseGen = 3), decoded[1])
+        assertEquals(WebMessage.Changed("# 手順\n\n最初の行を直した\n", dirty = true), decoded[2])
+        assertEquals(WebMessage.BodyRequested("# 手順\n\n最初の行（直した）\n", dirty = false, caretLine = 2, baseGen = 4, id = 7), decoded[3])
+        assertEquals(WebMessage.BodyUnavailable(8), decoded[4])
+        // Both bodyRequested shapes go back out as the fixture has them.
+        for (i in 3..4) assertEquals(examples[i], Json.parseToJsonElement(EditorBridgeCodec.encodeWeb(decoded[i])))
+    }
+
+    /** `loaded: false` is never a body, even with one beside it; a body without `loaded` (version 1) still is. */
+    @Test fun anAnswerWithoutAnEditorIsNeverABody() {
+        fun web(raw: String) = EditorBridgeCodec.decodeWeb(raw)
+        assertEquals(WebMessage.BodyUnavailable(), web("""{"type":"bodyRequested","loaded":false}""").getOrThrow())
+        assertEquals(WebMessage.BodyUnavailable(3), web("""{"type":"bodyRequested","loaded":false,"body":"","dirty":false,"caretLine":0,"id":3}""").getOrThrow())
+        assertEquals(WebMessage.BodyRequested("", dirty = false, caretLine = 0), web("""{"type":"bodyRequested","body":"","dirty":false,"caretLine":0}""").getOrThrow())
+        assertEquals(WebMessage.BodyRequested("x", dirty = true, caretLine = 1, id = 2), web("""{"type":"bodyRequested","loaded":true,"body":"x","dirty":true,"caretLine":1,"id":2}""").getOrThrow())
+        assertTrue(web("""{"type":"bodyRequested","loaded":true}""").isFailure) // a body is due
+        assertTrue(web("""{"type":"bodyRequested","loaded":"false"}""").isFailure)
+        assertTrue(web("""{"type":"bodyRequested","loaded":false,"id":"8"}""").isFailure)
+        assertTrue(web("""{"type":"bodyRequested","loaded":false,"id":1.5}""").isFailure)
+        // The generations and ids are integers.
+        assertTrue(web("""{"type":"changed","body":"x","dirty":true,"baseGen":"1"}""").isFailure)
+        assertTrue(web("""{"type":"bodyRequested","body":"x","dirty":true,"caretLine":0,"id":1.5}""").isFailure)
     }
 
     @Test fun whatCannotBeReadIsRefusedNotThrown() {
@@ -130,7 +156,7 @@ class EditorBridgeTest {
         val bridge = EditorBridge(port = { evaluated.add(it) }, main = { main.add(it) }, listener = { got.add(it) }, refused = { refused.add(it.message) })
         val latch = CountDownLatch(1)
         thread {
-            bridge.post("""{"type":"ready","version":1}""")
+            bridge.post("""{"type":"ready","version":2}""")
             bridge.post("{not json")
             bridge.post("""{"type":"caret","line":2}""")
             latch.countDown()
@@ -138,7 +164,7 @@ class EditorBridgeTest {
         latch.await()
         assertTrue(got.isEmpty()) // nothing until the main thread runs
         main.forEach { it.run() }
-        assertEquals(listOf<WebMessage>(WebMessage.Ready(1), WebMessage.Caret(2)), got)
+        assertEquals(listOf<WebMessage>(WebMessage.Ready(2), WebMessage.Caret(2)), got)
         assertEquals(1, refused.size)
         bridge.send(NativeMessage.Focus)
         assertEquals(listOf("window.taylisEditor.receive(\"{\\\"type\\\":\\\"focus\\\"}\")"), evaluated)

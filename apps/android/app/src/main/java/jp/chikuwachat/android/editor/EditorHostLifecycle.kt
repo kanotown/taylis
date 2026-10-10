@@ -11,7 +11,8 @@ import jp.chikuwachat.android.sync.CanvasTimers
  * editor for its body first: what is typed in the last 300 ms is only in the WebView. Two states, kept apart:
  *  - **closing** (`release` came): no new session; the final `requestBody` still goes out and its answer still comes in
  *    and reaches the page's save loop. The WebView is destroyed once no leaving session waits any more.
- *  - **destroyed**: the WebView is gone (destroyed here, or its render process died): nothing goes out or comes in.
+ *  - **destroyed**: the WebView is gone (destroyed here, or its render process died and no new one is read):
+ *    nothing goes out or comes in. A render process that died while a new WebView reads the page again is [pageLost].
  * `detach` and `release` give the same ending in either order. A session whose answer does not come within [graceMs]
  * gives up ([EditorSession.giveUp]): the loop keeps and saves what it has, nothing is discarded.
  *
@@ -87,7 +88,25 @@ class EditorHostLifecycle(
         closeIfDone()
     }
 
-    /** The render process died (the host destroyed the WebView): no answer will come; what is known stands. */
+    /**
+     * The render process died and the host reads the page again in a new WebView (review v0.1.49 #2): what was asked of
+     * the old page will not be answered. Leaving sessions give up (the loop keeps and saves what it has) and end; the
+     * session editing now sends nothing until the new page's `ready`, when its body goes in again.
+     */
+    fun pageLost() {
+        if (destroyed) return
+        val left = leaving.toList()
+        leaving.clear()
+        left.forEach { (session, timer) ->
+            timer.cancel()
+            session.giveUp()
+            session.end()
+        }
+        current?.pageLost()
+        closeIfDone()
+    }
+
+    /** The render process died and no new page is read (the host destroyed the WebView): what is known stands. */
     fun webViewGone() {
         if (destroyed) return
         destroyed = true
@@ -103,19 +122,27 @@ class EditorHostLifecycle(
     }
 
     /**
-     * A message from the editor: the session it is for (null: none, or the WebView is gone). A `bodyRequested` answers
-     * the oldest request still open — a leaving session's came before anything the next session sent.
+     * A message from the editor: the session it is for (null: none, or the WebView is gone). A `bodyRequested` goes to
+     * the session that asked under its `id` (none: dropped — asked before a reload, or given up); without an id (bridge
+     * version 1) it answers the oldest request still open — a leaving session's came before anything the next sent.
      */
     fun route(message: WebMessage): EditorSession? {
         if (destroyed) return null
-        return when (message) {
-            is WebMessage.BodyRequested -> leaving.firstOrNull { it.first.awaitingBody }?.first ?: current
-            else -> current ?: leaving.lastOrNull()?.first
+        val id = when (message) {
+            is WebMessage.BodyRequested -> message.id
+            is WebMessage.BodyUnavailable -> message.id
+            else -> return current ?: leaving.lastOrNull()?.first
         }
+        if (id != null) return (leaving.map { it.first } + listOfNotNull(current)).firstOrNull { it.waitsFor(id) }
+        return leaving.firstOrNull { it.first.awaitingBody }?.first ?: current
     }
 
-    /** After [route]'s session took the message: a leaving session that has its body is done. */
-    fun delivered(target: EditorSession) {
+    /**
+     * After [route]'s session took the message: a leaving session that has its body is done. A page that answered it
+     * has no editor (`loaded: false`: it lost it unseen) gets the body of the session editing now again.
+     */
+    fun delivered(target: EditorSession, message: WebMessage? = null) {
+        if (message is WebMessage.BodyUnavailable) current?.takeIf { it.loaded }?.load()
         val entry = leaving.firstOrNull { it.first === target } ?: return
         if (target.awaitingBody) return
         finish(entry)

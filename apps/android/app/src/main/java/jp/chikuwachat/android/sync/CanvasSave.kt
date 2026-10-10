@@ -137,6 +137,13 @@ class CanvasSaver(
     var textRevision = 0
         private set
     /**
+     * M153a (review v0.1.49 #1, docs/WIKI.md §30.3 「版 2」): the generation of the body [text] is written on — the
+     * [textRevision] that put it in, or an earlier one when an editor came back with a text written before a body it
+     * dropped (`edit(next, basedOn = …)`). The bundled editor gets it as `load.gen` / `replace.gen` and gives it back.
+     */
+    var textLineage = 0
+        private set
+    /**
      * Whether the editor can take a new text now (not while an IME composition is open). When it cannot, the merged body
      * waits: the next save carries this text on the version that holds it, and the server merges again.
      */
@@ -144,6 +151,22 @@ class CanvasSaver(
 
     private var synced = ""
     private var baseRevId: String? = null
+
+    /** A version of the server and its body: the base a save is written on. */
+    private data class Base(val revId: String, val body: String)
+
+    /**
+     * For the generations an editor may still write on after the loop put a newer body in (it held that body back and
+     * dropped it): the version a text of that generation is saved on, so the server merges it with what came since
+     * instead of taking it as written over the newer body. The current generation's base is [baseRevId] / [synced].
+     */
+    private val lineageBases = HashMap<Int, Base>()
+    /**
+     * The generation of the text on the wire, and whether an editor went back to another generation since it went out
+     * (its answer then is not the base of the text here).
+     */
+    private var inFlightLineage: Int? = null
+    private var inFlightDetached = false
     private var version = 0L
     private var inFlight: CanvasInFlight? = null
     private var again = false
@@ -239,8 +262,7 @@ class CanvasSaver(
         if (baseRevId == null) {
             baseRevId = got.headRevId
             synced = got.body
-            text = got.body
-            textRevision += 1
+            putText(got.body, previous = null)
         }
         setStatus(if (unsaved) CanvasSaveStatus.EDITING else CanvasSaveStatus.SAVED)
     }
@@ -377,25 +399,52 @@ class CanvasSaver(
 
     /** The server's version becomes the text (nothing unsaved here). */
     private fun adopt(got: CanvasOut) {
+        val previous = currentBase()
         baseRevId = got.headRevId
         synced = got.body
-        if (text != got.body) {
-            text = got.body
-            textRevision += 1
-        }
+        if (text != got.body) putText(got.body, previous)
         persistState()
+    }
+
+    private fun currentBase(): Base? = baseRevId?.let { Base(it, synced) }
+
+    /**
+     * The loop puts a body of its own in [text] (a merge, someone else's version, a tick): a new generation. A text an
+     * editor wrote on the generation before (it did not take this body) is saved on [previous].
+     */
+    private fun putText(body: String, previous: Base?) {
+        if (previous != null) lineageBases[textLineage] = previous
+        text = body
+        textRevision += 1
+        textLineage = textRevision
+        lineageBases.keys.removeAll { it <= textRevision - LINEAGES_KEPT }
+    }
+
+    /**
+     * An editor's text was written on generation [lineage] (an earlier body it kept, having dropped the newer one): it
+     * is saved on that generation's version, and the server merges it with the newer one again.
+     */
+    private fun rebase(lineage: Int, base: Base) {
+        currentBase()?.let { lineageBases[textLineage] = it }
+        textLineage = lineage
+        baseRevId = base.revId
+        synced = base.body
+        if (inFlight != null && inFlightLineage != lineage) inFlightDetached = true
+        stale = true // the server holds more than this text: read again if it turns out unchanged
     }
 
     // --- editing and saving ---------------------------------------------------------------------
 
     /**
      * The editor's text changed: saved once typing pauses. `external`: the change came from elsewhere on the screen (a
-     * box ticked in the reading view), so the editor takes it like a merge.
+     * box ticked in the reading view), so the editor takes it like a merge. [basedOn]: the generation ([textLineage]) of
+     * the body the editor wrote this text on, when it says so (the bundled editor's `baseGen`); an earlier one than
+     * [textLineage] means it dropped the bodies put in since, and the text is saved on that generation's version.
      */
-    fun edit(next: String, external: Boolean = false) {
+    fun edit(next: String, external: Boolean = false, basedOn: Int? = null) {
         if (disposed || next == text) return
-        text = next
-        if (external) textRevision += 1
+        if (basedOn != null && basedOn != textLineage) lineageBases[basedOn]?.let { rebase(basedOn, it) }
+        if (external) putText(next, currentBase()) else text = next
         if (status == CanvasSaveStatus.BLOCKED) error = null // an edit may fix it (a body that was too long)
         saveTimer?.cancel()
         saveTimer = schedule(options.debounceMs) {
@@ -440,6 +489,8 @@ class CanvasSaver(
             return
         }
         inFlight = CanvasInFlight(options.newId(), text, base, onConflict)
+        inFlightLineage = textLineage
+        inFlightDetached = false
         persistState()
         track { send() }
     }
@@ -461,19 +512,28 @@ class CanvasSaver(
     }
 
     private fun landed(flight: CanvasInFlight, answer: CanvasSaveOut) {
+        val flightLineage = inFlightLineage ?: textLineage
+        val detached = inFlightDetached
         inFlight = null
+        inFlightLineage = null
+        inFlightDetached = false
         attempt = 0
         canvas = answer.canvas
         reached(answer.canvas)
         version = maxOf(version, answer.canvas.version)
-        if (text == flight.sent && canReplace()) {
-            // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen.
+        // The version holding exactly what was sent: the base of a text its editor writes on after it.
+        val submitted = Base(answer.submittedRevId, flight.sent)
+        if (detached) {
+            // The editor went back to an earlier body after this went out: its text is not written on what was sent.
+            // The sent text's generation keeps this version; the text here goes on on its own base (merged again).
+            lineageBases[flightLineage] = submitted
+            if (answer.canvas.body != text) stale = true
+        } else if (text == flight.sent && canReplace()) {
+            // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen. Should the editor
+            // drop that body and write on, its text is saved on the version of what was sent (putText's previous).
             baseRevId = answer.canvas.headRevId
             synced = answer.canvas.body
-            if (text != answer.canvas.body) {
-                text = answer.canvas.body
-                textRevision += 1
-            }
+            if (text != answer.canvas.body) putText(answer.canvas.body, submitted)
             stale = false
         } else {
             // Typed on: the next save is written on the version holding exactly what was sent (§4.4).
@@ -553,6 +613,8 @@ class CanvasSaver(
         if (disposed || choice == "fail") return
         conflict = null
         inFlight = CanvasInFlight(options.newId(), text, open.baseRevId, choice)
+        inFlightLineage = textLineage
+        inFlightDetached = false
         persistState()
         track { send() }
     }
@@ -651,6 +713,9 @@ class CanvasSaver(
     }
 
     companion object {
+        /** How many generations back an editor's text may still name its body (`baseGen`) and be saved on its version. */
+        private const val LINEAGES_KEPT = 32
+
         /** Worth sending again as it was: the network, 429, 5xx, or a 401 the reconnect renews (never a second version). */
         fun temporary(e: Throwable): Boolean =
             e is ApiException.Network || (e is ApiException.Api && (e.status == 429 || e.status >= 500 || e.status == 401))

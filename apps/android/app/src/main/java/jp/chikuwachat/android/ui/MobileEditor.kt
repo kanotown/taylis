@@ -49,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,6 +112,8 @@ private const val ATTACHMENT_URL = "https://$ASSET_HOST/attachment/{id}"
 private const val EMOJI_URL = "https://$ASSET_HOST/emoji/"
 /** The pictures of open pages kept decoded-ready for the WebView (bytes, by attachment or emoji id). */
 private const val IMAGE_CACHE_BYTES = 16 * 1024 * 1024
+/** How often one page screen reads the editor's page again after its render process ended, before giving up. */
+private const val MAX_RELOADS = 3
 private val UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
 
 /** M153a: 「ドキュメントの見たまま編集（試作）」, kept on this device; off leaves no key behind. */
@@ -130,11 +133,10 @@ object WysiwygEditing {
 
 /**
  * One warmed WebView with the bundle loaded, made when the page screen opens (so 「編集」 only sends `load`), and the
- * bridge over it. Holds the pictures it served. Destroyed when the page screen goes ([release]).
+ * bridge over it. Holds the pictures it served. Destroyed when the page screen goes ([release]). Should its render
+ * process end, a new WebView reads the page again and the session loads its body into it ([pageGone]).
  */
-class MobileEditorHost(context: Context, private val controller: AppController) {
-    val webView: WebView
-    private val bridge: EditorBridge
+class MobileEditorHost(private val context: Context, private val controller: AppController) {
     private val main = Handler(Looper.getMainLooper())
 
     /** The editor session's timers, on the main looper (where the session and the save loop run). */
@@ -164,16 +166,25 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     private val lifecycle = EditorHostLifecycle(timers, destroyWebView = ::destroyNow, warn = { Log.w(TAG, it) })
     private var loadSentAt = 0L
     private var firstHeightAt: Long? = null
+    /** Pages read again after their render process ended (at most [MAX_RELOADS]; then the screen shows Markdown). */
+    private var reloads = 0
 
     init {
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
-        bridge = EditorBridge(
-            port = { js -> if (lifecycle.canSend) webView.evaluateJavascript(js, null) },
-            main = { runnable -> main.post(runnable) },
-            listener = ::onWeb,
-            refused = { Log.w(TAG, "message refused: ${it.message} (${it.raw.take(120)})") },
-        )
-        webView = makeWebView(context)
+    }
+
+    private val bridge = EditorBridge(
+        port = { js -> if (lifecycle.canSend) webView.evaluateJavascript(js, null) },
+        main = { runnable -> main.post(runnable) },
+        listener = ::onWeb,
+        refused = { Log.w(TAG, "message refused: ${it.message} (${it.raw.take(120)})") },
+    )
+
+    /** The WebView showing the editor (a new one after its render process ended: the screen shows that one). */
+    var webView: WebView by mutableStateOf(makeWebView(context))
+        private set
+
+    init {
         webView.loadUrl(EDITOR_URL)
     }
 
@@ -205,10 +216,9 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 Log.e(TAG, "render process gone (crash=${detail.didCrash()})")
-                failed = "render process gone"
                 (view.parent as? ViewGroup)?.removeView(view)
-                view.destroy()
-                lifecycle.webViewGone()
+                view.destroy() // a WebView whose renderer is gone cannot be used again
+                if (view === webView) pageGone()
                 return true
             }
         }
@@ -219,6 +229,31 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
             }
         }
         addJavascriptInterface(TaylisBridge(bridge), "TaylisBridge")
+    }
+
+    /**
+     * The render process ended (memory, a crash) and its WebView is destroyed (review v0.1.49 #2): a new WebView reads
+     * the page again, and on its `ready` the session sends the people, the emoji and its body (the loop's text, its
+     * generation, the caret's line) again; nothing is asked of the page meanwhile, and a `requestBody` the old page
+     * did not answer leaves what the loop has. Only when no new page can be read (the screen is closing, the WebView
+     * cannot be made, or it ended [MAX_RELOADS] times) does the screen go back to Markdown with the notice.
+     */
+    private fun pageGone() {
+        if (lifecycle.destroyed) return
+        val fresh = if (lifecycle.closing || reloads >= MAX_RELOADS) null else {
+            runCatching { makeWebView(context) }.onFailure { Log.e(TAG, "no WebView to read the page again", it) }.getOrNull()
+        }
+        if (fresh == null) {
+            failed = "render process gone"
+            lifecycle.webViewGone()
+            return
+        }
+        reloads += 1
+        readyVersion = null
+        webView = fresh
+        lifecycle.pageLost()
+        fresh.loadUrl(EDITOR_URL)
+        Log.w(TAG, "the page is read again ($reloads); the body goes in again on its ready")
     }
 
     /** `TaylisBridge.post` from the page: called on the WebView's JavaScript thread. */
@@ -251,7 +286,7 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
             loadSentAt = SystemClock.uptimeMillis()
             firstHeightAt = null
         }
-        lifecycle.delivered(target)
+        lifecycle.delivered(target, message)
         if (target.unsupported) failed = "bridge version ${(message as? WebMessage.Ready)?.version}"
     }
 
@@ -455,13 +490,17 @@ internal fun MobileEditor(
     // adjustResize with edge-to-edge: the pane pads itself for the keyboard (MainScreen consumes the scaffold's insets),
     // so the WebView ends above it and its own formatting row (fixed at its bottom) sits right over the keyboard.
     Column(modifier.imePadding()) {
-        AndroidView(
-            factory = {
-                (host.webView.parent as? ViewGroup)?.removeView(host.webView)
-                host.webView
-            },
-            modifier = Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = L10n.str(R.string.docs_wysiwyg_body) },
-        )
+        // A new WebView after the render process ended (MobileEditorHost.pageGone) takes the old one's place.
+        val webView = host.webView
+        key(webView) {
+            AndroidView(
+                factory = {
+                    (webView.parent as? ViewGroup)?.removeView(webView)
+                    webView
+                },
+                modifier = Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = L10n.str(R.string.docs_wysiwyg_body) },
+            )
+        }
         if (!readOnly) {
             HorizontalDivider()
             EditorKeyboardRow(
