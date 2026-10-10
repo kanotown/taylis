@@ -27,8 +27,8 @@ import org.junit.Test
  * M153a (docs/WIKI.md §30.5): the bundled editor wired to the page's save loop (editor/EditorSession.kt) over a
  * pretend WebView — what `ready` brings out, `changed` into the loop and its save after the pause, a merge back as
  * `replace` (only for what the loop changed, never before `load`), `requestBody` with the caret's line, the pages
- * `[[` asks for, pictures and links, and a WebView that comes up again. The loop is the real CanvasSaver on
- * FakeCanvasServer, as CanvasSaveTest drives it.
+ * `[[` asks for, pictures and links, a WebView that comes up again, and a merge kept back while the editor is focused
+ * (nothing lost). The loop is the real CanvasSaver on FakeCanvasServer, as CanvasSaveTest drives it.
  */
 class EditorSessionTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -70,7 +70,10 @@ class EditorSessionTest {
         val h = Harness(initial, caretLine)
         val options = CanvasSaverOptions(newId = { "k${++ids}" }, timers = h.timers)
         h.saver = CanvasSaver(h.server.canvasId, h.server.channelId, h.server.api, scope, options).also { it.load() }
-        h.session = EditorSession(h.saver, { h.sent.add(it) }, h.env, initialCaretLine = caretLine, autoFocus = autoFocus)
+        h.session = EditorSession(
+            h.saver, { h.sent.add(it) }, h.env, initialCaretLine = caretLine, autoFocus = autoFocus, timers = h.timers, now = { h.timers.now },
+        )
+        h.session.start()
         return h
     }
 
@@ -135,6 +138,7 @@ class EditorSessionTest {
         h.session.onWeb(WebMessage.Ready(1))
         h.server.otherSaves("a\nb\nC") // someone else, another line
         h.session.onWeb(WebMessage.Changed("A\nb\nc", dirty = true))
+        h.timers.advance(EditorSession.QUIET_AFTER_MS) // not focused, and the edit is that old when the save lands
         h.saver.flush()
         assertEquals("A\nb\nC", h.saver.text) // the server merged both
         h.session.saverChanged()
@@ -144,6 +148,93 @@ class EditorSessionTest {
         h.session.onWeb(WebMessage.Changed("A\nb\nC", dirty = false))
         h.session.saverChanged()
         assertEquals(count, h.sent.size)
+    }
+
+    /**
+     * The data loss of §30.4 / §30.5: a merge sent as `replace` while the IME composed was held back by the editor and
+     * dropped at its next edit, and that edit (written on the body before the merge) was saved on the merged version,
+     * deleting the other device's line. While the editor is focused the loop keeps the merge back and saves on the
+     * version the editor's body was written on (the server merges); the merge comes in after the editor lets go.
+     */
+    @Test fun whileTheEditorIsFocusedAMergeWaitsAndNothingIsLost() {
+        val h = harness("最初の行\nb\nc")
+        h.session.onWeb(WebMessage.Ready(1))
+        var focused = true
+        h.session.editorFocused = { focused }
+        // 「にほん」 is being composed when another device changes the last line.
+        h.session.onWeb(WebMessage.Changed("最初の行にほん\nb\nc", dirty = true))
+        h.server.otherSaves("最初の行\nb\n相手の行")
+        h.timers.advance(2_000)
+        assertEquals("最初の行にほん\nb\n相手の行", h.server.body) // the server merged
+        h.session.saverChanged() // a `replace` now would be held back by the composition and dropped at the next edit
+        // The composition is converted: the editor's body is still the one before the merge.
+        h.session.onWeb(WebMessage.Changed("最初の行日本\nb\nc", dirty = true))
+        h.session.saverChanged()
+        h.timers.advance(2_000)
+        assertEquals("the other device's line survives", "最初の行日本\nb\n相手の行", h.server.body)
+        h.session.saverChanged()
+        assertFalse("nothing goes in while the editor is focused", h.sent.any { it is NativeMessage.Replace })
+        // The keyboard goes away (`caret`): once quiet, the merged body comes in.
+        focused = false
+        h.session.onWeb(WebMessage.Caret(0))
+        h.timers.advance(EditorSession.QUIET_AFTER_MS + 200)
+        assertEquals(h.server.body, h.saver.text)
+        h.session.saverChanged()
+        assertEquals(NativeMessage.Replace("最初の行日本\nb\n相手の行"), h.sent.last())
+        assertEquals(CanvasSaveStatus.SAVED, h.saver.status)
+    }
+
+    /**
+     * Leaving: while the editor's last body is asked for, a merge stays back (the answer is written on what the editor
+     * holds); it comes in once the answer is in. The loop's rule is the plain one again when the session ends, unless
+     * another editor set its own meanwhile.
+     */
+    @Test fun leavingKeepsTheMergeBackUntilTheLastBodyIsInThenHandsTheRuleBack() {
+        val h = harness("a\nb\nc")
+        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Changed("A\nb\nc", dirty = true))
+        h.timers.advance(2_000) // saved
+        h.timers.advance(EditorSession.QUIET_AFTER_MS)
+        assertTrue(h.session.editorQuiet)
+        h.session.requestBody(flush = true)
+        assertFalse("a body is on its way", h.session.editorQuiet)
+        h.server.otherSaves("A\nb\nC")
+        h.saver.remoteVersion(h.server.version)
+        h.timers.advance(1_000)
+        assertEquals("A\nb\nc", h.saver.text) // kept back
+        h.session.onWeb(WebMessage.BodyRequested("A\nb\nc", dirty = false, caretLine = 0))
+        assertTrue(h.session.editorQuiet)
+        assertEquals("A\nb\nC", h.saver.text) // read once the answer is in (its flush)
+        assertEquals("A\nb\nC", h.server.body)
+        val other = harness("x")
+        other.session.editorFocused = { true }
+        assertFalse(other.saver.canReplace())
+        other.session.end()
+        assertTrue(other.saver.canReplace())
+        // Another editor's rule set meanwhile is not undone.
+        val third = harness("y")
+        val rule = { false }
+        third.saver.canReplace = rule
+        third.session.end()
+        assertTrue(third.saver.canReplace === rule)
+    }
+
+    /** The Markdown editor took over and the loop took a merge: the editor's last body, with nothing new, leaves it. */
+    @Test fun anAnswerThatHoldsNothingNewDoesNotUndoAMerge() {
+        val h = harness("a\nb\nc")
+        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Changed("A\nb\nc", dirty = true))
+        h.timers.advance(3_000) // saved
+        h.session.requestBody(flush = true)
+        h.saver.canReplace = { true } // the Markdown editor's rule (CanvasPane), no composition
+        h.server.otherSaves("A\nb\nC")
+        h.saver.remoteVersion(h.server.version)
+        h.timers.advance(1_000)
+        assertEquals("A\nb\nC", h.saver.text)
+        h.session.onWeb(WebMessage.BodyRequested("A\nb\nc", dirty = false, caretLine = 0))
+        h.timers.advance(3_000)
+        assertEquals("A\nb\nC", h.saver.text)
+        assertEquals("A\nb\nC", h.server.body)
     }
 
     @Test fun aTickInTheReadingViewReachesTheEditor() {

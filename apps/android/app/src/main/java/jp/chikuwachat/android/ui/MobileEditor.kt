@@ -2,6 +2,7 @@ package jp.chikuwachat.android.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -27,7 +28,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -45,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -60,6 +65,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewAssetLoader
 import jp.chikuwachat.android.BuildConfig
 import jp.chikuwachat.android.L10n
@@ -76,7 +83,9 @@ import jp.chikuwachat.android.editor.EditorTheme
 import jp.chikuwachat.android.editor.NativeMessage
 import jp.chikuwachat.android.editor.WebMessage
 import jp.chikuwachat.android.platform.KeyValueStore
+import jp.chikuwachat.android.sync.CanvasCancel
 import jp.chikuwachat.android.sync.CanvasSaver
+import jp.chikuwachat.android.sync.CanvasTimers
 import jp.chikuwachat.android.sync.WikiLinks
 import jp.chikuwachat.android.sync.WikiTree
 import kotlinx.coroutines.launch
@@ -242,6 +251,7 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
         }
         if (message is WebMessage.BodyRequested && target === leaving && !target.awaitingBody) {
             leaving = null
+            target.end()
             if (released) destroyNow()
         }
         if (target.unsupported) failed = "bridge version ${(message as? WebMessage.Ready)?.version}"
@@ -249,8 +259,10 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
 
     /** The page's editing session; a `ready` that came already is replayed so `load` goes out now. */
     fun attach(next: EditorSession) {
+        leaving?.end()
         session = next
         leaving = null
+        next.start()
         readyVersion?.let {
             loadSentAt = SystemClock.uptimeMillis()
             firstHeightAt = null
@@ -262,10 +274,13 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     fun detach(current: EditorSession) {
         if (session !== current) return
         session = null
-        if (!current.loaded || released) return
+        if (!current.loaded || released) {
+            current.end()
+            return
+        }
         leaving = current
         current.requestBody(flush = true)
-        main.postDelayed({ if (leaving === current) { leaving = null; if (released) destroyNow() } }, LEAVE_GRACE_MS)
+        main.postDelayed({ if (leaving === current) { leaving = null; current.end(); if (released) destroyNow() } }, LEAVE_GRACE_MS)
     }
 
     /** The page screen goes: the WebView is destroyed (after a pending `requestBody` answered). */
@@ -277,9 +292,10 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
             if (current.loaded) {
                 leaving = current
                 current.requestBody(flush = true)
-                main.postDelayed({ if (leaving === current) { leaving = null; destroyNow() } }, LEAVE_GRACE_MS)
+                main.postDelayed({ if (leaving === current) { leaving = null; current.end(); destroyNow() } }, LEAVE_GRACE_MS)
                 return
             }
+            current.end()
         }
         if (leaving == null) destroyNow()
     }
@@ -292,6 +308,25 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     fun send(message: NativeMessage) {
         if (BuildConfig.DEBUG && message is NativeMessage.Load) Log.d(TAG, "load ${message.body.length} chars, caretLine=${message.caretLine}")
         bridge.send(message)
+    }
+
+    /**
+     * Whether the editor may be taking keys: the WebView has the focus and a keyboard is up (the IME, or a hardware
+     * one, with which a composition can be open without the IME showing). A keyboard put away by the back gesture
+     * leaves the focus in the WebView but ends the composition (the IME commits it).
+     */
+    val editorFocused: Boolean
+        get() {
+            if (released || !webView.hasFocus()) return false
+            val ime = ViewCompat.getRootWindowInsets(webView)?.isVisible(WindowInsetsCompat.Type.ime()) ?: true
+            return ime || webView.resources.configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+        }
+
+    /** The editor session's timers, on the main looper (where the session and the save loop run). */
+    val timers = CanvasTimers { delayMs, action ->
+        val runnable = Runnable(action)
+        main.postDelayed(runnable, delayMs)
+        CanvasCancel { main.removeCallbacks(runnable) }
     }
 
     /** The session editing now (DocPage asks it for the body and the caret before switching to Markdown). */
@@ -394,7 +429,9 @@ internal fun MobileEditor(
         }
         // No `focus` after `load`: Android's WebView raises the keyboard only for a tap, and a programmatic focus of an
         // unfocused editor lands the DOM caret at the start (the caret `load` placed on `caretLine` would be lost).
-        EditorSession(saver, host::send, env, initialCaretLine = caretLine, autoFocus = false)
+        EditorSession(
+            saver, host::send, env, initialCaretLine = caretLine, autoFocus = false, timers = host.timers, now = SystemClock::uptimeMillis,
+        ).also { it.editorFocused = { host.editorFocused } }
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -416,6 +453,12 @@ internal fun MobileEditor(
     val revision by saver.revision.collectAsState()
     LaunchedEffect(revision) { session.saverChanged() }
     LaunchedEffect(theme) { session.setTheme(theme) }
+    // The keyboard went away (the back gesture keeps the WebView focused, so no `caret` comes): a merge kept back while
+    // typing may come in now (EditorSession.letGo).
+    val ime = WindowInsets.ime
+    val density = LocalDensity.current
+    val imeShown by remember(ime, density) { derivedStateOf { ime.getBottom(density) > 0 } }
+    LaunchedEffect(imeShown) { if (!imeShown) session.letGo() }
     // The app goes to the background: what is typed but not yet written goes to the loop (which flushes then).
     LaunchedEffect(controller.appForeground) { if (!controller.appForeground) session.requestBody(flush = true) }
 
