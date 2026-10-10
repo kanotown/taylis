@@ -1,8 +1,10 @@
-import { Bot, Pencil, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { Bot, ImageUp, Pencil, Trash2 } from "lucide-react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
-import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, AI_PROVIDERS, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiEffort, type AiModel, aiModelLabel, aiProviderLabel, type AiProviderName, aiProviderOf, type AiProviderOut, type AiUsageOut, DEFAULT_AI_MODEL, describeAiError } from "../api/ai";
+import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, AI_PROVIDERS, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiEffort, type AiModel, aiModelLabel, aiProviderLabel, type AiProviderName, aiProviderOf, type AiProviderOut, type AiUsageOut, defaultModelFor, describeAiError } from "../api/ai";
+import { forEachPicked, refusePicked, takePicked } from "../platform/pickedFiles";
 import type { AppController } from "../state/app";
+import { Avatar } from "./Avatar";
 import { Badge, Button, cn, Field, Input, Modal, Textarea } from "./primitives";
 import { usernameHint } from "./username";
 import { intlLocale, t } from "../i18n";
@@ -24,12 +26,16 @@ export interface AgentForm {
   effort: AiEffort;
   allow_private: boolean;
   enabled: boolean;
+  /** docs/AI.md §14. */
+  web_search: boolean;
+  is_default: boolean;
 }
 
-export function agentForm(row: AiAgentOut | null): AgentForm {
+/** The form for a bot, or a new one (its model: GPT-6.1 Sol when the server has the OpenAI key, else Opus 5.5; §14). */
+export function agentForm(row: AiAgentOut | null, providers: AiProviderOut[] | null = null): AgentForm {
   return row
-    ? { name: row.name, username: row.username, character: row.character, model: row.model, effort: row.effort, allow_private: row.allow_private, enabled: row.enabled }
-    : { name: "", username: "", character: "", model: DEFAULT_AI_MODEL, effort: "medium", allow_private: false, enabled: true };
+    ? { name: row.name, username: row.username, character: row.character, model: row.model, effort: row.effort, allow_private: row.allow_private, enabled: row.enabled, web_search: row.web_search ?? false, is_default: row.is_default ?? false }
+    : { name: "", username: "", character: "", model: defaultModelFor(providers), effort: "medium", allow_private: false, enabled: true, web_search: false, is_default: false };
 }
 
 /** PATCH sends only what changed (docs/AI.md §5); the username is never sent. */
@@ -41,6 +47,8 @@ export function agentPatch(row: AiAgentOut, form: AgentForm): AiAgentUpdate {
   if (form.effort !== row.effort) patch.effort = form.effort;
   if (form.allow_private !== row.allow_private) patch.allow_private = form.allow_private;
   if (form.enabled !== row.enabled) patch.enabled = form.enabled;
+  if (form.web_search !== (row.web_search ?? false)) patch.web_search = form.web_search;
+  if (form.is_default !== (row.is_default ?? false)) patch.is_default = form.is_default;
   return patch;
 }
 
@@ -101,13 +109,15 @@ export function AiTab({ controller }: { controller: AppController }) {
         <ul aria-label={t("aiAdmin.bots")} className="divide-y divide-line rounded-xl border border-line">
           {rows.map((row) => (
             <li key={row.id} className={cn("flex flex-wrap items-center gap-3 px-3 py-2 text-sm", !row.enabled && "opacity-60")}>
-              <Bot size={16} className="shrink-0 text-muted" />
+              <Avatar id={row.bot_user_id} name={row.name} size={28} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{row.name}</span>
                   <span className="text-xs text-muted">@{row.username}</span>
                   <Badge tone={row.enabled ? "accent" : "neutral"}>{row.enabled ? t("admin.users.filter.active") : t("workflow.paused")}</Badge>
+                  {row.is_default && <Badge tone="accent">{t("aiAdmin.defaultBadge")}</Badge>}
                   {row.allow_private && <Badge>{t("aiAdmin.privateOk")}</Badge>}
+                  {row.web_search && <Badge>{t("aiAdmin.webSearchBadge")}</Badge>}
                   {keyMissing(providers, row.model) && <Badge tone="danger">{t("aiAdmin.noKey")}</Badge>}
                 </div>
                 <div className="truncate text-[11px] text-muted">
@@ -128,15 +138,22 @@ export function AiTab({ controller }: { controller: AppController }) {
       {usage && <UsageSection controller={controller} usage={usage} />}
       {editing && (
         <AgentEditor
+          key={editing === "new" ? "new" : editing.id}
+          controller={controller}
           row={editing === "new" ? null : editing}
           busy={busy}
           providers={providers}
+          onPicture={(row) => {
+            // The picture is saved at once (its own route); the list and the open form follow.
+            setRows((list) => list?.map((r) => (r.id === row.id ? row : r)) ?? list);
+            setEditing((open) => (open && open !== "new" && open.id === row.id ? row : open));
+          }}
           onClose={() => setEditing(null)}
           onSave={(form) =>
             void run(async () => {
               const api = controller.api!;
               if (editing === "new") {
-                const body: AiAgentCreate = { username: form.username.trim(), name: form.name.trim(), character: form.character, model: form.model, effort: form.effort, allow_private: form.allow_private, enabled: form.enabled };
+                const body: AiAgentCreate = { username: form.username.trim(), name: form.name.trim(), character: form.character, model: form.model, effort: form.effort, allow_private: form.allow_private, enabled: form.enabled, web_search: form.web_search, is_default: form.is_default };
                 await api.adminCreateAiAgent(body);
               } else {
                 const patch = agentPatch(editing, form);
@@ -164,6 +181,8 @@ export function AiTab({ controller }: { controller: AppController }) {
 function UsageSection({ controller, usage }: { controller: AppController; usage: AiUsageOut }) {
   const share = usage.budget_usd > 0 ? Math.min(1, usage.total_cost_usd / usage.budget_usd) : 1;
   const users = controller.store.users;
+  // §14: the searches column only once a bot has searched this month.
+  const searches = usage.by_agent.some((row) => (row.web_search_requests ?? 0) > 0);
   return (
     <section aria-label={t("aiAdmin.usage")} className="space-y-3 rounded-xl border border-line p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -178,7 +197,7 @@ function UsageSection({ controller, usage }: { controller: AppController; usage:
       {usage.by_agent.length > 0 && (
         <table className="w-full text-xs" aria-label={t("aiAdmin.byBot")}>
           <thead className="text-muted">
-            <tr><th className="py-1 text-left font-medium">{t("aiAdmin.bot")}</th><th className="text-right font-medium">{t("aiAdmin.runs")}</th><th className="text-right font-medium">{t("aiAdmin.input")}</th><th className="text-right font-medium">{t("aiAdmin.output")}</th><th className="text-right font-medium">{t("aiAdmin.cost")}</th></tr>
+            <tr><th className="py-1 text-left font-medium">{t("aiAdmin.bot")}</th><th className="text-right font-medium">{t("aiAdmin.runs")}</th><th className="text-right font-medium">{t("aiAdmin.input")}</th><th className="text-right font-medium">{t("aiAdmin.output")}</th>{searches && <th className="text-right font-medium">{t("aiAdmin.searches")}</th>}<th className="text-right font-medium">{t("aiAdmin.cost")}</th></tr>
           </thead>
           <tbody className="tabular-nums">
             {usage.by_agent.map((row) => (
@@ -187,6 +206,7 @@ function UsageSection({ controller, usage }: { controller: AppController; usage:
                 <td className="text-right">{row.runs}</td>
                 <td className="text-right">{row.input_tokens.toLocaleString(intlLocale())}</td>
                 <td className="text-right">{row.output_tokens.toLocaleString(intlLocale())}</td>
+                {searches && <td className="text-right">{(row.web_search_requests ?? 0).toLocaleString(intlLocale())}</td>}
                 <td className="text-right">{formatUsd(row.cost_usd)}</td>
               </tr>
             ))}
@@ -227,8 +247,64 @@ export function keyMissing(providers: AiProviderOut[] | null, model: string): bo
   return providerConfigured(providers, aiProviderOf(model)) === false;
 }
 
-function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOut | null; busy: boolean; providers: AiProviderOut[] | null; onClose: () => void; onSave: (form: AgentForm) => void }) {
-  const [form, setForm] = useState<AgentForm>(() => agentForm(row));
+/** The picture types the server takes for a bot (as for a person, M14a), and the size the picker refuses past. */
+export const AGENT_PICTURE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp";
+export const AGENT_PICTURE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** docs/AI.md §14: the bot's picture, saved at once through its own route (upload, or back to the initial). */
+function AgentPicture({ controller, row, onSaved }: { controller: AppController; row: AiAgentOut; onSaved: (row: AiAgentOut) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const apply = async (call: () => Promise<AiAgentOut>) => {
+    setBusy(true);
+    try {
+      const saved = await call();
+      // This device draws it at once (the others follow user.updated).
+      const bot = controller.store.users.get(row.bot_user_id);
+      if (bot) controller.store.upsertUser({ ...bot, avatar_updated_at: saved.avatar_updated_at ?? null });
+      onSaved(saved);
+    } catch (error) {
+      controller.setError(describeAiError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const has = !!row.avatar_updated_at;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-line p-2" data-testid="ai-agent-picture">
+      <Avatar id={row.bot_user_id} name={row.name} size={40} />
+      <span className="min-w-0 flex-1 text-sm">
+        {t("aiAdmin.picture")}
+        <span className="block text-xs text-muted">{t("aiAdmin.pictureNote")}</span>
+      </span>
+      <input
+        ref={input}
+        type="file"
+        accept={AGENT_PICTURE_ACCEPT}
+        aria-label={t("aiAdmin.pickPicture")}
+        className="hidden"
+        onChange={(event) => {
+          const picked = takePicked(event.target);
+          const refusal = refusePicked(picked.files, { maxFiles: 1, maxBytes: AGENT_PICTURE_MAX_BYTES, tooMany: t("workspace.oneImage") });
+          if (refusal) { picked.release(); controller.setError(refusal); return; }
+          void forEachPicked(picked.files, async (file) => apply(() => controller.api!.adminUploadAiAgentAvatar(row.id, file, file.name)), picked.release, (error) => controller.setError(error));
+        }}
+      />
+      <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => input.current?.click()}>
+        <ImageUp size={14} /> {has ? t("aiAdmin.changePicture") : t("aiAdmin.pickPicture")}
+      </Button>
+      {has && (
+        <Button type="button" size="sm" variant="ghost" className="text-danger" disabled={busy} aria-label={t("aiAdmin.removePicture")} onClick={() => void apply(() => controller.api!.adminDeleteAiAgentAvatar(row.id))}>
+          <Trash2 size={14} />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function AgentEditor({ controller, row, busy, providers, onPicture, onClose, onSave }: { controller: AppController; row: AiAgentOut | null; busy: boolean; providers: AiProviderOut[] | null; onPicture: (row: AiAgentOut) => void; onClose: () => void; onSave: (form: AgentForm) => void }) {
+  const [form, setForm] = useState<AgentForm>(() => agentForm(row, providers));
+  const defaultModel = defaultModelFor(providers);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onSave(form);
@@ -237,6 +313,7 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
   return (
     <Modal onClose={onClose} title={row ? t("aiAdmin.editTitle", { name: row.name }) : t("aiAdmin.createTitle")} className="w-[560px]">
       <form className="mt-4 space-y-3" onSubmit={submit}>
+        {row ? <AgentPicture controller={controller} row={row} onSaved={onPicture} /> : <p className="text-xs text-muted">{t("aiAdmin.pictureLater")}</p>}
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
           <Field label={t("aiAdmin.nameLabel")}>
             <Input value={form.name} maxLength={80} required autoFocus placeholder={t("aiAdmin.namePlaceholder")} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -260,7 +337,7 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
               {AI_PROVIDERS.map((p) => (
                 <optgroup key={p.value} label={`${p.label}${providerConfigured(providers, p.value) === false ? t("aiAdmin.keyNotSet") : ""}`}>
                   {AI_MODELS.filter((m) => m.provider === p.value).map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}{m.value === DEFAULT_AI_MODEL ? t("aiAdmin.defaultMark") : ""}</option>
+                    <option key={m.value} value={m.value}>{m.label}{m.value === defaultModel ? t("aiAdmin.defaultMark") : ""}</option>
                   ))}
                 </optgroup>
               ))}
@@ -277,6 +354,20 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
           <span>
             {t("aiAdmin.allowPrivate")}
             <span className="block text-xs text-muted">{t("aiAdmin.allowPrivateNote")}</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={form.web_search} onChange={(e) => setForm({ ...form, web_search: e.target.checked })} />
+          <span>
+            {t("aiAdmin.webSearch")}
+            <span className="block text-xs text-muted">{t("aiAdmin.webSearchNote")}</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />
+          <span>
+            {t("aiAdmin.isDefault")}
+            <span className="block text-xs text-muted">{t("aiAdmin.isDefaultNote")}</span>
           </span>
         </label>
         <label className="flex items-center gap-2 text-sm">
