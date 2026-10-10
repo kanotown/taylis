@@ -2813,7 +2813,7 @@ fonts/          KaTeX の woff2 20 個（296 KB）
   `changed` は出ない。
 - `replace` は Desktop の `canReplace` と同じ規則：IME の変換中、または書き出し待ち（打鍵から 300 ms 以内）のあいだは入れない。
   変換が終わると 50 ms 後に入れる（ProseMirror が自分の compositionend の処理を終えてから。Desktop は読み直しで同じ間が空く）。
-  待っている間に編集が書き出されたら保留は捨てる（`changed` をネイティブがマージして、また `replace` を送る）。編集が結局
+  待っている間に編集が書き出されたら保留は捨てる（`changed` をネイティブがマージして、また `replace` を送る）。その `changed` はマージの前の本文を元にしているので、ネイティブは保留されうる間（エディタにフォーカスがある間）に保存の基準の版をマージ済みの版へ進めてはいけない（進めると相手の行を消す保存になる。§30.4）。編集が結局
   何も変えなかったときは、その時点で入れる。
 - `requestBody` は同じ JS のタスクの中で答える（`load` の直後でもよい：`flushSync` でエディタを先に立てる）。
 - 人・絵文字は `load` の前に。後から来た `providePeople` は `@` の候補にだけ効く（既にあるチップの名前は変わらない）。
@@ -2860,6 +2860,101 @@ fonts/          KaTeX の woff2 20 個（296 KB）
   アイコンの検索が名前だけになる。実機の読み込み時間を見て決める。
 - `editor.js` は 1 つのファイル（1.5 MB）。WebView の JIT は遅延コンパイルなので立ち上がりは 100 ms 前後だが、実機で測る。
 - カスタム絵文字の文字のピル（`kind: "text"`）は色の名前を `color` で受けるだけ（Desktop の `TextEmojiPill` を使う）。
+
+### 30.4 M153a：iOS の試作（同梱エディタの組み込みと判定、2026-10-10）
+
+§22.7 の表「M153a 試作」の iOS の分。§30.3 の成果物を iOS アプリに同梱し、ページの編集を WKWebView の同じエディタで行う最小の試作を
+作って、シミュレータ（iOS 18.6 と 26.5）で IME・選択・キーボード・10 万字・初回の表示・画像・テーマ・回転・メモリを測った。方言・サーバ・
+API・Desktop の成果物の変更なし。端末ごとの設定（既定はオフ）の裏にあり、Markdown のエディタが既定のまま。
+
+**部品**（`apps/ios/ChikuwaChat/UI/MobileEditor/` ほか）
+
+| ファイル | 役目 |
+| --- | --- |
+| `EditorBridge.swift` | 橋の Swift 側：`EditorNativeMessage`（ネイティブ → エディタ、`Encodable`）と `EditorWebMessage`（エディタ → ネイティブ）、`BridgePerson` / `BridgePage` / `BridgeEmoji`、`EditorCommand`（22）、`EditorTheme`。`receiveScript` は JSON を 1 つの JS の文字列リテラル（`\`・`"`・制御文字・U+2028 / U+2029 をエスケープ）にして `window.taylisEditor.receive(...)` に包む。`decode` は `type` で見分け、知らない型・欠けた欄は `EditorBridgeError` |
+| `MobileEditorWebView.swift` | `MobileEditorBundle`（バンドルの `dist/`、Content-Type の表、画像の種類は先頭バイトで）、`EditorSchemeHandler`（`WKURLSchemeHandler`：`taylis-editor://app/` の index.html・editor.js・editor.css・fonts/* をバンドルから、`/attachment/<id>`・`/emoji/<name>` をアプリの認証付きの取得から返し、`NSCache` 48 MB に置く。`..`・隠しファイル・ほかのホストは 404）、`MobileEditorController`（WKWebView、`ready` までの待ち行列、版の照合、`decidePolicyFor` でバンドル以外の移動を止める、web プロセスが落ちたら読み直し、`editorFocused`）、`NoAccessoryWebView`（WebKit がキーボードの上に出す ‹ › 完了 の欄を消す） |
+| `MobileEditorSession.swift` | 橋と保存の状態機械（`CanvasSaver`）の間。`attach` は `providePeople` → `provideEmoji` → `load`（本文・テーマ・言語・カーソルの行・`attachmentUrl`）。saver の `textRevision`（マージ・相手の版・閲覧でのチェック）を追って `replace`、`changed` は `saver.edit`、`commit` は `requestBody` → `bodyRequested`（1.5 秒で諦める）→ `saver.edit`、`detach` は commit + `flush`。`canReplace` は `editorQuiet`（下の「直したもの」） |
+| `MobileEditorHost.swift` | `AppController` を `MobileEditorHost`（人と AI ボット・グループ、カスタム絵文字、木からのページの候補、言語）と画像の取得元に。`MobileEditorSettings`・`MobileEditorMode`・`MobileEditorTrace`（計測。下） |
+| `MobileEditorView.swift` | SwiftUI の画面：WebView（温めた 1 つを使い回す）＋ 書式の行 `MobileEditorToolbar`。外観の変化で `setTheme`、`.inactive` で `commit`、`pickImage` → `PhotosPicker` → `uploadAttachment` → `insertImage`、`openLink`（`attachment:` はプレビュー、https はブラウザ、`page:` は画面へ）。⌘S で commit + flush |
+| `WikiViews.swift`（`WikiPageDocument`） | 設定がオンなら画面を開いたときに WebView を 1 つ作って index.html を読ませておく（温め）。編集中は上に 「見たまま | Markdown」（端末に記憶）。完了は `commit` を待ってから閲覧へ。見たまま → Markdown は `commit` の行を `CanvasEditor(initialLine:)` へ、Markdown → 見たままは `onCaretLine` の行を `load.caretLine` へ。「セクションを編集」は見たままでは全体をその見出しの行で開く |
+| `YouView.swift` | 「表示」の 「ドキュメント」 に 「ドキュメントの見たまま編集（試作）」（端末だけ、既定オフ、`chikuwa.docs.wysiwyg`）。同梱エディタの無いビルドには出ない |
+| `project.yml`・`.github/workflows/ios.yml` | `../shared/mobile-editor/dist` をフォルダ参照で Resources に（アプリの中では `dist/`）。ビルド前のスクリプトが無ければ作り方（`cd apps/desktop && npm ci && npm run build:mobile-editor`）を書いて止める。CI は `xcodegen generate` の前に作る |
+| `ChikuwaChatTests/MobileEditorBridgeTests.swift`（13）・`MobileEditorSessionTests.swift`（15） | `bridge_messages.json` の全メッセージ（符号化・復号・断る例）、JS のリテラルを WebKit に評価させて同じ文字列が返る、scheme handler（Content-Type・画像の取得とキャッシュ・止めたタスク・バンドル外の 404）、待ち行列と版。セッションは本物の `CanvasSaver` + `FakeCanvasServer`：送る順、マージ → `replace`、相手の版、閲覧のチェック、`changed` → 保存、`commit` / `detach`、ページ・人・画像・リンク・ログ、**フォーカス中のマージは保留して何も失わない**（下） |
+
+**キーボードの上のツールバーの選択**：ネイティブの行（`MobileEditorToolbar`、SwiftUI）にし、WebKit の入力補助の欄（‹ › 完了）と
+同梱エディタ自身の下の行（`env.toolbar: "bottom"`、アプリ側の `WKUserScript` の style で隠す。束は変えない）は消した。WebView は
+SwiftUI のキーボードのセーフエリアで縮むので、行はキーボード（候補の欄）の真上に立ち、キーボードと同じアニメーションで上下し、しまっても
+画面の下に残る。取り消し・やり直し・キーボードを閉じる・画像が置け、VoiceOver の名前がアプリの言語になる。Android（§30.5）は Web の行 +
+Compose の行の 2 段にしたが、iOS は WebKit の欄を消す仕組みがどのみち要るので 1 段にまとめた。欠点は書式の状態（今太字か）を出せない
+こと（橋に `selection` が無い）と、20 個を横スクロールの 1 行に並べたので 402 pt の幅では 「画像」 と 「キーボードを閉じる」 が画面の外に
+あること（下の制限）。
+
+**計測**（シミュレータ iPhone 16 Pro / iOS 18.6 と iPhone 17 Pro / iOS 26.5、Debug ビルド、ハードウェアキーボードはオフ、M5 Max。実機では
+ない。使い捨ての XCUITest の harness（コミットしない）で操作し、アプリは起動の環境変数 `TAYLIS_EDITOR_TRACE=1` で `MobileEditorTrace` の
+ログ（WebView の作成からの ms、`load` をページの中で `receive` → 2 フレーム後まで測った時間、各トランザクションから次のフレームまでの ms）
+を書く。開発サーバ :8000、android1 / android2、別の人の保存は devadmin で API から）
+
+| 項目 | iOS 18.6 | iOS 26.5 |
+| --- | --- | --- |
+| ページの立ち上がり（WebView の作成 → `ready`） | 442〜467 ms（アプリ起動後の最初のページ 803 ms、10 万字の画面 1,617 ms） | 502〜517 ms（起動後の最初 1,214〜1,494 ms） |
+| 本文の表示（`load` → 2 フレーム後、見本のページ 223〜346 字） | 75〜126 ms。Markdown から戻るときの読み直し 38 ms | 99〜126 ms。読み直し 37〜40 ms |
+| 10 万字（99,238 字、146,482 px）の `load` → 2 フレーム後 | 623 ms | 651〜669 ms（§22.7 の目標 300 ms を超える。下の判定） |
+| 打鍵（見本のページ、トランザクション → 次のフレーム） | かなの変換中 0〜11 ms、英字 0〜31 ms | 英字 0〜6 ms、ローマ字の変換中 0〜30 ms、かなの変換中 25〜43 ms |
+| 打鍵（10 万字、英字 10 字） | 最初の 1 打 123 ms、以後 2〜21 ms | 最初の 1 打 107 ms、以後 4〜44 ms |
+| スクロール（10 万字、4 回のフリック） | 白い抜け・止まりなし（スクリーンショット） | 同じ |
+| 日本語の IME（かな 10 キー） | 「にほん」が行内で変換中（下線）、候補の列（日本 / 二本 / 日本語 …）、候補の 「日本」 で確定、続けて 「た」。変換中の 削除 で 「にほ」 が変換中のまま残る（残骸なし）。保存した本文に 「日本た」 が 1 回だけ | 同じ（変換・候補・確定。削除は 18.6 で確認） |
+| 日本語の IME（QWERTY ローマ字） | （harness がローマ字のキーボードに切り替えられず未計測） | "nihongo" → 「にほんご」 が行内で変換中、候補で 「日本語」、続けて "abc" → 「あbc」（ローマ字の規則どおり）。重複・欠けなし。ライブ変換（行内の自動変換）はシミュレータでは出ず、未確認 |
+| 変換中のマージ（別の人が行を足す） | 直す前：相手の行が消えた（下）。直した後：変換中は出ず、保存はサーバでマージされ、本文に両方が残る。キーボードを閉じた後に相手の行が出る | 同じ |
+| 選択のハンドルと OS のメニュー | ダブルタップでハンドル、上に OS のメニュー（カット / コピー / ペースト / ›）、下に浮くツールバー（変換・B・I・S・コード・Σ・リンク）。重ならない | OS のメニューが浮くツールバーの上に重なり、ツールバーは端だけ見える |
+| キーボードの出し入れ | 行がキーボードの真上（WebView 143〜493 pt、行 496〜536 pt）。閉じると行は画面の下（798 pt）、WebView が 652 pt に伸びる | 同じ（行 497〜537 pt） |
+| 見たまま ↔ Markdown | 「2 段目」 にカーソル → Markdown が同じ行で開く（直した後。下）。Markdown の行 → 見たままの `load.caretLine`、エディタはその行（画像の行なら次の行）にカーソル | 同じ |
+| 画像 | 行の 「画像」 → フォトピッカー → アップロード → `insertImage` → `![](attachment:<id>)` が本文に入り、`taylis-editor://app/attachment/<id>` を scheme handler がセッション付きで返して表示。保存した本文にその行 | 同じ |
+| テーマ | — | `simctl ui appearance dark` で編集中のエディタがダーク（`setTheme`）、ライトに戻る |
+| 回転 | 横向きで WebView の高さ 51 pt（題名の 1 行だけ）。縦に戻すと元どおり | 同じ |
+| メモリ（ホストの RSS。シミュレータの Debug ビルドで、共有のマッピングを含むので実機と比べられない） | アプリ 約 400 MB（見本のページ） | アプリ 約 930 MB（10 万字）、WebContent 170〜450 MB |
+
+**試作の途中で直したもの**（コミット 「iOS: …」）
+
+- **変換中のマージで相手の行が消える**（データの消失）。試作は `saver.canReplace = { true }` にしていた（エディタは変換中の `replace` を
+  自分で保留するので）。ところが保留した `replace` はエディタの次の編集で捨てられ（§30.3 の約束）、その編集の `changed`（マージの前の本文を
+  元にしたもの）を `saver.edit` がマージ済みの版の上に保存するので、相手の行を消す保存になる。シミュレータで再現（版 17・18 で devadmin が
+  足した 2 行を、版 19 のアプリの保存が消した）。直し：セッションの `canReplace` を `editorQuiet`（WebView の内容のビューが first
+  responder でなく、最後の `changed` / `command` / `insertImage` から 1 秒）にした。フォーカス中は saver がマージ済みの本文を取り込まず、
+  保存はいつもエディタの本文の元の版の上に送られてサーバがマージする。フォーカスが外れたら（`caret`）1 秒後に `flush`（書き出し待ちは保存、
+  何も無ければマージされた版を読んで `replace`）。テスト `testWhileTheEditorIsFocusedAMergeWaitsAndNothingIsLost`。直した後はかな・ローマ字
+  ともに 「相手が足した行」 と自分の 「日本た」 が両方残る（iOS 18.6 / 26.5）。Android（§30.5）の `EditorSession` も `canReplace` は true の
+  ままで、同じ穴がある（Android の計測は変換を確定しただけで、変換中に次の打鍵をしていない）。
+- **見たまま → Markdown でカーソルが文末に行く**。`CanvasTextView` は作るときに `initialLine` の位置にカーソルを置いていたが、直後の
+  `onAppear` の `attach` が本文を入れ直してカーソルが末尾に動いていた。行の位置を次のランループ（本文が入った後）で計算して置く。
+- 計測のログに `load.caretLine` を足した（`MobileEditorTrace`、トレースのときだけ）。
+
+**判定**（§22.7 の表「M153a 試作」の基準：「Markdown の編集より明らかに良い・壊れない」）
+
+iOS は**基準を満たす**（シミュレータの範囲で、上のデータの消失を直した後）。日本語の IME はかな 10 キーもローマ字も、行内の変換・候補・
+変換中の削除・確定が正しく、重複も欠けも無い。変換中に届いたマージは失われず（保存はサーバがマージ）、キーボードを閉じると出る。見本の
+ページは 0.1 秒で表示、打鍵はほぼ 1〜2 フレーム、画像・テーマ・カーソルの往復も通る。見たままの編集は Markdown より明らかに良い（表・
+コールアウト・画像・チェックがその場で見え、`/`・`[[`・`@` が使える）。保存・衝突・上限・オフラインはネイティブの状態機械のまま。
+ただし 10 万字の最初の表示は 0.62〜0.67 秒で §22.7 の目標 300 ms を超える（Debug のシミュレータ。ヘッドレス Chrome 0.08〜0.14 秒、
+Android のエミュレータ 0.25 秒）。実機（Release）で測り、超えるなら長いページは見たままを遅らせて開く（読み込み中の表示）か、閲覧の画面の
+まま温めた WebView に先に `load` しておく。M153b（iOS の仕上げ）に進んでよい。利用者の実機での確認が残る。
+
+**制限（M153b へ）**
+
+- フォーカス中は相手の編集がエディタに出ない（キーボードを閉じると出る）。Desktop のように打鍵の合間にも出すには、エディタが変換中か・
+  `replace` を入れたか捨てたかを橋で知らせる（`composing {active}` や `changed` に最後に入れた `replace` の番号）必要がある。§30.3 の
+  契約の変更（3 端末）なので M153b / M153c で。Android にも同じ直しが要る（M153c）。
+- 書式の行が横スクロールの 1 行で、402 pt の幅では 「画像」 と 「キーボードを閉じる」 が画面の外（スクロールしないと押せない）。
+  取り消し・やり直し・画像・閉じるを固定し、書式だけをスクロールにする。書式の状態（ON / OFF）は橋の `selection` が来てから。
+- iOS 26 では OS の選択メニューが浮くツールバー（M155）に重なる（18.6 は上下に分かれる）。同梱エディタは `pointer: coarse` で浮く
+  ツールバーを出さないか、選択の下に離して出す（§30.5 と共通。Desktop の成果物の変更）。
+- 横向きでは WebView が 51 pt（題名の 1 行）になる。横向きでは段の切り替えと書式の行を畳む。
+- 見たまま ↔ Markdown の後はキーボードが出ない（`focus` を送っていない。Android と同じ扱い）。
+- 画像の直後の空の段落に出る案内（「/」でブロック…）が狭い幅で折り返して次のブロックに重なる（Desktop の成果物の CSS）。
+- XCUITest は 10 万字のページのアクセシビリティの木を取るのに 1 回 60 秒以上かかる（harness は座標で操作した）。VoiceOver で長いページを
+  読むときの重さは未確認。
+- QWERTY ローマ字は iOS 26.5 だけ（harness が 18.6 でローマ字のキーボードに切り替えられなかった）。ライブ変換・ATOK などほかの IME、
+  ハードウェアキーボード（`editorFocused` は first responder で見るので効くはず）、メモリの実機の数字は未計測。
+- 子ページ・データベース・埋め込みの作成は出ない（§30.3 のとおり）。既にある埋め込みはカード。
 
 ### 30.5 M153a：Android の試作（同梱エディタの組み込みと判定、2026-10-10）
 
