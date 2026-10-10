@@ -9,15 +9,18 @@ struct AiAgentPublic: Decodable, Equatable {
     let botUserId: String
     var name: String
     var model: String?
+    /// docs/AI.md §14: its mention replies may search the web (for the notice). False on an older server.
+    var webSearch: Bool
 
-    init(id: String, botUserId: String, name: String, model: String? = nil) {
+    init(id: String, botUserId: String, name: String, model: String? = nil, webSearch: Bool = false) {
         self.id = id
         self.botUserId = botUserId
         self.name = name
         self.model = model
+        self.webSearch = webSearch
     }
 
-    enum CodingKeys: String, CodingKey { case id, botUserId, name, model }
+    enum CodingKeys: String, CodingKey { case id, botUserId, name, model, webSearch }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -25,6 +28,7 @@ struct AiAgentPublic: Decodable, Equatable {
         botUserId = try c.decode(String.self, forKey: .botUserId)
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         model = try c.decodeIfPresent(String.self, forKey: .model)
+        webSearch = try c.decodeIfPresent(Bool.self, forKey: .webSearch) ?? false
     }
 }
 

@@ -364,7 +364,12 @@ enum AiRules {
     static func notice(_ agents: [AiAgentPublic]) -> String? {
         guard !agents.isEmpty else { return nil }
         let names = agents.map(\.name).joined(separator: tr("・"))
-        return tr("AI（\(names)）が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます")
+        let text = tr("AI（\(names)）が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます")
+        // §14: a bot with web search also sends queries made from the conversation to the web, through its provider.
+        let searchers = agents.filter(\.webSearch)
+        guard !searchers.isEmpty else { return text }
+        let searcherNames = searchers.map(\.name).joined(separator: tr("・"))
+        return text + tr("。\(searcherNames) はネット検索を使うため、会話から作った検索語も \(providers(searchers)) を通じてウェブの検索に送られます")
     }
 
     /// §12: each bot's model decides where its part goes (Anthropic, OpenAI or both), as on the web.
