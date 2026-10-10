@@ -180,6 +180,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         visible=visible,
         presence_hidden=context.user.presence_hidden,
         presence_away=context.user.presence_manual == "away",
+        # Review v0.1.49 #5: a change made on another device since this snapshot wins.
+        presence_version=context.user.updated_at,
     )
     await _send(
         websocket,

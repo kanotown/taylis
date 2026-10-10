@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from app.events.envelope import Envelope
@@ -66,6 +67,9 @@ class RealtimeHub:
         self._hidden: set[uuid.UUID] = set()
         # PRESENCE.md §11: users who chose 離席中; away while connected, however active.
         self._away: set[uuid.UUID] = set()
+        # Review v0.1.49 #5: the version (users.updated_at) of the row the flags above came from. A
+        # connection that authenticated before another device's change must not undo it.
+        self._flags_version: dict[uuid.UUID, datetime] = {}
 
     def new_connection(
         self,
@@ -75,14 +79,20 @@ class RealtimeHub:
         visible: frozenset[uuid.UUID] | None = None,
         presence_hidden: bool = False,
         presence_away: bool = False,
+        presence_version: datetime | None = None,
     ) -> Connection:
+        """`presence_hidden` / `presence_away` are the user's flags as read when the socket
+        authenticated, `presence_version` that row's updated_at: they replace the hub's flags only
+        when no newer change has reached the hub meanwhile (None: only when none is known)."""
         conn = Connection(
             user_id=user_id,
             session_id=session_id,
             queue=asyncio.Queue(self.queue_size),
             visible=visible,
         )
-        self._set_flags(user_id, hidden=presence_hidden, away=presence_away)
+        self._apply_flags(
+            user_id, hidden=presence_hidden, away=presence_away, version=presence_version
+        )
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
         # Connecting counts as activity (last_active starts now): apps connect in the foreground.
@@ -143,17 +153,27 @@ class RealtimeHub:
         for conn in self._by_user.get(user_id, ()):
             conn.request_close(CLOSE_RECONNECT)
 
-    def set_presence_flags(self, user_id: uuid.UUID, *, hidden: bool, away: bool) -> None:
-        """The status menu (PRESENCE.md §11.4): both flags at once and one announcement, so
-        invisible → 離席中 never shows a passing online. `hidden` (L4 在席を隠す / オフライン表示):
-        offline to everyone from now on. `away` (離席中): away while connected, however active
-        (activity still counts for pushes, is_active). Neither: as the activity says again."""
-        self._set_flags(user_id, hidden=hidden, away=away)
+    def set_presence_flags(
+        self, user_id: uuid.UUID, *, hidden: bool, away: bool, version: datetime
+    ) -> None:
+        """The status menu and the settings' 在席を隠す (PRESENCE.md §11.4): both flags at once and
+        one announcement, so invisible → 離席中 never shows a passing online. `hidden` (L4 在席を
+        隠す / オフライン表示): offline to everyone from now on. `away` (離席中): away while
+        connected, however active (activity still counts for pushes, is_active). Neither: as the
+        activity says again. `version` is the committed row's updated_at; an older one than the
+        hub already has (a slower request, a socket's snapshot) changes nothing."""
+        self._apply_flags(user_id, hidden=hidden, away=away, version=version)
         self._announce(user_id)
 
-    def set_presence_hidden(self, user_id: uuid.UUID, hidden: bool) -> None:
-        """L4 (PATCH /users/me presence_hidden): only the hidden flag changes."""
-        self.set_presence_flags(user_id, hidden=hidden, away=user_id in self._away)
+    def _apply_flags(
+        self, user_id: uuid.UUID, *, hidden: bool, away: bool, version: datetime | None
+    ) -> None:
+        known = self._flags_version.get(user_id)
+        if known is not None and (version is None or version < known):
+            return  # the hub already has a newer state of this user's flags
+        if version is not None:
+            self._flags_version[user_id] = version
+        self._set_flags(user_id, hidden=hidden, away=away)
 
     def _set_flags(self, user_id: uuid.UUID, *, hidden: bool, away: bool) -> None:
         for flag, users in ((hidden, self._hidden), (away, self._away)):

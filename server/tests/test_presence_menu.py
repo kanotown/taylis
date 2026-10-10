@@ -40,6 +40,11 @@ def _presence_of(conn: Any, user_id: uuid.UUID) -> list[str]:
     ]
 
 
+def _v(n: int) -> datetime:
+    """A flags version (users.updated_at) for the hub's own tests."""
+    return datetime(2026, 10, 10, tzinfo=UTC) + timedelta(seconds=n)
+
+
 def test_durations_in_the_users_zone() -> None:
     tokyo = ZoneInfo("Asia/Tokyo")
     # 2026-10-09 22:30 JST = 13:30 UTC.
@@ -196,10 +201,10 @@ def test_hub_manual_away_and_hidden() -> None:
     # Activity still counts for pushes (PUSH_NOTIFICATIONS.md §4.1), only the announcement changes.
     assert hub.is_active(user, 60)
     assert {"type": "presence", "user_id": str(user), "status": "away"} in _drain(seen)
-    hub.set_presence_hidden(user, True)  # hidden wins over away
+    hub.set_presence_flags(user, hidden=True, away=True, version=_v(1))  # hidden wins over away
     assert hub.presence_status(user) == "offline"
-    hub.set_presence_hidden(user, False)
-    hub.set_presence_flags(user, hidden=False, away=False)
+    hub.set_presence_flags(user, hidden=False, away=True, version=_v(2))
+    hub.set_presence_flags(user, hidden=False, away=False, version=_v(3))
     frames = _drain(seen)
     assert frames[-1] == {"type": "presence", "user_id": str(user), "status": "online"}
     assert {f["status"] for f in frames if f.get("type") == "presence"} <= {
@@ -217,19 +222,19 @@ def test_hub_menu_choice_is_one_announcement() -> None:
     seen = hub.new_connection(watcher, uuid.uuid4())
     hub.new_connection(user, uuid.uuid4(), presence_hidden=True)
     assert _presence_of(seen, user) == []
-    hub.set_presence_flags(user, hidden=False, away=True)
+    hub.set_presence_flags(user, hidden=False, away=True, version=_v(1))
     assert _presence_of(seen, user) == ["away"]
-    hub.set_presence_flags(user, hidden=True, away=False)
+    hub.set_presence_flags(user, hidden=True, away=False, version=_v(2))
     assert _presence_of(seen, user) == ["offline"]
-    # The settings' 在席を隠す (PATCH /users/me) moves that flag alone: a manual away stays.
-    hub.set_presence_flags(user, hidden=False, away=True)
+    # The settings' 在席を隠す (PATCH /users/me) passes the row's manual away along: it stays.
+    hub.set_presence_flags(user, hidden=False, away=True, version=_v(3))
     assert _presence_of(seen, user) == ["away"]
-    hub.set_presence_hidden(user, True)
+    hub.set_presence_flags(user, hidden=True, away=True, version=_v(4))
     assert _presence_of(seen, user) == ["offline"]
-    hub.set_presence_hidden(user, False)
+    hub.set_presence_flags(user, hidden=False, away=True, version=_v(5))
     assert _presence_of(seen, user) == ["away"]
     # Nothing changes: nothing is announced.
-    hub.set_presence_flags(user, hidden=False, away=True)
+    hub.set_presence_flags(user, hidden=False, away=True, version=_v(6))
     assert _presence_of(seen, user) == []
 
 

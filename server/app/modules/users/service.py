@@ -1,7 +1,7 @@
 """User profiles and account lookups. Account creation belongs to admin.service."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
@@ -57,10 +57,20 @@ async def list_users(db: AsyncSession) -> list[User]:
     return await repo.list_users(db)
 
 
+def next_updated_at(user: User, now: datetime) -> datetime:
+    """users.updated_at for a change of the presence flags, which the hub also reads as their
+    version (review v0.1.49 #5, PRESENCE.md §11.4): later than the row's, even if the clock stepped
+    back. Taken under the row lock, so the versions follow the order of the commits."""
+    return max(now, user.updated_at + timedelta(microseconds=1))
+
+
 async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> User:
     """Everything but `username`, which users.username.rename_in_tx applies first in the same
-    transaction (the router calls both; this commits)."""
-    user = await require_user(db, user_id)
+    transaction (the router calls both; this commits). The row is locked: presence_hidden's
+    version (updated_at) must follow the order of the commits."""
+    user = await get_user(db, user_id, for_update=True)
+    if user is None:
+        raise not_found("user_not_found", "User not found")
     if data.email is not None and await repo.email_taken(db, data.email, user.id):
         raise conflict("email_taken", "Email is already in use")
     if data.display_name is not None:
@@ -110,7 +120,7 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.composer_mode = data.composer_mode
     if "docs_editor_mode" in data.model_fields_set:  # M150: null = the clients' default ("wysiwyg")
         user.docs_editor_mode = data.docs_editor_mode
-    user.updated_at = utcnow()
+    user.updated_at = next_updated_at(user, utcnow())
     try:
         await db.flush()
         await emit_user_event(db, USER_UPDATED, user)
