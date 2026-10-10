@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.editor
 
+import jp.chikuwachat.android.sync.CanvasCancel
 import jp.chikuwachat.android.sync.CanvasSaver
+import jp.chikuwachat.android.sync.CanvasTimers
 
 /** What one editing session needs from the app around it (ui/MobileEditor.kt builds it from the controller). */
 interface EditorSessionEnv {
@@ -29,8 +31,13 @@ interface EditorSessionEnv {
  * [CanvasSaver] (the same save loop, pause, merge, conflict and offline handling as the Markdown editor). The editor's
  * `changed` goes to [CanvasSaver.edit]; a body the loop changed (a merge, someone else's version, a box ticked in the
  * reading view) goes back as `replace` ([saverChanged]); `requestBody` fetches what is typed but not yet written
- * (leaving, the background, the switch to Markdown) and carries the caret's line across. The editor itself holds a
- * `replace` back while an IME composition is open (bridge.ts), so the loop's `canReplace` stays true here.
+ * (leaving, the background, the switch to Markdown) and carries the caret's line across.
+ *
+ * The loop may put a merged body on screen only while the editor is quiet ([editorQuiet], its `canReplace` from
+ * [start] to [end]). The editor holds a `replace` back while an IME composition is open and drops it at its next edit
+ * (bridge.ts); that edit's `changed` is written on the body before the merge, and saved on the merged version it
+ * deleted the other person's lines (docs/WIKI.md §30.4 / §30.5). Kept back instead, every save goes on the version the
+ * editor's body was written on and the server merges it; the merged body comes in once the editor lets go ([letGo]).
  *
  * Runs on the main thread, like the loop.
  */
@@ -42,7 +49,30 @@ class EditorSession(
     initialCaretLine: Int? = null,
     /** Bring the keyboard up once the body is loaded. */
     private val autoFocus: Boolean = true,
+    /** The catch-up after the editor let go of the focus ([letGo]): the main looper in the app, ManualTimers in tests. */
+    private val timers: CanvasTimers,
+    /** The clock of [editorQuiet] (ms, monotonic). */
+    private val now: () -> Long,
 ) {
+    /**
+     * Whether the editor may be taking keys (MobileEditorHost.editorFocused: the WebView has the focus and a keyboard
+     * is up). While it may, an IME composition can be open and a `replace` would be held back and lost.
+     */
+    var editorFocused: () -> Boolean = { false }
+    /** When the editor last wrote an edit or was handed a command or a picture (null: never). */
+    private var lastActivity: Long? = null
+    private var catchUp: CanvasCancel? = null
+    private var ended = false
+    private val quietCheck: () -> Boolean = { editorQuiet }
+
+    /**
+     * No composition can be open and no edit can be on its way: the editor is not focused, nothing was written or
+     * commanded for [QUIET_AFTER_MS], and no `requestBody` is unanswered (its answer, written on what the editor holds,
+     * goes into the loop after the merge would). Only then may the loop take a merged body as its own and hand it over.
+     */
+    val editorQuiet: Boolean
+        get() = !editorFocused() && bodyWaiters.isEmpty() && lastActivity.let { it == null || now() - it >= QUIET_AFTER_MS }
+
     /** The line the caret was last known on (for the Markdown editor after a switch). */
     var caretLine: Int? = initialCaretLine
         private set
@@ -69,7 +99,10 @@ class EditorSession(
                 }
                 load()
             }
-            is WebMessage.Changed -> take(message.body)
+            is WebMessage.Changed -> {
+                lastActivity = now()
+                take(message.body)
+            }
             is WebMessage.BodyRequested -> {
                 take(message.body)
                 caretLine = message.caretLine
@@ -77,7 +110,10 @@ class EditorSession(
                 bodyWaiters.clear()
                 waiting.forEach { it(message) }
             }
-            is WebMessage.Caret -> caretLine = message.line
+            is WebMessage.Caret -> {
+                caretLine = message.line
+                letGo() // the editor lost the focus (or the page hid): the merge may come in
+            }
             is WebMessage.Height -> Unit // the WebView fills the screen and scrolls by itself
             // The directory may have changed since `load` (a member added): `@` gets it again.
             is WebMessage.NeedPeople -> send(NativeMessage.ProvidePeople(env.people()))
@@ -107,7 +143,42 @@ class EditorSession(
         if (autoFocus && !env.readOnly) send(NativeMessage.Focus)
     }
 
+    /** The editor's page joins the loop: from now on the loop replaces its text only when [editorQuiet]. */
+    fun start() {
+        ended = false
+        saver.canReplace = quietCheck
+    }
+
+    /**
+     * The editor is gone (and its last body is in): the loop may replace its text again, and a merge it kept back is
+     * read now when nothing is left to save. Another editor may have set its own rule meanwhile: that one stays.
+     */
+    fun end() {
+        if (ended) return
+        ended = true
+        catchUp?.cancel()
+        catchUp = null
+        if (saver.canReplace === quietCheck) saver.canReplace = { true }
+        saver.replaceable()
+    }
+
+    /**
+     * The editor let go of the focus (`caret`), or the keyboard went away: once it is quiet, what the server merged
+     * meanwhile comes in — saved now when something is unsaved (the answer brings the merge), else read.
+     */
+    fun letGo() {
+        if (ended) return
+        catchUp?.cancel()
+        catchUp = timers.schedule(QUIET_AFTER_MS + 100) {
+            catchUp = null
+            if (!ended && loaded && editorQuiet) saver.flush()
+        }
+    }
+
     private fun take(body: String) {
+        // Nothing new since the editor last wrote or was handed this body: the loop's text (perhaps a merge not yet
+        // on screen) stands.
+        if (body == wire) return
         wire = body
         saver.edit(body)
     }
@@ -145,12 +216,16 @@ class EditorSession(
     }
 
     fun command(name: EditorCommand) {
-        if (loaded) send(NativeMessage.Command(name))
+        if (!loaded) return
+        lastActivity = now()
+        send(NativeMessage.Command(name))
     }
 
     /** The answer to `pickImage`: the uploaded picture at the caret. */
     fun insertImage(attachmentId: String, url: String?) {
-        if (loaded) send(NativeMessage.InsertImage(attachmentId, url))
+        if (!loaded) return
+        lastActivity = now()
+        send(NativeMessage.InsertImage(attachmentId, url))
     }
 
     fun focus() {
@@ -159,5 +234,10 @@ class EditorSession(
 
     fun blur() {
         if (loaded) send(NativeMessage.Blur)
+    }
+
+    companion object {
+        /** How long after the editor's last edit or command a merged body may go in (as iOS's quietAfter). */
+        const val QUIET_AFTER_MS = 1_000L
     }
 }
