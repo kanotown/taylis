@@ -64,6 +64,38 @@ enum UpsideDown {
         }
     }
 
+    /// Whether the kept row is let go as the keyboard starts to move (keptRowPosition): any row but the newest
+    /// edge's marker, whose offset of 0 no resize moves.
+    static func letsGoForKeyboard(_ kept: String?) -> Bool {
+        guard let kept else { return false }
+        return kept != newest
+    }
+
+    /// The row to hold the list at (holdInPlace), and the anchor that scrolls to it without moving anything: the row
+    /// wholly on screen nearest the newest edge (the input), at the place it is. `frames` are the rows' on-screen frames in
+    /// the viewport (0 at its top, as `RowFrames`), by the id a scroll goes to; only rows whose frame is the whole scroll
+    /// target (no day separator or divider drawn over it). Nil when no such row is wholly on screen.
+    static func keptInPlace(_ frames: [(id: String, frame: CGRect)], viewportHeight: CGFloat) -> (id: String, anchor: UnitPoint)? {
+        let inside = frames.filter { $0.frame.height > 0 && $0.frame.minY >= 0 && $0.frame.maxY <= viewportHeight && $0.frame.height < viewportHeight }
+        guard let row = inside.max(by: { $0.frame.maxY < $1.frame.maxY }) else { return nil }
+        // scrollTo lines the row's anchor point up with the viewport's: on screen, minY + s·h = s·H.
+        let screen = row.frame.minY / (viewportHeight - row.frame.height)
+        return (row.id, anchor(UnitPoint(x: 0.5, y: screen)))
+    }
+
+    /// Keeps the rows where they are through a change of the list's content while no row is kept (the keyboard let it
+    /// go: keptRowPosition): scrolls to the row nearest the input, at the place it is now (keptInPlace),
+    /// leaving the kept row unset. A scroll asked for in the same update as the change is done on the layout with it.
+    /// iOS 17 and 18 only, as the letting go (iOS 26 is left as it was).
+    @MainActor
+    static func holdInPlace(_ frames: [(id: String, frame: CGRect)], viewportHeight: CGFloat, _ proxy: ScrollViewProxy) {
+        if #available(iOS 26.0, *) { return }
+        guard let place = keptInPlace(frames, viewportHeight: viewportHeight) else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { proxy.scrollTo(place.id, anchor: place.anchor) }
+    }
+
     /// Takes the list to its newest edge at once (my post, the jump button) and keeps it there: the kept row becomes the
     /// edge's marker. A `scrollTo` alone left the kept row where the reader had been.
     @MainActor

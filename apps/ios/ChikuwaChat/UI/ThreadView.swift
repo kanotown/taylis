@@ -111,7 +111,7 @@ struct ThreadView: View {
                         .animation(UpsideDown.arrivalAnimation(atNewest: atBottom, placed: positioned || provisional), value: replies.last?.rowKey)
                         .background(StatusBarTapStays())
                     }
-                    .scrollPosition(id: $keptRowId, anchor: .top)
+                    .keptRowPosition($keptRowId)
                     .upsideDown()
                     .clipped()
                     .onNewestEdge { atBottom = $0 }
@@ -147,7 +147,15 @@ struct ThreadView: View {
                     switch UpsideDown.arrival(atNewest: atBottom, mine: moves) {
                     case .follow: keptRowId = UpsideDown.newest
                     case .jump: UpsideDown.jumpToNewest($keptRowId, proxy)
-                    case .stay: break
+                    case .stay:
+                        // No kept row since the keyboard moved: the replies stay by a scroll instead.
+                        if keptRowId == nil {
+                            UpsideDown.holdInPlace(replies.compactMap { reply in
+                                // Replies with nothing drawn over them in their cell (the 「新しい返信」 divider is).
+                                guard reply.id != firstUnreadId, let frame = frames.byId[reply.id] else { return nil }
+                                return (reply.rowKey, frame)
+                            }, viewportHeight: frames.viewportHeight, proxy)
+                        }
                     }
                     if atBottom || moves { markSeen() }
                 }

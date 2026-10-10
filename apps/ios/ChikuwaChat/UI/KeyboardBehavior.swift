@@ -50,6 +50,59 @@ extension View {
             scrollDismissesKeyboard(.immediately)
         }
     }
+
+    /// The conversation's `scrollPosition(id: kept, anchor: .top)`, let go while the keyboard comes or goes. The flipped
+    /// list keeps its offset from the newest edge by itself as it gets shorter or taller (UpsideDownList.swift), so the rows
+    /// above the input move with it. With a kept row, SwiftUI re-anchored the list on that row at every layout of the
+    /// keyboard's animation instead (iOS 18 lays the conversation out frame by frame), from the LazyVStack's estimated
+    /// heights: read further up, the rows jumped by up to 1,000 pt one way and back while the keyboard moved, and came to
+    /// rest with the conversation's top kept, so the rows the reader had above the input went under the keyboard, and hiding
+    /// it threw them further down (iOS 18.6 simulator, 2026-10-11). Let go, the list does not move against the input at all.
+    ///
+    /// As the keyboard starts to move the kept row is cleared (not the newest edge's marker: its offset is 0, which no
+    /// resize moves, and it is what shows arrivals there), and until the keyboard has arrived or gone the scroll view is
+    /// given a position of its own, so a row SwiftUI takes from a scroll meanwhile (the drag that closes the keyboard) is
+    /// not kept either; written into the conversation's state on every frame of that drag, it also ran the whole view's
+    /// body each time. The row is not taken again afterwards: a kept row set from code is lined up with the anchor's edge
+    /// on the next layout (a jump), while one SwiftUI takes from a scroll keeps where it is. The reader's next scroll takes
+    /// one; until then an arrival keeps the rows in place by scrolling (UpsideDown.holdInPlace).
+    func keptRowPosition(_ kept: Binding<String?>) -> some View { modifier(KeptRowThroughKeyboard(kept: kept)) }
+}
+
+private struct KeptRowThroughKeyboard: ViewModifier {
+    @Binding var kept: String?
+    /// The keyboard is on its way: from its will-change until its did-show / did-hide, a second at most (a change that
+    /// posts neither).
+    @State private var moving = false
+    /// What the scroll view keeps while the keyboard moves, apart from the conversation's kept row.
+    @State private var detached: String?
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            // iOS 26 lays the conversation out once for the keyboard, before the notification reaches this view: letting
+            // go here came after the re-anchoring and only lost the row (measured on the 26.5 simulator). Left as it was.
+            content.scrollPosition(id: $kept, anchor: .top)
+        } else {
+            content
+                .scrollPosition(id: moving ? $detached : $kept, anchor: .top)
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
+                    if UpsideDown.letsGoForKeyboard(kept) {
+                        kept = nil
+                    }
+                    // At the newest edge the marker stays kept, and so does the binding.
+                    guard kept == nil else { return }
+                    detached = nil
+                    moving = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in moving = false }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in moving = false }
+                .task(id: moving) {
+                    guard moving else { return }
+                    try? await Task.sleep(for: .seconds(1))
+                    if !Task.isCancelled { moving = false }
+                }
+        }
+    }
 }
 
 extension View {
@@ -116,7 +169,30 @@ private struct BackSwipeWatcher: UIViewRepresentable {
             if #available(iOS 26.0, *), let content = navigation.interactiveContentPopGestureRecognizer { found.append(content) }
             found.forEach { $0.addTarget(self, action: #selector(swiped(_:))) }
             recognizers = found
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
             noteArrival(navigation)
+        }
+
+        /// The keyboard going because this page is leaving (another pushed over it from the conversation with the keyboard
+        /// up: the channel's details, a thread from its reply count; or the back button): the page keeps its bottom edge
+        /// where it was until it is gone. Its room went at once, not with the keyboard's motion, and the rows dropped by the
+        /// keyboard's height in one frame as the page started to slide away (iOS 18.6 simulator, 2026-10-11: 302 pt).
+        @objc private func keyboardWillHide() {
+            if #available(iOS 26.0, *) { return } // the page leaving kept its rows there (26.5 simulator): left as it was
+            guard !holding, let window, let navigation = navigationController, let coordinator = navigation.transitionCoordinator,
+                  !coordinator.isInteractive, let page = page(in: navigation), coordinator.viewController(forKey: .from) === page
+            else { return }
+            let below = window.bounds.maxY - convert(bounds, to: window).maxY
+            guard below > 100 else { return }
+            holding = true
+            onChange(below)
+            coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                DispatchQueue.main.async {
+                    guard let self, self.holding else { return }
+                    self.holding = false
+                    self.onChange(nil)
+                }
+            }
         }
 
         /// Back in the window because a swipe back to this page has started (the navigation puts the page under the
@@ -157,6 +233,7 @@ private struct BackSwipeWatcher: UIViewRepresentable {
         func detach() {
             recognizers.forEach { $0.removeTarget(self, action: #selector(swiped(_:))) }
             recognizers = []
+            NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
         }
 
         @objc private func swiped(_ recognizer: UIGestureRecognizer) {
