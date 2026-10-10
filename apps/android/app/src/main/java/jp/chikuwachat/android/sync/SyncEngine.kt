@@ -389,6 +389,11 @@ class SyncEngine(
     var onWikiNotice: ((jp.chikuwachat.android.api.WikiNotice, Boolean) -> Unit)? = null
     /** A channel became fully read (here or on another device): dismiss its notification. */
     var onRead: ((String) -> Unit)? = null
+    /**
+     * A top-level post of this device went into the channel (its placeholder, or a poll's answer): a conversation showing
+     * a message's surroundings leaves them for its newest rows, where the post is (SYNC_PROTOCOL.md §10.1 4.).
+     */
+    var onPostedHere: ((channelId: String) -> Unit)? = null
     var isActive: () -> Boolean = { true }
     /**
      * Runs before every connection (§7.2) to make sure a usable access token exists. `refresh` is true after
@@ -2028,6 +2033,7 @@ class SyncEngine(
             priority = priority, ackRequested = ackRequested))
         store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId, alsoInChannel = shared,
             priority = priority, ackRequested = ackRequested))
+        if (parentId == null) onPostedHere?.invoke(channelId)
         flushOutbox()
     }
 
@@ -2101,7 +2107,10 @@ class SyncEngine(
      */
     fun postedFromHere(message: MessageOut) {
         store.upsertMessage(message)
-        if (message.parentId == null) readByOwnPost(message)
+        if (message.parentId == null) {
+            onPostedHere?.invoke(message.channelId)
+            readByOwnPost(message)
+        }
     }
 
     /**

@@ -273,8 +273,28 @@ class AppController(private val app: Application) {
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
     val serverBase: String? get() = api?.baseUrl
-    data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>)
+    data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>) {
+        /**
+         * The focus after a top-level post of mine went into `postedIn` (SyncEngine.onPostedHere): a conversation showing
+         * a message's surroundings (a pin, a search hit, a permalink) leaves them for its newest rows, as Slack does. The
+         * window around the message never shows the post (user report 2026-10-10: sent from a pinned message's
+         * surroundings, the post did not appear until 「最新へ」), and the highlight goes. SYNC_PROTOCOL.md §10.1 4.
+         */
+        fun afterPost(postedIn: String): MessageFocus? = takeIf { channelId != postedIn }
+    }
     var messageFocus by mutableStateOf<MessageFocus?>(null)
+    /**
+     * The conversation whose message focus a post sent from this device just left (postedFromHere): ChannelPane lands at
+     * its newest row, where the post is, instead of where a fresh open would (the unread divider). Taken once.
+     */
+    var focusLeftByPost: String? = null
+
+    private fun postedFromHere(channelId: String) {
+        val focus = messageFocus ?: return
+        if (focus.afterPost(channelId) != null) return
+        focusLeftByPost = channelId
+        messageFocus = null
+    }
 
     /**
      * M37 (MOBILE_UI.md §6.1 ✏️): the conversation whose composer takes the focus (and the keyboard) once it shows; the
@@ -1114,6 +1134,7 @@ class AppController(private val app: Application) {
         engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) api.signOut() } }
         engine.isActive = { appForeground }
         engine.onRead = { channelId -> notifier.clear(channelId) }
+        engine.onPostedHere = { channelId -> if (this@AppController.engine === engine) postedFromHere(channelId) }
         // M12e: a reminder that fires while the app is open (the push is suppressed then) still shows up,
         // as its own notification (the channel's next message must not replace it, nor a read clear it).
         engine.onReminder = { row ->
