@@ -3,7 +3,7 @@ channel public only as a member, and hiding one's presence."""
 
 import uuid
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from httpx import AsyncClient
@@ -202,9 +202,10 @@ def test_hub_hides_presence() -> None:
     assert not any(
         f.get("user_id") == str(hidden_user) for f in frames if f.get("type") == "presence"
     )
-    hub.set_presence_hidden(hidden_user, False)
+    start = datetime(2026, 10, 10, tzinfo=UTC)
+    hub.set_presence_flags(hidden_user, hidden=False, away=False, version=start)
     announced = [seen.queue.get_nowait() for _ in range(seen.queue.qsize())]
     assert {"type": "presence", "user_id": str(hidden_user), "status": "online"} in announced
-    hub.set_presence_hidden(hidden_user, True)
+    hub.set_presence_flags(hidden_user, hidden=True, away=False, version=start + timedelta(1))
     announced = [seen.queue.get_nowait() for _ in range(seen.queue.qsize())]
     assert {"type": "presence", "user_id": str(hidden_user), "status": "offline"} in announced

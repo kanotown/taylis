@@ -49,8 +49,14 @@ async def update_me(request: Request, user: CurrentUser, body: UserUpdate, db: D
             await usernames.rename_in_tx(db, locked, body.username, actor=user)
     updated = await service.update_me(db, user.id, body)
     if body.presence_hidden is not None:
-        # L4: the hub (process-local presence) announces me as offline, or as I am again.
-        request.app.state.hub.set_presence_hidden(updated.id, updated.presence_hidden)
+        # L4: the hub (process-local presence) announces me as offline, or as I am again. Both
+        # flags as committed, versioned by updated_at (an older request's call changes nothing).
+        request.app.state.hub.set_presence_flags(
+            updated.id,
+            hidden=updated.presence_hidden,
+            away=updated.presence_manual == "away",
+            version=updated.updated_at,
+        )
     return to_user_me(updated)
 
 
@@ -66,7 +72,10 @@ async def update_my_presence(
     updated = await set_presence(db, locked, body)
     # Both flags in one announcement: invisible → 離席中 must not flash online in between.
     request.app.state.hub.set_presence_flags(
-        updated.id, hidden=updated.presence_hidden, away=updated.presence_manual == "away"
+        updated.id,
+        hidden=updated.presence_hidden,
+        away=updated.presence_manual == "away",
+        version=updated.updated_at,
     )
     return to_user_me(updated)
 

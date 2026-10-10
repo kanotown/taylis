@@ -26,6 +26,7 @@ from app.modules.calendar.service import zone_for
 from app.modules.users.dnd import valid_zone
 from app.modules.users.events import USER_UPDATED, emit_user_event
 from app.modules.users.models import User
+from app.modules.users.service import next_updated_at
 
 # 「解除するまで」: far enough to never lapse, and every client's date type still parses it.
 DND_INDEFINITE = datetime(9999, 12, 31, tzinfo=UTC)
@@ -102,10 +103,11 @@ def apply_choice(user: User, data: PresenceUpdate, now: datetime) -> None:
 
 async def set_presence(db: AsyncSession, user: User, data: PresenceUpdate) -> User:
     """Applies the choice and tells everyone (user.updated: others see dnd_until, my other devices
-    read /users/me again). The caller updates the hub."""
+    read /users/me again). The caller locked the row and updates the hub with updated_at as the
+    flags' version."""
     now = utcnow()
     apply_choice(user, data, now)
-    user.updated_at = now
+    user.updated_at = next_updated_at(user, now)
     await db.flush()
     await emit_user_event(db, USER_UPDATED, user)
     await db.commit()
