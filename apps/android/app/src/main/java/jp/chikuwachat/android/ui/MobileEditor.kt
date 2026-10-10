@@ -2,7 +2,6 @@ package jp.chikuwachat.android.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -65,8 +64,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewAssetLoader
 import jp.chikuwachat.android.BuildConfig
 import jp.chikuwachat.android.L10n
@@ -77,6 +74,7 @@ import jp.chikuwachat.android.editor.BridgePage
 import jp.chikuwachat.android.editor.BridgePerson
 import jp.chikuwachat.android.editor.EditorBridge
 import jp.chikuwachat.android.editor.EditorCommand
+import jp.chikuwachat.android.editor.EditorHostLifecycle
 import jp.chikuwachat.android.editor.EditorSession
 import jp.chikuwachat.android.editor.EditorSessionEnv
 import jp.chikuwachat.android.editor.EditorTheme
@@ -113,8 +111,6 @@ private const val ATTACHMENT_URL = "https://$ASSET_HOST/attachment/{id}"
 private const val EMOJI_URL = "https://$ASSET_HOST/emoji/"
 /** The pictures of open pages kept decoded-ready for the WebView (bytes, by attachment or emoji id). */
 private const val IMAGE_CACHE_BYTES = 16 * 1024 * 1024
-/** How long a `requestBody` sent while leaving may take before the WebView goes anyway. */
-private const val LEAVE_GRACE_MS = 1_000L
 private val UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
 
 /** M153a: 「ドキュメントの見たまま編集（試作）」, kept on this device; off leaves no key behind. */
@@ -140,6 +136,13 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     val webView: WebView
     private val bridge: EditorBridge
     private val main = Handler(Looper.getMainLooper())
+
+    /** The editor session's timers, on the main looper (where the session and the save loop run). */
+    val timers = CanvasTimers { delayMs, action ->
+        val runnable = Runnable(action)
+        main.postDelayed(runnable, delayMs)
+        CanvasCancel { main.removeCallbacks(runnable) }
+    }
     // The handler resolves what follows its prefix against the assets root, so "/" maps /editor/index.html to
     // assets/editor/index.html; [intercept] lets only /editor/ reach it.
     private val assets = WebViewAssetLoader.Builder().addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(context)).build()
@@ -157,16 +160,15 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     /** Measurements for the log: when the page became ready, when the first body was painted. */
     var readyAfterMs: Long? = null
         private set
-    private var session: EditorSession? = null
-    private var leaving: EditorSession? = null
-    private var released = false
+    /** Which session the WebView talks to; closing (the last body still flows) and destroyed (nothing flows). */
+    private val lifecycle = EditorHostLifecycle(timers, destroyWebView = ::destroyNow, warn = { Log.w(TAG, it) })
     private var loadSentAt = 0L
     private var firstHeightAt: Long? = null
 
     init {
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         bridge = EditorBridge(
-            port = { js -> if (!released) webView.evaluateJavascript(js, null) },
+            port = { js -> if (lifecycle.canSend) webView.evaluateJavascript(js, null) },
             main = { runnable -> main.post(runnable) },
             listener = ::onWeb,
             refused = { Log.w(TAG, "message refused: ${it.message} (${it.raw.take(120)})") },
@@ -206,7 +208,7 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
                 failed = "render process gone"
                 (view.parent as? ViewGroup)?.removeView(view)
                 view.destroy()
-                released = true
+                lifecycle.webViewGone()
                 return true
             }
         }
@@ -226,7 +228,7 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     }
 
     private fun onWeb(message: WebMessage) {
-        if (released) return
+        if (lifecycle.destroyed) return
         when (message) {
             is WebMessage.Ready -> {
                 readyAfterMs = SystemClock.uptimeMillis() - startedAt
@@ -243,62 +245,33 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
             )
             else -> Unit
         }
-        val target = session ?: leaving ?: return
+        val target = lifecycle.route(message) ?: return
         target.onWeb(message)
         if (message is WebMessage.Ready) {
             loadSentAt = SystemClock.uptimeMillis()
             firstHeightAt = null
         }
-        if (message is WebMessage.BodyRequested && target === leaving && !target.awaitingBody) {
-            leaving = null
-            target.end()
-            if (released) destroyNow()
-        }
+        lifecycle.delivered(target)
         if (target.unsupported) failed = "bridge version ${(message as? WebMessage.Ready)?.version}"
     }
 
     /** The page's editing session; a `ready` that came already is replayed so `load` goes out now. */
     fun attach(next: EditorSession) {
-        leaving?.end()
-        session = next
-        leaving = null
-        next.start()
-        readyVersion?.let {
+        val ready = readyVersion
+        if (lifecycle.attach(next, ready) && ready != null) {
             loadSentAt = SystemClock.uptimeMillis()
             firstHeightAt = null
-            next.onWeb(WebMessage.Ready(it))
         }
     }
 
-    /** Leaving the editor: the body as held now is asked for; the session stays for the answer (at most [LEAVE_GRACE_MS]). */
-    fun detach(current: EditorSession) {
-        if (session !== current) return
-        session = null
-        if (!current.loaded || released) {
-            current.end()
-            return
-        }
-        leaving = current
-        current.requestBody(flush = true)
-        main.postDelayed({ if (leaving === current) { leaving = null; current.end(); if (released) destroyNow() } }, LEAVE_GRACE_MS)
-    }
+    /** Leaving the editor: the body as held now is asked for; the session stays for the answer (EditorHostLifecycle). */
+    fun detach(current: EditorSession) = lifecycle.detach(current)
 
-    /** The page screen goes: the WebView is destroyed (after a pending `requestBody` answered). */
-    fun release() {
-        if (released) return
-        released = true
-        session?.let { current ->
-            session = null
-            if (current.loaded) {
-                leaving = current
-                current.requestBody(flush = true)
-                main.postDelayed({ if (leaving === current) { leaving = null; current.end(); destroyNow() } }, LEAVE_GRACE_MS)
-                return
-            }
-            current.end()
-        }
-        if (leaving == null) destroyNow()
-    }
+    /**
+     * The page screen goes: the last body is asked for and still comes in (the WebView stays until it has, at most
+     * EditorHostLifecycle.LEAVE_GRACE_MS), then the WebView is destroyed and [onClosed] runs.
+     */
+    fun release(onClosed: () -> Unit = {}) = lifecycle.release(onClosed)
 
     private fun destroyNow() {
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -311,26 +284,21 @@ class MobileEditorHost(context: Context, private val controller: AppController) 
     }
 
     /**
-     * Whether the editor may be taking keys: the WebView has the focus and a keyboard is up (the IME, or a hardware
-     * one, with which a composition can be open without the IME showing). A keyboard put away by the back gesture
-     * leaves the focus in the WebView but ends the composition (the IME commits it).
+     * Whether the editor may be taking keys, or writing what it took: the WebView has the focus. Not whether a keyboard
+     * shows: a floating IME or a hardware keyboard types without IME insets, and an IME that is closing commits its
+     * composition (written 300 ms later). The screen takes the focus away when the keyboard goes ([letGoOfFocus]), so
+     * a merge still comes in then. A session left behind that still waits for its last body counts too.
      */
     val editorFocused: Boolean
-        get() {
-            if (released || !webView.hasFocus()) return false
-            val ime = ViewCompat.getRootWindowInsets(webView)?.isVisible(WindowInsetsCompat.Type.ime()) ?: true
-            return ime || webView.resources.configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
-        }
+        get() = !lifecycle.destroyed && (lifecycle.leavingAwaitsBody || webView.hasFocus())
 
-    /** The editor session's timers, on the main looper (where the session and the save loop run). */
-    val timers = CanvasTimers { delayMs, action ->
-        val runnable = Runnable(action)
-        main.postDelayed(runnable, delayMs)
-        CanvasCancel { main.removeCallbacks(runnable) }
+    /** The keyboard went away: the WebView lets go of the focus (the editor was told to blur, writing what it held). */
+    fun letGoOfFocus() {
+        if (!lifecycle.destroyed && webView.hasFocus()) webView.clearFocus()
     }
 
     /** The session editing now (DocPage asks it for the body and the caret before switching to Markdown). */
-    val current: EditorSession? get() = session
+    val current: EditorSession? get() = lifecycle.current
 
     /**
      * The bundle's files, and the page's pictures (`/attachment/<id>`, `/emoji/<id>`) fetched by the app with its
@@ -363,7 +331,16 @@ internal fun rememberMobileEditorHost(controller: AppController, pageId: String)
     val host = remember(pageId) {
         runCatching { MobileEditorHost(context, controller) }.onFailure { Log.e(TAG, "no WebView", it) }.getOrNull()
     }
-    DisposableEffect(host) { onDispose { host?.release() } }
+    DisposableEffect(host) {
+        onDispose {
+            if (host == null) return@onDispose
+            // The editor's last body may still be on its way (EditorHostLifecycle): the page's save loop is held until
+            // it is in (letting go flushes it), so the screen's own release does not drop the loop before.
+            val hub = controller.wiki
+            val keep = if (hub?.current(pageId) != null) hub.hold(pageId).third else null
+            host.release { keep?.invoke() }
+        }
+    }
     return host
 }
 
@@ -453,12 +430,25 @@ internal fun MobileEditor(
     val revision by saver.revision.collectAsState()
     LaunchedEffect(revision) { session.saverChanged() }
     LaunchedEffect(theme) { session.setTheme(theme) }
-    // The keyboard went away (the back gesture keeps the WebView focused, so no `caret` comes): a merge kept back while
-    // typing may come in now (EditorSession.letGo).
+    // The keyboard went away (the back gesture keeps the WebView focused, so no `caret` would come): the editor blurs
+    // (writing what it holds, then `caret`) and the WebView lets go of the focus, so a merge kept back while typing
+    // comes in once quiet (EditorSession.letGo). Until then the focus keeps it back (MobileEditorHost.editorFocused).
     val ime = WindowInsets.ime
     val density = LocalDensity.current
     val imeShown by remember(ime, density) { derivedStateOf { ime.getBottom(density) > 0 } }
-    LaunchedEffect(imeShown) { if (!imeShown) session.letGo() }
+    val keyboardWasUp = remember { booleanArrayOf(false) }
+    LaunchedEffect(imeShown) {
+        if (imeShown) {
+            keyboardWasUp[0] = true
+            return@LaunchedEffect
+        }
+        if (keyboardWasUp[0]) {
+            keyboardWasUp[0] = false
+            session.blur()
+            host.letGoOfFocus()
+        }
+        session.letGo()
+    }
     // The app goes to the background: what is typed but not yet written goes to the loop (which flushes then).
     LaunchedEffect(controller.appForeground) { if (!controller.appForeground) session.requestBody(flush = true) }
 
