@@ -194,7 +194,9 @@ ThreadState
   あるときだけ押せる。確認はチャンネルの「すべて既読」に合わせる（Desktop / Web はサイドバーと同じく確認なし、iOS /
   Android は確認のあと）。押すと保持している行（フォロー中）の未読と位置（手元にある最新の返信まで、下げない）と
   バッジをすぐ既読にし、応答の位置・数・`summary` を当てる。失敗したら（その間に他で変わっていない）行とバッジを戻し、
-  いつものエラーを出す。他端末の `threads.read_all` も同じく当て（位置は下げない）、一覧とバッジの取り直しと
+  いつものエラーを出す。Android はアクティビティの「スレッドで読んだ」判定に使う位置（`threadReadSeqs`）も、その間に
+  新しい既読が来ていなければ戻す（2026-10-10 のレビュー #4：戻さないと返信が既読に見え「未読のみ」から外れた）。一覧の
+  取り直しでもこの位置はサーバの位置（送信中の既読は下回らない）に揃う。他端末の `threads.read_all` も同じく当て（位置は下げない）、一覧とバッジの取り直しと
   アクティビティのバッジの取り直しを予約する。アクティビティの「すべて既読」はスレッドに触れない。
   - 実装：Desktop / Web `ui/ThreadsView.tsx`・`sync/engine.ts`（`markAllThreadsRead`・`applyThreadsReadAll`）・
     `sync/store.ts`（`markAllThreadsReadLocally`・`restoreThreadsRead`）。見出しのボタン。
