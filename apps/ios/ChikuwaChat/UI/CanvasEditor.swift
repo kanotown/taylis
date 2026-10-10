@@ -551,9 +551,11 @@ struct CanvasTextView: UIViewRepresentable {
         view.text = model.shown
         model.textView = view
         if let initialLine {
-            let offset = CanvasTable.offset(ofLine: initialLine, in: model.shown)
-            view.selectedRange = NSRange(location: offset, length: 0)
+            // After the model is attached (onAppear sets the text, which puts the caret at the end): the line of the
+            // text as shown then.
             DispatchQueue.main.async {
+                let offset = CanvasTable.offset(ofLine: initialLine, in: view.text)
+                view.selectedRange = NSRange(location: offset, length: 0)
                 view.becomeFirstResponder()
                 view.scrollRangeToVisible(NSRange(location: offset, length: 0))
             }

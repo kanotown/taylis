@@ -693,6 +693,7 @@ struct WikiPageDocument: View {
         web.onError = { message in print("mobile editor: \(message)") }
         let session = MobileEditorSession(transport: web, host: controller)
         session.onLog = { line in print("mobile editor: \(line)") }
+        session.editorFocused = { [weak web] in web?.editorFocused ?? false }
         web.start()
         editorSession = session
     }

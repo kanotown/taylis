@@ -230,6 +230,15 @@ final class MobileEditorController: NSObject, EditorTransport, WKNavigationDeleg
         }
     }
 
+    /// Whether the editor has the keyboard focus: WebKit's content view (renamed when its accessory bar is hidden) is
+    /// the first responder.
+    var editorFocused: Bool {
+        webView.scrollView.subviews.contains { view in
+            let name = NSStringFromClass(type(of: view))
+            return (name.hasPrefix("WKContent") || name == NoAccessoryWebView.subclassName) && view.isFirstResponder
+        }
+    }
+
     /// A script of the page, for the measurements (MobileEditorTrace) and the tests.
     func evaluate(_ script: String) async throws -> Any? {
         try await withCheckedThrowingContinuation { continuation in
@@ -333,7 +342,7 @@ final class NoAccessoryWebView: WKWebView {
         Self.hideAccessory(in: scrollView)
     }
 
-    private static let subclassName = "TaylisEditorContentView"
+    static let subclassName = "TaylisEditorContentView"
 
     private static func hideAccessory(in scrollView: UIScrollView) {
         for view in scrollView.subviews where NSStringFromClass(type(of: view)).hasPrefix("WKContent") {

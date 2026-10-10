@@ -39,6 +39,26 @@ final class MobileEditorSession {
     @ObservationIgnored private var bodyWaiters: [CheckedContinuation<EditorWebMessage?, Never>] = []
     @ObservationIgnored private var watching: CanvasSaver?
     @ObservationIgnored private(set) var loadCount = 0
+    /// Whether the editor holds the keyboard focus (the WebView's content view is the first responder). While it does,
+    /// or right after it reported an edit or took a command, the save loop keeps a merged body to itself (see `attach`).
+    @ObservationIgnored var editorFocused: () -> Bool = { false }
+    /// The clock of `editorQuiet` (the tests move it).
+    @ObservationIgnored var now: () -> Date = Date.init
+    @ObservationIgnored private var lastActivity = Date.distantPast
+    @ObservationIgnored private var catchUp: Task<Void, Never>?
+    /// How long after the editor's last edit or command a merged body may go in.
+    static let quietAfter: TimeInterval = 1
+
+    /// No composition can be open and no edit can be waiting to be written in the editor: not focused, and nothing
+    /// reported or commanded for `quietAfter`. Only then may the saver move its base to a merged body and send it as
+    /// `replace` (the editor applies it at once then). While typing, a `replace` the editor held back (IME) is dropped
+    /// by its next edit, and that edit — written on the body before the merge — saved on the merged version deleted
+    /// the other person's lines (seen on the simulator, 2026-10-10, docs/WIKI.md §30.4). Kept back instead, every save
+    /// goes on the version the editor's body was written on and the server merges it; the merged body comes in when
+    /// the editor lets go of the focus (`caret`).
+    var editorQuiet: Bool {
+        !editorFocused() && now().timeIntervalSince(lastActivity) >= Self.quietAfter
+    }
 
     init(transport: EditorTransport, host: MobileEditorHost?) {
         self.transport = transport
@@ -55,9 +75,9 @@ final class MobileEditorSession {
         self.saver = saver
         self.theme = theme
         self.caretLine = caretLine
-        // The editor holds a merge back by itself while an IME composition is open or an edit waits to be written
-        // (bridge.ts `replace`): the saver may always hand its text over.
-        saver.canReplace = { true }
+        // Not while the editor may be composing or about to write an edit (`editorQuiet`): the editor would hold the
+        // replacement back and drop it at its next edit, which the loop would then save over the merge.
+        saver.canReplace = { [weak self] in self?.editorQuiet ?? true }
         if let host {
             transport.send(.providePeople(host.editorPeople()))
             transport.send(.provideEmoji(host.editorEmoji()))
@@ -68,7 +88,7 @@ final class MobileEditorSession {
         if MobileEditorTrace.enabled, let controller = transport as? MobileEditorController, controller.isReady {
             // The measurements: `load` timed inside the page to the frame after the editor is painted.
             let chars = saver.text.count
-            MobileEditorTrace.log("load.sent chars=\(chars)")
+            MobileEditorTrace.log("load.sent chars=\(chars) caretLine=\(caretLine.map(String.init) ?? "nil")")
             Task { @MainActor in
                 do {
                     let painted = try await controller.evaluateAsync(try MobileEditorTrace.timedLoadScript(load))
@@ -123,6 +143,8 @@ final class MobileEditorSession {
         guard let saver else { return }
         await commit()
         detachWatching()
+        catchUp?.cancel()
+        catchUp = nil
         saver.canReplace = { true }
         self.saver = nil
         await saver.flush()
@@ -147,12 +169,16 @@ final class MobileEditorSession {
         transport.send(.setViewport(keyboardHeight: keyboardHeight, safeBottom: safeBottom))
     }
 
-    func command(_ name: EditorCommand) { transport.send(.command(name)) }
+    func command(_ name: EditorCommand) {
+        lastActivity = now()
+        transport.send(.command(name))
+    }
     func focus() { transport.send(.focus) }
     func blur() { transport.send(.blur) }
 
     /// The picked picture is on the server: its block at the caret.
     func insertImage(_ attachmentId: String) {
+        lastActivity = now()
         transport.send(.insertImage(attachmentId: attachmentId, url: EditorBridge.attachmentURL(attachmentId), alt: ""))
     }
 
@@ -170,6 +196,7 @@ final class MobileEditorSession {
             break
         case .changed(let body, let dirty):
             MobileEditorTrace.log("changed chars=\(body.count) dirty=\(dirty)")
+            lastActivity = now()
             saver?.edit(body)
         case .bodyRequested(let body, let dirty, let line):
             MobileEditorTrace.log("bodyRequested chars=\(body.count) dirty=\(dirty) caretLine=\(line)")
@@ -178,6 +205,7 @@ final class MobileEditorSession {
             for waiter in waiters { waiter.resume(returning: message) }
         case .caret(let line):
             caretLine = line
+            catchUpAfterBlur()
         case .height(let px):
             MobileEditorTrace.log("height px=\(Int(px))")
         case .needPeople:
@@ -197,6 +225,17 @@ final class MobileEditorSession {
         case .log(let level, let text, let detail):
             MobileEditorTrace.log("log [\(level)] \(text)")
             onLog?("[\(level)] \(text)" + (detail.map { "\n" + $0 } ?? ""))
+        }
+    }
+
+    /// The editor let go of the focus (`caret`): once it is quiet, what the server merged meanwhile comes in (a read
+    /// when nothing is unsaved; otherwise the pending save lands and brings it).
+    private func catchUpAfterBlur() {
+        catchUp?.cancel()
+        catchUp = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((Self.quietAfter + 0.1) * 1_000_000_000))
+            guard let self, !Task.isCancelled, let saver = self.saver, self.editorQuiet else { return }
+            await saver.flush() // unsaved: saved now (and merged); else, when the server merged meanwhile (stale), read
         }
     }
 
