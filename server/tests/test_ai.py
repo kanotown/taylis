@@ -258,6 +258,7 @@ async def test_status_flags(
             "bot_user_id": agent["bot_user_id"],
             "name": "ちくわ AI",
             "model": "claude-opus-5-5",
+            "web_search": False,
         }
     ]
     _fake(app)
@@ -776,6 +777,7 @@ async def test_usage_and_purge(
             "input_tokens": 2000,
             "output_tokens": 400,
             "cost_usd": 0.016,
+            "web_search_requests": 0,
         }
     ]
     assert usage["by_user"] == [{"user_id": str(alice.id), "runs": 2, "cost_usd": 0.016}]

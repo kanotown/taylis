@@ -1,9 +1,10 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, File, Query, Request, Response, UploadFile
 
 from app.core.db import Db
+from app.core.errors import rate_limited
 from app.modules.ai import service
 from app.modules.ai.llm import AiRuntime
 from app.modules.ai.schemas import (
@@ -48,6 +49,29 @@ async def create_agent(actor: AiManager, body: AiAgentCreate, db: Db) -> AiAgent
 async def update_agent(agent_id: UUID, actor: AiManager, body: AiAgentUpdate, db: Db) -> AiAgentOut:
     """Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96)."""
     return await service.update_agent(db, actor, agent_id, body)
+
+
+@router.post("/admin/ai/agents/{agent_id}/avatar", response_model=AiAgentOut)
+async def upload_agent_avatar(
+    agent_id: UUID, actor: AiManager, db: Db, request: Request, file: UploadFile = File(...)
+) -> AiAgentOut:
+    """The bot's picture (docs/AI.md §14): as POST /users/me/avatar (a PNG / JPEG / GIF / WebP,
+    cropped square and resized to 256px) for the bot user. 404 ai_agent_not_found."""
+    limiter = request.app.state.limiters["upload"]
+    key = str(actor.id)
+    if not limiter.try_acquire(key):
+        raise rate_limited(limiter.retry_after_seconds(key))
+    return await service.set_agent_avatar(
+        db, actor, agent_id, file, request.app.state.settings, request.app.state.blobs
+    )
+
+
+@router.delete("/admin/ai/agents/{agent_id}/avatar", response_model=AiAgentOut)
+async def delete_agent_avatar(
+    agent_id: UUID, actor: AiManager, db: Db, request: Request
+) -> AiAgentOut:
+    """The bot goes back to its drawn initial (docs/AI.md §14)."""
+    return await service.clear_agent_avatar(db, actor, agent_id, request.app.state.blobs)
 
 
 @router.delete("/admin/ai/agents/{agent_id}", status_code=204)

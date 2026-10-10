@@ -13,7 +13,13 @@ from app.modules.ai.models import MAX_CHARACTER_LENGTH, MAX_NAME_LENGTH, AiAgent
 from app.modules.search.schemas import MAX_QUERY_LENGTH
 
 AiModel = Literal[
-    "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5", "gpt-6.1-sol", "gpt-6-luna"
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-4-5",
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6-luna",
 ]
 AiProviderName = Literal["anthropic", "openai"]
 AiEffort = Literal["low", "medium", "high"]
@@ -49,6 +55,11 @@ class AiAgentOut(BaseModel):
     enabled: bool
     created_at: datetime
     updated_at: datetime
+    # docs/AI.md §14: mention replies may search the web; the bot summaries and questions use when
+    # the conversation has none of its own; the bot user's picture version (null: no picture).
+    web_search: bool = False
+    is_default: bool = False
+    avatar_updated_at: datetime | None = None
 
 
 class AiAgentPublic(BaseModel):
@@ -56,6 +67,8 @@ class AiAgentPublic(BaseModel):
     bot_user_id: UUID
     name: str
     model: AiModel
+    # docs/AI.md §14: for the notice (§4): its replies may send search queries to the web.
+    web_search: bool = False
 
 
 class AiAgentCreate(BaseModel):
@@ -66,6 +79,9 @@ class AiAgentCreate(BaseModel):
     effort: AiEffort = "medium"
     allow_private: bool = False
     enabled: bool = True
+    # docs/AI.md §14.
+    web_search: bool = False
+    is_default: bool = False
 
     _name = field_validator("name")(_clean_name)
     _character = field_validator("character")(_clean_character)
@@ -80,6 +96,10 @@ class AiAgentUpdate(BaseModel):
     effort: AiEffort | None = None
     allow_private: bool | None = None
     enabled: bool | None = None
+    # docs/AI.md §14: true makes this the default bot (the previous one stops being it); false
+    # leaves no default bot (the oldest usable one is used, as before).
+    web_search: bool | None = None
+    is_default: bool | None = None
 
     _name = field_validator("name")(_clean_name)
     _character = field_validator("character")(_clean_character)
@@ -193,6 +213,8 @@ class AiUsageByAgent(BaseModel):
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    # docs/AI.md §14: web searches the provider ran for the bot (in cost_usd at their own price).
+    web_search_requests: int = 0
 
 
 class AiUsageByUser(BaseModel):
@@ -210,11 +232,16 @@ class AiUsageOut(BaseModel):
     by_user: list[AiUsageByUser]
 
 
-def to_agent_out(agent: AiAgent, username: str) -> AiAgentOut:
+def to_agent_out(
+    agent: AiAgent, username: str, avatar_updated_at: datetime | None = None
+) -> AiAgentOut:
     return AiAgentOut(
         id=agent.id,
         bot_user_id=agent.bot_user_id,
         username=username,
+        web_search=agent.web_search,
+        is_default=agent.is_default,
+        avatar_updated_at=avatar_updated_at,
         name=agent.name,
         character=agent.character,
         model=agent.model,  # type: ignore[arg-type]
@@ -232,6 +259,7 @@ def to_agent_public(agent: AiAgent) -> AiAgentPublic:
         bot_user_id=agent.bot_user_id,
         name=agent.name,
         model=agent.model,  # type: ignore[arg-type]
+        web_search=agent.web_search,
     )
 
 
