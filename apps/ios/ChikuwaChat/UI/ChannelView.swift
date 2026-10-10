@@ -546,9 +546,17 @@ struct ChannelView: View {
                         .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } } // back after a disappear
                         .onChange(of: focus?.messageId) { _, id in
                             if id == nil, let channel {
-                                // Back from the search context: like a fresh open, from the read position as it is now (§10.1 4.).
-                                unreadMark = ReadGate.openMark(channel)
-                                seenSeq = channel.lastReadSeq
+                                if controller.focusLeftByPost == channelId {
+                                    // Left by a post of mine (AppController.postedFromHere): at the newest row, where the post
+                                    // is, with no divider to land on (§10.1 4., as Slack).
+                                    controller.focusLeftByPost = nil
+                                    unreadMark = nil
+                                    seenSeq = channel.lastSeq
+                                } else {
+                                    // Back from the search context: like a fresh open, from the read position as it is now (§10.1 4.).
+                                    unreadMark = ReadGate.openMark(channel)
+                                    seenSeq = channel.lastReadSeq
+                                }
                                 syncWaitOver = false
                             }
                             positioned = false
