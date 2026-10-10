@@ -108,6 +108,9 @@ final class SyncEngine {
     var onNotify: ((MessageOut, ChannelState) -> Void)?
     /// A channel became fully read (here or on another device): dismiss its notifications.
     var onRead: ((String) -> Void)?
+    /// A top-level post of this device went into the channel (its placeholder, or a poll's answer): a conversation showing
+    /// a message's surroundings leaves them for its newest rows, where the post is (SYNC_PROTOCOL.md §10.1 4.).
+    var onPostedHere: ((_ channelId: String) -> Void)?
     /// The app badge (unread DMs + mentions) changed.
     var onBadge: ((Int) -> Void)?
     /// L8 (TIMES_FEED.md §5): every live message.created / .updated / .deleted of a channel the store knows, as it
@@ -1045,7 +1048,10 @@ final class SyncEngine {
     /// and the conversation where the reader was, as if it came from another device (testers, 2026-09-29).
     func postedFromHere(_ message: MessageOut) {
         store.upsertMessage(message)
-        if message.parentId == nil { postedHere = message.id }
+        if message.parentId == nil {
+            postedHere = message.id
+            onPostedHere?(message.channelId)
+        }
         readOwnPost(message, created: true)
     }
 
@@ -1789,6 +1795,7 @@ final class SyncEngine {
                                    ackRequested: ackRequested ? true : nil))
         store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt,
                                           parentId: parentId, alsoInChannel: shared, priority: priority, ackRequested: ackRequested))
+        if parentId == nil { onPostedHere?(channelId) }
         await flushOutbox()
     }
 

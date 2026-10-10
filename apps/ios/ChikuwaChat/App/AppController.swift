@@ -22,6 +22,9 @@ final class AppController {
         var context: [MessageState]
     }
     var messageFocus: MessageFocus?
+    /// The conversation whose message focus a post sent from this device just left (postedFromHere): ChannelView lands
+    /// at its newest row, where the post is, instead of where a fresh open would (the unread divider). Taken once.
+    var focusLeftByPost: String?
     /// M45: a canvas link (`<server>/c/<id>`) tapped in a message: its screen shows over everything (MainView).
     var canvasLink: CanvasLinkTarget?
     /// M73: a canvas to show in its conversation's 「キャンバス」 tab (a canvas mention's notification, a task's 元のキャンバス).
@@ -49,6 +52,16 @@ final class AppController {
     @ObservationIgnored var workflowLists: [String: (at: Date, list: [WorkflowOut])] = [:]
     /// M117: the call each conversation is starting, kept for a retry (CallKeys).
     @ObservationIgnored var callKeys = CallKeys()
+    /// A top-level post of mine went into `channelId` (SyncEngine.onPostedHere). A conversation showing a message's
+    /// surroundings (a pin, a search hit, a permalink) leaves them for its newest rows, as Slack does: the window around
+    /// the message never shows the post (user report 2026-10-10: sent from a pinned message's surroundings, the post did
+    /// not appear until 「最新の会話へ」), and the highlight goes. SYNC_PROTOCOL.md §10.1 4.
+    func postedFromHere(in channelId: String) {
+        guard messageFocus?.channelId == channelId else { return }
+        focusLeftByPost = channelId
+        messageFocus = nil
+    }
+
     func revealMessage(_ message: MessageOut) async -> Bool {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }
@@ -263,6 +276,7 @@ final class AppController {
     func attachForTesting(store: Store, engine: SyncEngine) {
         self.store = store
         self.engine = engine
+        engine.onPostedHere = { [weak self] channelId in self?.postedFromHere(in: channelId) }
     }
 
     /// The workspace on screen goes: its engine stops and its store closes. Nothing of it may show in the next one.
@@ -531,6 +545,10 @@ final class AppController {
         }
         engine.isActive = { UIApplication.shared.applicationState == .active }
         engine.onRead = { channelId in PushCenter.shared.clearNotifications(channelId: channelId) }
+        engine.onPostedHere = { [weak self, weak engine] channelId in
+            guard let self, self.engine === engine else { return }
+            self.postedFromHere(in: channelId)
+        }
         engine.onReminder = { [weak self] reminder in
             self?.notice = "⏰ " + ((reminder.note?.isEmpty == false ? reminder.note! + " — " : "") + reminder.preview)
         }

@@ -140,7 +140,9 @@ struct ThreadView: View {
                     // up jumps to it, someone else's leaves the reader where they are (the jump button counts it).
                     guard positioned || provisional else { return }
                     let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
-                    let moves = mine && controller.messageFocus?.parentId != parentId
+                    // Opened at a reply too (a search hit, a permalink): my reply shows (user report 2026-10-10, the channel's
+                    // case; before, the thread stayed at the revealed reply and the sent one stayed out of sight below).
+                    let moves = mine
                     if moves && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
                     switch UpsideDown.arrival(atNewest: atBottom, mine: moves) {
                     case .follow: keptRowId = UpsideDown.newest

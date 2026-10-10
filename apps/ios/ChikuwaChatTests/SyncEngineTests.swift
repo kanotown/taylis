@@ -1985,4 +1985,57 @@ extension SyncEngineTests {
         XCTAssertEqual(w.store.threadSummary, summary) // the badge is the server's
         w.engine.stop()
     }
+
+    // MARK: a post sent from a message's surroundings (SYNC_PROTOCOL.md §10.1 4.)
+
+    /// User report 2026-10-10: in a long channel, jumped to a pinned message (the conversation shows the server's window
+    /// around it, far from the newest rows), then sent a message: it did not appear until 「最新の会話へ」. A top-level post
+    /// sent from here leaves the focus for the live conversation, which ends with the newest rows and the post.
+    func testAPostSentFromAMessagesSurroundingsLeavesThemForTheNewestRows() async throws {
+        let w = makeWorld() // pages of 3
+        var posted: [MessageOut] = []
+        for i in 1...20 { posted.append(try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)").0) }
+        w.engine.isActive = { true }
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.seq), [18, 19, 20])
+        let controller = AppController(defaults: UserDefaults(suiteName: "focus-send-\(UUID())")!)
+        controller.attachForTesting(store: w.store, engine: w.engine)
+        // Opened at a pin far from the newest rows: the server's window around it (GET /messages/{id}/context).
+        controller.messageFocus = .init(channelId: w.channel.id, messageId: posted[4].id, parentId: nil, context: posted[2...7].map(MessageState.init))
+
+        // Rows from others, a reply in a thread and a post elsewhere leave the window as it is.
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "from alice")
+        await w.engine.send(w.channel.id, body: "a reply", parentId: posted[4].id)
+        await settle(w.engine)
+        XCTAssertEqual(controller.messageFocus?.messageId, posted[4].id)
+        XCTAssertNil(controller.focusLeftByPost)
+
+        await w.engine.send(w.channel.id, body: "from the pin")
+        XCTAssertNil(controller.messageFocus) // no window, no highlight
+        XCTAssertEqual(controller.focusLeftByPost, w.channel.id) // ChannelView lands at the newest row, not on a divider
+        await settle(w.engine)
+        let rows = w.store.messages(w.channel.id)
+        XCTAssertEqual(rows.last?.body, "from the pin")
+        XCTAssertEqual(rows.map(\.seq), [18, 19, 20, 21, 23]) // the newest rows (22 is the reply), then the post
+        XCTAssertEqual(ReadGate.openTarget(rows, focusId: nil, mark: nil, meId: w.bob.id), .bottom)
+        w.engine.stop()
+    }
+
+    /// A poll of mine (its own endpoint, no placeholder) leaves the surroundings the same way; one into another
+    /// conversation does not.
+    func testAPollOfMineLeavesTheSurroundingsOfItsConversationOnly() async throws {
+        let w = makeWorld()
+        let pinned = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "pinned").0
+        let controller = AppController(defaults: UserDefaults(suiteName: "focus-poll-\(UUID())")!)
+        controller.attachForTesting(store: w.store, engine: w.engine)
+        controller.messageFocus = .init(channelId: "elsewhere", messageId: "x", parentId: nil, context: [])
+        w.engine.postedFromHere(try w.server.post(channelId: w.channel.id, senderId: w.bob.id, body: "poll").0)
+        XCTAssertEqual(controller.messageFocus?.messageId, "x")
+        controller.messageFocus = .init(channelId: w.channel.id, messageId: pinned.id, parentId: nil, context: [MessageState(pinned)])
+        w.engine.postedFromHere(try w.server.post(channelId: w.channel.id, senderId: w.bob.id, body: "poll 2").0)
+        XCTAssertNil(controller.messageFocus)
+        XCTAssertEqual(controller.focusLeftByPost, w.channel.id)
+    }
 }
