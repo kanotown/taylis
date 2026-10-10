@@ -31,7 +31,7 @@ function out(hits: MessageOut[], keywords: string[]): SearchOut {
   return {
     hits: hits.map((message, i) => ({ message, score: hits.length - i })),
     keywords,
-    filters: { text: keywords.join(" "), has: [], is_thread: false, is_times: false, unresolved: [] },
+    filters: { text: keywords.join(" "), has: [], is_thread: false, is_times: false, exclude_archived: false, unresolved: [] },
     limit: LIVE_LIMIT,
     offset: 0,
     has_more: false,

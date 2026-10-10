@@ -17,10 +17,12 @@ export interface SearchParams {
   isThread: boolean;
   /** L8: only times (`is:times`, TIMES_FEED.md §6), joined or not. Optional: recent searches saved before lack it. */
   isTimes?: boolean;
+  /** Leave archived channels out (`exclude_archived`); the search covers them by default. Optional like `isTimes`. */
+  excludeArchived?: boolean;
   sort: SearchSort;
 }
 
-export const EMPTY_SEARCH: SearchParams = { q: "", fromUserId: null, channelId: null, date: null, has: [], isThread: false, isTimes: false, sort: "relevance" };
+export const EMPTY_SEARCH: SearchParams = { q: "", fromUserId: null, channelId: null, date: null, has: [], isThread: false, isTimes: false, excludeArchived: false, sort: "relevance" };
 
 export const HAS_FLAGS: readonly HasFlag[] = ["file", "link", "pin", "reaction", "poll"];
 
@@ -98,6 +100,7 @@ export function toQuery(params: SearchParams, now: Date = new Date()): {
   has: HasFlag[];
   is_thread: boolean;
   is_times: boolean;
+  exclude_archived: boolean;
   sort: SearchSort;
 } {
   const q = params.q.trim();
@@ -109,6 +112,7 @@ export function toQuery(params: SearchParams, now: Date = new Date()): {
     has: params.has,
     is_thread: params.isThread,
     is_times: !!params.isTimes,
+    exclude_archived: !!params.excludeArchived,
     sort: q ? params.sort : "newest",
   };
 }
@@ -147,6 +151,16 @@ export function askQuery(params: SearchParams, usernameOf: (userId: string) => s
   if (params.isThread) parts.push("is:thread");
   if (params.isTimes) parts.push("is:times");
   return parts.filter(Boolean).join(" ");
+}
+
+/**
+ * The tag of a hit's conversation: 「未参加」 for a public channel I have not joined (the search covers them, opened as
+ * the preview), 「アーカイブ済み」 for an archived one, both when both. Null for a conversation of mine that is live.
+ */
+export function searchChannelTag(channel: { archived: boolean } | undefined, joined: boolean): string | null {
+  if (!channel) return null;
+  if (!joined) return channel.archived ? t("search.notJoinedArchived") : t("admin.channels.notJoined");
+  return channel.archived ? t("channel.archived") : null;
 }
 
 /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */

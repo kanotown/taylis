@@ -347,5 +347,6 @@ export function describeSearch(controller: AppController, params: SearchParams):
   for (const flag of params.has) parts.push(HAS_LABELS[flag]);
   if (params.isThread) parts.push(t("search.inThreads"));
   if (params.isTimes) parts.push("Times");
+  if (params.excludeArchived) parts.push(t("search.excludeArchived"));
   return parts.join(" · ");
 }

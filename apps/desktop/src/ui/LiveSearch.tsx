@@ -11,7 +11,7 @@ import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { cn } from "./primitives";
-import { EMPTY_SEARCH, toQuery } from "./search";
+import { EMPTY_SEARCH, searchChannelTag, toQuery } from "./search";
 import { EmojiText } from "./UserPopover";
 import { t } from "../i18n";
 
@@ -47,6 +47,7 @@ export function useLiveSearch(controller: AppController, text: string, paused: b
 export function LiveMessageRow({ controller, message, keywords, other }: { controller: AppController; message: MessageOut; keywords: string[]; other?: ChannelOut }) {
   const store = controller.store;
   const channel = store.getChannel(message.channel_id) ?? (other ? ({ ...other, isMember: false } as ChannelState) : undefined);
+  const tag = searchChannelTag(channel, store.getChannel(message.channel_id)?.isMember ?? false);
   const sender = store.users.get(message.sender_id)?.display_name ?? "?";
   const body = plainText(mentionsToNames(message.body, store.users, store.groups), 2000);
   const text = leadToFirstHit(body || message.attachments.map((a) => a.filename).join(" "), keywords);
@@ -60,6 +61,7 @@ export function LiveMessageRow({ controller, message, keywords, other }: { contr
           <Icon size={11} className="shrink-0" />
           <span className="min-w-0 truncate">{channel ? channelTitle(channel, controller).replace(/^#/, "") : "?"}</span>
           {message.parent_id && <span className="shrink-0">· {t("composer.threadReply")}</span>}
+          {tag && <span className="shrink-0 whitespace-nowrap rounded bg-panel-2 px-1 text-[10px]">{tag}</span>}
           <time className="ml-auto shrink-0 pl-2">{sinceLabel(message.created_at)}</time>
         </span>
         <span className={cn("line-clamp-2 break-words text-[13px] leading-snug text-ink")}>

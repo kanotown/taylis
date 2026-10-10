@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageOut, SearchOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
+import { LiveMessageRow } from "../src/ui/LiveSearch";
 import { SearchBar } from "../src/ui/SearchBar";
 import { SearchView, type SearchSnapshot } from "../src/ui/SearchView";
 import { EMPTY_SEARCH, type SearchParams } from "../src/ui/search";
@@ -27,7 +28,7 @@ function world() {
   const search = vi.fn(async (): Promise<SearchOut> => ({
     hits: [{ message: hit("設計レビューの資料です"), score: 2 }, { message: hit("設計の続き", { parent_id: "p1" }), score: 1 }],
     keywords: ["設計"],
-    filters: { text: "設計", has: [], is_thread: false, is_times: false, unresolved: ["from:@nobody"] },
+    filters: { text: "設計", has: [], is_thread: false, is_times: false, exclude_archived: false, unresolved: ["from:@nobody"] },
     limit: 30,
     offset: 0,
     has_more: false,
@@ -93,9 +94,61 @@ describe("search results", () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ body: "設計レビューの資料です" }));
   });
 
+  it("tags hits in public channels I have not joined and in archived ones, opens them as previews, and leaves archives out with the chip", async () => {
+    const w = world();
+    // A Slack-imported archive: public, archived, nobody a member, so not in my store.
+    const imported = { ...w.server.createChannel("old-project", w.tanaka.id), archived: true };
+    const lounge = w.server.createChannel("lounge", w.tanaka.id);
+    w.store.upsertChannel({ ...w.design, archived: true }, { isMember: true });
+    const inArchive = w.server.post(imported.id, w.tanaka.id, "設計の議事録 old").message;
+    const inLounge = w.server.post(lounge.id, w.tanaka.id, "設計の議事録 lounge").message;
+    const inDesign = w.server.post(w.design.id, w.me.id, "設計の議事録 design").message;
+    w.search.mockResolvedValue({
+      hits: [inArchive, inLounge, inDesign].map((message) => ({ message, score: 1 })),
+      keywords: ["設計"],
+      filters: { text: "設計", has: [], is_thread: false, is_times: false, exclude_archived: false, unresolved: [] },
+      limit: 30,
+      offset: 0,
+      has_more: false,
+      total: 3,
+      total_capped: false,
+      channels: [{ ...imported, membership: null }, { ...lounge, membership: null }],
+    });
+    const onChange = vi.fn();
+    const onOpen = vi.fn();
+    const params = { ...EMPTY_SEARCH, q: "設計" };
+    render(<SearchView controller={w.controller} params={params} tab="messages" onTabChange={() => {}} onChange={onChange} onOpen={onOpen} onClose={() => {}} snapshot={{ current: null as SearchSnapshot | null }} />);
+    await waitFor(() => expect(screen.getByText("3 件")).toBeTruthy());
+    expect(w.search).toHaveBeenCalledWith(expect.objectContaining({ exclude_archived: false }));
+    const row = (text: string) => screen.getAllByRole("button").find((b) => b.textContent?.includes(text))!;
+    expect(row("議事録 old").textContent).toContain("old-project");
+    expect(row("議事録 old").textContent).toContain("未参加・アーカイブ済み");
+    expect(row("議事録 lounge").textContent).toContain("未参加");
+    expect(row("議事録 lounge").textContent).not.toContain("アーカイブ済み");
+    expect(row("議事録 design").textContent).toContain("アーカイブ済み");
+    expect(row("議事録 design").textContent).not.toContain("未参加");
+    // Opening the archive's hit: the store learns of it as a channel I am not in, so it opens as its preview.
+    fireEvent.click(row("議事録 old"));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: inArchive.id }));
+    expect(w.store.getChannel(imported.id)).toMatchObject({ isMember: false, archived: true });
+    // The chip leaves archived channels out.
+    const chip = screen.getByRole("button", { name: /アーカイブを除く/ });
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(chip);
+    expect(onChange).toHaveBeenCalledWith({ ...params, excludeArchived: true });
+    cleanup();
+    render(<SearchView controller={w.controller} params={{ ...params, excludeArchived: true }} tab="messages" onTabChange={() => {}} onChange={onChange} onOpen={onOpen} onClose={() => {}} snapshot={{ current: null as SearchSnapshot | null }} />);
+    await waitFor(() => expect(w.search).toHaveBeenLastCalledWith(expect.objectContaining({ exclude_archived: true })));
+    expect(screen.getByRole("button", { name: /アーカイブを除く/ }).getAttribute("aria-pressed")).toBe("true");
+    cleanup();
+    // The search box's live rows carry the same tags.
+    const live = render(<LiveMessageRow controller={w.controller} message={inLounge} keywords={["設計"]} other={{ ...lounge, membership: null }} />);
+    expect(live.container.textContent).toContain("未参加");
+  });
+
   it("offers to drop the filters when nothing matches, and reuses kept results", async () => {
     const w = world();
-    w.search.mockResolvedValueOnce({ hits: [], keywords: [], filters: { text: "", has: ["poll"], is_thread: false, is_times: false, unresolved: [] }, limit: 30, offset: 0, has_more: false, total: 0, total_capped: false });
+    w.search.mockResolvedValueOnce({ hits: [], keywords: [], filters: { text: "", has: ["poll"], is_thread: false, is_times: false, exclude_archived: false, unresolved: [] }, limit: 30, offset: 0, has_more: false, total: 0, total_capped: false });
     const onChange = vi.fn();
     const params: SearchParams = { ...EMPTY_SEARCH, q: "予算", has: ["poll"] };
     const snapshot = { current: null as SearchSnapshot | null };

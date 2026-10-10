@@ -1812,6 +1812,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "search.pickDates": "指定日期",
   "search.applyDates": "按此期间筛选",
   "search.notJoinedArchived": "未加入 · 已归档",
+  "search.excludeArchived": "排除已归档",
+  "search.excludeArchivedHint": "不显示已归档频道中的消息",
   "search.showInThread": "在话题中显示",
   "search.showInConversation": "在对话中显示",
   "search.nothingFound": "未找到",
