@@ -113,6 +113,15 @@ struct ChannelView: View {
         guard focus == nil else { return 0 }
         return ReadGate.newBelow(messages, seenSeq: seenSeq, meId: controller.store.me?.id)
     }
+    /// The rows the list can be held at after the keyboard moved (UpsideDown.holdInPlace): their on-screen frames by row
+    /// id, only messages with no day separator over them (the frame is the message's, the scroll target the whole row).
+    private func keptCandidates() -> [(id: String, frame: CGRect)] {
+        Timeline.rows(items).compactMap { row in
+            guard row.day == nil, case .message(let message, _) = row.item, let frame = frames.byId[message.id] else { return nil }
+            return (row.id, frame)
+        }
+    }
+
     /// At the bottom: the newest row counts as seen, once the view is placed and not landing (§10.1 7.).
     private func markSeen() {
         seenSeq = ReadGate.seenAtBottom(seenSeq, rows: messages, placed: positioned && anchor.landing == nil)
@@ -283,7 +292,9 @@ struct ChannelView: View {
         switch arrival {
         case .follow: keptRowId = UpsideDown.newest
         case .jump: UpsideDown.jumpToNewest($keptRowId, proxy)
-        case .stay: break
+        case .stay:
+            // No kept row since the keyboard moved (keptRowPosition): the rows stay by a scroll instead.
+            if keptRowId == nil { UpsideDown.holdInPlace(keptCandidates(), viewportHeight: frames.viewportHeight, proxy) }
         }
     }
 
@@ -487,7 +498,7 @@ struct ChannelView: View {
                             .animation(positioned ? .easeOut(duration: 0.25) : nil, value: items.last?.id)
                             .background(StatusBarTapStays())
                         }
-                        .scrollPosition(id: $keptRowId, anchor: .top)
+                        .keptRowPosition($keptRowId)
                         .upsideDown()
                         .clipped()
                         // Laid out but not shown while the conversation opens (`veiled`): the catch-up, the placement and

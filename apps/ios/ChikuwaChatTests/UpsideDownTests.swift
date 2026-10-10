@@ -26,6 +26,40 @@ final class UpsideDownTests: XCTestCase {
         XCTAssertNil(UpsideDown.arrivalAnimation(atNewest: true, placed: false))
     }
 
+    /// The keyboard lets go of any kept row but the newest edge's marker (iOS 18: re-anchored on a row frame by frame, the
+    /// list jumped and came to rest with the rows read gone under the keyboard).
+    func testKeyboardLetsGoOfARowButNotTheNewestEdge() {
+        XCTAssertTrue(UpsideDown.letsGoForKeyboard("row-1"))
+        XCTAssertFalse(UpsideDown.letsGoForKeyboard(UpsideDown.newest))
+        XCTAssertFalse(UpsideDown.letsGoForKeyboard(nil))
+    }
+
+    /// With no kept row, an arrival holds the list at the row wholly on screen nearest the input, with the anchor that
+    /// leaves it where it is: its point at the anchor sits at the viewport's same point (in the flipped list's terms).
+    func testHoldInPlaceTakesTheRowNearestTheInputWhereItIs() throws {
+        let frames: [(id: String, frame: CGRect)] = [
+            ("a", CGRect(x: 0, y: -40, width: 390, height: 100)),   // cut by the top: not wholly on screen
+            ("b", CGRect(x: 0, y: 60, width: 390, height: 80)),
+            ("c", CGRect(x: 0, y: 140, width: 390, height: 100)),   // the lowest wholly on screen
+            ("d", CGRect(x: 0, y: 240, width: 390, height: 90)),    // cut by the input (viewport 281)
+        ]
+        let place = try XCTUnwrap(UpsideDown.keptInPlace(frames, viewportHeight: 281))
+        XCTAssertEqual(place.id, "c")
+        // On screen the anchor s puts the row's point minY + s·h at s·H; the flipped list's anchor is 1 - s.
+        let s = 1 - place.anchor.y
+        XCTAssertEqual(140 + s * 100, s * 281, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(s, 0)
+        XCTAssertLessThanOrEqual(s, 1)
+    }
+
+    func testHoldInPlaceNeedsARowWhollyOnScreen() {
+        XCTAssertNil(UpsideDown.keptInPlace([("tall", CGRect(x: 0, y: -100, width: 390, height: 500))], viewportHeight: 281))
+        XCTAssertNil(UpsideDown.keptInPlace([], viewportHeight: 281))
+        // A row at the very bottom edge: anchor at the bottom (flipped: top), exactly.
+        let edge = UpsideDown.keptInPlace([("e", CGRect(x: 0, y: 181, width: 390, height: 100))], viewportHeight: 281)
+        XCTAssertEqual(edge?.anchor.y ?? -1, 0, accuracy: 0.0001)
+    }
+
     /// iOS 17, a thread's marker laid out once: at the newest row while the marker is within nearNewest under the bottom.
     func testMarkerSaysNewestWithinNearNewestOfTheBottom() {
         XCTAssertTrue(UpsideDown.markerNear(markerMinY: 591, viewportHeight: 600)) // at the origin (8 pt padding)
