@@ -17,8 +17,13 @@
  * access token never reaches the WebView (CSP: connect-src 'none', apps/desktop/mobile-editor/index.html).
  */
 
-/** Bumped when a message changes shape; `ready` carries it so native can refuse a bundle it does not know. */
-export const BRIDGE_VERSION = 1;
+/**
+ * Bumped when a message changes shape; `ready` carries it so native can refuse a bundle it does not know.
+ * 2 (2026-10-10): the body's generation (`load.gen` / `replace.gen` → `changed.baseGen` / `bodyRequested.baseGen`), the
+ * request's id (`requestBody.id` → `bodyRequested.id`) and `bodyRequested {loaded: false}` before any `load`. Messages
+ * without them are still taken (native then gets no `baseGen` / `id` back).
+ */
+export const BRIDGE_VERSION = 2;
 
 export type EditorTheme = "light" | "dark" | "system";
 
@@ -73,14 +78,18 @@ export type NativeMessage =
    * A page's body into the editor (a new editor each time). `caretLine`: the body line to put the caret on (coming
    * from the Markdown editor). `attachmentUrl`: where `![alt](attachment:<id>)` images load from, with `{id}` for the
    * id (e.g. `taylis-editor://app/attachment/{id}`); without it an image shows as a box with its alt text.
+   * `gen`: native's number for this body (see `replace`); the editor's `changed` / `bodyRequested` carry it back.
    */
-  | { type: "load"; body: string; title?: string; theme?: EditorTheme; readOnly?: boolean; caretLine?: number | null; locale?: string | null; attachmentUrl?: string | null }
+  | { type: "load"; body: string; title?: string; theme?: EditorTheme; readOnly?: boolean; caretLine?: number | null; locale?: string | null; attachmentUrl?: string | null; gen?: number }
   /**
    * The body as the server now holds it (a merge, someone else's version): only the blocks that changed are replaced,
    * outside the undo history. Not while an IME composition is open or an edit waits to be written: the body then waits
-   * for the composition to end (the next `changed` carries the editor's text, which the server merges again).
+   * for the composition to end, and an edit written first drops it (the next `changed` carries the editor's text, which
+   * the server merges again). `gen`: native's number for this body. The editor's `changed` / `bodyRequested` say which
+   * body their text was written on (`baseGen`: the `gen` of the last `load` / `replace` it took), so native saves a text
+   * written before a dropped `replace` on the version that text came from, never on the merged one (docs/WIKI.md §30.3).
    */
-  | { type: "replace"; body: string }
+  | { type: "replace"; body: string; gen?: number }
   | { type: "setTheme"; theme: EditorTheme }
   /**
    * What the keyboard covers, in CSS px, when the WebView is not resized above it (0 when it is): the formatting row
@@ -96,17 +105,29 @@ export type NativeMessage =
   | { type: "provideEmoji"; emoji: BridgeEmoji[] }
   | { type: "focus" }
   | { type: "blur" }
-  /** The body as the editor holds it now, at once (`bodyRequested`): before saving on leave, before switching to Markdown. */
-  | { type: "requestBody" }
+  /**
+   * The body as the editor holds it now, at once (`bodyRequested`): before saving on leave, before switching to Markdown.
+   * `id`: given back in the answer (native ignores an answer to another request, e.g. one from before a reload).
+   */
+  | { type: "requestBody"; id?: number }
   /** A native toolbar's button. */
   | { type: "command"; name: EditorCommand };
 
 export type WebMessage =
   /** The page is up and listening: `load` may follow. */
   | { type: "ready"; version: number }
-  /** The body changed (typing paused 300 ms, or the editor lost the focus). `dirty`: differs from the last load / replace. */
-  | { type: "changed"; body: string; dirty: boolean }
-  | { type: "bodyRequested"; body: string; dirty: boolean; caretLine: number }
+  /**
+   * The body changed (typing paused 300 ms, or the editor lost the focus). `dirty`: differs from the last load / replace.
+   * `baseGen`: the `gen` of the last `load` / `replace` the editor took (absent when native sent none).
+   */
+  | { type: "changed"; body: string; dirty: boolean; baseGen?: number }
+  /** The answer to `requestBody` (`id` as asked), `baseGen` as in `changed`. */
+  | { type: "bodyRequested"; body: string; dirty: boolean; caretLine: number; baseGen?: number; id?: number }
+  /**
+   * The answer to `requestBody` before any `load` (e.g. the page read again after its web process ended): there is no
+   * body, and native must not take this for an empty one.
+   */
+  | { type: "bodyRequested"; loaded: false; id?: number }
   /** The body line the caret's block starts on (sent when the editor loses the focus; the Markdown editor opens there). */
   | { type: "caret"; line: number }
   /** The document's height in CSS px, when it changed (for a WebView sized to its content). */
@@ -167,6 +188,10 @@ export function parseNativeMessage(raw: unknown): { ok: true; message: NativeMes
     case "replace":
       if (typeof message.body !== "string") return { ok: false, error: `${type}: body must be a string` };
       if (type === "load" && message.theme !== undefined && !THEMES.has(String(message.theme))) return { ok: false, error: `load: theme ${JSON.stringify(message.theme)}` };
+      if (message.gen !== undefined && !Number.isSafeInteger(message.gen)) return { ok: false, error: `${type}: gen must be an integer` };
+      break;
+    case "requestBody":
+      if (message.id !== undefined && !Number.isSafeInteger(message.id)) return { ok: false, error: "requestBody: id must be an integer" };
       break;
     case "setTheme":
       if (!THEMES.has(String(message.theme))) return { ok: false, error: `setTheme: theme ${JSON.stringify(message.theme)}` };

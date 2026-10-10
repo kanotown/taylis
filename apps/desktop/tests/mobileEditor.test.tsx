@@ -65,9 +65,11 @@ function page() {
   const receive = (message: NativeMessage) => act(() => bridge.receive(message));
   const editor = () => (screen.getByRole("textbox", { name: "ページの本文" }) as unknown as { editor: Editor }).editor;
   const last = <T extends WebMessage["type"]>(type: T) => sent.filter((m): m is Extract<WebMessage, { type: T }> => m.type === type).at(-1);
-  const requestBody = () => {
+  const requestBody = (): Extract<WebMessage, { type: "bodyRequested"; body: string }> => {
     receive({ type: "requestBody" });
-    return last("bodyRequested")!;
+    const answer = last("bodyRequested")!;
+    if (!("body" in answer)) throw new Error("bodyRequested without a body (not loaded)");
+    return answer;
   };
   return { sent, bridge, receive, editor, last, requestBody };
 }
@@ -195,6 +197,71 @@ describe("the bridge and the body", () => {
     await settle(350);
     expect(p.last("changed")!.body).toBe("一行目！\n二行目");
     expect(p.requestBody().body).toBe("一行目！\n二行目");
+  });
+
+  // Review v0.1.49 #1: native must know which body the editor's text was written on, or it saves a text written before a
+  // dropped replace on the merged version (the other person's lines deleted).
+  it("baseGen: the gen of the last load / replace taken comes back with changed and bodyRequested; a dropped replace leaves it", async () => {
+    const p = page();
+    p.receive({ type: "load", body: "一行目\n二行目", gen: 1 });
+    const editor = p.editor();
+    caretAtEndOf(editor, 0);
+    type(editor, "！");
+    await settle(350);
+    expect(p.last("changed")).toEqual({ type: "changed", body: "一行目！\n二行目", dirty: true, baseGen: 1 });
+    // A merge comes in while the next edit waits to be written: held, then dropped by that edit.
+    type(editor, "？");
+    p.receive({ type: "replace", body: "一行目！\n二行目（他の人）", gen: 2 });
+    await settle(350);
+    expect(p.last("changed")).toEqual({ type: "changed", body: "一行目！？\n二行目", dirty: true, baseGen: 1 });
+    expect(p.requestBody()).toMatchObject({ body: "一行目！？\n二行目", baseGen: 1 });
+    // Native merged again: taken at once (nothing waits), and the text is written on gen 3 from now.
+    p.receive({ type: "replace", body: "一行目！？\n二行目（他の人）", gen: 3 });
+    expect(p.requestBody()).toMatchObject({ body: "一行目！？\n二行目（他の人）", dirty: false, baseGen: 3 });
+    type(editor, "。");
+    expect(p.requestBody()).toMatchObject({ baseGen: 3, dirty: true });
+    // A replace that is the text already moves baseGen too (nothing to put in).
+    const now = p.requestBody().body;
+    p.receive({ type: "replace", body: now, gen: 4 });
+    expect(p.requestBody()).toMatchObject({ body: now, dirty: false, baseGen: 4 });
+  });
+
+  it("baseGen: a replace held through an IME composition and let in after it ends moves baseGen to its gen", async () => {
+    const p = page();
+    p.receive({ type: "load", body: BODY, gen: 7 });
+    const editor = p.editor();
+    fireEvent.compositionStart(editor.view.dom);
+    const merged = BODY.replace("注意", "注意（他の人）");
+    p.receive({ type: "replace", body: merged, gen: 8 });
+    expect(p.requestBody()).toMatchObject({ body: BODY, baseGen: 7 });
+    act(() => {
+      fireEvent.compositionEnd(editor.view.dom);
+    });
+    await settle(COMPOSITION_SETTLE_MS + 40);
+    expect(p.requestBody()).toMatchObject({ body: merged, baseGen: 8 });
+  });
+
+  it("without gen from native, no baseGen goes back (the messages of bridge version 1)", async () => {
+    const p = page();
+    p.receive({ type: "load", body: "本文" });
+    const editor = p.editor();
+    caretAtEndOf(editor, 0);
+    type(editor, "！");
+    await settle(350);
+    expect(p.last("changed")).toEqual({ type: "changed", body: "本文！", dirty: true });
+    expect(p.requestBody()).toEqual({ type: "bodyRequested", body: "本文！", dirty: true, caretLine: 0 });
+  });
+
+  // Review v0.1.49 #2: a page read again after its web process ended has no body; an empty answer was saved over the page.
+  it("requestBody before any load answers loaded: false (no body), with the request's id; after a load the id comes back with the body", () => {
+    const p = page();
+    p.receive({ type: "requestBody", id: 5 });
+    expect(p.last("bodyRequested")).toEqual({ type: "bodyRequested", loaded: false, id: 5 });
+    p.receive({ type: "requestBody" });
+    expect(p.last("bodyRequested")).toEqual({ type: "bodyRequested", loaded: false });
+    p.receive({ type: "load", body: "本文", gen: 2 });
+    p.receive({ type: "requestBody", id: 6 });
+    expect(p.last("bodyRequested")).toEqual({ type: "bodyRequested", body: "本文", dirty: false, caretLine: 0, baseGen: 2, id: 6 });
   });
 
   it("a replace that waited is applied when the pending edit changed nothing", async () => {

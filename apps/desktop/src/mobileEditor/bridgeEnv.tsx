@@ -141,21 +141,33 @@ function toPageRef(page: BridgePage): PageRef {
  * The save loop as the editor sees it, over the bridge: `changed` goes to native when typing pauses (native's own
  * CanvasSaver saves, merges and retries); a `replace` from native goes into the editor at once, or waits while an IME
  * composition is open or an edit is about to be written (the editor's canReplace), as Desktop's loop does.
+ *
+ * `baseGen` is the `gen` of the last `load` / `replace` the editor took, sent with every `changed` / `bodyRequested`: a
+ * replacement that waited and was dropped leaves it where it was, so native knows the text was written on the body
+ * before that merge and saves it on the version that body came from (the server merges again, §30.3).
  */
 export class BridgeSink implements PageEditorSink {
   text: string;
   textRevision = 0;
   canReplace: () => boolean = () => true;
+  /** The `gen` of the body the text is written on (undefined: native sent none). */
+  baseGen: number | undefined;
   /** The body as last loaded or replaced: `dirty` is being away from it. */
   private base: string;
   /** A replacement that waited for a composition to end (dropped when an edit goes out first). */
-  private pending: string | null = null;
+  private pending: { body: string; gen: number | undefined } | null = null;
   private quietDepth = 0;
   private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly bridge: Bridge, body: string, private readonly caretLine: () => number) {
+  constructor(private readonly bridge: Bridge, body: string, private readonly caretLine: () => number, gen?: number) {
     this.text = body;
     this.base = body;
+    this.baseGen = gen;
+  }
+
+  /** `baseGen` as a message field (absent when native sent no `gen`). */
+  gen(): { baseGen?: number } {
+    return this.baseGen === undefined ? {} : { baseGen: this.baseGen };
   }
 
   get dirty(): boolean {
@@ -170,9 +182,10 @@ export class BridgeSink implements PageEditorSink {
   edit(text: string): void {
     if (text === this.text) return;
     this.text = text;
-    // A merged body held back is stale now: native merges this text and sends the result again.
+    // A merged body held back is stale now: native merges this text (on the version of `baseGen`, which stays where it
+    // was) and sends the result again.
     this.pending = null;
-    if (this.quietDepth === 0) this.bridge.send({ type: "changed", body: text, dirty: this.dirty });
+    if (this.quietDepth === 0) this.bridge.send({ type: "changed", body: text, dirty: this.dirty, ...this.gen() });
   }
 
   /** The editor lost the focus, ⌘S, the page hiding: the caret's line for the Markdown editor (the body already went out). */
@@ -185,27 +198,30 @@ export class BridgeSink implements PageEditorSink {
     // After ProseMirror's own compositionend work (it runs after the editor's handler and finishes a little later):
     // as Desktop's loop, which reads the page again once the composition is over.
     setTimeout(() => {
-      if (this.pending !== null && this.canReplace()) this.apply(this.pending);
+      if (this.pending !== null && this.canReplace()) this.apply(this.pending.body, this.pending.gen);
     }, COMPOSITION_SETTLE_MS);
   }
 
   /** `replace` from native. */
-  replace(body: string): void {
+  replace(body: string, gen?: number): void {
     if (body === this.text) {
+      // The text is that body already (what is still unwritten is typed on it): written on `gen` from now.
       this.base = body;
+      this.baseGen = gen;
       this.pending = null;
       return;
     }
     if (!this.canReplace()) {
-      this.pending = body;
+      this.pending = { body, gen };
       return;
     }
-    this.apply(body);
+    this.apply(body, gen);
   }
 
-  private apply(body: string): void {
+  private apply(body: string, gen: number | undefined): void {
     this.pending = null;
     this.base = body;
+    this.baseGen = gen;
     this.text = body;
     this.textRevision += 1;
     for (const listener of this.listeners) listener();

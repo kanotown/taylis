@@ -1,10 +1,10 @@
 {
-  "_comment": "M153a (docs/WIKI.md §30.3): one example of every message of the editor bridge (apps/shared/mobile-editor/src/bridge.ts). The JS test (apps/desktop/tests/mobileEditorBridge.test.ts) parses every native message and sends every web one; the iOS and Android tests decode and encode the same examples.",
-  "version": 1,
+  "_comment": "M153a (docs/WIKI.md §30.3): one example of every message (version 2: gen / baseGen / id / loaded false; the shapes without them are still taken) of the editor bridge (apps/shared/mobile-editor/src/bridge.ts). The JS test (apps/desktop/tests/mobileEditorBridge.test.ts) parses every native message and sends every web one; the iOS and Android tests decode and encode the same examples.",
+  "version": 2,
   "native_to_web": [
-    { "type": "load", "body": "# 手順\n\n最初の行\n", "title": "マニュアル", "theme": "dark", "readOnly": false, "caretLine": 2, "locale": "ja", "attachmentUrl": "taylis-editor://app/attachment/{id}" },
+    { "type": "load", "body": "# 手順\n\n最初の行\n", "title": "マニュアル", "theme": "dark", "readOnly": false, "caretLine": 2, "locale": "ja", "attachmentUrl": "taylis-editor://app/attachment/{id}", "gen": 3 },
     { "type": "load", "body": "" },
-    { "type": "replace", "body": "# 手順\n\n最初の行（直した）\n" },
+    { "type": "replace", "body": "# 手順\n\n最初の行（直した）\n", "gen": 4 },
     { "type": "setTheme", "theme": "light" },
     { "type": "setViewport", "keyboardHeight": 336, "safeBottom": 34 },
     { "type": "setViewport", "keyboardHeight": 0 },
@@ -23,12 +23,15 @@
     { "type": "focus" },
     { "type": "blur" },
     { "type": "requestBody" },
+    { "type": "requestBody", "id": 7 },
     { "type": "command", "name": "bold" }
   ],
   "web_to_native": [
-    { "type": "ready", "version": 1 },
+    { "type": "ready", "version": 2 },
+    { "type": "changed", "body": "# 手順\n\n最初の行を直した\n", "dirty": true, "baseGen": 3 },
     { "type": "changed", "body": "# 手順\n\n最初の行を直した\n", "dirty": true },
-    { "type": "bodyRequested", "body": "# 手順\n\n最初の行\n", "dirty": false, "caretLine": 2 },
+    { "type": "bodyRequested", "body": "# 手順\n\n最初の行（直した）\n", "dirty": false, "caretLine": 2, "baseGen": 4, "id": 7 },
+    { "type": "bodyRequested", "loaded": false, "id": 8 },
     { "type": "caret", "line": 2 },
     { "type": "height", "px": 1240 },
     { "type": "needPeople", "query": "ha" },
@@ -44,6 +47,8 @@
     { "raw": { "type": "ping" }, "error": "unknown type \"ping\"" },
     { "raw": { "type": "load", "body": 1 }, "error": "load: body must be a string" },
     { "raw": { "type": "setTheme", "theme": "sepia" }, "error": "setTheme: theme \"sepia\"" },
-    { "raw": { "type": "command", "name": "explode" }, "error": "command: unknown name \"explode\"" }
+    { "raw": { "type": "command", "name": "explode" }, "error": "command: unknown name \"explode\"" },
+    { "raw": { "type": "replace", "body": "x", "gen": "4" }, "error": "replace: gen must be an integer" },
+    { "raw": { "type": "requestBody", "id": 1.5 }, "error": "requestBody: id must be an integer" }
   ]
 }
