@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.editor.EDITOR_BRIDGE_VERSION
 import jp.chikuwachat.android.editor.EditorSession
 import jp.chikuwachat.android.editor.EditorSessionEnv
 import jp.chikuwachat.android.editor.EditorTheme
@@ -25,7 +26,12 @@ import org.junit.Test
  * BridgeSink's rules (apps/desktop/src/mobileEditor/bridgeEnv.tsx, PageEditor.tsx): an edit is written as `changed`
  * 300 ms after the last keystroke; a `replace` is held while a composition is open or an edit waits to be written, and
  * dropped when that edit is written; `requestBody` writes at once and answers in the same task; a blur writes at once
- * and then sends `caret`.
+ * and then sends `caret`; bridge version 2's `baseGen` is the `gen` of the last `load` / `replace` it took (a dropped
+ * one does not move it) and `bodyRequested` carries the request's `id`.
+ *
+ * Each case runs focused (the merge kept back while the editor may be typing) and, where the review asked, with the
+ * session taking the editor for quiet (the focus not seen): the merge then goes out as `replace` and is dropped, and the
+ * text written before it is saved on its own body's version (CanvasSaver.edit basedOn).
  *
  * Base `a\nb\nc`; I save `A\nb\nc`; before its answer `AA` is typed but not yet written; someone else saves
  * `a\nb\nREMOTE`; the answer is the merge `A\nb\nREMOTE`. Whatever the editor then does, the server must end with
@@ -57,13 +63,19 @@ class EditorMergeRaceTest {
         /** BridgeSink.text: what was last written / loaded / replaced. */
         private var written = ""
         private var base = ""
-        /** A `replace` held back (BridgeSink.pending). */
+        /** A `replace` held back (BridgeSink.pending), with its `gen`. */
         var held: String? = null
             private set
+        private var heldGen: Int? = null
         val dropped = ArrayList<String>()
         var composing = false
         private var writeTimer: CanvasCancel? = null
         val writePending: Boolean get() = writeTimer != null
+        /** The `gen` of the last `load` / `replace` taken (BridgeSink's baseGen): a dropped `replace` does not move it. */
+        var gen: Int? = null
+            private set
+        /** Every `replace` that reached the page. */
+        val replaces = ArrayList<NativeMessage.Replace>()
 
         fun receive(message: NativeMessage) {
             when (message) {
@@ -72,14 +84,18 @@ class EditorMergeRaceTest {
                     written = message.body
                     base = message.body
                     held = null
+                    gen = message.gen
                 }
-                is NativeMessage.Replace -> replace(message.body)
-                NativeMessage.RequestBody -> {
+                is NativeMessage.Replace -> {
+                    replaces.add(message)
+                    replace(message.body, message.gen)
+                }
+                is NativeMessage.RequestBody -> {
                     // Written now, without a `changed` (sink.quiet), and answered in the same task.
                     writeTimer?.cancel()
                     writeTimer = null
                     edit(doc, quiet = true)
-                    post(WebMessage.BodyRequested(written, written != base, 0))
+                    post(WebMessage.BodyRequested(written, written != base, 0, baseGen = gen, id = message.id))
                 }
                 NativeMessage.Blur -> blur()
                 else -> Unit
@@ -100,7 +116,7 @@ class EditorMergeRaceTest {
         fun endComposition() {
             composing = false
             if (held == null) return
-            timers.schedule(50) { held?.let { if (canReplace()) apply(it) } }
+            timers.schedule(50) { held?.let { if (canReplace()) apply(it, heldGen) } }
         }
 
         /** The editor loses the focus: the composition ends, the pending edit is written, then `caret`. */
@@ -121,27 +137,31 @@ class EditorMergeRaceTest {
             written = text
             held?.let { dropped.add(it) }
             held = null
-            if (!quiet) post(WebMessage.Changed(text, text != base))
+            if (!quiet) post(WebMessage.Changed(text, text != base, baseGen = gen))
         }
 
-        private fun replace(body: String) {
+        private fun replace(body: String, replaceGen: Int?) {
             if (body == written) {
+                // Already the editor's body: it is on that generation now.
                 base = body
                 held = null
+                gen = replaceGen
                 return
             }
             if (!canReplace()) {
                 held = body
+                heldGen = replaceGen
                 return
             }
-            apply(body)
+            apply(body, replaceGen)
         }
 
-        private fun apply(body: String) {
+        private fun apply(body: String, replaceGen: Int?) {
             held = null
             base = body
             written = body
             doc = body
+            gen = replaceGen
         }
     }
 
@@ -183,18 +203,24 @@ class EditorMergeRaceTest {
             h.pump()
         }
         h.session.start()
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.pump()
         return h
     }
 
     /**
      * I type `A`; it is written and its save goes out, held on the wire. `AA` is typed (not written yet), someone
-     * else saves `a\nb\nREMOTE`, and the answer lands. [beforeTyping] runs while the save waits (before `AA`),
+     * else saves `a\nb\nREMOTE`, and the answer lands. [focused]: whether the session sees the editor focused when the
+     * answer lands. False is review v0.1.49 #1's case — the focus not seen (or typing begun just as the `replace` went
+     * out): the merge goes out as `replace` while the page still holds a write, and the page holds it back and drops
+     * it; the body's generation keeps that safe. [beforeTyping] runs while the save waits (before `AA`),
      * [beforeAnswer] just before the answer lands.
      */
-    private fun Harness.firstSaveLandsWhileTyping(beforeTyping: Harness.() -> Unit = {}, beforeAnswer: Harness.() -> Unit = {}) {
-        focused = true
+    private fun Harness.firstSaveLandsWhileTyping(
+        focused: Boolean = true, beforeTyping: Harness.() -> Unit = {}, beforeAnswer: Harness.() -> Unit = {},
+    ) {
+        this.focused = focused
+        assertEquals("gen 1: the first read put the body in", 1, web.gen)
         web.type("A\nb\nc")
         advance(300) // written: `changed`
         val gate = CompletableDeferred<Unit>()
@@ -223,50 +249,169 @@ class EditorMergeRaceTest {
         assertNotEquals(CanvasSaveStatus.CONFLICT, saver.status)
     }
 
+    /** Not focused as far as the session can tell: the merge went out as `replace` (gen 2) and the page held it back. */
+    private fun Harness.assertTheMergeWentOutAndWasHeld() {
+        assertEquals(listOf(NativeMessage.Replace("A\nb\nREMOTE", gen = 2)), web.replaces)
+        assertEquals("A\nb\nREMOTE", web.held)
+    }
+
     /** The reviewer's case: typing on (the keyboard is up), the answer lands inside the 300 ms write-out. */
     @Test fun typingWhenTheMergeLandsLosesNothing() {
-        val h = harness()
-        h.firstSaveLandsWhileTyping()
-        assertEquals("the merge is kept back", "A\nb\nc", h.saver.text)
-        h.advance(300) // `AA` is written
-        h.assertNothingLost()
-        assertTrue(h.web.dropped.isEmpty())
-        // The keyboard goes away: the merged body comes in.
-        h.focused = false
-        h.web.blur()
-        h.advance(EditorSession.QUIET_AFTER_MS + 500)
-        assertEquals("AA\nb\nREMOTE", h.web.doc)
-        assertEquals("AA\nb\nREMOTE", h.saver.text)
+        for (focused in listOf(true, false)) {
+            val h = harness()
+            h.firstSaveLandsWhileTyping(focused)
+            if (focused) assertEquals("the merge is kept back", "A\nb\nc", h.saver.text) else h.assertTheMergeWentOutAndWasHeld()
+            h.advance(300) // `AA` is written (on gen 1: a held `replace` is dropped)
+            assertEquals(if (focused) emptyList() else listOf("A\nb\nREMOTE"), h.web.dropped)
+            h.assertNothingLost()
+            // The keyboard goes away: the merged body comes in.
+            h.focused = false
+            h.web.blur()
+            h.advance(EditorSession.QUIET_AFTER_MS + 500)
+            assertEquals("focused=$focused", "AA\nb\nREMOTE", h.web.doc)
+            assertEquals("AA\nb\nREMOTE", h.saver.text)
+            if (!focused) {
+                // Taken this time (gen 3): the next edit is saved on the head, beside someone else's next one.
+                assertEquals(NativeMessage.Replace("AA\nb\nREMOTE", gen = 3), h.web.replaces.last())
+                assertEquals(3, h.web.gen)
+                h.web.type("AAA\nb\nREMOTE")
+                h.server.otherSaves("AA\nb\nREMOTE2")
+                h.advance(5_000)
+                assertEquals("AAA\nb\nREMOTE2", h.server.body)
+            }
+        }
     }
 
     /** An IME composition open when the answer lands; converted, then typed on. */
     @Test fun aCompositionWhenTheMergeLandsLosesNothing() {
+        for (focused in listOf(true, false)) {
+            val h = harness()
+            h.firstSaveLandsWhileTyping(focused, beforeAnswer = { web.composing = true })
+            if (!focused) h.assertTheMergeWentOutAndWasHeld()
+            h.advance(100)
+            h.web.endComposition()
+            h.advance(300)
+            h.web.type("AA\nb\nc") // the next keystroke after the conversion
+            h.assertNothingLost()
+            h.focused = false
+            h.web.blur()
+            h.advance(EditorSession.QUIET_AFTER_MS + 500)
+            assertEquals("focused=$focused", "AA\nb\nREMOTE", h.web.doc)
+        }
+    }
+
+    /** The composition ends with nothing else to write: the page lets the held merge in (gen 2) and writes on it. */
+    @Test fun aMergeLetInAfterACompositionIsWrittenOn() {
         val h = harness()
-        h.firstSaveLandsWhileTyping(beforeAnswer = { web.composing = true })
-        h.advance(100)
-        h.web.endComposition()
-        h.advance(300)
-        h.web.type("AA\nb\nc") // the next keystroke after the conversion
-        h.assertNothingLost()
         h.focused = false
-        h.web.blur()
-        h.advance(EditorSession.QUIET_AFTER_MS + 500)
-        assertEquals("AA\nb\nREMOTE", h.web.doc)
+        h.web.type("A\nb\nc")
+        h.advance(300)
+        val gate = CompletableDeferred<Unit>()
+        h.server.gate = gate
+        h.advance(2_000)
+        h.web.composing = true // 「。」 being composed, nothing waiting to be written
+        h.server.gate = null
+        h.server.otherSaves("a\nb\nREMOTE")
+        gate.complete(Unit)
+        h.pump()
+        h.assertTheMergeWentOutAndWasHeld()
+        h.web.endComposition()
+        h.advance(60)
+        assertEquals("A\nb\nREMOTE", h.web.doc)
+        assertEquals(2, h.web.gen)
+        h.web.type("A\nb\nREMOTE。")
+        h.advance(5_000)
+        assertEquals("A\nb\nREMOTE。", h.server.body)
+        assertEquals("written on the merged head", "r4", h.server.saves.last().baseRevId)
     }
 
     /** The app goes to the background (`requestBody` with flush) right when the answer lands, in either order. */
     @Test fun anImmediateRequestBodyLosesNothing() {
-        for (before in listOf(true, false)) {
-            val h = harness()
-            if (before) {
-                h.firstSaveLandsWhileTyping(beforeAnswer = { session.requestBody(flush = true) })
-            } else {
-                h.firstSaveLandsWhileTyping()
-                h.session.requestBody(flush = true)
+        for (focused in listOf(true, false)) {
+            for (before in listOf(true, false)) {
+                val h = harness()
+                if (before) {
+                    h.firstSaveLandsWhileTyping(focused, beforeAnswer = { session.requestBody(flush = true) })
+                } else {
+                    h.firstSaveLandsWhileTyping(focused)
+                    h.session.requestBody(flush = true)
+                }
+                assertFalse(h.session.awaitingBody)
+                h.assertNothingLost()
             }
-            assertFalse(h.session.awaitingBody)
-            h.assertNothingLost()
         }
+    }
+
+    /**
+     * Someone else's version read while idle goes in as `replace` (gen 2); the page, still writing, drops it: its text
+     * (on gen 1) is merged with that version, not saved over it. Focused, the version is kept back instead.
+     */
+    @Test fun anEditOnTheBodyBeforeSomeoneElsesVersionIsMergedWithIt() {
+        for (focused in listOf(true, false)) {
+            val h = harness()
+            h.focused = focused
+            h.server.otherSaves("a\nb\nREMOTE")
+            h.saver.remoteVersion(h.server.version) // read after 500 ms
+            h.advance(300)
+            h.web.type("A\nb\nc") // written at 600 ms, after the read
+            h.advance(200)
+            assertEquals(0, h.server.saves.size)
+            h.advance(100)
+            if (focused) {
+                assertTrue(h.web.replaces.isEmpty())
+            } else {
+                assertEquals(listOf(NativeMessage.Replace("a\nb\nREMOTE", gen = 2)), h.web.replaces)
+                assertEquals(listOf("a\nb\nREMOTE"), h.web.dropped) // the write at 300 ms dropped it
+            }
+            h.advance(5_000)
+            assertEquals("focused=$focused", "A\nb\nREMOTE", h.server.body)
+            assertEquals("written on the version before REMOTE", "r1", h.server.saves.first().baseRevId)
+        }
+    }
+
+    /**
+     * A save that went out before the page's text stepped back to an earlier body (here: a tick in the reading view on
+     * the merged body, sent at once, while the page drops both `replace`s and writes on gen 1) does not move the base:
+     * its answer is that tick's generation's base, and the page's text is merged on its own (gen 1's) version.
+     */
+    @Test fun aSaveSentBeforeAStepBackDoesNotMoveTheBase() {
+        val h = harness()
+        h.firstSaveLandsWhileTyping(focused = false)
+        h.assertTheMergeWentOutAndWasHeld()
+        h.saver.edit("A\nB\nREMOTE", external = true) // a tick: gen 3, on the merged head r4
+        h.pump()
+        assertEquals(NativeMessage.Replace("A\nB\nREMOTE", gen = 3), h.web.replaces.last())
+        val gate = CompletableDeferred<Unit>()
+        h.server.gate = gate
+        h.saver.flush() // on the wire, on r4
+        assertTrue(h.saver.busy)
+        h.advance(300) // the page writes `AA` on gen 1, dropping both
+        assertEquals(listOf("A\nB\nREMOTE"), h.web.dropped)
+        h.server.gate = null
+        gate.complete(Unit)
+        h.pump()
+        h.advance(5_000)
+        assertEquals("the tick, the other person's line and mine", "AA\nB\nREMOTE", h.server.body)
+        assertEquals("r3", h.server.saves.last().baseRevId)
+    }
+
+    /** A text that names no generation (a bundle of bridge version 1) is taken as before: on the loop's base. */
+    @Test fun aChangedWithoutBaseGenIsWrittenOnTheCurrentBody() {
+        val h = harness()
+        h.web.type("A\nb\nc")
+        h.advance(300)
+        val gate = CompletableDeferred<Unit>()
+        h.server.gate = gate
+        h.advance(2_000)
+        h.server.gate = null
+        h.server.otherSaves("a\nb\nREMOTE")
+        gate.complete(Unit)
+        h.pump()
+        assertEquals(listOf(NativeMessage.Replace("A\nb\nREMOTE", gen = 2)), h.web.replaces)
+        h.session.onWeb(WebMessage.Changed("A\nb\nREMOTE!", dirty = true))
+        h.advance(5_000)
+        assertEquals("A\nb\nREMOTE!", h.server.body)
+        assertEquals("r4", h.server.saves.last().baseRevId)
     }
 
     /**

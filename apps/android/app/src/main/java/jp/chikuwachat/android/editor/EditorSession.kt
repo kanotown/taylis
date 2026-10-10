@@ -3,6 +3,7 @@ package jp.chikuwachat.android.editor
 import jp.chikuwachat.android.sync.CanvasCancel
 import jp.chikuwachat.android.sync.CanvasSaver
 import jp.chikuwachat.android.sync.CanvasTimers
+import java.util.concurrent.atomic.AtomicInteger
 
 /** What one editing session needs from the app around it (ui/MobileEditor.kt builds it from the controller). */
 interface EditorSessionEnv {
@@ -38,6 +39,10 @@ interface EditorSessionEnv {
  * (bridge.ts); that edit's `changed` is written on the body before the merge, and saved on the merged version it
  * deleted the other person's lines (docs/WIKI.md §30.4 / §30.5). Kept back instead, every save goes on the version the
  * editor's body was written on and the server merges it; the merged body comes in once the editor lets go ([letGo]).
+ * That rule made the loss rare; the body's generation (bridge version 2) makes it impossible: `load` / `replace` carry
+ * the loop's [CanvasSaver.textLineage] as `gen`, the editor's `changed` / `bodyRequested` name the one they were
+ * written on (`baseGen`), and the loop saves a text written before a dropped `replace` on that body's version
+ * (review v0.1.49 #1: the focus not seen, typing begun as the `replace` was on its way).
  *
  * Runs on the main thread, like the loop.
  */
@@ -87,7 +92,8 @@ class EditorSession(
 
     /** A `requestBody` waiting for its `bodyRequested`: whether to save at once, and who wants the caret's line. */
     private class BodyWaiter(val flush: Boolean, val then: ((caretLine: Int) -> Unit)?)
-    private val bodyWaiters = ArrayList<BodyWaiter>()
+    /** By the request's id: an answer to another id (asked before a reload, given up) is not theirs. */
+    private val bodyWaiters = LinkedHashMap<Int, BodyWaiter>()
 
     /** `ready` of a bundle this app does not know came: the screen falls back to Markdown. */
     var unsupported = false
@@ -105,12 +111,31 @@ class EditorSession(
             }
             is WebMessage.Changed -> {
                 lastActivity = now()
-                take(message.body)
+                take(message.body, message.baseGen)
             }
             is WebMessage.BodyRequested -> {
-                take(message.body)
+                val id = message.id
+                val waiting = if (id == null) {
+                    bodyWaiters.values.toList().also { bodyWaiters.clear() } // version 1: no id, it answers them all
+                } else {
+                    val waiter = bodyWaiters.remove(id)
+                    if (waiter == null) {
+                        // Asked before a reload, or given up: its body may be older than what the loop holds now.
+                        env.log("warn", "bodyRequested $id answers no request waiting here: ignored", null)
+                        return
+                    }
+                    listOf(waiter)
+                }
+                take(message.body, message.baseGen)
                 caretLine = message.caretLine
-                answerWaiters(message.caretLine)
+                answer(waiting, message.caretLine)
+            }
+            is WebMessage.BodyUnavailable -> {
+                // A page without an editor (read again, nothing loaded): no body — never an empty one. What the loop
+                // holds stands; the session editing now loads its body again (EditorHostLifecycle.delivered).
+                env.log("warn", "requestBody answered by a page without an editor", null)
+                val id = message.id
+                if (id == null) giveUp() else bodyWaiters.remove(id)?.let { answer(listOf(it), caretLine ?: 0) }
             }
             is WebMessage.Caret -> {
                 caretLine = message.line
@@ -127,7 +152,10 @@ class EditorSession(
         }
     }
 
-    /** The editor is up: the directory first (chips take their names when the body is read), then the body. */
+    /**
+     * The editor is up: the directory first (chips take their names when the body is read), then the body — the loop's
+     * text with its generation and the caret's line (also for a page read again after its render process ended).
+     */
     fun load() {
         send(NativeMessage.SetTheme(env.theme))
         send(NativeMessage.SetViewport(0))
@@ -138,11 +166,21 @@ class EditorSession(
         send(
             NativeMessage.Load(
                 body = saver.text, title = env.title, theme = env.theme, readOnly = env.readOnly, caretLine = caretLine,
-                locale = env.locale, attachmentUrl = env.attachmentUrl,
+                locale = env.locale, attachmentUrl = env.attachmentUrl, gen = saver.textLineage,
             ),
         )
         loaded = true
         if (autoFocus && !env.readOnly) send(NativeMessage.Focus)
+    }
+
+    /**
+     * The page's render process ended and a new page is read (MobileEditorHost): what was asked of the old one will not
+     * be answered (the loop keeps what it has), and nothing goes to the new one until its `ready`, when the body is
+     * loaded again ([load]).
+     */
+    fun pageLost() {
+        loaded = false
+        giveUp()
     }
 
     /** The editor's page joins the loop: from now on the loop replaces its text only when [editorQuiet]. */
@@ -180,21 +218,25 @@ class EditorSession(
         }
     }
 
-    private fun take(body: String) {
+    /** [baseGen]: the generation the editor wrote [body] on (null: a version 1 bundle; the loop's current one). */
+    private fun take(body: String, baseGen: Int?) {
         // Nothing new since the editor last wrote or was handed this body: the loop's text (perhaps a merge not yet
         // on screen) stands.
         if (body == wire) return
         wire = body
-        saver.edit(body)
+        saver.edit(body, basedOn = baseGen)
     }
 
-    /** The loop's text changed (a merge, someone else's version, a tick): the editor takes it unless it wrote it. */
+    /**
+     * The loop's text changed (a merge, someone else's version, a tick): the editor takes it unless it wrote it, with
+     * its generation (the editor's next `changed` says whether it took it).
+     */
     fun saverChanged() {
         if (!loaded) return
         val text = saver.text
         if (text == wire) return
         wire = text
-        send(NativeMessage.Replace(text))
+        send(NativeMessage.Replace(text, gen = saver.textLineage))
     }
 
     /**
@@ -206,12 +248,16 @@ class EditorSession(
             then?.invoke(caretLine ?: 0)
             return
         }
-        bodyWaiters.add(BodyWaiter(flush, then))
-        send(NativeMessage.RequestBody)
+        val id = requestIds.incrementAndGet()
+        bodyWaiters[id] = BodyWaiter(flush, then)
+        send(NativeMessage.RequestBody(id))
     }
 
     /** A `requestBody` is still unanswered (the WebView must stay for it). */
     val awaitingBody: Boolean get() = bodyWaiters.isNotEmpty()
+
+    /** Whether the `requestBody` numbered [id] is this session's and still unanswered. */
+    fun waitsFor(id: Int): Boolean = bodyWaiters.containsKey(id)
 
     /**
      * The editor will not answer (its WebView is gone, or the answer took too long): what is known stands. The loop
@@ -220,12 +266,12 @@ class EditorSession(
      */
     fun giveUp() {
         if (bodyWaiters.isEmpty()) return
-        answerWaiters(caretLine ?: 0)
+        val waiting = bodyWaiters.values.toList()
+        bodyWaiters.clear()
+        answer(waiting, caretLine ?: 0)
     }
 
-    private fun answerWaiters(line: Int) {
-        val waiting = bodyWaiters.toList()
-        bodyWaiters.clear()
+    private fun answer(waiting: List<BodyWaiter>, line: Int) {
         if (waiting.any { it.flush }) saver.flush()
         waiting.forEach { it.then?.invoke(line) }
     }
@@ -258,5 +304,8 @@ class EditorSession(
     companion object {
         /** How long after the editor's last edit or command a merged body may go in (as iOS's quietAfter). */
         const val QUIET_AFTER_MS = 1_000L
+
+        /** `requestBody` ids, unique in the process: sessions sharing a WebView never take each other's answers. */
+        private val requestIds = AtomicInteger()
     }
 }

@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.editor.BridgeEmoji
+import jp.chikuwachat.android.editor.EDITOR_BRIDGE_VERSION
 import jp.chikuwachat.android.editor.BridgePage
 import jp.chikuwachat.android.editor.BridgePerson
 import jp.chikuwachat.android.editor.EditorCommand
@@ -82,7 +83,7 @@ class EditorSessionTest {
     @Test fun readyBringsTheDirectoryThenTheBodyThenTheKeyboard() {
         val h = harness("# 手順\n\n最初の行\n", caretLine = 2)
         assertFalse(h.session.loaded)
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         assertEquals(listOf("SetTheme", "SetViewport", "ProvidePeople", "ProvideEmoji", "ProvidePages", "Load", "Focus"), h.sent.types)
         assertEquals(NativeMessage.SetTheme(EditorTheme.DARK), h.sent[0])
         assertEquals(NativeMessage.SetViewport(0), h.sent[1]) // adjustResize: the WebView is resized above the keyboard
@@ -97,21 +98,23 @@ class EditorSessionTest {
         assertEquals(2, load.caretLine)
         assertEquals("ja", load.locale)
         assertEquals(h.env.attachmentUrl, load.attachmentUrl)
+        assertEquals("the body's generation: the first read put it in", 1, load.gen)
+        assertEquals(h.saver.textLineage, load.gen)
         assertTrue(h.session.loaded)
     }
 
     @Test fun aReadOnlyPageGetsNoKeyboard() {
         val h = harness("x")
         h.env.readOnly = true
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         assertEquals(true, (h.sent.last() as NativeMessage.Load).readOnly)
         assertFalse(h.sent.any { it is NativeMessage.Focus })
     }
 
     @Test fun aBundleOfAnotherBridgeVersionIsNotUsed() {
         val h = harness("x")
-        h.session.onWeb(WebMessage.Ready(2))
-        assertEquals(listOf(2), h.env.unsupported)
+        h.session.onWeb(WebMessage.Ready(1)) // a bundle of bridge version 1 (no generations)
+        assertEquals(listOf(1), h.env.unsupported)
         assertTrue(h.session.unsupported)
         assertTrue(h.sent.isEmpty())
         assertFalse(h.session.loaded)
@@ -119,7 +122,7 @@ class EditorSessionTest {
 
     @Test fun changedGoesToTheLoopAndIsSavedAfterThePauseWithoutAnEcho() {
         val h = harness("# 議事録\n")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         val before = h.sent.size
         h.session.onWeb(WebMessage.Changed("# 議事録\nA", dirty = true))
         assertEquals("# 議事録\nA", h.saver.text)
@@ -135,14 +138,14 @@ class EditorSessionTest {
 
     @Test fun aMergeComesBackAsReplace() {
         val h = harness("a\nb\nc")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.server.otherSaves("a\nb\nC") // someone else, another line
         h.session.onWeb(WebMessage.Changed("A\nb\nc", dirty = true))
         h.timers.advance(EditorSession.QUIET_AFTER_MS) // not focused, and the edit is that old when the save lands
         h.saver.flush()
         assertEquals("A\nb\nC", h.saver.text) // the server merged both
         h.session.saverChanged()
-        assertEquals(NativeMessage.Replace("A\nb\nC"), h.sent.last())
+        assertEquals(NativeMessage.Replace("A\nb\nC", gen = 2), h.sent.last())
         // The editor then writes the same body (its `changed` after the replace, were there one): no second replace.
         val count = h.sent.size
         h.session.onWeb(WebMessage.Changed("A\nb\nC", dirty = false))
@@ -158,7 +161,7 @@ class EditorSessionTest {
      */
     @Test fun whileTheEditorIsFocusedAMergeWaitsAndNothingIsLost() {
         val h = harness("最初の行\nb\nc")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         var focused = true
         h.session.editorFocused = { focused }
         // 「にほん」 is being composed when another device changes the last line.
@@ -180,7 +183,7 @@ class EditorSessionTest {
         h.timers.advance(EditorSession.QUIET_AFTER_MS + 200)
         assertEquals(h.server.body, h.saver.text)
         h.session.saverChanged()
-        assertEquals(NativeMessage.Replace("最初の行日本\nb\n相手の行"), h.sent.last())
+        assertEquals(NativeMessage.Replace("最初の行日本\nb\n相手の行", gen = h.saver.textLineage), h.sent.last())
         assertEquals(CanvasSaveStatus.SAVED, h.saver.status)
     }
 
@@ -191,7 +194,7 @@ class EditorSessionTest {
      */
     @Test fun leavingKeepsTheMergeBackUntilTheLastBodyIsInThenHandsTheRuleBack() {
         val h = harness("a\nb\nc")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.session.onWeb(WebMessage.Changed("A\nb\nc", dirty = true))
         h.timers.advance(2_000) // saved
         h.timers.advance(EditorSession.QUIET_AFTER_MS)
@@ -222,7 +225,7 @@ class EditorSessionTest {
     /** The Markdown editor took over and the loop took a merge: the editor's last body, with nothing new, leaves it. */
     @Test fun anAnswerThatHoldsNothingNewDoesNotUndoAMerge() {
         val h = harness("a\nb\nc")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.session.onWeb(WebMessage.Changed("A\nb\nc", dirty = true))
         h.timers.advance(3_000) // saved
         h.session.requestBody(flush = true)
@@ -239,10 +242,10 @@ class EditorSessionTest {
 
     @Test fun aTickInTheReadingViewReachesTheEditor() {
         val h = harness("- [ ] x\n")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.saver.edit("- [x] x\n", external = true)
         h.session.saverChanged()
-        assertEquals(NativeMessage.Replace("- [x] x\n"), h.sent.last())
+        assertEquals(NativeMessage.Replace("- [x] x\n", gen = 2), h.sent.last())
     }
 
     @Test fun nothingIsReplacedBeforeTheBodyWasLoaded() {
@@ -250,18 +253,19 @@ class EditorSessionTest {
         h.saver.edit("b", external = true)
         h.session.saverChanged()
         assertTrue(h.sent.isEmpty())
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         assertEquals("b", (h.sent.last { it is NativeMessage.Load } as NativeMessage.Load).body)
     }
 
     @Test fun requestBodyTakesWhatIsTypedFlushesAndCarriesTheCaret() {
         val h = harness("a\n")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         var carried: Int? = null
         h.session.requestBody { carried = it }
-        assertEquals(NativeMessage.RequestBody, h.sent.last())
+        val asked = (h.sent.last() as NativeMessage.RequestBody).id!!
         assertTrue(h.session.awaitingBody)
-        h.session.onWeb(WebMessage.BodyRequested("a\nb", dirty = true, caretLine = 1))
+        assertTrue(h.session.waitsFor(asked))
+        h.session.onWeb(WebMessage.BodyRequested("a\nb", dirty = true, caretLine = 1, baseGen = 1, id = asked))
         assertFalse(h.session.awaitingBody)
         assertEquals(1, carried)
         assertEquals(1, h.session.caretLine)
@@ -269,6 +273,7 @@ class EditorSessionTest {
         assertEquals("a\nb", h.server.body) // flushed at once, not after the pause
         // Without the flush (the switch to Markdown): the loop has the text, the save waits for the pause.
         h.session.requestBody(flush = false) { carried = it }
+        // A bundle of bridge version 1 answers without an id: still taken.
         h.session.onWeb(WebMessage.BodyRequested("a\nbc", dirty = true, caretLine = 1))
         assertEquals("a\nbc", h.saver.text)
         assertEquals("a\nb", h.server.body)
@@ -286,11 +291,11 @@ class EditorSessionTest {
 
     @Test fun theCaretIsRememberedAndAWebViewThatComesUpAgainOpensThere() {
         val h = harness("a\nb\nc\n")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.session.onWeb(WebMessage.Caret(2))
         assertEquals(2, h.session.caretLine)
         h.sent.clear()
-        h.session.onWeb(WebMessage.Ready(1)) // the render process restarted and the page loaded again
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION)) // the render process restarted and the page loaded again
         val load = h.sent.last { it is NativeMessage.Load } as NativeMessage.Load
         assertEquals(2, load.caretLine)
         assertEquals("a\nb\nc\n", load.body)
@@ -298,7 +303,7 @@ class EditorSessionTest {
 
     @Test fun pagesPeoplePicturesAndLinksGoThroughTheApp() {
         val h = harness("x")
-        h.session.onWeb(WebMessage.Ready(1))
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
         h.session.onWeb(WebMessage.NeedPages("設計"))
         assertEquals(NativeMessage.ProvidePages("設計", listOf(BridgePage("p1", "設計メモ", "📐", "page"))), h.sent.last())
         h.session.onWeb(WebMessage.NeedPeople("ha"))
@@ -320,6 +325,77 @@ class EditorSessionTest {
         assertEquals(NativeMessage.SetTheme(EditorTheme.LIGHT), h.sent.last())
         h.session.blur()
         assertEquals(NativeMessage.Blur, h.sent.last())
+    }
+
+    // --- review v0.1.49 #2: a page read again never gives an empty body (bridge version 2) -------------------------
+
+    /** The render process ended: nothing is asked of the new page; its `ready` gets the loop's text, generation, caret. */
+    @Test fun afterThePageEndedTheBodyIsLoadedAgainOnReady() {
+        val h = harness("a\nb\n", caretLine = 1)
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
+        h.session.onWeb(WebMessage.Changed("a\nb\n打った\n", dirty = true, baseGen = 1))
+        var carried: Int? = null
+        h.session.requestBody(flush = false) { carried = it }
+        val asked = (h.sent.last() as NativeMessage.RequestBody).id!!
+        h.session.onWeb(WebMessage.Caret(2))
+        h.session.pageLost()
+        assertEquals("the request is given up with the last known line", 2, carried)
+        assertFalse(h.session.awaitingBody)
+        assertFalse(h.session.loaded)
+        // While the page is read again: nothing goes to it, and the loop keeps its text.
+        val count = h.sent.size
+        carried = null
+        h.session.requestBody { carried = it }
+        assertEquals(2, carried)
+        h.session.saverChanged()
+        h.session.command(EditorCommand.BOLD)
+        assertEquals(count, h.sent.size)
+        assertEquals("a\nb\n打った\n", h.saver.text)
+        // A late answer of the old page is no one's.
+        h.session.onWeb(WebMessage.BodyRequested("", dirty = true, caretLine = 0, baseGen = 1, id = asked))
+        assertEquals("a\nb\n打った\n", h.saver.text)
+        // The page is up again: the directory and the loop's text with its generation and the caret's line.
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
+        assertEquals(listOf("SetTheme", "SetViewport", "ProvidePeople", "ProvideEmoji", "ProvidePages", "Load"), h.sent.drop(count).types.take(6))
+        val load = h.sent.last { it is NativeMessage.Load } as NativeMessage.Load
+        assertEquals("a\nb\n打った\n", load.body)
+        assertEquals(h.saver.textLineage, load.gen)
+        assertEquals(2, load.caretLine)
+        assertTrue(h.session.loaded)
+        h.timers.advance(3_000)
+        assertEquals("a\nb\n打った\n", h.server.body)
+    }
+
+    /** `bodyRequested {loaded: false}` (a page without an editor) is never taken for a body. */
+    @Test fun anAnswerWithoutABodyIsNeverSaved() {
+        val h = harness("消してはいけない段落\n")
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
+        var carried: Int? = null
+        h.session.requestBody(flush = true) { carried = it }
+        val asked = (h.sent.last() as NativeMessage.RequestBody).id!!
+        h.session.onWeb(WebMessage.BodyUnavailable(asked))
+        assertEquals(0, carried)
+        assertFalse(h.session.awaitingBody)
+        assertEquals("消してはいけない段落\n", h.saver.text)
+        assertFalse(h.saver.unsaved)
+        h.timers.advance(3_000)
+        assertEquals(1L, h.server.version) // nothing saved
+        assertTrue(h.env.logged.any { it.contains("without an editor") })
+    }
+
+    @Test fun anAnswerToAnotherRequestIsIgnored() {
+        val h = harness("a")
+        h.session.onWeb(WebMessage.Ready(EDITOR_BRIDGE_VERSION))
+        var carried: Int? = null
+        h.session.requestBody(flush = false) { carried = it }
+        val asked = (h.sent.last() as NativeMessage.RequestBody).id!!
+        h.session.onWeb(WebMessage.BodyRequested("", dirty = true, caretLine = 9, baseGen = 1, id = asked + 1000))
+        assertEquals("a", h.saver.text)
+        assertNull(carried)
+        assertTrue(h.session.awaitingBody)
+        h.session.onWeb(WebMessage.BodyRequested("ax", dirty = true, caretLine = 3, baseGen = 1, id = asked))
+        assertEquals(3, carried)
+        assertEquals("ax", h.saver.text)
     }
 
     @Test fun theCaretLineHelpersAgreeWithEachOther() {

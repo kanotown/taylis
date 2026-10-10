@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.editor.EDITOR_BRIDGE_VERSION
 import jp.chikuwachat.android.editor.EditorHostLifecycle
 import jp.chikuwachat.android.editor.EditorSession
 import jp.chikuwachat.android.editor.EditorSessionEnv
@@ -64,12 +65,15 @@ class EditorHostLifecycleTest {
             if (lifecycle.destroyed) return
             val target = lifecycle.route(message) ?: return
             target.onWeb(message)
-            lifecycle.delivered(target)
+            lifecycle.delivered(target, message)
         }
+
+        /** The id of the last `requestBody` that reached the WebView. */
+        fun lastRequestId(): Int = (delivered.last { it is NativeMessage.RequestBody } as NativeMessage.RequestBody).id!!
 
         fun open(): EditorSession {
             val s = session()
-            lifecycle.attach(s, readyVersion = 1)
+            lifecycle.attach(s, readyVersion = EDITOR_BRIDGE_VERSION)
             assertTrue(s.loaded)
             return s
         }
@@ -82,7 +86,7 @@ class EditorHostLifecycleTest {
         h.post(WebMessage.Changed("ab", dirty = true))
         var closed = false
         h.lifecycle.release { closed = true }
-        assertEquals(NativeMessage.RequestBody, h.delivered.last()) // the final request went out while closing
+        assertTrue(h.delivered.last() is NativeMessage.RequestBody) // the final request went out while closing
         assertTrue(h.lifecycle.closing)
         assertEquals(0, h.destroyed) // the WebView stays for the answer
         assertFalse(closed)
@@ -103,10 +107,10 @@ class EditorHostLifecycleTest {
         val h = Host()
         val s = h.open()
         h.lifecycle.detach(s) // the composable goes first
-        assertEquals(NativeMessage.RequestBody, h.delivered.last())
+        assertTrue(h.delivered.last() is NativeMessage.RequestBody)
         var closed = false
         h.lifecycle.release { closed = true }
-        assertEquals(1, h.delivered.count { it == NativeMessage.RequestBody }) // asked once
+        assertEquals(1, h.delivered.count { it is NativeMessage.RequestBody }) // asked once
         assertEquals(0, h.destroyed)
         h.post(WebMessage.BodyRequested("ab", dirty = true, caretLine = 0))
         assertEquals("ab", h.server.body)
@@ -120,7 +124,7 @@ class EditorHostLifecycleTest {
         var closed = false
         h.lifecycle.release { closed = true }
         h.lifecycle.detach(s) // the composable's onDispose after the host's: nothing more
-        assertEquals(1, h.delivered.count { it == NativeMessage.RequestBody })
+        assertEquals(1, h.delivered.count { it is NativeMessage.RequestBody })
         h.post(WebMessage.BodyRequested("ab", dirty = true, caretLine = 0))
         assertEquals("ab", h.server.body)
         assertEquals(1, h.destroyed)
@@ -165,6 +169,75 @@ class EditorHostLifecycleTest {
         assertEquals(0, h.destroyed)
     }
 
+    /** Bridge version 2: each answer goes to the session that asked under its id, in whatever order it comes. */
+    @Test fun answersGoToTheSessionThatAskedUnderTheirId() {
+        val h = Host()
+        val first = h.open()
+        h.lifecycle.detach(first)
+        val firstId = h.lastRequestId()
+        val second = h.open()
+        var caret: Int? = null
+        second.requestBody(flush = false) { caret = it }
+        val secondId = h.lastRequestId()
+        h.post(WebMessage.BodyRequested("ab", dirty = true, caretLine = 4, baseGen = 1, id = secondId))
+        assertEquals(4, caret)
+        assertTrue("the leaving session still waits for its own", first.awaitingBody)
+        h.post(WebMessage.BodyRequested("ab", dirty = true, caretLine = 3, baseGen = 1, id = firstId))
+        assertFalse(first.awaitingBody)
+        assertFalse(h.lifecycle.leavingAwaitsBody)
+        assertEquals("ab", h.server.body) // the leaving session's answer flushed
+        // An answer no one waits for (asked before a reload, given up) goes nowhere.
+        assertNull(h.lifecycle.route(WebMessage.BodyRequested("", dirty = true, caretLine = 0, id = firstId)))
+        assertEquals("ab", h.saver.text)
+    }
+
+    /**
+     * Review v0.1.49 #2: the render process ended and the host reads the page again in a new WebView. Requests to the old
+     * page are given up (the loop keeps and saves what it has), and the new page's `ready` gets the body again.
+     */
+    @Test fun aPageReadAgainGetsTheBodyAgain() {
+        val h = Host()
+        val first = h.open()
+        h.post(WebMessage.Changed("ab", dirty = true, baseGen = 1))
+        h.lifecycle.detach(first)
+        val second = h.open()
+        var caret: Int? = null
+        second.requestBody(flush = false) { caret = it }
+        h.lifecycle.pageLost()
+        assertFalse(first.awaitingBody)
+        assertFalse(second.awaitingBody)
+        assertEquals(0, caret)
+        assertFalse(h.lifecycle.leavingAwaitsBody)
+        assertEquals("ab", h.server.body) // the leaving session gave up and saved what the loop had
+        assertFalse(second.loaded)
+        assertEquals(0, h.destroyed) // the host made the new WebView; the lifecycle keeps going
+        val count = h.delivered.size
+        h.post(WebMessage.Ready(EDITOR_BRIDGE_VERSION)) // the new page is up
+        val again = h.delivered.drop(count)
+        assertTrue(again.any { it is NativeMessage.ProvidePeople } && again.any { it is NativeMessage.ProvideEmoji })
+        val load = again.last { it is NativeMessage.Load } as NativeMessage.Load
+        assertEquals("ab", load.body)
+        assertEquals(h.saver.textLineage, load.gen)
+        assertTrue(second.loaded)
+        assertEquals(1L + 1, h.server.version) // nothing more was saved (and never an empty body)
+    }
+
+    /** A page that lost its editor unseen answers `loaded: false`: never a body; the session editing now loads again. */
+    @Test fun aPageWithoutAnEditorGetsTheBodyAgain() {
+        val h = Host()
+        val s = h.open()
+        var caret: Int? = null
+        s.requestBody(flush = true) { caret = it }
+        val id = h.lastRequestId()
+        val count = h.delivered.size
+        h.post(WebMessage.BodyUnavailable(id))
+        assertEquals(0, caret)
+        assertFalse(s.awaitingBody)
+        assertEquals("a", h.saver.text)
+        assertEquals(1L, h.server.version)
+        assertTrue(h.delivered.drop(count).any { it is NativeMessage.Load })
+    }
+
     /** The render process died: no answer will come; a leaving session gives up (keeps what is known) at once. */
     @Test fun aDeadWebViewGivesUpAtOnce() {
         val h = Host()
@@ -179,7 +252,7 @@ class EditorHostLifecycleTest {
         h.lifecycle.release { closed = true }
         assertTrue(closed)
         val sent = h.delivered.size
-        h.lifecycle.attach(h.session(), readyVersion = 1)
+        h.lifecycle.attach(h.session(), readyVersion = EDITOR_BRIDGE_VERSION)
         assertEquals(sent, h.delivered.size) // nothing goes to a dead WebView
     }
 
