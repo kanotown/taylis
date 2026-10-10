@@ -1,5 +1,5 @@
 /**
- * The quick status menu (docs/PRESENCE.md §11, like Mattermost's): my avatar in the sidebar header (and at the top of
+ * The quick status menu (docs/PRESENCE.md §11, like Mattermost's): my avatar and name in the sidebar header (and at the top of
  * 「自分」 / the settings list) opens it. On top my picture with the dot, my name and the current state
  * (「取り込み中（〜15:30）」 with 「解除」); then the four choices — オンライン（自動）, 離席中, 取り込み中 (a submenu of
  * durations), オフライン表示 — each one press; then 「ステータスを設定」 (the custom status, M11d), 在室状況 (a submenu

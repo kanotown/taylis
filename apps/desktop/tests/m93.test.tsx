@@ -45,25 +45,25 @@ function signedIn() {
   return { me, store };
 }
 
-describe("my profile from my avatar (sidebar header)", () => {
-  it("is a button that opens my own card with my status and title, and 「プロフィールを編集」", async () => {
+describe("my picture and name (sidebar header)", () => {
+  it("are one button that opens the quick status menu, with 「プロフィールを編集」 (my card opens from my own messages)", async () => {
     const { me, store } = signedIn();
     const controller = { store, engine: null, me, isGuest: false, isAdmin: false, version: 0, subscribe: () => () => {} } as unknown as AppController;
     render(<Sidebar controller={controller} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />);
     const header = screen.getByTestId("sidebar-header");
-    const trigger = within(header).getByRole("button", { name: `自分のプロフィール（${me.display_name}）` });
+    const trigger = within(header).getByRole("button", { name: /自分のステータスを変える/ });
     expect(trigger.tagName).toBe("BUTTON");
-    fireEvent.click(trigger);
-    const card = await screen.findByRole("dialog");
-    expect(within(card).getByText(/· M2/)).toBeTruthy();
-    expect(within(card).getByText(/論文執筆中/)).toBeTruthy();
-    expect(within(card).getByRole("button", { name: /ステータスを設定/ })).toBeTruthy();
+    expect(within(trigger).getByText(me.display_name)).toBeTruthy();
+    expect(within(header).queryByRole("button", { name: `自分のプロフィール（${me.display_name}）` })).toBeNull();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText(/論文執筆中/)).toBeTruthy();
     const opened = vi.fn();
     window.addEventListener("chikuwa:open-profile", opened);
-    fireEvent.click(within(card).getByRole("button", { name: /プロフィールを編集/ }));
+    fireEvent.click(within(menu).getByText("プロフィールを編集"));
     window.removeEventListener("chikuwa:open-profile", opened);
     expect(opened).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog")).toBeNull(); // the card closes
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull()); // the menu closes
   });
 });
 

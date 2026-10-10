@@ -1,10 +1,10 @@
-import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, Zap } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
 import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { Avatar } from "./Avatar";
+import { Avatar, presenceLabel } from "./Avatar";
 import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
@@ -14,9 +14,9 @@ import { desktopNavKeys, sidebarNavKeys } from "./navItems";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
-import { StatusEmoji, UserPopover } from "./UserPopover";
+import { StatusEmoji } from "./UserPopover";
 import { MyStatusMenu } from "./MyStatusMenu";
-import { currentMe, myPresenceLine } from "./presence";
+import { currentMe, myPresenceChoice, myPresenceLine } from "./presence";
 import { t } from "../i18n";
 
 interface Props {
@@ -214,23 +214,19 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 flex-col overflow-y-auto border-r border-sidebar-edge bg-sidebar px-2 pb-4 text-sidebar-fg">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
       <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-sidebar-line bg-sidebar px-4 py-3">
-        {/* PRESENCE.md §11: my picture opens the quick status menu; M93: my name opens my own profile card. */}
+        {/* PRESENCE.md §11.6: my picture and name are one button that opens the quick status menu. */}
         {me ? (
-          <>
-            <MyStatusMenu controller={controller} onSettings={onSettings} onOpenAttendance={onAttendance}>
-              <button
-                type="button"
-                data-my-status-trigger
-                aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(store)) })}
-                className="-my-1 -ml-1.5 shrink-0 rounded-xl p-0.5 outline-none hover:bg-sidebar-strong/10 focus-visible:ring-2 focus-visible:ring-accent/60"
-              >
-                <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" showOffline />
-              </button>
-            </MyStatusMenu>
-            <UserPopover controller={controller} userId={me.id} className="-my-1 -ml-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 pl-1 pr-1 hover:bg-sidebar-strong/10">
-              <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} withAvatar={false} />
-            </UserPopover>
-          </>
+          <MyStatusMenu controller={controller} onSettings={onSettings} onOpenAttendance={onAttendance}>
+            <button
+              type="button"
+              data-my-status-trigger
+              aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(store)) })}
+              className="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-0.5 pl-0.5 pr-1 text-left outline-none hover:bg-sidebar-strong/10 focus-visible:ring-2 focus-visible:ring-accent/60"
+            >
+              <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" showOffline />
+              <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} presence={myHeaderLine(controller)} withAvatar={false} />
+            </button>
+          </MyStatusMenu>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <SidebarIdentity controller={controller} meId={null} name="" status={status} />
@@ -824,7 +820,23 @@ const CHANNEL_DRAG = "application/x-chikuwa-channel";
 export const SECTION_DRAG = "application/x-chikuwa-section";
 
 /** The pinned header's picture, name and connection state (inside the button that opens my profile card). */
-function SidebarIdentity({ controller, meId, name, status, withAvatar = true }: { controller: AppController; meId: string | null; name: string; status: string; withAvatar?: boolean }) {
+/**
+ * The line under my name in the sidebar header (PRESENCE.md §11.6): my effective look, the same one my picture's dot
+ * shows — 「取り込み中（〜15:30）」, 「離席中」, 「オフライン表示」, or for 自動 the look the others see (オンライン /
+ * 離席中 when idle). No dot of its own (the picture has it). While the connection is down that takes the line instead,
+ * in the warning colour.
+ */
+function myHeaderLine(controller: AppController): string {
+  const store = controller.store;
+  const me = currentMe(store);
+  if (!me) return "";
+  if (myPresenceChoice(me) !== "auto") return myPresenceLine(me);
+  return presenceLabel(store.presenceOf(me.id));
+}
+
+function SidebarIdentity({ controller, meId, name, status, presence, withAvatar = true }: { controller: AppController; meId: string | null; name: string; status: string; presence?: string; withAvatar?: boolean }) {
+  // `idle` is before the first connection attempt; only a real connection problem replaces my presence line.
+  const connected = status === "online" || status === "idle";
   return (
     <>
       {meId && withAvatar && <Avatar id={meId} name={name} size={34} className="rounded-xl" />}
@@ -833,10 +845,14 @@ function SidebarIdentity({ controller, meId, name, status, withAvatar = true }: 
           <span className="truncate text-sm font-semibold text-sidebar-strong">{name}</span>
           {meId && <StatusEmoji controller={controller} userId={meId} className="shrink-0" />}
         </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[11px] opacity-80" title={statusTitle(status)}>
-          <span className={cn("h-2 w-2 shrink-0 rounded-full", status === "online" ? "bg-success" : status === "connecting" ? "animate-pulse bg-warning" : status === "offline" ? "bg-warning" : "bg-sidebar-strong/30")} />
-          <span className="truncate whitespace-nowrap">{statusLabel(status)}</span>
-        </span>
+        {presence !== undefined && connected ? (
+          <span data-my-presence-line className="block truncate whitespace-nowrap text-[11px] opacity-80">{presence}</span>
+        ) : (
+          <span data-connection-line className={cn("flex min-w-0 items-center gap-1 text-[11px]", connected ? "opacity-80" : "text-warning")} title={statusTitle(status)}>
+            {!connected && <WifiOff aria-hidden size={11} className={cn("shrink-0", status === "connecting" && "animate-pulse")} />}
+            <span className="truncate whitespace-nowrap">{statusLabel(status)}</span>
+          </span>
+        )}
       </span>
     </>
   );
