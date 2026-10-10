@@ -1191,6 +1191,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "dialogs.removeOwner": "Remove as owner",
   "dialogs.makeOwner": "Make owner",
   "dialogs.removeFromChannel": "Remove from channel",
+  "dialogs.memberActions": "Actions for {name}",
+  "dialogs.removeMemberConfirm": "Remove {name} from this channel?",
   "dialogs.topic": "Topic",
   "dialogs.topicDescription": "What this channel is about, in one line.",
   "dialogs.topicPlaceholder": "e.g. Weekly progress updates",

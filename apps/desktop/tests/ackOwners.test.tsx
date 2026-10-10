@@ -143,6 +143,22 @@ describe("確認のお願い in the reminders (L4)", () => {
   });
 });
 
+/** Opens a member row's ⋯ menu from the keyboard. */
+async function openRowMenu(row: HTMLElement): Promise<HTMLElement> {
+  fireEvent.keyDown(within(row).getByRole("button", { name: /さんの操作$/ }), { key: "Enter" });
+  return screen.findByRole("menu");
+}
+async function menuItems(row: HTMLElement): Promise<string[]> {
+  const menu = await openRowMenu(row);
+  const names = within(menu).getAllByRole("menuitem").map((item) => item.textContent ?? "");
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  return names;
+}
+async function menuItem(row: HTMLElement, name: string): Promise<HTMLElement> {
+  return within(await openRowMenu(row)).getByRole("menuitem", { name });
+}
+
 describe("channel owners (L4)", () => {
   it("an owner makes a member an owner (PATCH) and takes it back; not for guests and bots, nothing in a DM", async () => {
     const server = new FakeServer();
@@ -161,30 +177,70 @@ describe("channel owners (L4)", () => {
     const lab = controller.store.upsertChannel({ ...server.channels.get(channel.id)!.channel, membership: { role: "owner", joined_at: "" } } as ChannelOut, { isMember: true });
     render(<MembersDialog controller={controller} channel={lab} onClose={() => {}} onAdd={() => {}} />);
     const row = async (name: string) => (await screen.findByText(name)).closest("li")!;
-    expect(within(await row("Alice")).getByRole("button", { name: "オーナーから外す" })).toBeTruthy(); // me, the owner
-    expect(within(await row("Gina")).queryByRole("button", { name: "オーナーにする" })).toBeNull();
-    expect(within(await row("Robo")).queryByRole("button", { name: "オーナーにする" })).toBeNull();
+    expect(await menuItems(await row("Alice"))).toEqual(["オーナーから外す"]); // me, the owner (not 「チャンネルから外す」)
+    expect(within(await row("Gina")).getByRole("button", { name: "Gina さんの操作" })).toBeTruthy(); // may be removed
+    expect(await menuItems(await row("Gina"))).toEqual(["チャンネルから外す"]); // not an owner
+    expect(await menuItems(await row("Robo"))).toEqual(["チャンネルから外す"]);
 
-    fireEvent.click(within(await row("Bob")).getByRole("button", { name: "オーナーにする" }));
+    fireEvent.click(await menuItem(await row("Bob"), "オーナーにする"));
     await flush();
     expect(patches).toEqual([[channel.id, bob.id, "owner"]]);
     expect(within(await row("Bob")).getByText("オーナー")).toBeTruthy();
-    fireEvent.click(within(await row("Bob")).getByRole("button", { name: "オーナーから外す" }));
+    fireEvent.click(await menuItem(await row("Bob"), "オーナーから外す"));
     await flush();
     expect(patches.at(-1)).toEqual([channel.id, bob.id, "member"]);
-    expect(within(await row("Bob")).getByRole("button", { name: "オーナーにする" })).toBeTruthy();
+    expect(await menuItems(await row("Bob"))).toEqual(["オーナーにする", "チャンネルから外す"]);
     cleanup();
 
     // A member who is not an owner (nor an admin) gets no buttons; neither does anyone in a DM.
     controller.store.updateChannel(channel.id, { membership: { role: "member", joined_at: "" } });
     render(<MembersDialog controller={controller} channel={controller.store.getChannel(channel.id)!} onClose={() => {}} onAdd={() => {}} />);
     await screen.findByText("Bob");
-    expect(screen.queryByRole("button", { name: /オーナー/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /さんの操作/ })).toBeNull();
     cleanup();
     const dm = { ...lab, id: "dm1", type: "dm", name: null, membership: { role: "owner", joined_at: "" } } as ChannelState;
     render(<MembersDialog controller={controller} channel={dm} onClose={() => {}} onAdd={() => {}} />);
     await screen.findByText("Bob");
-    expect(screen.queryByRole("button", { name: /オーナー/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /さんの操作/ })).toBeNull();
+  });
+
+  it("a member's row: the name keeps the width (truncated, the whole line as its tooltip), actions in the ⋯ menu; 外す asks first", async () => {
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const bob = server.addUser("bob");
+    const channel = server.createChannel("lab", alice.id);
+    server.join(channel.id, bob.id);
+    const removed: string[] = [];
+    const controller = controllerFor(alice, {
+      members: async () => server.memberList(channel.id).filter((m) => !removed.includes(m.user_id)),
+      removeMember: async (_channelId: string, userId: string) => { removed.push(userId); },
+    });
+    controller.store.upsertUser(bob);
+    const lab = controller.store.upsertChannel({ ...server.channels.get(channel.id)!.channel, membership: { role: "owner", joined_at: "" } } as ChannelOut, { isMember: true });
+    render(<MembersDialog controller={controller} channel={lab} onClose={() => {}} onAdd={() => {}} />);
+    const bobRow = (await screen.findByText("Bob")).closest("li")!;
+    const name = within(bobRow).getByText("Bob");
+    expect(name.className).toContain("truncate");
+    expect(name.className).toContain("flex-1");
+    expect(name.getAttribute("title")).toBe("Bob @bob");
+    // No wide buttons in the row: one ⋯, focusable, labelled.
+    expect(within(bobRow).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Bob のプロフィール", "Bob さんの操作"]);
+    const more = within(bobRow).getByRole("button", { name: "Bob さんの操作" });
+    expect(more.tabIndex).not.toBe(-1);
+    expect(more.className).toContain("group-focus-within/member:opacity-100");
+    expect(more.className).toContain("pointer-coarse:opacity-100");
+
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirm);
+    fireEvent.click(await menuItem(bobRow, "チャンネルから外す"));
+    await flush();
+    expect(confirm).toHaveBeenCalledWith("Bob さんをこのチャンネルから外しますか？");
+    expect(removed).toEqual([]);
+    confirm.mockReturnValue(true);
+    fireEvent.click(await menuItem(bobRow, "チャンネルから外す"));
+    await flush();
+    expect(removed).toEqual([bob.id]);
+    await waitFor(() => expect(screen.queryByText("Bob")).toBeNull());
   });
 
   it("channel.member_updated for me moves the owner-only settings at once and reloads the open member list", async () => {

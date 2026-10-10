@@ -1,5 +1,5 @@
 import { AiChannelNotice } from "./ai";
-import { Check, Hash, Lock, NotebookPen } from "lucide-react";
+import { Check, Crown, Hash, Lock, MoreHorizontal, NotebookPen, UserMinus } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import type { MemberOut, UserPublic } from "../api/types";
@@ -11,7 +11,7 @@ import { pickerPeople } from "./home";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { AttendanceChip } from "./AttendanceChip";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
-import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
+import { Badge, Button, cn, Field, Input, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, Modal } from "./primitives";
 import { type MessageKey, t } from "../i18n";
 import { canManageChannelByRight } from "./roles";
 
@@ -271,9 +271,13 @@ export function useMembers(controller: AppController, channelId: string, reload:
   return [members, setMembers] as const;
 }
 
+/** The member rows' badges: small, so the name keeps the room. */
+const MEMBER_BADGE = "h-4 shrink-0 px-1 text-[10px] font-semibold";
+
 /**
- * The member rows (roster order, badges, and for owners and admins 「オーナーにする」 / 「オーナーから外す」 (L4) and 「外す」);
- * in the dialog and the channel details (M29).
+ * The member rows (roster order, badges, and for owners and admins a ⋯ menu with 「オーナーにする」 / 「オーナーから外す」
+ * (L4) and 「チャンネルから外す」 (asks first)); in the dialog and the channel details (M29). The ⋯ shows on the row's hover
+ * or focus, always on touch and narrow screens, so the name takes the width.
  */
 export function MemberList({ controller, channel, members, onChange, className }: {
   controller: AppController;
@@ -295,53 +299,77 @@ export function MemberList({ controller, channel, members, onChange, className }
               .map((m) => ({ member: m, user: users.get(m.user_id) }))
               // M23: roster order when either is on the lab roster, else by name.
               .sort((a, b) => (a.user && b.user && (roster.has(a.user.id) || roster.has(b.user.id)) ? compareByRoster(a.user, b.user, roster) : (a.user?.display_name ?? "").localeCompare(b.user?.display_name ?? "", "ja")))
-              .map(({ member, user }) => (
-                <li key={member.user_id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <UserPopover controller={controller} userId={member.user_id} className="flex min-w-0 flex-1 items-center gap-3">
-                    <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} presence={controller.store.presenceOf(member.user_id)} />
-                    <span className="flex-1 truncate">
-                      {user?.display_name ?? "?"} <span className="text-muted">@{user?.username ?? ""}</span>
+              .map(({ member, user }) => {
+                const name = user?.display_name ?? "?";
+                const extra = titleExtra(user?.title, roster.get(member.user_id));
+                const presence = controller.store.presenceOf(member.user_id);
+                // L4: not for guests and bots (403 owner_not_allowed); the last owner is the server's to keep (409 last_owner).
+                const canSetRole = canManage && !channel.archived && (member.role === "owner" || (user?.role !== "guest" && user?.role !== "bot"));
+                const canRemove = canManage && member.user_id !== controller.store.me?.id && member.role !== "owner";
+                return (
+                <li key={member.user_id} data-member-row={member.user_id} className="group/member flex items-center gap-2 px-3 py-2 text-sm">
+                  <UserPopover controller={controller} userId={member.user_id} className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <Avatar id={member.user_id} name={name} size={28} presence={presence} />
+                    {/* The name takes the room left; the whole line is the tooltip when it is cut. */}
+                    <span className="min-w-0 flex-1 truncate" title={[`${name} @${user?.username ?? ""}`, extra].filter(Boolean).join(" · ")}>
+                      {name} <span className="text-muted">@{user?.username ?? ""}</span>
                       {/* The roster label is the badge below; the title adds the rest (LAB.md 「肩書と名簿」). */}
-                      {titleExtra(user?.title, roster.get(member.user_id)) && <span className="ml-1 text-xs text-muted">· {titleExtra(user?.title, roster.get(member.user_id))}</span>}
+                      {extra && <span className="ml-1 text-xs text-muted">· {extra}</span>}
                     </span>
                   </UserPopover>
-                  <StatusEmoji controller={controller} userId={member.user_id} />
+                  <StatusEmoji controller={controller} userId={member.user_id} className="shrink-0" />
                   <AttendanceChip controller={controller} userId={member.user_id} />
-                  {controller.store.presenceOf(member.user_id) !== "offline" && (
-                    <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
-                  )}
-                  {roster.get(member.user_id) && <Badge>{rosterLabel(roster.get(member.user_id)!)}</Badge>}
-                  {member.role === "owner" && <Badge tone="accent">{t("dialogs.owner")}</Badge>}
-                  {controller.store.users.get(member.user_id)?.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
-                  {/* L4: not for guests and bots (403 owner_not_allowed); the last owner is the server's to keep (409 last_owner). */}
-                  {canManage && !channel.archived && (member.role === "owner" || (user?.role !== "guest" && user?.role !== "bot")) && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted hover:text-ink"
-                      onClick={() => {
-                        const role = member.role === "owner" ? "member" : "owner";
-                        void controller.setMemberRole(channel.id, member.user_id, role).then((updated) => {
-                          if (updated) setMembers((list) => list?.map((m) => (m.user_id === updated.user_id ? updated : m)) ?? null);
-                        });
-                      }}
-                    >
-                      {member.role === "owner" ? t("dialogs.removeOwner") : t("dialogs.makeOwner")}
-                    </Button>
-                  )}
-                  {canManage && member.user_id !== controller.store.me?.id && member.role !== "owner" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted hover:text-danger"
-                      title={t("dialogs.removeFromChannel")}
-                      onClick={() => void controller.removeMember(channel.id, member.user_id).then((ok) => { if (ok) setMembers((list) => list?.filter((m) => m.user_id !== member.user_id) ?? null); })}
-                    >
-                      {t("settings.workspaces.remove")}
-                    </Button>
+                  {/* The picture's dot says it too; the word only where there is room. */}
+                  {presence !== "offline" && <span className="hidden shrink-0 text-xs text-muted sm:inline">{presenceLabel(presence)}</span>}
+                  {roster.get(member.user_id) && <Badge className={MEMBER_BADGE}>{rosterLabel(roster.get(member.user_id)!)}</Badge>}
+                  {member.role === "owner" && <Badge tone="accent" className={MEMBER_BADGE}>{t("dialogs.owner")}</Badge>}
+                  {controller.store.users.get(member.user_id)?.role === "guest" && <Badge className={MEMBER_BADGE}>{t("dialogs.guest")}</Badge>}
+                  {(canSetRole || canRemove) && (
+                    <Menu modal={false}>
+                      <MenuTrigger asChild>
+                        <button
+                          type="button"
+                          data-member-actions
+                          aria-label={t("dialogs.memberActions", { name })}
+                          title={t("dialogs.memberActions", { name })}
+                          // Shown on the row's hover or focus; always on touch and narrow screens (no hover there).
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted opacity-0 outline-none transition-opacity hover:bg-panel hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/60 group-hover/member:opacity-100 group-focus-within/member:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 max-sm:opacity-100"
+                        >
+                          <MoreHorizontal aria-hidden size={16} />
+                        </button>
+                      </MenuTrigger>
+                      <MenuContent className="min-w-44">
+                        {canSetRole && (
+                          <MenuItem
+                            onSelect={() => {
+                              const role = member.role === "owner" ? "member" : "owner";
+                              void controller.setMemberRole(channel.id, member.user_id, role).then((updated) => {
+                                if (updated) setMembers((list) => list?.map((m) => (m.user_id === updated.user_id ? updated : m)) ?? null);
+                              });
+                            }}
+                          >
+                            <Crown aria-hidden size={15} className="shrink-0 text-muted" />
+                            {member.role === "owner" ? t("dialogs.removeOwner") : t("dialogs.makeOwner")}
+                          </MenuItem>
+                        )}
+                        {canRemove && (
+                          <MenuItem
+                            className="text-danger"
+                            onSelect={() => {
+                              if (!window.confirm(t("dialogs.removeMemberConfirm", { name }))) return;
+                              void controller.removeMember(channel.id, member.user_id).then((ok) => { if (ok) setMembers((list) => list?.filter((m) => m.user_id !== member.user_id) ?? null); });
+                            }}
+                          >
+                            <UserMinus aria-hidden size={15} className="shrink-0" />
+                            {t("dialogs.removeFromChannel")}
+                          </MenuItem>
+                        )}
+                      </MenuContent>
+                    </Menu>
                   )}
                 </li>
-              ))}
+                );
+              })}
           </ul>
         );
 }

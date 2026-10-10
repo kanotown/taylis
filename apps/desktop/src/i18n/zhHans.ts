@@ -1191,6 +1191,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "dialogs.removeOwner": "取消所有者",
   "dialogs.makeOwner": "设为所有者",
   "dialogs.removeFromChannel": "从频道中移除",
+  "dialogs.memberActions": "{name} 的操作",
+  "dialogs.removeMemberConfirm": "要将 {name} 从此频道中移除吗？",
   "dialogs.topic": "主题",
   "dialogs.topicDescription": "用一句话说明此频道讨论什么。",
   "dialogs.topicPlaceholder": "例如：每周进展分享",
