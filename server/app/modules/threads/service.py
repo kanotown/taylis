@@ -146,16 +146,21 @@ async def on_reply_deleted_in_tx(db: AsyncSession, parent: Message) -> None:
 
 async def mark_read(db: AsyncSession, parent: Message, user_id: uuid.UUID, seq: int) -> ThreadState:
     """Monotonic and clamped to the newest reply; other devices follow via thread.updated."""
+    state = await mark_read_in_tx(db, parent, user_id, seq)
+    await db.commit()
+    return state
+
+
+async def mark_read_in_tx(
+    db: AsyncSession, parent: Message, user_id: uuid.UUID, seq: int
+) -> ThreadState:
+    """`mark_read` inside the caller's transaction (a mention opened, SYNC_PROTOCOL.md §10.7)."""
     newest = await repo.newest_reply_seq(db, parent.id)
     _, changed = await repo.advance_read(db, parent.id, user_id, min(seq, newest))
     followers = await repo.followers(db, parent.id)
-    state = (
-        await _emit(db, parent, user_id, "read", followers)
-        if changed
-        else await state_for(db, parent, user_id, followers)
-    )
-    await db.commit()
-    return state
+    if changed:
+        return await _emit(db, parent, user_id, "read", followers)
+    return await state_for(db, parent, user_id, followers)
 
 
 async def mark_all_read(db: AsyncSession, user_id: uuid.UUID) -> ThreadsReadAllOut:

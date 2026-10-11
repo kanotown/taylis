@@ -27,7 +27,9 @@ from app.modules.activity.schemas import (
 )
 from app.modules.messages.models import Message
 from app.modules.messages.service import messages_out
+from app.modules.reads import service as reads
 from app.modules.reservations import repository as reservations_repo
+from app.modules.threads import service as threads
 from app.modules.users.models import User
 
 # M120 (docs/WIKI.md §9.3): the wiki's kinds by the name a client asks for them, and the notice
@@ -260,7 +262,8 @@ async def mark_items_read(
     (a reaction item's newer reaction). Idempotent; ids that are not my items (or are read by the
     read position already) are not stored. My other devices follow through activity.items_read."""
     now = utcnow()
-    ids = await repo.own_items(db, actor, list(dict.fromkeys(item_ids)), actor.activity_read_at)
+    wanted = list(dict.fromkeys(item_ids))
+    ids = await repo.own_items(db, actor, wanted, actor.activity_read_at)
     if ids:
         await repo.open_items(db, actor.id, ids, now)
         await write_outbox(
@@ -270,5 +273,31 @@ async def mark_items_read(
             audience_id=actor.id,
             payload=ActivityItemsReadData(item_ids=ids, read_at=now).model_dump(mode="json"),
         )
+    # 2026-10-12 (SYNC_PROTOCOL.md §10.7): a mention opened is seen, so its conversation is read
+    # up to it (and its thread, for a reply), as in Slack: the channel's (thread's) mention badge
+    # goes, later messages stay unread. Whether or not the item was still unread here.
+    moved = await _read_opened_mentions(db, actor, wanted)
+    if ids or moved:
         await db.commit()
     return await summary(db, actor, include)
+
+
+async def _read_opened_mentions(db: AsyncSession, actor: User, ids: list[uuid.UUID]) -> bool:
+    """Read positions moved forward to the opened mentions; my devices follow through
+    read.updated / thread.updated. True when something was written."""
+    mentions = await repo.opened_mentions(db, actor, ids)
+    channel_upto: dict[uuid.UUID, int] = {}
+    thread_upto: dict[uuid.UUID, int] = {}
+    for message in mentions:
+        channel_id, parent_id, seq = message.channel_id, message.parent_id, message.seq
+        if parent_id is None or message.also_in_channel:
+            channel_upto[channel_id] = max(channel_upto.get(channel_id, 0), seq)
+        if parent_id is not None:
+            thread_upto[parent_id] = max(thread_upto.get(parent_id, 0), seq)
+    for channel_id, seq in channel_upto.items():
+        await reads.advance_in_tx(db, actor.id, channel_id, seq, last_seq=seq)
+    for parent_id, seq in thread_upto.items():
+        parent = await db.get(Message, parent_id)
+        if parent is not None and parent.deleted_at is None:
+            await threads.mark_read_in_tx(db, parent, actor.id, seq)
+    return bool(channel_upto or thread_upto)

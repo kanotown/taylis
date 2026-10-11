@@ -21767,7 +21767,7 @@
     },
     "/api/v1/activity/items/read": {
       "put": {
-        "description": "I opened these items (their `id` in GET /activity): each is read until it happens again (a\nnewer reaction to the message). Idempotent; ids that are not my items are ignored\n(MOBILE_UI.md §6.4, 2026-10-07).",
+        "description": "I opened these items (their `id` in GET /activity): each is read until it happens again (a\nnewer reaction to the message). Idempotent; ids that are not my items are ignored\n(MOBILE_UI.md §6.4, 2026-10-07). A message that mentions me, opened, also reads its\nconversation up to it (a reply: its thread too; read.updated / thread.updated to my devices),\nso its mention badge goes; later messages stay unread (SYNC_PROTOCOL.md §10.7, 2026-10-12).",
         "operationId": "mark_activity_items_read_api_v1_activity_items_read_put",
         "parameters": [
           {
