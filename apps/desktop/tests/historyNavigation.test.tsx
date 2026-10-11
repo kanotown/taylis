@@ -102,12 +102,14 @@ async function setup() {
 }
 
 const sidebar = () => within(screen.getByRole("navigation", { name: "チャンネルとDM" }));
+// 2026-10-12: スレッド and the other menu items are icons in the places rail (MOBILE_UI.md §18).
+const rail = () => within(screen.getByRole("navigation", { name: "場所" }));
 const openRow = async (w: World, name: string) => {
   fireEvent.click(sidebar().getByRole("button", { name: new RegExp(`^${name}$`) }));
   await settle(w);
 };
 const title = () => document.querySelector("main header strong")?.textContent ?? null;
-const viewActive = (name: string) => sidebar().getByRole("button", { name }).getAttribute("aria-current") === "page";
+const viewActive = (name: string) => rail().getByRole("button", { name }).getAttribute("aria-current") === "page";
 const backButton = () => within(screen.getByRole("navigation", { name: "履歴" })).getAllByRole("button")[0] as HTMLButtonElement;
 const forwardButton = () => within(screen.getByRole("navigation", { name: "履歴" })).getAllByRole("button")[1] as HTMLButtonElement;
 const press = async (w: World, init: KeyboardEventInit, target: EventTarget = window) => {
@@ -133,7 +135,7 @@ it("the ← → buttons go back and forward between conversations and views; a n
   expect(title()).toBe("d");
   expect(backButton().disabled).toBe(false);
   expect(forwardButton().disabled).toBe(true);
-  fireEvent.click(sidebar().getByRole("button", { name: "スレッド" }));
+  fireEvent.click(rail().getByRole("button", { name: "スレッド" }));
   await settle(w);
   expect(viewActive("スレッド")).toBe(true);
 
@@ -372,7 +374,7 @@ it("a reply revealed from another conversation (a notification's click) opens th
 
 it("M75: back / forward to a centre view asks it back where it was scrolled to; the sidebar opens it at its top", async () => {
   const { w } = await setup();
-  fireEvent.click(sidebar().getByRole("button", { name: "スレッド" }));
+  fireEvent.click(rail().getByRole("button", { name: "スレッド" }));
   await settle(w);
   await openRow(w, "d");
   fireEvent.click(backButton());
@@ -385,7 +387,7 @@ it("M75: back / forward to a centre view asks it back where it was scrolled to; 
   expect(viewActive("スレッド")).toBe(true);
   // A conversation in between, then the view again from the sidebar: a fresh open.
   await openRow(w, "e");
-  fireEvent.click(sidebar().getByRole("button", { name: "スレッド" }));
+  fireEvent.click(rail().getByRole("button", { name: "スレッド" }));
   await settle(w);
   expect(viewRestores).toEqual([
     { key: "view:threads", restore: false },

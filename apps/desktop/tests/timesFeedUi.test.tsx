@@ -145,10 +145,14 @@ it("the sidebar's 「フィード」 looks like the other rows: highlighted only
   const looksActive = (el: HTMLElement) => el.getAttribute("aria-current") === "page" || el.className.split(/\s+/).includes("bg-sidebar-active");
   // A channel is open: neither the feed row nor its header icon is highlighted, as 「スレッド」 is not.
   expect(looksActive(row())).toBe(false);
-  // The same row, one step in (it sits under the Times header; 「スレッド」 is above the sections).
-  const classes = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => !/^p[lrx]-/.test(c)).sort();
-  expect(classes(row())).toEqual(classes(threads()).filter((c) => c !== "font-semibold" && c !== "text-white"));
-  expect(row().className).toContain("pl-5 pr-2.5");
+  // The same row as a conversation's, one step in under the Times header (2026-10-12: 「スレッド」 is an icon in the places
+  // rail now, so the conversation rows are the ones to look like).
+  const base = ["flex", "w-full", "items-center", "gap-2", "rounded-lg", "py-[6px]", "text-left", "text-[13.5px]", "leading-5", "pl-5", "pr-2.5"];
+  const channelRow = screen.getByRole("button", { name: /^#?c$/ });
+  for (const name of base) {
+    expect(row().className.split(/\s+/)).toContain(name);
+    expect(channelRow.className.split(/\s+/)).toContain(name);
+  }
   expect(looksActive(screen.getByRole("button", { name: "Times フィード" }))).toBe(false);
   fireEvent.click(row());
   await settle(w);

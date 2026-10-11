@@ -59,6 +59,7 @@ import { JumpView } from "./JumpView";
 import { NewMessageView } from "./NewMessageView";
 import { pushRecentConversation, readGatherUnread, readRecentConversations, recentConversationsKey, writeGatherUnread } from "./home";
 import { Sidebar } from "./Sidebar";
+import { PLACES_RAIL_WIDTH } from "./PlacesRail";
 import { ThreadPane } from "./ThreadPane";
 import { ThreadsView } from "./ThreadsView";
 import { Timeline } from "./Timeline";
@@ -201,7 +202,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
     observer.observe(root);
     return () => observer.disconnect();
   }, [compact]);
-  const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
+  // 2026-10-12 (MOBILE_UI.md §18): the places rail stands left of the sidebar, in the same column; the sidebar keeps its width.
+  const contentWidth = availableWidth - PLACES_RAIL_WIDTH;
+  const columns = paneLayout(contentWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
   // The conversation header's own width: with the thread pane open the centre narrows and its tabs and buttons fold
   // (headerFit) instead of overlapping (2026-10-02).
   const [headerWidth, setHeaderWidth] = useState(0);
@@ -333,7 +336,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const startWidth = columns.sidebarWidth;
     let width = startWidth;
     const move = (e: PointerEvent) => {
-      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, availableWidth - CONVERSATION_MIN), Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
+      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, contentWidth - CONVERSATION_MIN), Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
       setSidebarWidth(width);
     };
     const up = () => {
@@ -354,7 +357,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = columns.paneWidth;
-    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, availableWidth - columns.sidebarWidth - CONVERSATION_MIN));
+    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, contentWidth - columns.sidebarWidth - CONVERSATION_MIN));
     let width = startWidth;
     const move = (e: PointerEvent) => {
       width = Math.min(max, Math.max(PANE_MIN, startWidth - (e.clientX - startX)));
@@ -1185,6 +1188,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
+      onArrangePlaces={() => { setSettingsSection("appearance"); setDialog("settings"); }}
     />
   );
   // The channel's own ⋯ items (on a phone they follow the conversation items in the same menu).
@@ -1821,7 +1825,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     <div
       ref={desktopRoot}
       className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
-      style={{ "--sidebar-w": `${columns.sidebarWidth}px` } as React.CSSProperties}
+      style={{ "--sidebar-w": `${columns.sidebarWidth + PLACES_RAIL_WIDTH}px` } as React.CSSProperties}
     >
       {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
           row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. On Windows

@@ -65,9 +65,10 @@ function controllerWith(navItems: NavItem[] | null | undefined) {
 }
 
 const noop = () => {};
+/** 2026-10-12: the menu items are the places rail's icons (MOBILE_UI.md §18); their names are the accessible names. */
 function menuLabels(): string[] {
-  const list = screen.getByText("スレッド").closest("ul")!;
-  return within(list).getAllByRole("button").map((button) => button.querySelector("span.flex-1")?.textContent ?? "");
+  const rail = screen.getByRole("navigation", { name: "場所" });
+  return [...rail.querySelectorAll<HTMLElement>("button[data-nav-item]")].map((button) => button.getAttribute("aria-label") ?? "");
 }
 
 describe("the sidebar", () => {
@@ -91,7 +92,7 @@ describe("the sidebar", () => {
     render(<Sidebar controller={controller} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={noop} onOpen={noop} onNewDm={noop} onNewChannel={noop} {...handlers} />);
     expect(menuLabels()).toEqual(["保存済み", "スレッド", "メンション", "カレンダー", "タスク", "締切"]);
     // A moved item keeps its badge.
-    expect(screen.getByText("スレッド").closest("button")!.textContent).toContain("3");
+    expect(screen.getByRole("button", { name: "スレッド" }).textContent).toContain("3");
   });
 
   it("sidebarNavKeys: reservations (M112) after 締切; no Times feed here", () => {
