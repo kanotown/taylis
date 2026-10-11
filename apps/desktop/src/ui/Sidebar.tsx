@@ -4,13 +4,14 @@ import { type ReactNode, useState } from "react";
 import type { DefaultSectionKey } from "../api/types";
 import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { Avatar, presenceLabel } from "./Avatar";
+import { Avatar, HEADER_AVATAR_SIZE, HEADER_DOT_SIZE, presenceLabel } from "./Avatar";
 import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
 import { pressable } from "./actions";
-import { desktopNavKeys, sidebarNavKeys } from "./navItems";
+import { desktopNavKeys, fullNavItems, setNavItemVisible, shownNavItems } from "./navItems";
+import { type Place, PlacesRail } from "./PlacesRail";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
@@ -88,10 +89,12 @@ interface Props {
   /** M12e: reminders; listed while any is open. */
   onReminders?: () => void;
   remindersActive?: boolean;
+  /** The rail's 「並べ替え…」: 設定 → 表示 (「サイドバーの項目」). */
+  onArrangePlaces?: () => void;
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -150,7 +153,68 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   };
   // M111: the menu items I chose to show, in my order (UserMe.nav_items; null = all, the default order).
   // M140: 「在室状況」 while the workspace has the board on.
-  const navKeys = sidebarNavKeys(me?.nav_items, desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0));
+  const navItems = shownNavItems(fullNavItems(me?.nav_items), "desktop", desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0));
+  // 2026-10-12 (MOBILE_UI.md §18): the visible ones are pinned to the places rail; the others wait under 「その他」.
+  const pinned = new Set(navItems.filter((item) => item.visible).map((item) => item.key));
+  const icon = (Icon: typeof Bell) => <Icon size={20} strokeWidth={1.9} />;
+  const count = (n: number) => (n > 99 ? "99+" : String(n));
+  const place = (key: string): Place | null => {
+    switch (key) {
+      case "threads":
+        return onThreads ? {
+          key, label: t("nav.threads"), icon: icon(MessagesSquare), onSelect: onThreads, active: threadsActive,
+          hint: t("sidebar.threadsKey", { key: `${modKey()}+Shift+T` }),
+          emphasis: store.threadSummary.unread_count > 0,
+          badge: store.threadSummary.unread_count > 0 ? { text: count(store.threadSummary.unread_count), tone: store.threadSummary.mention_count > 0 ? "danger" : "neutral" } : null,
+        } : null;
+      case "activity":
+        // M39: the same badge as the phone's activity tab (none before M39: the entry is the mentions list then).
+        return onActivity ? {
+          key, label: store.activity ? t("nav.activity") : t("nav.mentions"), icon: icon(store.activity ? Bell : AtSign), onSelect: onActivity, active: activityActive,
+          hint: store.activity ? t("sidebar.activityTitle") : t("sidebar.mentionsTitle"),
+          ariaLabel: store.activity ? (activity.count > 0 ? t("sidebar.activityUnread", { count: activity.count }) : t("nav.activity")) : t("nav.mentions"),
+          emphasis: !!store.activity && activity.count > 0,
+          badge: store.activity && activity.count > 0 ? { text: count(activity.count), tone: activity.mention ? "danger" : "neutral" } : null,
+        } : null;
+      case "drafts":
+        // In the rail only while there is something in it (as the sidebar row was); under 「その他」 always.
+        return onDrafts ? { key, label: t("nav.drafts"), icon: icon(FileText), onSelect: onDrafts, active: draftsActive, hint: t("sidebar.draftsTitle"), count: draftCount, railable: draftCount > 0 } : null;
+      case "reminders":
+        return onReminders ? {
+          key, label: t("nav.reminders"), icon: icon(AlarmClock), onSelect: onReminders, active: remindersActive, count: firedCount > 0 ? undefined : reminderCount,
+          railable: reminderCount > 0, emphasis: firedCount > 0, badge: firedCount > 0 ? { text: count(firedCount), tone: "danger" } : null,
+        } : null;
+      case "files":
+        return onFiles ? { key, label: t("nav.files"), icon: icon(Files), onSelect: onFiles, active: filesActive, hint: t("sidebar.filesTitle") } : null;
+      case "canvases":
+        return onCanvases ? { key, label: t("nav.canvases"), icon: icon(NotebookText), onSelect: onCanvases, active: canvasesActive, hint: t("sidebar.canvasesTitle") } : null;
+      case "docs":
+        return onDocs ? { key, label: t("nav.docs"), icon: icon(BookOpen), onSelect: onDocs, active: docsActive, hint: t("sidebar.docsTitle") } : null;
+      case "calendar":
+        return onCalendar ? { key, label: t("nav.calendar"), icon: icon(CalendarDays), onSelect: onCalendar, active: calendarActive, hint: t("sidebar.calendarTitle") } : null;
+      case "tasks":
+        return onTasks ? { key, label: t("nav.tasks"), icon: icon(ListTodo), onSelect: onTasks, active: tasksActive, hint: t("sidebar.tasksTitle") } : null;
+      case "deadlines":
+        return onDeadlines ? { key, label: t("nav.deadlines"), icon: icon(Timer), onSelect: onDeadlines, active: deadlinesActive, hint: t("sidebar.deadlinesTitle") } : null;
+      case "reservations":
+        // M112: once the server answered the pools; the number is the to-dos due in the pools I operate.
+        return onReservations ? {
+          key, label: t("nav.reservations"), icon: icon(Ticket), onSelect: onReservations, active: reservationsActive, hint: t("sidebar.reservationsTitle"),
+          badge: reservationsCount > 0 ? { text: count(reservationsCount), tone: "danger" } : null,
+        } : null;
+      case "attendance":
+        // M140: while the workspace has the board on; a quiet count of who is in the room.
+        return onAttendance ? { key, label: t("nav.attendance"), icon: icon(DoorOpen), onSelect: onAttendance, active: attendanceActive, hint: t("sidebar.attendanceTitle"), count: attendanceCount } : null;
+      case "actions":
+        // M143 (docs/ACTIONS.md §9.1): while the buttons are on and I may press at least one.
+        return onActions ? { key, label: t("nav.actions"), icon: icon(Zap), onSelect: onActions, active: actionsActive, hint: t("sidebar.actionsTitle") } : null;
+      case "saved":
+        return onSaved ? { key, label: t("nav.saved"), icon: icon(Bookmark), onSelect: onSaved, active: savedActive, hint: t("sidebar.savedTitle"), count: store.bookmarks.size } : null;
+      default:
+        return null; // a key this client does not draw (yet)
+    }
+  };
+  const places = navItems.map((item) => place(item.key)).filter((entry): entry is Place => entry !== null);
 
   const item = (channel: ChannelState, folded = false, order?: Reorder) => {
     const muted = isMutedChannel(channel);
@@ -211,7 +275,17 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   };
 
   return (
-    <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 flex-col overflow-y-auto border-r border-sidebar-edge bg-sidebar px-2 pb-4 text-sidebar-fg">
+    <div data-sidebar-column="" className="flex h-full min-h-0 border-r border-sidebar-edge bg-sidebar text-sidebar-fg">
+      {/* 2026-10-12 (MOBILE_UI.md §18): the menu items are a rail of icons, so the list below starts with the channels. */}
+      {onThreads && (
+        <PlacesRail
+          places={places}
+          pinned={pinned}
+          onTogglePin={me?.nav_items !== undefined ? (key, pin) => void controller.setNavItems(setNavItemVisible(fullNavItems(me?.nav_items), key, pin)) : undefined}
+          onArrange={onArrangePlaces}
+        />
+      )}
+    <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-2 pb-4">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
       <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-sidebar-line bg-sidebar px-4 py-3">
         {/* PRESENCE.md §11.6: my picture and name are one button that opens the quick status menu. */}
@@ -223,7 +297,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(store)) })}
               className="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-0.5 pl-0.5 pr-1 text-left outline-none hover:bg-sidebar-strong/10 focus-visible:ring-2 focus-visible:ring-accent/60"
             >
-              <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" showOffline />
+              <Avatar id={me.id} name={me.display_name} size={HEADER_AVATAR_SIZE} dotSize={HEADER_DOT_SIZE} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" showOffline />
               <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} presence={myHeaderLine(controller)} withAvatar={false} />
             </button>
           </MyStatusMenu>
@@ -269,294 +343,6 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           {t("sidebar.unread")}
         </button>
       </div>
-
-      {onThreads && (
-        <ul className="mt-1 space-y-px">
-          {navKeys.map((key) => {
-            switch (key) {
-              case "threads":
-                return (
-                <li key="threads">
-                  <button
-                    type="button"
-                    onClick={onThreads}
-                    aria-current={threadsActive ? "page" : undefined}
-                    title={t("sidebar.threadsKey", { key: `${modKey()}+Shift+T` })}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      store.threadSummary.unread_count > 0 && "font-semibold text-sidebar-strong",
-                      threadsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <MessagesSquare size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.threads")}</span>
-                    {store.threadSummary.unread_count > 0 && (
-                      <Badge tone={store.threadSummary.mention_count > 0 ? "danger" : "neutral"} className={store.threadSummary.mention_count > 0 ? undefined : "bg-current/20 text-inherit"}>
-                        {store.threadSummary.unread_count}
-                      </Badge>
-                    )}
-                  </button>
-                </li>
-                );
-              case "activity":
-                return onActivity ? (
-                <li key="activity">
-                  <button
-                    type="button"
-                    onClick={onActivity}
-                    aria-current={activityActive ? "page" : undefined}
-                    aria-label={store.activity ? (activity.count > 0 ? t("sidebar.activityUnread", { count: activity.count }) : t("nav.activity")) : t("nav.mentions")}
-                    title={store.activity ? t("sidebar.activityTitle") : t("sidebar.mentionsTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      store.activity && activity.count > 0 && "font-semibold text-sidebar-strong",
-                      activityActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    {store.activity ? <Bell size={15} className="shrink-0 opacity-70" /> : <AtSign size={15} className="shrink-0 opacity-70" />}
-                    <span className="flex-1 truncate">{store.activity ? t("nav.activity") : t("nav.mentions")}</span>
-                    {store.activity && activity.count > 0 && (
-                      <Badge tone={activity.mention ? "danger" : "neutral"} className={activity.mention ? undefined : "bg-current/20 text-inherit"}>
-                        <span data-badge={activity.mention ? "danger" : "neutral"}>{activity.count > 99 ? "99+" : activity.count}</span>
-                      </Badge>
-                    )}
-                  </button>
-                </li>
-                ) : null;
-              case "drafts":
-                return onDrafts && draftCount > 0 ? (
-                <li key="drafts">
-                  <button
-                    type="button"
-                    onClick={onDrafts}
-                    aria-current={draftsActive ? "page" : undefined}
-                    title={t("sidebar.draftsTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      draftsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <FileText size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.drafts")}</span>
-                    <span className="text-[11px] opacity-70">{draftCount}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "reminders":
-                return onReminders && reminderCount > 0 ? (
-                <li key="reminders">
-                  <button
-                    type="button"
-                    onClick={onReminders}
-                    aria-current={remindersActive ? "page" : undefined}
-                    title={t("nav.reminders")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      remindersActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                      firedCount > 0 && !remindersActive && "font-semibold text-sidebar-strong",
-                    )}
-                  >
-                    <AlarmClock size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.reminders")}</span>
-                    {firedCount > 0 ? <Badge tone="danger">{firedCount}</Badge> : <span className="text-[11px] opacity-70">{reminderCount}</span>}
-                  </button>
-                </li>
-                ) : null;
-              case "files":
-                return onFiles ? (
-                <li key="files">
-                  <button
-                    type="button"
-                    onClick={onFiles}
-                    aria-current={filesActive ? "page" : undefined}
-                    title={t("sidebar.filesTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      filesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <Files size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.files")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "canvases":
-                return onCanvases ? (
-                <li key="canvases">
-                  <button
-                    type="button"
-                    onClick={onCanvases}
-                    aria-current={canvasesActive ? "page" : undefined}
-                    title={t("sidebar.canvasesTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      canvasesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <NotebookText size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.canvases")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "docs":
-                return onDocs ? (
-                <li key="docs">
-                  <button
-                    type="button"
-                    onClick={onDocs}
-                    aria-current={docsActive ? "page" : undefined}
-                    title={t("sidebar.docsTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      docsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <BookOpen size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.docs")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "calendar":
-                return onCalendar ? (
-                <li key="calendar">
-                  <button
-                    type="button"
-                    onClick={onCalendar}
-                    aria-current={calendarActive ? "page" : undefined}
-                    title={t("sidebar.calendarTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      calendarActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <CalendarDays size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.calendar")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "tasks":
-                return onTasks ? (
-                <li key="tasks">
-                  <button
-                    type="button"
-                    onClick={onTasks}
-                    aria-current={tasksActive ? "page" : undefined}
-                    title={t("sidebar.tasksTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      tasksActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <ListTodo size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.tasks")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "deadlines":
-                return onDeadlines ? (
-                <li key="deadlines">
-                  <button
-                    type="button"
-                    onClick={onDeadlines}
-                    aria-current={deadlinesActive ? "page" : undefined}
-                    title={t("sidebar.deadlinesTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      deadlinesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <Timer size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.deadlines")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "reservations":
-                // M112: 「予約」, once the server answered the pools; the number is the to-dos due in the pools I operate.
-                return onReservations ? (
-                <li key="reservations">
-                  <button
-                    type="button"
-                    onClick={onReservations}
-                    data-nav-item="reservations"
-                    aria-current={reservationsActive ? "page" : undefined}
-                    title={t("sidebar.reservationsTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      reservationsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <Ticket size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.reservations")}</span>
-                    {!!reservationsCount && <Badge tone="danger">{reservationsCount > 99 ? "99+" : reservationsCount}</Badge>}
-                  </button>
-                </li>
-                ) : null;
-              case "attendance":
-                // M140: 「在室状況」, while the workspace has the board on; a quiet count of who is in the room.
-                return onAttendance ? (
-                <li key="attendance">
-                  <button
-                    type="button"
-                    onClick={onAttendance}
-                    data-nav-item="attendance"
-                    aria-current={attendanceActive ? "page" : undefined}
-                    title={t("sidebar.attendanceTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      attendanceActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <DoorOpen size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.attendance")}</span>
-                    {attendanceCount > 0 && <span className="text-xs opacity-70">{attendanceCount}</span>}
-                  </button>
-                </li>
-                ) : null;
-              case "actions":
-                // M143 (docs/ACTIONS.md §9.1): 「操作」, while the buttons are on and I may press at least one.
-                return onActions ? (
-                <li key="actions">
-                  <button
-                    type="button"
-                    onClick={onActions}
-                    data-nav-item="actions"
-                    aria-current={actionsActive ? "page" : undefined}
-                    title={t("sidebar.actionsTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      actionsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <Zap size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.actions")}</span>
-                  </button>
-                </li>
-                ) : null;
-              case "saved":
-                return onSaved ? (
-                <li key="saved">
-                  <button
-                    type="button"
-                    onClick={onSaved}
-                    aria-current={savedActive ? "page" : undefined}
-                    title={t("sidebar.savedTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                      savedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <Bookmark size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("nav.saved")}</span>
-                    {store.bookmarks.size > 0 && <span className="text-[11px] opacity-70">{store.bookmarks.size}</span>}
-                  </button>
-                </li>
-                ) : null;
-              default:
-                return null; // a key this client does not draw (yet)
-            }
-          })}
-        </ul>
-      )}
 
       {sections.favorites.length > 0 && (
         <Section title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}
@@ -715,6 +501,7 @@ collapsed={folded.has("dms")}
       </Section>
       {newSection && <NewSectionDialog controller={controller} onClose={() => setNewSection(false)} />}
     </nav>
+    </div>
   );
 }
 
@@ -839,7 +626,7 @@ function SidebarIdentity({ controller, meId, name, status, presence, withAvatar 
   const connected = status === "online" || status === "idle";
   return (
     <>
-      {meId && withAvatar && <Avatar id={meId} name={name} size={34} className="rounded-xl" />}
+      {meId && withAvatar && <Avatar id={meId} name={name} size={HEADER_AVATAR_SIZE} className="rounded-xl" />}
       <span className="block min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1">
           <span className="truncate text-sm font-semibold text-sidebar-strong">{name}</span>

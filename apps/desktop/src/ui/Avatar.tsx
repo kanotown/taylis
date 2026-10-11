@@ -10,9 +10,11 @@ import { t } from "../i18n";
  * status dot: green online, amber away, and 取り込み中 a red disc with a white bar (docs/PRESENCE.md §11). Offline draws
  * nothing unless `showOffline` (my own avatar in the sidebar header: a hollow ring, so オフライン表示 shows).
  */
-export function Avatar({ id, name, size = 36, className, presence, presenceClassName, showOffline = false }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; showOffline?: boolean }) {
+export function Avatar({ id, name, size = 36, className, presence, presenceClassName, showOffline = false, dotSize }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; showOffline?: boolean; dotSize?: number }) {
   const hue = avatarHue(id);
-  const dot = Math.max(8, Math.round(size * 0.3));
+  const dot = dotSize ?? avatarDotSize(size);
+  // The dot overhangs the corner by a fifth of itself (2 px for the usual 8–10 px dots, 3 px for my header's 14 px).
+  const overhang = -Math.max(2, Math.round(dot * 0.2));
   const picture = useAvatar(id);
   return (
     // A rounded square (Slack) unless the caller sets its own radius; the picture and initials inherit it.
@@ -35,19 +37,36 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
           <span
             data-presence={presence}
             className={cn(
-              "absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border-2 border-canvas",
+              "absolute inline-flex items-center justify-center rounded-full border-2 border-canvas",
               presence === "online" ? "bg-success" : presence === "away" ? "bg-warning" : presence === "dnd" ? "bg-danger" : "bg-canvas",
               presenceClassName,
             )}
-            style={{ width: dot, height: dot }}
+            style={{ width: dot, height: dot, right: overhang, bottom: overhang }}
           >
-            {presence === "dnd" && <span data-dnd-bar className="block rounded-full bg-white" style={{ width: "62%", height: Math.max(1.5, Math.round(dot * 0.18)) }} />}
-            {presence === "offline" && <span className="block h-full w-full rounded-full border-[1.5px] border-muted" />}
+            {presence === "dnd" && <span data-dnd-bar className="block rounded-full bg-white" style={{ width: "62%", height: dndBarHeight(dot) }} />}
+            {presence === "offline" && <span className="block h-full w-full rounded-full border-solid border-muted" style={{ borderWidth: dot >= 12 ? 2 : 1.5 }} />}
           </span>
         </HoverList>
       )}
     </span>
   );
+}
+
+/** The presence dot for a picture `size` px wide: three tenths of it, at least 8 px. */
+export function avatarDotSize(size: number): number {
+  return Math.max(8, Math.round(size * 0.3));
+}
+
+/**
+ * My own picture in the sidebar header (2026-10-12: its dot was too small to read, 10 px with 6 px of colour inside the
+ * ring): 36 px with a 14 px dot in a 2 px ring, so the colour is 10 px across.
+ */
+export const HEADER_AVATAR_SIZE = 36;
+export const HEADER_DOT_SIZE = 14;
+
+/** 取り込み中's white bar keeps to the dot: about a fifth of it, at least 1.5 px (2 px on a 10 px dot, 3 px on 14 px). */
+export function dndBarHeight(dot: number): number {
+  return Math.max(1.5, Math.round(dot * 0.18));
 }
 
 export function presenceLabel(status: PresenceLook): string {

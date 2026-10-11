@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DndDuration, PresenceChoice, PresenceStatus, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { Avatar } from "../src/ui/Avatar";
+import { Avatar, avatarDotSize, dndBarHeight, HEADER_AVATAR_SIZE } from "../src/ui/Avatar";
 import { DirectoryDialog } from "../src/ui/DirectoryDialog";
 import { isIndefiniteDnd, pauseValue } from "../src/ui/dnd";
 import { MyStatusMenu } from "../src/ui/MyStatusMenu";
@@ -187,6 +187,39 @@ describe("the dot", () => {
     expect(header.querySelector("[data-my-presence-line]")!.textContent).toBe(myPresenceLine(store.me));
     expect(header.querySelector("[data-my-presence-line]")!.textContent).toMatch(/^取り込み中（〜/);
     expect(within(header).queryByText("オンライン")).toBeNull();
+  });
+
+  it("my header's dot is big enough to read (2026-10-12): 14 px in a 2 px ring on a 36 px picture, the dnd bar in step", () => {
+    const store = storeWith(meWith({ dnd_until: inMinutes(30) }));
+    store.setPresence(ME, "online");
+    const controller = Object.assign(controllerFor(store), { engine: { status: "online" } });
+    render(<Sidebar controller={controller} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />);
+    const header = screen.getByTestId("sidebar-header");
+    const dot = header.querySelector<HTMLElement>('[data-presence="dnd"]')!;
+    const picture = dot.parentElement!;
+    expect(picture.style.width).toBe(`${HEADER_AVATAR_SIZE}px`);
+    expect(HEADER_AVATAR_SIZE).toBe(36);
+    expect(dot.style.width).toBe("14px");
+    expect(dot.style.height).toBe("14px");
+    // The ring is the 2 px border in the sidebar's colour; the dot overhangs the corner by 3 px.
+    expect(dot.className).toContain("border-2");
+    expect(dot.className).toContain("border-sidebar");
+    expect(dot.style.right).toBe("-3px");
+    expect(dot.style.bottom).toBe("-3px");
+    // 取り込み中's bar: 62 % wide and 3 px tall on the 14 px dot (2 px on the usual 10 px one).
+    const bar = dot.querySelector<HTMLElement>("[data-dnd-bar]")!;
+    expect(bar.style.width).toBe("62%");
+    expect(bar.style.height).toBe("3px");
+    expect(dndBarHeight(avatarDotSize(34))).toBe(2);
+  });
+
+  it("other pictures keep their dot: three tenths of the picture, at least 8 px, 2 px off the corner", () => {
+    const { container } = render(<Avatar id={ALICE} name="アリス" size={18} presence="online" />);
+    const dot = container.querySelector<HTMLElement>('[data-presence="online"]')!;
+    expect(dot.style.width).toBe("8px");
+    expect(dot.style.right).toBe("-2px");
+    expect(avatarDotSize(36)).toBe(11);
+    expect(avatarDotSize(40)).toBe(12);
   });
 
   it("my header: オフライン表示 is the hollow ring and its name; 自動 reads the look; a lost connection takes the line", () => {
