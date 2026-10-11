@@ -358,6 +358,27 @@ async def own_items(
     return [i for i in ids if i in found]
 
 
+async def opened_mentions(db: AsyncSession, actor: User, ids: list[uuid.UUID]) -> list[Message]:
+    """Which of these ids are messages that mention the user (as the channel's `mention_count`
+    counts them: someone else's live user message) in a conversation they are in. Opening one from
+    the activity reads its conversation up to it (MOBILE_UI.md §6.4, SYNC_PROTOCOL.md §10.7)."""
+    if not ids:
+        return []
+    stmt = (
+        select(Message)
+        .join(ChannelMember, _member(actor.id))
+        .where(
+            Message.id.in_(ids),
+            Message.sender_id != actor.id,
+            Message.deleted_at.is_(None),
+            Message.type == "user",
+            mentions_of(Message, actor.id),
+        )
+        .order_by(Message.channel_id, Message.seq)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def open_items(
     db: AsyncSession, user_id: uuid.UUID, ids: list[uuid.UUID], at: datetime
 ) -> None:

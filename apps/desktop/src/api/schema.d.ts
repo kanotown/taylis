@@ -105,7 +105,9 @@ export interface paths {
          * Mark Activity Items Read
          * @description I opened these items (their `id` in GET /activity): each is read until it happens again (a
          *     newer reaction to the message). Idempotent; ids that are not my items are ignored
-         *     (MOBILE_UI.md §6.4, 2026-10-07).
+         *     (MOBILE_UI.md §6.4, 2026-10-07). A message that mentions me, opened, also reads its
+         *     conversation up to it (a reply: its thread too; read.updated / thread.updated to my devices),
+         *     so its mention badge goes; later messages stay unread (SYNC_PROTOCOL.md §10.7, 2026-10-12).
          */
         put: operations["mark_activity_items_read_api_v1_activity_items_read_put"];
         post?: never;
