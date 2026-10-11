@@ -206,6 +206,33 @@ describe("SyncEngine and the activity (M39)", () => {
     w.engine.stop();
   });
 
+  it("2026-10-12 (SYNC_PROTOCOL.md §10.7): opening a mention reads its conversation up to it (read.updated): the channel's mention badge goes, later messages stay unread", async () => {
+    const w = await setup();
+    w.server.post(w.channel.id, w.alice.id, "前の投稿");
+    const mention = w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 見て`).message;
+    w.server.post(w.channel.id, w.alice.id, "後の投稿");
+    await w.settle();
+    const before = w.store.getChannel(w.channel.id)!;
+    expect([before.unreadCount, before.mentionCount]).toEqual([3, 1]);
+    // Opened from the activity: the conversation shows the window around it, which reads nothing by itself (§10).
+    await w.engine.markActivityItemsRead([{ id: mention.id, at: mention.created_at }]);
+    await w.settle();
+    const after = w.store.getChannel(w.channel.id)!;
+    expect(after.lastReadSeq).toBe(mention.seq);
+    expect([after.unreadCount, after.mentionCount]).toEqual([1, 0]);
+
+    // A mention in a reply sent to the channel too: the thread's position and the channel's both move.
+    const parent = w.server.post(w.channel.id, w.carol.id, "親").message;
+    const reply = w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 返信`, undefined, parent.id, [], { alsoInChannel: true }).message;
+    await w.settle();
+    expect(w.store.getChannel(w.channel.id)!.mentionCount).toBe(1);
+    await w.engine.markActivityItemsRead([{ id: reply.id, at: reply.created_at }]);
+    await w.settle();
+    expect(w.store.getChannel(w.channel.id)!).toMatchObject({ lastReadSeq: reply.seq, mentionCount: 0 });
+    expect(w.store.threadReadSeqs.get(parent.id)).toBe(reply.seq);
+    w.engine.stop();
+  });
+
   it("takes the badge from bootstrap; a server before M39 sends none and nothing is asked for", async () => {
     const old = await setup({ activity: false });
     expect(old.store.activity).toBeNull();

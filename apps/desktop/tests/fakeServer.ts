@@ -508,6 +508,16 @@ export class FakeServer {
     const at = now();
     for (const id of itemIds) this.openedItems.set(`${userId}:${id}`, at);
     this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "activity.items_read", ts: at, channel_id: null, seq: null, data: { item_ids: itemIds, read_at: at } } as EventFrame);
+    // 2026-10-12 (SYNC_PROTOCOL.md §10.7): a mention opened reads its conversation up to it, and its thread for a reply.
+    for (const id of itemIds) {
+      for (const record of this.channels.values()) {
+        const m = record.messages.find((x) => x.id === id);
+        if (!m || !record.members.has(userId) || m.sender_id === userId || m.deleted || (m.type ?? "user") !== "user") continue;
+        if (!(m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId))) continue;
+        if (!m.parent_id || m.also_in_channel) this.markRead(userId, record.channel.id, m.seq);
+        if (m.parent_id) this.markThreadRead(userId, m.parent_id, m.seq);
+      }
+    }
     return this.activitySummary(userId);
   }
 
