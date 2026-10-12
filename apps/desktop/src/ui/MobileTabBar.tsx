@@ -44,7 +44,7 @@ export function MobileTabBar({ controller, tab, onTab }: { controller: AppContro
                 <span
                   data-badge={value === "activity" && !activity.mention ? "neutral" : "danger"}
                   className={cn(
-                    "absolute -right-2.5 -top-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10.5px] font-bold leading-none text-white ring-2 ring-canvas",
+                    "badge-text absolute -right-2.5 -top-1.5 h-[18px] min-w-[18px] rounded-full px-1 text-[10.5px] font-bold text-white ring-2 ring-canvas",
                     value === "activity" && !activity.mention ? "bg-muted" : "bg-rose-500",
                   )}
                 >

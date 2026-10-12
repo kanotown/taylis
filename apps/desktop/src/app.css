@@ -214,6 +214,18 @@
 :root[data-font="system"] { --font-ui: var(--font-system); }
 :root[data-font="system"] { --font-code: var(--font-mono-system), var(--font-ui), monospace; }
 
+/* A count badge's digits on the badge's centre (2026-10-13): Noto Sans JP's tall ascender put them
+   0.5-2 px low, by how much depending on the zoom. The text box is trimmed to the cap height and the
+   block centres it. A browser without text-box falls back to the old look. */
+@utility badge-text {
+  display: inline-block;
+  align-content: center;
+  text-align: center;
+  line-height: 1;
+  white-space: nowrap;
+  text-box: trim-both cap alphabetic;
+}
+
 @theme inline {
   --font-sans: var(--font-ui);
   --color-canvas: var(--canvas);

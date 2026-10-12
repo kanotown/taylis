@@ -262,7 +262,7 @@ export function Badge({ children, tone = "neutral", className }: { children: Rea
   return (
     <span
       className={cn(
-        "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-none",
+        "badge-text h-5 min-w-5 rounded-full px-1.5 text-[11px] font-bold",
         tone === "danger" && "bg-rose-500 text-white",
         tone === "accent" && "bg-accent-soft text-accent",
         tone === "neutral" && "bg-panel-2 text-muted",
