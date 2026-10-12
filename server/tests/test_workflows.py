@@ -700,3 +700,80 @@ async def test_emoji_takes_the_longest_custom_name(
     assert too_long.status_code == 422
     kept = await client.patch(f"/api/v1/workflows/{wid}", json={"emoji": ":" + "a" * 33 + ":"})
     assert kept.status_code == 422
+
+
+async def test_request_ack_and_priority_go_onto_the_post(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """`request_ack` and `priority` (WORKFLOWS.md §12): off by default; when set, the post asks
+    the members to acknowledge it (M15e) with its label, also when posted without the form, and
+    the acknowledgement list and the reminder work on it as on any post."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    as_user(alice)
+    cid = await _channel(client, "seminar", [bob, carol])
+    plain = (await _create(client, cid)).json()
+    assert plain["request_ack"] is False and plain["priority"] is None
+
+    created = await _create(
+        client,
+        cid,
+        name="ゼミ案内",
+        fields=[],
+        template="<!channel> 明日はゼミです",
+        confirm=False,
+        request_ack=True,
+        priority="important",
+    )
+    assert created.status_code == 201, created.text
+    wf = created.json()
+    assert wf["request_ack"] is True and wf["priority"] == "important"
+    listed = (await client.get(f"/api/v1/channels/{cid}/workflows")).json()
+    by_name = {w["name"]: w["request_ack"] for w in listed}
+    assert by_name == {"ゼミ欠席報告": False, "ゼミ案内": True}
+
+    key = str(uuid.uuid4())
+    posted = await _submit(client, wf["id"], {}, key)
+    assert posted.status_code == 201, posted.text
+    message = posted.json()
+    assert message["ack_requested"] is True and message["priority"] == "important"
+    assert message["parent_id"] is None and message["workflow"]["id"] == wf["id"]
+    # A retry returns the same post.
+    again = await _submit(client, wf["id"], {}, key)
+    assert again.status_code == 200 and again.json()["id"] == message["id"]
+
+    # The members acknowledge it; the poster sees who has not and reminds them.
+    as_user(bob)
+    assert (await client.put(f"/api/v1/messages/{message['id']}/ack")).status_code == 200
+    as_user(alice)
+    pending = await client.get(f"/api/v1/messages/{message['id']}/ack/pending")
+    assert pending.json() == {"user_ids": [str(carol.id)]}
+    reminded = await client.post(f"/api/v1/messages/{message['id']}/ack/remind")
+    assert reminded.status_code == 200 and reminded.json() == {"reminded": 1}
+
+    # PATCH: left out they stay, null takes the label off; request_ack null and other labels: 422.
+    kept = await client.patch(f"/api/v1/workflows/{wf['id']}", json={"description": "x"})
+    assert kept.json()["request_ack"] is True and kept.json()["priority"] == "important"
+    off = await client.patch(
+        f"/api/v1/workflows/{wf['id']}", json={"request_ack": False, "priority": None}
+    )
+    assert off.status_code == 200 and off.json()["request_ack"] is False
+    assert off.json()["priority"] is None
+    for bad in ({"request_ack": None}, {"priority": "low"}):
+        assert (await client.patch(f"/api/v1/workflows/{wf['id']}", json=bad)).status_code == 422
+    assert (await _create(client, cid, name="x", priority="low")).status_code == 422
+    details: Sequence[dict[str, Any]] = (
+        (
+            await db.execute(
+                select(AuditLog.details)
+                .where(AuditLog.target_id == wf["id"], AuditLog.action == "workflow.updated")
+                .order_by(AuditLog.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert details[-1] == {"fields": ["priority", "request_ack"]}
+    plain_post = (await _submit(client, wf["id"], {})).json()
+    assert plain_post["ack_requested"] is False and plain_post["priority"] is None

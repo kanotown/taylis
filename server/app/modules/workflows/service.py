@@ -246,6 +246,8 @@ async def create(db: AsyncSession, actor: User, data: WorkflowCreate) -> Workflo
         template=data.template,
         enabled=data.enabled,
         confirm=data.confirm,
+        request_ack=data.request_ack,
+        priority=data.priority,
         created_by=actor.id,
         created_at=now,
         updated_at=now,
@@ -296,6 +298,10 @@ async def update(
         row.enabled = data.enabled
     if data.confirm is not None:
         row.confirm = data.confirm
+    if data.request_ack is not None:
+        row.request_ack = data.request_ack
+    if "priority" in fields_set:
+        row.priority = data.priority
     row.updated_at = utcnow()
     await _flush(db)
     await audit.record_in_tx(
@@ -391,6 +397,12 @@ async def submit(
         db,
         actor,
         row.channel_id,
-        MessageCreate(client_msg_id=data.client_msg_id, body=body),
+        MessageCreate(
+            client_msg_id=data.client_msg_id,
+            body=body,
+            # A workflow always posts top-level, where both are allowed (M15e).
+            priority=row.priority,  # type: ignore[arg-type]
+            ack_requested=row.request_ack,
+        ),
         workflow=(row.id, row.name),
     )
