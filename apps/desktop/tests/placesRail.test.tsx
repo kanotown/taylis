@@ -110,6 +110,17 @@ describe("the rail", () => {
     expect(files.onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it("an icon names itself in a tooltip on keyboard focus, also with 「新しいタブで開く」 around it (2026-10-12: the tabs' menu ate the tooltip)", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); // the tooltip's placement
+    const places = [place("threads", { label: "スレッド", hint: "フォロー中のスレッド" }), place("saved", { label: "保存済み" })];
+    render(<PlacesRail places={places} spotOf={spots({})} onPlace={vi.fn()} onNewTab={vi.fn()} />);
+    const threads = within(rail()).getByRole("button", { name: "スレッド" });
+    act(() => threads.focus());
+    const tip = await screen.findByRole("tooltip");
+    expect(tip.textContent).toContain("スレッド");
+    vi.unstubAllGlobals();
+  });
+
   it("a short window: the icons that do not fit go under 「その他」, which then carries their badge and highlight", async () => {
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(16 + 2 * RAIL_ITEM_PITCH + 2 * RAIL_ITEM_PITCH);
     const places = [place("a"), place("b"), place("c", { badge: { text: "1", tone: "danger" } }), place("d", { active: true })];
