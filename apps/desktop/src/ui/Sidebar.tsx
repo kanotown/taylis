@@ -15,7 +15,7 @@ import { desktopNavKeys, fullNavItems, shownNavItems } from "./navItems";
 import { type Place, PlaceMenuItems, PlacesRail } from "./PlacesRail";
 import { Badge, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
-import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
+import { ChannelContextMenu, type ChannelRowAction, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu, SidebarContextMenu } from "./SidebarMenus";
 import { hasUnreadFeed } from "../sync/timesFeed";
 import { StatusEmoji } from "./UserPopover";
 import { MyStatusMenu } from "./MyStatusMenu";
@@ -93,10 +93,12 @@ interface Props {
   remindersActive?: boolean;
   /** The rail's 「並べ替え…」: 設定 → 表示 (「サイドバーの項目」). */
   onArrangePlaces?: () => void;
+  /** A row's context menu: its details, rename, leave, archive (the main screen opens the conversation and the dialog). */
+  onChannelAction?: (channelId: string, action: ChannelRowAction) => void;
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -257,7 +259,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     return (
       <ReorderRow key={channel.id} id={channel.id} order={order} folded={folded}>
         <div className="fold-inner">
-        <ChannelContextMenu controller={controller} channel={channel}>
+        <ChannelContextMenu controller={controller} channel={channel} onAction={onChannelAction}>
         <button
           type="button"
           // M26: dragged onto a section's header (or list) it moves there (Slack).
@@ -309,6 +311,16 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
       {onThreads && railOn && (
         <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} />
       )}
+    {/* MOBILE_UI.md §18.6: right-click on the sidebar's empty space (a row's own menu wins). */}
+    <SidebarContextMenu
+      guest={controller.isGuest}
+      onNewSection={() => setNewSection(true)}
+      onNewChannel={onNewChannel}
+      onBrowse={onBrowse}
+      onNewDm={onNewDm}
+      onReadAll={onReadAll}
+      onDisplay={onArrangePlaces}
+    >
     <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-2 pb-4">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
       <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-sidebar-line bg-sidebar px-4 py-3">
@@ -563,6 +575,7 @@ collapsed={folded.has("dms")}
       </Section>
       {newSection && <NewSectionDialog controller={controller} onClose={() => setNewSection(false)} />}
     </nav>
+    </SidebarContextMenu>
     </div>
   );
 }

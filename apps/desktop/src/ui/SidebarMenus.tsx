@@ -1,11 +1,12 @@
 import { ContextMenu, DropdownMenu } from "radix-ui";
 import { Check, MoreHorizontal, Pin } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "react";
 
-import type { SidebarSectionOut, SidebarSort } from "../api/types";
+import type { NotificationLevel, SidebarSectionOut, SidebarSort } from "../api/types";
 import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { isDmChannel, isTimedMuted } from "./channels";
+import { FOLLOW_DEFAULT, isDmChannel, isTimedMuted, notificationChoices, overallLevel } from "./channels";
+import { canManageChannelByRight } from "./roles";
 import { SectionDialog } from "./SectionDialog";
 import { Button, cn, Input, Modal } from "./primitives";
 import { t, type MessageKey } from "../i18n";
@@ -13,8 +14,27 @@ import { t, type MessageKey } from "../i18n";
 const CONTENT = "rx-popover z-50 min-w-52 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
 
-/** Right-click on a sidebar row (M14f): star it, move it into one of my sections, mute or unmute it (M35). */
-export function ChannelContextMenu({ controller, channel, children }: { controller: AppController; channel: ChannelState; children: ReactNode }) {
+/** What a conversation row's menu asks the main screen to do (it opens the conversation, then the dialog). */
+export type ChannelRowAction = "details" | "rename" | "leave" | "archive";
+
+/**
+ * Shift+F10 or the context-menu key on a row (or the sidebar) opens its context menu, as a right-click does: a
+ * `contextmenu` at the element's lower left, which Radix's trigger takes (and then focuses the menu).
+ */
+export function openContextMenuByKey(event: KeyboardEvent<HTMLElement>): void {
+  if (!((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu")) return;
+  event.preventDefault();
+  const box = event.currentTarget.getBoundingClientRect();
+  event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + Math.min(24, box.width / 2), clientY: box.bottom }));
+}
+
+/**
+ * Right-click (or Shift+F10 / the context-menu key) on a sidebar row (M14f, 2026-10-12 richer, MOBILE_UI.md §18.7):
+ * read / unread, star it, move it into one of my sections, its notifications and mute (M35), copy a link, its details,
+ * rename, leave or close, archive. The rename / leave / archive / details items need `onAction` (the main screen's
+ * dialogs; HomeView and the DM list leave them out); rename and archive are the channel's owners' and managers'.
+ */
+export function ChannelContextMenu({ controller, channel, children, onAction }: { controller: AppController; channel: ChannelState; children: ReactNode; onAction?: (channelId: string, action: ChannelRowAction) => void }) {
   const store = controller.store;
   const sections = store.sidebarSections;
   const [naming, setNaming] = useState(false);
@@ -27,20 +47,33 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
   const pinned = store.isDmPinned(channel.id);
   // M141 「会話を閉じる」: DMs and group DMs too; not offered by a server before M141 (no closed_dms).
   const closable = isDmChannel(channel) && channel.isMember && store.closedDms !== null;
+  const isChannel = channel.type === "public" || channel.type === "private";
+  // M142: owners, and channels.manage (administrators and managers; docs/ROLES.md §2) — the header's ⋯ menu's rule.
+  // (A controller without `can`, a test's stand-in, counts as no rights.)
+  const canManage = isChannel && (channel.membership?.role === "owner" || canManageChannelByRight(channel, (capability) => typeof controller.can === "function" && controller.can(capability)));
+  const engine = controller.engine;
+  // 既読にする while something is unread (quiet unread too); 未読にする marks the newest message unread.
+  const unread = channel.unreadCount > 0 || channel.lastReadSeq < channel.lastSeq;
+  const readable = channel.isMember && !!engine;
+  const overall = overallLevel(store.me ?? controller.me);
   return (
     <>
       <ContextMenu.Root>
-        <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
+        <ContextMenu.Trigger asChild onKeyDown={openContextMenuByKey}>{children}</ContextMenu.Trigger>
         <ContextMenu.Portal>
-          <ContextMenu.Content className={CONTENT}>
+          <ContextMenu.Content className={CONTENT} collisionPadding={8}>
+            {readable && (unread ? (
+              <ContextMenu.Item className={ITEM} data-row-action="read" onSelect={() => engine!.markRead(channel.id, channel.lastSeq, { force: true })}>
+                {t("channelMenu.markRead")}
+              </ContextMenu.Item>
+            ) : channel.lastSeq > 0 ? (
+              <ContextMenu.Item className={ITEM} data-row-action="unread" onSelect={() => engine!.markUnread(channel.id, channel.lastSeq)}>
+                {t("channelMenu.markUnread")}
+              </ContextMenu.Item>
+            ) : null)}
             {pinnable && (
               <ContextMenu.Item className={ITEM} onSelect={() => void controller.toggleDmPin(channel.id)}>
                 {pinned ? t("dmPin.unpin") : t("dmPin.pin")}
-              </ContextMenu.Item>
-            )}
-            {closable && (
-              <ContextMenu.Item className={ITEM} onSelect={() => void controller.closeDm(channel.id)}>
-                {t("dmClose.close")}
               </ContextMenu.Item>
             )}
             <ContextMenu.Item className={ITEM} onSelect={() => void controller.toggleFavorite(channel.id)}>
@@ -71,6 +104,29 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
               </ContextMenu.Item>
             )}
             <ContextMenu.Separator className="my-1 h-px bg-line" />
+            {channel.isMember && (
+              // M35: a level change keeps both mutes (the timed one is sent back as it is, `muted` is left out).
+              <ContextMenu.Sub>
+                <ContextMenu.SubTrigger className={cn(ITEM, "justify-between")} data-row-action="notifications">
+                  {t("channelMenu.notifications")} <span className="text-muted">›</span>
+                </ContextMenu.SubTrigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.SubContent className={CONTENT} sideOffset={4}>
+                    <ContextMenu.RadioGroup
+                      value={channel.notificationLevel ?? FOLLOW_DEFAULT}
+                      onValueChange={(value) => void controller.setNotification(channel.id, value === FOLLOW_DEFAULT ? null : (value as NotificationLevel), channel.mutedUntil)}
+                    >
+                      {notificationChoices(overall).map((choice) => (
+                        <ContextMenu.RadioItem key={choice.value} value={choice.value} className={cn(ITEM, "relative pl-7")}>
+                          <ContextMenu.ItemIndicator className="absolute left-2.5"><Check size={13} /></ContextMenu.ItemIndicator>
+                          {choice.label}
+                        </ContextMenu.RadioItem>
+                      ))}
+                    </ContextMenu.RadioGroup>
+                  </ContextMenu.SubContent>
+                </ContextMenu.Portal>
+              </ContextMenu.Sub>
+            )}
             {/* M35: 「ミュート」 mutes until unmuted; 「ミュート解除」 ends it and a timed mute. The own level stays. */}
             {muted ? (
               <ContextMenu.Item className={ITEM} onSelect={() => void controller.setNotification(channel.id, channel.notificationLevel, null, false)}>
@@ -79,6 +135,38 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
             ) : (
               <ContextMenu.Item className={ITEM} onSelect={() => void controller.setNotification(channel.id, channel.notificationLevel, channel.mutedUntil, true)}>
                 {t("channel.mute")}
+              </ContextMenu.Item>
+            )}
+            <ContextMenu.Separator className="my-1 h-px bg-line" />
+            {channel.isMember && (
+              <ContextMenu.Item className={ITEM} data-row-action="copy-link" onSelect={() => void controller.copyChannelLink(channel.id)}>
+                {t("channelMenu.copyLink")}
+              </ContextMenu.Item>
+            )}
+            {onAction && channel.isMember && (
+              <ContextMenu.Item className={ITEM} data-row-action="details" onSelect={() => onAction(channel.id, "details")}>
+                {isChannel ? t("main.channelInfo") : t("main.conversationInfo")}
+              </ContextMenu.Item>
+            )}
+            {onAction && canManage && !channel.archived && (
+              <ContextMenu.Item className={ITEM} data-row-action="rename" onSelect={() => onAction(channel.id, "rename")}>
+                {t("channel.rename")}
+              </ContextMenu.Item>
+            )}
+            {(closable || (onAction && isChannel && channel.isMember) || (onAction && canManage && !channel.archived)) && <ContextMenu.Separator className="my-1 h-px bg-line" />}
+            {closable && (
+              <ContextMenu.Item className={ITEM} onSelect={() => void controller.closeDm(channel.id)}>
+                {t("dmClose.close")}
+              </ContextMenu.Item>
+            )}
+            {onAction && isChannel && channel.isMember && (
+              <ContextMenu.Item className={ITEM} data-row-action="leave" onSelect={() => onAction(channel.id, "leave")}>
+                {t("channel.leave")}
+              </ContextMenu.Item>
+            )}
+            {onAction && canManage && !channel.archived && (
+              <ContextMenu.Item className={cn(ITEM, "text-danger")} data-row-action="archive" onSelect={() => onAction(channel.id, "archive")}>
+                {t("channel.archive")}
               </ContextMenu.Item>
             )}
           </ContextMenu.Content>
@@ -96,6 +184,48 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
         />
       )}
     </>
+  );
+}
+
+/**
+ * Right-click (or Shift+F10 / the context-menu key) on the sidebar's empty space (MOBILE_UI.md §18.6): new section,
+ * create / browse channels, new DM, mark everything read, and the sidebar's display (order and placement). A row's own
+ * menu wins over it (Radix's trigger skips a `contextmenu` a nested one already took).
+ */
+export function SidebarContextMenu({ guest, onNewSection, onNewChannel, onBrowse, onNewDm, onReadAll, onDisplay, children }: {
+  guest: boolean;
+  onNewSection: () => void;
+  onNewChannel?: () => void;
+  onBrowse?: () => void;
+  onNewDm?: () => void;
+  onReadAll?: () => void;
+  onDisplay?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={CONTENT} collisionPadding={8} data-sidebar-menu="">
+          <ContextMenu.Item className={ITEM} data-sidebar-action="new-section" onSelect={onNewSection}>{t("sidebar.newSection")}</ContextMenu.Item>
+          {onNewChannel && !guest && <ContextMenu.Item className={ITEM} data-sidebar-action="new-channel" onSelect={onNewChannel}>{t("sidebar.createChannel")}</ContextMenu.Item>}
+          {onBrowse && !guest && <ContextMenu.Item className={ITEM} data-sidebar-action="browse" onSelect={onBrowse}>{t("sidebar.browse")}</ContextMenu.Item>}
+          {onNewDm && <ContextMenu.Item className={ITEM} data-sidebar-action="new-dm" onSelect={onNewDm}>{t("sidebarMenu.newDm")}</ContextMenu.Item>}
+          {onReadAll && (
+            <>
+              <ContextMenu.Separator className="my-1 h-px bg-line" />
+              <ContextMenu.Item className={ITEM} data-sidebar-action="read-all" onSelect={onReadAll}>{t("sidebar.markAllRead")}</ContextMenu.Item>
+            </>
+          )}
+          {onDisplay && (
+            <>
+              <ContextMenu.Separator className="my-1 h-px bg-line" />
+              <ContextMenu.Item className={ITEM} data-sidebar-action="display" onSelect={onDisplay}>{t("sidebarMenu.display")}</ContextMenu.Item>
+            </>
+          )}
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
 

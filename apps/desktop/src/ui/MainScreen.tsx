@@ -138,7 +138,7 @@ function liveKey(place: Place<Focus>): string {
 
 const isRootNav = (nav: Nav) => nav.pane === "list";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "workflows" | null;
+type Dialog = "dm" | "channel" | "details" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "workflows" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -1189,6 +1189,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
       onArrangePlaces={() => { setSettingsSection("appearance"); setDialog("settings"); }}
+      // MOBILE_UI.md §18.7: a row's menu opens the conversation, then the same dialog its ⋯ menu would.
+      onChannelAction={(id, action) => { open(id); setDialog(action); }}
     />
   );
   // The channel's own ⋯ items (on a phone they follow the conversation items in the same menu).
@@ -1647,6 +1649,21 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "directory" && <DirectoryDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
+      {/* The row menu's 「チャンネル情報」 on the wide layout: the phone's details page in a dialog. */}
+      {dialog === "details" && current && (
+        <Modal onClose={() => setDialog(null)} title="" hideClose className="flex h-[80dvh] w-[520px] flex-col overflow-hidden p-0 max-md:p-0">
+          <ChannelDetails
+            controller={controller}
+            channel={current}
+            membersVersion={membersVersion}
+            onClose={() => setDialog(null)}
+            onDialog={(next) => {
+              if (next === "link") setEditingLink(null);
+              setDialog(next);
+            }}
+          />
+        </Modal>
+      )}
       {dialog === "members" && current && (
         <MembersDialog controller={controller} channel={current} onClose={() => setDialog(null)} onAdd={() => setDialog("add-member")} />
       )}
