@@ -42,10 +42,70 @@ export function withSpot(stored: DesktopPlaces | null | undefined, key: string, 
   const at = items.findIndex((entry) => entry.key === key);
   if (at >= 0) items[at] = { key, place: spot };
   else items.push({ key, place: spot });
-  return { rail: railShown(stored), items };
+  return { ...stored, rail: railShown(stored), items };
 }
 
 /** `stored` with the rail shown or hidden. */
 export function withRail(stored: DesktopPlaces | null | undefined, rail: boolean): DesktopPlaces {
-  return { rail, items: [...(stored?.items ?? [])] };
+  return { ...stored, rail, items: [...(stored?.items ?? [])] };
+}
+
+/**
+ * 設定の「元に戻す」 for the places: the rail and every place back to their defaults (null), the Times section's position
+ * kept (it is the sidebar's order, not a place's spot).
+ */
+export function withDefaultPlaces(stored: DesktopPlaces | null | undefined): DesktopPlaces | null {
+  return stored?.times_before ? { rail: true, items: [], times_before: stored.times_before } : null;
+}
+
+/** Whether any place or the rail differs from the defaults (the Times section's position aside). */
+export function placesChosen(stored: DesktopPlaces | null | undefined): boolean {
+  return !!stored && (!railShown(stored) || (stored.items ?? []).length > 0);
+}
+
+// --- where the Times section stands (2026-10-12, TIMES_FEED.md §7) -------------------------------------------------
+
+/** The Times section's key among the sidebar's sections ("favorites", my own sections' ids, "channels", "dms"). */
+export const TIMES_SECTION = "times";
+/** After every section. */
+export const SECTIONS_END = "end";
+/** Not chosen (or its section is gone): right above 「チャンネル」. */
+export const DEFAULT_TIMES_BEFORE = "channels";
+
+/** The section the Times section stands before (`SECTIONS_END`: after them all); a gone section's id reads as the default. */
+export function timesAnchor(stored: DesktopPlaces | null | undefined, keys: readonly string[]): string {
+  const chosen = stored?.times_before;
+  return chosen && (chosen === SECTIONS_END || keys.includes(chosen)) ? chosen : DEFAULT_TIMES_BEFORE;
+}
+
+/**
+ * `keys` (the sidebar's sections in order, without Times) with Times put in its place. Pass every section that could
+ * show (お気に入り too while empty), so an anchor on one that is not drawn now still lands where it would be.
+ */
+export function withTimesPlaced(keys: readonly string[], anchor: string): string[] {
+  const rest = keys.filter((key) => key !== TIMES_SECTION);
+  const at = anchor === SECTIONS_END ? rest.length : rest.indexOf(anchor);
+  rest.splice(at < 0 ? rest.length : at, 0, TIMES_SECTION);
+  return rest;
+}
+
+/** The anchor that puts Times before (`after` false) or after `target` among the `shown` sections. */
+export function timesAnchorAt(shown: readonly string[], target: string, after: boolean): string {
+  const rest = shown.filter((key) => key !== TIMES_SECTION);
+  if (!after) return target;
+  return rest[rest.indexOf(target) + 1] ?? SECTIONS_END;
+}
+
+/** The anchor after 上へ (-1) / 下へ (+1) on the Times section among the `shown` sections; null at that end. */
+export function timesAnchorMoved(shown: readonly string[], step: -1 | 1): string | null {
+  const at = shown.indexOf(TIMES_SECTION);
+  if (at < 0) return null;
+  const neighbour = shown[at + step];
+  if (neighbour === undefined) return null;
+  return timesAnchorAt(shown, neighbour, step > 0);
+}
+
+/** `stored` with the Times section before `anchor` (the default anchor is stored as null). */
+export function withTimesBefore(stored: DesktopPlaces | null | undefined, anchor: string): DesktopPlaces {
+  return { ...stored, rail: railShown(stored), items: [...(stored?.items ?? [])], times_before: anchor === DEFAULT_TIMES_BEFORE ? null : anchor };
 }

@@ -212,9 +212,11 @@ it("「自分の times に書く」 is 「自分の times を作る」 until I h
   (controller as unknown as { active: unknown }).active = { serverUrl: "http://server", username: "bob", api, store: w.store, engine: w.engine, me: w.store.me, leaving: false };
   render(<Screen w={w} controller={controller} />);
   await flush();
-  // No times of anyone: no feed icon in the rail (MOBILE_UI.md §18.5); the Times header's icon opens the (empty) feed.
+  // No times of anyone: no feed icon in the rail (MOBILE_UI.md §18.5); the Times header's ⋯ opens the (empty) feed.
   expect(within(screen.getByRole("navigation", { name: "場所" })).queryByRole("button", { name: "Times フィード" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Times のメニュー" }), { key: "Enter" });
+  await flush();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Times フィード" }));
   await settle(w);
   expect(screen.getByText(/参加している times がありません/)).toBeTruthy();
   fireEvent.click(within(feedHeader()).getByRole("button", { name: "自分の times を作る" }));

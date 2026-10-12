@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { UserMe } from "../src/api/types";
@@ -104,19 +104,23 @@ describe("the sidebar without 「参加できるチャンネル」 (2026-10-08)"
     return { onBrowse };
   }
 
-  it("lists no channel I could join, and a 「チャンネルを探す」 row in チャンネル opens the browser", () => {
+  it("lists no channel I could join, and the 「チャンネルを追加」 row in チャンネル offers 「チャンネルを探す」 (2026-10-12)", async () => {
     const w = world();
     expect(screen.queryByText("参加できるチャンネル")).toBeNull();
     for (const name of ["papers", "seminar", "random"]) expect(screen.queryByRole("button", { name })).toBeNull();
     expect(screen.getByRole("button", { name: "general" })).toBeTruthy();
-    const row = screen.getByRole("button", { name: "チャンネルを探す" });
+    const row = document.querySelector<HTMLElement>("[data-add-channel-row]")!;
+    expect(row.textContent).toBe("チャンネルを追加");
     expect(row.closest("section")?.textContent).toContain("チャンネル");
-    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("menuitem", { name: "チャンネルを探す" }));
     expect(w.onBrowse).toHaveBeenCalledTimes(1);
   });
 
-  it("offers no 「チャンネルを探す」 row to a guest", () => {
+  it("offers no 「チャンネルを追加」 row to a guest", () => {
     world(true);
-    expect(screen.queryByRole("button", { name: "チャンネルを探す" })).toBeNull();
+    expect(document.querySelector("[data-add-channel-row]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "チャンネルを追加" })).toBeNull();
   });
 });

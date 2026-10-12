@@ -517,6 +517,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "sidebar.markAllRead": "Mark all as read",
   "sidebar.browseKey": "Browse channels ({key})",
   "sidebar.browse": "Browse channels",
+  "sidebar.addChannel": "Add channels",
   "sidebar.newSection": "New section",
   "sidebar.createChannel": "Create channel",
   "sidebar.noUnreadChannels": "No unread channels",

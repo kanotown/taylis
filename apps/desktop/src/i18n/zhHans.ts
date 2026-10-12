@@ -517,6 +517,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "sidebar.markAllRead": "全部标为已读",
   "sidebar.browseKey": "浏览频道（{key}）",
   "sidebar.browse": "浏览频道",
+  "sidebar.addChannel": "添加频道",
   "sidebar.newSection": "新建分组",
   "sidebar.createChannel": "创建频道",
   "sidebar.noUnreadChannels": "没有未读的频道",
