@@ -43,6 +43,7 @@ import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { type ComposerMode, composerModeOf, type DocsEditorMode, docsEditorModeOf, readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
+import { readUseTabs, writeUseTabs } from "../ui/desktopTabs";
 import type { DesktopPlaces } from "../ui/desktopPlaces";
 import type { NavItem } from "../ui/navItems";
 import { type Capability, canAdminister as canAdministerWith, hasCapability } from "../ui/roles";
@@ -138,6 +139,13 @@ export class AppController {
     writeGroupPosts(value);
     this.emit();
   }
+  /** MOBILE_UI.md §19 「タブを使う」: the wide layout's tabs, per device (on by default). */
+  useTabs: boolean = readUseTabs();
+  setUseTabs(value: boolean): void {
+    this.useTabs = value;
+    writeUseTabs(value);
+    this.emit();
+  }
   /** Message in inline edit mode (Timeline / ThreadPane); ↑ in an empty composer sets it. */
   editing: string | null = null;
   setEditing(id: string | null): void { this.editing = id; this.emit(); }
@@ -215,10 +223,13 @@ export class AppController {
   private entryCanvas: string | null = null;
   /** M121: a `/p/<id>` Docs page opened in the browser. */
   private entryPage: string | null = null;
+  /** The browser opened this page at a link (/m/, /c/, /p/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
+  openedAtLink = false;
 
   private takeEntryPath(): void {
     const entry = parseEntryPath(location.pathname);
     if (!entry) return;
+    this.openedAtLink = entry.kind !== "invite";
     if (entry.kind === "invite") this.entryInvite = entry.token;
     else if (entry.kind === "canvas") this.entryCanvas = entry.id;
     else if (entry.kind === "page") this.entryPage = entry.id;

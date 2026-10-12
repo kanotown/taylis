@@ -522,3 +522,6 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
     user-select: text;
   }
 }
+
+/* MOBILE_UI.md §19: with the tab bar (two tabs or more) the sidebar spans the bar's row and the content's (MainScreen). */
+.desk-tabs-on > [data-sidebar-column] { grid-row: 2 / 4; }

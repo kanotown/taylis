@@ -15,6 +15,7 @@ import { Badge, Button, cn } from "./primitives";
 import { EmojiText } from "./UserPopover";
 import { MessageBody } from "./MessageBody";
 import { threadCardReplies, type ThreadCardReply } from "./threadCard";
+import { clickOrNewTab, middleClickProps } from "./DesktopTabBar";
 import { t } from "../i18n";
 
 /**
@@ -23,8 +24,10 @@ import { t } from "../i18n";
  * the thread in the right pane. The conversation's name on top of a row (and 「チャンネルを開く」 / 「会話を開く」 in its
  * right-click menu) opens the conversation itself at the thread's parent message (`onOpenChannel`).
  */
-export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, embedded = false }: {
+export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, onOpenInNewTab, embedded = false }: {
   controller: AppController;
+  /** MOBILE_UI.md §19: the thread (its conversation with the thread pane) in a new tab; true: in front. */
+  onOpenInNewTab?: (entry: ThreadEntry, foreground: boolean) => void;
   selectedId: string | null;
   /** The thread; with `reply` (a reply under the card), landing on that reply. */
   onOpen: (entry: ThreadEntry, reply?: MessageState) => void;
@@ -102,7 +105,7 @@ export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, emb
         ) : (
           <ul className="divide-y divide-line">
             {rows.map((entry) => (
-              <ThreadRow key={entry.parent.id} entry={entry} controller={controller} selected={entry.parent.id === selectedId} onOpen={(reply) => onOpen(entry, reply)} onOpenChannel={() => onOpenChannel(entry)} />
+              <ThreadRow key={entry.parent.id} entry={entry} controller={controller} selected={entry.parent.id === selectedId} onOpen={(reply) => onOpen(entry, reply)} onOpenChannel={() => onOpenChannel(entry)} onNewTab={onOpenInNewTab && ((foreground) => onOpenInNewTab(entry, foreground))} />
             ))}
           </ul>
         )}
@@ -121,12 +124,13 @@ export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, emb
 const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-accent-soft";
 
-function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel }: {
+function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel, onNewTab }: {
   entry: ThreadEntry;
   controller: AppController;
   selected: boolean;
   onOpen: (reply?: MessageState) => void;
   onOpenChannel: () => void;
+  onNewTab?: (foreground: boolean) => void;
 }) {
   const onOpen = () => openAt();
   const store = controller.store;
@@ -169,7 +173,13 @@ function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel 
               {dateLabel(last)} {timeLabel(last)}
             </span>
           </div>
-          <button type="button" onClick={onOpen} aria-current={selected ? "true" : undefined} className="flex w-full gap-3 px-4 pb-3 pt-1 text-left">
+          <button
+            type="button"
+            {...middleClickProps(onNewTab)}
+            onClick={(event) => { if (!clickOrNewTab(event, onNewTab)) onOpen(); }}
+            aria-current={selected ? "true" : undefined}
+            className="flex w-full gap-3 px-4 pb-3 pt-1 text-left"
+          >
             <Avatar id={parent.sender_id} name={author?.display_name ?? "?"} size={36} className="mt-0.5 rounded-lg" />
             <div className="min-w-0 flex-1">
               <div className={cn("flex items-baseline gap-2 text-sm", unread ? "font-semibold" : "font-medium")}>
@@ -207,6 +217,7 @@ function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel 
       <ContextMenu.Portal>
         <ContextMenu.Content className={MENU}>
           <ContextMenu.Item className={MENU_ITEM} onSelect={onOpen}>{t("threads.openThread")}</ContextMenu.Item>
+          {onNewTab && <ContextMenu.Item className={MENU_ITEM} data-open-new-tab="" onSelect={() => onNewTab(false)}>{t("tabs.openInNewTab")}</ContextMenu.Item>}
           {channel && <ContextMenu.Item className={MENU_ITEM} onSelect={onOpenChannel}>{openLabel}</ContextMenu.Item>}
         </ContextMenu.Content>
       </ContextMenu.Portal>

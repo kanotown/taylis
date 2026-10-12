@@ -17,6 +17,7 @@ import { Badge, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuLabel, Men
 import { SectionIcon } from "./SectionDialog";
 import { AddChannelMenu, ChannelContextMenu, type ChannelRowAction, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu, SectionMenu, SectionMenuItem, SectionMenuSeparator, SidebarContextMenu } from "./SidebarMenus";
 import { hasUnreadFeed } from "../sync/timesFeed";
+import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
 import { StatusEmoji } from "./UserPopover";
 import { MyStatusMenu } from "./MyStatusMenu";
 import { currentMe, myPresenceChoice, myPresenceLine } from "./presence";
@@ -95,10 +96,14 @@ interface Props {
   onArrangePlaces?: () => void;
   /** A row's context menu: its details, rename, leave, archive (the main screen opens the conversation and the dialog). */
   onChannelAction?: (channelId: string, action: ChannelRowAction) => void;
+  /** MOBILE_UI.md §19: a conversation in a new tab (its menu, a middle click, ⌘-click; true: in front). None: no tabs here. */
+  onOpenInNewTab?: (channelId: string, foreground: boolean) => void;
+  /** MOBILE_UI.md §19: a place (its key) in a new tab, from the rail or its sidebar row. */
+  onPlaceInNewTab?: (key: string, foreground: boolean) => void;
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction, onOpenInNewTab, onPlaceInNewTab }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -256,12 +261,15 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     const active = channel.id === currentId;
     // A DM's avatar is the other person's; my own notes (a DM with only me) show mine.
     const other = isDmChannel(channel) ? ((channel.dm_user_ids ?? []).find((id) => id !== me?.id) ?? me?.id) : undefined;
+    // MOBILE_UI.md §19: in a new tab (its menu, a middle click, ⌘-click).
+    const newTab = onOpenInNewTab && ((foreground: boolean) => onOpenInNewTab(channel.id, foreground));
     return (
       <ReorderRow key={channel.id} id={channel.id} order={order} folded={folded}>
         <div className="fold-inner">
-        <ChannelContextMenu controller={controller} channel={channel} onAction={onChannelAction}>
+        <ChannelContextMenu controller={controller} channel={channel} onAction={onChannelAction} onOpenInNewTab={newTab && (() => newTab(false))}>
         <button
           type="button"
+          {...middleClickProps(newTab)}
           // M26: dragged onto a section's header (or list) it moves there (Slack).
           draggable
           onDragStart={(event) => {
@@ -272,7 +280,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           onDragEnd={() => {
             draggedChannel = null;
           }}
-          onClick={() => onOpen(channel.id)}
+          onClick={(event) => { if (!clickOrNewTab(event, newTab)) onOpen(channel.id); }}
           title={channelTitle(channel, controller)}
           className={cn(
             "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors", SECTION_ROW_PAD,
@@ -500,7 +508,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     <div data-sidebar-column="" className="flex h-full min-h-0 border-r border-sidebar-edge bg-sidebar text-sidebar-fg">
       {/* 2026-10-12 (MOBILE_UI.md §18): the menu items are a rail of icons, so the list below starts with the channels. */}
       {onThreads && railOn && (
-        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} />
+        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} onNewTab={onPlaceInNewTab} />
       )}
     {/* MOBILE_UI.md §18.6: right-click on the sidebar's empty space (a row's own menu wins). */}
     <SidebarContextMenu
@@ -577,7 +585,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         <ul data-sidebar-places="" aria-label={t("places.sidebarRows")} className="mb-1 space-y-px">
           {sidebarPlaces.map((entry) => (
             <li key={entry.key}>
-              <SidebarPlaceRow place={entry} />
+              <SidebarPlaceRow place={entry} onNewTab={onPlaceInNewTab} />
             </li>
           ))}
           {!railOn && (
@@ -626,12 +634,16 @@ export const SECTION_ROW_PAD = "pl-5 pr-2.5";
 /** A place's row near the sidebar's top (MOBILE_UI.md §18.2): the look the menu items had before the rail. */
 const PLACE_ROW = "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors";
 
-function SidebarPlaceRow({ place }: { place: Place }) {
+function SidebarPlaceRow({ place, onNewTab }: { place: Place; onNewTab?: (key: string, foreground: boolean) => void }) {
+  // MOBILE_UI.md §19: in a new tab (its menu, a middle click, ⌘-click).
+  const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
   return (
+    <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(false))}>
     <button
       type="button"
       data-nav-item={place.key}
-      onClick={place.onSelect}
+      {...middleClickProps(newTab)}
+      onClick={(event) => { if (!clickOrNewTab(event, newTab)) place.onSelect(); }}
       aria-label={place.ariaLabel}
       aria-current={place.active ? "page" : undefined}
       title={place.hint}
@@ -649,6 +661,7 @@ function SidebarPlaceRow({ place }: { place: Place }) {
         <span className="text-[11px] opacity-70">{place.count}</span>
       ) : null}
     </button>
+    </NewTabContextMenu>
   );
 }
 

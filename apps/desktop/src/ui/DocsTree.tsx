@@ -14,6 +14,7 @@ import type { WikiHub } from "../sync/wiki";
 import { ancestorIds, dropTarget, type DropZone, type MoveTarget, readExpanded, rootTarget, writeExpanded } from "../sync/wikiTree";
 import { levelRank } from "./docsAccess";
 import { pageTitle, updatePage } from "./docsActions";
+import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
 import { PageIcon } from "./PageIcon";
 import { Button, cn, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { t } from "../i18n";
@@ -28,8 +29,10 @@ export function useWikiHub(controller: AppController): WikiHub | null {
   return hub;
 }
 
-export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTemplate = null, onMove, onTrash, onOpenTrash, className }: {
+export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTemplate = null, onMove, onTrash, onOpenTrash, onOpenInNewTab, className }: {
   controller: AppController;
+  /** MOBILE_UI.md §19: a page in a new tab (its menus, a middle click, ⌘-click; true: in front). */
+  onOpenInNewTab?: (pageId: string, foreground: boolean) => void;
   selectedId: string | null;
   onOpen: (pageId: string) => void;
   /** ＋: at the top of a section, or below a page. */
@@ -132,6 +135,7 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTempla
     const selected = page.id === selectedId;
     const canDrag = page.my_level === "full";
     const hovering = over && "id" in over && over.id === page.id ? over.zone : null;
+    const newTab = onOpenInNewTab && ((foreground: boolean) => onOpenInNewTab(page.id, foreground));
     return (
       <li key={page.id} role="treeitem" aria-expanded={kids.length > 0 ? open : undefined} aria-selected={selected} data-page-row={page.id}>
         <div
@@ -168,17 +172,25 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTempla
           >
             <ChevronRight size={14} className={cn("transition-transform", open && "rotate-90")} />
           </button>
-          <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => onOpen(page.id)} aria-current={selected ? "page" : undefined}>
-            <PageIcon controller={controller} icon={page.icon} kind={page.kind} size={15} />
-            <span className="truncate">{pageTitle(page, t("docs.untitled"))}</span>
-          </button>
+          <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(false))}>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+              {...middleClickProps(newTab)}
+              onClick={(event) => { if (!clickOrNewTab(event, newTab)) onOpen(page.id); }}
+              aria-current={selected ? "page" : undefined}
+            >
+              <PageIcon controller={controller} icon={page.icon} kind={page.kind} size={15} />
+              <span className="truncate">{pageTitle(page, t("docs.untitled"))}</span>
+            </button>
+          </NewTabContextMenu>
           <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 pointer-coarse:opacity-100">
             {levelRank(page.my_level) >= 2 && (
               <button type="button" aria-label={t("docs.addChild")} title={t("docs.addChild")} className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-ink/8 hover:text-ink" onClick={() => onCreate({ parentId: page.id, access: "workspace" })}>
                 <Plus size={14} />
               </button>
             )}
-            <RowMenu controller={controller} page={page} onOpen={() => onOpen(page.id)} onAddChild={() => onCreate({ parentId: page.id, access: "workspace" })} onRename={() => setRenaming(page)} onTrash={() => onTrash(page)} onTopLevel={page.parent_id && pages.has(page.parent_id) ? () => { const target = rootTarget(pages, page.id, page.private ? "private" : "shared"); if (target) onMove(page.id, target); } : null} />
+            <RowMenu controller={controller} page={page} onOpen={() => onOpen(page.id)} onNewTab={newTab && (() => newTab(false))} onAddChild={() => onCreate({ parentId: page.id, access: "workspace" })} onRename={() => setRenaming(page)} onTrash={() => onTrash(page)} onTopLevel={page.parent_id && pages.has(page.parent_id) ? () => { const target = rootTarget(pages, page.id, page.private ? "private" : "shared"); if (target) onMove(page.id, target); } : null} />
           </span>
         </div>
         {kids.length > 0 && open && <ul role="group">{kids.map((kid) => row(kid, depth + 1))}</ul>}
@@ -251,10 +263,11 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTempla
   );
 }
 
-function RowMenu({ controller, page, onOpen, onAddChild, onRename, onTrash, onTopLevel }: {
+function RowMenu({ controller, page, onOpen, onNewTab, onAddChild, onRename, onTrash, onTopLevel }: {
   controller: AppController;
   page: PageItem;
   onOpen: () => void;
+  onNewTab?: () => void;
   onAddChild: () => void;
   onRename: () => void;
   onTrash: () => void;
@@ -272,6 +285,7 @@ function RowMenu({ controller, page, onOpen, onAddChild, onRename, onTrash, onTo
       <MenuContent align="start">
         <MenuLabel>{pageTitle(page, t("docs.untitled"))}</MenuLabel>
         <MenuItem onSelect={onOpen}>{t("docs.open")}</MenuItem>
+        {onNewTab && <MenuItem data-open-new-tab="" onSelect={onNewTab}>{t("tabs.openInNewTab")}</MenuItem>}
         {edit && <MenuItem onSelect={onAddChild}><FilePlus2 size={14} /> {t("docs.addChild")}</MenuItem>}
         {edit && <MenuItem onSelect={onRename}><Pencil size={14} /> {t("docs.rename")}</MenuItem>}
         <MenuItem onSelect={() => void controller.copyPageLink(page.id)}><Copy size={14} /> {t("canvas.copyLink")}</MenuItem>
