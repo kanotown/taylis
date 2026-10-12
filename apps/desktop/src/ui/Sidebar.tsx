@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
@@ -10,11 +10,13 @@ import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
 import { pressable } from "./actions";
-import { desktopNavKeys, fullNavItems, setNavItemVisible, shownNavItems } from "./navItems";
-import { type Place, PlacesRail } from "./PlacesRail";
-import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
+import { railShown, shownSpot, TIMES_PLACE_KEYS, withRail, withSpot } from "./desktopPlaces";
+import { desktopNavKeys, fullNavItems, shownNavItems } from "./navItems";
+import { type Place, PlaceMenuItems, PlacesRail } from "./PlacesRail";
+import { Badge, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
+import { hasUnreadFeed } from "../sync/timesFeed";
 import { StatusEmoji } from "./UserPopover";
 import { MyStatusMenu } from "./MyStatusMenu";
 import { currentMe, myPresenceChoice, myPresenceLine } from "./presence";
@@ -114,7 +116,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   const reorder = (target: SortTarget, list: ChannelState[], sort: string | null | undefined): Reorder | undefined =>
     sort === "manual" && !unreadOnly ? { ids: list.map((c) => c.id), apply: (next) => void controller.reorderSection(target, next) } : undefined;
   // M24: offer to make my times until I have one.
-  const hasMyTimes = !!me && channels.some((c) => c.times_owner_id === me.id);
+  const myTimes = me ? channels.find((c) => c.times_owner_id === me.id) : undefined;
+  const hasMyTimes = !!myTimes;
   // M26: the default sections fold up on this device (my own sections fold on all of them, via the server).
   const [folded, toggleFolded] = useFoldedDefaults();
   const [newSection, setNewSection] = useState(false);
@@ -131,10 +134,10 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // `keep` names more rows a folded section still shows (Times: my own times).
   const shown = (rows: ChannelState[], collapsed: boolean, keep?: (c: ChannelState) => boolean, order?: Reorder) =>
     rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null) && !keep?.(c), order));
-  // Times folded: 「フィード」 and my own times stay within reach (the others fold away); nothing extra without my times.
-  const isMyTimes = (c: ChannelState) => !!me && c.times_owner_id === me.id;
+  // Times folded (2026-10-12, TIMES_FEED.md §7): 「フィード」 and my own times fold away too, like any row without
+  // unread; the rail's 「Times フィード」 and 「自分の Times」 icons reach them (MOBILE_UI.md §18.5).
   const timesFolded = folded.has("times");
-  const feedFolded = timesFolded && !timesFeedActive && !hasMyTimes;
+  const feedFolded = timesFolded;
   // Dropped on a default section: out of my own section or out of お気に入り (the conversation goes back where it
   // belongs by kind). One place per conversation (DATA_MODEL.md sidebar_sections).
   const backToDefault = (channelId: string) => {
@@ -151,11 +154,17 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     if (from < to) to -= 1;
     if (to !== from) void controller.moveSection(draggedId, to);
   };
-  // M111: the menu items I chose to show, in my order (UserMe.nav_items; null = all, the default order).
-  // M140: 「在室状況」 while the workspace has the board on.
+  // M111: the menu items in my order (UserMe.nav_items; the order is shared with the phones). M140: 「在室状況」 while the
+  // workspace has the board on. 2026-10-12 (MOBILE_UI.md §18.2): each stands where I put it (UserMe.desktop_places: the
+  // rail, a sidebar row, or only under 「その他」), not by nav_items' `visible` (the phones' tiles).
   const navItems = shownNavItems(fullNavItems(me?.nav_items), "desktop", desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0));
-  // 2026-10-12 (MOBILE_UI.md §18): the visible ones are pinned to the places rail; the others wait under 「その他」.
-  const pinned = new Set(navItems.filter((item) => item.visible).map((item) => item.key));
+  const desktopPlaces = me?.desktop_places;
+  const railOn = railShown(desktopPlaces);
+  const spotOf = (key: string) => shownSpot(desktopPlaces, key);
+  const placeAt = me?.desktop_places !== undefined ? (key: string, spot: Parameters<typeof withSpot>[2]) => void controller.setDesktopPlaces(withSpot(desktopPlaces, key, spot)) : undefined;
+  const setRail = me?.desktop_places !== undefined ? (on: boolean) => void controller.setDesktopPlaces(withRail(desktopPlaces, on)) : undefined;
+  // My own conversation is highlighted in the rail only while no page covers it.
+  const pageOpen = threadsActive || activityActive || draftsActive || savedActive || filesActive || canvasesActive || docsActive || calendarActive || tasksActive || deadlinesActive || reservationsActive || attendanceActive || actionsActive || remindersActive || timesFeedActive;
   const icon = (Icon: typeof Bell) => <Icon size={20} strokeWidth={1.9} />;
   const count = (n: number) => (n > 99 ? "99+" : String(n));
   const place = (key: string): Place | null => {
@@ -177,12 +186,13 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           badge: store.activity && activity.count > 0 ? { text: count(activity.count), tone: activity.mention ? "danger" : "neutral" } : null,
         } : null;
       case "drafts":
-        // In the rail only while there is something in it (as the sidebar row was); under 「その他」 always.
-        return onDrafts ? { key, label: t("nav.drafts"), icon: icon(FileText), onSelect: onDrafts, active: draftsActive, hint: t("sidebar.draftsTitle"), count: draftCount, railable: draftCount > 0 } : null;
+        // Where I put it, empty or not (2026-10-12); a quiet badge with the number while there are some.
+        return onDrafts ? { key, label: t("nav.drafts"), icon: icon(FileText), onSelect: onDrafts, active: draftsActive, hint: t("sidebar.draftsTitle"), badge: draftCount > 0 ? { text: count(draftCount), tone: "neutral" } : null } : null;
       case "reminders":
+        // Fired ones red, open ones a quiet number; there even while empty (2026-10-12).
         return onReminders ? {
-          key, label: t("nav.reminders"), icon: icon(AlarmClock), onSelect: onReminders, active: remindersActive, count: firedCount > 0 ? undefined : reminderCount,
-          railable: reminderCount > 0, emphasis: firedCount > 0, badge: firedCount > 0 ? { text: count(firedCount), tone: "danger" } : null,
+          key, label: t("nav.reminders"), icon: icon(AlarmClock), onSelect: onReminders, active: remindersActive,
+          emphasis: firedCount > 0, badge: firedCount > 0 ? { text: count(firedCount), tone: "danger" } : reminderCount > 0 ? { text: count(reminderCount), tone: "neutral" } : null,
         } : null;
       case "files":
         return onFiles ? { key, label: t("nav.files"), icon: icon(Files), onSelect: onFiles, active: filesActive, hint: t("sidebar.filesTitle") } : null;
@@ -210,11 +220,30 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         return onActions ? { key, label: t("nav.actions"), icon: icon(Zap), onSelect: onActions, active: actionsActive, hint: t("sidebar.actionsTitle") } : null;
       case "saved":
         return onSaved ? { key, label: t("nav.saved"), icon: icon(Bookmark), onSelect: onSaved, active: savedActive, hint: t("sidebar.savedTitle"), count: store.bookmarks.size } : null;
+      case "times-feed":
+        // MOBILE_UI.md §18.5: the Times feed, while there is a Times section.
+        return onTimesFeed && channels.some((c) => !!c.times_owner_id) ? {
+          key, label: t("sidebar.timesFeed"), icon: icon(Newspaper), onSelect: onTimesFeed, active: timesFeedActive, hint: t("sidebar.feedTitle"), emphasis: hasUnreadFeed(channels),
+        } : null;
+      case "my-times": {
+        // My own times next to the feed, with its unread (as its row would show).
+        if (!myTimes) return null;
+        const unread = hasUnread(myTimes, me?.id ?? null) && myTimes.id !== currentId;
+        const mentions = badgeCount(myTimes);
+        return {
+          key, label: t("places.myTimes"), icon: icon(NotebookPen), onSelect: () => onOpen(myTimes.id), active: myTimes.id === currentId && !pageOpen,
+          hint: t("places.myTimesTitle"), emphasis: unread,
+          badge: unread ? { text: count(mentions > 0 ? mentions : myTimes.unreadCount), tone: mentions > 0 ? "danger" : "neutral" } : null,
+        };
+      }
       default:
         return null; // a key this client does not draw (yet)
     }
   };
-  const places = navItems.map((item) => place(item.key)).filter((entry): entry is Place => entry !== null);
+  const places = [...navItems.map((item) => item.key), ...TIMES_PLACE_KEYS].map(place).filter((entry): entry is Place => entry !== null);
+  const sidebarPlaces = places.filter((entry) => spotOf(entry.key) === "sidebar");
+  // With the rail hidden, 「その他」 is a sidebar row (the hidden places, showing the rail again, the settings).
+  const hiddenPlaces = places.filter((entry) => spotOf(entry.key) === "hidden");
 
   const item = (channel: ChannelState, folded = false, order?: Reorder) => {
     const muted = isMutedChannel(channel);
@@ -277,13 +306,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   return (
     <div data-sidebar-column="" className="flex h-full min-h-0 border-r border-sidebar-edge bg-sidebar text-sidebar-fg">
       {/* 2026-10-12 (MOBILE_UI.md §18): the menu items are a rail of icons, so the list below starts with the channels. */}
-      {onThreads && (
-        <PlacesRail
-          places={places}
-          pinned={pinned}
-          onTogglePin={me?.nav_items !== undefined ? (key, pin) => void controller.setNavItems(setNavItemVisible(fullNavItems(me?.nav_items), key, pin)) : undefined}
-          onArrange={onArrangePlaces}
-        />
+      {onThreads && railOn && (
+        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} />
       )}
     <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-2 pb-4">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
@@ -343,6 +367,44 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           {t("sidebar.unread")}
         </button>
       </div>
+
+      {/* MOBILE_UI.md §18.2: the places I put in the sidebar (スレッド and 下書き by default), and all of the rail's while it
+          is hidden, with 「その他」 for the hidden ones then. */}
+      {onThreads && (sidebarPlaces.length > 0 || !railOn) && (
+        <ul data-sidebar-places="" aria-label={t("places.sidebarRows")} className="mb-1 space-y-px">
+          {sidebarPlaces.map((entry) => (
+            <li key={entry.key}>
+              <SidebarPlaceRow place={entry} />
+            </li>
+          ))}
+          {!railOn && (
+            <li>
+              <Menu>
+                <MenuTrigger asChild>
+                  <button type="button" data-sidebar-more="" className={cn(PLACE_ROW, "hover:bg-sidebar-hover hover:text-sidebar-strong")}>
+                    <Ellipsis size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">{t("places.more")}</span>
+                    {hiddenPlaces.some((entry) => entry.badge) && <span className={cn("h-2 w-2 shrink-0 rounded-full", hiddenPlaces.some((entry) => entry.badge?.tone === "danger") ? "bg-rose-500" : "bg-sidebar-strong")} />}
+                  </button>
+                </MenuTrigger>
+                <MenuContent side="bottom" align="start" className="max-h-[70vh] overflow-y-auto">
+                  <MenuLabel>{t("places.more")}</MenuLabel>
+                  {hiddenPlaces.length === 0 && <p className="px-2.5 py-1.5 text-sm text-muted">{t("rail.moreEmpty")}</p>}
+                  <PlaceMenuItems places={hiddenPlaces} />
+                  <MenuSeparator />
+                  {setRail && (
+                    <MenuItem data-show-rail="" onSelect={() => setRail(true)}>
+                      <Eye size={14} className="text-muted" />
+                      {t("places.showRail")}
+                    </MenuItem>
+                  )}
+                  {onArrangePlaces && <MenuItem onSelect={onArrangePlaces}>{t("sidebarMenu.display")}</MenuItem>}
+                </MenuContent>
+              </Menu>
+            </li>
+          )}
+        </ul>
+      )}
 
       {sections.favorites.length > 0 && (
         <Section title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}
@@ -453,7 +515,7 @@ collapsed={folded.has("channels")}
                 </div>
               </li>
             )}
-            {shown(sections.times, timesFolded, isMyTimes)}
+            {shown(sections.times, timesFolded)}
           </ul>
           {sections.times.length === 0 && <Hint>{t("sidebar.timesEmptyHint")}</Hint>}
         </Section>
@@ -510,6 +572,35 @@ collapsed={folded.has("dms")}
  * every row's icon on the same line. Padding inside the row, so the selected and hover fill stays full width.
  */
 export const SECTION_ROW_PAD = "pl-5 pr-2.5";
+
+/** A place's row near the sidebar's top (MOBILE_UI.md §18.2): the look the menu items had before the rail. */
+const PLACE_ROW = "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors";
+
+function SidebarPlaceRow({ place }: { place: Place }) {
+  return (
+    <button
+      type="button"
+      data-nav-item={place.key}
+      onClick={place.onSelect}
+      aria-label={place.ariaLabel}
+      aria-current={place.active ? "page" : undefined}
+      title={place.hint}
+      className={cn(
+        PLACE_ROW,
+        place.emphasis && "font-semibold text-sidebar-strong",
+        place.active ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+      )}
+    >
+      <span aria-hidden className="flex shrink-0 opacity-70 [&_svg]:h-[15px] [&_svg]:w-[15px]">{place.icon}</span>
+      <span className="flex-1 truncate">{place.label}</span>
+      {place.badge ? (
+        <Badge tone={place.badge.tone} className={place.badge.tone === "danger" ? undefined : "bg-current/20 text-inherit"}>{place.badge.text}</Badge>
+      ) : place.count ? (
+        <span className="text-[11px] opacity-70">{place.count}</span>
+      ) : null}
+    </button>
+  );
+}
 
 const FOLDED_KEY = "chikuwa.sidebar.folded";
 

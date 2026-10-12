@@ -19,7 +19,9 @@ import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
 import { pressable } from "./actions";
-import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
+import { chosenSpot, type PlaceSpot, railShown, TIMES_PLACE_KEYS, withRail, withSpot } from "./desktopPlaces";
+import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, resetNavOrder, shownNavItems } from "./navItems";
+import { PLACE_SPOTS } from "./PlacesRail";
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
@@ -800,9 +802,11 @@ export function DocsEditorModeSettings({ controller }: { controller: AppControll
 }
 
 /**
- * M111 「サイドバーの項目」: which menu items the sidebar shows and in what order, mine on every device (users.nav_items,
- * apps/shared/nav-items.json). A switch per item, drag (or ↑ / ↓) to reorder, 「元に戻す」 back to the defaults (null).
- * A change saves the whole list, items of the phones and of newer clients included. A server before M111 has no such setting.
+ * M111 「サイドバーの項目」: the order of the menu items, mine on every device (users.nav_items, apps/shared/nav-items.json,
+ * shared with the phones), drag (or ↑ / ↓) to reorder. 2026-10-12 (MOBILE_UI.md §18.2): where each stands on Desktop / Web
+ * (アイコン列 / サイドバー / 表示しない) and whether the icon rail shows (users.desktop_places), which leaves the phones' tiles
+ * alone. 「元に戻す」 puts back the default order (the phones' visibility kept) and placement. A change saves the whole list,
+ * items of the phones and of newer clients included. A server before M111 has no such setting.
  */
 export function NavItemsSettings({ controller }: { controller: AppController }) {
   const me = meOf(controller);
@@ -813,6 +817,34 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
   const implemented = desktopNavKeys(!!controller.store.attendance, pressable(controller.store.actions).length > 0);
   const shown = shownNavItems(full, "desktop", implemented);
   const save = (list: typeof full | null) => void controller.setNavItems(list);
+  // 2026-10-12 (MOBILE_UI.md §18.2): where each place stands, apart from the phones' visibility (users.desktop_places).
+  const placesSettable = me.desktop_places !== undefined;
+  const places = me.desktop_places ?? null;
+  const railOn = railShown(places);
+  const placeAt = (key: string, spot: PlaceSpot) => void controller.setDesktopPlaces(withSpot(places, key, spot));
+  // The Times feed and my own times are the desktop's own places after the items (no order of their own).
+  const hasTimes = [...controller.store.channels.values()].some((c) => !!c.times_owner_id && c.isMember);
+  const hasMyTimes = [...controller.store.channels.values()].some((c) => c.times_owner_id === me.id);
+  const timesKeys = TIMES_PLACE_KEYS.filter((key) => (key === "times-feed" ? hasTimes : hasMyTimes));
+  const timesLabel = (key: string) => (key === "times-feed" ? t("sidebar.timesFeed") : t("places.myTimes"));
+  const reset = () => {
+    if (me.nav_items !== null) save(resetNavOrder(full));
+    if (placesSettable && me.desktop_places !== null) void controller.setDesktopPlaces(null);
+  };
+  const spotSelect = (key: string, label: string) =>
+    placesSettable ? (
+      <select
+        aria-label={t("places.where", { item: label })}
+        data-spot-select={key}
+        value={chosenSpot(places, key)}
+        onChange={(e) => placeAt(key, e.target.value as PlaceSpot)}
+        className="h-7 shrink-0 rounded-md border border-line bg-canvas px-1.5 text-xs"
+      >
+        {PLACE_SPOTS.map(([value, name]) => (
+          <option key={value} value={value}>{t(name)}</option>
+        ))}
+      </select>
+    ) : null;
   const drop = (target: string) => {
     if (!dragging || dragging === target) return setDragging(null);
     const keys = shown.map((item) => item.key).filter((key) => key !== dragging);
@@ -824,10 +856,23 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
     <section className="space-y-2" aria-label={t("settings.navItems.title")}>
       <div className="flex items-center justify-between gap-2">
         <h3 className={HEADING}>{t("settings.navItems.title")}</h3>
-        <Button size="sm" variant="secondary" disabled={me.nav_items === null} onClick={() => save(null)}>
+        <Button size="sm" variant="secondary" disabled={me.nav_items === null && !me.desktop_places} onClick={reset}>
           {t("common.reset")}
         </Button>
       </div>
+      {placesSettable && (
+        <label className="flex items-center justify-between gap-2 rounded-xl border border-line px-3 py-2 text-sm">
+          <span>{t("places.useRail")}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            data-use-rail=""
+            className="h-4 w-4 accent-[var(--accent)]"
+            checked={railOn}
+            onChange={(e) => void controller.setDesktopPlaces(withRail(places, e.target.checked))}
+          />
+        </label>
+      )}
       <ul className="divide-y divide-line rounded-xl border border-line">
         {shown.map((item, index) => (
           <li
@@ -841,23 +886,20 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
             className={cn("flex min-h-[40px] items-center gap-2 px-2 py-1 text-sm", dragging === item.key && "opacity-50")}
           >
             <GripVertical size={15} className="shrink-0 cursor-grab text-muted" aria-hidden />
-            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-              <span className={cn("min-w-0 flex-1 truncate", !item.visible && "text-muted")}>{navLabel(item.key)}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                aria-label={t("settings.navItems.show", { item: navLabel(item.key) })}
-                className="h-4 w-4 accent-[var(--accent)]"
-                checked={item.visible}
-                onChange={(e) => save(setNavItemVisible(full, item.key, e.target.checked))}
-              />
-            </label>
+            <span className={cn("min-w-0 flex-1 truncate", placesSettable && chosenSpot(places, item.key) === "hidden" && "text-muted")}>{navLabel(item.key)}</span>
+            {spotSelect(item.key, navLabel(item.key))}
             <button type="button" aria-label={t("settings.navItems.up", { item: navLabel(item.key) })} disabled={index === 0} onClick={() => save(moveNavItem(full, item.key, -1, "desktop", implemented))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
               <ChevronUp size={14} />
             </button>
             <button type="button" aria-label={t("settings.navItems.down", { item: navLabel(item.key) })} disabled={index === shown.length - 1} onClick={() => save(moveNavItem(full, item.key, 1, "desktop", implemented))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
               <ChevronDown size={14} />
             </button>
+          </li>
+        ))}
+        {placesSettable && timesKeys.map((key) => (
+          <li key={key} data-nav-item={key} className="flex min-h-[40px] items-center gap-2 py-1 pl-[31px] pr-[68px] text-sm">
+            <span className={cn("min-w-0 flex-1 truncate", chosenSpot(places, key) === "hidden" && "text-muted")}>{timesLabel(key)}</span>
+            {spotSelect(key, timesLabel(key))}
           </li>
         ))}
       </ul>

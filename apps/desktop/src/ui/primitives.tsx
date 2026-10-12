@@ -375,6 +375,28 @@ export function MenuCheckboxItem({ className, children, ...props }: ComponentPro
   );
 }
 
+export const MenuSub = DropdownMenu.Sub;
+
+/** A menu row that opens a submenu (→ / Enter / a click / hovering it), with a 「›」 at its end. */
+export function MenuSubTrigger({ className, children, ...props }: ComponentProps<typeof DropdownMenu.SubTrigger>) {
+  return (
+    <DropdownMenu.SubTrigger className={cn(ITEM, "data-[state=open]:bg-accent-soft", className)} {...props}>
+      {children}
+      <span aria-hidden className="ml-auto pl-2 text-muted">›</span>
+    </DropdownMenu.SubTrigger>
+  );
+}
+
+export function MenuSubContent({ className, children, ...props }: ComponentProps<typeof DropdownMenu.SubContent>) {
+  return (
+    <DropdownMenu.Portal>
+      <DropdownMenu.SubContent sideOffset={4} collisionPadding={8} className={cn("rx-popover z-50 min-w-44 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl", className)} {...props}>
+        {children}
+      </DropdownMenu.SubContent>
+    </DropdownMenu.Portal>
+  );
+}
+
 export function MenuSeparator() {
   return <DropdownMenu.Separator className="my-1 h-px bg-line" />;
 }
