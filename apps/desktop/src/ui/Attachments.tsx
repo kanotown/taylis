@@ -1,4 +1,4 @@
-import { Download, FileText, Film, Loader2, Play, X } from "lucide-react";
+import { Download, ExternalLink, FileText, Film, Loader2, Play, X } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { type FocusEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -11,6 +11,8 @@ import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
+import { VIEWER_BUTTON, ViewerHeader } from "./ViewerHeader";
+import { isTauri } from "../platform/env";
 
 export function formatSize(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
@@ -194,8 +196,8 @@ export function useDownloadReveal() {
 
 /**
  * The small download button over the top-right corner of a photo or video tile (2026-10-07, as Slack): it downloads
- * the way the viewer's button does (`controller.downloadAttachment`: Tauri's save dialog, an <a download> on the Web,
- * the bearer token) without opening the viewer. Always in the DOM so the keyboard reaches it; hidden and not
+ * the way the viewer's button does (`controller.downloadAttachment`: Downloads (or the save dialog) in Tauri, an
+ * <a download> on the Web, the bearer token, the toast) without opening the viewer. Always in the DOM so the keyboard reaches it; hidden and not
  * clickable until `shown`.
  */
 function DownloadOverlay({ attachment, controller, shown }: { attachment: AttachmentOut; controller: AppController; shown: boolean }) {
@@ -237,10 +239,10 @@ function ViewerShell({ attachment, description, shape, controller, onClose, body
     <Dialog.Root open onOpenChange={(value) => { if (!value) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/85" />
-        <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none" onClick={onClose}>
+        <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none" onClick={onClose} onPointerDownOutside={keepOpenForToasts}>
           <Dialog.Title className="sr-only">{attachment.filename}</Dialog.Title>
           <Dialog.Description className="sr-only">{description}</Dialog.Description>
-          <div className="flex items-center gap-3 px-4 py-3 text-white" onClick={(e) => e.stopPropagation()}>
+          <ViewerHeader>
             <div className="min-w-0 flex-1">
               <FileName name={attachment.filename} className="text-sm font-medium" />
               <div className="text-xs text-white/70">
@@ -248,20 +250,43 @@ function ViewerShell({ attachment, description, shape, controller, onClose, body
                 {shape ? ` · ${shape.width}×${shape.height}` : ""}
               </div>
             </div>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15" title={t("attach.download")} aria-label={t("attach.download")} onClick={() => void controller.downloadAttachment(attachment)}>
-              <Download size={18} />
-            </button>
+            <ViewerFileButtons attachment={attachment} controller={controller} />
             <Dialog.Close asChild>
-              <button type="button" className="rounded-lg p-2 hover:bg-white/15" title={t("attach.closeEsc")} aria-label={t("common.close")}>
+              <button type="button" className={VIEWER_BUTTON} title={t("attach.closeEsc")} aria-label={t("common.close")}>
                 <X size={20} />
               </button>
             </Dialog.Close>
-          </div>
+          </ViewerHeader>
           <div className={cn("flex min-h-0 flex-1 items-center justify-center overflow-auto p-4", bodyClassName)}>{children}</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+/**
+ * The viewers' 「ダウンロード」 and, in the desktop app, 「開く」 (saved into Downloads, then opened in the system's app for
+ * it; docs/PREVIEWS.md §9). The browser has no way to hand a file to another app, so there it is download only.
+ */
+export function ViewerFileButtons({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
+  return (
+    <>
+      {isTauri() && (
+        <button type="button" className={VIEWER_BUTTON} title={t("attach.openInApp")} aria-label={t("attach.openInApp")} onClick={() => void controller.downloadAttachment(attachment, { open: true })}>
+          <ExternalLink size={18} />
+        </button>
+      )}
+      <button type="button" className={VIEWER_BUTTON} title={t("attach.download")} aria-label={t("attach.download")} onClick={() => void controller.downloadAttachment(attachment)}>
+        <Download size={18} />
+      </button>
+    </>
+  );
+}
+
+/** A press on a download's toast (over the viewer, outside the dialog) does not close the viewer. */
+export function keepOpenForToasts(event: { target: EventTarget | null; preventDefault: () => void }): void {
+  const target = event.target as Element | null;
+  if (target?.closest?.("[data-download-toasts]")) event.preventDefault();
 }
 
 /** Slack-style photo preview: the full image on a dark backdrop, with download and close. */

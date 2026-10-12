@@ -54,6 +54,22 @@ export function zoomKey(event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | 
 }
 
 let current = DEFAULT_ZOOM;
+/** Viewers that take the zoom keys for themselves while open (the document viewer's own zoom). */
+let claims = 0;
+
+/**
+ * While claimed, the zoom keys are left to whoever claimed them (the document viewer zooms its pages): the window's
+ * zoom does nothing and does not cancel the key. Returns the release (call once; extra calls do nothing).
+ */
+export function claimZoomKeys(): () => void {
+  claims += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    claims -= 1;
+  };
+}
 const listeners = new Set<() => void>();
 
 /** Puts `zoom` on screen: the webview's zoom, and `--ui-zoom` for the space kept for the macOS window buttons. */
@@ -98,7 +114,7 @@ export function setUpZoom(desktop: boolean = isTauri()): () => void {
   applyZoom(readZoom());
   const onKey = (event: KeyboardEvent) => {
     const direction = zoomKey(event);
-    if (direction === null) return;
+    if (direction === null || claims > 0) return;
     event.preventDefault();
     const next = stepZoom(current, direction);
     if (next !== current) writeZoom(next);

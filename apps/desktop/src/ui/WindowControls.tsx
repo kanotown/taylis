@@ -30,13 +30,15 @@ async function tauriWindow(): Promise<ControlledWindow> {
   };
 }
 
-/** Over the sidebar-coloured top row, or over a screen's own background (login and the like). */
-export type ControlsTone = "sidebar" | "canvas";
+/** Over the sidebar-coloured top row, over a screen's own background (login and the like), or over a viewer. */
+export type ControlsTone = "sidebar" | "canvas" | "overlay";
 
 const BUTTON = "inline-flex h-full w-[46px] items-center justify-center transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent";
 const TONES: Record<ControlsTone, string> = {
   sidebar: "text-sidebar-fg hover:bg-sidebar-strong/10 hover:text-sidebar-strong active:bg-sidebar-strong/20",
   canvas: "text-muted hover:bg-ink/10 hover:text-ink active:bg-ink/15",
+  /** Over the dark backdrop of the photo / video / document viewers. */
+  overlay: "text-white/80 hover:bg-white/15 hover:text-white active:bg-white/25",
 };
 /** Windows 11's close button: red on hover, white glyph. */
 const CLOSE = "hover:bg-[#c42b1c] hover:text-white active:bg-[#c42b1c]/85 active:text-white";

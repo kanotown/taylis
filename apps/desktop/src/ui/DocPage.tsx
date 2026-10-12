@@ -16,7 +16,6 @@ import { lazy, type MutableRefObject, type ReactNode, Suspense, useEffect, useMe
 import { describeError } from "../api/errors";
 import type { PageContent, PageItem, PageOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { saveDownload } from "../platform/download";
 import type { PageSaver } from "../sync/wiki";
 import { isPlainEnter } from "./ime";
 import { CanvasBody, headingAnchor } from "./CanvasBody";
@@ -244,7 +243,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
   const exportMarkdown = async () => {
     const markdown = await wikiCall(controller, (api) => api.exportWikiPage(pageId));
     if (markdown === null) return;
-    await saveDownload(`${title.replace(/[\\/:*?"<>|]+/g, "_") || "page"}.md`, new Blob([markdown], { type: "text/markdown" }));
+    await controller.saveFile(`${title.replace(/[\\/:*?"<>|]+/g, "_") || "page"}.md`, new Blob([markdown], { type: "text/markdown" }));
   };
 
   const notice = saver.status === "gone"

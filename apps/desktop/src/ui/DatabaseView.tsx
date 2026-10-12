@@ -16,7 +16,6 @@ import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState
 
 import { ApiError } from "../api/errors";
 import type { DatabaseOut, DbFilterCondition, DbFilterOp, DbGroupOut, DbProperty, DbRow, DbRowRef, DbSchemaOp, DbTemplateRef, DbView, DbViewIn, DbViewType } from "../api/types";
-import { saveDownload } from "../platform/download";
 import type { AppController } from "../state/app";
 import { getLocale, intlLocale, t, weekdayName, type MessageKey } from "../i18n";
 import { CellDisplay, CellEditor, type DbCtx, PropertyDialog, PropIcon, propName } from "./DbCells";
@@ -398,7 +397,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     try {
       const blob = await api.exportWikiDatabaseCsv(databaseId, view?.id ?? null);
       const title = hub?.page(databaseId)?.title?.replace(/[\\/:*?"<>|]+/g, "_") || "database";
-      await saveDownload(`${title}.csv`, blob);
+      await controller.saveFile(`${title}.csv`, blob);
     } catch (error) {
       controller.setError(error);
     }

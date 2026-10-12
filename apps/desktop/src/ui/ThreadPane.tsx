@@ -7,6 +7,7 @@ import { firstUnreadRow, passedUnseen } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { tapClosesKeyboard } from "../platform/viewport";
 import { Composer } from "./Composer";
+import { composerKey, deliverToComposer, DropOverlay, useFileDropZone } from "./FileDropZone";
 import { continuesGroup, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
@@ -254,8 +255,19 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const group = controller.groupPosts;
   const unseen = unseenBelow(replies, seenSeq, me);
 
+  // Files dropped on the pane go to its composer (FileDropZone; a zone of its own beside the conversation's).
+  const dropBlocked = !channel.isMember ? t("drop.notMember") : channel.archived ? t("drop.archived") : !parent ? t("drop.unavailable") : null;
+  const drop = useFileDropZone({
+    enabled: true,
+    blocked: dropBlocked,
+    onFiles: (files) => {
+      if (!deliverToComposer(composerKey(channel.id, parentId), files)) controller.setError(t("drop.unavailable"));
+    },
+  });
+
   return (
-    <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
+    <aside data-drop-zone={composerKey(channel.id, parentId)} className="relative flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0" {...drop.handlers}>
+      <DropOverlay active={drop.active} blocked={dropBlocked} destination={t("drop.toThread")} />
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <PaneBackButton onClick={onClose} />
         <div className="min-w-0 flex-1">
