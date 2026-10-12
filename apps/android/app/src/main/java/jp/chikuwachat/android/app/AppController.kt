@@ -1592,6 +1592,7 @@ class AppController(private val app: Application) {
             username?.let {
                 RecentSearches.clear(prefs, RecentSearches.key(account(serverUrl, it)))
                 RecentConversations.clear(prefs, RecentConversations.key(account(serverUrl, it)))
+                RecentConversations.clear(prefs, jp.chikuwachat.android.share.ShareModel.recentKey(account(serverUrl, it)))
             }
             replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
         } else {
@@ -1624,6 +1625,7 @@ class AppController(private val app: Application) {
         secrets.putSecret(account, null)
         RecentSearches.clear(prefs, RecentSearches.key(account))
         RecentConversations.clear(prefs, RecentConversations.key(account))
+        RecentConversations.clear(prefs, jp.chikuwachat.android.share.ShareModel.recentKey(account))
         withContext(Dispatchers.IO) { RoomPersistence.delete(app, account) }
     }
 
@@ -2556,6 +2558,24 @@ class AppController(private val app: Application) {
 
     /** "server|username" of the account on screen: names this device's data for it (recent searches). */
     val accountKey: String? get() = workspaceKey
+
+    // --- sharing from other apps (MOBILE_UI.md §20) -----------------------------------------------------
+
+    /**
+     * §20.4: the signed-in client of a workspace for the share work, the same one the app uses (its refreshes are
+     * serialised: two clients rotating one refresh token would look like reuse, SECURITY.md §2.3). Null when the
+     * workspace is gone or signed out.
+     */
+    suspend fun shareClient(serverUrl: String): ApiClient? {
+        ensureWorkspacesLoaded()
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: return null
+        return clientFor(entry)
+    }
+
+    /** §20.4: a share's message was posted; the workspace on screen shows it at once (the socket brings it as well). */
+    fun sharePosted(serverUrl: String, message: jp.chikuwachat.android.api.MessageOut) {
+        if (serverUrl == activeKey && engine != null && message.channelId in store.channels) engine?.postedFromHere(message)
+    }
 
     // --- attachments (M9a) ---------------------------------------------------------------------------
 

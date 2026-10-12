@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- SYNC_PROTOCOL.md §5.3: reconnect as soon as the network comes back instead of after the backoff. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- MOBILE_UI.md §20.4: a shared file keeps uploading after the share screen closed (WorkManager's foreground job). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- usesCleartextTraffic: self-hosted servers on a LAN may not have TLS yet (same as the iOS ATS
          setting). Production deployments terminate TLS at Caddy (SECURITY.md). -->
@@ -39,6 +43,24 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="chikuwachat" android:host="sso" />
             </intent-filter>
+            <!-- MOBILE_UI.md §20.5: Direct Share (the conversation shortcuts as share targets of ShareActivity). -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- MOBILE_UI.md §20: other apps' share sheets (files, pictures, videos, PDFs, text and links). -->
+        <activity
+            android:name=".share.ShareActivity"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <provider
@@ -50,6 +72,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- MOBILE_UI.md §20.4: ShareWorker's foreground job (uploads) runs in WorkManager's service; Android 14 needs its type. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <service
             android:name=".platform.ChikuwaMessagingService"

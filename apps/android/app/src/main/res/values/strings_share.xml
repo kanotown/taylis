@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MOBILE_UI.md §20: sharing from other apps into Taylis (ShareActivity, ShareWorker). -->
+<resources>
+    <string name="share_in_title">共有</string>
+    <string name="share_in_message_hint">メッセージ（任意）</string>
+    <string name="share_in_destination">送信先：%1$s</string>
+    <string name="share_in_search">会話を検索</string>
+    <string name="share_in_recent">最近</string>
+    <string name="share_in_all">すべての会話</string>
+    <string name="share_in_no_results">見つかりません</string>
+    <string name="share_in_no_destinations">送信できる会話がありません</string>
+    <string name="share_in_choose_destination">送信先を選んでください</string>
+    <string name="share_in_sign_in_to_continue">サインインすると共有を続けられます</string>
+    <string name="share_in_workspace">ワークスペース</string>
+    <string name="share_in_refused_items">共有できない項目が %1$d 件あります（このアプリでは読めない場所のファイル）</string>
+    <string name="share_in_too_many_files">添付は %1$d 件までです</string>
+    <string name="share_in_file_unreadable">「%1$s」を読めませんでした</string>
+    <string name="share_in_file_empty">「%1$s」は空のファイルです</string>
+    <string name="share_in_file_too_large">「%1$s」は大きすぎます（上限 %2$s）</string>
+    <string name="share_in_text_too_long">メッセージは %1$d 文字までです</string>
+    <string name="share_in_nothing">送るものがありません</string>
+    <string name="share_in_channel_progress">共有の送信中</string>
+    <string name="share_in_channel_result">共有の送信結果</string>
+    <string name="share_in_sending">送信しています…</string>
+    <string name="share_in_sending_to">%1$s に送信しています</string>
+    <string name="share_in_waiting">接続が戻ったら送信します</string>
+    <string name="share_in_posted_to">%1$s に送信しました</string>
+    <string name="share_in_failed_to">%1$s に送信できませんでした</string>
+    <string name="share_in_failed_files_gone">共有したファイルが端末から消えました。もう一度共有してください</string>
+    <string name="share_in_started">送信を始めました。終わると通知でお知らせします</string>
+</resources>

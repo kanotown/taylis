@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MOBILE_UI.md §20: sharing from other apps into Taylis (ShareActivity, ShareWorker). -->
+<resources>
+    <string name="share_in_title">分享</string>
+    <string name="share_in_message_hint">消息（可选）</string>
+    <string name="share_in_destination">发送到：%1$s</string>
+    <string name="share_in_search">搜索会话</string>
+    <string name="share_in_recent">最近</string>
+    <string name="share_in_all">所有会话</string>
+    <string name="share_in_no_results">没有匹配项</string>
+    <string name="share_in_no_destinations">没有可发送的会话</string>
+    <string name="share_in_choose_destination">请选择发送到哪里</string>
+    <string name="share_in_sign_in_to_continue">登录后即可继续分享</string>
+    <string name="share_in_workspace">工作区</string>
+    <string name="share_in_refused_items">有 %1$d 个项目无法分享（本应用无法读取的文件）</string>
+    <string name="share_in_too_many_files">最多可附加 %1$d 个文件</string>
+    <string name="share_in_file_unreadable">无法读取“%1$s”</string>
+    <string name="share_in_file_empty">“%1$s”是空文件</string>
+    <string name="share_in_file_too_large">“%1$s”太大（上限 %2$s）</string>
+    <string name="share_in_text_too_long">消息最多 %1$d 个字符</string>
+    <string name="share_in_nothing">没有可发送的内容</string>
+    <string name="share_in_channel_progress">正在发送分享内容</string>
+    <string name="share_in_channel_result">分享内容的发送结果</string>
+    <string name="share_in_sending">正在发送…</string>
+    <string name="share_in_sending_to">正在发送到 %1$s</string>
+    <string name="share_in_waiting">连接恢复后将发送</string>
+    <string name="share_in_posted_to">已发送到 %1$s</string>
+    <string name="share_in_failed_to">无法发送到 %1$s</string>
+    <string name="share_in_failed_files_gone">分享的文件已不在此设备上。请重新分享。</string>
+    <string name="share_in_started">正在发送。完成后会通知你。</string>
+</resources>

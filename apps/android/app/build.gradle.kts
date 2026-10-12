@@ -166,6 +166,8 @@ dependencies {
     implementation(libs.androidx.browser)
     // M153a (docs/WIKI.md §30.3 / §30.5): WebViewAssetLoader serves the bundled page editor (assets/editor) to the WebView.
     implementation(libs.androidx.webkit)
+    // MOBILE_UI.md §20.4: a share's uploads and post run as background work that survives the share screen and retries.
+    implementation(libs.androidx.work.runtime)
     // TeX math in messages (ui/MathRender.kt; MIT, THIRD_PARTY_NOTICES.md). Its POM lists test and AppCompat artifacts
     // as runtime dependencies it never uses; only the library itself (Kotlin's stdlib is the app's own).
     implementation(libs.androidmath) { isTransitive = false }

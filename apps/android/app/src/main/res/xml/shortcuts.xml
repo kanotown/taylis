@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MOBILE_UI.md §20.5: conversation shortcuts with this category are offered as Direct Share targets of ShareActivity. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="jp.chikuwachat.android.share.ShareActivity">
+        <data android:mimeType="*/*" />
+        <category android:name="jp.chikuwachat.android.category.SHARE_TARGET" />
+    </share-target>
+</shortcuts>

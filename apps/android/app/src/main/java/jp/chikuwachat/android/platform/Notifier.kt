@@ -115,6 +115,8 @@ class Notifier(private val context: Context) {
         val shortcut = ShortcutInfoCompat.Builder(context, ConversationStyle.shortcutId(workspace, channelId))
             .setShortLabel(label.take(SHORTCUT_LABEL_MAX).ifBlank { "?" })
             .setLongLived(true)
+            // MOBILE_UI.md §20.5: also a Direct Share target of the share screen (res/xml/shortcuts.xml).
+            .setCategories(setOf(jp.chikuwachat.android.share.ShareShortcuts.CATEGORY))
             .setPerson(sender)
             .setIcon(icon ?: IconCompat.createWithResource(context, R.mipmap.ic_launcher))
             .setIntent(
