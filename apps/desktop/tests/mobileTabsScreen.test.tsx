@@ -560,7 +560,7 @@ it("the threads list, wide: 「チャンネルを開く」 in a row's menu, or i
   compact = false;
   const { w, controller, first } = await setup();
   const openList = async () => {
-    fireEvent.click(within(screen.getByRole("navigation", { name: "場所" })).getByRole("button", { name: "スレッド" }));
+    fireEvent.click(document.querySelector<HTMLElement>("[data-sidebar-places] [data-nav-item=threads]")!);
     await flush();
     expect(document.querySelector("[data-thread-channel]")).not.toBeNull();
   };

@@ -43,6 +43,7 @@ import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { type ComposerMode, composerModeOf, type DocsEditorMode, docsEditorModeOf, readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
+import type { DesktopPlaces } from "../ui/desktopPlaces";
 import type { NavItem } from "../ui/navItems";
 import { type Capability, canAdminister as canAdministerWith, hasCapability } from "../ui/roles";
 import { setLocalePreference, type UiLocale, t } from "../i18n";
@@ -1531,6 +1532,20 @@ export class AppController {
     this.store.setMe({ ...before, nav_items: list });
     const ok = await this.updateProfile({ nav_items: list });
     if (!ok && this.store.me?.nav_items === list) this.store.setMe({ ...this.store.me, nav_items: before.nav_items ?? null });
+    return ok;
+  }
+
+  /**
+   * 2026-10-12 (MOBILE_UI.md §18.2): where Desktop / Web puts each place and whether the rail shows (users.desktop_places),
+   * null = back to the defaults. Shown at once; a refused or failed save puts the previous value back. Apart from
+   * nav_items, so the phones' tiles do not change. My other devices follow (user.updated).
+   */
+  async setDesktopPlaces(value: DesktopPlaces | null): Promise<boolean> {
+    const before = this.store.me;
+    if (!this.api || !before) return false;
+    this.store.setMe({ ...before, desktop_places: value });
+    const ok = await this.updateProfile({ desktop_places: value });
+    if (!ok && this.store.me?.desktop_places === value) this.store.setMe({ ...this.store.me, desktop_places: before.desktop_places ?? null });
     return ok;
   }
 

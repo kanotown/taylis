@@ -131,3 +131,17 @@ export function moveNavItem(full: readonly NavItem[], key: string, by: number, p
 export function sidebarNavKeys(stored: readonly NavItem[] | null | undefined, implemented: readonly string[] = DESKTOP_NAV_KEYS): string[] {
   return shownNavItems(fullNavItems(stored), "desktop", implemented).filter((item) => item.visible).map((item) => item.key);
 }
+
+/**
+ * 2026-10-12: the desktop's 「元に戻す」 puts back the default order without touching the phones' visibility (the tiles a
+ * phone hid stay hidden): null when nothing else was chosen, else the desktop's default order with each item's
+ * visibility as it is, unknown keys after them.
+ */
+export function resetNavOrder(full: readonly NavItem[]): NavItem[] | null {
+  const visible = new Map(full.map((item) => [item.key, item.visible]));
+  const ordered = fullNavItems(null, "desktop").map((item) => ({ key: item.key, visible: visible.get(item.key) ?? item.visible }));
+  const known = new Set(ordered.map((item) => item.key));
+  const unknown = full.filter((item) => !known.has(item.key));
+  const untouched = unknown.length === 0 && ordered.every((item) => item.visible === byKey.get(item.key)!.visible);
+  return untouched ? null : [...ordered, ...unknown];
+}

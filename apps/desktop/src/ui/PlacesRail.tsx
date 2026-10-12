@@ -2,17 +2,18 @@
  * The places rail (2026-10-12, docs/MOBILE_UI.md §18): the sidebar's menu items (スレッド, アクティビティ, ファイル,
  * キャンバス, ドキュメント, カレンダー…) as a narrow column of icons left of the conversation list, so the list starts with the
  * channels (Slack). Each icon names itself in a tooltip on hover and keyboard focus, carries its unread badge and is
- * highlighted while its page is open. The places I pinned (UserMe.nav_items `visible`, mine on every device) stand in the
- * rail in my order, as many as fit its height; the rest, and the unpinned ones, are under 「その他」. The customise menu
- * pins and unpins; the order is set in 設定 → 表示 → 「サイドバーの項目」. One tab stop; ↑ / ↓ / Home / End move between
- * the icons.
+ * highlighted while its page is open. Each place stands where I put it (UserMe.desktop_places, §18.2): in the rail (as
+ * many as fit its height, in my order), as a sidebar row, or only under 「その他」. The customise menu 「項目の配置」 moves
+ * them and hides the rail; the order is set in 設定 → 表示 → 「サイドバーの項目」. One tab stop; ↑ / ↓ / Home / End move
+ * between the icons.
  */
-import { Ellipsis, SlidersHorizontal } from "lucide-react";
+import { Ellipsis, EyeOff, SlidersHorizontal } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
-import { cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./primitives";
-import { t } from "../i18n";
+import type { PlaceSpot } from "./desktopPlaces";
+import { cn, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger } from "./primitives";
+import { type MessageKey, t } from "../i18n";
 
 /** The rail's width (px); MainScreen adds it to the sidebar's column. */
 export const PLACES_RAIL_WIDTH = 52;
@@ -24,7 +25,7 @@ const RAIL_PADDING = 16;
 export interface PlaceBadge {
   /** What the badge shows ("99+" past 99). */
   text: string;
-  /** Red: a mention, a fired reminder, a to-do due; neutral: unread without a mention. */
+  /** Red: a mention, a fired reminder, a to-do due; neutral: unread without a mention, drafts, open reminders. */
   tone: "danger" | "neutral";
 }
 
@@ -39,17 +40,26 @@ export interface Place {
   /** The accessible name when it says more than the label (アクティビティ（未読 3）). */
   ariaLabel?: string;
   badge?: PlaceBadge | null;
-  /** A quiet number for the tooltip and the menu (drafts, saved, who is in the room). */
+  /** A quiet number for the tooltip and the menu (saved, who is in the room). */
   count?: number;
   /** Something unread here: the icon is drawn stronger. */
   emphasis?: boolean;
-  /** False: never stands in the rail now (下書き / リマインダー while empty), only under 「その他」. */
-  railable?: boolean;
+}
+
+/** The three places a place can stand, in the menus' order. */
+export const PLACE_SPOTS: ReadonlyArray<readonly [PlaceSpot, MessageKey]> = [
+  ["rail", "places.spot.rail"],
+  ["sidebar", "places.spot.sidebar"],
+  ["hidden", "places.spot.hidden"],
+];
+
+export function spotLabel(spot: PlaceSpot): string {
+  return t(PLACE_SPOTS.find(([value]) => value === spot)![1]);
 }
 
 /**
- * How many of `count` pinned places fit a rail `height` px tall, with 「その他」 and the customise button under them
- * (and each icon's gap). 0 or less (not laid out yet, a test's DOM) counts as tall enough for all.
+ * How many of `count` rail places fit a rail `height` px tall, with 「その他」 and the customise button under them (and
+ * each icon's gap). 0 or less (not laid out yet, a test's DOM) counts as tall enough for all.
  */
 export function railFit(count: number, height: number, controls = 2): number {
   if (!(height > 0)) return count;
@@ -57,12 +67,14 @@ export function railFit(count: number, height: number, controls = 2): number {
   return Math.max(0, Math.min(count, Math.floor(room / RAIL_ITEM_PITCH)));
 }
 
-/** The places standing in the rail (pinned, railable, the first `fit`) and the ones under 「その他」 (the rest, in order). */
-export function railLayout(places: readonly Place[], pinned: ReadonlySet<string>, fit: number): { rail: Place[]; more: Place[] } {
-  const candidates = places.filter((place) => pinned.has(place.key) && place.railable !== false);
-  const rail = candidates.slice(0, Math.max(0, fit));
+/**
+ * The places standing in the rail (put there, the first `fit`, in my order) and the ones under 「その他」 (the hidden ones
+ * and the rail's that do not fit, in order). Sidebar rows are in neither: they are in view already.
+ */
+export function railLayout(places: readonly Place[], spotOf: (key: string) => PlaceSpot, fit: number): { rail: Place[]; more: Place[] } {
+  const rail = places.filter((place) => spotOf(place.key) === "rail").slice(0, Math.max(0, fit));
   const inRail = new Set(rail.map((place) => place.key));
-  return { rail, more: places.filter((place) => !inRail.has(place.key)) };
+  return { rail, more: places.filter((place) => !inRail.has(place.key) && spotOf(place.key) !== "sidebar") };
 }
 
 /** The strongest badge among `places` (「その他」 shows a dot for what it hides): danger beats neutral. */
@@ -75,13 +87,15 @@ const ITEM = "relative flex h-10 w-10 shrink-0 items-center justify-center round
 const IDLE = "text-sidebar-fg hover:bg-sidebar-hover hover:text-sidebar-strong";
 const ACTIVE = "bg-sidebar-active text-sidebar-active-fg";
 
-export function PlacesRail({ places, pinned, onTogglePin, onArrange }: {
+export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange }: {
   /** Every place I can open here, in my order. */
   places: readonly Place[];
-  /** The keys I pinned to the rail. */
-  pinned: ReadonlySet<string>;
-  /** Pin / unpin (undefined: a server without the setting; no customise menu then). */
-  onTogglePin?: (key: string, pinned: boolean) => void;
+  /** Where each place stands (rail / sidebar / hidden). */
+  spotOf: (key: string) => PlaceSpot;
+  /** Moves a place (undefined: a server without the setting; no customise menu then). */
+  onPlace?: (key: string, spot: PlaceSpot) => void;
+  /** 「アイコン列を隠す」: the rail's places become sidebar rows. */
+  onHideRail?: () => void;
   /** 「並べ替え…」: the settings' list. */
   onArrange?: () => void;
 }) {
@@ -97,9 +111,9 @@ export function PlacesRail({ places, pinned, onTogglePin, onArrange }: {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const controls = onTogglePin ? 2 : 1;
-  const pinnedCount = places.filter((place) => pinned.has(place.key) && place.railable !== false).length;
-  const { rail, more } = railLayout(places, pinned, railFit(pinnedCount, height, controls));
+  const controls = onPlace ? 2 : 1;
+  const railCount = places.filter((place) => spotOf(place.key) === "rail").length;
+  const { rail, more } = railLayout(places, spotOf, railFit(railCount, height, controls));
   const moreActive = more.some((place) => place.active);
   const moreBadge = strongestBadge(more);
   // One tab stop: the open place's icon, else the first one.
@@ -168,17 +182,7 @@ export function PlacesRail({ places, pinned, onTogglePin, onArrange }: {
           <MenuContent side="right" align="end" className="max-h-[80vh] overflow-y-auto">
             <MenuLabel>{t("rail.more")}</MenuLabel>
             {more.length === 0 && <p className="px-2.5 py-1.5 text-sm text-muted">{t("rail.moreEmpty")}</p>}
-            {more.map((place) => (
-              <MenuItem key={place.key} data-nav-item={place.key} aria-current={place.active ? "page" : undefined} onSelect={place.onSelect} className={cn(place.active && "font-semibold")}>
-                <span className="flex w-5 shrink-0 justify-center text-muted [&_svg]:h-4 [&_svg]:w-4">{place.icon}</span>
-                <span className="flex-1 truncate">{place.label}</span>
-                {place.badge ? (
-                  <span className={cn("rounded-full px-1.5 text-[11px] font-bold", place.badge.tone === "danger" ? "bg-rose-500 text-white" : "bg-panel-2 text-muted")}>{place.badge.text}</span>
-                ) : place.count ? (
-                  <span className="text-xs text-muted">{place.count}</span>
-                ) : null}
-              </MenuItem>
-            ))}
+            <PlaceMenuItems places={more} />
             {onArrange && (
               <>
                 <MenuSeparator />
@@ -187,7 +191,7 @@ export function PlacesRail({ places, pinned, onTogglePin, onArrange }: {
             )}
           </MenuContent>
         </Menu>
-        {onTogglePin && (
+        {onPlace && (
           <Menu>
             <RailTip label={t("rail.customize")}>
               <MenuTrigger asChild>
@@ -196,33 +200,62 @@ export function PlacesRail({ places, pinned, onTogglePin, onArrange }: {
                 </button>
               </MenuTrigger>
             </RailTip>
-            <MenuContent side="right" align="end" className="max-h-[80vh] w-64 overflow-y-auto">
-              <MenuLabel>{t("rail.pinned")}</MenuLabel>
-              {places.map((place) => (
-                <MenuCheckboxItem
-                  key={place.key}
-                  data-pin-item={place.key}
-                  checked={pinned.has(place.key)}
-                  // The menu stays open: several places are usually pinned or unpinned at once.
-                  onSelect={(event) => event.preventDefault()}
-                  onCheckedChange={(checked) => onTogglePin(place.key, checked === true)}
-                >
-                  <span className="flex w-5 shrink-0 justify-center text-muted [&_svg]:h-4 [&_svg]:w-4">{place.icon}</span>
-                  <span className="flex-1 truncate">{place.label}</span>
-                </MenuCheckboxItem>
-              ))}
+            <MenuContent side="right" align="end" className="max-h-[80vh] w-72 overflow-y-auto">
+              <MenuLabel>{t("rail.customize")}</MenuLabel>
+              {places.map((place) => <PlaceSpotSubmenu key={place.key} place={place} spot={spotOf(place.key)} onPlace={onPlace} />)}
               <p className="px-2.5 pb-1 pt-1.5 text-xs leading-snug text-muted">{t("rail.pinnedNote")}</p>
-              {onArrange && (
-                <>
-                  <MenuSeparator />
-                  <MenuItem onSelect={onArrange}>{t("rail.arrange")}</MenuItem>
-                </>
+              <MenuSeparator />
+              {onHideRail && (
+                <MenuItem data-hide-rail="" onSelect={onHideRail}>
+                  <EyeOff size={14} className="text-muted" />
+                  {t("places.hideRail")}
+                </MenuItem>
               )}
+              {onArrange && <MenuItem onSelect={onArrange}>{t("rail.arrange")}</MenuItem>}
             </MenuContent>
           </Menu>
         )}
       </Tooltip.Provider>
     </nav>
+  );
+}
+
+/** The places of a menu (「その他」 in the rail or in the sidebar): icon, name, badge or quiet number. */
+export function PlaceMenuItems({ places }: { places: readonly Place[] }) {
+  return (
+    <>
+      {places.map((place) => (
+        <MenuItem key={place.key} data-nav-item={place.key} aria-current={place.active ? "page" : undefined} onSelect={place.onSelect} className={cn(place.active && "font-semibold")}>
+          <span className="flex w-5 shrink-0 justify-center text-muted [&_svg]:h-4 [&_svg]:w-4">{place.icon}</span>
+          <span className="flex-1 truncate">{place.label}</span>
+          {place.badge ? (
+            <span className={cn("rounded-full px-1.5 text-[11px] font-bold", place.badge.tone === "danger" ? "bg-rose-500 text-white" : "bg-panel-2 text-muted")}>{place.badge.text}</span>
+          ) : place.count ? (
+            <span className="text-xs text-muted">{place.count}</span>
+          ) : null}
+        </MenuItem>
+      ))}
+    </>
+  );
+}
+
+/** One place in 「項目の配置」: its icon and name, where it stands now, and a submenu of アイコン列 / サイドバー / 表示しない. */
+export function PlaceSpotSubmenu({ place, spot, onPlace }: { place: Pick<Place, "key" | "label" | "icon">; spot: PlaceSpot; onPlace: (key: string, spot: PlaceSpot) => void }) {
+  return (
+    <MenuSub>
+      <MenuSubTrigger data-place-item={place.key} data-spot={spot}>
+        <span className="flex w-5 shrink-0 justify-center text-muted [&_svg]:h-4 [&_svg]:w-4">{place.icon}</span>
+        <span className="min-w-0 flex-1 truncate">{place.label}</span>
+        <span className="shrink-0 text-xs text-muted">{spotLabel(spot)}</span>
+      </MenuSubTrigger>
+      <MenuSubContent>
+        <MenuRadioGroup value={spot} onValueChange={(value) => { if (value !== spot) onPlace(place.key, value as PlaceSpot); }}>
+          {PLACE_SPOTS.map(([value, label]) => (
+            <MenuRadioItem key={value} value={value} data-spot-choice={value}>{t(label)}</MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+      </MenuSubContent>
+    </MenuSub>
   );
 }
 

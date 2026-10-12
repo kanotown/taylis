@@ -155,34 +155,67 @@ describe("a section's 並べ替え (DATA_MODEL.md sidebar_sections)", () => {
 
 describe("the Times section folded", () => {
   /** alice, with (or without) her own times beside bob's; general is open. */
-  function timesWorld(mine: boolean) {
+  function timesWorld(mine: boolean, extra: Record<string, unknown> = {}) {
     const w = world();
     const server = new FakeServer();
     const bob = server.addUser("bob");
     const add = (name: string, ownerId: string) => {
       const channel = { ...server.createChannel(name, ownerId), times_owner_id: ownerId };
       w.store.upsertChannel(channel, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
+      return channel.id;
     };
-    if (mine) add("times-alice", w.controller.me.id);
+    const mineId = mine ? add("times-alice", w.controller.me.id) : null;
     add("times-bob", bob.id);
-    render(
+    const onOpen = vi.fn();
+    const draw = () => render(
       <Sidebar controller={w.controller as unknown as AppController} channels={[...w.store.channels.values()]} currentId={w.general.id} unreadOnly={false}
-        onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} onTimesFeed={() => {}} onCreateTimes={() => {}} />,
+        onToggleUnreadOnly={() => {}} onOpen={onOpen} onNewDm={() => {}} onNewChannel={() => {}} onTimesFeed={() => {}} onCreateTimes={() => {}} {...extra} />,
     );
+    draw();
+    return { ...w, mineId, onOpen, draw };
   }
   const row = (name: string) => screen.getByText(name).closest("li")!;
   const folded = (name: string) => row(name).className.includes("folded");
   const foldTimes = () => localStorage.setItem("chikuwa.sidebar.folded", JSON.stringify(["times"]));
 
-  it("keeps 「フィード」 and my own times, and folds the others away", () => {
+  it("folds 「フィード」 and my own times away too (2026-10-12: the rail's icons reach them), unread ones stay", () => {
     foldTimes();
-    timesWorld(true);
+    const w = timesWorld(true);
     expect(screen.getByRole("button", { name: "Times" }).getAttribute("aria-expanded")).toBe("false");
-    expect(folded("フィード")).toBe(false);
-    expect(folded("times-alice")).toBe(false);
-    expect(screen.getByRole("button", { name: /times-alice/ })).toBeTruthy();
+    expect(folded("フィード")).toBe(true);
+    expect(folded("times-alice")).toBe(true);
     expect(folded("times-bob")).toBe(true);
     expect(row("times-bob").getAttribute("aria-hidden")).toBe("true");
+    // Something unread in my times: its row stays, as any unread row does.
+    cleanup();
+    act(() => w.store.updateChannel(w.mineId!, { unreadCount: 1, lastSeq: 1 }));
+    w.draw();
+    expect(folded("times-alice")).toBe(false);
+  });
+
+  it("the rail: 「自分の Times」 right after the feed's icon, with its unread, and it opens my times", () => {
+    foldTimes();
+    const w = timesWorld(true, { onThreads: () => {} });
+    const rail = screen.getByRole("navigation", { name: "場所" });
+    const keys = [...rail.querySelectorAll<HTMLElement>("button[data-nav-item]")].map((b) => b.dataset.navItem);
+    expect(keys.slice(-2)).toEqual(["times-feed", "my-times"]);
+    const mine = within(rail).getByRole("button", { name: "自分の Times" });
+    expect(mine.querySelector("[data-badge]")).toBeNull();
+    fireEvent.click(mine);
+    expect(w.onOpen).toHaveBeenCalledWith(w.mineId);
+    cleanup();
+    act(() => w.store.updateChannel(w.mineId!, { unreadCount: 2, mentionCount: 1, lastSeq: 2 }));
+    w.draw();
+    const badge = within(screen.getByRole("navigation", { name: "場所" })).getByRole("button", { name: "自分の Times" }).querySelector("[data-badge]")!;
+    expect(badge.textContent).toBe("1");
+    expect(badge.getAttribute("data-badge")).toBe("danger");
+  });
+
+  it("no 「自分の Times」 icon without my times; no feed icon without any times", () => {
+    timesWorld(false, { onThreads: () => {} });
+    const rail = screen.getByRole("navigation", { name: "場所" });
+    expect(within(rail).queryByRole("button", { name: "自分の Times" })).toBeNull();
+    expect(within(rail).getByRole("button", { name: "Times フィード" })).toBeTruthy();
   });
 
   it("shows nothing extra when I have no times", () => {

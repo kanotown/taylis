@@ -121,7 +121,7 @@ it("the sidebar's 「フィード」 opens the feed: rows newest first with thei
 
 it("a row shows its message in its channel; the times' name opens the channel; the header icon opens the feed when folded", async () => {
   const { w, carolTimes } = await setup();
-  fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "場所" })).getByRole("button", { name: "Times フィード" }));
   await settle(w);
   const row = [...feed().querySelectorAll("article")].find((r) => r.textContent?.includes("論文を読む"))!;
   fireEvent.click(row.querySelector("[data-message-body], p, div.min-w-0")!);
@@ -153,7 +153,7 @@ it("the sidebar's 「フィード」 looks like the other rows: highlighted only
     expect(row().className.split(/\s+/)).toContain(name);
     expect(channelRow.className.split(/\s+/)).toContain(name);
   }
-  expect(looksActive(screen.getByRole("button", { name: "Times フィード" }))).toBe(false);
+  expect(looksActive(within(screen.getByRole("navigation", { name: "場所" })).getByRole("button", { name: "Times フィード" }))).toBe(false);
   fireEvent.click(row());
   await settle(w);
   expect(looksActive(row())).toBe(true);
@@ -173,7 +173,7 @@ it("a reply also sent to the channel: its body shows the channel's row (no threa
   const { w, controller, carol, carolTimes } = await setup();
   const parent = w.server.messageByBody(carolTimes, "論文を読む");
   w.server.post(carolTimes, carol.id, "返信もチャンネルに", undefined, parent.id, [], { alsoInChannel: true });
-  fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "場所" })).getByRole("button", { name: "Times フィード" }));
   await settle(w);
   const replyRow = () => [...feed().querySelectorAll("article")].find((r) => r.textContent?.includes("返信もチャンネルに"))!;
   // The row itself: the channel, at that row, with no thread open.
@@ -186,7 +186,7 @@ it("a reply also sent to the channel: its body shows the channel's row (no threa
   // Back in the feed (another conversation open behind it now: #c), 「スレッドに返信：」 opens the parent's thread.
   fireEvent.click(screen.getByRole("button", { name: "c" }));
   await settle(w);
-  fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "場所" })).getByRole("button", { name: "Times フィード" }));
   await settle(w);
   fireEvent.click(within(replyRow()).getByRole("button", { name: /スレッドに返信/ }));
   await settle(w);
@@ -212,6 +212,8 @@ it("「自分の times に書く」 is 「自分の times を作る」 until I h
   (controller as unknown as { active: unknown }).active = { serverUrl: "http://server", username: "bob", api, store: w.store, engine: w.engine, me: w.store.me, leaving: false };
   render(<Screen w={w} controller={controller} />);
   await flush();
+  // No times of anyone: no feed icon in the rail (MOBILE_UI.md §18.5); the Times header's icon opens the (empty) feed.
+  expect(within(screen.getByRole("navigation", { name: "場所" })).queryByRole("button", { name: "Times フィード" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
   await settle(w);
   expect(screen.getByText(/参加している times がありません/)).toBeTruthy();
