@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The Share Extension's entry (MOBILE_UI.md §20): hosts the SwiftUI sheet and hands it what the other app shared.
+/// The Share Extension's entry (MOBILE_UI.md §21): hosts the SwiftUI sheet and hands it what the other app shared.
 final class ShareViewController: UIViewController {
     private var model: ShareModel?
 

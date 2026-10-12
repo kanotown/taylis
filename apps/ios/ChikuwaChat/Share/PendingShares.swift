@@ -1,6 +1,6 @@
 import Foundation
 
-/// A share on its way (MOBILE_UI.md §20.4): what the Share Extension took in, kept in the App Group until the message
+/// A share on its way (MOBILE_UI.md §21.4): what the Share Extension took in, kept in the App Group until the message
 /// is posted. The files are copies in the share's own folder; `clientMsgId` makes the post idempotent, so whoever
 /// sends it (the extension, the app woken by its background upload, the app on its next start) posts it once.
 struct PendingShare: Codable, Equatable, Identifiable {

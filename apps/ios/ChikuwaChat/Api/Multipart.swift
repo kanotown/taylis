@@ -1,7 +1,7 @@
 import Foundation
 
 /// multipart/form-data with a single "file" part (POST /attachments, avatars). Compiled into the Share Extension as
-/// well (MOBILE_UI.md §20): a shared file goes up in the same body as one picked in the app.
+/// well (MOBILE_UI.md §21): a shared file goes up in the same body as one picked in the app.
 enum Multipart {
     static func head(boundary: String, filename: String, contentType: String) -> Data {
         let name = filename.replacingOccurrences(of: "\"", with: "_")

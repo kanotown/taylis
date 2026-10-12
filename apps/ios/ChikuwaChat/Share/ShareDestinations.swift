@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// A conversation a share can go to (MOBILE_UI.md §20.2).
+/// A conversation a share can go to (MOBILE_UI.md §21.2).
 struct ShareDestination: Codable, Equatable, Hashable, Identifiable {
     /// The channel id.
     var id: String
@@ -83,7 +83,7 @@ enum ShareDestinations {
     }
 }
 
-/// The share sheet's destination list (MOBILE_UI.md §20.2): the recent conversations the app left in the App Group
+/// The share sheet's destination list (MOBILE_UI.md §21.2): the recent conversations the app left in the App Group
 /// show at once; the first search loads every conversation of mine from the server (GET /channels, GET /users) and
 /// searches those.
 @MainActor

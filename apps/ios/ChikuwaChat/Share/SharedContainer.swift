@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the app and its Share Extension share (MOBILE_UI.md §20): the App Group `group.jp.chikuwachat.ios` holds the
+/// What the app and its Share Extension share (MOBILE_UI.md §21): the App Group `group.jp.chikuwachat.ios` holds the
 /// workspace list, the recent conversations of each account, the UI language and the shares waiting to be sent.
 /// Nothing secret goes here: tokens stay in the Keychain (Keychain.swift).
 enum SharedContainer {

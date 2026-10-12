@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Session secrets live in the Keychain only (SECURITY.md §2.3): a workspace's refresh token under its account
-/// ("server|username") and, since the Share Extension (MOBILE_UI.md §20), its current access token under
+/// ("server|username") and, since the Share Extension (MOBILE_UI.md §21), its current access token under
 /// "server|username#access". Both are kept in the Keychain group the app shares with its extension
 /// (`keychain-access-groups`: `<team>.jp.chikuwachat.ios.shared`), never in UserDefaults or a file.
 enum Keychain {

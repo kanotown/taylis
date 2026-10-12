@@ -1,6 +1,6 @@
 import Foundation
 
-/// A workspace's tokens as the app and the Share Extension share them (MOBILE_UI.md §20.3). The refresh token rotates
+/// A workspace's tokens as the app and the Share Extension share them (MOBILE_UI.md §21.3). The refresh token rotates
 /// on every refresh and a rotated one used again ends the session (SECURITY.md §2.3), so a refresh happens only while
 /// holding the token lock (a file lock in the App Group) and always from the token the Keychain holds then: whoever
 /// refreshed before (the app or the extension) left the newest one there.

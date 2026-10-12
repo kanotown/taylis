@@ -1,7 +1,7 @@
 import XCTest
 @testable import ChikuwaChat
 
-/// MOBILE_UI.md §20: the code the app shares with its Share Extension (destinations, the pending-share queue, the
+/// MOBILE_UI.md §21: the code the app shares with its Share Extension (destinations, the pending-share queue, the
 /// idempotent post, the shared tokens and the Keychain migration).
 final class ShareDestinationTests: XCTestCase {
     private func channel(_ id: String, _ type: String, name: String? = nil, archived: Bool = false, last: String? = nil, dm: [String]? = nil,

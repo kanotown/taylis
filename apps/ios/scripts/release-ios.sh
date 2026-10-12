@@ -85,7 +85,7 @@ step "Checks: Taylis $VERSION (build $BUILD), $BUNDLE_ID, team $TEAM_ID"
 [[ "$BUILD" =~ ^[0-9]+$ ]] || fail "CFBundleVersion is not an integer: $BUILD"
 grep -q "CFBundleShortVersionString: \"$VERSION\"" "$IOS/project.yml" || fail "project.yml's CFBundleShortVersionString differs from Info.plist ($VERSION)"
 grep -q "CFBundleVersion: \"$BUILD\"" "$IOS/project.yml" || fail "project.yml's CFBundleVersion differs from Info.plist ($BUILD)"
-# The Notification Service Extension (PUSH_NOTIFICATIONS.md §16) and the Share Extension (MOBILE_UI.md §20) must
+# The Notification Service Extension (PUSH_NOTIFICATIONS.md §16) and the Share Extension (MOBILE_UI.md §21) must
 # carry the app's version and build number.
 EXTENSIONS=(NotificationService ShareExtension)
 for EXT in "${EXTENSIONS[@]}"; do

@@ -11,7 +11,7 @@ final class StoreReleaseTests: XCTestCase {
         XCTAssertEqual(plist["NSPrivacyTracking"] as? Bool, false)
         let apis = try XCTUnwrap(plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]])
         let userDefaults = apis.first { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" }
-        // CA92.1: the app's own defaults; 1C8F.1: the App Group's, shared with the Share Extension (MOBILE_UI.md §20).
+        // CA92.1: the app's own defaults; 1C8F.1: the App Group's, shared with the Share Extension (MOBILE_UI.md §21).
         XCTAssertEqual(userDefaults?["NSPrivacyAccessedAPITypeReasons"] as? [String], ["CA92.1", "1C8F.1"])
         let collected = try XCTUnwrap(plist["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
         XCTAssertFalse(collected.isEmpty)
@@ -42,7 +42,7 @@ final class StoreReleaseTests: XCTestCase {
         XCTAssertTrue(activities.contains("INSendMessageIntent"))
     }
 
-    /// MOBILE_UI.md §20: the Share Extension is embedded with the app's version and build number, accepts files,
+    /// MOBILE_UI.md §21: the Share Extension is embedded with the app's version and build number, accepts files,
     /// pictures, videos, links and text, and names the same App Group and Keychain group as the app.
     func testShareExtensionIsEmbeddedWithTheAppsVersionAndGroups() throws {
         let url = try XCTUnwrap(Bundle.main.builtInPlugInsURL?.appendingPathComponent("ShareExtension.appex"))

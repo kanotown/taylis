@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The share sheet (MOBILE_UI.md §20.2): what is shared, an optional message, the destination, 送信 / キャンセル.
+/// The share sheet (MOBILE_UI.md §21.2): what is shared, an optional message, the destination, 送信 / キャンセル.
 struct ShareRootView: View {
     @Bindable var model: ShareModel
 

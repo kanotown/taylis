@@ -57,7 +57,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     var refreshRetryDelays: [TimeInterval] = [1, 2, 4, 8]
     var onTokens: ((TokenResponse) -> Void)?
     var onSignedOut: (() -> Void)?
-    /// The Keychain account ("server|username") whose tokens the Share Extension shares (MOBILE_UI.md §20.3): a refresh
+    /// The Keychain account ("server|username") whose tokens the Share Extension shares (MOBILE_UI.md §21.3): a refresh
     /// then takes the shared token lock and starts from the stored refresh token. nil (tests, a sign-in in progress)
     /// refreshes from `refreshToken` alone.
     var sharedAccount: String?
@@ -137,7 +137,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         let delays = refreshRetryDelays
         let account = sharedAccount
         let task = Task<TokenResponse, Error> {
-            // MOBILE_UI.md §20.3: the Share Extension refreshes this account's session too. Under the shared lock, and
+            // MOBILE_UI.md §21.3: the Share Extension refreshes this account's session too. Under the shared lock, and
             // from the refresh token the Keychain holds now (the extension may have rotated it since it was read).
             let lock = account != nil ? await SharedTokens.lock() : nil
             defer { lock?.release() }
