@@ -20,6 +20,7 @@ import { AttendancePill, pillMode } from "../src/ui/AttendancePill";
 import { AttendanceAdminTab } from "../src/ui/AttendanceAdminTab";
 import { AttendanceChip } from "../src/ui/AttendanceChip";
 import { AttendanceView } from "../src/ui/AttendanceView";
+import { BOARD_AVATAR_SIZE, boardDotSize } from "../src/ui/Avatar";
 import { desktopNavKeys, sidebarNavKeys } from "../src/ui/navItems";
 import { FakeServer } from "./fakeServer";
 
@@ -145,6 +146,20 @@ describe("the page", () => {
     fireEvent.change(note, { target: { value: "  3 号室 " } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(setMyAttendance).toHaveBeenLastCalledWith(IN.id, "3 号室"));
+  });
+
+  it("2026-10-12: the board's pictures are 36 px with a 14 px status dot in a 2 px ring (PRESENCE.md §11.6)", () => {
+    expect(BOARD_AVATAR_SIZE).toBe(36);
+    expect([30, 36, 40, 48].map(boardDotSize)).toEqual([12, 14, 15, 18]);
+    const store = storeWith(board());
+    store.setPresence(ME, "online");
+    render(<AttendanceView controller={controllerFor(store, {})} />);
+    const dot = document.querySelector<HTMLElement>("[data-attendance-group] [data-presence=online]")!;
+    expect(dot.style.width).toBe("14px");
+    expect(dot.style.height).toBe("14px");
+    expect(dot.className).toContain("border-2");
+    expect(dot.className).toContain("border-canvas");
+    expect((dot.parentElement as HTMLElement).style.width).toBe("36px");
   });
 
   it("buttons are reachable by keyboard (real buttons) and errors go to the banner", async () => {
