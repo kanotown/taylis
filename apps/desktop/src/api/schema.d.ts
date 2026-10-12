@@ -13681,6 +13681,13 @@ export interface components {
             name: string;
             /** Offered Channel Ids */
             offered_channel_ids?: string[];
+            /** Priority */
+            priority?: ("important" | "urgent") | null;
+            /**
+             * Request Ack
+             * @default false
+             */
+            request_ack: boolean;
             /** Template */
             template: string;
         };
@@ -13754,6 +13761,10 @@ export interface components {
             name: string;
             /** Offered Channel Ids */
             offered_channel_ids: string[];
+            /** Priority */
+            priority: ("important" | "urgent") | null;
+            /** Request Ack */
+            request_ack: boolean;
             /** Run Blocked */
             run_blocked: ("disabled" | "archived" | "not_a_member" | "posting_restricted") | null;
             /** Template */
@@ -13818,6 +13829,10 @@ export interface components {
             name?: string | null;
             /** Offered Channel Ids */
             offered_channel_ids?: string[] | null;
+            /** Priority */
+            priority?: ("important" | "urgent") | null;
+            /** Request Ack */
+            request_ack?: boolean | null;
             /** Template */
             template?: string | null;
         };

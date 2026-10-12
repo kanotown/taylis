@@ -4,7 +4,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.modules.messages.schemas import EMOJI_MAX_LENGTH, EMOJI_PATTERN, strip_control_chars
+from app.modules.messages.schemas import (
+    EMOJI_MAX_LENGTH,
+    EMOJI_PATTERN,
+    Priority,
+    strip_control_chars,
+)
 from app.modules.workflows.models import (
     MAX_DESCRIPTION_LENGTH,
     MAX_NAME_LENGTH,
@@ -193,6 +198,9 @@ class WorkflowCreate(BaseModel):
     enabled: bool = True
     # Ask first (the form with its preview); false = a workflow without fields posts at once.
     confirm: bool = True
+    # The post asks for acknowledgement (「確認しました」) and carries a priority label (M15e).
+    request_ack: bool = False
+    priority: Priority | None = None
 
     @field_validator("name")
     @classmethod
@@ -229,6 +237,9 @@ class WorkflowUpdate(BaseModel):
     template: str | None = Field(default=None, min_length=1, max_length=MAX_TEMPLATE_LENGTH)
     enabled: bool | None = None
     confirm: bool | None = None
+    request_ack: bool | None = None
+    # null takes the label off.
+    priority: Priority | None = None
 
     @field_validator("name")
     @classmethod
@@ -261,6 +272,7 @@ class WorkflowUpdate(BaseModel):
             "template",
             "enabled",
             "confirm",
+            "request_ack",
         ):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null")
@@ -290,6 +302,10 @@ class WorkflowOut(BaseModel):
     enabled: bool
     # Whether running it asks first (WORKFLOWS.md §11). Clients that do not know it always ask.
     confirm: bool
+    # Whether its post asks for acknowledgement, and its priority label (WORKFLOWS.md §12).
+    # Clients that do not know them post the same: the server applies them.
+    request_ack: bool
+    priority: Priority | None
     created_by: UUID
     created_at: datetime
     updated_at: datetime
@@ -324,6 +340,8 @@ def to_workflow_out(
         template=row.template,
         enabled=row.enabled,
         confirm=row.confirm,
+        request_ack=row.request_ack,
+        priority=row.priority,  # type: ignore[arg-type]
         created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,

@@ -21074,6 +21074,26 @@
             "title": "Offered Channel Ids",
             "type": "array"
           },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "request_ack": {
+            "default": false,
+            "title": "Request Ack",
+            "type": "boolean"
+          },
           "template": {
             "maxLength": 4000,
             "minLength": 1,
@@ -21233,6 +21253,25 @@
             "title": "Offered Channel Ids",
             "type": "array"
           },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "request_ack": {
+            "title": "Request Ack",
+            "type": "boolean"
+          },
           "run_blocked": {
             "anyOf": [
               {
@@ -21271,6 +21310,8 @@
           "template",
           "enabled",
           "confirm",
+          "request_ack",
+          "priority",
           "created_by",
           "created_at",
           "updated_at",
@@ -21458,6 +21499,32 @@
               }
             ],
             "title": "Offered Channel Ids"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "request_ack": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Ack"
           },
           "template": {
             "anyOf": [

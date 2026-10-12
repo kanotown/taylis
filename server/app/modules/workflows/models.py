@@ -52,6 +52,10 @@ class Workflow(Base):
     # Running it opens the form (with the preview and 投稿) first. False: a workflow without fields
     # posts as soon as it is chosen; one with fields still opens its form (WORKFLOWS.md §11).
     confirm: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # The post asks the channel's members to acknowledge it (messages.ack_requested, M15e), and its
+    # priority label (messages.priority): what an announcement such as 「ゼミ案内」 needs (§12).
+    request_ack: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    priority: Mapped[str | None] = mapped_column(String(16))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
@@ -68,6 +72,9 @@ class Workflow(Base):
         ),
         CheckConstraint(
             f"char_length(description) <= {MAX_DESCRIPTION_LENGTH}", name="description_length"
+        ),
+        CheckConstraint(
+            "priority IS NULL OR priority IN ('important', 'urgent')", name="priority_values"
         ),
         Index(
             "workflows_name_uniq",
