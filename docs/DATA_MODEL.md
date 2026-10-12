@@ -98,6 +98,7 @@ CREATE TABLE users (
   notify_tasks          boolean NOT NULL DEFAULT true,    -- M55 タスクの割り当てと期限をプッシュする (TASKS.md §5)
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   nav_items             jsonb,                  -- M111 サイドバーの項目 / ホームのタイルの順と表示 [{key, visible}] (64 個まで、key は ^[a-z][a-z0-9-]{0,31}$ で重複なし、知らない key もそのまま保存)。NULL = 既定 (apps/shared/nav-items.json、MOBILE_UI.md §14)
+  desktop_places        jsonb,                  -- 2026-10-12 (移行 0115) Desktop / Web の場所の置き場所 {rail: bool, items: [{key, place}]}、place は 'rail'（場所のレール）| 'sidebar'（サイドバーの上の行）| 'hidden'（「その他」だけ）。NULL = 既定 (MOBILE_UI.md §18.2)。nav_items とは別で、スマホのタイルの表示は変わらない。スマホは読まない
   locale                text,                   -- M115 UI の言語 'ja' | 'en' | 'zh-Hans'。NULL = 端末に合わせる (Accept-Language)。1 人向けのサーバの文 (エラー・プッシュ・知らせ) もこれ (I18N.md §1)
   composer_mode         text,                   -- 2026-10-06 Desktop / Web の入力欄 'rich' (リッチ: 見たまま編集、同じ Markdown を書く) | 'markdown' (記号を打つ)。NULL = 選んでいない = リッチ。PATCH /users/me で設定し、別の端末へは user.updated で揃う。スマホはまだ読まない
   docs_editor_mode      text,                   -- M150 (2026-10-08, 移行 0110) Desktop / Web のドキュメントのページの編集 'wysiwyg' (見たまま: 同じ Markdown を書く、WIKI.md §22.6・§27) | 'markdown' (エディタ + プレビュー)。NULL = 選んでいない = 見たまま。PATCH /users/me で設定し、別の端末へは user.updated で揃う。スマホは読まない (M153 まで Markdown)

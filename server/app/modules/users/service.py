@@ -114,6 +114,9 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
     if "nav_items" in data.model_fields_set:  # M111: null = the clients' defaults
         items = data.nav_items
         user.nav_items = [item.model_dump() for item in items] if items is not None else None
+    if "desktop_places" in data.model_fields_set:  # 2026-10-12: null = the clients' defaults
+        places = data.desktop_places
+        user.desktop_places = places.model_dump() if places is not None else None
     if "locale" in data.model_fields_set:  # M115: null = follow each device
         user.locale = data.locale
     if "composer_mode" in data.model_fields_set:  # null = the clients' default ("rich")

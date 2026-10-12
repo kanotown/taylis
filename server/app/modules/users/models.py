@@ -63,6 +63,10 @@ class User(Base):
     # M111: my sidebar items / home tiles in order, [{"key", "visible"}]; NULL = the defaults
     # (apps/shared/nav-items.json).
     nav_items: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
+    # 2026-10-12 (docs/MOBILE_UI.md §18.2): where Desktop / Web puts each place, {"rail": bool,
+    # "items": [{"key", "place"}]} with place "rail" / "sidebar" / "hidden"; NULL = the clients'
+    # defaults. Apart from nav_items so the phones' tiles do not follow it; the phones ignore it.
+    desktop_places: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     # M115: the UI language I chose ("ja" / "en" / "zh-Hans"); NULL = follow each device
     # (docs/I18N.md). The server writes my errors, pushes and notices in it.
     locale: Mapped[str | None] = mapped_column(String(16))

@@ -92,6 +92,34 @@ class NavItem(BaseModel):
     visible: bool
 
 
+class DesktopPlace(BaseModel):
+    """Where Desktop / Web puts one place (a nav item, or the desktop's own "times-feed" /
+    "my-times"): the places rail, a sidebar row, or only under 「その他」."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(pattern=NAV_ITEM_KEY_PATTERN)
+    place: Literal["rail", "sidebar", "hidden"]
+
+
+class DesktopPlaces(BaseModel):
+    """2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, and whether
+    the places rail shows at all (false: the rail's places become sidebar rows). Keys a client
+    does not know are kept; one not listed takes the clients' default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rail: bool = True
+    items: list[DesktopPlace] = Field(default_factory=list, max_length=MAX_NAV_ITEMS)
+
+    @field_validator("items")
+    @classmethod
+    def place_keys_are_distinct(cls, value: list[DesktopPlace]) -> list[DesktopPlace]:
+        if len({item.key for item in value}) != len(value):
+            raise ValueError("Place keys must be distinct")
+        return value
+
+
 class UserPublic(BaseModel):
     id: UUID
     username: str
@@ -143,6 +171,9 @@ class UserMe(UserPublic):
     # M111: my sidebar items (desktop / Web) and home tiles (phones) in order; null = default,
     # the clients' defaults. Keys a client does not implement are ignored there, kept when it saves.
     nav_items: list[NavItem] | None = None
+    # 2026-10-12: where Desktop / Web puts each place (rail / sidebar / hidden) and whether the
+    # rail shows; null = the clients' defaults. Apart from nav_items: the phones ignore it.
+    desktop_places: DesktopPlaces | None = None
     # M115: my UI language; null = follow the device / browser (docs/I18N.md). The server writes
     # my error messages, pushes and notices in it (else in the request's Accept-Language).
     locale: Literal["ja", "en", "zh-Hans"] | None = None
@@ -190,6 +221,8 @@ class UserUpdate(BaseModel):
 
     # M111: up to 64 distinct keys in order (unknown keys are kept); null resets to the defaults.
     nav_items: list[NavItem] | None = Field(default=None, max_length=MAX_NAV_ITEMS)
+    # 2026-10-12: Desktop / Web's placement of its places; null resets to the defaults.
+    desktop_places: DesktopPlaces | None = None
     # M115: my UI language; null = follow each device.
     locale: Literal["ja", "en", "zh-Hans"] | None = None
     # The desktop / Web composer: "rich" or "markdown"; null = back to the clients' default.
@@ -290,6 +323,7 @@ def to_user_me(user: User) -> UserMe:
         has_password=user.password_hash is not None,
         quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
         nav_items=nav_items_of(user),
+        desktop_places=desktop_places_of(user),
         locale=user.locale if user.locale in ("ja", "en", "zh-Hans") else None,  # type: ignore[arg-type]
         composer_mode=(
             user.composer_mode if user.composer_mode in ("rich", "markdown") else None  # type: ignore[arg-type]
@@ -299,6 +333,17 @@ def to_user_me(user: User) -> UserMe:
         ),
         capabilities=sorted(capabilities_of(user.role)),
     )
+
+
+def desktop_places_of(user: User) -> DesktopPlaces | None:
+    """The stored placement as sent; a row that does not validate (never written so) reads as
+    unset."""
+    if user.desktop_places is None:
+        return None
+    try:
+        return DesktopPlaces.model_validate(user.desktop_places)
+    except ValueError:
+        return None
 
 
 def nav_items_of(user: User) -> list[NavItem] | None:
