@@ -85,6 +85,8 @@ function workflow(name: string, extra: Partial<WorkflowOut> = {}): WorkflowOut {
     template: "x",
     enabled: true,
     confirm: true,
+    request_ack: false,
+    priority: null,
     created_by: "u1",
     created_at: "",
     updated_at: "",

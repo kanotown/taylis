@@ -18,6 +18,9 @@ import { SectionIcon } from "./SectionDialog";
 import {
   DEFAULT_EMOJI,
   FIELD_TYPES,
+  fieldTypeHint,
+  formatValue,
+  newFieldLabel,
   type FieldValue,
   initialValues,
   keyFromLabel,
@@ -267,6 +270,12 @@ export function WorkflowRunDialog({ controller, workflow, here, onClose, confirm
         {workflow.fields.map((field, index) => (
           <FieldInput key={field.key} controller={controller} field={field} value={values[field.key]} error={errors[field.key]} autoFocus={index === 0} onChange={(value) => set(field.key, value)} />
         ))}
+        {(workflow.request_ack || workflow.priority) && (
+          <ul className="space-y-0.5 text-xs text-muted" data-workflow-asks="">
+            {workflow.priority && <li>{t("workflow.runPriority", { priority: workflow.priority === "urgent" ? t("composer.priorityUrgent") : t("composer.priorityImportant") })}</li>}
+            {workflow.request_ack && <li>{t("workflow.runRequestsAck")}</li>}
+          </ul>
+        )}
         <section aria-label={t("composer.preview")} className="rounded-lg border border-line bg-panel/50 px-3 py-2">
           <div className="mb-1 text-[11px] font-semibold text-muted">{t("workflow.previewAs", { target })}</div>
           {preview ? (
@@ -333,6 +342,7 @@ function FieldInput({ controller, field, value, error, autoFocus, onChange }: {
             <input id={id} type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={value === true} onChange={(e) => onChange(e.target.checked)} />
             {field.label}
             {field.required && <span className="text-danger" aria-label={t("workflow.required")}>*</span>}
+            <span className="text-xs text-muted" data-checkbox-posts="">{t("workflow.checkboxPosts", { value: formatValue(field, value) })}</span>
           </label>
           {field.help && <span className="block text-xs text-muted">{field.help}</span>}
           {error && <span role="alert" className="block text-xs text-danger">{VALUE_ERROR_TEXT[error]}</span>}
@@ -548,10 +558,14 @@ interface Draft {
   template: string;
   enabled: boolean;
   confirm: boolean;
+  requestAck: boolean;
+  priority: Priority | null;
 }
 
+type Priority = NonNullable<WorkflowOut["priority"]>;
+
 function draftOf(workflow: WorkflowOut | null, channelId: string | undefined): Draft {
-  if (!workflow) return { name: "", emoji: "", description: "", channelId: channelId ?? "", offered: [], fields: [], template: "", enabled: true, confirm: true };
+  if (!workflow) return { name: "", emoji: "", description: "", channelId: channelId ?? "", offered: [], fields: [], template: "", enabled: true, confirm: true, requestAck: false, priority: null };
   return {
     name: workflow.name,
     emoji: workflow.emoji ?? "",
@@ -563,11 +577,14 @@ function draftOf(workflow: WorkflowOut | null, channelId: string | undefined): D
     enabled: workflow.enabled,
     // An older server leaves it out: it always asked.
     confirm: workflow.confirm ?? true,
+    // An older server leaves these out: its posts never asked.
+    requestAck: workflow.request_ack ?? false,
+    priority: workflow.priority ?? null,
   };
 }
 
 function newField(type: WorkflowFieldType, taken: string[]): WorkflowField {
-  const label = FIELD_TYPES.find(([kind]) => kind === type)?.[1] ?? t("workflow.field");
+  const label = newFieldLabel(type);
   return { key: keyFromLabel(label, taken), label, type, required: false, help: "", multiple: false, options: type === "select" ? [t("workflow.option", { n: 1 }), t("workflow.option", { n: 2 })] : [], default: null };
 }
 
@@ -663,6 +680,8 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
       template: draft.template,
       enabled: draft.enabled,
       confirm: draft.confirm,
+      request_ack: draft.requestAck,
+      priority: draft.priority,
     };
     try {
       onSaved(workflow ? await api.updateWorkflow(workflow.id, body) : await api.createWorkflow(body));
@@ -800,6 +819,21 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
           </label>
           {!draft.confirm && <p className="pl-6 text-xs text-muted">{draft.fields.length > 0 ? t("workflow.confirmFieldsNote") : t("workflow.confirmOffNote")}</p>}
         </div>
+        <div className="space-y-0.5">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={draft.requestAck} onChange={(e) => set({ requestAck: e.target.checked })} />
+            {t("workflow.requestAckLabel")}
+          </label>
+          <p className="pl-6 text-xs text-muted">{t("workflow.requestAckNote")}</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          {t("workflow.priorityLabel")}
+          <select aria-label={t("workflow.priorityLabel")} className={cn(SELECT, "py-1 text-xs")} value={draft.priority ?? ""} onChange={(e) => set({ priority: (e.target.value || null) as Priority | null })}>
+            <option value="">{t("composer.priorityNormal")}</option>
+            <option value="important">{t("composer.priorityImportant")}</option>
+            <option value="urgent">{t("composer.priorityUrgent")}</option>
+          </select>
+        </label>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <div className="flex items-center justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
@@ -838,6 +872,7 @@ function FieldEditor({ field, index, count, onChange, onMove, onRemove, onInsert
           <button type="button" aria-label={t("workflow.removeField", { field: field.label })} className="rounded p-1 text-danger hover:bg-danger/10" onClick={onRemove}><Trash2 size={13} /></button>
         </div>
       </div>
+      <p className="pl-7 text-[11px] text-muted" data-type-hint="">{fieldTypeHint(field.type)}</p>
       <div className="flex flex-wrap items-center gap-2 pl-7 text-xs">
         <label className="flex items-center gap-1 text-muted">
           {t("workflow.key")}

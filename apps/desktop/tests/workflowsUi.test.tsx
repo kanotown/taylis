@@ -49,6 +49,8 @@ const WORKFLOW: WorkflowOut = {
   template: "*【報告者】* {{報告者}}\n*【報告の内容】* ゼミの{{内容}}\n*【日付】* {{日付}}\n*【理由】* {{理由}}",
   enabled: true,
   confirm: true,
+  request_ack: false,
+  priority: null,
   created_by: ME,
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-01T00:00:00Z",
@@ -363,15 +365,83 @@ describe("the editor", () => {
     expect(screen.getByText(/#報告-ゼミ欠席 に投稿 · 項目 4 個 · ほか 1 チャンネルに表示/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /編集/ }));
     const dialog = within(screen.getByRole("dialog", { name: "ワークフローを編集" }));
+    // The type picker names the checkbox plainly, and a line under each field says what its type does.
+    const types = [...(dialog.getByLabelText("項目を追加") as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(types).toContain("チェックボックス（はい / いいえ）");
+    expect(types).not.toContain("チェック");
     fireEvent.change(dialog.getByLabelText("項目を追加"), { target: { value: "checkbox" } });
-    expect((dialog.getByLabelText("項目 5 の名前") as HTMLInputElement).value).toBe("チェック");
+    expect((dialog.getByLabelText("項目 5 の名前") as HTMLInputElement).value).toBe("チェックボックス");
+    const added = dialog.getAllByRole("listitem").find((li) => li.getAttribute("data-field-editor") === "4")!;
+    expect(added.querySelector("[data-type-hint]")!.textContent).toContain("オンなら「はい」、オフなら「いいえ」");
+    const first = dialog.getAllByRole("listitem").find((li) => li.getAttribute("data-field-editor") === "0")!;
+    expect(first.querySelector("[data-type-hint]")!.textContent).toContain("メンション");
     fireEvent.click(dialog.getAllByRole("button", { name: "上へ" })[4]!);
-    expect((dialog.getByLabelText("項目 4 の名前") as HTMLInputElement).value).toBe("チェック");
-    fireEvent.click(dialog.getByRole("button", { name: "項目「チェック」を削除" }));
+    expect((dialog.getByLabelText("項目 4 の名前") as HTMLInputElement).value).toBe("チェックボックス");
+    fireEvent.click(dialog.getByRole("button", { name: "項目「チェックボックス」を削除" }));
     expect(dialog.queryByLabelText("項目 5 の名前")).toBeNull();
     fireEvent.click(dialog.getByRole("button", { name: "保存" }));
     await flush();
     expect(api.updateWorkflow).toHaveBeenCalledWith("w1", expect.objectContaining({ channel_id: "c-report", offered_channel_ids: ["c-lab"] }));
+  });
+});
+
+describe("「投稿で確認を求める」 and the priority (request_ack, WORKFLOWS.md §12)", () => {
+  it("the editor's switch and priority are off by default, and saved", async () => {
+    const { store } = makeStore();
+    const api = { workflows: vi.fn(async () => [WORKFLOW]), workflowTemplates: vi.fn(async () => []), updateWorkflow: vi.fn(async () => WORKFLOW) };
+    const controller = controllerFor(store, api);
+    render(<WorkflowManager controller={controller} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /編集/ }));
+    const dialog = within(screen.getByRole("dialog", { name: "ワークフローを編集" }));
+    const ask = dialog.getByRole("switch", { name: /投稿で確認を求める/ }) as HTMLInputElement;
+    expect(ask.checked).toBe(false);
+    expect(dialog.getByText(/まだの人に催促できます/)).toBeTruthy();
+    const priority = dialog.getByLabelText("投稿の重要度") as HTMLSelectElement;
+    expect(priority.value).toBe("");
+    fireEvent.click(ask);
+    fireEvent.change(priority, { target: { value: "important" } });
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+    await flush();
+    expect(api.updateWorkflow).toHaveBeenCalledWith("w1", expect.objectContaining({ request_ack: true, priority: "important" }));
+  });
+
+  it("an older server leaves them out: the editor starts off and the run form says nothing", async () => {
+    const { store } = makeStore();
+    const old = { ...WORKFLOW } as Partial<WorkflowOut>;
+    delete old.request_ack;
+    delete old.priority;
+    const api = { workflows: vi.fn(async () => [old as WorkflowOut]), workflowTemplates: vi.fn(async () => []), updateWorkflow: vi.fn(async () => WORKFLOW) };
+    const controller = controllerFor(store, api);
+    render(<WorkflowRunDialog controller={controller} workflow={old as WorkflowOut} onClose={() => {}} />);
+    expect(document.querySelector("[data-workflow-asks]")).toBeNull();
+    cleanup();
+    render(<WorkflowManager controller={controller} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /編集/ }));
+    const dialog = within(screen.getByRole("dialog", { name: "ワークフローを編集" }));
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+    await flush();
+    expect(api.updateWorkflow).toHaveBeenCalledWith("w1", expect.objectContaining({ request_ack: false, priority: null }));
+  });
+
+  it("the run form says the post asks for acknowledgement, and a checkbox says how it is posted", () => {
+    const { store } = makeStore();
+    const controller = controllerFor(store, {});
+    const agree = { key: "同意", label: "資料を読んだ", type: "checkbox" as const, required: false, help: "", multiple: false, options: [], default: null };
+    const seminar: WorkflowOut = { ...WORKFLOW, id: "w-seminar", name: "ゼミ案内", fields: [agree], template: "<!channel> 明日はゼミです\n読んだ：{{同意}}", request_ack: true, priority: "urgent" };
+    render(<WorkflowRunDialog controller={controller} workflow={seminar} onClose={() => {}} />);
+    const dialog = within(screen.getByRole("dialog", { name: "🙇 ゼミ案内" }));
+    expect(dialog.getByText("この投稿はメンバーに確認（「確認しました」）を求めます")).toBeTruthy();
+    expect(dialog.getByText("重要度：緊急")).toBeTruthy();
+    const box = dialog.getByLabelText(/資料を読んだ/) as HTMLInputElement;
+    expect(box.type).toBe("checkbox");
+    expect(dialog.getByText("（投稿では「いいえ」）")).toBeTruthy();
+    const preview = within(dialog.getByRole("region", { name: "プレビュー" }));
+    expect(preview.getByText(/読んだ：いいえ/)).toBeTruthy();
+    fireEvent.click(box);
+    expect(dialog.getByText("（投稿では「はい」）")).toBeTruthy();
+    expect(preview.getByText(/読んだ：はい/)).toBeTruthy();
   });
 });
 

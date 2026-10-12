@@ -4,7 +4,7 @@
  * by apps/shared/workflows.json. Defaults are filled here, on the device that opens the form.
  */
 import type { FieldDefault, WorkflowField, WorkflowFieldType, WorkflowOut } from "../api/types";
-import { t, labelled } from "../i18n";
+import { t, labelled, type MessageKey } from "../i18n";
 
 export type FieldValue = string | string[] | boolean;
 export type Values = Record<string, FieldValue>;
@@ -30,6 +30,17 @@ export const FIELD_TYPES: ReadonlyArray<[WorkflowFieldType, string]> = [
   labelled("user", "workflow.type.user"),
   labelled("checkbox", "workflow.type.checkbox"),
 ];
+
+/** One line under a field's type picker: what the type asks for and how it reads in the post (WORKFLOWS.md §12). */
+export function fieldTypeHint(type: WorkflowFieldType): string {
+  return t(`workflow.typeHint.${type}` as MessageKey);
+}
+
+/** The label a new field starts with: its type's name without the explanation in brackets (「チェックボックス」). */
+export function newFieldLabel(type: WorkflowFieldType): string {
+  const label = FIELD_TYPES.find(([kind]) => kind === type)?.[1] ?? t("workflow.field");
+  return label.replace(/\s*[（(][^（）()]*[）)]\s*$/u, "") || label;
+}
 
 export const VALUE_ERROR_TEXT: Record<ValueError, string> = {
   get required() { return t("workflow.error.required"); },
