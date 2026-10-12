@@ -4,8 +4,14 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.os.Build
 import androidx.compose.foundation.Image
+import android.view.WindowManager
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -20,7 +26,16 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.dismiss
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -34,6 +49,7 @@ import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.min
 import java.nio.ByteBuffer
 import jp.chikuwachat.android.R
@@ -54,7 +70,27 @@ internal fun imagePanLimit(imageWidth: Int, imageHeight: Int, viewWidth: Int, vi
     return Offset(((imageWidth * fit * scale - viewWidth) / 2).coerceAtLeast(0f), ((imageHeight * fit * scale - viewHeight) / 2).coerceAtLeast(0f))
 }
 
-/** Authenticated, in-app still-image preview; another app remains available from the toolbar. */
+/**
+ * A photo pulled down closes, as a document does (docs/MOBILE_UI.md §22, [DocumentDismiss] for the release): what a
+ * drag on the photo becomes is decided once it passes the touch slop, by its first direction. Apart from Compose so it
+ * can be unit tested.
+ */
+internal object ImageDismiss {
+    enum class Gesture { PULL, TRANSFORM }
+
+    /**
+     * A one-finger drag mostly downwards on a photo that is not zoomed pulls it; anything else (sideways, upwards, a
+     * pinch, or any drag while zoomed, which pans) stays with the zoom and pan, for the whole gesture.
+     */
+    fun decide(dx: Float, dy: Float, scale: Float, pointers: Int): Gesture =
+        if (pointers == 1 && scale <= 1.001f && dy > 0f && dy > abs(dx)) Gesture.PULL else Gesture.TRANSFORM
+}
+
+/**
+ * Authenticated, in-app still-image preview; another app remains available from the toolbar. Pulled down (the photo
+ * when not zoomed, or the header) it follows the finger and closes past a distance or on a flick, else springs back
+ * ([PullToClose]); ✕, back and TalkBack's dismiss close it too.
+ */
 @Composable
 fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit) {
     var image by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
@@ -103,16 +139,34 @@ fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss:
         }
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) {
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current.density
+        val pull = remember { PullToClose(scope, density, onDismiss) }
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        // The conversation shows through as the photo is pulled away: the dialog's dim fades with the distance.
+        LaunchedEffect(window) {
+            window ?: return@LaunchedEffect
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            snapshotFlow { pull.progress }.collect { window.setDimAmount(0.6f * (1f - it)) }
+        }
+        val closeLabel = stringResource(R.string.image_viewer_close_image)
+        Surface(
+            Modifier.fillMaxSize().onSizeChanged { pull.extent = it.height.toFloat() }
+                .graphicsLayer { translationY = pull.offset }
+                .semantics { dismiss(closeLabel) { onDismiss(); true } },
+        ) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().pullToCloseHandle(pull),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.image_viewer_close_image)) }
                     FileNameText(attachment.filename, Modifier.weight(1f))
                     IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val bitmap = image
-                    if (bitmap != null) ZoomableImage(bitmap, attachment.filename)
+                    if (bitmap != null) ZoomableImage(bitmap, attachment.filename, pull)
                     else if (error != null) Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.image_viewer_couldnt_load_the_image), style = MaterialTheme.typography.titleMedium)
                         Text(error!!, Modifier.padding(vertical = 12.dp))
@@ -125,10 +179,12 @@ fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss:
 }
 
 @Composable
-private fun ZoomableImage(image: ImageBitmap, filename: String) {
+private fun ZoomableImage(image: ImageBitmap, filename: String, pull: PullToClose) {
+    val touchSlop = LocalViewConfiguration.current.touchSlop
     var scale by remember(image) { mutableFloatStateOf(1f) }
     var offset by remember(image) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
+    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
     fun transform(nextScale: Float, nextOffset: Offset) {
         scale = nextScale.coerceIn(1f, 5f)
         val limit = imagePanLimit(image.width, image.height, viewport.width, viewport.height, scale)
@@ -136,11 +192,62 @@ private fun ZoomableImage(image: ImageBitmap, filename: String) {
     }
     Box(
         Modifier.fillMaxSize().clipToBounds().onSizeChanged { viewport = it; transform(scale, offset) }
+            .onGloballyPositioned { placed[0] = it }
             .pointerInput(image) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                    val anchor = centroid - Offset(size.width / 2f, size.height / 2f)
-                    transform(nextScale, (offset - anchor) * (nextScale / scale) + anchor + pan)
+                // detectTransformGestures, plus the pull: past the slop the drag's first direction decides which.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var gesture: ImageDismiss.Gesture? = null
+                    var moved = Offset.Zero
+                    var zoomed = 1f
+                    var pointers = 1
+                    // The photo moves with the pull, so its local positions lag the finger: the pull and its speed
+                    // follow the first finger in the window's coordinates.
+                    fun inWindow(position: Offset): Offset = placed[0]?.takeIf { it.isAttached }?.localToWindow(position) ?: position
+                    val velocity = VelocityTracker()
+                    var last = inWindow(down.position)
+                    var fingerMove = 0f
+                    velocity.addPosition(down.uptimeMillis, last)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.changes.any { it.isConsumed }) break
+                        val pressed = event.changes.count { it.pressed }
+                        if (pressed == 0) break
+                        pointers = maxOf(pointers, pressed)
+                        fingerMove = 0f
+                        event.changes.firstOrNull { it.id == down.id && it.pressed }?.let {
+                            val now = inWindow(it.position)
+                            fingerMove = now.y - last.y
+                            last = now
+                            velocity.addPosition(it.uptimeMillis, now)
+                        }
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
+                        when (gesture) {
+                            null -> {
+                                moved += pan
+                                zoomed *= zoom
+                                val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                                if (moved.getDistance() > touchSlop || abs(1 - zoomed) * centroidSize > touchSlop) {
+                                    gesture = ImageDismiss.decide(moved.x, moved.y, scale, pointers)
+                                }
+                            }
+                            ImageDismiss.Gesture.PULL -> {
+                                pull.drag(fingerMove)
+                                event.changes.forEach { if (it.positionChanged()) it.consume() }
+                            }
+                            ImageDismiss.Gesture.TRANSFORM -> {
+                                val centroid = event.calculateCentroid(useCurrent = false)
+                                if (zoom != 1f || pan != Offset.Zero) {
+                                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                                    val anchor = centroid - Offset(size.width / 2f, size.height / 2f)
+                                    transform(nextScale, (offset - anchor) * (nextScale / scale) + anchor + pan)
+                                }
+                                event.changes.forEach { if (it.positionChanged()) it.consume() }
+                            }
+                        }
+                    }
+                    if (gesture == ImageDismiss.Gesture.PULL) pull.release(velocity.calculateVelocity().y)
                 }
             }
             .pointerInput(image) {
