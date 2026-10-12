@@ -916,6 +916,30 @@ export class AppController {
     await this.copyToClipboard(url, t("app.linkCopied"));
   }
 
+  /**
+   * The sidebar row's 「リンクをコピー」 (MOBILE_UI.md §18.7): a conversation has no link of its own, so the permalink of its
+   * newest message (`/m/<id>`, which opens the conversation there on every client). The loaded rows first, else one row
+   * of history; a conversation without messages says so.
+   */
+  async copyChannelLink(channelId: string): Promise<void> {
+    if (!this.api) return;
+    let newest = this.store.messages(channelId).filter((m) => !m.pending && !m.deleted && m.seq !== null && !m.parent_id).at(-1)?.id;
+    if (!newest) {
+      try {
+        const page = await this.api.history(channelId, null, 1);
+        newest = page.messages.filter((m) => !m.deleted).at(-1)?.id;
+      } catch (error) {
+        this.setError(error);
+        return;
+      }
+    }
+    if (!newest) {
+      this.setNotice(t("channelMenu.copyLinkEmpty"));
+      return;
+    }
+    await this.copyToClipboard(messagePermalink(this.api.baseUrl, newest), t("app.linkCopied"));
+  }
+
   /** M121: `<server>/p/<id>` of a Docs page (WIKI.md §9.3). */
   async copyPageLink(pageId: string): Promise<void> {
     if (!this.api) return;
