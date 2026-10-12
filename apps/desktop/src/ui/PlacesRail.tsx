@@ -348,7 +348,7 @@ function RailBadge({ badge }: { badge: PlaceBadge }) {
     <span
       data-badge={badge.tone}
       className={cn(
-        "pointer-events-none absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ring-2 ring-sidebar",
+        "badge-text pointer-events-none absolute -right-1 -top-1 h-4 min-w-4 rounded-full px-1 text-[10px] font-bold ring-2 ring-sidebar",
         badge.tone === "danger" ? "bg-rose-500 text-white" : "bg-sidebar-strong text-sidebar",
       )}
     >
