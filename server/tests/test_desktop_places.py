@@ -30,6 +30,7 @@ async def test_set_and_reset_desktop_places(
             {"key": "my-times", "place": "hidden"},
             {"key": "some-future-page", "place": "rail"},
         ],
+        "times_before": "channels",
     }
     updated = await client.patch("/api/v1/users/me", json={"desktop_places": chosen})
     assert updated.status_code == 200, updated.text
@@ -47,7 +48,7 @@ async def test_set_and_reset_desktop_places(
     assert me["desktop_places"] == chosen and me["nav_items"] is None
     # `rail` and `items` take their defaults when left out.
     short = await client.patch("/api/v1/users/me", json={"desktop_places": {}})
-    assert short.json()["desktop_places"] == {"rail": True, "items": []}
+    assert short.json()["desktop_places"] == {"rail": True, "items": [], "times_before": None}
     reset = await client.patch("/api/v1/users/me", json={"desktop_places": None})
     assert reset.status_code == 200 and reset.json()["desktop_places"] is None
     assert await db.scalar(select(User.desktop_places).where(User.id == alice.id)) is None
@@ -58,7 +59,7 @@ async def test_desktop_places_validation(
 ) -> None:
     alice = await make_user(db, "alice")
     as_user(alice)
-    good = {"rail": True, "items": [{"key": "drafts", "place": "sidebar"}]}
+    good = {"rail": True, "items": [{"key": "drafts", "place": "sidebar"}], "times_before": None}
     first = await client.patch("/api/v1/users/me", json={"desktop_places": good})
     assert first.status_code == 200
     too_many = [{"key": f"k{i}", "place": "rail"} for i in range(MAX_NAV_ITEMS + 1)]
@@ -71,6 +72,10 @@ async def test_desktop_places_validation(
         {"rail": "maybe"},
         {"rail": True, "extra": 1},
         {"items": too_many},
+        {"times_before": "Channels"},
+        {"times_before": ""},
+        {"times_before": "x" * 65},
+        {"times_before": 3},
         ["files"],
     ):
         result = await client.patch("/api/v1/users/me", json={"desktop_places": bad})
@@ -86,7 +91,7 @@ async def test_desktop_places_are_mine_only(
     alice = await make_user(db, "alice")
     bob = await make_user(db, "bob")
     as_user(alice)
-    chosen = {"rail": True, "items": [{"key": "calendar", "place": "hidden"}]}
+    chosen = {"rail": True, "items": [{"key": "calendar", "place": "hidden"}], "times_before": None}
     before = {e.id for e in (await db.execute(select(OutboxEvent))).scalars()}
     await client.patch("/api/v1/users/me", json={"desktop_places": chosen})
     events = [e for e in (await db.execute(select(OutboxEvent))).scalars() if e.id not in before]
@@ -110,3 +115,24 @@ async def test_a_bad_stored_value_reads_as_unset(
     await db.commit()
     as_user(alice)
     assert (await client.get("/api/v1/users/me")).json()["desktop_places"] is None
+
+
+async def test_times_section_anchor(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """Where the Times section stands (TIMES_FEED.md §7): a default section's key, one of my own
+    sections' id or "end", kept as sent and left alone by the other fields."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    for anchor in ("favorites", "dms", "end", "0b6f5a52-2f7e-4c55-9f43-0a3b6c1d2e3f"):
+        chosen = {
+            "rail": False,
+            "items": [{"key": "files", "place": "hidden"}],
+            "times_before": anchor,
+        }
+        result = await client.patch("/api/v1/users/me", json={"desktop_places": chosen})
+        assert result.status_code == 200, result.text
+        assert result.json()["desktop_places"] == chosen
+    await db.refresh(alice)
+    assert alice.desktop_places is not None
+    assert alice.desktop_places["times_before"] == "0b6f5a52-2f7e-4c55-9f43-0a3b6c1d2e3f"

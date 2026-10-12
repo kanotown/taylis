@@ -8315,7 +8315,7 @@
       },
       "DesktopPlaces": {
         "additionalProperties": false,
-        "description": "2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, and whether\nthe places rail shows at all (false: the rail's places become sidebar rows). Keys a client\ndoes not know are kept; one not listed takes the clients' default.",
+        "description": "2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, whether the\nplaces rail shows at all (false: the rail's places become sidebar rows), and where the Times\nsection stands among the sidebar's sections. Keys a client\ndoes not know are kept; one not listed takes the clients' default.",
         "properties": {
           "items": {
             "items": {
@@ -8329,6 +8329,18 @@
             "default": true,
             "title": "Rail",
             "type": "boolean"
+          },
+          "times_before": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Times Before"
           }
         },
         "title": "DesktopPlaces",
