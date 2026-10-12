@@ -1,3 +1,4 @@
+import PDFKit
 import XCTest
 @testable import ChikuwaChat
 
@@ -46,5 +47,77 @@ final class DocumentPreviewTests: XCTestCase {
         XCTAssertEqual(DocumentPDFLoader.pdfName("議事録.docx"), "議事録.pdf")
         XCTAssertEqual(DocumentPDFLoader.pdfName("paper.pdf"), "paper.pdf")
         XCTAssertEqual(DocumentPDFLoader.pdfName("a/b.pptx"), "a_b.pdf")
+    }
+
+    // MARK: pull down to close (as photos)
+
+    func testAPullClosesOnlyDownFromTheTopUnzoomed() {
+        XCTAssertTrue(DocumentDismiss.begins(motion: CGPoint(x: 0, y: 20), atTop: true, zoomed: false))
+        XCTAssertTrue(DocumentDismiss.begins(motion: CGPoint(x: 5, y: 20), atTop: true, zoomed: false))
+        XCTAssertFalse(DocumentDismiss.begins(motion: CGPoint(x: 0, y: -20), atTop: true, zoomed: false)) // scrolls on
+        XCTAssertFalse(DocumentDismiss.begins(motion: CGPoint(x: 30, y: 20), atTop: true, zoomed: false)) // sideways
+        XCTAssertFalse(DocumentDismiss.begins(motion: CGPoint(x: 0, y: 20), atTop: false, zoomed: false)) // scrolls back up
+        XCTAssertFalse(DocumentDismiss.begins(motion: CGPoint(x: 0, y: 20), atTop: true, zoomed: true))   // pans the page
+        XCTAssertFalse(DocumentDismiss.begins(motion: .zero, atTop: true, zoomed: false))
+    }
+
+    func testThePullFollowsTheFingerDownOnly() {
+        XCTAssertEqual(DocumentDismiss.pull(120), 120)
+        XCTAssertEqual(DocumentDismiss.pull(-40), 0)
+    }
+
+    func testTopAndZoomFromTheScrollViewAndScale() {
+        XCTAssertTrue(DocumentDismiss.isAtTop(offsetY: -100, insetTop: 100))
+        XCTAssertTrue(DocumentDismiss.isAtTop(offsetY: -99.5, insetTop: 100))
+        XCTAssertFalse(DocumentDismiss.isAtTop(offsetY: 40, insetTop: 0))
+        XCTAssertFalse(DocumentDismiss.isZoomed(scale: 0.5, fit: 0.5))
+        XCTAssertFalse(DocumentDismiss.isZoomed(scale: 0.3, fit: 0.5)) // zoomed out: still closes
+        XCTAssertTrue(DocumentDismiss.isZoomed(scale: 1.0, fit: 0.5))
+        XCTAssertFalse(DocumentDismiss.isZoomed(scale: 1.0, fit: 0))
+    }
+
+    func testReleaseUsesThePhotoViewersThresholdAndFlick() {
+        XCTAssertTrue(ViewerDismiss.shouldClose(offset: 200, velocity: 0, extent: 800))
+        XCTAssertFalse(ViewerDismiss.shouldClose(offset: 60, velocity: 0, extent: 800))
+        XCTAssertTrue(ViewerDismiss.shouldClose(offset: 30, velocity: 1200, extent: 800))
+        XCTAssertFalse(ViewerDismiss.shouldClose(offset: 200, velocity: -600, extent: 800))
+    }
+
+    /// A real PDFView with five pages: the pull begins at the top, not after scrolling down, not while zoomed in.
+    func testTheViewersPullFollowsTheRealPDFView() throws {
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+        let data = renderer.pdfData { context in
+            for i in 1...5 {
+                context.beginPage()
+                ("Page \(i)" as NSString).draw(at: CGPoint(x: 72, y: 72), withAttributes: [.font: UIFont.systemFont(ofSize: 48)])
+            }
+        }
+        let document = try XCTUnwrap(PDFDocument(data: data))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+        let view = PDFView(frame: window.bounds)
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.autoScales = true
+        view.document = document
+        window.addSubview(view)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let pull = DocumentPullController()
+        pull.attach(to: view)
+        view.layoutIfNeeded()
+        let scroll = try XCTUnwrap(pull.scrollView)
+        XCTAssertTrue(pull.isAtTop)
+        XCTAssertFalse(pull.isZoomed)
+        XCTAssertTrue(pull.begins(motion: CGPoint(x: 0, y: 20)))
+        XCTAssertFalse(pull.begins(motion: CGPoint(x: 0, y: -20)))
+
+        scroll.contentOffset = CGPoint(x: 0, y: scroll.contentSize.height / 2)
+        XCTAssertFalse(pull.isAtTop)
+        XCTAssertFalse(pull.begins(motion: CGPoint(x: 0, y: 20)))
+
+        scroll.contentOffset = CGPoint(x: 0, y: -scroll.adjustedContentInset.top)
+        view.scaleFactor = view.scaleFactorForSizeToFit * 3
+        XCTAssertTrue(pull.isZoomed)
+        XCTAssertFalse(pull.begins(motion: CGPoint(x: 0, y: 20)))
     }
 }

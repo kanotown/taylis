@@ -1227,3 +1227,46 @@ iOS のアプリを iPhone と iPad の両方で動かす (`TARGETED_DEVICE_FAMI
   版・ビルド番号・グループがアプリと同じで、有効化の規則があること。
 - 手で（シミュレータ、2026-10-12）：ファイル App の PDF を共有 → Taylis → 検索で `#share-ext-test` → 本文を付けて送信 →
   開発サーバ（:8000）のその会話に PDF 付きのメッセージが 1 つ届いた。
+
+## 22. ドキュメントのプレビューを下へ引いて閉じる（iOS / Android、2026-10-12）
+
+PDF や Office のファイルのプレビュー（全ページのビューア、PREVIEWS.md §5）を、写真と同じく下へ引いて閉じられるようにした
+（利用者の要望：写真はスワイプで閉じるのにドキュメントは「閉じる」を押すしかなかった）。
+
+### 22.1 どの引き方で閉じるか
+
+- **ヘッダー（閉じる・名前・共有の帯）から下へ**：いつでも。
+- **ページから下へ**：指を置いたときにページがいちばん上までスクロールしてあり、拡大していないときだけ。途中のページから
+  下へ動かすのは今までどおり上へ戻るスクロールで、いちばん上に着いてもその指のまま閉じには変わらない（指を離して引き直す）。
+  拡大中の下への動きはページを動かす（iOS）。上へ・横への動きは閉じない。ピンチの最中・直後（片方の指が残ったとき）も
+  閉じない（iOS）。
+- 引いている間は画面が指について下がり、後ろの会話が見えてくる（暗い幕が距離とともに薄れる。画面の半分で消える）。
+- 指を離したとき：写真のビューアと同じ規則（iOS の `ViewerDismiss.shouldClose`）。下へ速く払う（900 pt/s・dp/s 超）か、
+  画面の約 1/5（最大 140 pt・dp）を超えて引いていれば、そのまま下へ抜けて閉じる。上へ戻す動き（300 超）や短い引きはばねで
+  元に戻る。iOS の「視差効果を減らす」では抜けずにその場で薄れて閉じる。
+- 閉じる手段は残す：「閉じる」（iOS）／ ✕（Android）、Android の戻る（ジェスチャー・キー）、VoiceOver の
+  エスケープ（2 本指の Z）、TalkBack の「閉じる」操作（`semantics { dismiss }`）。
+
+### 22.2 実装
+
+- iOS（`UI/DocumentPreviewView.swift`）：`DocumentPDFViewer` は自前のヘッダー（SwiftUI の `DragGesture`）と PDFKit の
+  `PDFView` の上の 1 本指の `UIPanGestureRecognizer`（`DocumentPullController`）。PDFKit の中のスクロールビューの
+  パンはこの引きが諦めるのを待つ（`require(toFail:)`、写真のビューアと同じ形）。始めてよいかは `DocumentDismiss.begins`
+  （下向きが横より大きい・いちばん上・`scaleFactor` が `scaleFactorForSizeToFit` を超えていない）。移動は window の
+  座標で測る（ビュー自体が指について動くので）。全画面のカバーは `presentationBackground(.clear)`。
+- Android（`ui/DocumentPreview.kt`）：`PullToClose` がずれ（`graphicsLayer` の translationY）を持つ。ページの一覧は
+  `NestedScrollConnection` で、一覧が使い残した下向きの指の動き（指を置いたときに一番上だった場合だけ。
+  `awaitFirstDown` の Initial パスで `canScrollBackward` を見る）を引きに回し、引いている間の上向きの動きは一覧より先に
+  引きを戻す。払いの速さは `onPreFling`。ヘッダーは `draggable`。後ろの暗さはダイアログの window の `dimAmount`。
+  規則は `DocumentDismiss`。Android のビューアにはピンチ拡大と横のページ送りが無い（PREVIEWS.md §5）。
+- Quick Look（iOS の「開く」、元のファイル）はシステムのシートなので、もとから下へ引いて閉じられる。Android の
+  写真のビューアにはまだ下へ引いて閉じる操作が無い。
+
+### 22.3 試験
+
+- iOS `DocumentPreviewTests`：`DocumentDismiss` の規則（向き・いちばん上・拡大・引きの量・離したときの判定）と、本物の
+  `PDFView`（5 ページの生成した PDF を window に置く）で、いちばん上では始まり、スクロールした後と拡大中は始まらないこと。
+- Android `DocumentPreviewTest`：一覧の前後で引きが取る量、閾値と払い、幕の薄れ。
+- シミュレータ（iOS 26.5）とエミュレータ（ChikuwaChat_Pixel_9）で 6 ページの PDF：ページのスクロール、途中から下へ
+  戻すスクロールで閉じないこと、いちばん上から引いて閉じる・短い引きは戻る、ヘッダーから引く、拡大中は閉じない（iOS）、
+  戻るで閉じる（Android）。
