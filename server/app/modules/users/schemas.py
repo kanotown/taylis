@@ -20,6 +20,9 @@ MAX_QUICK_REACTIONS = 6
 # M111: at most this many sidebar items / home tiles (the catalogue has a dozen; room for more).
 MAX_NAV_ITEMS = 64
 NAV_ITEM_KEY_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
+# Where the desktop's Times section stands: before "favorites" / "channels" / "dms", one of my own
+# sections (its id), or "end" (after every section).
+SECTION_ANCHOR_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 
 
 def is_plain_emoji(value: str) -> bool:
@@ -103,14 +106,20 @@ class DesktopPlace(BaseModel):
 
 
 class DesktopPlaces(BaseModel):
-    """2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, and whether
-    the places rail shows at all (false: the rail's places become sidebar rows). Keys a client
+    """2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, whether the
+    places rail shows at all (false: the rail's places become sidebar rows), and where the Times
+    section stands among the sidebar's sections. Keys a client
     does not know are kept; one not listed takes the clients' default."""
 
     model_config = ConfigDict(extra="forbid")
 
     rail: bool = True
     items: list[DesktopPlace] = Field(default_factory=list, max_length=MAX_NAV_ITEMS)
+    # 2026-10-12 (docs/TIMES_FEED.md §7): the sidebar section the Times section stands before
+    # (a default section's key, one of my own sections' id, or "end"); null = the clients' default
+    # (before 「チャンネル」). The server does not check it: an anchor that no longer exists (a
+    # deleted section) is the clients' default.
+    times_before: str | None = Field(default=None, pattern=SECTION_ANCHOR_PATTERN)
 
     @field_validator("items")
     @classmethod

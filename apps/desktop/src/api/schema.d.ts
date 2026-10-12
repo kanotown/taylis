@@ -8807,8 +8807,9 @@ export interface components {
         };
         /**
          * DesktopPlaces
-         * @description 2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, and whether
-         *     the places rail shows at all (false: the rail's places become sidebar rows). Keys a client
+         * @description 2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, whether the
+         *     places rail shows at all (false: the rail's places become sidebar rows), and where the Times
+         *     section stands among the sidebar's sections. Keys a client
          *     does not know are kept; one not listed takes the clients' default.
          */
         DesktopPlaces: {
@@ -8819,6 +8820,8 @@ export interface components {
              * @default true
              */
             rail: boolean;
+            /** Times Before */
+            times_before?: string | null;
         };
         /** DeviceCreate */
         DeviceCreate: {
