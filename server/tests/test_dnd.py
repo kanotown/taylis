@@ -129,3 +129,30 @@ async def test_paused_user_gets_no_push(
         pass
     assert len(await deliveries(db)) == 1
     assert uuid.UUID(str((await deliveries(db))[0].message_id)) is not None
+
+
+async def test_new_people_get_night_quiet_hours_and_bots_none(db: AsyncSession) -> None:
+    """2026-10-13: a new account starts with 22:00 → 07:00 every day in Asia/Tokyo."""
+    from app.modules.admin import service as admin
+    from app.modules.admin.schemas import AdminUserCreate
+
+    person = await admin.create_user_in_tx(
+        db,
+        AdminUserCreate(username="carol", display_name="Carol"),
+        password_hash=None,
+        must_change_password=True,
+        actor_id=None,
+        join_default_channels=False,
+    )
+    assert (person.quiet_hours_start, person.quiet_hours_end) == (22 * 60, 7 * 60)
+    assert person.quiet_hours_days is None and person.quiet_hours_tz == "Asia/Tokyo"
+    assert in_quiet_hours(
+        _at("2026-10-13T23:30:00+09:00"),
+        start=person.quiet_hours_start,
+        end=person.quiet_hours_end,
+        days=person.quiet_hours_days,
+        tz=person.quiet_hours_tz,
+    )
+    owner = await make_user(db, "owner")
+    bot = await admin.create_bot_in_tx(db, actor_id=owner.id, username="hook", display_name="Hook")
+    assert bot.quiet_hours_start is None and bot.quiet_hours_tz is None
