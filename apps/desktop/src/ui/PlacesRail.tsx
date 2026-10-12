@@ -151,8 +151,10 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
         {rail.map((place) => {
           const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
           return (
-          <RailTip key={place.key} label={place.label} hint={place.hint} count={place.count}>
-            <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
+          // The menu outside the tooltip: the tooltip's trigger passes its hover / focus handlers to its child, and a menu
+          // root between them (no element of its own) dropped them, so the names stopped showing (2026-10-12).
+          <NewTabContextMenu key={place.key} onOpenInNewTab={newTab && (() => newTab(true))}>
+            <RailTip label={place.label} hint={place.hint} count={place.count}>
             <button
               type="button"
               data-rail-item=""
@@ -167,8 +169,8 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
               {place.icon}
               {place.badge && <RailBadge badge={place.badge} />}
             </button>
-            </NewTabContextMenu>
-          </RailTip>
+            </RailTip>
+          </NewTabContextMenu>
           );
         })}
         <div className="min-h-0 flex-1" />
