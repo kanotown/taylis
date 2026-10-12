@@ -765,8 +765,9 @@ iOS のアプリを iPhone と iPad の両方で動かす (`TARGETED_DEVICE_FAMI
 - 写真（1 枚の形のまま・2 枚以上の正方形の列）と動画のタイルの右上に小さなダウンロードボタン。マウス（またはペン）が
   タイルに乗っている間と、キーボードのフォーカスがタイルかボタンにある間（`:focus-visible`）だけ出す
   （`ui/Attachments.tsx` の `useDownloadReveal` / `DownloadOverlay`）。隠れている間はクリックを受けない。
-- 押すと拡大表示のボタンと同じ `controller.downloadAttachment`（Tauri は保存ダイアログ、Web は `<a download>`、
-  どちらも認証つきの取得）。拡大表示は開かない（`stopPropagation`）。読み上げは「<名前> をダウンロード」、ツールチップは
+- 押すと拡大表示のボタンと同じ `controller.downloadAttachment`（Tauri は「ダウンロード」フォルダへ保存（設定で
+  毎回選べる）、Web は `<a download>`、どちらも認証つきの取得とトースト。PREVIEWS.md §9）。拡大表示は開かない
+  （`stopPropagation`）。読み上げは「<名前> をダウンロード」、ツールチップは
   「ダウンロード」。
 - ファイルの行は行全体がダウンロードなので、右端のアイコンを hover とキーボードのフォーカスで出す（読み上げは
   「<名前> をダウンロード」）。文書のカード（M108）はもともとダウンロードのボタンが常に見えている。
