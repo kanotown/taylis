@@ -55,6 +55,10 @@ targets:
         aps-environment: development
         # PUSH_NOTIFICATIONS.md §16: message pushes show the sender's picture (communication notifications).
         com.apple.developer.usernotifications.communication: true
+        # MOBILE_UI.md §20 (Share Extension): the App Group for the workspace list, the recent conversations and the
+        # pending shares, and the Keychain group for the session tokens. Both shared with ShareExtension.
+        com.apple.security.application-groups: [group.jp.chikuwachat.ios]
+        keychain-access-groups: [$(AppIdentifierPrefix)jp.chikuwachat.ios.shared]
     info:
       path: ChikuwaChat/Info.plist
       properties:
@@ -76,9 +80,13 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         # PUSH_NOTIFICATIONS.md §16: the extension donates INSendMessageIntent for communication notifications.
         NSUserActivityTypes: [INSendMessageIntent]
+        # MOBILE_UI.md §20: what the app shares with ShareExtension (Share/SharedContainer.swift, Share/Keychain.swift).
+        TaylisAppGroup: group.jp.chikuwachat.ios
+        TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
     dependencies:
-      # Embedded in the app (PlugIns/NotificationService.appex).
+      # Embedded in the app (PlugIns/NotificationService.appex, PlugIns/ShareExtension.appex).
       - target: NotificationService
+      - target: ShareExtension
       - package: SwiftMath
     settings:
       base:
@@ -113,6 +121,54 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.NotificationService
+        TARGETED_DEVICE_FAMILY: "1,2"
+  # MOBILE_UI.md §20: other apps (Files, Photos, GoodNotes, Safari …) share files, pictures, videos, text and links
+  # into a conversation. Its versions must equal the app's (release-ios.sh and StoreReleaseTests check it).
+  # The code it shares with the app is compiled into both (ChikuwaChat/Share and the files listed here).
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+        excludes: ["Info.plist", "ShareExtension.entitlements"]
+      - path: ChikuwaChat/Share
+      - path: ChikuwaChat/Api/Multipart.swift
+      - path: ChikuwaChat/Api/JSON.swift
+      - path: ChikuwaChat/Api/ErrorMessages.swift
+      - path: ChikuwaChat/App/Workspaces.swift
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups: [group.jp.chikuwachat.ios]
+        keychain-access-groups: [$(AppIdentifierPrefix)jp.chikuwachat.ios.shared]
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Taylis
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "114"
+        TaylisAppGroup: group.jp.chikuwachat.ios
+        TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
+        # The servers may be plain HTTP on a LAN (as in the app's Info.plist).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # Up to 10 files (the server's limit per message, SECURITY.md §4), a link or a text.
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsAttachmentsWithMaxCount: 10
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 10
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.ShareExtension
         TARGETED_DEVICE_FAMILY: "1,2"
   ChikuwaChatTests:
     type: bundle.unit-test

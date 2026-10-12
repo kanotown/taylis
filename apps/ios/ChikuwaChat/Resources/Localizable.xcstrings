@@ -32329,6 +32329,44 @@
           }
         }
       }
+    },
+    "「%@」への共有を送信できませんでした（7日を過ぎました）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't send what you shared to “%@” (more than 7 days passed)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发送分享到“%@”的内容（已超过 7 天）"
+          }
+        }
+      }
+    },
+    "「%@」への共有を送信できませんでした：%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "「%1$@」への共有を送信できませんでした：%2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't send what you shared to “%1$@”: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发送分享到“%1$@”的内容：%2$@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -37,6 +37,10 @@
 	<array>
 		<string>INSendMessageIntent</string>
 	</array>
+	<key>TaylisAppGroup</key>
+	<string>group.jp.chikuwachat.ios</string>
+	<key>TaylisKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)jp.chikuwachat.ios.shared</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
