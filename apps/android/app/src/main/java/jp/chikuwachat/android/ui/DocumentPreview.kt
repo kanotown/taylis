@@ -5,6 +5,39 @@ import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import android.view.WindowManager
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.dismiss
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.window.DialogWindowProvider
+import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -207,7 +240,11 @@ private class PdfPages(file: File) : Closeable {
     }
 }
 
-/** Every page of the preview PDF in a list (drawn as they come into view), with 閉じる and 「他のアプリで開く」. */
+/**
+ * Every page of the preview PDF in a list (drawn as they come into view), with 閉じる and 「他のアプリで開く」. Pulled down
+ * from the header, or from the first page's top, it follows the finger and closes past a distance or on a flick, else
+ * springs back ([PullToClose]); the back gesture and TalkBack's dismiss close it too.
+ */
 @Composable
 internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -234,9 +271,32 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
     val current = pages
     DisposableEffect(current) { onDispose { current?.close() } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) {
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current.density
+        val pull = remember { PullToClose(scope, density, onDismiss) }
+        val listState = rememberLazyListState()
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        // The conversation shows through as the document is pulled away: the dialog's dim fades with the distance.
+        LaunchedEffect(window) {
+            window ?: return@LaunchedEffect
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            snapshotFlow { pull.progress }.collect { window.setDimAmount(0.6f * (1f - it)) }
+        }
+        val closeLabel = stringResource(R.string.document_preview_close_preview)
+        Surface(
+            Modifier.fillMaxSize().onSizeChanged { pull.extent = it.height.toFloat() }
+                .graphicsLayer { translationY = pull.offset }
+                .semantics { dismiss(closeLabel) { onDismiss(); true } },
+        ) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    // Pulled down from the header at any time (as from the first page's top below).
+                    Modifier.fillMaxWidth().draggable(
+                        rememberDraggableState { pull.drag(it) }, Orientation.Vertical,
+                        onDragStopped = { pull.release(it) },
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.document_preview_close_preview)) }
                     Column(Modifier.weight(1f)) {
                         FileNameText(attachment.filename)
@@ -245,9 +305,20 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
                     }
                     IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)
+                        .pointerInput(listState) {
+                            // Whether the pages were at their top when the finger came down: only such a drag may pull.
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                pull.startedAtTop = !listState.canScrollBackward
+                            }
+                        }
+                        .nestedScroll(pull.connection),
+                    contentAlignment = Alignment.Center,
+                ) {
                     when {
-                        current != null -> PdfPageList(current)
+                        current != null -> PdfPageList(current, listState)
                         error != null -> Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(stringResource(R.string.document_preview_couldnt_load_the_preview), style = MaterialTheme.typography.titleMedium)
                             Text(error!!, Modifier.padding(vertical = 12.dp))
@@ -262,10 +333,10 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
 }
 
 @Composable
-private fun PdfPageList(pages: PdfPages) {
+private fun PdfPageList(pages: PdfPages, state: LazyListState) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val widthPx = with(LocalDensity.current) { (maxWidth - 24.dp).roundToPx() }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             itemsIndexed(pages.sizes) { index, (w, h) ->
                 var bitmap by remember(index, widthPx) { mutableStateOf<ImageBitmap?>(null) }
                 LaunchedEffect(index, widthPx) { bitmap = runCatching { pages.render(index, widthPx) }.getOrNull() }
@@ -280,6 +351,104 @@ private fun PdfPageList(pages: PdfPages) {
                     else CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Pull a document down to close it, as photos close on iOS (`ViewerDismiss`): from its header at any time, from the
+ * pages only with a drag that began while they were at their top (otherwise the drag scrolls the list). Distances and
+ * speeds in px; `density` turns the dp rules into px.
+ */
+internal object DocumentDismiss {
+    /** dp/s outward that closes whatever the distance (a flick), and back towards the start that keeps it open. */
+    const val FLICK_SPEED = 900f
+    const val RETURN_SPEED = 300f
+
+    /** How far a slow pull must go to close: about a fifth of the screen, at most 140 dp. */
+    fun threshold(extent: Float, density: Float): Float = minOf(140f * density, extent * 0.22f)
+
+    /** 0…1: how far the pull has gone, for the backdrop's fade (gone at half the screen). */
+    fun progress(offset: Float, extent: Float): Float = if (extent > 0f) minOf(1f, abs(offset) / (extent * 0.5f)) else 0f
+
+    fun shouldClose(offset: Float, velocity: Float, extent: Float, density: Float): Boolean {
+        if (offset <= 0f || density <= 0f) return false
+        val speed = velocity / density
+        if (speed > FLICK_SPEED) return true
+        if (speed < -RETURN_SPEED) return false
+        return offset > threshold(extent, density)
+    }
+
+    /** What a pull takes of a drag's move before the list scrolls: a move back up while pulled, down to where it began. */
+    fun takeBeforeList(pull: Float, availableY: Float, byUser: Boolean): Float =
+        if (byUser && pull > 0f && availableY < 0f) maxOf(availableY, -pull) else 0f
+
+    /** What a pull takes of what the list left: a move down by the finger in a drag that began at the top. */
+    fun takeAfterList(availableY: Float, startedAtTop: Boolean, byUser: Boolean): Float =
+        if (byUser && startedAtTop && availableY > 0f) availableY else 0f
+
+    /** The document's offset for a drag: it follows the finger down, not above where it was. */
+    fun pulled(pull: Float, delta: Float): Float = maxOf(0f, pull + delta)
+}
+
+/**
+ * The document viewer's pull to close: the offset (the dialog's content follows the finger), the list's nested scroll
+ * that feeds it, and the release that closes past a distance or on a flick (the content carries on down, then
+ * [onClose]) or springs back.
+ */
+@Stable
+internal class PullToClose(private val scope: CoroutineScope, private val density: Float, private val onClose: () -> Unit) {
+    var offset by mutableFloatStateOf(0f)
+        private set
+    var extent by mutableFloatStateOf(0f)
+    var startedAtTop = true
+    private var closing = false
+    private var settle: Job? = null
+
+    val progress: Float get() = DocumentDismiss.progress(offset, extent)
+
+    fun drag(delta: Float) {
+        if (closing) return
+        settle?.cancel()
+        offset = DocumentDismiss.pulled(offset, delta)
+    }
+
+    fun release(velocity: Float) {
+        if (closing || offset == 0f) return
+        settle?.cancel()
+        if (DocumentDismiss.shouldClose(offset, velocity, extent, density)) {
+            closing = true
+            val distance = (extent - offset).coerceAtLeast(0f)
+            val millis = (distance / maxOf(velocity, 1500f) * 1000f).toInt().coerceIn(120, 300)
+            settle = scope.launch {
+                animate(offset, extent, animationSpec = tween(millis, easing = LinearOutSlowInEasing)) { v, _ -> offset = v }
+                onClose()
+            }
+        } else {
+            settle = scope.launch {
+                animate(offset, 0f, initialVelocity = velocity,
+                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) { v, _ -> offset = v }
+            }
+        }
+    }
+
+    val connection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            val take = DocumentDismiss.takeBeforeList(offset, available.y, source == NestedScrollSource.UserInput)
+            if (take != 0f) drag(take)
+            return Offset(0f, take)
+        }
+
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            val take = DocumentDismiss.takeAfterList(available.y, startedAtTop, source == NestedScrollSource.UserInput)
+            if (take != 0f) drag(take)
+            return Offset(0f, take)
+        }
+
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            if (offset == 0f) return Velocity.Zero
+            release(available.y)
+            return available
         }
     }
 }
