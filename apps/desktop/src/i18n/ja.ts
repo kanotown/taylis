@@ -516,6 +516,7 @@ export const ja = {
   "sidebar.markAllRead": "すべて既読にする",
   "sidebar.browseKey": "チャンネルを探す（{key}）",
   "sidebar.browse": "チャンネルを探す",
+  "sidebar.addChannel": "チャンネルを追加",
   "sidebar.newSection": "新しいセクション",
   "sidebar.createChannel": "チャンネルを作成",
   "sidebar.noUnreadChannels": "未読のチャンネルはありません",

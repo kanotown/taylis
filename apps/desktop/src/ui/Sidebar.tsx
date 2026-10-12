@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
+import { AlarmClock, ArrowDown, ArrowUp, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
@@ -10,12 +10,12 @@ import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
 import { pressable } from "./actions";
-import { railShown, shownSpot, TIMES_PLACE_KEYS, withRail, withSpot } from "./desktopPlaces";
+import { railShown, shownSpot, TIMES_PLACE_KEYS, TIMES_SECTION, timesAnchor, timesAnchorAt, timesAnchorMoved, withRail, withSpot, withTimesBefore, withTimesPlaced } from "./desktopPlaces";
 import { desktopNavKeys, fullNavItems, shownNavItems } from "./navItems";
 import { type Place, PlaceMenuItems, PlacesRail } from "./PlacesRail";
 import { Badge, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
-import { ChannelContextMenu, type ChannelRowAction, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu, SidebarContextMenu } from "./SidebarMenus";
+import { AddChannelMenu, ChannelContextMenu, type ChannelRowAction, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu, SectionMenu, SectionMenuItem, SectionMenuSeparator, SidebarContextMenu } from "./SidebarMenus";
 import { hasUnreadFeed } from "../sync/timesFeed";
 import { StatusEmoji } from "./UserPopover";
 import { MyStatusMenu } from "./MyStatusMenu";
@@ -148,7 +148,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   };
   const status = controller.engine?.status ?? "idle";
   // My own sections reorder by dragging a header onto another (before or after it, by the pointer's half); the ⋯ menu's
-  // 上へ / 下へ is the keyboard's way. The default sections stay where they are (they have no place on the server).
+  // 上へ / 下へ is the keyboard's way. The default sections stay where they are, but for Times (below).
   const dropSection = (draggedId: string, targetIndex: number, after: boolean) => {
     const from = sections.custom.findIndex(({ section }) => section.id === draggedId);
     if (from < 0) return;
@@ -305,6 +305,197 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     );
   };
 
+  // 2026-10-12 (TIMES_FEED.md §7): the sections in order. My own sections keep their server order (after お気に入り, before
+  // 「チャンネル」); the Times section stands where I moved it (UserMe.desktop_places.times_before, by default right above
+  // 「チャンネル」), by dragging its header or its ⋯ menu's 上へ / 下へ.
+  const timesShown = sections.times.length > 0 || (!!onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly);
+  const sectionKeys = ["favorites", ...sections.custom.map(({ section }) => section.id), "channels", "dms"];
+  const currentTimesAnchor = timesAnchor(desktopPlaces, sectionKeys);
+  const shownSections = withTimesPlaced(sectionKeys, currentTimesAnchor).filter((key) =>
+    key === "favorites" ? sections.favorites.length > 0 : key === TIMES_SECTION ? timesShown : true);
+  // A server without desktop_places cannot keep it: Times stays at its default place, and the moves are not offered.
+  const timesMovable = me?.desktop_places !== undefined;
+  const placeTimes = (anchor: string | null) => {
+    if (!timesMovable || anchor === null || anchor === currentTimesAnchor) return;
+    void controller.setDesktopPlaces(withTimesBefore(desktopPlaces, anchor));
+  };
+  // The Times header dropped on another section lands before or after it (by the pointer's half).
+  const dropTimes = timesMovable ? (target: string) => (dragged: string, after: boolean) => {
+    if (dragged === TIMES_SECTION && target !== TIMES_SECTION) placeTimes(timesAnchorAt(shownSections, target, after));
+  } : undefined;
+  const takesTimes = (dragged: string) => timesMovable && dragged === TIMES_SECTION;
+  const addChannelButton = (
+    <IconButton tone="sidebar" label={t("sidebar.addChannel")} className="h-6 w-6" data-add-channel-trigger="">
+      <Plus size={14} />
+    </IconButton>
+  );
+  const blocks: Record<string, ReactNode> = {
+    favorites: (
+      <Section key="favorites" title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}
+        acceptsSection={takesTimes} onDropSection={dropTimes?.("favorites")}
+        menu={sortMenu("favorites", t("sidebar.favorites"), sections.favorites)}>
+        <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites"), undefined, reorder({ default: "favorites" }, sections.favorites, defaultSortOf("favorites")))}</ul>
+      </Section>
+    ),
+    channels: (
+      <Section
+        key="channels"
+        title={t("sidebar.channels")}
+        collapsed={folded.has("channels")}
+        onToggle={() => toggleFolded("channels")}
+        onDropChannel={backToDefault}
+        acceptsSection={takesTimes}
+        onDropSection={dropTimes?.("channels")}
+        // 2026-10-12: one ＋ (「チャンネルを追加」: 探す / 作成) and the rest under ⋯.
+        add={<AddChannelMenu guest={controller.isGuest} onBrowse={onBrowse} onCreate={onNewChannel} trigger={addChannelButton} />}
+        menu={
+          <DefaultSectionMenu controller={controller} target={{ default: "channels" }} title={t("sidebar.channels")} sort={defaultSortOf("channels")} shownIds={ids(sections.channels)}>
+            {onReadAll && <SectionMenuItem action="read-all" icon={<CheckCheck size={14} />} onSelect={onReadAll}>{t("sidebar.markAllRead")}</SectionMenuItem>}
+            <SectionMenuItem action="new-section" icon={<FolderPlus size={14} />} onSelect={() => setNewSection(true)}>{t("home.newSection")}</SectionMenuItem>
+          </DefaultSectionMenu>
+        }
+      >
+        <ul className="space-y-px">{shown(sections.channels, folded.has("channels"), undefined, reorder({ default: "channels" }, sections.channels, defaultSortOf("channels")))}</ul>
+        {sections.channels.length === 0 && <Hint>{unreadOnly ? t("sidebar.noUnreadChannels") : t("sidebar.noChannels")}</Hint>}
+        {/* 2026-10-08: the channels I could join are not listed in the sidebar; 2026-10-12 this last row is
+            「チャンネルを追加」, the same small choice as the header's ＋ (探す / 作成), as the phones' row. */}
+        {!unreadOnly && !folded.has("channels") && (
+          <AddChannelMenu
+            guest={controller.isGuest}
+            onBrowse={onBrowse}
+            onCreate={onNewChannel}
+            trigger={
+              <button
+                type="button"
+                data-add-channel-row=""
+                className={cn("flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 opacity-80 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong hover:opacity-100 data-[state=open]:bg-sidebar-hover", SECTION_ROW_PAD)}
+              >
+                <Plus size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">{t("sidebar.addChannel")}</span>
+              </button>
+            }
+          />
+        )}
+      </Section>
+    ),
+    [TIMES_SECTION]: (
+      <Section
+        key={TIMES_SECTION}
+        title="Times"
+        collapsed={folded.has("times")}
+        onToggle={() => toggleFolded("times")}
+        onDropChannel={backToDefault}
+        // Its header drags among the sections (a server without desktop_places: it stays where it is).
+        sectionId={timesMovable ? TIMES_SECTION : undefined}
+        add={onCreateTimes && !hasMyTimes && !controller.isGuest ? (
+          <IconButton tone="sidebar" label={t("sidebar.createTimes")} className="h-6 w-6" onClick={onCreateTimes}>
+            <Plus size={14} />
+          </IconButton>
+        ) : undefined}
+        menu={(onTimesFeed || timesMovable) ? (
+          <SectionMenu title="Times">
+            {onTimesFeed && <SectionMenuItem action="times-feed" icon={<Newspaper size={14} />} onSelect={onTimesFeed}>{t("sidebar.timesFeed")}</SectionMenuItem>}
+            {onTimesFeed && timesMovable && <SectionMenuSeparator />}
+            {timesMovable && (
+              <>
+                <SectionMenuItem action="move-up" icon={<ArrowUp size={14} />} disabled={timesAnchorMoved(shownSections, -1) === null} onSelect={() => placeTimes(timesAnchorMoved(shownSections, -1))}>{t("common.moveUp")}</SectionMenuItem>
+                <SectionMenuItem action="move-down" icon={<ArrowDown size={14} />} disabled={timesAnchorMoved(shownSections, 1) === null} onSelect={() => placeTimes(timesAnchorMoved(shownSections, 1))}>{t("common.moveDown")}</SectionMenuItem>
+              </>
+            )}
+          </SectionMenu>
+        ) : undefined}
+      >
+        <ul className="space-y-px">
+          {onTimesFeed && (
+            // L8: the posts of every times I am in, newest first (TIMES_FEED.md §7); folded away with the section.
+            <li className={cn("fold-row", feedFolded && "folded")} aria-hidden={feedFolded || undefined} inert={feedFolded}>
+              <div className="fold-inner">
+                <button
+                  type="button"
+                  onClick={onTimesFeed}
+                  aria-current={timesFeedActive ? "page" : undefined}
+                  title={t("sidebar.feedTitle")}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors", SECTION_ROW_PAD,
+                    timesFeedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                  )}
+                >
+                  <Newspaper size={15} className="shrink-0 opacity-70" />
+                  <span className="flex-1 truncate">{t("sidebar.feed")}</span>
+                </button>
+              </div>
+            </li>
+          )}
+          {shown(sections.times, timesFolded)}
+        </ul>
+        {sections.times.length === 0 && <Hint>{t("sidebar.timesEmptyHint")}</Hint>}
+      </Section>
+    ),
+    dms: (
+      <Section
+        key="dms"
+        title={t("sidebar.dms")}
+        collapsed={folded.has("dms")}
+        onToggle={() => toggleFolded("dms")}
+        onDropChannel={backToDefault}
+        acceptsSection={takesTimes}
+        onDropSection={dropTimes?.("dms")}
+        add={
+          <IconButton tone="sidebar" label={t("sidebar.newDmKey", { key: `${modKey()}+Shift+K` })} className="h-6 w-6" onClick={onNewDm}>
+            <Plus size={14} />
+          </IconButton>
+        }
+        menu={
+          <DefaultSectionMenu controller={controller} target={{ default: "dms" }} title={t("sidebar.dms")} sort={defaultSortOf("dms")} shownIds={ids(sections.dms)}>
+            {onDirectory && <SectionMenuItem action="directory" icon={<Users size={14} />} onSelect={onDirectory}>{t("sidebar.directory")}</SectionMenuItem>}
+          </DefaultSectionMenu>
+        }
+      >
+        <ul className="space-y-px">
+          {shown(sections.dms.slice(0, pinnedDms), folded.has("dms"), undefined, dmOrder)}
+          {selfPlaceholder && me && (
+            <li>
+              <button
+                type="button"
+                onClick={openSelfNotes}
+                disabled={creatingSelf}
+                aria-busy={creatingSelf}
+                data-self-notes-placeholder=""
+                title={myName}
+                className={cn("flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong disabled:opacity-60", SECTION_ROW_PAD)}
+              >
+                <Avatar id={me.id} name={myName} size={18} className="rounded-md text-[9px]" />
+                <span className="flex-1 truncate">{myName}</span>
+              </button>
+            </li>
+          )}
+          {shown(sections.dms.slice(pinnedDms), folded.has("dms"), undefined, dmOrder)}
+        </ul>
+        {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? t("sidebar.noUnreadDms") : t("sidebar.dmsEmptyHint")}</Hint>}
+      </Section>
+    ),
+  };
+  sections.custom.forEach(({ section, channels: members }, index) => {
+    blocks[section.id] = (
+      <Section
+        key={section.id}
+        title={section.name}
+        icon={<SectionIcon controller={controller} emoji={section.emoji} />}
+        collapsed={section.collapsed}
+        onToggle={() => void controller.setSectionCollapsed(section.id, !section.collapsed)}
+        onDropChannel={(id) => { if (!section.channel_ids.includes(id)) void controller.moveToSection(id, section.id); }}
+        sectionId={section.id}
+        // My own sections among themselves (their server order); the Times header lands before or after one too.
+        acceptsSection={(dragged) => takesTimes(dragged) || sections.custom.some((other) => other.section.id === dragged)}
+        onDropSection={(dragged, after) => (dragged === TIMES_SECTION ? dropTimes?.(section.id)(dragged, after) : dropSection(dragged, index, after))}
+        menu={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} shownIds={ids(members)} />}
+      >
+        <ul className="space-y-px">{shown(members, section.collapsed, undefined, reorder({ section: section.id }, members, section.sort))}</ul>
+        {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>{t("sidebar.sectionEmptyHint")}</Hint>}
+      </Section>
+    );
+  });
+
   return (
     <div data-sidebar-column="" className="flex h-full min-h-0 border-r border-sidebar-edge bg-sidebar text-sidebar-fg">
       {/* 2026-10-12 (MOBILE_UI.md §18): the menu items are a rail of icons, so the list below starts with the channels. */}
@@ -418,161 +609,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         </ul>
       )}
 
-      {sections.favorites.length > 0 && (
-        <Section title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}
-          action={sortMenu("favorites", t("sidebar.favorites"), sections.favorites)}>
-          <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites"), undefined, reorder({ default: "favorites" }, sections.favorites, defaultSortOf("favorites")))}</ul>
-        </Section>
-      )}
-      {sections.custom.map(({ section, channels: members }, index) => (
-        <Section
-          key={section.id}
-          title={section.name}
-          icon={<SectionIcon controller={controller} emoji={section.emoji} />}
-          collapsed={section.collapsed}
-          onToggle={() => void controller.setSectionCollapsed(section.id, !section.collapsed)}
-          onDropChannel={(id) => { if (!section.channel_ids.includes(id)) void controller.moveToSection(id, section.id); }}
-          sectionId={section.id}
-          onDropSection={(dragged, after) => dropSection(dragged, index, after)}
-          action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} shownIds={ids(members)} />}
-        >
-          <ul className="space-y-px">{shown(members, section.collapsed, undefined, reorder({ section: section.id }, members, section.sort))}</ul>
-          {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>{t("sidebar.sectionEmptyHint")}</Hint>}
-        </Section>
-      ))}
-      <Section
-        title={t("sidebar.channels")}
-collapsed={folded.has("channels")}
-        onToggle={() => toggleFolded("channels")}
-        onDropChannel={backToDefault}
-        action={
-          <span className="flex items-center">
-            {onReadAll && (
-              <IconButton tone="sidebar" label={t("sidebar.markAllRead")} className="h-6 w-6" onClick={onReadAll}>
-                <CheckCheck size={14} />
-              </IconButton>
-            )}
-            {onBrowse && !controller.isGuest && (
-              <IconButton tone="sidebar" label={t("sidebar.browseKey", { key: `${modKey()}+Shift+E` })} className="h-6 w-6" onClick={onBrowse}>
-                <Compass size={14} />
-              </IconButton>
-            )}
-            <IconButton tone="sidebar" label={t("sidebar.newSection")} className="h-6 w-6" onClick={() => setNewSection(true)}>
-              <FolderPlus size={14} />
-            </IconButton>
-            {!controller.isGuest && (
-              <IconButton tone="sidebar" label={t("sidebar.createChannel")} className="h-6 w-6" onClick={onNewChannel}>
-                <Plus size={14} />
-              </IconButton>
-            )}
-            {sortMenu("channels", t("sidebar.channels"), sections.channels)}
-          </span>
-        }
-      >
-        <ul className="space-y-px">{shown(sections.channels, folded.has("channels"), undefined, reorder({ default: "channels" }, sections.channels, defaultSortOf("channels")))}</ul>
-        {sections.channels.length === 0 && <Hint>{unreadOnly ? t("sidebar.noUnreadChannels") : t("sidebar.noChannels")}</Hint>}
-        {/* 2026-10-08: the channels I could join are no longer listed in the sidebar (a long list with many channels); this
-            row opens 「チャンネルを探す」, where they are, as the phones' 「チャンネルを追加」 does. */}
-        {onBrowse && !controller.isGuest && !unreadOnly && !folded.has("channels") && (
-          <button
-            type="button"
-            onClick={onBrowse}
-            data-browse-channels=""
-            className={cn("flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 opacity-80 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong hover:opacity-100", SECTION_ROW_PAD)}
-          >
-            <Compass size={15} className="shrink-0 opacity-70" />
-            <span className="flex-1 truncate">{t("sidebar.browse")}</span>
-          </button>
-        )}
-      </Section>
-      {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
-        <Section
-          title="Times"
-          collapsed={folded.has("times")}
-          onToggle={() => toggleFolded("times")}
-          onDropChannel={backToDefault}
-          action={
-            <span className="flex items-center">
-              {onTimesFeed && (
-                <IconButton tone="sidebar" label={t("sidebar.timesFeed")} className="h-6 w-6" onClick={onTimesFeed}>
-                  <Newspaper size={14} />
-                </IconButton>
-              )}
-              {onCreateTimes && !hasMyTimes && !controller.isGuest && (
-                <IconButton tone="sidebar" label={t("sidebar.createTimes")} className="h-6 w-6" onClick={onCreateTimes}>
-                  <Plus size={14} />
-                </IconButton>
-              )}
-            </span>
-          }
-        >
-          <ul className="space-y-px">
-            {onTimesFeed && (
-              // L8: the posts of every times I am in, newest first (TIMES_FEED.md §7); folded away with the section unless I have a times.
-              <li className={cn("fold-row", feedFolded && "folded")} aria-hidden={feedFolded || undefined} inert={feedFolded}>
-                <div className="fold-inner">
-                  <button
-                    type="button"
-                    onClick={onTimesFeed}
-                    aria-current={timesFeedActive ? "page" : undefined}
-                    title={t("sidebar.feedTitle")}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors", SECTION_ROW_PAD,
-                      timesFeedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                    )}
-                  >
-                    <Newspaper size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{t("sidebar.feed")}</span>
-                  </button>
-                </div>
-              </li>
-            )}
-            {shown(sections.times, timesFolded)}
-          </ul>
-          {sections.times.length === 0 && <Hint>{t("sidebar.timesEmptyHint")}</Hint>}
-        </Section>
-      )}
-      <Section
-        title={t("sidebar.dms")}
-collapsed={folded.has("dms")}
-        onToggle={() => toggleFolded("dms")}
-        onDropChannel={backToDefault}
-        action={
-          <span className="flex items-center">
-            {onDirectory && (
-              <IconButton tone="sidebar" label={t("sidebar.directory")} className="h-6 w-6" onClick={onDirectory}>
-                <Users size={14} />
-              </IconButton>
-            )}
-            <IconButton tone="sidebar" label={t("sidebar.newDmKey", { key: `${modKey()}+Shift+K` })} className="h-6 w-6" onClick={onNewDm}>
-              <Plus size={14} />
-            </IconButton>
-            {sortMenu("dms", t("sidebar.dms"), sections.dms)}
-          </span>
-        }
-      >
-        <ul className="space-y-px">
-          {shown(sections.dms.slice(0, pinnedDms), folded.has("dms"), undefined, dmOrder)}
-          {selfPlaceholder && me && (
-            <li>
-              <button
-                type="button"
-                onClick={openSelfNotes}
-                disabled={creatingSelf}
-                aria-busy={creatingSelf}
-                data-self-notes-placeholder=""
-                title={myName}
-                className={cn("flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong disabled:opacity-60", SECTION_ROW_PAD)}
-              >
-                <Avatar id={me.id} name={myName} size={18} className="rounded-md text-[9px]" />
-                <span className="flex-1 truncate">{myName}</span>
-              </button>
-            </li>
-          )}
-          {shown(sections.dms.slice(pinnedDms), folded.has("dms"), undefined, dmOrder)}
-        </ul>
-        {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? t("sidebar.noUnreadDms") : t("sidebar.dmsEmptyHint")}</Hint>}
-      </Section>
+      {shownSections.map((key) => blocks[key])}
       {newSection && <NewSectionDialog controller={controller} onClose={() => setNewSection(false)} />}
     </nav>
     </SidebarContextMenu>
@@ -650,6 +687,8 @@ interface Reorder {
 
 /** The conversation row being dragged (a dragover cannot read the drag's data, only its types). */
 let draggedChannel: string | null = null;
+/** The section header being dragged (my own section's id, or Times), for the same reason. */
+let draggedSection: string | null = null;
 
 /** Where `dragged` lands when dropped before or after `target` in `ids` (unchanged: null). */
 export function reorderedIds(ids: readonly string[], dragged: string, target: string, after: boolean): string[] | null {
@@ -753,23 +792,29 @@ function SidebarIdentity({ controller, meId, name, status, presence, withAvatar 
  * A sidebar section. M26 (Slack): the header folds it (`onToggle`), with an icon before the title; a conversation row
  * dropped on it goes to `onDropChannel`.
  */
-function Section({ title, icon, action, children, collapsed = false, onToggle, onDropChannel, sectionId, onDropSection }: {
+function Section({ title, icon, add, menu, children, collapsed = false, onToggle, onDropChannel, sectionId, acceptsSection: takes, onDropSection }: {
   title: string;
   icon?: ReactNode;
-  action?: ReactNode;
+  /** The header's one primary action (＋), before its ⋯ `menu` (2026-10-12: both show on hover / focus, always on touch). */
+  add?: ReactNode;
+  menu?: ReactNode;
   children: ReactNode;
   collapsed?: boolean;
   onToggle?: () => void;
   onDropChannel?: (channelId: string) => void;
-  /** One of my own sections: its header drags (SECTION_DRAG), and a header dropped on it lands before or after it. */
+  /** One of my own sections, or Times: its header drags (SECTION_DRAG). */
   sectionId?: string;
+  /** Which dragged section header may land on this one (before or after it, `onDropSection`). */
+  acceptsSection?: (draggedId: string) => boolean;
   onDropSection?: (draggedId: string, after: boolean) => void;
 }) {
   const [over, setOver] = useState(false);
   // Where a dragged section header would land: the line above or below this section.
   const [edge, setEdge] = useState<"before" | "after" | null>(null);
   const accepts = (event: React.DragEvent) => !!onDropChannel && event.dataTransfer.types.includes(CHANNEL_DRAG);
-  const acceptsSection = (event: React.DragEvent) => !!onDropSection && event.dataTransfer.types.includes(SECTION_DRAG);
+  // A dragover cannot read the drag's data: the header being dragged is kept aside (draggedSection).
+  const acceptsSection = (event: React.DragEvent) =>
+    !!onDropSection && event.dataTransfer.types.includes(SECTION_DRAG) && !!draggedSection && draggedSection !== sectionId && (takes?.(draggedSection) ?? true);
   const half = (event: React.DragEvent): "before" | "after" => {
     const box = event.currentTarget.getBoundingClientRect();
     return box.height > 0 && event.clientY > box.top + box.height / 2 ? "after" : "before";
@@ -805,10 +850,12 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
       onDrop={(event) => {
         setOver(false);
         setEdge(null);
-        if (acceptsSection(event)) {
+        if (event.dataTransfer.types.includes(SECTION_DRAG)) {
           const dragged = event.dataTransfer.getData(SECTION_DRAG);
+          const ok = acceptsSection(event);
+          draggedSection = null;
           event.preventDefault();
-          if (dragged && dragged !== sectionId) onDropSection?.(dragged, half(event) === "after");
+          if (ok && dragged && dragged !== sectionId) onDropSection?.(dragged, half(event) === "after");
           return;
         }
         const id = accepts(event) ? event.dataTransfer.getData(CHANNEL_DRAG) : "";
@@ -823,8 +870,12 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
         onDragStart={sectionId ? (event) => {
           event.dataTransfer.setData(SECTION_DRAG, sectionId);
           event.dataTransfer.effectAllowed = "move";
+          draggedSection = sectionId;
         } : undefined}
-        className="mb-1 flex h-7 items-center justify-between gap-1 px-2.5 text-[13px] font-semibold uppercase tracking-wider text-sidebar-muted">
+        onDragEnd={sectionId ? () => {
+          draggedSection = null;
+        } : undefined}
+        className="group/section mb-1 flex h-7 items-center justify-between gap-1 px-2.5 text-[13px] font-semibold uppercase tracking-wider text-sidebar-muted">
         {onToggle ? (
           <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="-ml-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left uppercase hover:text-sidebar-fg">
             <ChevronDown size={14} className={cn("shrink-0 transition-transform duration-200", collapsed && "-rotate-90")} />
@@ -834,7 +885,16 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
         ) : (
           <span className="flex min-w-0 items-center gap-1 truncate">{icon}{title}</span>
         )}
-        {action}
+        {(add || menu) && (
+          // Shown while the header is hovered or has the focus, or one of its menus is open; always on a touch screen.
+          <span
+            data-section-actions=""
+            className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/section:opacity-100 group-focus-within/section:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100"
+          >
+            {add}
+            {menu}
+          </span>
+        )}
       </h2>
       {children}
     </section>

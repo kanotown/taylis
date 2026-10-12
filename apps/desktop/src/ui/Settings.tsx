@@ -19,7 +19,7 @@ import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
 import { pressable } from "./actions";
-import { chosenSpot, type PlaceSpot, railShown, TIMES_PLACE_KEYS, withRail, withSpot } from "./desktopPlaces";
+import { chosenSpot, type PlaceSpot, placesChosen, railShown, TIMES_PLACE_KEYS, withDefaultPlaces, withRail, withSpot } from "./desktopPlaces";
 import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, resetNavOrder, shownNavItems } from "./navItems";
 import { PLACE_SPOTS } from "./PlacesRail";
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
@@ -829,7 +829,8 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
   const timesLabel = (key: string) => (key === "times-feed" ? t("sidebar.timesFeed") : t("places.myTimes"));
   const reset = () => {
     if (me.nav_items !== null) save(resetNavOrder(full));
-    if (placesSettable && me.desktop_places !== null) void controller.setDesktopPlaces(null);
+    // The Times section's position is the sidebar's order, not a place: it stays (withDefaultPlaces).
+    if (placesSettable && placesChosen(me.desktop_places)) void controller.setDesktopPlaces(withDefaultPlaces(me.desktop_places));
   };
   const spotSelect = (key: string, label: string) =>
     placesSettable ? (
@@ -856,7 +857,7 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
     <section className="space-y-2" aria-label={t("settings.navItems.title")}>
       <div className="flex items-center justify-between gap-2">
         <h3 className={HEADING}>{t("settings.navItems.title")}</h3>
-        <Button size="sm" variant="secondary" disabled={me.nav_items === null && !me.desktop_places} onClick={reset}>
+        <Button size="sm" variant="secondary" disabled={me.nav_items === null && !placesChosen(me.desktop_places)} onClick={reset}>
           {t("common.reset")}
         </Button>
       </div>

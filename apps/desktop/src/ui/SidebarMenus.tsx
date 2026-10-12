@@ -1,5 +1,5 @@
 import { ContextMenu, DropdownMenu } from "radix-ui";
-import { Check, MoreHorizontal, Pin } from "lucide-react";
+import { Check, Compass, MoreHorizontal, Pin, Plus } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "react";
 
 import type { NotificationLevel, SidebarSectionOut, SidebarSort } from "../api/types";
@@ -270,18 +270,84 @@ function SortSubmenu({ controller, target, sort, shownIds }: { controller: AppCo
   );
 }
 
-/** The 「…」 on a default section's header (お気に入り / チャンネル / ダイレクトメッセージ): its 「並べ替え」. */
-export function DefaultSectionMenu({ controller, target, title, sort, shownIds }: { controller: AppController; target: SortTarget; title: string; sort: SidebarSort; shownIds: () => string[] }) {
+/** The ⋯ button a section header's menu opens from (named 「<section> のメニュー」). */
+function SectionMenuTrigger({ title }: { title: string }) {
+  return (
+    <DropdownMenu.Trigger asChild>
+      <button type="button" aria-label={t("sections.menu", { name: title })} data-section-menu="" className="flex h-6 w-6 items-center justify-center rounded-md opacity-70 hover:bg-white/10 hover:opacity-100 focus-visible:opacity-100">
+        <MoreHorizontal size={14} />
+      </button>
+    </DropdownMenu.Trigger>
+  );
+}
+
+/** A section header's ⋯ (2026-10-12: one menu instead of a row of icons beside the title). */
+export function SectionMenu({ title, children }: { title: string; children: ReactNode }) {
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" aria-label={t("sections.menu", { name: title })} className="flex h-6 w-6 items-center justify-center rounded-md opacity-70 hover:bg-white/10 hover:opacity-100">
-          <MoreHorizontal size={14} />
-        </button>
-      </DropdownMenu.Trigger>
+      <SectionMenuTrigger title={title} />
       <DropdownMenu.Portal>
         <DropdownMenu.Content sideOffset={6} align="end" className={CONTENT}>
-          <SortSubmenu controller={controller} target={target} sort={sort} shownIds={shownIds} />
+          {children}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+/** One item of a section header's ⋯, with an optional icon. */
+export function SectionMenuItem({ icon, children, onSelect, disabled, action }: { icon?: ReactNode; children: ReactNode; onSelect: () => void; disabled?: boolean; action?: string }) {
+  return (
+    <DropdownMenu.Item className={ITEM} disabled={disabled} onSelect={onSelect} data-section-action={action}>
+      <span aria-hidden className="flex w-4 shrink-0 justify-center text-muted">{icon}</span>
+      {children}
+    </DropdownMenu.Item>
+  );
+}
+
+export function SectionMenuSeparator() {
+  return <DropdownMenu.Separator className="my-1 h-px bg-line" />;
+}
+
+/**
+ * The 「…」 on a default section's header (お気に入り / チャンネル / ダイレクトメッセージ): `children` (the sidebar puts
+ * the header's other actions there, 2026-10-12), then its 「並べ替え」.
+ */
+export function DefaultSectionMenu({ controller, target, title, sort, shownIds, children }: { controller: AppController; target: SortTarget; title: string; sort: SidebarSort; shownIds: () => string[]; children?: ReactNode }) {
+  return (
+    <SectionMenu title={title}>
+      {children}
+      {children && <SectionMenuSeparator />}
+      <SortSubmenu controller={controller} target={target} sort={sort} shownIds={shownIds} />
+    </SectionMenu>
+  );
+}
+
+/**
+ * 「チャンネルを追加」 (2026-10-12): the channel section's ＋ and its last row open this small choice, 「チャンネルを探す」 /
+ * 「チャンネルを作成」, only what I may do (a guest neither: then no trigger at all). `trigger` is the button it opens from.
+ */
+export function AddChannelMenu({ guest, onBrowse, onCreate, trigger }: { guest: boolean; onBrowse?: () => void; onCreate?: () => void; trigger: ReactNode }) {
+  const browse = guest ? undefined : onBrowse;
+  const create = guest ? undefined : onCreate;
+  if (!browse && !create) return null;
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content sideOffset={6} align="start" className={CONTENT} data-add-channel-menu="">
+          {browse && (
+            <DropdownMenu.Item className={ITEM} data-add-channel="browse" onSelect={browse}>
+              <Compass size={14} aria-hidden className="text-muted" />
+              {t("sidebar.browse")}
+            </DropdownMenu.Item>
+          )}
+          {create && (
+            <DropdownMenu.Item className={ITEM} data-add-channel="create" onSelect={create}>
+              <Plus size={14} aria-hidden className="text-muted" />
+              {t("sidebar.createChannel")}
+            </DropdownMenu.Item>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -295,11 +361,7 @@ export function SectionHeaderMenu({ controller, section, index, count, shownIds 
   return (
     <>
       <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button type="button" aria-label={t("sections.menu", { name: section.name })} className="flex h-6 w-6 items-center justify-center rounded-md opacity-70 hover:bg-white/10 hover:opacity-100">
-            <MoreHorizontal size={14} />
-          </button>
-        </DropdownMenu.Trigger>
+        <SectionMenuTrigger title={section.name} />
         <DropdownMenu.Portal>
           <DropdownMenu.Content sideOffset={6} align="end" className={CONTENT}>
             <DropdownMenu.Item className={ITEM} onSelect={() => setRenaming(true)}>{t("sections.renameIcon")}</DropdownMenu.Item>
