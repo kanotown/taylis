@@ -19,8 +19,10 @@ import { DocsTree, useWikiHub } from "./DocsTree";
 import { Button, cn, Modal } from "./primitives";
 import { t } from "../i18n";
 
-export function DocsView({ controller, pageId, onOpenPage, compact, onSearchAll }: {
+export function DocsView({ controller, pageId, onOpenPage, onOpenInNewTab, compact, onSearchAll }: {
   controller: AppController;
+  /** MOBILE_UI.md §19: a page of the tree in a new tab (the wide layout's tabs, or a browser tab on a phone's web page). */
+  onOpenInNewTab?: (pageId: string, foreground: boolean) => void;
   /** The page on screen (null: the tree alone on a phone, a prompt on a wide screen). */
   pageId: string | null;
   onOpenPage: (pageId: string | null) => void;
@@ -122,6 +124,7 @@ export function DocsView({ controller, pageId, onOpenPage, compact, onSearchAll 
       onMove={(id, target) => void move(id, target)}
       onTrash={(page) => setTrashing(page)}
       onOpenTrash={() => setTrashOpen(true)}
+      onOpenInNewTab={onOpenInNewTab}
       className="flex-1"
     />
   );

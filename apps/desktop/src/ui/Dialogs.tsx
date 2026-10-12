@@ -431,12 +431,24 @@ export function RenameChannelDialog({ controller, channel, onClose }: { controll
 
 /** The shortcuts' rows: the app's, then each titled section (M154: the document editor's keys). */
 function shortcuts(): Array<{ title: string | null; rows: Array<[string, string]> }> {
-  const rows = (keys: Array<[string, MessageKey]>): Array<[string, string]> => keys.map(([key, what]) => [key.replace(/\{(\w+)\}/g, (_, k: string) => t(`shortcuts.${k}` as MessageKey)), t(what)]);
+  const rows = (keys: Array<[string, MessageKey]>): Array<[string, string]> => keys.map(([key, what]) => [key.replace(/\{([\w.]+)\}/g, (_, k: string) => t(`shortcuts.${k}` as MessageKey)), t(what)]);
   return [{ title: null, rows: rows(SHORTCUT_KEYS) }, ...SHORTCUT_SECTIONS.map((section) => ({ title: t(section.title), rows: rows(section.keys) }))];
 }
 
 /** M154 (WIKI.md §30.1): the keys of the document editor (見たまま), under their own heading. */
 const SHORTCUT_SECTIONS: Array<{ title: MessageKey; keys: Array<[string, MessageKey]> }> = [
+  {
+    // MOBILE_UI.md §19: the wide layout's tabs (the web build: the browser keeps ⌘T / ⌘W / ⌘1〜9, Alt/⌥ instead).
+    title: "shortcuts.tabs.title",
+    keys: [
+      ["Ctrl/⌘ + T", "shortcuts.tabs.new"],
+      ["Ctrl/⌘ + W", "shortcuts.tabs.close"],
+      ["Ctrl/⌘ + Shift + [ / ]・Ctrl + Tab / Ctrl + Shift + Tab", "shortcuts.tabs.step"],
+      ["Ctrl/⌘ + 1〜9", "shortcuts.tabs.nth"],
+      ["{tabs.middleKeys}", "shortcuts.tabs.middle"],
+      ["Alt/⌥ + T / W / 1〜9・Alt/⌥ + Shift + [ / ]", "shortcuts.tabs.web"],
+    ],
+  },
   {
     title: "shortcuts.docs.title",
     keys: [
@@ -476,7 +488,7 @@ const SHORTCUT_KEYS: Array<[string, MessageKey]> = [
   ["Ctrl/⌘ + K", "shortcuts.jump"],
   ["Ctrl/⌘ + Shift + K", "shortcuts.newDm"],
   ["Ctrl/⌘ + F", "shortcuts.search"],
-  ["Ctrl/⌘ + 1〜9", "shortcuts.workspace"],
+  ["Ctrl/⌘ + 1〜9・Ctrl/⌘ + Alt/⌥ + 1〜9", "shortcuts.workspace"],
   ["Ctrl/⌘ + Shift + T", "shortcuts.threads"],
   ["Ctrl/⌘ + Shift + E", "shortcuts.browse"],
   ["Alt/⌥ + ↑ / ↓", "shortcuts.prevNext"],

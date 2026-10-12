@@ -25,6 +25,7 @@ import { PLACE_SPOTS } from "./PlacesRail";
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
+import { useCompact } from "./compact";
 import { type ComposerMode, composerModeOf, type DocsEditorMode, docsEditorModeOf, modKeyName, type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { StatusForm } from "./StatusDialog";
@@ -601,6 +602,7 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
   const themesDiffer = useWorkspaceThemesDiffer();
   const font = useFont();
   const zoom = useZoom();
+  const compact = useCompact();
   return (
     <div className="space-y-6">
       <LanguageSettings controller={controller} />
@@ -724,6 +726,17 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
         </span>
         <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={controller.groupPosts} onChange={(e) => controller.setGroupPosts(e.target.checked)} />
       </label>
+      {/* MOBILE_UI.md §19: the wide layout's tabs (a phone-width page has none). */}
+      {!compact && (
+        <label className={cn(CARD, "cursor-pointer")}>
+          <AppWindow size={18} className="text-muted" />
+          <span className="min-w-0 flex-1 text-sm">
+            {t("settings.appearance.useTabs")}
+            <span className="block text-xs text-muted">{t("settings.appearance.useTabsNote", { mod: modKeyName() })}</span>
+          </span>
+          <input type="checkbox" role="switch" data-use-tabs="" className="h-4 w-4 accent-[var(--accent)]" checked={controller.useTabs} onChange={(e) => controller.setUseTabs(e.target.checked)} />
+        </label>
+      )}
       <ComposerModeSettings controller={controller} />
       <DocsEditorModeSettings controller={controller} />
       <NavItemsSettings controller={controller} />

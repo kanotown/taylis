@@ -1,11 +1,11 @@
-import { ArrowLeft, ArrowRight, AtSign, Bell, BellOff, ChevronDown, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
+import { AlarmClock, ArrowLeft, ArrowRight, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, ChevronDown, DoorOpen, FileText, Files, Hash, Keyboard, ListTodo, Lock, Megaphone, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Pin, Search, Star, Ticket, Timer, Users, Zap } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ActivityItem, ChannelLinkOut, ChannelOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, MessageState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
+import { badgeCount, canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
 import { CallButton, canStartCall } from "./Calls";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
@@ -43,7 +43,7 @@ import { CanvasesView } from "./CanvasesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { previewCanJoin, PreviewJoinBar, previewRefused, PreviewThreadPane, PreviewTimeline } from "./ChannelPreview";
-import { BackButton, BackToList, useCompact } from "./compact";
+import { BackButton, BackToList, COMPACT_QUERY, useCompact } from "./compact";
 import { useConnectionBanner } from "./hooks";
 import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
@@ -65,7 +65,11 @@ import { ThreadsView } from "./ThreadsView";
 import { Timeline } from "./Timeline";
 import { NoticeToast, Toast } from "./Toast";
 import { TypingIndicator } from "./Typing";
-import { presenceLabel } from "./Avatar";
+import { Avatar, presenceLabel } from "./Avatar";
+import { DesktopTabBar, type TabItem } from "./DesktopTabBar";
+import { insertTab, MAX_TABS, moveTab, neighbourOf, newTabId, nthTab, readStoredTabs, restoreTabs, stepTab, type Tab, type TabCommand, tabCommand, tabKeyLabels, type TabTarget, writeStoredTabs } from "./desktopTabs";
+import { pageTitle } from "./docsActions";
+import type { WikiHub } from "../sync/wiki";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
@@ -74,13 +78,13 @@ import { useNavigationHistory } from "./navigationHistory";
 import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, restore, visit } from "./placeHistory";
 import { scrollMemoryFor } from "./scrollMemory";
 import { useViewScrollMemory } from "./viewScrollMemory";
-import { historyStep, historyShortcutLabels, mouseHistoryStep } from "./historyShortcuts";
+import { historyStep, historyShortcutLabels, isMacPlatform, mouseHistoryStep } from "./historyShortcuts";
 import { isImeKeyEvent } from "./ime";
 import { focusChatRegion } from "./messageKeyboard";
 import { ActivityView } from "./ActivityView";
 import { DmListView } from "./DmListView";
 import { MobileTabBar } from "./MobileTabBar";
-import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
+import { activityBadge, landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
 import { SettingsDialog, type SettingsSection } from "./Settings";
 import { TimesFeedView } from "./TimesFeedView";
 import { YouView } from "./YouView";
@@ -94,7 +98,9 @@ import { canManageChannelByRight } from "./roles";
 // "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
 // "docs" (M121): 「ドキュメント」, the Docs tree and a page (WIKI.md §9.1).
 // "attendance" (M140): 「在室状況」, the workspace's board (docs/PRESENCE.md §7).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions";
+const CENTRE_VIEWS = ["channel", "threads", "saved", "activity", "drafts", "files", "reminders", "search", "canvases", "calendar", "tasks", "deadlines", "times", "reservations", "docs", "attendance", "actions"] as const;
+type CentreView = (typeof CENTRE_VIEWS)[number];
+const CONVERSATION_TABS: readonly ConversationTab[] = ["messages", "canvas", "events", "tasks", "pins", "files"];
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -138,6 +144,65 @@ function liveKey(place: Place<Focus>): string {
 
 const isRootNav = (nav: Nav) => nav.pane === "list";
 
+/**
+ * MOBILE_UI.md §19: a background tab's screen, as it was left (the active tab's is MainScreen's live state): the centre
+ * view and its thread pane, its Docs page, its own back / forward history and the message it was revealed at.
+ */
+interface TabSnapshot {
+  nav: Nav;
+  docsPageId: string | null;
+  places: PlaceHistory<Focus>;
+  focus: Focus | null;
+}
+
+const EMPTY_TARGET: TabTarget = { view: "channel", currentId: null, threadId: null, threadChannelId: null, docsPageId: null, filesChannelId: null, tab: "messages", search: null };
+
+/** A tab opened (or restored) at `target`: its screen on landing, with a history of its own. */
+function snapshotFor(target: TabTarget): TabSnapshot {
+  const nav: Nav = {
+    currentId: target.currentId,
+    view: target.view as CentreView,
+    threadId: target.threadId,
+    threadChannelId: target.threadChannelId,
+    pinsOpen: false,
+    pane: "main",
+    filesChannelId: target.filesChannelId,
+    search: target.search,
+    searchTab: "messages",
+    backToSearch: false,
+    tab: target.tab as ConversationTab,
+    details: false,
+    results: null,
+  };
+  return { nav, docsPageId: target.docsPageId, places: emptyHistory<Focus>(), focus: null };
+}
+
+/**
+ * A tab's target as it can be shown now, or null when it is gone (MOBILE_UI.md §19.4): a conversation no longer in the
+ * store or no longer readable (left, removed, deleted, made private), an unknown view, a Docs page no longer in the tree
+ * (once the tree is loaded). A thread or a files scope that is gone falls back to its view.
+ */
+function checkTabTarget(target: TabTarget, controller: AppController, wiki: WikiHub | null | undefined): TabTarget | null {
+  const store = controller.store;
+  const readable = (id: string | null): id is string => {
+    const channel = id ? store.getChannel(id) : undefined;
+    return !!channel && (channel.isMember || (channel.type === "public" && !controller.isGuest));
+  };
+  if (!(CENTRE_VIEWS as readonly string[]).includes(target.view)) return null;
+  if (target.view === "channel" && !readable(target.currentId)) return null;
+  if (target.view === "search" && !target.search) return null;
+  if (target.view === "docs" && target.docsPageId && wiki?.hasTree && !wiki.page(target.docsPageId)) return null;
+  const thread = !!target.threadId && readable(target.threadChannelId);
+  return {
+    ...target,
+    currentId: readable(target.currentId) ? target.currentId : null,
+    threadId: thread ? target.threadId : null,
+    threadChannelId: thread ? target.threadChannelId : null,
+    filesChannelId: readable(target.filesChannelId) ? target.filesChannelId : null,
+    tab: (CONVERSATION_TABS as readonly string[]).includes(target.tab) ? target.tab : "messages",
+  };
+}
+
 type Dialog = "dm" | "channel" | "details" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "workflows" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
@@ -156,21 +221,38 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // macOS: room for the window buttons, in full screen too (they show during the exit animation; README).
   const trafficLights = overlayTitleBar();
   const windowButtons = customTitleBar();
-  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember && !store.isDmClosed(channel.id))?.id ?? null);
+  // MOBILE_UI.md §19: this device's tabs come back (the wide layout only); the active one's screen is the first state.
+  const tabsKey = controller.accountKey ?? "";
+  // The store holds this workspace (the desktop app's cache, or the first bootstrap): only then can a stored tab's
+  // conversation be told gone. A browser starts empty, so its tabs come back once the bootstrap is in (below).
+  const storeReady = !!store.me && (store.channels.size > 0 || engine?.status === "online");
+  const [canRestore] = useState(() => controller.useTabs && !!tabsKey && !(typeof window.matchMedia === "function" && window.matchMedia(COMPACT_QUERY).matches));
+  const [initialDeck] = useState(() => (canRestore && storeReady ? restoreTabs(readStoredTabs(tabsKey), (target) => checkTabTarget(target, controller, engine?.wiki)) : null));
+  /** Tabs stored on this device still to come back (the store was empty at the start); nothing is stored meanwhile. */
+  const pendingRestore = useRef(canRestore && !storeReady);
+  const initialTarget = initialDeck?.tabs.find((tab) => tab.id === initialDeck.active)?.target ?? null;
+  const [deck, setDeck] = useState<{ tabs: Tab<TabSnapshot>[]; active: string }>(() => {
+    if (!initialDeck) {
+      const id = newTabId();
+      return { active: id, tabs: [{ id, saved: null, target: EMPTY_TARGET }] };
+    }
+    return { active: initialDeck.active, tabs: initialDeck.tabs.map((tab) => ({ id: tab.id, target: tab.target, saved: tab.id === initialDeck.active ? null : snapshotFor(tab.target) })) };
+  });
+  const [currentId, setCurrentId] = useState<string | null>(() => initialTarget?.currentId ?? engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember && !store.isDmClosed(channel.id))?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   // M93: the section the settings open on (「プロフィールを編集」 from my profile card opens 「プロフィール」).
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined);
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
-  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(initialTarget?.threadId ?? null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<CentreView>("channel");
+  const [view, setView] = useState<CentreView>((initialTarget?.view as CentreView | undefined) ?? "channel");
   /** M121: the Docs page on screen in 「ドキュメント」 (kept while other views are open). */
-  const [docsPageId, setDocsPageId] = useState<string | null>(null);
+  const [docsPageId, setDocsPageId] = useState<string | null>(initialTarget?.docsPageId ?? null);
   /** M11i: the channel the files view is scoped to (null: all my channels). */
-  const [filesChannelId, setFilesChannelId] = useState<string | null>(null);
-  const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
+  const [filesChannelId, setFilesChannelId] = useState<string | null>(initialTarget?.filesChannelId ?? null);
+  const [threadChannelId, setThreadChannelId] = useState<string | null>(initialTarget?.threadChannelId ?? null);
   // M16b: the search on screen (view "search"), the open search box, and the way back from a result.
-  const [search, setSearch] = useState<SearchParams | null>(null);
+  const [search, setSearch] = useState<SearchParams | null>(initialTarget?.search ?? null);
   const [searchTab, setSearchTab] = useState<SearchTab>("messages");
   const [searchOpen, setSearchOpen] = useState(false);
   const [backToSearch, setBackToSearch] = useState(false);
@@ -223,7 +305,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
   // M29, phones only: the conversation's tab (the timeline stays mounted under the others) and its details page.
   // M43: 「キャンバス」 is a tab on the wide layout too.
-  const [tab, setTab] = useState<ConversationTab>("messages");
+  const [tab, setTab] = useState<ConversationTab>((initialTarget?.tab as ConversationTab | undefined) ?? "messages");
   /** M43: the canvas picked in each conversation this session (none: its tab canvas, else the newest). */
   const [canvasChoice, setCanvasChoice] = useState<Record<string, string | null>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -258,13 +340,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const currentNav = (): Nav => ({ ...navigation, results: searchSnapshot.current });
   // One entry for 「ピン留め」 and 「ファイル」 together: Back from either returns to 「メッセージ」 first (M29). A tab
   // switch is an entry too (M34): Back after it returns to the tab before, with every tab's screens as they were then.
-  const navigationKey = JSON.stringify({ ...navigation, mobileTab, tab: tab !== "messages", focus: focus?.messageId ?? null });
+  const navigationKey = JSON.stringify({ ...navigation, mobileTab, tab: tab !== "messages", focus: focus?.messageId ?? null, deskTab: deck.active });
   // M67 / review v0.1.18 #13: the place a browser Back / Forward put back (its liveKey), until the places history takes
   // it as a move to its entry rather than a new visit.
   const browserRestored = useRef<string | null>(null);
   /** M75: the centre view (its place key) that back / forward just put back: its list returns to where it was. */
   const restoreView = useRef<string | null>(null);
-  useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current, mobileTab, savedTabs }, (previous) => {
+  useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current, mobileTab, savedTabs, deskTab: deck.active }, (previous) => {
+    // MOBILE_UI.md §19: an entry of another tab (still open) goes back to that tab, with that screen.
+    adoptTab(previous.deskTab);
     const restored = placeOf(previous, previous.focus, compactRef.current);
     const restoredKey = restored ? liveKey(restored) : null;
     // M75: a centre view the browser's Back / Forward put back comes back where it was scrolled to.
@@ -387,8 +471,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const banner = useConnectionBanner(status);
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab, homeOverlay });
-  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab, homeOverlay };
+  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab, homeOverlay, tabsOn: controller.useTabs && !compact });
+  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab, homeOverlay, tabsOn: controller.useTabs && !compact };
   /** A conversation always opens on 「メッセージ」, without its details page (M29). */
   const resetConversation = () => {
     setTab("messages");
@@ -967,6 +1051,239 @@ export function MainScreen({ controller }: { controller: AppController }) {
   selectTabRef.current = selectTab;
   const historyLabels = historyShortcutLabels();
 
+  // --- MOBILE_UI.md §19: tabs (the wide layout) ---------------------------------------------------------------------
+  // The active tab is this screen's live state; the others are snapshots. Only the active tab's conversation is the
+  // engine's open one (engineChannelId above), so a background tab marks nothing read and sends no typing or viewing.
+  const tabsOn = controller.useTabs && !compact;
+  const showDeskTabs = tabsOn && deck.tabs.length >= 2;
+  const wiki = engine?.wiki ?? null;
+  const liveTarget: TabTarget = { view, currentId, threadId, threadChannelId, docsPageId, filesChannelId, tab, search: view === "search" || backToSearch ? search : null };
+  const deckRef = useRef(deck);
+  deckRef.current = deck;
+  const liveSnapshot = (): TabSnapshot => ({ nav: currentNav(), docsPageId, places, focus: controller.messageFocus });
+  /** A tab's screen back on: its view, thread pane, Docs page and history; its lists come back where they were scrolled to. */
+  const applySnapshot = (snapshot: TabSnapshot) => {
+    const place = placeOf(snapshot.nav, snapshot.focus, false);
+    restoreView.current = place?.kind === "view" ? placeKey(place) : null;
+    controller.messageFocus = snapshot.focus;
+    controller.setEditing(null);
+    applyNav(snapshot.nav);
+    setDocsPageId(snapshot.docsPageId);
+    setPlaces(snapshot.places);
+  };
+  const switchTab = (id: string) => {
+    const current = deckRef.current;
+    const next = current.tabs.find((entry) => entry.id === id);
+    if (!next?.saved || id === current.active) return;
+    const live = liveSnapshot();
+    const snapshot = next.saved;
+    const updated = { active: id, tabs: current.tabs.map((entry) => (entry.id === current.active ? { ...entry, saved: live, target: liveTarget } : entry.id === id ? { ...entry, saved: null } : entry)) };
+    deckRef.current = updated;
+    setDeck(updated);
+    applySnapshot(snapshot);
+  };
+  /** The browser's Back / Forward to an entry of another open tab: that tab becomes active (its screen comes from the entry). */
+  const adoptTab = (id: string | undefined) => {
+    const current = deckRef.current;
+    const next = current.tabs.find((entry) => entry.id === id);
+    if (!id || !next?.saved || id === current.active) return;
+    const live = liveSnapshot();
+    setPlaces(next.saved.places);
+    setDocsPageId(next.saved.docsPageId);
+    const updated = { active: id, tabs: current.tabs.map((entry) => (entry.id === current.active ? { ...entry, saved: live, target: liveTarget } : entry.id === id ? { ...entry, saved: null } : entry)) };
+    deckRef.current = updated;
+    setDeck(updated);
+  };
+  /** `target` in a new tab right of the active one: behind it (a middle click, ⌘-click, the menus) or in front (⌘⇧-click, ⌘T). */
+  const openInNewTab = (target: TabTarget, foreground = false) => {
+    const current = deckRef.current;
+    if (current.tabs.length >= MAX_TABS) {
+      controller.setNotice(t("tabs.tooMany", { max: MAX_TABS }));
+      return;
+    }
+    const tab: Tab<TabSnapshot> = { id: newTabId(), target, saved: snapshotFor(target) };
+    if (!foreground) {
+      const updated = { ...current, tabs: insertTab(current.tabs, current.active, tab) };
+      deckRef.current = updated;
+      setDeck(updated);
+      return;
+    }
+    const live = liveSnapshot();
+    const tabs = current.tabs.map((entry) => (entry.id === current.active ? { ...entry, saved: live, target: liveTarget } : entry));
+    const updated = { active: tab.id, tabs: insertTab(tabs, current.active, { ...tab, saved: null }) };
+    deckRef.current = updated;
+    setDeck(updated);
+    applySnapshot(tab.saved!);
+  };
+  const closeTab = (id: string) => {
+    const current = deckRef.current;
+    if (current.tabs.length < 2 || !current.tabs.some((entry) => entry.id === id)) return;
+    if (id !== current.active) {
+      const updated = { ...current, tabs: current.tabs.filter((entry) => entry.id !== id) };
+      deckRef.current = updated;
+      setDeck(updated);
+      return;
+    }
+    const nextId = neighbourOf(current.tabs, id)!;
+    const snapshot = current.tabs.find((entry) => entry.id === nextId)!.saved!;
+    const updated = { active: nextId, tabs: current.tabs.filter((entry) => entry.id !== id).map((entry) => (entry.id === nextId ? { ...entry, saved: null } : entry)) };
+    deckRef.current = updated;
+    setDeck(updated);
+    applySnapshot(snapshot);
+  };
+  const closeOtherTabs = (id: string) => {
+    if (id !== deckRef.current.active) switchTab(id);
+    const current = deckRef.current;
+    const updated = { active: current.active, tabs: current.tabs.filter((entry) => entry.id === current.active) };
+    deckRef.current = updated;
+    setDeck(updated);
+  };
+  const reorderTab = (id: string, to: number) => {
+    const updated = { ...deckRef.current, tabs: moveTab(deckRef.current.tabs, id, to) };
+    deckRef.current = updated;
+    setDeck(updated);
+  };
+  /** ⌘T / ＋: a new tab on the conversation on screen, with 「移動・検索」 open to take it somewhere else. */
+  const newTab = () => {
+    openInNewTab({ ...EMPTY_TARGET, currentId }, true);
+    setSwitcher(true);
+  };
+  /** A key of the tabs (true: done, the key is taken). */
+  const runTabCommand = (command: TabCommand): boolean => {
+    const current = deckRef.current;
+    if (command.kind === "new") {
+      newTab();
+      return true;
+    }
+    if (current.tabs.length < 2) return false;
+    if (command.kind === "close") closeTab(current.active);
+    else if (command.kind === "step") switchTab(stepTab(current.tabs, current.active, command.delta)!);
+    else {
+      const id = nthTab(current.tabs, command.digit);
+      if (id) switchTab(id);
+    }
+    return true;
+  };
+  const tabsApi = useRef({ runTabCommand });
+  tabsApi.current = { runTabCommand };
+  const channelTarget = (id: string, threadParentId: string | null = null): TabTarget => ({ ...EMPTY_TARGET, currentId: id, threadId: threadParentId, threadChannelId: threadParentId ? id : null });
+  /** A place of the rail or the sidebar (its key) as a tab's target; my Times is its conversation. */
+  const placeTarget = (key: string): TabTarget | null => {
+    if (key === "my-times") {
+      const mine = channels.find((channel) => channel.isMember && !!channel.times_owner_id && channel.times_owner_id === store.me?.id);
+      return mine ? channelTarget(mine.id) : null;
+    }
+    const placeView = key === "times-feed" ? "times" : key;
+    if (!(CENTRE_VIEWS as readonly string[]).includes(placeView) || placeView === "channel" || placeView === "search") return null;
+    return { ...EMPTY_TARGET, view: placeView, currentId };
+  };
+  const openConversationInNewTab = tabsOn ? (id: string, foreground: boolean) => openInNewTab(channelTarget(id), foreground) : undefined;
+  const openPlaceInNewTab = tabsOn ? (key: string, foreground: boolean) => { const target = placeTarget(key); if (target) openInNewTab(target, foreground); } : undefined;
+  const openThreadInNewTab = tabsOn ? (entry: ThreadEntry, foreground: boolean) => openInNewTab(channelTarget(entry.state.channel_id, entry.parent.id), foreground) : undefined;
+  // A phone-width web page has no tabs, but a page has a URL of its own (/p/<id>): the browser's own new tab.
+  const openPageInNewTab = tabsOn
+    ? (pageId: string, foreground: boolean) => openInNewTab({ ...EMPTY_TARGET, view: "docs", docsPageId: pageId, currentId }, foreground)
+    : compact && isWeb()
+      ? (pageId: string) => void window.open(`${window.location.origin}/p/${pageId}`, "_blank", "noopener")
+      : undefined;
+
+  // 「タブを使う」 turned off: only the tab on screen stays.
+  useEffect(() => {
+    if (controller.useTabs || deck.tabs.length < 2) return;
+    setDeck((current) => ({ active: current.active, tabs: current.tabs.filter((entry) => entry.id === current.active) }));
+  }, [controller.useTabs, deck.tabs.length]);
+  // A background tab whose conversation or page is gone (left, removed, deleted, in the trash) closes.
+  const goneTabs = deck.tabs.filter((entry) => entry.id !== deck.active && !checkTabTarget(entry.target, controller, wiki)).map((entry) => entry.id).join(",");
+  useEffect(() => {
+    if (!goneTabs) return;
+    const gone = new Set(goneTabs.split(","));
+    setDeck((current) => ({ ...current, tabs: current.tabs.filter((entry) => !gone.has(entry.id)) }));
+  }, [goneTabs]);
+  // This device's tabs, kept for the next start (MOBILE_UI.md §19.4; ids only). A phone-width page leaves them alone.
+  const storedTabs = JSON.stringify({ tabs: deck.tabs.map((entry) => ({ id: entry.id, target: entry.id === deck.active ? liveTarget : entry.target })), active: deck.active });
+  useEffect(() => {
+    if (compact || !tabsKey || pendingRestore.current) return;
+    writeStoredTabs(tabsKey, JSON.parse(storedTabs) as Parameters<typeof writeStoredTabs>[1]);
+  }, [storedTabs, tabsKey, compact]);
+  // The browser's start: the stored tabs once the bootstrap filled the store, the active one's screen on. A page opened
+  // at a link (/m/, /c/, /p/) keeps the link's screen on, as one more tab after them.
+  useEffect(() => {
+    if (!pendingRestore.current || !storeReady) return;
+    pendingRestore.current = false;
+    const restored = restoreTabs(readStoredTabs(tabsKey), (target) => checkTabTarget(target, controller, wiki));
+    if (!restored || compact || !controller.useTabs) return;
+    const fromLink = controller.openedAtLink;
+    const tabs: Tab<TabSnapshot>[] = restored.tabs.map((entry) => ({ id: entry.id, target: entry.target, saved: !fromLink && entry.id === restored.active ? null : snapshotFor(entry.target) }));
+    if (fromLink) tabs.push({ id: deckRef.current.active, target: liveTarget, saved: null });
+    const updated = { active: fromLink ? deckRef.current.active : restored.active, tabs: tabs.slice(-MAX_TABS) };
+    deckRef.current = updated;
+    setDeck(updated);
+    if (!fromLink) applySnapshot(snapshotFor(restored.tabs.find((entry) => entry.id === restored.active)!.target));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeReady]);
+  // The desktop app: a middle click never opens a window of the webview (a link) or scrolls by itself.
+  useEffect(() => {
+    if (isWeb()) return;
+    const down = (event: MouseEvent) => {
+      if (event.button === 1) event.preventDefault();
+    };
+    const aux = (event: MouseEvent) => {
+      if (event.button === 1) event.preventDefault();
+    };
+    window.addEventListener("mousedown", down, true);
+    window.addEventListener("auxclick", aux, true);
+    return () => {
+      window.removeEventListener("mousedown", down, true);
+      window.removeEventListener("auxclick", aux, true);
+    };
+  }, []);
+  /** A tab's name, icon and (in the background) unread badge, as the sidebar and the rail show them. */
+  const tabItem = (entry: Tab<TabSnapshot>): TabItem => {
+    const active = entry.id === deck.active;
+    const target = active ? liveTarget : entry.target;
+    const meId = store.me?.id ?? null;
+    const count = (n: number) => (n > 99 ? "99+" : String(n));
+    const viewItem = (label: string, Icon: typeof Bell, badge: TabItem["badge"] = null): TabItem => ({ id: entry.id, label, icon: <Icon />, badge: active ? null : badge });
+    switch (target.view) {
+      case "channel": {
+        const channel = target.currentId ? store.getChannel(target.currentId) : undefined;
+        if (!channel) return viewItem("…", Hash);
+        const other = isDmChannel(channel) ? ((channel.dm_user_ids ?? []).find((id) => id !== meId) ?? meId) : null;
+        const icon = other ? <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={16} className="rounded text-[8px]" /> : channel.type === "private" ? <Lock /> : isDmChannel(channel) ? <AtSign /> : <Hash />;
+        const badge = badgeCount(channel);
+        const unread = !active && channel.isMember && hasUnread(channel, meId);
+        return { id: entry.id, label: channelTitle(channel, controller).replace(/^#/, ""), icon, badge: unread ? (badge > 0 ? { text: count(badge), tone: "danger" } : { text: null, tone: "neutral" }) : null };
+      }
+      case "threads": {
+        const summary = store.threadSummary;
+        return viewItem(t("nav.threads"), MessagesSquare, summary.unread_count > 0 ? { text: count(summary.unread_count), tone: summary.mention_count > 0 ? "danger" : "neutral" } : null);
+      }
+      case "activity": {
+        const activity = activityBadge(store.channels.values(), store.threadSummary, store.activity);
+        return viewItem(store.activity ? t("nav.activity") : t("nav.mentions"), store.activity ? Bell : AtSign, store.activity && activity.count > 0 ? { text: count(activity.count), tone: activity.mention ? "danger" : "neutral" } : null);
+      }
+      case "saved": return viewItem(t("nav.saved"), Bookmark);
+      case "drafts": return viewItem(t("nav.drafts"), FileText);
+      case "files": return viewItem(t("nav.files"), Files);
+      case "reminders": return viewItem(t("nav.reminders"), AlarmClock);
+      case "search": return viewItem(target.search?.q ? t("tabs.search", { q: target.search.q }) : t("tabs.searchEmpty"), Search);
+      case "canvases": return viewItem(t("nav.canvases"), NotebookText);
+      case "calendar": return viewItem(t("nav.calendar"), CalendarDays);
+      case "tasks": return viewItem(t("nav.tasks"), ListTodo);
+      case "deadlines": return viewItem(t("nav.deadlines"), Timer);
+      case "times": return viewItem(t("sidebar.timesFeed"), Newspaper);
+      case "reservations": return viewItem(t("nav.reservations"), Ticket);
+      case "attendance": return viewItem(t("nav.attendance"), DoorOpen);
+      case "actions": return viewItem(t("nav.actions"), Zap);
+      case "docs": {
+        const page = target.docsPageId ? wiki?.page(target.docsPageId) : undefined;
+        return viewItem(target.docsPageId ? pageTitle(page, t("docs.untitled")) : t("nav.docs"), BookOpen);
+      }
+      default: return viewItem("…", Hash);
+    }
+  };
+  const tabKeys = tabKeyLabels(isMacPlatform(), isWeb());
+
   const toggleUnreadOnly = () => {
     setUnreadOnly((value) => {
       try {
@@ -996,6 +1313,20 @@ export function MainScreen({ controller }: { controller: AppController }) {
       // A dialog or the switcher on top has the keyboard: the shortcuts that open or move things would act under it
       // (the search box under a modal, a channel switched behind the settings). Esc and ⌘/ still work there.
       const covered = !!s.dialog || s.switcher || !!s.homeOverlay;
+      // MOBILE_UI.md §19: the tab keys (⌘T, ⌘W, ⌘⇧[ / ], Ctrl+Tab, ⌘1–⌘9; Alt on the web). With one tab ⌘W, ⌘1–9
+      // and the switching keys are left alone (the window's ⌘W, the workspaces' ⌘1–9). Under a dialog they do nothing.
+      const command = s.tabsOn ? tabCommand(event, isMacPlatform(), isWeb()) : null;
+      if (command) {
+        if (covered) {
+          if (command.kind === "new" || deckRef.current.tabs.length >= 2) {
+            event.preventDefault();
+            return;
+          }
+        } else if (tabsApi.current.runTabCommand(command)) {
+          event.preventDefault();
+          return;
+        }
+      }
       // M67: back / forward, the wide layout only (a phone-width web page leaves ⌘[ / Alt+← to the browser, whose
       // history is that layout's back). Kept from the browser under a dialog too, where they do nothing.
       const step = s.compact ? null : historyStep(event);
@@ -1006,10 +1337,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
       }
       if (event.key === "F6" && !mod && !event.altKey && !covered && !s.searchOpen) {
         if (focusChatRegion(event.shiftKey)) event.preventDefault();
-      } else if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
-        // M16c: ⌘1 … ⌘9 open the n-th workspace of the rail (Slack).
+      } else if (mod && !event.shiftKey && (event.altKey ? /^Digit[1-9]$/.test(event.code ?? "") : /^[1-9]$/.test(event.key)) && controller.multiWorkspace) {
+        // M16c: ⌘1 … ⌘9 open the n-th workspace of the rail (Slack). With two tabs or more those are the tabs'
+        // (MOBILE_UI.md §19.3), and ⌘⌥1 … ⌘⌥9 (Ctrl+Alt) always open the workspaces.
         event.preventDefault();
-        controller.switchToIndex(Number(event.key) - 1);
+        controller.switchToIndex(Number(event.altKey ? event.code.slice(5) : event.key) - 1);
       } else if (mod && !event.shiftKey && key === "k" && !covered) {
         event.preventDefault();
         setSwitcher(true);
@@ -1191,6 +1523,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onArrangePlaces={() => { setSettingsSection("appearance"); setDialog("settings"); }}
       // MOBILE_UI.md §18.7: a row's menu opens the conversation, then the same dialog its ⋯ menu would.
       onChannelAction={(id, action) => { open(id); setDialog(action); }}
+      onOpenInNewTab={openConversationInNewTab}
+      onPlaceInNewTab={openPlaceInNewTab}
     />
   );
   // The channel's own ⋯ items (on a phone they follow the conversation items in the same menu).
@@ -1287,7 +1621,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         // M34: a thread from the activity tab covers this; the tab's own list is under it.
         null
       ) : view === "threads" ? (
-        <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} onOpenChannel={(entry) => revealFromList(entry.parent)} />
+        <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} onOpenChannel={(entry) => revealFromList(entry.parent)} onOpenInNewTab={openThreadInNewTab} />
       ) : view === "saved" ? (
         <SavedView controller={controller} onOpen={revealFromList} />
       ) : view === "times" ? (
@@ -1316,6 +1650,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           controller={controller}
           pageId={docsPageId}
           onOpenPage={setDocsPageId}
+          onOpenInNewTab={openPageInNewTab}
           compact={compact}
           onSearchAll={(q) => {
             runSearch({ ...EMPTY_SEARCH, q });
@@ -1841,7 +2176,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
   return (
     <div
       ref={desktopRoot}
-      className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
+      className={cn(
+        "grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink",
+        // MOBILE_UI.md §19: with two tabs or more their bar is a row over the centre and the pane (app.css: the sidebar
+        // spans both rows). One tab: no bar, the layout of before.
+        showDeskTabs ? "desk-tabs-on grid-rows-[auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]",
+      )}
       style={{ "--sidebar-w": `${columns.sidebarWidth + PLACES_RAIL_WIDTH}px` } as React.CSSProperties}
     >
       {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
@@ -1871,8 +2211,21 @@ export function MainScreen({ controller }: { controller: AppController }) {
         {windowButtons && <WindowControls />}
       </div>
       {sidebar}
+      {showDeskTabs && (
+        <DesktopTabBar
+          tabs={deck.tabs.map(tabItem)}
+          activeId={deck.active}
+          onSelect={switchTab}
+          onClose={closeTab}
+          onCloseOthers={closeOtherTabs}
+          onMove={reorderTab}
+          onNew={newTab}
+          newLabel={t("tabs.newKey", { key: tabKeys.newTab })}
+          style={{ gridColumn: "2 / -1", gridRow: 2 }}
+        />
+      )}
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
-      <main className="relative flex min-h-0 min-w-0 flex-col">
+      <main className="relative flex min-h-0 min-w-0 flex-col" style={showDeskTabs ? { gridColumn: 2, gridRow: 3 } : undefined}>
         <div
           role="separator"
           aria-orientation="vertical"
@@ -1888,7 +2241,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         {sidePane && columns.replaceCentre ? <div className="flex min-h-0 flex-1">{sidePane}</div> : centre}
       </main>
       {sidePane && !columns.replaceCentre ? (
-        <div className="relative flex min-h-0" style={{ width: columns.paneWidth }}>
+        <div className="relative flex min-h-0" style={{ width: columns.paneWidth, ...(showDeskTabs ? { gridColumn: 3, gridRow: 3 } : {}) }}>
           <div
             role="separator"
             aria-orientation="vertical"

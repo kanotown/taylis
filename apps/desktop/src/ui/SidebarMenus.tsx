@@ -34,7 +34,14 @@ export function openContextMenuByKey(event: KeyboardEvent<HTMLElement>): void {
  * rename, leave or close, archive. The rename / leave / archive / details items need `onAction` (the main screen's
  * dialogs; HomeView and the DM list leave them out); rename and archive are the channel's owners' and managers'.
  */
-export function ChannelContextMenu({ controller, channel, children, onAction }: { controller: AppController; channel: ChannelState; children: ReactNode; onAction?: (channelId: string, action: ChannelRowAction) => void }) {
+export function ChannelContextMenu({ controller, channel, children, onAction, onOpenInNewTab }: {
+  controller: AppController;
+  channel: ChannelState;
+  children: ReactNode;
+  onAction?: (channelId: string, action: ChannelRowAction) => void;
+  /** MOBILE_UI.md §19: 「新しいタブで開く」 (the wide layout's tabs). */
+  onOpenInNewTab?: () => void;
+}) {
   const store = controller.store;
   const sections = store.sidebarSections;
   const [naming, setNaming] = useState(false);
@@ -62,6 +69,14 @@ export function ChannelContextMenu({ controller, channel, children, onAction }: 
         <ContextMenu.Trigger asChild onKeyDown={openContextMenuByKey}>{children}</ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content className={CONTENT} collisionPadding={8}>
+            {onOpenInNewTab && (
+              <>
+                <ContextMenu.Item className={ITEM} data-row-action="new-tab" onSelect={onOpenInNewTab}>
+                  {t("tabs.openInNewTab")}
+                </ContextMenu.Item>
+                <ContextMenu.Separator className="my-1 h-px bg-line" />
+              </>
+            )}
             {readable && (unread ? (
               <ContextMenu.Item className={ITEM} data-row-action="read" onSelect={() => engine!.markRead(channel.id, channel.lastSeq, { force: true })}>
                 {t("channelMenu.markRead")}

@@ -11,6 +11,7 @@ import { Ellipsis, EyeOff, SlidersHorizontal } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
+import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
 import type { PlaceSpot } from "./desktopPlaces";
 import { cn, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger } from "./primitives";
 import { type MessageKey, t } from "../i18n";
@@ -87,7 +88,7 @@ const ITEM = "relative flex h-10 w-10 shrink-0 items-center justify-center round
 const IDLE = "text-sidebar-fg hover:bg-sidebar-hover hover:text-sidebar-strong";
 const ACTIVE = "bg-sidebar-active text-sidebar-active-fg";
 
-export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange }: {
+export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onNewTab }: {
   /** Every place I can open here, in my order. */
   places: readonly Place[];
   /** Where each place stands (rail / sidebar / hidden). */
@@ -98,6 +99,8 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange }: {
   onHideRail?: () => void;
   /** 「並べ替え…」: the settings' list. */
   onArrange?: () => void;
+  /** MOBILE_UI.md §19: a place in a new tab (its menu, a middle click, ⌘-click; true: in front). */
+  onNewTab?: (key: string, foreground: boolean) => void;
 }) {
   const root = useRef<HTMLElement>(null);
   const [height, setHeight] = useState(0);
@@ -145,8 +148,11 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange }: {
       style={{ width: PLACES_RAIL_WIDTH }}
     >
       <Tooltip.Provider delayDuration={250} disableHoverableContent>
-        {rail.map((place) => (
+        {rail.map((place) => {
+          const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
+          return (
           <RailTip key={place.key} label={place.label} hint={place.hint} count={place.count}>
+            <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(false))}>
             <button
               type="button"
               data-rail-item=""
@@ -154,14 +160,17 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange }: {
               tabIndex={place.key === tabStop ? 0 : -1}
               aria-label={place.ariaLabel ?? place.label}
               aria-current={place.active ? "page" : undefined}
-              onClick={place.onSelect}
+              {...middleClickProps(newTab)}
+              onClick={(event) => { if (!clickOrNewTab(event, newTab)) place.onSelect(); }}
               className={cn(ITEM, place.active ? ACTIVE : IDLE, place.emphasis && !place.active && "text-sidebar-strong")}
             >
               {place.icon}
               {place.badge && <RailBadge badge={place.badge} />}
             </button>
+            </NewTabContextMenu>
           </RailTip>
-        ))}
+          );
+        })}
         <div className="min-h-0 flex-1" />
         <Menu>
           <RailTip label={t("rail.more")}>
