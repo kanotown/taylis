@@ -63,7 +63,8 @@ import { PLACES_RAIL_WIDTH } from "./PlacesRail";
 import { ThreadPane } from "./ThreadPane";
 import { ThreadsView } from "./ThreadsView";
 import { Timeline } from "./Timeline";
-import { NoticeToast, Toast } from "./Toast";
+import { DownloadToasts, NoticeToast, Toast } from "./Toast";
+import { composerKey, FileDropPane } from "./FileDropZone";
 import { TypingIndicator } from "./Typing";
 import { Avatar, presenceLabel } from "./Avatar";
 import { DesktopTabBar, type TabItem } from "./DesktopTabBar";
@@ -1672,7 +1673,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
-        <>
+        <FileDropPane
+          enabled={shownTab === "messages"}
+          blocked={conversationDropBlock(current, previewing, controller.isAdmin)}
+          destination={t("drop.to", { name: isChannel ? `#${current.name}` : channelTitle(current, controller) })}
+          target={composerKey(current.id, null)}
+          onUnavailable={() => controller.setError(t("drop.unavailable"))}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           {backToSearch && search && (
             <button
               type="button"
@@ -1962,7 +1970,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               </div>
             )}
           </div>
-        </>
+        </FileDropPane>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
@@ -1980,6 +1988,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <Toast controller={controller} />
       <SummaryDialog controller={controller} />
       <NoticeToast controller={controller} />
+      <DownloadToasts controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id)} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "directory" && <DirectoryDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
@@ -2260,6 +2269,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {overlays}
     </div>
   );
+}
+
+/** Why files dropped on the conversation cannot go in (FileDropZone's overlay), or null: the composer below takes them. */
+export function conversationDropBlock(channel: ChannelState, previewing: boolean, isAdmin: boolean): string | null {
+  if (previewing || !channel.isMember) return t("drop.notMember");
+  if (channel.archived) return t("drop.archived");
+  if (!canPostTopLevel(channel, isAdmin)) return t("drop.ownersOnly");
+  return null;
 }
 
 /** M15b: public → private hides the channel from non-members; private → public shows its whole history. */

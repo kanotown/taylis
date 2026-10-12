@@ -22,7 +22,7 @@ import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate, PresenceUpdate } from "../api/types";
-import { saveDownload } from "../platform/download";
+import { canOpenDownloaded, openDownloaded, revealDownloaded, saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
 import { listenForDeepLinks } from "../platform/deepLink";
@@ -78,6 +78,21 @@ async function withDeadline(work: Promise<unknown>, ms: number, onTimeout: () =>
 /** A notice's button: its label and what it does (the toast closes after). */
 export type NoticeAction = { label: string; run: () => void };
 
+/**
+ * A download's toast (docs/PREVIEWS.md §9): the bytes so far while it comes in, then 「ダウンロードしました：名前」 with
+ * 「開く」 / 「フォルダを開く」 when the desktop app saved it (`path`). `openable`: in Downloads and not a program.
+ */
+export interface DownloadItem {
+  id: number;
+  filename: string;
+  loaded: number;
+  /** Content-Length, else the attachment's size; 0 when unknown (no bar, just the spinner). */
+  total: number;
+  state: "downloading" | "done";
+  path: string | null;
+  openable: boolean;
+}
+
 export class AppController {
   screen: Screen = "boot";
   error: string | null = null;
@@ -85,6 +100,9 @@ export class AppController {
   notice: string | null = null;
   /** M141: a button on the notice (「元に戻す」 after 「会話を閉じました」); null for a plain one. */
   noticeAction: NoticeAction | null = null;
+  /** Downloads in progress or just finished, oldest first (DownloadToasts). */
+  downloads: DownloadItem[] = [];
+  private nextDownloadId = 1;
   /** M12i: the last login was refused for lack of an authenticator code; the form asks for one. */
   totpRequired = false;
   /**
@@ -633,14 +651,96 @@ export class AppController {
     return (this.store.me ?? this.me)?.role === "guest";
   }
 
-  /** Fetch the bytes with the bearer token and hand them to the platform save dialog. */
-  async downloadAttachment(attachment: AttachmentOut): Promise<void> {
-    if (!this.api) return;
+  /**
+   * Fetch the bytes with the bearer token (the toast shows how far it got) and save them: Downloads or the save dialog
+   * in the desktop app, the browser's download on the Web (platform/download.ts). `open`: then open it in its app
+   * (the viewers' 「開く」, desktop app only; straight into Downloads, never the dialog).
+   */
+  async downloadAttachment(attachment: AttachmentOut, options: { open?: boolean } = {}): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    const item = this.startDownload(attachment.filename, attachment.size_bytes);
+    let last = 0;
     try {
-      const blob = await this.api.fetchBlob(`/api/v1/attachments/${attachment.id}/content`);
-      await saveDownload(attachment.filename, blob);
+      const blob = await api.fetchBlob(`/api/v1/attachments/${attachment.id}/content`, (loaded, total) => {
+        const now = Date.now();
+        if (now - last < 150 && loaded < (total || item.total)) return;
+        last = now;
+        this.updateDownload(item.id, { loaded, total: total || item.total });
+      });
+      const saved = await saveDownload(attachment.filename, blob, options.open ? { ask: false } : {});
+      if (!saved) return this.dismissDownload(item.id);
+      this.finishDownload(item.id, saved.path, saved.inDownloads);
+      if (options.open && saved.path) await this.openDownload(this.downloads.find((d) => d.id === item.id) ?? null);
     } catch (error) {
+      this.dismissDownload(item.id);
       this.setError(error);
+    }
+  }
+
+  /** Save bytes made here (exports: CSV, Markdown) the way attachments are saved, with the same toast. */
+  async saveFile(filename: string, blob: Blob): Promise<void> {
+    const item = this.startDownload(filename, blob.size);
+    try {
+      const saved = await saveDownload(filename, blob);
+      if (!saved) return this.dismissDownload(item.id);
+      this.finishDownload(item.id, saved.path, saved.inDownloads);
+    } catch (error) {
+      this.dismissDownload(item.id);
+      this.setError(error);
+    }
+  }
+
+  private startDownload(filename: string, total: number): DownloadItem {
+    const item: DownloadItem = { id: this.nextDownloadId++, filename, loaded: 0, total, state: "downloading", path: null, openable: false };
+    // At most three toasts: the oldest finished ones go first.
+    const kept = [...this.downloads];
+    while (kept.length >= 3) {
+      const done = kept.findIndex((d) => d.state === "done");
+      kept.splice(done >= 0 ? done : 0, 1);
+    }
+    this.downloads = [...kept, item];
+    this.emit();
+    return item;
+  }
+
+  private updateDownload(id: number, change: Partial<DownloadItem>): void {
+    this.downloads = this.downloads.map((d) => (d.id === id ? { ...d, ...change } : d));
+    this.emit();
+  }
+
+  private finishDownload(id: number, path: string | null, inDownloads: boolean): void {
+    this.downloads = this.downloads.map((d) =>
+      d.id === id ? { ...d, state: "done", loaded: d.total, path, openable: !!path && inDownloads && canOpenDownloaded(path) } : d,
+    );
+    this.emit();
+  }
+
+  dismissDownload(id: number): void {
+    if (!this.downloads.some((d) => d.id === id)) return;
+    this.downloads = this.downloads.filter((d) => d.id !== id);
+    this.emit();
+  }
+
+  /** 「フォルダを開く」: the saved file selected in Finder / Explorer. */
+  async revealDownload(item: DownloadItem | null): Promise<void> {
+    if (!item?.path) return;
+    try {
+      await revealDownloaded(item.path);
+    } catch (error) {
+      console.warn("could not show the download in its folder", error);
+      this.setError(t("download.revealFailed"));
+    }
+  }
+
+  /** 「開く」: the saved file in the system's app for it. */
+  async openDownload(item: DownloadItem | null): Promise<void> {
+    if (!item?.path || !item.openable) return;
+    try {
+      await openDownloaded(item.path);
+    } catch (error) {
+      console.warn("could not open the download", error);
+      this.setError(t("download.openFailed"));
     }
   }
 

@@ -13,6 +13,9 @@
   </dict>
   <!-- Message notifications are donated as INSendMessageIntent to become communication notifications (the sender's
        picture, docs/PUSH_NOTIFICATIONS.md §9.1; needs the entitlement, communication.entitlements). -->
+  <!-- Downloads go straight into ~/Downloads (docs/PREVIEWS.md §9): macOS asks once, with this text. -->
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>ダウンロードしたファイルを「ダウンロード」フォルダに保存します。</string>
   <key>NSUserActivityTypes</key>
   <array>
     <string>INSendMessageIntent</string>

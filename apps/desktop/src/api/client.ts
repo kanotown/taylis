@@ -1866,8 +1866,11 @@ export class ApiClient {
     return readJson<AttachmentOut>(response);
   }
 
-  /** Authenticated GET returning the raw body (thumbnails, downloads). */
-  async fetchBlob(path: string): Promise<Blob> {
+  /**
+   * Authenticated GET returning the raw body (thumbnails, downloads). `onProgress` (downloads, docs/PREVIEWS.md §9): called with the bytes read so far as the body streams in, and the
+   * total from Content-Length (0 when the server sent none).
+   */
+  async fetchBlob(path: string, onProgress?: (loaded: number, total: number) => void): Promise<Blob> {
     if (!this.accessToken && this.refreshToken) await this.refresh();
     const send = async (): Promise<Response> =>
       this.rawFetch(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
@@ -1878,7 +1881,20 @@ export class ApiClient {
     }
     if (!response.ok) throw await this.errorFromResponse(response);
     try {
-      return await response.blob();
+      if (!onProgress || !response.body) return await response.blob();
+      const total = Number(response.headers.get("Content-Length")) || 0;
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+      onProgress(0, total);
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        onProgress(loaded, total);
+      }
+      return new Blob(chunks as BlobPart[], { type: response.headers.get("Content-Type") ?? "" });
     } catch (err) {
       throw new NetworkError(err);
     }

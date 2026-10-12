@@ -5,6 +5,9 @@ import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { AttachmentList } from "../src/ui/Attachments";
 import { documentPreviewState, documentThumbBox, pageCountLabel } from "../src/ui/attachmentLayout";
+import { currentPage, stepPdfZoom } from "../src/ui/DocumentPreview";
+import { ViewerHeader } from "../src/ui/ViewerHeader";
+import { setUpZoom } from "../src/platform/zoom";
 
 // PDF.js does not run in jsdom: the viewer's loader hands back a document of three pages that draw nothing.
 const openPdf = vi.fn();
@@ -108,4 +111,75 @@ it("opens every page in the viewer, with zoom, download and a retry after a fail
   fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(destroy).toHaveBeenCalled();
+});
+
+it("counts pages by the scroll and steps the zoom within its range", () => {
+  const tops = [0, 1000, 2000];
+  expect(currentPage(tops, 0, 800, 3000)).toBe(1);
+  expect(currentPage(tops, 950, 800, 3000)).toBe(2); // page 2's top is just under the top of the view
+  expect(currentPage(tops, 800, 800, 3000)).toBe(1);
+  expect(currentPage(tops, 2200, 800, 3000)).toBe(3); // at the end: the last page, however short
+  expect(stepPdfZoom(1, 1)).toBe(1.25);
+  expect(stepPdfZoom(3, 1)).toBe(3);
+  expect(stepPdfZoom(0.5, -1)).toBe(0.5);
+  expect(stepPdfZoom(2, 0)).toBe(1);
+});
+
+it("moves page by page with ← / → and zooms with Ctrl (⌘) + 「+」 「-」 「0」, not the window", async () => {
+  const stopZoom = setUpZoom(true);
+  const page = { getViewport: ({ scale }: { scale: number }) => ({ width: 595 * scale, height: 842 * scale }), render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }) };
+  openPdf.mockResolvedValue({ numPages: 3, getPage: async () => page, loadingTask: { destroy: vi.fn() } });
+  render(<AttachmentList attachments={[ready]} controller={controller(vi.fn(async () => new Blob(["%PDF"])))} />);
+  fireEvent.click(screen.getByRole("button", { name: "議事録.docx のプレビューを開く" }));
+  await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(3));
+  const counter = () => document.querySelector("[data-page-counter]")!.textContent;
+  const dialog = screen.getByRole("dialog");
+  expect(counter()).toBe("1 / 3");
+  expect((screen.getByRole("button", { name: "前のページ（←）" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.keyDown(dialog, { key: "ArrowRight" });
+  expect(counter()).toBe("2 / 3");
+  fireEvent.keyDown(dialog, { key: "End" });
+  expect(counter()).toBe("3 / 3");
+  fireEvent.keyDown(dialog, { key: "ArrowRight" }); // stays on the last
+  expect(counter()).toBe("3 / 3");
+  fireEvent.keyDown(dialog, { key: "ArrowLeft" });
+  expect(counter()).toBe("2 / 3");
+  fireEvent.click(screen.getByRole("button", { name: "前のページ（←）" }));
+  expect(counter()).toBe("1 / 3");
+
+  const level = () => document.querySelector("[data-zoom-level]")!.textContent;
+  fireEvent.keyDown(dialog, { key: "=", ctrlKey: true });
+  fireEvent.keyDown(dialog, { key: "=", ctrlKey: true });
+  expect(level()).toBe("150%");
+  expect(document.documentElement.style.getPropertyValue("--ui-zoom")).toBe(""); // the window's text size kept still
+  fireEvent.keyDown(dialog, { key: "-", ctrlKey: true });
+  expect(level()).toBe("125%");
+  fireEvent.keyDown(dialog, { key: "0", ctrlKey: true });
+  expect(level()).toBe("100%");
+  expect(screen.getByRole("button", { name: "幅に合わせる" }).getAttribute("aria-pressed")).toBe("true");
+
+  // The top row moves the window, its buttons do not (Tauri's "deep" drag region skips clickable elements).
+  const header = dialog.querySelector("[data-viewer-header]") as HTMLElement;
+  expect(header.getAttribute("data-tauri-drag-region")).toBe("deep");
+  expect(header.contains(screen.getByRole("button", { name: "ダウンロード" }))).toBe(true);
+
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  // Closed: the zoom keys are the window's again.
+  fireEvent.keyDown(window, { key: "=", ctrlKey: true });
+  expect(document.documentElement.style.getPropertyValue("--ui-zoom")).toBe("1.1");
+  stopZoom();
+  localStorage.clear();
+  document.documentElement.style.removeProperty("--ui-zoom");
+});
+
+it("keeps the macOS window buttons' room, and draws our own on Windows", () => {
+  const { rerender } = render(<ViewerHeader kind="overlay"><span>名前</span></ViewerHeader>);
+  const header = document.querySelector("[data-viewer-header]") as HTMLElement;
+  expect(header.style.paddingLeft).toContain("84px");
+  expect(screen.queryByRole("group", { name: "ウィンドウ" })).toBeNull();
+  rerender(<ViewerHeader kind="custom"><span>名前</span></ViewerHeader>);
+  expect(screen.getByRole("button", { name: "最小化" })).toBeTruthy();
+  rerender(<ViewerHeader kind="native"><span>名前</span></ViewerHeader>);
+  expect(screen.queryByRole("button", { name: "最小化" })).toBeNull();
 });

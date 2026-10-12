@@ -1,8 +1,9 @@
-import { AppWindow, Bell, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { AppWindow, Bell, FolderDown, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
 import { isTauri } from "../platform/env";
+import { readAskDownloadLocation, writeAskDownloadLocation } from "../platform/download";
 import { readRunInBackground, runInBackgroundNote, writeRunInBackground } from "../platform/background";
 import { DEFAULT_ZOOM, stepZoom, useZoom, writeZoom, ZOOM_STEPS, zoomLabel } from "../platform/zoom";
 import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
@@ -948,7 +949,7 @@ export function LanguageSettings({ controller }: { controller: AppController }) 
 }
 
 /** 「入力」: the send key (this device) and the templates (mine, and the workspace's for an admin). */
-function InputSection({ controller }: { controller: AppController }) {
+function InputSection({ controller, desktop = isTauri() }: { controller: AppController; desktop?: boolean }) {
   return (
     <div className="space-y-6">
       <section className="space-y-2">
@@ -974,9 +975,37 @@ function InputSection({ controller }: { controller: AppController }) {
           ))}
         </div>
       </section>
+      {desktop && <DownloadLocationCard />}
       <QuickReactionsSettings controller={controller} />
       <TemplatesSettings controller={controller} />
     </div>
+  );
+}
+
+/** 「保存先を毎回選ぶ」 (desktop app, this device; docs/PREVIEWS.md §9): off saves straight into Downloads. */
+export function DownloadLocationCard() {
+  const [ask, setAsk] = useState(readAskDownloadLocation);
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold">{t("settings.download.title")}</h3>
+      <label className={cn(CARD, "cursor-pointer")}>
+        <FolderDown size={18} className="text-muted" />
+        <span className="min-w-0 flex-1 text-sm">
+          {t("settings.download.ask")}
+          <span className="block text-xs text-muted">{ask ? t("settings.download.askOn") : t("settings.download.askOff")}</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="h-4 w-4 accent-[var(--accent)]"
+          checked={ask}
+          onChange={(e) => {
+            setAsk(e.target.checked);
+            writeAskDownloadLocation(e.target.checked);
+          }}
+        />
+      </label>
+    </section>
   );
 }
 

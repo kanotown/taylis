@@ -30,6 +30,7 @@ import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSched
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
 import { OverflowToolbar } from "./OverflowToolbar";
+import { composerKey, registerComposerFiles } from "./FileDropZone";
 
 const MAX_LENGTH = 20_000;
 
@@ -274,6 +275,11 @@ export function Composer({
       store.trackUpload(channelId, parentId, -1);
     });
   };
+
+  // Files dropped anywhere on this composer's pane (FileDropZone: the conversation, or the thread) come in here.
+  const takeFiles = useRef(pickFiles);
+  takeFiles.current = pickFiles;
+  useEffect(() => registerComposerFiles(composerKey(channel.id, parentId), (files) => void takeFiles.current(files)), [channel.id, parentId]);
 
   /** Opens a file picker, unless the files picked on it last are still being read (a new pick would replace them). */
   const openPicker = (input: HTMLInputElement | null) => {
@@ -617,14 +623,7 @@ export function Composer({
   );
 
   return (
-    <div
-      className="composer relative px-4 pb-1 pt-1"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        void pickFiles(Array.from(event.dataTransfer.files));
-      }}
-    >
+    <div className="composer relative px-4 pb-1 pt-1">
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
       {pollForm && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} initial={pollForm} onClose={() => setPollForm(null)} />}
       {workflowRun && <WorkflowRunDialog key={workflowRun.id} controller={controller} workflow={workflowRun} here={channel.id} onClose={() => setWorkflowRun(null)} />}

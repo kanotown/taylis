@@ -1,13 +1,15 @@
-import { Download, FileText, Loader2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileText, Loader2, MoveHorizontal, X, ZoomIn, ZoomOut } from "lucide-react";
 import { Dialog } from "radix-ui";
-import { useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { formatSize } from "./Attachments";
+import { formatSize, keepOpenForToasts, ViewerFileButtons } from "./Attachments";
 import { DOCUMENT_CARD_WIDTH, documentPreviewState, documentThumbBox, pageCountLabel } from "./attachmentLayout";
 import type { PDFDocumentProxy } from "./pdfLoader";
-import { cn } from "./primitives";
+import { cn, modKey } from "./primitives";
+import { VIEWER_BUTTON, ViewerHeader } from "./ViewerHeader";
+import { claimZoomKeys, zoomKey } from "../platform/zoom";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 
@@ -103,10 +105,38 @@ function usePreviewThumbnail(controller: AppController, attachment: AttachmentOu
   return url;
 }
 
-const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+export const PDF_ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 const PAGE_MAX_WIDTH = 900;
 
-/** Every page of the preview PDF, rendered with PDF.js as they come near (a 300-page file draws only what is seen). */
+/** The next zoom step up (1) or down (-1) from `zoom`, staying at the ends; 0 is back to the width fit (100 %). */
+export function stepPdfZoom(zoom: number, direction: -1 | 0 | 1): number {
+  if (direction === 0) return 1;
+  if (direction === 1) return PDF_ZOOMS.find((step) => step > zoom + 1e-9) ?? PDF_ZOOMS[PDF_ZOOMS.length - 1]!;
+  return [...PDF_ZOOMS].reverse().find((step) => step < zoom - 1e-9) ?? PDF_ZOOMS[0]!;
+}
+
+/**
+ * The page being read: the last page whose top has passed a line a little below the top of the view (60 px, or 40 %
+ * of a short view), as a PDF viewer counts it; the last page once the view is at the end (a short last page never
+ * reaches the top). `tops` are the pages' offsets in the scroller, in order.
+ */
+export function currentPage(tops: readonly number[], scrollTop: number, viewHeight: number, scrollHeight = Infinity): number {
+  if (tops.length > 0 && scrollTop > 0 && scrollTop + viewHeight >= scrollHeight - 2) return tops.length;
+  const line = scrollTop + Math.min(60, viewHeight * 0.4);
+  let page = 1;
+  for (let index = 0; index < tops.length; index++) if (tops[index]! <= line) page = index + 1;
+  return page;
+}
+
+const prefersReducedMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * The document viewer (M108, docs/PREVIEWS.md §5 and §11): every page of the preview PDF, drawn with PDF.js as they
+ * come near (a 300-page file draws only what is seen), on the dark backdrop. Fits the width at first (100 %, at most
+ * 900 px wide); 50–300 % with the buttons, ⌘ / Ctrl + 「+」 「-」 「0」 (the window's text size keys are lent to the
+ * viewer while it is open). 「n / N」 follows the scroll; ← / → (also PageUp / PageDown when the pages are not focused,
+ * Home / End) go a page back / on, smoothly; Esc closes. The top row moves the window in the desktop app.
+ */
 export function PdfViewer({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [failed, setFailed] = useState(false);
@@ -114,7 +144,10 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
   const [zoom, setZoom] = useState(1);
   const [aspect, setAspect] = useState(Math.SQRT2);
   const [fitWidth, setFitWidth] = useState(PAGE_MAX_WIDTH);
+  const [page, setPage] = useState(1);
   const scroller = useRef<HTMLDivElement | null>(null);
+  // Where the view was (as a share of the pages' height) before a zoom: the same place is shown after it.
+  const keepAt = useRef<number | null>(null);
 
   useEffect(() => {
     const api = controller.api;
@@ -151,53 +184,132 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
     };
   }, [attachment.id, controller.api, attempt]);
 
-  useEffect(() => {
-    const element = scroller.current;
+  // The scroller mounts with the dialog's content (a portal): follow it by callback, not by a one-time effect.
+  const observer = useRef<ResizeObserver | null>(null);
+  const attachScroller = useCallback((element: HTMLDivElement | null) => {
+    scroller.current = element;
+    observer.current?.disconnect();
+    observer.current = null;
     if (!element) return;
     const measure = () => setFitWidth(Math.max(200, Math.min(PAGE_MAX_WIDTH, element.clientWidth - 32)));
     measure();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
+    observer.current = new ResizeObserver(measure);
+    observer.current.observe(element);
   }, []);
 
-  const width = Math.round(fitWidth * zoom);
+  // ⌘ / Ctrl + 「+」 「-」 「0」 zoom the pages while the viewer is open, not the window's text (platform/zoom.ts).
+  useEffect(() => claimZoomKeys(), []);
+
   const pages = doc?.numPages ?? attachment.preview?.pages ?? 0;
-  const zoomIndex = ZOOMS.indexOf(zoom);
+  const width = Math.round(fitWidth * zoom);
+
+  const pageTops = () => {
+    const element = scroller.current;
+    if (!element) return [];
+    return [...element.querySelectorAll<HTMLElement>("[data-pdf-page]")].map((node) => node.offsetTop);
+  };
+  const onScroll = () => {
+    const element = scroller.current;
+    if (!element || !doc) return;
+    setPage(currentPage(pageTops(), element.scrollTop, element.clientHeight, element.scrollHeight));
+  };
+  const goTo = (target: number) => {
+    const element = scroller.current;
+    if (!element || !doc) return;
+    const number = Math.min(Math.max(1, target), doc.numPages);
+    const node = element.querySelector<HTMLElement>(`[data-pdf-page='${number}']`);
+    if (!node) return;
+    setPage(number);
+    const top = Math.max(0, node.offsetTop - 12);
+    if (typeof element.scrollTo === "function") element.scrollTo({ top, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    else element.scrollTop = top;
+  };
+  // The zoom as of the last change (keys pressed faster than React renders step from it, not from a stale render).
+  const zoomNow = useRef(zoom);
+  const changeZoom = (next: number) => {
+    const element = scroller.current;
+    if (next === zoomNow.current) return;
+    zoomNow.current = next;
+    if (element && element.scrollHeight > 0 && keepAt.current === null) keepAt.current = element.scrollTop / element.scrollHeight;
+    setZoom(next);
+  };
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || keepAt.current === null) return;
+    element.scrollTop = keepAt.current * element.scrollHeight;
+    keepAt.current = null;
+  }, [width]);
+
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    const direction = zoomKey(event);
+    if (direction !== null) {
+      event.preventDefault();
+      changeZoom(stepPdfZoom(zoomNow.current, direction));
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey || !doc) return;
+    const inPages = event.target instanceof Node && !!scroller.current?.contains(event.target);
+    const step = event.key === "ArrowLeft" || (event.key === "PageUp" && !inPages) ? -1 : event.key === "ArrowRight" || (event.key === "PageDown" && !inPages) ? 1 : 0;
+    if (step !== 0) {
+      event.preventDefault();
+      goTo(page + step);
+    } else if ((event.key === "Home" || event.key === "End") && !inPages) {
+      event.preventDefault();
+      goTo(event.key === "Home" ? 1 : doc.numPages);
+    }
+  };
+
+  const zoomIndex = PDF_ZOOMS.indexOf(zoom);
   return (
     <Dialog.Root open onOpenChange={(value) => { if (!value) onClose(); }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/85" />
-        <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none">
+        <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/90" />
+        <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none" onKeyDown={onKeyDown} onPointerDownOutside={keepOpenForToasts}>
           <Dialog.Title className="sr-only">{attachment.filename}</Dialog.Title>
           <Dialog.Description className="sr-only">{t("docPreview.description")}</Dialog.Description>
-          <div className="flex items-center gap-2 px-4 py-3 text-white">
+          <ViewerHeader>
             <div className="min-w-0 flex-1">
               <FileName name={attachment.filename} className="text-sm font-medium" />
               <div className="text-xs text-white/70">{[formatSize(attachment.size_bytes), pageCountLabel(pages)].filter(Boolean).join(" · ")}</div>
             </div>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title={t("docPreview.zoomOut")} aria-label={t("docPreview.zoomOut")} disabled={zoomIndex <= 0} onClick={() => setZoom(ZOOMS[Math.max(0, zoomIndex - 1)] ?? 1)}>
+            {doc && doc.numPages > 1 && (
+              <div className="flex items-center" role="group" aria-label={t("docPreview.pages")}>
+                <button type="button" className={VIEWER_BUTTON} title={t("docPreview.prevPage")} aria-label={t("docPreview.prevPage")} disabled={page <= 1} onClick={() => goTo(page - 1)}>
+                  <ChevronLeft size={18} />
+                </button>
+                <span data-page-counter="" aria-live="polite" className="min-w-14 text-center text-xs tabular-nums text-white/90">
+                  {t("docPreview.pageOf", { n: page, total: doc.numPages })}
+                </span>
+                <button type="button" className={VIEWER_BUTTON} title={t("docPreview.nextPage")} aria-label={t("docPreview.nextPage")} disabled={page >= doc.numPages} onClick={() => goTo(page + 1)}>
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
+            <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
+            <button type="button" className={VIEWER_BUTTON} title={`${t("docPreview.zoomOut")} (${modKey()} −)`} aria-label={t("docPreview.zoomOut")} disabled={zoomIndex <= 0} onClick={() => changeZoom(stepPdfZoom(zoom, -1))}>
               <ZoomOut size={18} />
             </button>
-            <button type="button" className="min-w-12 rounded-lg px-1 py-2 text-xs tabular-nums hover:bg-white/15" title={t("docPreview.fitWidth")} onClick={() => setZoom(1)}>
+            <button type="button" data-zoom-level="" className="min-w-12 rounded-lg px-1 py-2 text-xs tabular-nums text-white hover:bg-white/15" title={`${t("docPreview.fitWidth")} (${modKey()} 0)`} onClick={() => changeZoom(1)}>
               {Math.round(zoom * 100)}%
             </button>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title={t("docPreview.zoomIn")} aria-label={t("docPreview.zoomIn")} disabled={zoomIndex >= ZOOMS.length - 1} onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zoomIndex + 1)] ?? 1)}>
+            <button type="button" className={VIEWER_BUTTON} title={`${t("docPreview.zoomIn")} (${modKey()} +)`} aria-label={t("docPreview.zoomIn")} disabled={zoomIndex >= PDF_ZOOMS.length - 1} onClick={() => changeZoom(stepPdfZoom(zoom, 1))}>
               <ZoomIn size={18} />
             </button>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15" title={t("attach.download")} aria-label={t("attach.download")} onClick={() => void controller.downloadAttachment(attachment)}>
-              <Download size={18} />
+            <button type="button" className={VIEWER_BUTTON} title={t("docPreview.fitWidth")} aria-label={t("docPreview.fitWidth")} aria-pressed={zoom === 1} onClick={() => changeZoom(1)}>
+              <MoveHorizontal size={18} />
             </button>
+            <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
+            <ViewerFileButtons attachment={attachment} controller={controller} />
             <Dialog.Close asChild>
-              <button type="button" className="rounded-lg p-2 hover:bg-white/15" title={t("attach.closeEsc")} aria-label={t("common.close")}>
+              <button type="button" className={VIEWER_BUTTON} title={t("attach.closeEsc")} aria-label={t("common.close")}>
                 <X size={20} />
               </button>
             </Dialog.Close>
-          </div>
-          <div ref={scroller} data-pdf-pages="" className="min-h-0 flex-1 overflow-auto px-4 pb-6">
+          </ViewerHeader>
+          <div ref={attachScroller} data-pdf-pages="" tabIndex={-1} onScroll={onScroll} className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 pt-2 focus:outline-none">
             {doc ? (
-              <div className="mx-auto flex w-max flex-col items-center gap-3">
+              <div className="mx-auto flex w-max flex-col items-center gap-4">
                 {Array.from({ length: doc.numPages }, (_, index) => (
                   <PdfPage key={index} doc={doc} number={index + 1} width={width} aspect={aspect} root={scroller.current} />
                 ))}

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 /** 管理 →「アナリティクス」 (M116, docs/ANALYTICS.md §6): the pure helpers and the tab against a fake API. */
+import { saveDownload } from "../src/platform/download";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -102,7 +103,7 @@ async function setup() {
   const store = new Store();
   store.setMe({ id: "u-root", username: "root", display_name: "Root", role: "admin", has_password: true } as never);
   const proxy = new Proxy(api as Record<string, unknown>, { get: (t, key: string) => t[key] ?? (async () => []) });
-  const controller = { store, api: proxy, engine: { ai: { loadStatus: async () => {} } }, isAdmin: true, can: () => true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn() } as unknown as AppController;
+  const controller = { store, api: proxy, engine: { ai: { loadStatus: async () => {} } }, isAdmin: true, can: () => true, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn(), saveFile: async (name: string, blob: Blob) => { await saveDownload(name, blob); } } as unknown as AppController;
   render(<AdminBody controller={controller} />);
   await settle();
   fireEvent.click(screen.getByRole("tab", { name: "アナリティクス" }));

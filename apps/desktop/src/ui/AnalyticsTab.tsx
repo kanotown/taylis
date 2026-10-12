@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "../api/errors";
 import type { AnalyticsMemberOut, AnalyticsMemberSort, AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "../api/types";
-import { saveDownload } from "../platform/download";
 import type { AppController } from "../state/app";
 import { t } from "../i18n";
 import { absoluteTime, barLayout, barPath, csvFilename, dayLabel, deviceTimeZone, INACTIVE_CHOICES, MEMBER_COLUMNS, nextSort, PAGE_SIZE, type Period, PERIODS, platformLabel, relativeTime } from "./analytics";
@@ -231,7 +230,7 @@ function MembersTable({ controller, reload }: { controller: AppController; reloa
     if (!controller.api) return;
     setBusy(true);
     try {
-      await saveDownload(csvFilename(), await controller.api.adminAnalyticsMembersCsv(filters));
+      await controller.saveFile(csvFilename(), await controller.api.adminAnalyticsMembersCsv(filters));
     } catch (error) {
       controller.setError(error);
     } finally {
