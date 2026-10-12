@@ -89,6 +89,8 @@ CREATE TABLE users (
   quiet_hours_end       smallint,
   quiet_hours_days      smallint[],             -- 0 = 月 … 6 = 日 (NULL = 毎日)
   quiet_hours_tz        text,                   -- IANA タイムゾーン。API では quiet_hours {start, end, days, tz}
+                                                -- 2026-10-13 (移行 0117) 既定は 22:00〜7:00・毎日・Asia/Tokyo。人の新しいアカウントはこれで作り、
+                                                -- 移行で窓の無い人（bot 以外）にも入れた。本人が外せば NULL
   notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
   presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える。ステータスのメニューの「オフライン表示」(PRESENCE.md §11)
   presence_manual       varchar(16) CHECK (presence_manual IN ('away')),  -- 移行 0111、PRESENCE.md §11: 'away' = 自分で選んだ「離席中」(つながっている間 hub が away と配る)。NULL = 自動。UserMe だけに載る

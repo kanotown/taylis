@@ -25,6 +25,7 @@ from app.modules.lab import service as lab
 from app.modules.moderation.models import UserBlock
 from app.modules.sso import repository as sso_repo
 from app.modules.totp import service as totp
+from app.modules.users import dnd
 from app.modules.users import service as users
 from app.modules.users import username as usernames
 from app.modules.users.events import (
@@ -93,6 +94,7 @@ async def create_user_in_tx(
         role=data.role,
         must_change_password=must_change_password,
     )
+    dnd.apply_default_quiet_hours(user)
     db.add(user)
     await db.flush()
     await emit_user_event(db, USER_CREATED, user)

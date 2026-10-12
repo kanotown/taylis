@@ -10,6 +10,19 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.modules.users.models import User
 
+# A new person's quiet hours (2026-10-13): 22:00 → 07:00 every day in Japan time, so pushes stay
+# quiet at night until they change it (migration 0117 gave the same to everyone without a window).
+DEFAULT_QUIET_HOURS_START = 22 * 60
+DEFAULT_QUIET_HOURS_END = 7 * 60
+DEFAULT_QUIET_HOURS_TZ = "Asia/Tokyo"
+
+
+def apply_default_quiet_hours(user: User) -> None:
+    user.quiet_hours_start = DEFAULT_QUIET_HOURS_START
+    user.quiet_hours_end = DEFAULT_QUIET_HOURS_END
+    user.quiet_hours_days = None  # every day
+    user.quiet_hours_tz = DEFAULT_QUIET_HOURS_TZ
+
 
 def valid_zone(name: str) -> bool:
     try:
