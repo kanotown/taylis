@@ -36,7 +36,8 @@ describe("dictionaries", () => {
   it("English and Chinese texts are not left in Japanese (kana)", () => {
     const kana = /[぀-ヿ]/;
     // Names and examples that are Japanese on purpose.
-    const allowed = new Set<string>(["settings.profile.readingPlaceholder", "commands.shrug.description"]);
+    // The checkbox hint quotes the post's 「はい」 / 「いいえ」, which the server writes in Japanese for every reader.
+    const allowed = new Set<string>(["settings.profile.readingPlaceholder", "commands.shrug.description", "workflow.typeHint.checkbox"]);
     for (const key of Object.keys(ja) as MessageKey[]) {
       if (allowed.has(key)) continue;
       expect(kana.test(en[key]), `en ${key}: ${en[key]}`).toBe(false);
