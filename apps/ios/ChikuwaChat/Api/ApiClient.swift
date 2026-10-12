@@ -57,6 +57,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     var refreshRetryDelays: [TimeInterval] = [1, 2, 4, 8]
     var onTokens: ((TokenResponse) -> Void)?
     var onSignedOut: (() -> Void)?
+    /// The Keychain account ("server|username") whose tokens the Share Extension shares (MOBILE_UI.md §20.3): a refresh
+    /// then takes the shared token lock and starts from the stored refresh token. nil (tests, a sign-in in progress)
+    /// refreshes from `refreshToken` alone.
+    var sharedAccount: String?
     private let session: URLSession
     private var refreshTask: Task<TokenResponse, Error>?
     /// A refresh answers quickly or is retried; the old token is honoured for 30 s only (SECURITY.md §2.3).
@@ -128,10 +132,19 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func refresh() async throws -> TokenResponse {
         if let task = refreshTask { return try await task.value }
-        guard let token = refreshToken else { throw ApiError.api(status: 401, code: "missing_token", message: "No refresh token") }
+        guard refreshToken != nil else { throw ApiError.api(status: 401, code: "missing_token", message: "No refresh token") }
         let version = sessionVersion
         let delays = refreshRetryDelays
+        let account = sharedAccount
         let task = Task<TokenResponse, Error> {
+            // MOBILE_UI.md §20.3: the Share Extension refreshes this account's session too. Under the shared lock, and
+            // from the refresh token the Keychain holds now (the extension may have rotated it since it was read).
+            let lock = account != nil ? await SharedTokens.lock() : nil
+            defer { lock?.release() }
+            if let account, version == sessionVersion, let stored = SharedTokens.refreshToken(account: account), stored != refreshToken {
+                refreshToken = stored
+            }
+            guard let token = refreshToken else { throw ApiError.api(status: 401, code: "missing_token", message: "No refresh token") }
             var attempt = 0
             while true {
                 do {
@@ -1468,34 +1481,5 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         if auth, response.statusCode == 401, error.code != "token_expired" { signOut() }
         if let onError, let own = onError(response.statusCode, data) { throw own }
         throw error
-    }
-}
-
-/// multipart/form-data with a single "file" part (POST /attachments, avatars).
-enum Multipart {
-    static func head(boundary: String, filename: String, contentType: String) -> Data {
-        let name = filename.replacingOccurrences(of: "\"", with: "_")
-        return Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: \(contentType)\r\n\r\n".utf8)
-    }
-
-    static func tail(boundary: String) -> Data { Data("\r\n--\(boundary)--\r\n".utf8) }
-
-    /// head + the file + tail in a temporary file, copied 1 MB at a time; the caller removes it.
-    static func write(head: Data, file: URL, tail: Data) throws -> URL {
-        let out = FileManager.default.temporaryDirectory.appendingPathComponent("upload-\(UUID().uuidString)")
-        guard FileManager.default.createFile(atPath: out.path, contents: head) else { throw CocoaError(.fileWriteUnknown) }
-        do {
-            let writer = try FileHandle(forWritingTo: out)
-            defer { try? writer.close() }
-            try writer.seekToEnd()
-            let reader = try FileHandle(forReadingFrom: file)
-            defer { try? reader.close() }
-            while let chunk = try reader.read(upToCount: 1 << 20), !chunk.isEmpty { try writer.write(contentsOf: chunk) }
-            try writer.write(contentsOf: tail)
-            return out
-        } catch {
-            try? FileManager.default.removeItem(at: out)
-            throw error
-        }
     }
 }

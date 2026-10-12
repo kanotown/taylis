@@ -9,6 +9,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
+    /// MOBILE_UI.md §20.4: a share's background uploads ended after the share sheet closed. The app attaches to the
+    /// share's session, takes the results, posts the message, then lets iOS suspend it again.
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard let shareId = BackgroundShareTransport.shareId(ofSession: identifier), let processor = ShareProcessor.shared else {
+            completionHandler()
+            return
+        }
+        (processor.transport as? BackgroundShareTransport)?.attach(identifier: identifier)
+        Task {
+            _ = await processor.send(shareId)
+            await MainActor.run { completionHandler() }
+        }
+    }
+
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let hex = deviceToken.hexString
         Task { @MainActor in PushCenter.shared.tokenReceived(hex) }

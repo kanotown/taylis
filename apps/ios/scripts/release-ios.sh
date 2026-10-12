@@ -7,7 +7,8 @@
 # 1. Checks: the version (CFBundleShortVersionString) and the build number (CFBundleVersion) in Info.plist, and that
 #    project.yml says the same. Nothing is bumped here: raise the build number (both files) and commit first —
 #    App Store Connect refuses a build number it has already seen for the version. The Notification Service Extension
-#    (NotificationService/Info.plist and its block in project.yml) carries the same version and build number.
+#    and the Share Extension (NotificationService/Info.plist, ShareExtension/Info.plist and their blocks in
+#    project.yml) carry the same version and build number.
 # 2. xcodebuild archive: Release, generic iOS device, automatic signing (the team's Apple Distribution certificate and
 #    an App Store profile are created / fetched with the App Store Connect API key, no Xcode login needed).
 # 3. xcodebuild -exportArchive with ExportOptions (method app-store-connect, destination upload): signs the .ipa and
@@ -84,14 +85,21 @@ step "Checks: Taylis $VERSION (build $BUILD), $BUNDLE_ID, team $TEAM_ID"
 [[ "$BUILD" =~ ^[0-9]+$ ]] || fail "CFBundleVersion is not an integer: $BUILD"
 grep -q "CFBundleShortVersionString: \"$VERSION\"" "$IOS/project.yml" || fail "project.yml's CFBundleShortVersionString differs from Info.plist ($VERSION)"
 grep -q "CFBundleVersion: \"$BUILD\"" "$IOS/project.yml" || fail "project.yml's CFBundleVersion differs from Info.plist ($BUILD)"
-# The Notification Service Extension (PUSH_NOTIFICATIONS.md §16) must carry the app's version and build number.
-EXT_PLIST="$IOS/NotificationService/Info.plist"
-EXT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$EXT_PLIST")"
-EXT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$EXT_PLIST")"
-[[ "$EXT_VERSION" == "$VERSION" && "$EXT_BUILD" == "$BUILD" ]] ||
-  fail "NotificationService/Info.plist says $EXT_VERSION ($EXT_BUILD), the app $VERSION ($BUILD): raise both (and project.yml)"
-[[ "$(grep -c "CFBundleVersion: \"$BUILD\"" "$IOS/project.yml")" == 2 ]] ||
-  fail "project.yml: the app's and NotificationService's CFBundleVersion must both be $BUILD"
+# The Notification Service Extension (PUSH_NOTIFICATIONS.md §16) and the Share Extension (MOBILE_UI.md §20) must
+# carry the app's version and build number.
+EXTENSIONS=(NotificationService ShareExtension)
+for EXT in "${EXTENSIONS[@]}"; do
+  EXT_PLIST="$IOS/$EXT/Info.plist"
+  [ -f "$EXT_PLIST" ] || fail "$EXT/Info.plist is missing (run xcodegen in apps/ios)"
+  EXT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$EXT_PLIST")"
+  EXT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$EXT_PLIST")"
+  [[ "$EXT_VERSION" == "$VERSION" && "$EXT_BUILD" == "$BUILD" ]] ||
+    fail "$EXT/Info.plist says $EXT_VERSION ($EXT_BUILD), the app $VERSION ($BUILD): raise all of them (and project.yml)"
+done
+[[ "$(grep -c "CFBundleVersion: \"$BUILD\"" "$IOS/project.yml")" == "$((${#EXTENSIONS[@]} + 1))" ]] ||
+  fail "project.yml: the app's and every extension's CFBundleVersion (${EXTENSIONS[*]}) must all be $BUILD"
+[[ "$(grep -c "CFBundleShortVersionString: \"$VERSION\"" "$IOS/project.yml")" == "$((${#EXTENSIONS[@]} + 1))" ]] ||
+  fail "project.yml: the app's and every extension's CFBundleShortVersionString (${EXTENSIONS[*]}) must all be $VERSION"
 if [[ -n "$(git -C "$REPO_ROOT" status --porcelain -- apps/ios ':!apps/ios/ChikuwaChat.xcodeproj/xcshareddata')" ]]; then
   echo "  (warning) apps/ios has uncommitted changes: the build will include them" >&2
 fi
@@ -158,6 +166,6 @@ elif ((EXPORT_ONLY)); then
 else
   echo "uploaded Taylis $VERSION build $BUILD. App Store Connect processes it for a few minutes, then it shows in"
   echo "TestFlight (the export compliance question is answered by ITSAppUsesNonExemptEncryption = false)."
-  echo "Next build: raise CFBundleVersion to $((BUILD + 1)) in apps/ios/ChikuwaChat/Info.plist, apps/ios/NotificationService/Info.plist"
-  echo "and apps/ios/project.yml (both targets)."
+  echo "Next build: raise CFBundleVersion to $((BUILD + 1)) in apps/ios/ChikuwaChat/Info.plist, apps/ios/NotificationService/Info.plist,"
+  echo "apps/ios/ShareExtension/Info.plist and apps/ios/project.yml (all three targets)."
 fi
