@@ -3,6 +3,7 @@ package jp.chikuwachat.android
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.ui.DocumentCards
+import jp.chikuwachat.android.ui.DocumentDismiss
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -48,5 +49,41 @@ class DocumentPreviewTest {
     @Test fun thePreviewPdfIsCachedInTheAttachmentsOwnFolder() {
         assertEquals("d/preview.pdf", DocumentCards.cachePath("d"))
         assertEquals("_x_/preview.pdf", DocumentCards.cachePath("/x/"))
+    }
+
+    // Pull down to close (as photos on iOS).
+
+    @Test fun aPullTakesOnlyADownwardDragThatBeganAtTheTop() {
+        assertEquals(30f, DocumentDismiss.takeAfterList(30f, startedAtTop = true, byUser = true), 0.001f)
+        assertEquals(0f, DocumentDismiss.takeAfterList(30f, startedAtTop = false, byUser = true), 0.001f) // scrolled up to the top
+        assertEquals(0f, DocumentDismiss.takeAfterList(30f, startedAtTop = true, byUser = false), 0.001f) // a fling's leftover
+        assertEquals(0f, DocumentDismiss.takeAfterList(-30f, startedAtTop = true, byUser = true), 0.001f) // scrolls down the pages
+    }
+
+    @Test fun movingBackUpUndoesThePullBeforeTheListScrolls() {
+        assertEquals(-20f, DocumentDismiss.takeBeforeList(pull = 50f, availableY = -20f, byUser = true), 0.001f)
+        assertEquals(-50f, DocumentDismiss.takeBeforeList(pull = 50f, availableY = -80f, byUser = true), 0.001f) // the rest scrolls
+        assertEquals(0f, DocumentDismiss.takeBeforeList(pull = 0f, availableY = -20f, byUser = true), 0.001f)
+        assertEquals(0f, DocumentDismiss.takeBeforeList(pull = 50f, availableY = 20f, byUser = true), 0.001f)
+        assertEquals(0f, DocumentDismiss.pulled(10f, -40f), 0.001f)
+        assertEquals(50f, DocumentDismiss.pulled(10f, 40f), 0.001f)
+    }
+
+    @Test fun releaseClosesPastTheThresholdOrOnAFlick() {
+        val density = 3f
+        val extent = 2400f // 800 dp
+        assertEquals(420f, DocumentDismiss.threshold(extent, density), 0.001f) // 140 dp, less than 22 %
+        assertTrue(DocumentDismiss.shouldClose(500f, 0f, extent, density))
+        assertFalse(DocumentDismiss.shouldClose(300f, 0f, extent, density))
+        assertTrue(DocumentDismiss.shouldClose(60f, 1000f * density, extent, density))   // a flick
+        assertFalse(DocumentDismiss.shouldClose(500f, -400f * density, extent, density)) // thrown back
+        assertFalse(DocumentDismiss.shouldClose(0f, 2000f * density, extent, density))
+    }
+
+    @Test fun theBackdropFadesByHalfTheScreen() {
+        assertEquals(0f, DocumentDismiss.progress(0f, 2000f), 0.001f)
+        assertEquals(0.5f, DocumentDismiss.progress(500f, 2000f), 0.001f)
+        assertEquals(1f, DocumentDismiss.progress(1500f, 2000f), 0.001f)
+        assertEquals(0f, DocumentDismiss.progress(100f, 0f), 0.001f)
     }
 }
