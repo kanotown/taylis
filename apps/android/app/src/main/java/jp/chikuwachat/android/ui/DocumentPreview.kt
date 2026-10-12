@@ -11,11 +11,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Stable
@@ -30,6 +27,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.unit.Velocity
@@ -291,10 +293,7 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(
                     // Pulled down from the header at any time (as from the first page's top below).
-                    Modifier.fillMaxWidth().draggable(
-                        rememberDraggableState { pull.drag(it) }, Orientation.Vertical,
-                        onDragStopped = { pull.release(it) },
-                    ),
+                    Modifier.fillMaxWidth().pullToCloseHandle(pull),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.document_preview_close_preview)) }
@@ -449,6 +448,46 @@ internal class PullToClose(private val scope: CoroutineScope, private val densit
             if (offset == 0f) return Velocity.Zero
             release(available.y)
             return available
+        }
+    }
+}
+
+/**
+ * A strip that pulls the viewer at any time (its header). The strip moves with the pull, so its local positions lag the
+ * finger (a `draggable` followed it at about half speed): the move and the release speed are read in the window's
+ * coordinates.
+ */
+internal fun Modifier.pullToCloseHandle(pull: PullToClose): Modifier = composed {
+    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    onGloballyPositioned { placed[0] = it }.pointerInput(pull) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            fun inWindow(position: Offset): Offset = placed[0]?.takeIf { it.isAttached }?.localToWindow(position) ?: position
+            val start = inWindow(down.position)
+            var last = start
+            var pulling = false
+            val velocity = VelocityTracker()
+            velocity.addPosition(down.uptimeMillis, start)
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                if (!pulling && change.isConsumed) return@awaitEachGesture
+                val now = inWindow(change.position)
+                velocity.addPosition(change.uptimeMillis, now)
+                if (!pulling) {
+                    val moved = now - start
+                    if (moved.getDistance() <= touchSlop) continue
+                    if (abs(moved.y) <= abs(moved.x)) return@awaitEachGesture // sideways: not a pull
+                    pulling = true
+                    last = now
+                }
+                pull.drag(now.y - last.y)
+                last = now
+                change.consume()
+            }
+            if (pulling) pull.release(velocity.calculateVelocity().y)
         }
     }
 }
