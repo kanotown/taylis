@@ -9,7 +9,7 @@
  */
 import { Ellipsis, EyeOff, SlidersHorizontal } from "lucide-react";
 import { Tooltip } from "radix-ui";
-import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useLayoutEffect, useRef, useState } from "react";
 
 import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
 import type { PlaceSpot } from "./desktopPlaces";
@@ -285,10 +285,11 @@ function RailBadge({ badge }: { badge: PlaceBadge }) {
 }
 
 /** The name to the right of an icon (and the page's one-line description), on hover and on keyboard focus. */
-function RailTip({ label, hint, count, children }: { label: string; hint?: string; count?: number; children: ReactNode }) {
+// Forwards the props and ref a wrapping `asChild` trigger (the 「新しいタブで開く」 menu) passes, so both reach the button.
+const RailTip = forwardRef<HTMLElement, { label: string; hint?: string; count?: number; children: ReactNode } & HTMLAttributes<HTMLElement>>(function RailTip({ label, hint, count, children, ...rest }, ref) {
   return (
     <Tooltip.Root>
-      <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+      <Tooltip.Trigger asChild {...rest} ref={ref as Ref<HTMLButtonElement>}>{children}</Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Content side="right" sideOffset={8} collisionPadding={8} className="pointer-events-none z-50 max-w-60 rounded-md bg-ink px-2 py-1 text-xs leading-snug text-canvas shadow-md">
           <span className="block font-semibold">
@@ -301,4 +302,4 @@ function RailTip({ label, hint, count, children }: { label: string; hint?: strin
       </Tooltip.Portal>
     </Tooltip.Root>
   );
-}
+});
