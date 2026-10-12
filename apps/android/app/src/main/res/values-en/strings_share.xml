@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MOBILE_UI.md §20: sharing from other apps into Taylis (ShareActivity, ShareWorker). -->
+<resources>
+    <string name="share_in_title">Share</string>
+    <string name="share_in_message_hint">Message (optional)</string>
+    <string name="share_in_destination">Send to: %1$s</string>
+    <string name="share_in_search">Search conversations</string>
+    <string name="share_in_recent">Recent</string>
+    <string name="share_in_all">All conversations</string>
+    <string name="share_in_no_results">No matches</string>
+    <string name="share_in_no_destinations">No conversations to send to</string>
+    <string name="share_in_choose_destination">Choose where to send it</string>
+    <string name="share_in_sign_in_to_continue">Sign in to continue sharing</string>
+    <string name="share_in_workspace">Workspace</string>
+    <string name="share_in_refused_items">Some items can\'t be shared: this app can\'t read them (%1$d)</string>
+    <string name="share_in_too_many_files">You can attach up to %1$d files</string>
+    <string name="share_in_file_unreadable">Couldn\'t read \"%1$s\"</string>
+    <string name="share_in_file_empty">\"%1$s\" is empty</string>
+    <string name="share_in_file_too_large">\"%1$s\" is too large (limit %2$s)</string>
+    <string name="share_in_text_too_long">Messages can be up to %1$d characters</string>
+    <string name="share_in_nothing">Nothing to send</string>
+    <string name="share_in_channel_progress">Sending shared items</string>
+    <string name="share_in_channel_result">Shared item results</string>
+    <string name="share_in_sending">Sending…</string>
+    <string name="share_in_sending_to">Sending to %1$s</string>
+    <string name="share_in_waiting">Will send when the connection is back</string>
+    <string name="share_in_posted_to">Sent to %1$s</string>
+    <string name="share_in_failed_to">Couldn\'t send to %1$s</string>
+    <string name="share_in_failed_files_gone">The shared files are no longer on this device. Share them again.</string>
+    <string name="share_in_started">Sending. A notification tells you when it\'s done.</string>
+</resources>
