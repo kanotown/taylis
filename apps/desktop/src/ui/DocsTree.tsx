@@ -172,7 +172,7 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTempla
           >
             <ChevronRight size={14} className={cn("transition-transform", open && "rotate-90")} />
           </button>
-          <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(false))}>
+          <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
             <button
               type="button"
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
@@ -190,7 +190,7 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onNewTempla
                 <Plus size={14} />
               </button>
             )}
-            <RowMenu controller={controller} page={page} onOpen={() => onOpen(page.id)} onNewTab={newTab && (() => newTab(false))} onAddChild={() => onCreate({ parentId: page.id, access: "workspace" })} onRename={() => setRenaming(page)} onTrash={() => onTrash(page)} onTopLevel={page.parent_id && pages.has(page.parent_id) ? () => { const target = rootTarget(pages, page.id, page.private ? "private" : "shared"); if (target) onMove(page.id, target); } : null} />
+            <RowMenu controller={controller} page={page} onOpen={() => onOpen(page.id)} onNewTab={newTab && (() => newTab(true))} onAddChild={() => onCreate({ parentId: page.id, access: "workspace" })} onRename={() => setRenaming(page)} onTrash={() => onTrash(page)} onTopLevel={page.parent_id && pages.has(page.parent_id) ? () => { const target = rootTarget(pages, page.id, page.private ? "private" : "shared"); if (target) onMove(page.id, target); } : null} />
           </span>
         </div>
         {kids.length > 0 && open && <ul role="group">{kids.map((kid) => row(kid, depth + 1))}</ul>}

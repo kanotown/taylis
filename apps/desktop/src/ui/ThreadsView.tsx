@@ -217,7 +217,7 @@ function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel,
       <ContextMenu.Portal>
         <ContextMenu.Content className={MENU}>
           <ContextMenu.Item className={MENU_ITEM} onSelect={onOpen}>{t("threads.openThread")}</ContextMenu.Item>
-          {onNewTab && <ContextMenu.Item className={MENU_ITEM} data-open-new-tab="" onSelect={() => onNewTab(false)}>{t("tabs.openInNewTab")}</ContextMenu.Item>}
+          {onNewTab && <ContextMenu.Item className={MENU_ITEM} data-open-new-tab="" onSelect={() => onNewTab(true)}>{t("tabs.openInNewTab")}</ContextMenu.Item>}
           {channel && <ContextMenu.Item className={MENU_ITEM} onSelect={onOpenChannel}>{openLabel}</ContextMenu.Item>}
         </ContextMenu.Content>
       </ContextMenu.Portal>

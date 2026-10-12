@@ -262,6 +262,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [recent, setRecent] = useState(() => readRecent(recentStorageKey));
   const [pinsOpen, setPinsOpen] = useState(false);
   const [switcher, setSwitcher] = useState(false);
+  /** MOBILE_UI.md §19: the switcher was opened by ⌘T / ＋, so its pick goes to a new tab (closing it creates nothing). */
+  const [switcherForTab, setSwitcherForTab] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
   // M37, phones: 「移動・検索」 or ✏️'s picker over the screen, 「未読をまとめる」, and the recent conversations.
   const [homeOverlay, setHomeOverlay] = useState<"jump" | "compose" | null>(null);
@@ -1095,7 +1097,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     deckRef.current = updated;
     setDeck(updated);
   };
-  /** `target` in a new tab right of the active one: behind it (a middle click, ⌘-click, the menus) or in front (⌘⇧-click, ⌘T). */
+  /** `target` in a new tab right of the active one: behind it (a middle click, ⌘⇧-click) or in front (the menus, ⌘-click, ⌘T's pick). */
   const openInNewTab = (target: TabTarget, foreground = false) => {
     const current = deckRef.current;
     if (current.tabs.length >= MAX_TABS) {
@@ -1144,10 +1146,24 @@ export function MainScreen({ controller }: { controller: AppController }) {
     deckRef.current = updated;
     setDeck(updated);
   };
-  /** ⌘T / ＋: a new tab on the conversation on screen, with 「移動・検索」 open to take it somewhere else. */
+  /**
+   * ⌘T / ＋: 「移動・検索」 opens and only its pick becomes a new tab, in front (`pickInNewTab`); Esc or closing it
+   * creates nothing.
+   */
   const newTab = () => {
-    openInNewTab({ ...EMPTY_TARGET, currentId }, true);
+    if (deckRef.current.tabs.length >= MAX_TABS) {
+      controller.setNotice(t("tabs.tooMany", { max: MAX_TABS }));
+      return;
+    }
+    setSwitcherForTab(true);
     setSwitcher(true);
+  };
+  /** The switcher's pick after ⌘T / ＋: a conversation (or a canvas in its 「キャンバス」 tab) in a new tab, in front. */
+  const pickInNewTab = (channelId: string, canvasId: string | null = null) => {
+    setSwitcher(false);
+    setSwitcherForTab(false);
+    if (canvasId) setCanvasChoice((choice) => ({ ...choice, [channelId]: canvasId }));
+    openInNewTab({ ...channelTarget(channelId), tab: canvasId ? "canvas" : "messages" }, true);
   };
   /** A key of the tabs (true: done, the key is taken). */
   const runTabCommand = (command: TabCommand): boolean => {
@@ -1345,6 +1361,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         controller.switchToIndex(Number(event.altKey ? event.code.slice(5) : event.key) - 1);
       } else if (mod && !event.shiftKey && key === "k" && !covered) {
         event.preventDefault();
+        setSwitcherForTab(false);
         setSwitcher(true);
       } else if (mod && event.shiftKey && key === "k" && !covered) {
         event.preventDefault();
@@ -1389,7 +1406,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
         }
       }
     };
-    const onSwitch = () => setSwitcher(true);
+    const onSwitch = () => {
+      setSwitcherForTab(false);
+      setSwitcher(true);
+    };
     // Profile cards (UserPopover) ask the screen to open a DM or the status editor.
     const onOpenChannel = (event: Event) => open(String((event as CustomEvent<string>).detail));
     const onOpenStatus = () => setDialog("status");
@@ -1989,7 +2009,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <SummaryDialog controller={controller} />
       <NoticeToast controller={controller} />
       <DownloadToasts controller={controller} />
-      {switcher && <QuickSwitcher controller={controller} onOpen={open} onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id)} onClose={() => setSwitcher(false)} />}
+      {switcher && (switcherForTab && tabsOn ? (
+        <QuickSwitcher controller={controller} placeholder={t("tabs.pickerPlaceholder")} onOpen={(id) => pickInNewTab(id)} onOpenCanvas={(canvas) => pickInNewTab(canvas.channel_id, canvas.id)} onClose={() => { setSwitcher(false); setSwitcherForTab(false); }} />
+      ) : (
+        <QuickSwitcher controller={controller} onOpen={open} onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id)} onClose={() => { setSwitcher(false); setSwitcherForTab(false); }} />
+      ))}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "directory" && <DirectoryDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}

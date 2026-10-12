@@ -152,7 +152,7 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
           const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
           return (
           <RailTip key={place.key} label={place.label} hint={place.hint} count={place.count}>
-            <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(false))}>
+            <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
             <button
               type="button"
               data-rail-item=""

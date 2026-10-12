@@ -1,7 +1,8 @@
 /**
  * The tab bar of the wide layout (docs/MOBILE_UI.md §19) and the 「新しいタブで開く」 gestures shared by the sidebar rows,
  * the places rail, the threads list and the Docs tree: a middle click, ⌘-click (Ctrl-click on Windows / Linux) and the
- * right-click menu's item. ⌘⇧-click opens the new tab in front, as a browser does.
+ * right-click menu's item. The menu's item and ⌘-click open the new tab in front (the user's wish); a middle click opens
+ * it behind, as a browser does. Shift turns either click the other way.
  */
 import { ContextMenu } from "radix-ui";
 import { Plus, X } from "lucide-react";
@@ -36,11 +37,11 @@ export function middleClickProps(open: ((foreground: boolean) => void) | undefin
   };
 }
 
-/** A click that opens in a new tab with ⌘ / Ctrl held (true: handled), else the row's own click. */
+/** A click that opens in a new tab with ⌘ / Ctrl held, in front (⌘⇧: behind) (true: handled), else the row's own click. */
 export function clickOrNewTab(event: MouseEvent, open: ((foreground: boolean) => void) | undefined): boolean {
   if (!open || !isNewTabClick(event)) return false;
   event.preventDefault();
-  open(event.shiftKey);
+  open(!event.shiftKey);
   return true;
 }
 
