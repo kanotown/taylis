@@ -68,7 +68,7 @@ export function App({ controller }: { controller: AppController }) {
       {dragStrip}
       <WorkspaceRail controller={controller} />
       {/* macOS: the title row goes on across the window above every screen, as on the main one (the rail starts below
-          it); the window buttons reach past the rail's 68 px. */}
+          it); the window buttons reach past the rail's 56 px. */}
       {controller.screen !== "main" && overlayTitleBar() ? (
         <div className="flex min-w-0 flex-1 flex-col">
           <ScreenTitleRow />

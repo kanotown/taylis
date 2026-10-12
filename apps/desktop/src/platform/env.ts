@@ -37,9 +37,9 @@ export function titleBarKind(): TitleBarKind {
  * it by the zoom, platform/zoom.ts). */
 export const TRAFFIC_LIGHTS_INSET = 84;
 
-/** The workspace rail's width (its class says w-[68px]), on every platform: the macOS window buttons sit in the title
+/** The workspace rail's width (its class says w-[56px]; 68 px until 2026-10-13), on every platform: the macOS window buttons sit in the title
  * row above it (Slack), so it no longer widens to hold them. */
-export const RAIL_WIDTH = 68;
+export const RAIL_WIDTH = 56;
 
 /**
  * The title row's height on macOS: 40 px, never under 40 points. The window buttons are centred in the top 40 points
@@ -50,7 +50,7 @@ export const TITLE_ROW_HEIGHT = "max(40px, calc(40px / var(--ui-zoom, 1)))";
 
 /**
  * With the rail on screen, the left padding of the title row's first cell: the window buttons start over the rail and
- * end 84 points from the window's edge; the cell starts after the rail (68 px, which scales with the zoom), so it keeps
+ * end 84 points from the window's edge; the cell starts after the rail (56 px, which scales with the zoom), so it keeps
  * what is left of the 84 points, and at least its usual 8 px.
  */
 export const TITLE_ROW_INSET_AFTER_RAIL = `max(8px, calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1) - ${RAIL_WIDTH}px))`;
