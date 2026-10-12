@@ -18,12 +18,14 @@ import { t } from "../i18n";
  * Cmd/Ctrl+K: jump to a channel or DM by typing part of its name. M37: filtered and ordered by the shared jump-match rule
  * (apps/shared/jump-match.json, as the phones' 「移動・検索」), not cmdk's fuzzy matching; empty, unread first, then by name.
  */
-export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose }: {
+export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose, placeholder }: {
   controller: AppController;
   onOpen: (id: string) => void;
   /** M44: canvases of my conversations whose title matches follow the conversations. */
   onOpenCanvas?: (canvas: CanvasMeta) => void;
   onClose: () => void;
+  /** The input's hint in place of the usual one (⌘T: the pick opens in a new tab, MOBILE_UI.md §19). */
+  placeholder?: string;
 }) {
   const store = controller.store;
   const me = store.me?.id;
@@ -60,7 +62,7 @@ export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose }: {
           <Command label={t("switcher.title")} loop shouldFilter={false} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229 && isImeKeyEvent(e)) e.preventDefault(); }}>
             <div className="flex items-center gap-2.5 border-b border-line px-4">
               <Search size={16} className="shrink-0 text-muted" />
-              <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder={onOpenCanvas ? t("switcher.placeholderCanvas") : t("switcher.placeholder")} className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />
+              <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder={placeholder ?? (onOpenCanvas ? t("switcher.placeholderCanvas") : t("switcher.placeholder"))} className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />
               <Kbd>Esc</Kbd>
             </div>
             <Command.List className="max-h-[52vh] overflow-y-auto p-1.5">

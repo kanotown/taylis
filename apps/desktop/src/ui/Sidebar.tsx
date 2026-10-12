@@ -266,7 +266,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     return (
       <ReorderRow key={channel.id} id={channel.id} order={order} folded={folded}>
         <div className="fold-inner">
-        <ChannelContextMenu controller={controller} channel={channel} onAction={onChannelAction} onOpenInNewTab={newTab && (() => newTab(false))}>
+        <ChannelContextMenu controller={controller} channel={channel} onAction={onChannelAction} onOpenInNewTab={newTab && (() => newTab(true))}>
         <button
           type="button"
           {...middleClickProps(newTab)}
@@ -638,7 +638,7 @@ function SidebarPlaceRow({ place, onNewTab }: { place: Place; onNewTab?: (key: s
   // MOBILE_UI.md §19: in a new tab (its menu, a middle click, ⌘-click).
   const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
   return (
-    <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(false))}>
+    <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
     <button
       type="button"
       data-nav-item={place.key}

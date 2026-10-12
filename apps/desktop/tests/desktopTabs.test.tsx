@@ -130,47 +130,53 @@ const press = async (w: World, init: KeyboardEventInit) => {
   await settle(w);
   return event;
 };
+/** A conversation picked in 移動・検索 (⌘K, or ⌘T / ＋ for a new tab). */
+const pick = async (w: World, name: string) => {
+  fireEvent.click(within(screen.getByRole("dialog")).getAllByRole("option").find((option) => option.textContent?.startsWith(name))!);
+  await settle(w);
+};
 const openInNewTabFromMenu = async (w: World, element: Element) => {
   fireEvent.contextMenu(element);
   fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "新しいタブで開く" }));
   await settle(w);
 };
 
-it("one tab: no bar; 「新しいタブで開く」 on a row opens it behind the tab on screen, and the bar appears", async () => {
+it("one tab: no bar; 「新しいタブで開く」 on a row opens it in a new tab in front, and the bar appears", async () => {
   const { w } = await setup();
   expect(title()).toBe("c");
   expect(tabList()).toBeNull();
   await openInNewTabFromMenu(w, row("d"));
-  expect(title()).toBe("c"); // a background tab, as a browser opens a link in a new tab
+  expect(title()).toBe("d"); // the user's wish: the menu's item switches to the new tab
   expect(tabNames()).toEqual(["c", "d"]);
-  expect(activeTab()).toBe("c");
-  // d's tab: unread without a mention is a dot (the sidebar's rule); a mention is a red number.
-  expect(tabs()[1]!.querySelector("[data-tab-badge]")?.getAttribute("data-tab-badge")).toBe("dot");
+  expect(activeTab()).toBe("d");
+  expect(document.querySelector("[data-tab-badge]")).toBeNull(); // the tab on screen shows none
   w.engine.stop();
 });
 
-it("a middle click and ⌘-click open in a new tab; ⌘⇧-click brings it to the front; a plain click stays in the tab", async () => {
+it("a middle click opens behind, ⌘-click in front, ⌘⇧-click behind; a plain click stays in the tab", async () => {
   const { w } = await setup();
   middleClick(row("d"));
   await settle(w);
   expect(tabs()).toHaveLength(2);
-  expect(title()).toBe("c");
+  expect(title()).toBe("c"); // a background tab, as a browser opens a link with a middle click
+  // d's tab: unread without a mention is a dot (the sidebar's rule); a mention is a red number.
+  expect(tabs()[1]!.querySelector("[data-tab-badge]")?.getAttribute("data-tab-badge")).toBe("dot");
   fireEvent.click(row("e"), { metaKey: true });
   await settle(w);
-  expect(tabs()).toHaveLength(3);
-  // Right of the active tab, the newest first next to it (a browser's order for links opened one after another is
-  // after the previous ones; ours: right after the active tab).
+  // Right of the active tab, in front.
   expect(tabNames()).toEqual(["c", "e", "d"]);
-  expect(title()).toBe("c");
-  fireEvent.click(place("スレッド"), { metaKey: true, shiftKey: true });
-  await settle(w);
-  expect(activeTab()).toBe("スレッド");
-  expect(place("スレッド").getAttribute("aria-current")).toBe("page");
-  fireEvent.click(row("e"));
-  await settle(w);
   expect(title()).toBe("e");
   expect(activeTab()).toBe("e");
-  expect(tabs()).toHaveLength(4);
+  fireEvent.click(place("スレッド"), { metaKey: true, shiftKey: true });
+  await settle(w);
+  expect(tabNames()).toEqual(["c", "e", "スレッド", "d"]);
+  expect(activeTab()).toBe("e"); // Shift turns ⌘-click the other way: behind
+  expect(title()).toBe("e");
+  fireEvent.click(row("d"));
+  await settle(w);
+  expect(title()).toBe("d");
+  expect(tabNames()).toEqual(["c", "d", "スレッド", "d"]);
+  expect(activeTab()).toBe("d");
   w.engine.stop();
 });
 
@@ -274,31 +280,67 @@ it("the keys: ⌘T, ⌘W, ⌘⇧[ / ], Ctrl+Tab, ⌘1 / ⌘9; with one tab ⌘W 
   expect((await press(w, { key: "w", code: "KeyW", metaKey: true })).defaultPrevented).toBe(false);
   expect((await press(w, { key: "1", code: "Digit1", metaKey: true })).defaultPrevented).toBe(false);
 
+  // ⌘T: 移動・検索 opens and creates nothing yet; Esc leaves no tab behind.
   expect((await press(w, { key: "t", code: "KeyT", metaKey: true })).defaultPrevented).toBe(true);
-  expect(screen.getByRole("dialog")).toBeTruthy(); // 移動・検索, to take the new tab somewhere
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(tabList()).toBeNull();
   await press(w, { key: "Escape" });
-  expect(tabNames()).toEqual(["c", "c"]);
-  middleClick(row("d"));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(tabList()).toBeNull();
+  expect(title()).toBe("c");
+  // ⌘T again and a pick: the pick is the new tab, in front.
+  await press(w, { key: "t", code: "KeyT", metaKey: true });
+  await pick(w, "d");
+  expect(tabNames()).toEqual(["c", "d"]);
+  expect(activeTab()).toBe("d");
+  expect(title()).toBe("d");
+  middleClick(row("e"));
   await settle(w);
-  expect(tabNames()).toEqual(["c", "c", "d"]);
-  expect(tabs()[1]!.getAttribute("aria-selected")).toBe("true");
+  expect(tabNames()).toEqual(["c", "d", "e"]);
+  expect(activeTab()).toBe("d");
 
   await press(w, { key: "}", code: "BracketRight", metaKey: true, shiftKey: true });
-  expect(title()).toBe("d");
+  expect(title()).toBe("e");
   await press(w, { key: "Tab", ctrlKey: true });
   expect(tabs()[0]!.getAttribute("aria-selected")).toBe("true"); // round the end
   await press(w, { key: "Tab", ctrlKey: true, shiftKey: true });
-  expect(title()).toBe("d");
+  expect(title()).toBe("e");
   await press(w, { key: "{", code: "BracketLeft", metaKey: true, shiftKey: true });
-  expect(tabs()[1]!.getAttribute("aria-selected")).toBe("true");
-  await press(w, { key: "9", code: "Digit9", metaKey: true });
   expect(title()).toBe("d");
+  await press(w, { key: "9", code: "Digit9", metaKey: true });
+  expect(title()).toBe("e");
   await press(w, { key: "1", code: "Digit1", metaKey: true });
-  expect(tabs()[0]!.getAttribute("aria-selected")).toBe("true");
-  expect((await press(w, { key: "w", code: "KeyW", metaKey: true })).defaultPrevented).toBe(true);
-  expect(tabs()).toHaveLength(2);
-  expect(tabs()[0]!.getAttribute("aria-selected")).toBe("true"); // the right neighbour of the closed one
   expect(title()).toBe("c");
+  expect((await press(w, { key: "w", code: "KeyW", metaKey: true })).defaultPrevented).toBe(true);
+  expect(tabNames()).toEqual(["d", "e"]);
+  expect(tabs()[0]!.getAttribute("aria-selected")).toBe("true"); // the right neighbour of the closed one
+  expect(title()).toBe("d");
+  w.engine.stop();
+});
+
+it("＋ opens 移動・検索 for a new tab: closing it creates nothing, a pick opens there in front; ⌘K still moves in the tab", async () => {
+  const { w } = await setup();
+  middleClick(row("d"));
+  await settle(w);
+  expect(tabNames()).toEqual(["c", "d"]);
+  fireEvent.click(document.querySelector("[data-new-tab]")!);
+  await settle(w);
+  expect(screen.getByPlaceholderText(/^新しいタブで開く/)).toBeTruthy();
+  await press(w, { key: "Escape" });
+  expect(tabNames()).toEqual(["c", "d"]);
+  expect(activeTab()).toBe("c");
+  fireEvent.click(document.querySelector("[data-new-tab]")!);
+  await settle(w);
+  await pick(w, "e");
+  expect(tabNames()).toEqual(["c", "e", "d"]);
+  expect(activeTab()).toBe("e");
+  expect(title()).toBe("e");
+  // ⌘K after it is the usual switcher: its pick stays in the tab on screen.
+  await press(w, { key: "k", code: "KeyK", metaKey: true });
+  expect(screen.queryByPlaceholderText(/^新しいタブで開く/)).toBeNull();
+  await pick(w, "c");
+  expect(tabNames()).toEqual(["c", "c", "d"]);
+  expect(activeTab()).toBe("c");
   w.engine.stop();
 });
 
@@ -306,7 +348,7 @@ it("the tabs are kept on this device and come back; a tab whose conversation is 
   const { w, controller, view, e } = await setup();
   middleClick(row("d"));
   await settle(w);
-  fireEvent.click(row("e"), { metaKey: true, shiftKey: true });
+  fireEvent.click(row("e"), { metaKey: true });
   await settle(w);
   fireEvent.click(place("スレッド"));
   await settle(w);
@@ -382,14 +424,15 @@ it("a place of the rail and a thread of 「スレッド」 open in a new tab fro
   const { w } = await setup({ before: (world) => void world.server.post(world.channelId, world.bob.id, "僕も", undefined, world.server.channels.get(world.channelId)!.messages[0]!.id) });
   await openInNewTabFromMenu(w, place("カレンダー"));
   expect(tabNames()).toEqual(["c", "カレンダー"]);
+  expect(activeTab()).toBe("カレンダー");
   fireEvent.click(place("スレッド"));
   await settle(w);
+  expect(tabNames()).toEqual(["c", "スレッド"]);
   const card = document.querySelector<HTMLElement>("li[data-row-key]");
   expect(card).not.toBeNull();
   await openInNewTabFromMenu(w, card!);
-  expect(tabNames()).toEqual(["スレッド", "c", "カレンダー"]);
-  fireEvent.click(tabs()[1]!);
-  await settle(w);
+  expect(tabNames()).toEqual(["c", "スレッド", "c"]);
+  expect(tabs()[2]!.getAttribute("aria-selected")).toBe("true");
   expect(title()).toBe("c");
   expect(screen.getByText("返信")).toBeTruthy(); // the thread beside its conversation
   w.engine.stop();
