@@ -34,7 +34,7 @@ protocol ShareUploadTransport: AnyObject, Sendable {
     func detach(shareId: String)
 }
 
-/// Sends pending shares (MOBILE_UI.md §20.4): uploads every file of a share through POST /attachments (multipart
+/// Sends pending shares (MOBILE_UI.md §21.4): uploads every file of a share through POST /attachments (multipart
 /// bodies on disk, uploaded by a background session so they go on after the share sheet closes), then posts one
 /// message with the text and the attachment ids and the share's `client_msg_id`. The same code runs in the Share
 /// Extension (right after 送信) and in the app (woken by the finished background uploads, and at every start and

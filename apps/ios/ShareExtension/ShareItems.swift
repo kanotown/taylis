@@ -23,7 +23,7 @@ struct SharedInput {
     var unreadable = 0
 }
 
-/// Reads the NSItemProviders of a share (MOBILE_UI.md §20.1).
+/// Reads the NSItemProviders of a share (MOBILE_UI.md §21.1).
 enum ShareItems {
     /// Each provider in turn: a web link or a text becomes part of the message, anything else (a file, a picture, a
     /// video, a PDF from GoodNotes or Files) is copied into `folder` by its file representation, streamed by the

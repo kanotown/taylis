@@ -23,6 +23,8 @@ DEVELOPMENT.md §6 (GitHub Releases とアプリ内の更新) のまま。
 - iOS はどちらも `apps/ios/ChikuwaChat/Info.plist` と `apps/ios/project.yml` の 2 か所を同じにする
   (DEVELOPMENT.md §4)。2026-10-06 から Notification Service Extension (`apps/ios/NotificationService/Info.plist` と
   `project.yml` の `NotificationService` の `CFBundleVersion`) も同じ番号にする (App Store Connect が食い違いを警告する)。
+  2026-10-12 から共有拡張（`apps/ios/ShareExtension/Info.plist` と `project.yml` の `ShareExtension`、MOBILE_UI.md §21）も同じ
+  （版もビルド番号も 3 か所）。
   スクリプトと `StoreReleaseTests` が食い違いを止める。
 - Android は `apps/android/app/build.gradle.kts` の `defaultConfig`。
 - スクリプトは番号を上げない。上げてコミットしてから走らせる (どのビルドがどのコミットかをリポジトリで追えるように)。
@@ -55,7 +57,23 @@ DEVELOPMENT.md §6 (GitHub Releases とアプリ内の更新) のまま。
    アーカイブで済んだ。拡張機能の App ID と App Store 用のプロファイルは最初の書き出しで API キー (App Manager 以上) が作る)。
    書き出しが「No profiles for 'jp.chikuwachat.ios.NotificationService'」で止まったら、Developer サイトの Identifiers で
    その App ID を手で作り (機能は無しでよい)、アプリの `jp.chikuwachat.ios` に Communication Notifications が付いているかを見てから
-   もう一度走らせる。拡張機能は App Group も Keychain の共有も使わない。
+   もう一度走らせる。この拡張機能は App Group も Keychain の共有も使わない。
+   **共有拡張（2026-10-12、MOBILE_UI.md §21）**：2 つ目の埋め込みの拡張機能 `ShareExtension`（バンドル ID
+   `jp.chikuwachat.ios.ShareExtension`）。アプリと共有拡張の両方に次の 2 つの機能が要る：
+   - **App Groups**：`group.jp.chikuwachat.ios`（`com.apple.security.application-groups`）。グループ自体を Developer サイトの
+     Identifiers → App Groups に登録し、両方の App ID に付ける。
+   - **Keychain Sharing**：`$(AppIdentifierPrefix)jp.chikuwachat.ios.shared`（`keychain-access-groups`）。チーム ID の前置きの
+     グループなので登録は要らない（プロファイルに入るだけ）。
+   **App Group は API キーの自動署名では登録できない**（App Store Connect API に App Groups が無い。2026-10-12 の
+   `release-ios.sh --export-only` はアーカイブの署名で「Authentication failed」と「Provisioning profile … doesn't include the
+   App Groups capability」で止まった）。最初に一度だけ Developer サイト（Certificates, Identifiers & Profiles）で手でする：
+   (1) Identifiers → ＋ → App Groups → `group.jp.chikuwachat.ios`（説明は「Taylis」など）を登録、(2) Identifiers → ＋ → App IDs →
+   App → バンドル ID `jp.chikuwachat.ios.ShareExtension`（Explicit）、機能は **App Groups** に印、(3) `jp.chikuwachat.ios` と
+   `jp.chikuwachat.ios.ShareExtension` のそれぞれで App Groups の「Configure」→ `group.jp.chikuwachat.ios` を選んで保存。
+   その後はスクリプトの自動署名がプロファイルを作り直す（または Xcode で一度アカウントにサインインして ChikuwaChat を実機向けに
+   ビルドすれば、Xcode が同じことをする）。App ID の機能が変わると古い
+   プロファイルは無効になるので、Xcode から実機に入れる開発用のビルドも一度ビルドし直す（自動署名が作り直す）。
+   前の版から上げた人の refresh token は、新しい版の最初の起動でアプリが共有のグループへ移す（サインアウトしない）。
 5. **App のプライバシー** (App Store Connect の「App のプライバシー」): アプリの `PrivacyInfo.xcprivacy` と同じに答える。
    データはサインインしたワークスペースのサーバ (運用者のサーバ) にだけ送り、開発者や第三者には送らない。
    トラッキングなし。収集するデータ (ユーザに紐付く、目的は「App の機能」): 名前、メールアドレス、ユーザ ID、
@@ -73,7 +91,7 @@ DEVELOPMENT.md §6 (GitHub Releases とアプリ内の更新) のまま。
 ## 3. iOS: リリースのたびに
 
 ```sh
-# 1. ビルド番号を上げる (Info.plist と project.yml の CFBundleVersion、見える版を変えるなら CFBundleShortVersionString も) → コミット
+# 1. ビルド番号を上げる (アプリ・NotificationService・ShareExtension の Info.plist と project.yml の CFBundleVersion、見える版を変えるなら CFBundleShortVersionString も) → コミット
 # 2. 中身の確認 (何もしない)
 apps/ios/scripts/release-ios.sh --dry-run
 # 3. アーカイブ → 署名 → App Store Connect へアップロード

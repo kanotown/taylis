@@ -1,6 +1,6 @@
 import Foundation
 
-/// The app's side of the Share Extension (MOBILE_UI.md §20): what it leaves in the App Group for the share sheet, and
+/// The app's side of the Share Extension (MOBILE_UI.md §21): what it leaves in the App Group for the share sheet, and
 /// the shares it finishes.
 extension AppController {
     /// At start, before anything reads the Keychain: an older build's items move into the shared group (nobody is

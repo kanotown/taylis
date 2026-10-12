@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import UIKit
 
-/// The share sheet's state (MOBILE_UI.md §20): the workspace, what is shared, the message, the destination, and the
+/// The share sheet's state (MOBILE_UI.md §21): the workspace, what is shared, the message, the destination, and the
 /// sending.
 @MainActor
 @Observable

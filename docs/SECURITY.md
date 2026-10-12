@@ -68,6 +68,9 @@ refresh(token):
 - 失効したセッションの WS 接続には `session.revoked` を送って切断する。
 - クライアント側の保存場所: iOS は Keychain、Android は Android Keystore の鍵で暗号化した
   DataStore、Desktop は OS の資格情報ストア。平文ファイルに置かない。
+  iOS は 2026-10-12 から共有拡張（MOBILE_UI.md §21.3）と共有する Keychain のグループ（`<チーム>.jp.chikuwachat.ios.shared`）に
+  refresh token と今の access token を置き、refresh は App Group のファイルロックを持つ間だけ、そのとき Keychain にある
+  トークンから行う（アプリと拡張機能が同じトークンを二重に使って失効させないため）。
 - ブラウザ (M12j、`device.platform = web`): refresh token は応答本文に載せず `chikuwa_refresh` cookie
   (`HttpOnly`、`SameSite=Strict`、`Path=/api/v1/auth`、TLS 時は `Secure`、有効期限 30 日) で返す。
   ページのスクリプトは読めないので XSS で盗めない。`POST /auth/refresh` は本文にトークンが無ければ cookie を

@@ -162,7 +162,7 @@ final class AppController {
     /// The callbacks of a workspace's client (M48: a Google sign-in learns the username only from the exchange).
     private func wire(_ api: ApiClient, serverUrl: String, username: String) {
         let account = "\(serverUrl)|\(username)"
-        // Both tokens go to the Keychain group shared with the Share Extension (MOBILE_UI.md §20.3), and a refresh
+        // Both tokens go to the Keychain group shared with the Share Extension (MOBILE_UI.md §21.3), and a refresh
         // coordinates with the extension's through the shared lock.
         api.sharedAccount = account
         api.onTokens = { tokens in
@@ -212,7 +212,7 @@ final class AppController {
         let saved = Workspaces.load(defaults) { Keychain.get(account: $0) != nil }
         workspaces = saved.list
         activeServerUrl = saved.active
-        startSharing() // MOBILE_UI.md §20
+        startSharing() // MOBILE_UI.md §21
         // Launched by tapping a notification: open its workspace right away (§7).
         let tap = PushCenter.shared.takePendingTap()
         if let tap, let target = Workspaces.route(tap, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel) {
@@ -632,14 +632,14 @@ final class AppController {
             await uploadPushTokens()
             await refreshSummaries()
         }
-        Task { await resumeShares() } // MOBILE_UI.md §20.4: shares left pending
+        Task { await resumeShares() } // MOBILE_UI.md §21.4: shares left pending
     }
 
     /// Background: the server learns at once that this phone is not in use, so its pushes are not held back for
     /// the activity window (PUSH_NOTIFICATIONS.md §4.1); iOS suspends the socket soon after.
     func didEnterBackground() {
         engine?.reportActivity()
-        publishShareCache() // MOBILE_UI.md §20.2: the share sheet's recent conversations
+        publishShareCache() // MOBILE_UI.md §21.2: the share sheet's recent conversations
         // M45 (CANVAS.md §4.4 「背面に回るとき」): what was typed in a canvas is saved now, not after the pause.
         if let canvases = engine?.canvases { Task { await canvases.flushAll() } }
         if let wiki = engine?.wiki { Task { await wiki.flushAll() } }  // M122
@@ -2199,7 +2199,7 @@ final class AppController {
             activeBadge = 0
         }
         Keychain.delete(account: workspace.account)
-        SharedContainer.forget(account: workspace.account) // MOBILE_UI.md §20: the share sheet's cache of it
+        SharedContainer.forget(account: workspace.account) // MOBILE_UI.md §21: the share sheet's cache of it
         SQLitePersistence.destroy(profile: workspace.account)
         RecentSearches.clear(key: RecentSearches.key(account: workspace.account))
         if remove {

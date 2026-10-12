@@ -1127,3 +1127,102 @@ iOS のアプリを iPhone と iPad の両方で動かす (`TARGETED_DEVICE_FAMI
   その会話が開く。キャンセルするとコピーが消える。
 - 見つけて直したこと：Chrome はリンクの共有でも `ClipData` に共有シートのプレビューの画像（ファビコン）を入れるので、それを
   ファイルとして拾っていた（§20.1 で `ClipData` を見ないことにした）。
+
+## 21. iOS の共有拡張（Share Extension、2026-10-12）
+
+ほかのアプリ（ファイル・写真・GoodNotes・Safari など）の共有シートから「Taylis」を選ぶと、ファイル・写真・動画・PDF・文章・
+リンクを会話に送れる。拡張機能 `ShareExtension`（バンドル ID `jp.chikuwachat.ios.ShareExtension`、アプリに埋め込み、版と
+ビルド番号はアプリと同じ）。Android の共有先は別の節。
+
+### 21.1 受け付けるもの
+
+- 有効化の規則（`NSExtensionActivationRule`）：ファイル・画像・動画はそれぞれ 10 件まで（1 メッセージの添付の上限、SECURITY.md §4）、
+  Web の URL・Web ページは 1 件、文章。型は問わない（サーバが先頭バイトで判定する）。
+- `NSItemProvider` ごとに：ファイルでないリンク（Safari のページなど）と文章はメッセージの本文に入れる（改行でつなぐ。送る前に
+  直せる）。それ以外はファイルとして、システムが渡すファイル表現（`loadFileRepresentation`）を App Group の共有のフォルダに
+  そのまま複写する（ディスクからディスクへ。メモリに丸ごと読まない：拡張機能のメモリ上限 約 120 MB）。メモリ上の画像しか
+  渡さないアプリの画像だけは JPEG にして書く。名前は渡されたファイル名（無ければ型の拡張子を付ける）。読めなかった項目は
+  件数を出す。
+
+### 21.2 画面
+
+- SwiftUI のシート 1 枚（ライト・ダークはシステムに従う。言語はアプリで選んだ言語 → 端末の言語の順で、日本語・英語・簡体字中国語。
+  文言は `ShareExtension/Localizable.xcstrings`、サーバのエラーの文は `ErrorMessages.swift` を共有）。上に「キャンセル」と「送信」。
+- **ワークスペース**：サインインしているワークスペースが 2 つ以上なら選ぶ（最初はアプリで開いていたもの）。
+- **送信先**：最近の会話（アプリが背面に回るときに App Group に残す、開いているワークスペースの参加中の会話。新しい投稿の順、
+  30 件）と検索。検索は初回に `GET /channels`・`GET /users`・`GET /users/me` で参加中の会話をすべて読み、名前（「#」を除く）と
+  DM の相手のユーザー名を、大文字小文字・全角半角を区別せずに語ごとに絞る（名前が語で始まるものが先）。アーカイブ済みと、
+  投稿できないアナウンスチャンネル（オーナーと管理者以外）は出さない。スレッドへの返信は今は無い（トップレベルの投稿だけ）。
+- **添付するファイル**：縮小画像（QuickLook がファイルから作る）・名前・大きさ・外すボタン。サーバの上限（bootstrap の
+  `limits`、アプリが App Group に残す。無ければ 100 MB・10 件）を超えるファイルには「大きすぎます（上限 …）」を出し、送信できない。
+- **メッセージ**：任意の本文（共有された文章・リンクが入っている）。
+- **サインインしていない**（アプリにワークスペースが無い、またはアプリがまだ新しい版で一度も起動していない）：「Taylis を開いて
+  サインインしてください」と閉じるだけ。
+
+### 21.3 認証の共有
+
+- トークンは Keychain だけに置く（SECURITY.md §2.3）。アプリと拡張機能が共有する Keychain のグループ
+  `<チーム ID>.jp.chikuwachat.ios.shared`（`keychain-access-groups`、Info.plist の `TaylisKeychainGroup`）に、ワークスペースごとの
+  refresh token（アカウント `サーバ|ユーザー名`）と、今の access token と期限（`サーバ|ユーザー名#access`）。UserDefaults や
+  ファイルには置かない。
+- **移行**：前の版はアプリだけのグループに refresh token を置いていた。アプリは起動のたびに（Keychain を読む前に）サービス
+  `jp.chikuwachat.ios` の項目を共有のグループへ移す（`SecItemUpdate` で `kSecAttrAccessGroup` を変える。値はそのままなので
+  誰もサインアウトしない。移すものが無ければ何もしない）。新しい項目は最初から共有のグループに作る。署名にグループが無い
+  ビルドではアプリのグループのまま動く。
+- **ローテーションの競合**：refresh token は使うたびに替わり、替わった古いトークンを 30 秒の猶予の後に使うとセッションごと
+  失効する。そこで refresh は App Group のファイルロック（`Locks/tokens.lock`、`flock`。プロセスが終われば外れる）を持っている
+  間だけ行い、そのとき Keychain にある refresh token から始める（アプリの `ApiClient.refresh` も、相手が替えていれば Keychain の
+  新しい方を使う）。拡張機能はふだん Keychain の access token をそのまま使い、期限切れ（あと 60 秒未満）か 401 `token_expired`
+  のときだけロックを取る。ロックの中で、相手がもう新しい access token を置いていればそれを使い、無ければ refresh する。
+  refresh が 401 なら「サインインし直す」扱い（Keychain は消さない。アプリが次に気付いてそのワークスペースだけサインアウトする）。
+
+### 21.4 送信と保留（pending shares）
+
+- 「送信」でまず共有を App Group の `PendingShares/<id>/` に保存する：`share.json`（ワークスペース、会話、本文、
+  `client_msg_id`、ファイルごとの名前・型・大きさ・multipart の境界・アップロード後の添付 id）と `files/`（複写）。
+  シートが開いている間はフォルダの `claim.lock` を持ち、送る人（拡張機能かアプリ）もその間だけ持つので、同じ共有を 2 つの
+  プロセスが同時に送らない。
+- 各ファイルはアプリと同じ `POST /attachments`（multipart、同じ `Multipart` のコード）で上げる。本文はファイルとして
+  `body-<n>` に書き（1 MB ずつ）、共有ごとのバックグラウンドの URLSession（`jp.chikuwachat.ios.share.<id>`、
+  `sharedContainerIdentifier` = App Group）でアップロードする。全部上がったら `POST /channels/{id}/messages` を 1 回、本文・
+  添付 id・共有を作ったときに決めた `client_msg_id` で送る。同じ `client_msg_id` の再送は既にあるメッセージを返すので、
+  誰が何度送っても投稿は 1 つ。
+- シートは進み具合を出して待ち、投稿できたら閉じる。大きなファイルで待てないときは「閉じる（送信は続きます）」：アップロードは
+  システムの中で続き、共有はアプリに任せる。終わったときに拡張機能がもういなければ iOS がアプリを背面で起こし
+  （`handleEventsForBackgroundURLSession`）、アプリは同じセッションにつないで結果を受け取り、投稿してから眠る。
+- **確実さのための選択**：アップロードの結果を受け取れなかった場合も含め、アプリは起動のたびと前面に戻るたびに残っている共有を
+  すべて送り直す（上がっていない分だけ上げ、投稿する）。共有をファイルに残し、投稿が冪等なので、拡張機能が途中で終わっても、
+  通知が来なくても、二重に投稿せずにいつか届く。
+- **失敗**：
+  - 通信できない・サーバの一時的なエラー（429・5xx）：保留。シートは「今は送信できませんでした。Taylis を開いたときにもう一度
+    送信します」。
+  - access token の期限切れ（401）：一度だけ refresh して上げ直す。refresh も断られたら保留（サインインし直すと送る）。
+  - サーバが断った（大きすぎる `attachment_too_large`、`image_too_large`、空のファイル、会話に書けない 403 など）：共有を消して
+    その理由（サーバのエラーの文）を出す。アプリが送っていて断られたときは「「#…」への共有を送信できませんでした：理由」を
+    知らせる。
+  - 投稿が `attachment_invalid`（上げてから 24 時間を過ぎ、サーバが未使用の添付を消した）：一度だけ全部上げ直す。
+  - 7 日たっても送れない共有はアプリが消して知らせる。share.json の無いフォルダ（送信の前に終わったシート）で誰も持って
+    いないものも消す。
+
+### 21.5 アプリと共有するコード・データ
+
+- App Group `group.jp.chikuwachat.ios`（Info.plist の `TaylisAppGroup`）：UserDefaults にワークスペースの一覧（アプリが保存する
+  たびに写す。開いているものが先）、アカウントごとの最近の会話と添付の上限、UI の言語。秘密は置かない。
+- 両方のターゲットに入るコード：`ChikuwaChat/Share/`（Keychain、SharedContainer・FileLock、ShareSession（共有のトークンと
+  拡張機能の API）、PendingShares、ShareProcessor、ShareDestinations）と `Api/Multipart.swift`・`Api/JSON.swift`・
+  `Api/ErrorMessages.swift`・`App/Workspaces.swift`。アプリの `ApiClient` はメインアクターとストアに結び付いているので拡張機能には
+  入れず、共有に要る 6 つの呼び出しだけを `ShareApi` が持つ（同じエンドポイント・同じヘッダ・同じエラーの形）。
+- プライバシーマニフェスト：App Group の UserDefaults は理由 `1C8F.1`（アプリと `ShareExtension/PrivacyInfo.xcprivacy`）。
+
+### 21.6 試験
+
+- `ShareExtensionTests.swift`：送信先の組み立て（アーカイブ・アナウンスの除外、DM の名前、新しい順）と検索（全角半角・語・
+  前方一致が先）、最近の会話のキャッシュとモデル（読み込みは 1 回、抜けた会話が消える、失敗）、保留の保存・一覧・claim の排他・
+  掃除、送信（multipart の本文、1 回の投稿と `client_msg_id`、投稿の応答が無いときの再送で上げ直さないこと、拒否で失敗、
+  通信の断で保留、401 で refresh して上げ直す、`attachment_invalid` で一度上げ直す、ほかのプロセスが送っている共有、
+  前のプロセスが始めたアップロードを始め直さない、閉じたときに手放す）、共有のトークン（往復、有効なら refresh しない、
+  期限切れで refresh して両方保存、相手が先に refresh していればそれを使う、アプリの refresh が拡張機能の替えたトークンから
+  始まる）、Keychain の移行（値を保ったまま共有のグループへ、2 回目は何もしない）。`StoreReleaseTests`：拡張機能が埋め込まれ、
+  版・ビルド番号・グループがアプリと同じで、有効化の規則があること。
+- 手で（シミュレータ、2026-10-12）：ファイル App の PDF を共有 → Taylis → 検索で `#share-ext-test` → 本文を付けて送信 →
+  開発サーバ（:8000）のその会話に PDF 付きのメッセージが 1 つ届いた。

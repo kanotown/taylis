@@ -6,7 +6,7 @@
   reporting. The data types below are what the app sends to those servers, linked to the signed-in account and used
   only for the app's functionality.
   Required-reason APIs: only UserDefaults (CA92.1: the app's own settings, recent searches / emoji, the workspace list;
-  1C8F.1: the App Group's defaults shared with the Share Extension, MOBILE_UI.md §20 — the workspace list, recent
+  1C8F.1: the App Group's defaults shared with the Share Extension, MOBILE_UI.md §21 — the workspace list, recent
   conversations, attachment limits and UI language). File sizes are read for uploads (fileSizeKey, not a timestamp);
   no file timestamps, boot time, disk space or keyboard APIs. Update this file (and
   ShareExtension/PrivacyInfo.xcprivacy) when adding one of those.

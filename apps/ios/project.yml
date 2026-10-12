@@ -55,7 +55,7 @@ targets:
         aps-environment: development
         # PUSH_NOTIFICATIONS.md §16: message pushes show the sender's picture (communication notifications).
         com.apple.developer.usernotifications.communication: true
-        # MOBILE_UI.md §20 (Share Extension): the App Group for the workspace list, the recent conversations and the
+        # MOBILE_UI.md §21 (Share Extension): the App Group for the workspace list, the recent conversations and the
         # pending shares, and the Keychain group for the session tokens. Both shared with ShareExtension.
         com.apple.security.application-groups: [group.jp.chikuwachat.ios]
         keychain-access-groups: [$(AppIdentifierPrefix)jp.chikuwachat.ios.shared]
@@ -80,7 +80,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         # PUSH_NOTIFICATIONS.md §16: the extension donates INSendMessageIntent for communication notifications.
         NSUserActivityTypes: [INSendMessageIntent]
-        # MOBILE_UI.md §20: what the app shares with ShareExtension (Share/SharedContainer.swift, Share/Keychain.swift).
+        # MOBILE_UI.md §21: what the app shares with ShareExtension (Share/SharedContainer.swift, Share/Keychain.swift).
         TaylisAppGroup: group.jp.chikuwachat.ios
         TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
     dependencies:
@@ -122,7 +122,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.NotificationService
         TARGETED_DEVICE_FAMILY: "1,2"
-  # MOBILE_UI.md §20: other apps (Files, Photos, GoodNotes, Safari …) share files, pictures, videos, text and links
+  # MOBILE_UI.md §21: other apps (Files, Photos, GoodNotes, Safari …) share files, pictures, videos, text and links
   # into a conversation. Its versions must equal the app's (release-ios.sh and StoreReleaseTests check it).
   # The code it shares with the app is compiled into both (ChikuwaChat/Share and the files listed here).
   ShareExtension:
