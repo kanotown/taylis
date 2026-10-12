@@ -10,9 +10,9 @@ import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
 import { pressable } from "./actions";
-import { railShown, shownSpot, TIMES_PLACE_KEYS, TIMES_SECTION, timesAnchor, timesAnchorAt, timesAnchorMoved, withRail, withSpot, withTimesBefore, withTimesPlaced } from "./desktopPlaces";
+import { navItemsAfterPlaceDrop, placeMovable, railShown, shownSpot, TIMES_PLACE_KEYS, TIMES_SECTION, timesAnchor, timesAnchorAt, timesAnchorMoved, withRail, withSpot, withTimesBefore, withTimesPlaced } from "./desktopPlaces";
 import { desktopNavKeys, fullNavItems, shownNavItems } from "./navItems";
-import { type Place, PlaceMenuItems, PlacesRail } from "./PlacesRail";
+import { type Place, PlaceMenuItems, type PlaceMove, PlacesRail, usePlaceDrag } from "./PlacesRail";
 import { Badge, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { AddChannelMenu, ChannelContextMenu, type ChannelRowAction, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu, SectionMenu, SectionMenuItem, SectionMenuSeparator, SidebarContextMenu } from "./SidebarMenus";
@@ -164,12 +164,19 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M111: the menu items in my order (UserMe.nav_items; the order is shared with the phones). M140: 「在室状況」 while the
   // workspace has the board on. 2026-10-12 (MOBILE_UI.md §18.2): each stands where I put it (UserMe.desktop_places: the
   // rail, a sidebar row, or only under 「その他」), not by nav_items' `visible` (the phones' tiles).
-  const navItems = shownNavItems(fullNavItems(me?.nav_items), "desktop", desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0));
+  const implementedNav = desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0);
+  const navItems = shownNavItems(fullNavItems(me?.nav_items), "desktop", implementedNav);
   const desktopPlaces = me?.desktop_places;
   const railOn = railShown(desktopPlaces);
   const spotOf = (key: string) => shownSpot(desktopPlaces, key);
   const placeAt = me?.desktop_places !== undefined ? (key: string, spot: Parameters<typeof withSpot>[2]) => void controller.setDesktopPlaces(withSpot(desktopPlaces, key, spot)) : undefined;
   const setRail = me?.desktop_places !== undefined ? (on: boolean) => void controller.setDesktopPlaces(withRail(desktopPlaces, on)) : undefined;
+  // 2026-10-13: a rail icon or a sidebar row dragged onto another moves there in nav_items' one order (the settings'
+  // list, shared with the phones); a server without nav_items keeps the default order (no dragging).
+  const movePlace: PlaceMove | undefined = me && me.nav_items !== undefined ? (dragged, target, after) => {
+    const next = navItemsAfterPlaceDrop(me.nav_items, implementedNav, dragged, target, after);
+    if (next) void controller.setNavItems(next);
+  } : undefined;
   // My own conversation is highlighted in the rail only while no page covers it.
   const pageOpen = threadsActive || activityActive || draftsActive || savedActive || filesActive || canvasesActive || docsActive || calendarActive || tasksActive || deadlinesActive || reservationsActive || attendanceActive || actionsActive || remindersActive || timesFeedActive;
   const icon = (Icon: typeof Bell) => <Icon size={20} strokeWidth={1.9} />;
@@ -508,7 +515,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     <div data-sidebar-column="" className="flex h-full min-h-0 border-r border-sidebar-edge bg-sidebar text-sidebar-fg">
       {/* 2026-10-12 (MOBILE_UI.md §18): the menu items are a rail of icons, so the list below starts with the channels. */}
       {onThreads && railOn && (
-        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} onNewTab={onPlaceInNewTab} />
+        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} onNewTab={onPlaceInNewTab} onMove={movePlace} movable={placeMovable} />
       )}
     {/* MOBILE_UI.md §18.6: right-click on the sidebar's empty space (a row's own menu wins). */}
     <SidebarContextMenu
@@ -585,7 +592,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         <ul data-sidebar-places="" aria-label={t("places.sidebarRows")} className="mb-1 space-y-px">
           {sidebarPlaces.map((entry) => (
             <li key={entry.key}>
-              <SidebarPlaceRow place={entry} onNewTab={onPlaceInNewTab} />
+              <SidebarPlaceRow place={entry} onNewTab={onPlaceInNewTab} onMove={placeMovable(entry.key) ? movePlace : undefined} />
             </li>
           ))}
           {!railOn && (
@@ -634,21 +641,26 @@ export const SECTION_ROW_PAD = "pl-5 pr-2.5";
 /** A place's row near the sidebar's top (MOBILE_UI.md §18.2): the look the menu items had before the rail. */
 const PLACE_ROW = "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors";
 
-function SidebarPlaceRow({ place, onNewTab }: { place: Place; onNewTab?: (key: string, foreground: boolean) => void }) {
+function SidebarPlaceRow({ place, onNewTab, onMove }: { place: Place; onNewTab?: (key: string, foreground: boolean) => void; onMove?: PlaceMove }) {
   // MOBILE_UI.md §19: in a new tab (its menu, a middle click, ⌘-click).
   const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
+  // 2026-10-13: dragged onto another place row it lands before or after it.
+  const drag = usePlaceDrag("sidebar", place.key, onMove);
   return (
     <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
     <button
       type="button"
       data-nav-item={place.key}
       {...middleClickProps(newTab)}
+      {...drag.props}
       onClick={(event) => { if (!clickOrNewTab(event, newTab)) place.onSelect(); }}
       aria-label={place.ariaLabel}
       aria-current={place.active ? "page" : undefined}
       title={place.hint}
       className={cn(
         PLACE_ROW,
+        "relative",
+        drag.dragging && "opacity-50",
         place.emphasis && "font-semibold text-sidebar-strong",
         place.active ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
       )}
@@ -660,6 +672,7 @@ function SidebarPlaceRow({ place, onNewTab }: { place: Place; onNewTab?: (key: s
       ) : place.count ? (
         <span className="text-[11px] opacity-70">{place.count}</span>
       ) : null}
+      {drag.edge && <span aria-hidden className={cn("pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-accent-solid", drag.edge === "before" ? "top-0" : "bottom-0")} />}
     </button>
     </NewTabContextMenu>
   );

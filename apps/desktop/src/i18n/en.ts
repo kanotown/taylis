@@ -2317,7 +2317,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "rail.moreEmpty": "Everything is in the rail or the sidebar",
   "rail.customize": "Place items",
   "rail.pinned": "Show in the rail",
-  "rail.pinnedNote": "Choose for each item: the icon rail, the sidebar, or hidden. Hidden items still open from More. The same on every device (the phone home tiles are not affected).",
+  "rail.pinnedNote": "Choose for each item: the icon rail, the sidebar, or hidden. Hidden items still open from More. The same on every device (the phone home tiles are not affected). Drag an icon or a row to reorder (the order is shared with the phone).",
   "rail.arrange": "Reorder…",
   "places.spot.rail": "Icon rail",
   "places.spot.sidebar": "Sidebar",

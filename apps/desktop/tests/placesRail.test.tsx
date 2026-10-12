@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { chosenSpot, defaultSpot, type DesktopPlaces, type PlaceSpot, railShown, shownSpot, withRail, withSpot } from "../src/ui/desktopPlaces";
-import { DESKTOP_NAV_KEYS, type NavItem } from "../src/ui/navItems";
+import { chosenSpot, defaultSpot, type DesktopPlaces, navItemsAfterPlaceDrop, placeMovable, type PlaceSpot, railShown, shownSpot, withRail, withSpot } from "../src/ui/desktopPlaces";
+import { DESKTOP_NAV_KEYS, fullNavItems, type NavItem, NAV_ORDER } from "../src/ui/navItems";
 import { type Place, PlacesRail, RAIL_ITEM_PITCH, railFit, railLayout, strongestBadge } from "../src/ui/PlacesRail";
 import { Sidebar } from "../src/ui/Sidebar";
 import { FakeServer } from "./fakeServer";
@@ -73,6 +73,29 @@ describe("the rules", () => {
     expect(withSpot(stored, "threads", "hidden").items).toEqual([{ key: "files", place: "hidden" }, { key: "threads", place: "hidden" }, { key: "future", place: "rail" }]);
     expect(withSpot(null, "saved", "sidebar")).toEqual({ rail: true, items: [{ key: "saved", place: "sidebar" }] });
   });
+
+  it("dragging a place (2026-10-13): it moves next to the target in nav_items' one order, the other slots kept; Times stays put", () => {
+    const keys = (list: NavItem[] | null) => list?.map((item) => item.key);
+    // Before 「アクティビティ」: the phones' times-feed and the items this client does not draw keep their slots.
+    const moved = navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "saved", "activity", false);
+    expect(keys(moved)).toEqual(["threads", "saved", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "times-feed", "attendance", "actions"]);
+    expect(moved!.every((item) => item.visible)).toBe(true);
+    // After a target; the phones' visibility and an unknown key are kept.
+    const stored: NavItem[] = [{ key: "future", visible: true }, ...fullNavItems(null).map((item) => (item.key === "files" ? { ...item, visible: false } : item))];
+    const after = navItemsAfterPlaceDrop(stored, DESKTOP_NAV_KEYS, "threads", "docs", true)!;
+    expect(keys(after)!.slice(0, 9)).toEqual(["future", "activity", "drafts", "reminders", "files", "canvases", "docs", "threads", "calendar"]);
+    expect(after.find((item) => item.key === "files")!.visible).toBe(false);
+    // Nothing moves: onto itself, onto its own spot, an unknown or undrawn key.
+    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "files", false)).toBeNull();
+    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "canvases", false)).toBeNull();
+    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "reminders", true)).toBeNull();
+    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "attendance", "files", false)).toBeNull();
+    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "times-feed", "files", false)).toBeNull();
+    expect(NAV_ORDER.desktop[0]).toBe("threads");
+    expect(placeMovable("files")).toBe(true);
+    expect(placeMovable("times-feed")).toBe(false);
+    expect(placeMovable("my-times")).toBe(false);
+  });
 });
 
 describe("the rail", () => {
@@ -119,6 +142,38 @@ describe("the rail", () => {
     const tip = await screen.findByRole("tooltip");
     expect(tip.textContent).toContain("スレッド");
     vi.unstubAllGlobals();
+  });
+
+  it("dragging an icon onto another (2026-10-13): a line before it while over, onMove on the drop; a click still opens", () => {
+    const places = [place("a"), place("b"), place("c"), place("times-feed"), place("d")];
+    const onMove = vi.fn();
+    render(<PlacesRail places={places} spotOf={spots({ d: "sidebar" })} onPlace={vi.fn()} onMove={onMove} movable={placeMovable} />);
+    const icon = (key: string) => rail().querySelector<HTMLElement>(`[data-nav-item="${key}"]`)!;
+    expect(icon("a").getAttribute("draggable")).toBe("true");
+    // Times is not dragged (its order is after the items).
+    expect(icon("times-feed").hasAttribute("draggable")).toBe(false);
+    fireEvent.click(icon("b"));
+    expect(places[1]!.onSelect).toHaveBeenCalledTimes(1);
+    expect(onMove).not.toHaveBeenCalled();
+    fireEvent.dragStart(icon("c"));
+    // jsdom's drag events carry no pointer position: over the upper half, the drop lands before the target.
+    fireEvent.dragOver(icon("a"));
+    expect(icon("a").dataset.dropEdge).toBe("before");
+    expect(icon("a").querySelector("span.bg-accent-solid")).toBeTruthy();
+    // Over itself or Times: no line, no drop.
+    fireEvent.dragOver(icon("times-feed"));
+    expect(icon("times-feed").dataset.dropEdge).toBeUndefined();
+    fireEvent.drop(icon("a"));
+    fireEvent.dragEnd(icon("c"));
+    expect(onMove).toHaveBeenCalledWith("c", "a", false);
+    expect(icon("a").dataset.dropEdge).toBeUndefined();
+    expect(places[0]!.onSelect).not.toHaveBeenCalled();
+    expect(places[2]!.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("without onMove the icons do not drag", () => {
+    render(<PlacesRail places={[place("a"), place("b")]} spotOf={spots({})} onPlace={vi.fn()} />);
+    expect(rail().querySelector("[draggable]")).toBeNull();
   });
 
   it("a short window: the icons that do not fit go under 「その他」, which then carries their badge and highlight", async () => {
@@ -312,6 +367,52 @@ describe("the sidebar with the rail", () => {
     fireEvent.keyDown(within(railOf()).getByRole("button", { name: "項目の配置" }), { key: "Enter" });
     fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "アイコン列を隠す" }));
     expect(setDesktopPlaces).toHaveBeenLastCalledWith({ rail: false, items: [] });
+  });
+
+  it("dragging a rail icon onto another saves nav_items' order (shared with the phones), not desktop_places", () => {
+    const { controller, setNavItems, setDesktopPlaces } = controllerWith(null);
+    draw(controller, handlers());
+    expect(railKeys()).toEqual(["activity", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"]);
+    const icon = (key: string) => railOf().querySelector<HTMLElement>(`[data-nav-item="${key}"]`)!;
+    fireEvent.dragStart(icon("saved"));
+    fireEvent.dragOver(icon("activity"));
+    fireEvent.drop(icon("activity"));
+    fireEvent.dragEnd(icon("saved"));
+    expect(setNavItems).toHaveBeenCalledTimes(1);
+    expect(setNavItems.mock.calls[0]![0]!.map((item) => item.key).slice(0, 4)).toEqual(["threads", "saved", "activity", "drafts"]);
+    expect(setDesktopPlaces).not.toHaveBeenCalled();
+    cleanup();
+    draw(controller, handlers());
+    expect(railKeys()).toEqual(["saved", "activity", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations"]);
+  });
+
+  it("dragging a sidebar row onto another reorders the rows; a rail icon dropped on a row does nothing", () => {
+    const { controller, setNavItems } = controllerWith(null, { rail: true, items: [{ key: "files", place: "sidebar" }] });
+    draw(controller, handlers());
+    expect(rowKeys()).toEqual(["threads", "drafts", "files"]);
+    const row = (key: string) => document.querySelector<HTMLElement>(`[data-sidebar-places] [data-nav-item="${key}"]`)!;
+    // From the rail onto a row: not this list's drag.
+    fireEvent.dragStart(railOf().querySelector<HTMLElement>('[data-nav-item="docs"]')!);
+    fireEvent.dragOver(row("threads"));
+    expect(row("threads").dataset.dropEdge).toBeUndefined();
+    fireEvent.drop(row("threads"));
+    fireEvent.dragEnd(railOf().querySelector<HTMLElement>('[data-nav-item="docs"]')!);
+    expect(setNavItems).not.toHaveBeenCalled();
+    fireEvent.dragStart(row("files"));
+    fireEvent.dragOver(row("threads"));
+    expect(row("threads").dataset.dropEdge).toBe("before");
+    fireEvent.drop(row("threads"));
+    fireEvent.dragEnd(row("files"));
+    expect(setNavItems).toHaveBeenCalledTimes(1);
+    cleanup();
+    draw(controller, handlers());
+    expect(rowKeys()).toEqual(["files", "threads", "drafts"]);
+  });
+
+  it("a server without nav_items: nothing drags", () => {
+    const { controller } = controllerWith(undefined);
+    draw(controller, handlers());
+    expect(document.querySelector("[draggable][data-nav-item]")).toBeNull();
   });
 
   it("a server without desktop_places: the defaults, no customise menu", () => {

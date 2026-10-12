@@ -2317,7 +2317,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "rail.moreEmpty": "全部都在图标栏或侧边栏中",
   "rail.customize": "项目位置",
   "rail.pinned": "显示在图标栏中",
-  "rail.pinnedNote": "可为每个项目选择：图标栏、侧边栏或不显示。不显示的项目仍可从“更多”中打开。所有设备相同（不影响手机主页的磁贴）。",
+  "rail.pinnedNote": "可为每个项目选择：图标栏、侧边栏或不显示。不显示的项目仍可从“更多”中打开。所有设备相同（不影响手机主页的磁贴）。拖动图标或行可调整顺序（顺序与手机共用）。",
   "rail.arrange": "排序…",
   "places.spot.rail": "图标栏",
   "places.spot.sidebar": "侧边栏",
