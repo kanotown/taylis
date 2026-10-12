@@ -4,12 +4,12 @@
  * channels (Slack). Each icon names itself in a tooltip on hover and keyboard focus, carries its unread badge and is
  * highlighted while its page is open. Each place stands where I put it (UserMe.desktop_places, §18.2): in the rail (as
  * many as fit its height, in my order), as a sidebar row, or only under 「その他」. The customise menu 「項目の配置」 moves
- * them and hides the rail; the order is set in 設定 → 表示 → 「サイドバーの項目」. One tab stop; ↑ / ↓ / Home / End move
- * between the icons.
+ * them and hides the rail; the order (nav_items', shared with the phones) is set by dragging an icon onto another
+ * (2026-10-13) or in 設定 → 表示 → 「サイドバーの項目」. One tab stop; ↑ / ↓ / Home / End move between the icons.
  */
 import { Ellipsis, EyeOff, SlidersHorizontal } from "lucide-react";
 import { Tooltip } from "radix-ui";
-import { forwardRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useLayoutEffect, useRef, useState } from "react";
+import { type DragEvent, forwardRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useLayoutEffect, useRef, useState } from "react";
 
 import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
 import type { PlaceSpot } from "./desktopPlaces";
@@ -88,7 +88,7 @@ const ITEM = "relative flex h-10 w-10 shrink-0 items-center justify-center round
 const IDLE = "text-sidebar-fg hover:bg-sidebar-hover hover:text-sidebar-strong";
 const ACTIVE = "bg-sidebar-active text-sidebar-active-fg";
 
-export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onNewTab }: {
+export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onNewTab, onMove, movable }: {
   /** Every place I can open here, in my order. */
   places: readonly Place[];
   /** Where each place stands (rail / sidebar / hidden). */
@@ -101,6 +101,10 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
   onArrange?: () => void;
   /** MOBILE_UI.md §19: a place in a new tab (its menu, a middle click, ⌘-click; true: in front). */
   onNewTab?: (key: string, foreground: boolean) => void;
+  /** 2026-10-13: an icon dragged onto another lands before or after it (undefined: no dragging). */
+  onMove?: PlaceMove;
+  /** Which places drag (default: all, when `onMove` is given). */
+  movable?: (key: string) => boolean;
 }) {
   const root = useRef<HTMLElement>(null);
   const [height, setHeight] = useState(0);
@@ -148,31 +152,9 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
       style={{ width: PLACES_RAIL_WIDTH }}
     >
       <Tooltip.Provider delayDuration={250} disableHoverableContent>
-        {rail.map((place) => {
-          const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
-          return (
-          // The menu outside the tooltip: the tooltip's trigger passes its hover / focus handlers to its child, and a menu
-          // root between them (no element of its own) dropped them, so the names stopped showing (2026-10-12).
-          <NewTabContextMenu key={place.key} onOpenInNewTab={newTab && (() => newTab(true))}>
-            <RailTip label={place.label} hint={place.hint} count={place.count}>
-            <button
-              type="button"
-              data-rail-item=""
-              data-nav-item={place.key}
-              tabIndex={place.key === tabStop ? 0 : -1}
-              aria-label={place.ariaLabel ?? place.label}
-              aria-current={place.active ? "page" : undefined}
-              {...middleClickProps(newTab)}
-              onClick={(event) => { if (!clickOrNewTab(event, newTab)) place.onSelect(); }}
-              className={cn(ITEM, place.active ? ACTIVE : IDLE, place.emphasis && !place.active && "text-sidebar-strong")}
-            >
-              {place.icon}
-              {place.badge && <RailBadge badge={place.badge} />}
-            </button>
-            </RailTip>
-          </NewTabContextMenu>
-          );
-        })}
+        {rail.map((place) => (
+          <RailPlace key={place.key} place={place} tabStop={place.key === tabStop} onNewTab={onNewTab} onMove={!movable || movable(place.key) ? onMove : undefined} />
+        ))}
         <div className="min-h-0 flex-1" />
         <Menu>
           <RailTip label={t("rail.more")}>
@@ -229,6 +211,97 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
       </Tooltip.Provider>
     </nav>
   );
+}
+
+/** One icon of the rail: its tooltip, 「新しいタブで開く」 and, with `onMove`, dragging onto another icon (2026-10-13). */
+function RailPlace({ place, tabStop, onNewTab, onMove }: { place: Place; tabStop: boolean; onNewTab?: (key: string, foreground: boolean) => void; onMove?: PlaceMove }) {
+  const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
+  const drag = usePlaceDrag("rail", place.key, onMove);
+  return (
+    // The menu outside the tooltip: the tooltip's trigger passes its hover / focus handlers to its child, and a menu
+    // root between them (no element of its own) dropped them, so the names stopped showing (2026-10-12).
+    <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
+      <RailTip label={place.label} hint={place.hint} count={place.count}>
+        <button
+          type="button"
+          data-rail-item=""
+          data-nav-item={place.key}
+          tabIndex={tabStop ? 0 : -1}
+          aria-label={place.ariaLabel ?? place.label}
+          aria-current={place.active ? "page" : undefined}
+          {...middleClickProps(newTab)}
+          {...drag.props}
+          onClick={(event) => { if (!clickOrNewTab(event, newTab)) place.onSelect(); }}
+          className={cn(ITEM, place.active ? ACTIVE : IDLE, place.emphasis && !place.active && "text-sidebar-strong", drag.dragging && "opacity-50")}
+        >
+          {place.icon}
+          {place.badge && <RailBadge badge={place.badge} />}
+          {/* The drop line, in the 4 px gap above or below the icon. */}
+          {drag.edge && <span aria-hidden className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-accent-solid", drag.edge === "before" ? "-top-[3px]" : "-bottom-[3px]")} />}
+        </button>
+      </RailTip>
+    </NewTabContextMenu>
+  );
+}
+
+/** A place dropped before (`after` false) or after another, in the rail or among the sidebar rows. */
+export type PlaceMove = (dragged: string, target: string, after: boolean) => void;
+
+/** The drag's data type (the sidebar's sections and conversation rows ignore it). */
+const PLACE_DRAG = "application/x-taylis-place";
+/** The place being dragged and where from (a dragover cannot read the drag's data, only its types). */
+let draggedPlace: { scope: string; key: string } | null = null;
+
+/**
+ * 2026-10-13 (MOBILE_UI.md §18.2): HTML5 dragging of a place among the others of its `scope` (the rail's icons, the
+ * sidebar's rows), as the sidebar's conversation rows and the tabs do: the browser starts a drag only once the pointer
+ * has moved a few px, so a click stays a click. Over another place of the same scope: a line before or after it (by
+ * the pointer's half) and the drop lands there. Without `onMove`: no props (not draggable, no drop target).
+ */
+export function usePlaceDrag(scope: string, key: string, onMove?: PlaceMove) {
+  const [edge, setEdge] = useState<"before" | "after" | null>(null);
+  const [dragging, setDragging] = useState(false);
+  if (!onMove) return { edge: null, dragging: false, props: {} };
+  const mine = () => !!draggedPlace && draggedPlace.scope === scope && draggedPlace.key !== key;
+  const half = (event: DragEvent<HTMLElement>): "before" | "after" => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return box.height > 0 && event.clientY > box.top + box.height / 2 ? "after" : "before";
+  };
+  const props = {
+    draggable: true,
+    "data-place-drag": scope,
+    "data-drop-edge": edge ?? undefined,
+    onDragStart: (event: DragEvent<HTMLElement>) => {
+      event.dataTransfer?.setData(PLACE_DRAG, key);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      draggedPlace = { scope, key };
+      setDragging(true);
+    },
+    onDragEnd: () => {
+      draggedPlace = null;
+      setDragging(false);
+      setEdge(null);
+    },
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      if (!mine()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      const next = half(event);
+      if (edge !== next) setEdge(next);
+    },
+    onDragLeave: () => setEdge(null),
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      setEdge(null);
+      if (!mine() || !draggedPlace) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const dragged = draggedPlace.key;
+      draggedPlace = null;
+      onMove(dragged, key, half(event) === "after");
+    },
+  };
+  return { edge, dragging, props };
 }
 
 /** The places of a menu (「その他」 in the rail or in the sidebar): icon, name, badge or quiet number. */

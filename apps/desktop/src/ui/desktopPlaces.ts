@@ -5,6 +5,7 @@
  * order and the phones' visibility).
  */
 import type { UserMe } from "../api/types";
+import { fullNavItems, type NavItem, reorderNavItems, shownNavItems } from "./navItems";
 
 export type PlaceSpot = "rail" | "sidebar" | "hidden";
 export type DesktopPlaces = NonNullable<UserMe["desktop_places"]>;
@@ -61,6 +62,31 @@ export function withDefaultPlaces(stored: DesktopPlaces | null | undefined): Des
 /** Whether any place or the rail differs from the defaults (the Times section's position aside). */
 export function placesChosen(stored: DesktopPlaces | null | undefined): boolean {
   return !!stored && (!railShown(stored) || (stored.items ?? []).length > 0);
+}
+
+// --- the places' order (2026-10-13, MOBILE_UI.md §18.2) ----------------------------------------------------------
+
+/**
+ * Whether a place reorders by dragging its rail icon or sidebar row: the nav items, whose order is nav_items' (shared
+ * with the phones, the settings' list); the Times feed and my own Times stay after them (§18.5).
+ */
+export function placeMovable(key: string): boolean {
+  return !TIMES_PLACE_KEYS.includes(key);
+}
+
+/**
+ * nav_items after dropping the place `dragged` before (`after` false) or after `target` (both shown nav items, in the
+ * rail or among the sidebar rows): `dragged` moves next to `target` in the one order, the other items (places elsewhere,
+ * the phones' items, unknown keys) keep their slots. null when nothing moves (the same key, an unknown one, its own spot).
+ */
+export function navItemsAfterPlaceDrop(stored: readonly NavItem[] | null | undefined, implemented: readonly string[], dragged: string, target: string, after: boolean): NavItem[] | null {
+  const full = fullNavItems(stored);
+  const keys = shownNavItems(full, "desktop", implemented).map((item) => item.key);
+  if (dragged === target || !keys.includes(dragged) || !keys.includes(target)) return null;
+  const order = keys.filter((key) => key !== dragged);
+  order.splice(order.indexOf(target) + (after ? 1 : 0), 0, dragged);
+  if (order.every((key, index) => key === keys[index])) return null;
+  return reorderNavItems(full, order, "desktop", implemented);
 }
 
 // --- where the Times section stands (2026-10-12, TIMES_FEED.md §7) -------------------------------------------------
