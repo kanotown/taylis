@@ -1258,6 +1258,8 @@ CREATE TABLE workflows (
   template             text NOT NULL,                     -- 1〜4000。{{key}} を値で置き換える
   enabled              boolean NOT NULL DEFAULT true,
   confirm              boolean NOT NULL DEFAULT true,     -- 実行するときに確認する（false：項目の無いワークフローは選んだらすぐ投稿。移行 0112、WORKFLOWS.md §11）
+  request_ack          boolean NOT NULL DEFAULT false,    -- 投稿で確認を求める（投稿の messages.ack_requested。移行 0116、WORKFLOWS.md §12）
+  priority             varchar(16),                       -- 投稿の重要度 'important' | 'urgent' | NULL（messages.priority。CHECK priority_values。移行 0116）
   created_by           uuid NOT NULL REFERENCES users(id),
   created_at, updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at           timestamptz                        -- 論理削除 (投稿の workflow_id が残る)
@@ -1267,7 +1269,8 @@ CREATE INDEX workflows_offered_idx ON workflows USING gin (offered_channel_ids) 
 ```
 
 送信 (`POST /workflows/{id}/submit`) は値を確かめて雛形を描き、出した人のふつうのメッセージとして投稿する
-(`messages.workflow_id` / `workflow_name`)。提出の表は無い (メッセージが記録)。描き方と値の規則の検証ベクタは
+(`messages.workflow_id` / `workflow_name`)。`request_ack` と `priority` はその投稿の `ack_requested` と `priority`
+(M15e) になる (ワークフローの投稿はいつもトップレベル)。提出の表は無い (メッセージが記録)。描き方と値の規則の検証ベクタは
 `apps/shared/workflows.json`。
 
 ### canvases / canvas_revisions / canvas_templates (キャンバス、M41・M42、CANVAS.md §4)
