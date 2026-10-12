@@ -64,6 +64,15 @@ export function avatarDotSize(size: number): number {
 export const HEADER_AVATAR_SIZE = 36;
 export const HEADER_DOT_SIZE = 14;
 
+/**
+ * The attendance board's pictures (2026-10-12, PRESENCE.md §11.6: the dot at their corner was too small, 9 px on 30 px):
+ * 36 px, and a dot of about two fifths of the picture in its 2 px ring (14 px on 36 px, 15 px on 40 px, at least 12 px).
+ */
+export const BOARD_AVATAR_SIZE = 36;
+export function boardDotSize(size: number): number {
+  return Math.max(12, Math.round(size * 0.38));
+}
+
 /** 取り込み中's white bar keeps to the dot: about a fifth of it, at least 1.5 px (2 px on a 10 px dot, 3 px on 14 px). */
 export function dndBarHeight(dot: number): number {
   return Math.max(1.5, Math.round(dot * 0.18));

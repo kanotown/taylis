@@ -12,7 +12,7 @@ import { onAttendance } from "./actions";
 import { ActionButtons, useActionStatuses } from "./ActionButtons";
 import { ATTENDANCE_COLORS, ATTENDANCE_KINDS, boardGroups, entryOf, inRoomCount, kindLabel, myChoices, myOwnStates, sinceLabel } from "./attendance";
 import { ATTENDANCE_ICONS, attendanceBadgeColor, attendanceColorStyle, attendanceIconLabel, attendanceTintStyle, StateBadge, StateGlyph } from "./attendanceIcons";
-import { Avatar } from "./Avatar";
+import { Avatar, BOARD_AVATAR_SIZE, boardDotSize } from "./Avatar";
 import { BackButton } from "./compact";
 import { useStoreUpdates } from "./hooks";
 import { Button, cn, Field, Input, Modal } from "./primitives";
@@ -201,8 +201,9 @@ export function AttendanceView({ controller }: { controller: AppController }) {
                 <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-1.5">
                   {group.people.map(({ user, entry }) => (
                     <li key={user.id}>
-                      <UserPopover controller={controller} userId={user.id} className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-panel-2">
-                        <Avatar id={user.id} name={user.display_name} size={30} presence={store.presenceOf(user.id)} />
+                      <UserPopover controller={controller} userId={user.id} className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-panel-2">
+                        {/* PRESENCE.md §11.6: a bigger picture and a dot that reads (14 px in a 2 px ring). */}
+                        <Avatar id={user.id} name={user.display_name} size={BOARD_AVATAR_SIZE} dotSize={boardDotSize(BOARD_AVATAR_SIZE)} presence={store.presenceOf(user.id)} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{user.display_name}{user.id === meId ? ` ${t("calendar.me")}` : ""}</span>
                           {entry && (
