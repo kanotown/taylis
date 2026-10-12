@@ -8287,6 +8287,53 @@
         "title": "DeltaOut",
         "type": "object"
       },
+      "DesktopPlace": {
+        "additionalProperties": false,
+        "description": "Where Desktop / Web puts one place (a nav item, or the desktop's own \"times-feed\" /\n\"my-times\"): the places rail, a sidebar row, or only under 「その他」.",
+        "properties": {
+          "key": {
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "place": {
+            "enum": [
+              "rail",
+              "sidebar",
+              "hidden"
+            ],
+            "title": "Place",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "place"
+        ],
+        "title": "DesktopPlace",
+        "type": "object"
+      },
+      "DesktopPlaces": {
+        "additionalProperties": false,
+        "description": "2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, and whether\nthe places rail shows at all (false: the rail's places become sidebar rows). Keys a client\ndoes not know are kept; one not listed takes the clients' default.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DesktopPlace"
+            },
+            "maxItems": 64,
+            "title": "Items",
+            "type": "array"
+          },
+          "rail": {
+            "default": true,
+            "title": "Rail",
+            "type": "boolean"
+          }
+        },
+        "title": "DesktopPlaces",
+        "type": "object"
+      },
       "DeviceCreate": {
         "additionalProperties": false,
         "properties": {
@@ -19827,6 +19874,16 @@
             ],
             "title": "Deactivated At"
           },
+          "desktop_places": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesktopPlaces"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -20216,6 +20273,16 @@
               }
             ],
             "title": "Composer Mode"
+          },
+          "desktop_places": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesktopPlaces"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "display_name": {
             "anyOf": [

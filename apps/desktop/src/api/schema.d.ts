@@ -8791,6 +8791,35 @@ export interface components {
             /** Next Since Seq */
             next_since_seq: number;
         };
+        /**
+         * DesktopPlace
+         * @description Where Desktop / Web puts one place (a nav item, or the desktop's own "times-feed" /
+         *     "my-times"): the places rail, a sidebar row, or only under 「その他」.
+         */
+        DesktopPlace: {
+            /** Key */
+            key: string;
+            /**
+             * Place
+             * @enum {string}
+             */
+            place: "rail" | "sidebar" | "hidden";
+        };
+        /**
+         * DesktopPlaces
+         * @description 2026-10-12 (docs/MOBILE_UI.md §18.2): the desktop's placement of its places, and whether
+         *     the places rail shows at all (false: the rail's places become sidebar rows). Keys a client
+         *     does not know are kept; one not listed takes the clients' default.
+         */
+        DesktopPlaces: {
+            /** Items */
+            items?: components["schemas"]["DesktopPlace"][];
+            /**
+             * Rail
+             * @default true
+             */
+            rail: boolean;
+        };
         /** DeviceCreate */
         DeviceCreate: {
             /** App Version */
@@ -13259,6 +13288,7 @@ export interface components {
             created_at: string;
             /** Deactivated At */
             deactivated_at: string | null;
+            desktop_places?: components["schemas"]["DesktopPlaces"] | null;
             /** Display Name */
             display_name: string;
             /** Dnd Until */
@@ -13377,6 +13407,7 @@ export interface components {
         UserUpdate: {
             /** Composer Mode */
             composer_mode?: ("rich" | "markdown") | null;
+            desktop_places?: components["schemas"]["DesktopPlaces"] | null;
             /** Display Name */
             display_name?: string | null;
             /** Dnd Until */
