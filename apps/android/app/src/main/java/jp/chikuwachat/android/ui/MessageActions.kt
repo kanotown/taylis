@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,7 +81,8 @@ val REACTION_PALETTE = listOf("👍", "❤️", "😂", "🎉", "👀", "✅")
 
 /**
  * The sheet's six quick reactions: the ones I used last first, then REACTION_PALETTE (tester request, 2026-09-28; the
- * same rule as the web's quickReactions and iOS). Custom emoji stay in the picker: the quick row shows plain emoji.
+ * same rule as the web's quickReactions and iOS). Custom emoji I used stay in the picker: that row shows plain emoji.
+ * The ones I chose in 自分 → 表示 may be custom emoji too (2026-10-13, apps/shared/quick-reactions.json).
  */
 object QuickReactions {
     private const val KEY = "reactions.recent"
@@ -98,9 +100,18 @@ object QuickReactions {
     /**
      * M50: the sheet's row. What I chose in 自分 → 表示 (UserMe.quick_reactions, the same on all my devices) is the row,
      * exactly those in that order; not chosen (null, or a server before M50), [pick] of this device's recent ones.
+     * Since 2026-10-13 a chosen one may be a custom emoji's `:name:`: one `knows` says this workspace no longer has
+     * (deleted) is skipped, and when none is left the row is as if nothing were chosen.
      */
-    fun row(chosen: List<String>?, recent: List<String>, count: Int = COUNT): List<String> =
-        chosen?.filter { it.isNotEmpty() }?.distinct()?.takeIf { it.isNotEmpty() }?.take(count) ?: pick(recent, count)
+    fun row(chosen: List<String>?, recent: List<String>, count: Int = COUNT, knows: (String) -> Boolean = { true }): List<String> =
+        chosen?.let { shown(it, knows) }?.takeIf { it.isNotEmpty() }?.take(count) ?: pick(recent, count)
+
+    /** The chosen ones that can be drawn: a custom emoji `knows` does not (deleted) is skipped. */
+    fun shown(chosen: List<String>, knows: (String) -> Boolean = { true }): List<String> =
+        chosen.filter { it.isNotEmpty() && (!custom.matches(it) || knows(it)) }.distinct()
+
+    /** `knows` for [row] and [shown]: a plain emoji always, a custom `:name:` while `names` (Store.customEmoji's keys) has it. */
+    fun knownIn(names: Set<String>): (String) -> Boolean = { glyph -> CustomEmoji.name(glyph)?.let { it in names } ?: !custom.matches(glyph) }
 
     /** The slots 自分 → 表示 edits. */
     const val COUNT = 6
@@ -156,8 +167,12 @@ fun MessageMenu(
     onShowReactors: (() -> Unit)? = null,
     reacted: Set<String> = emptySet(),
     quick: List<String> = REACTION_PALETTE,
+    /** For a custom emoji among `quick` (2026-10-13): drawn as its image from the Store, loaded on demand. */
+    store: Store? = null,
+    onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit = {},
 ) {
     if (!expanded) return
+    val version = store?.version?.collectAsState()?.value  // an image that lands while the sheet is up shows
     // Opens at its full height: half open cut off ピン留め and 削除 (testers, 2026-09-29).
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -175,7 +190,10 @@ fun MessageMenu(
                         .background(if (emoji in reacted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { close { onReact(emoji) } },
                     contentAlignment = Alignment.Center,
-                ) { Text(emoji, style = MaterialTheme.typography.titleLarge) }
+                ) {
+                    if (store != null) ReactionEmoji(emoji, store, onNeedEmojiImage, height = 26.dp, textStyle = MaterialTheme.typography.titleLarge, version = version ?: 0)
+                    else Text(emoji, style = MaterialTheme.typography.titleLarge)
+                }
             }
             if (onMoreReactions != null) {
                 Box(
@@ -231,8 +249,10 @@ fun ReactionEmoji(
     height: androidx.compose.ui.unit.Dp,
     textStyle: androidx.compose.ui.text.TextStyle,
     modifier: Modifier = Modifier,
+    /** The Store's version, read so that an image landing in the Store redraws this emoji (strong skipping). */
+    version: Int = 0,
 ) {
-    val custom = CustomEmoji.name(emoji)?.let { store.customEmoji[it] }
+    val custom = remember(emoji, version) { CustomEmoji.name(emoji)?.let { store.customEmoji[it] } }
     if (custom == null) {
         Text(emoji, style = textStyle, maxLines = 1, modifier = modifier)
         return

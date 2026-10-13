@@ -4,7 +4,10 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.ui.QuickReactions
+import jp.chikuwachat.android.ui.REACTION_PALETTE
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.jsonObject
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -68,6 +71,43 @@ class QuickReactionsTest {
         assertEquals(listOf("🙏", "👍", "❤️", "😂", "🎉", "👀"), QuickReactions.row(null, recent))
         assertEquals(listOf("🙏", "👍", "❤️", "😂", "🎉", "👀"), QuickReactions.row(emptyList(), recent))
         assertEquals(listOf("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"), QuickReactions.row(listOf("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"), recent))
+    }
+
+    // --- the shared cases (apps/shared/quick-reactions.json, the file Desktop / Web and iOS test against too) ---
+
+    @Serializable
+    private data class RuleCase(val name: String, val chosen: List<String>? = null, val recent: List<String>, val count: Int, val expected: List<String>)
+
+    @Serializable
+    private data class Cases(val defaults: List<String>, val rule: List<RuleCase>)
+
+    /** From the module (apps/android/app), ../../shared (as PresenceTest reads presence-rules.json). */
+    private fun cases(): Cases {
+        val file = File("../../shared/quick-reactions.json")
+        check(file.isFile) { "apps/shared/quick-reactions.json not found from ${File("").absolutePath}" }
+        return Codec.snake.decodeFromString(Cases.serializer(), file.readText())
+    }
+
+    @Test fun sharedRuleCases() {
+        val v = cases()
+        assertEquals(v.defaults, REACTION_PALETTE)
+        assertTrue(v.rule.isNotEmpty())
+        for (case in v.rule) assertEquals(case.name, case.expected, QuickReactions.row(case.chosen, case.recent, case.count))
+    }
+
+    @Test fun aChosenCustomEmojiShowsWhileTheWorkspaceHasIt() { // 2026-10-13
+        val knows = QuickReactions.knownIn(setOf("hanpen"))
+        assertEquals(listOf(":hanpen:", "👍"), QuickReactions.row(listOf(":hanpen:", "👍"), emptyList(), knows = knows))
+        // Deleted since: skipped where shown, the others keep their order.
+        assertEquals(listOf("👍", "🎉"), QuickReactions.row(listOf(":gone:", "👍", ":hanpen-old:", "🎉"), emptyList(), knows = knows))
+        assertEquals(listOf("👍", "🎉"), QuickReactions.shown(listOf(":gone:", "👍", "🎉"), knows))
+        // None left: as if nothing were chosen.
+        assertEquals(listOf("🙏", "👍", "❤️"), QuickReactions.row(listOf(":gone:"), listOf("🙏"), 3, knows))
+        // A plain emoji is always known; a custom one picked swaps like any other.
+        assertTrue(knows("👍"))
+        assertFalse(knows(":gone:"))
+        assertEquals(listOf(":hanpen:", "❤️", "👍"), QuickReactions.replace(listOf("👍", "❤️", ":hanpen:"), 0, ":hanpen:"))
+        assertEquals(listOf("👍", ":hanpen:"), QuickReactions.replace(listOf("👍"), 1, ":hanpen:"))
     }
 
     @Test fun aSlotIsReplacedOrSwappedNeverDuplicated() {

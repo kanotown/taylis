@@ -757,7 +757,9 @@ fun MessageRow(
             }) else null,
             onShare = { sharing = true },
             onReport = if (Moderation.canReport(message, store.me?.id)) ({ reporting = true }) else null,
-            quick = QuickReactions.row(store.me?.quickReactions, QuickReactions.read(controller.prefs)),  // M50
+            // M50; a chosen custom emoji (2026-10-13) as its image, one deleted since skipped.
+            quick = QuickReactions.row(store.me?.quickReactions, QuickReactions.read(controller.prefs), knows = QuickReactions.knownIn(store.customEmoji.keys)),
+            store = store, onNeedEmojiImage = { controller.loadEmojiImage(it) },
             onMoreReactions = { pickingReaction = true },
             onShowReactors = if (message.reactions.isEmpty()) null else ({ showingReactors = true }),
             reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),
