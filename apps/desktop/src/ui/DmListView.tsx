@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { Avatar, presenceLabel } from "./Avatar";
+import { Avatar, presenceDotOf, presenceLabel } from "./Avatar";
 import { badgeCount, hasUnread, isMutedChannel } from "./channels";
 import { previewLine } from "./dmPreview";
 import { fullTimestamp } from "./format";
@@ -139,7 +139,7 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
             <Users size={18} />
           </span>
         ) : other ? (
-          <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={40} className="rounded-xl" presence={presence} presenceClassName="border-2 border-canvas" />
+          <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={40} className="rounded-xl" presence={single ? presenceDotOf(store, single) : undefined} presenceClassName="border-2 border-canvas" />
         ) : null}
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">

@@ -1,4 +1,5 @@
 import type { PresenceLook } from "../api/types";
+import type { Store } from "../sync/store";
 import { useAvatar } from "./avatars";
 import { avatarHue, initials } from "./format";
 import { cn, HoverList } from "./primitives";
@@ -7,24 +8,30 @@ import { t } from "../i18n";
 /**
  * The profile picture when the user has one (M14a), else initials on a colour derived from the id. A picture never loaded
  * before shows a neutral tile of the same shape while it loads (not the initials, which would flash). `presence` adds the
- * status dot: green online, amber away, and 取り込み中 a plain red disc (docs/PRESENCE.md §11; no white bar since 2026-10-13). Offline draws
- * nothing unless `showOffline` (my own avatar in the sidebar header: a hollow ring, so オフライン表示 shows).
+ * status dot: green online, amber away, and 取り込み中 a plain red disc (docs/PRESENCE.md §11; no white bar since 2026-10-13).
+ * Offline (2026-10-13, testers: 「オフラインの時は白丸で」) is a hollow grey ring (`muted`, about 2 px) wherever a dot is
+ * shown; a caller that wants no dot (a bot, a webhook) passes no `presence`.
  *
  * `presenceCutout` (message rows, whose background changes under the pointer, when highlighted or selected): the dot's
  * ring is not painted but cut out of the picture (a hole a ring wider than the dot, as iOS's `badgeHole`), so whatever
  * is behind the avatar shows through it and the ring always matches the row.
+ *
+ * The offline ring is always cut out that way, wherever it sits: the hole shows the surface behind the avatar (a row,
+ * the sidebar, a popover, light or dark) both in the gap and in the ring's centre, so it reads as one grey circle. (Before,
+ * a painted gap ring around a grey ring around a `canvas` centre read as two circles on the sidebar, 「二重丸」.) Its gap
+ * is 1 px on the small dots (under 12 px) so the ring keeps a centre to see, 2 px on the larger ones.
  */
-export function Avatar({ id, name, size = 36, className, presence, presenceClassName, showOffline = false, dotSize, presenceCutout = false }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; showOffline?: boolean; dotSize?: number; presenceCutout?: boolean }) {
+export function Avatar({ id, name, size = 36, className, presence, presenceClassName, dotSize, presenceCutout = false }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; dotSize?: number; presenceCutout?: boolean }) {
   const hue = avatarHue(id);
   const dot = dotSize ?? avatarDotSize(size);
   // The dot overhangs the corner by a fifth of itself (2 px for the usual 8–10 px dots, 3 px for my header's 14 px).
   const overhang = -Math.max(2, Math.round(dot * 0.2));
   const picture = useAvatar(id);
-  const showDot = !!presence && (presence !== "offline" || showOffline);
+  const offline = presence === "offline";
   // The hole: a circle the dot's size (its 2 px border included) centred where the dot is.
   const centre = size - overhang - dot / 2;
   const hole = `radial-gradient(circle at ${centre}px ${centre}px, transparent ${dot / 2}px, #000 ${dot / 2 + 0.5}px)`;
-  const cut = showDot && presenceCutout ? { maskImage: hole, WebkitMaskImage: hole } : undefined;
+  const cut = presence && (presenceCutout || offline) ? { maskImage: hole, WebkitMaskImage: hole } : undefined;
   return (
     // A rounded square (Slack) unless the caller sets its own radius; the picture and initials inherit it.
     <span className={cn("relative inline-flex shrink-0 rounded-[22%]", className)} style={{ width: size, height: size }} aria-hidden="true">
@@ -40,26 +47,48 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
           {initials(name)}
         </span>
       )}
-      {presence && showDot && (
+      {presence && (
         // Above the dot (HoverList), not a native title under the pointer.
         <HoverList content={presenceLabel(presence)}>
-          <span
-            data-presence={presence}
-            className={cn(
-              "absolute inline-flex items-center justify-center rounded-full border-2",
-              // Cut out: a transparent border the hole shows through, the colour inside it only.
-              presenceCutout ? "border-transparent bg-clip-padding" : "border-canvas",
-              presence === "online" ? "bg-success" : presence === "away" ? "bg-warning" : presence === "dnd" ? "bg-danger" : "bg-canvas",
-              presenceClassName,
-            )}
-            style={{ width: dot, height: dot, right: overhang, bottom: overhang }}
-          >
-            {presence === "offline" && <span className="block h-full w-full rounded-full border-solid border-muted" style={{ borderWidth: dot >= 12 ? 2 : 1.5 }} />}
-          </span>
+          {offline ? (
+            // One element, one border: the grey ring, inset by the gap; around it and inside it the hole shows the surface.
+            <span
+              data-presence={presence}
+              className="absolute box-border rounded-full border-solid border-muted bg-transparent"
+              style={{ width: dot - 2 * offlineGap(dot), height: dot - 2 * offlineGap(dot), right: overhang + offlineGap(dot), bottom: overhang + offlineGap(dot), borderWidth: offlineRing(dot) }}
+            />
+          ) : (
+            <span
+              data-presence={presence}
+              className={cn(
+                "absolute inline-flex items-center justify-center rounded-full border-2",
+                // Cut out: a transparent border the hole shows through, the colour inside it only.
+                presenceCutout ? "border-transparent bg-clip-padding" : "border-canvas",
+                presence === "online" ? "bg-success" : presence === "away" ? "bg-warning" : "bg-danger",
+                presenceClassName,
+              )}
+              style={{ width: dot, height: dot, right: overhang, bottom: overhang }}
+            />
+          )}
         </HoverList>
       )}
     </span>
   );
+}
+
+/** The offline ring's gap to the picture: 1 px on a dot under 12 px (so the ring keeps a centre), else 2 px. */
+export function offlineGap(dot: number): number {
+  return dot >= 12 ? 2 : 1;
+}
+
+/** The offline ring's width: 2 px from a 10 px dot up, 1.5 px on the 8–9 px ones. */
+export function offlineRing(dot: number): number {
+  return dot >= 10 ? 2 : 1.5;
+}
+
+/** The dot for `userId` in a list or a card: none for a bot or a webhook's bot (they have no presence), else their look. */
+export function presenceDotOf(store: Pick<Store, "users" | "presenceOf">, userId: string): PresenceLook | undefined {
+  return store.users.get(userId)?.role === "bot" ? undefined : store.presenceOf(userId);
 }
 
 /** The presence dot for a picture `size` px wide: three tenths of it, at least 8 px. */

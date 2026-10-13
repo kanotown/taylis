@@ -103,7 +103,7 @@ function MenuBody({ controller, onSettings, onOpenAttendance }: { controller: Ap
   return (
     <>
       <div data-my-status-header className="flex items-center gap-3 px-2.5 pb-2 pt-1.5">
-        <Avatar id={me.id} name={me.display_name} size={40} className="rounded-xl" presence={store.presenceOf(me.id)} showOffline />
+        <Avatar id={me.id} name={me.display_name} size={40} className="rounded-xl" presence={store.presenceOf(me.id)} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{me.display_name}</div>
           <div data-my-presence-line className="truncate text-xs text-muted">{myPresenceLine(me)}</div>

@@ -152,7 +152,7 @@ function UserCard({ controller, userId, onClose, onReport }: { controller: AppCo
   return (
     <>
         <div className="flex items-center gap-3 border-b border-line p-4">
-          <Avatar id={userId} name={user?.display_name ?? "?"} size={56} className="rounded-2xl text-xl" presence={presence} />
+          <Avatar id={userId} name={user?.display_name ?? "?"} size={56} className="rounded-2xl text-xl" presence={user?.role === "bot" ? undefined : presence} />
           <div className="min-w-0">
             <div className="truncate text-base font-semibold">{user?.display_name ?? "?"}</div>
             <div className="truncate text-xs text-muted">@{user?.username ?? ""}{title ? ` · ${title}` : ""}</div>

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // The presence dot on a message's sender (docs/PRESENCE.md §11.5, 2026-10-13): at the corner of the avatar of a group's
 // first message in a conversation and in a thread, kept current by its own subscription (the rows are not redrawn),
-// none for a bot or someone offline, none on a continuation row (no avatar there), and its ring cut out of the picture.
+// none for a bot, none on a continuation row (no avatar there), and its ring cut out of the picture. Offline (2026-10-13):
+// a hollow grey ring in the hole, one element.
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -70,7 +71,7 @@ describe("the presence dot on a message's sender", () => {
 
   it("updates live (away, 取り込み中, offline) without redrawing the list", () => {
     const w = world();
-    expect(w.dot(w.ids.first)).toBeNull(); // offline: nothing
+    expect(w.dot(w.ids.first)?.dataset.presence).toBe("offline"); // offline: the hollow ring
     const renders = w.parentRenders.count;
     act(() => w.store.setPresence(w.bob.id, "online"));
     expect(w.dot(w.ids.first)?.dataset.presence).toBe("online");
@@ -84,9 +85,25 @@ describe("the presence dot on a message's sender", () => {
       w.store.upsertUser({ ...w.bob, dnd_until: null });
       w.store.setPresence(w.bob.id, "offline");
     });
-    expect(w.dot(w.ids.first)).toBeNull();
-    expect(w.dot(w.ids.reply, true)).toBeNull();
+    expect(w.dot(w.ids.first)?.dataset.presence).toBe("offline");
+    expect(w.dot(w.ids.reply, true)?.dataset.presence).toBe("offline");
     expect(w.parentRenders.count).toBe(renders);
+  });
+
+  it("offline: one grey ring with a see-through centre, in a hole cut out of the picture", () => {
+    const w = world();
+    const ring = w.dot(w.ids.first)!;
+    expect(ring.dataset.presence).toBe("offline");
+    expect(ring.childElementCount).toBe(0);
+    expect(ring.className).toContain("border-muted");
+    expect(ring.className).toContain("bg-transparent");
+    // 36 px: an 11 px dot, a 9 px ring 2 px wide inside a 1 px gap.
+    expect(ring.style.width).toBe(`${avatarDotSize(36) - 2}px`);
+    expect(ring.style.borderWidth).toBe("2px");
+    const picture = ring.closest("[aria-hidden]")!.firstElementChild as HTMLElement;
+    expect(picture.style.maskImage).toContain("radial-gradient");
+    // A bot offline still has none.
+    expect(w.dot(w.ids.fromBot)).toBeNull();
   });
 
   it("is absent for a bot (a webhook's too) and on a continuation row", () => {
