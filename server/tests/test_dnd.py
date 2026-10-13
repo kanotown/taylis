@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.channels import service as channels
-from app.modules.users.dnd import in_quiet_hours
+from app.modules.users.dnd import dnd_active, in_quiet_hours
 from app.modules.users.models import User
 from tests.helpers import make_user
 from tests.test_push_planner import add_device, deliveries, post, relay_with_planner
@@ -146,13 +146,8 @@ async def test_new_people_get_night_quiet_hours_and_bots_none(db: AsyncSession) 
     )
     assert (person.quiet_hours_start, person.quiet_hours_end) == (22 * 60, 7 * 60)
     assert person.quiet_hours_days is None and person.quiet_hours_tz == "Asia/Tokyo"
-    assert in_quiet_hours(
-        _at("2026-10-13T23:30:00+09:00"),
-        start=person.quiet_hours_start,
-        end=person.quiet_hours_end,
-        days=person.quiet_hours_days,
-        tz=person.quiet_hours_tz,
-    )
+    assert dnd_active(person, _at("2026-10-13T23:30:00+09:00"))
+    assert not dnd_active(person, _at("2026-10-13T12:00:00+09:00"))
     owner = await make_user(db, "owner")
     bot = await admin.create_bot_in_tx(db, actor_id=owner.id, username="hook", display_name="Hook")
     assert bot.quiet_hours_start is None and bot.quiet_hours_tz is None
