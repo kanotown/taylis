@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 未读与提及、今日日程与截止 小部件，简体中文。 -->
+<resources>
+    <string name="widget_sign_in">请打开 Taylis 并登录</string>
+    <string name="widget_stale">无法更新</string>
+    <string name="widget_more">另外 %1$d 项</string>
+
+    <string name="unread_widget_name">未读与提及</string>
+    <string name="unread_widget_description">显示提及和未读私信的数量，以及所在的会话</string>
+    <string name="unread_widget_parts">提及 %1$d · 私信 %2$d</string>
+    <string name="unread_widget_none">没有未读</string>
+    <string name="unread_widget_open">%1$s：提及和未读私信 %2$d 条（打开 Taylis）</string>
+    <string name="unread_widget_row">%1$s，%2$d 条（打开会话）</string>
+
+    <string name="today_widget_name">今日日程与截止</string>
+    <string name="today_widget_description">显示今天的日程和今天到期的自己的任务</string>
+    <string name="today_widget_empty">今天没有日程</string>
+    <string name="today_widget_tasks">任务 %1$d 项</string>
+    <string name="today_widget_no_tasks">没有今天到期的任务</string>
+    <string name="today_widget_overdue">已逾期</string>
+    <string name="today_widget_open">%1$s：今天的日程 %2$d 项，到今天的任务 %3$d 项（打开日历）</string>
+    <string name="today_widget_event_row">%1$s %2$s（打开日程）</string>
+    <string name="today_widget_task_row">任务 %1$s，%2$s（打开任务）</string>
+    <string name="today_widget_tasks_open">%1$s（打开任务）</string>
+</resources>

@@ -92,6 +92,32 @@
                 android:resource="@xml/attendance_widget_info" />
         </receiver>
 
+        <!-- 未読・メンション (widget/UnreadWidget.kt): the app writes its snapshot; a row opens its conversation. -->
+        <receiver
+            android:name=".widget.UnreadWidgetReceiver"
+            android:exported="true"
+            android:label="@string/unread_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/unread_widget_info" />
+        </receiver>
+
+        <!-- 今日の予定・締切 (widget/TodayWidget.kt): read and redrawn by widget/TodayWidgetWorker in this app. -->
+        <receiver
+            android:name=".widget.TodayWidgetReceiver"
+            android:exported="true"
+            android:label="@string/today_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_info" />
+        </receiver>
+
         <service
             android:name=".platform.ChikuwaMessagingService"
             android:exported="false">

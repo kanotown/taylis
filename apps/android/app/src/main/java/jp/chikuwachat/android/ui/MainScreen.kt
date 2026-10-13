@@ -631,6 +631,18 @@ fun MainScreen(controller: AppController) {
         controller.pendingAttendance = false
         openAttendanceBoard()
     }
+    // The 未読・メンション / 今日の予定・締切 widgets' bodies: the home tab's list, the calendar, or 「タスク」.
+    LaunchedEffect(controller.pendingWidgetScreen) {
+        val screen = controller.pendingWidgetScreen ?: return@LaunchedEffect
+        controller.pendingWidgetScreen = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = when (screen) {
+            jp.chikuwachat.android.widget.WidgetScreen.HOME -> MainTabs.landHome(tabs)
+            jp.chikuwachat.android.widget.WidgetScreen.CALENDAR -> MainTabs.landCalendar(tabs)
+            jp.chikuwachat.android.widget.WidgetScreen.TASKS -> MainTabs.landMyTasks(tabs)
+        }
+    }
     // M112: a tapped reservation notice (or an activity row): 「予約」 on the home tab.
     LaunchedEffect(controller.pendingReservations) {
         if (!controller.pendingReservations) return@LaunchedEffect
@@ -651,7 +663,11 @@ fun MainScreen(controller: AppController) {
         tabs = if (channelId != null) MainTabs.landEvents(tabs, channelId) else MainTabs.landCalendar(tabs)
         val hub = controller.calendar ?: return@LaunchedEffect
         scope.launch {
-            runCatching { hub.get(target.eventId) }
+            runCatching {
+                // The 今日 widget's line of a series: that occurrence (its day's range), not the series' first one.
+                if (target.seriesId != null && target.occurrenceStart != null) hub.getOccurrence(target.seriesId, target.occurrenceStart, target.day, target.eventId)
+                else hub.get(target.eventId)
+            }
                 .onSuccess { controller.calendarForm = CalendarForm(it, null) }
                 .onFailure { controller.report(it) }
         }

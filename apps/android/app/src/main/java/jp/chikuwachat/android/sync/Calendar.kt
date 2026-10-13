@@ -182,6 +182,20 @@ class CalendarHub(
         }
     }
 
+    /**
+     * One occurrence of a series known only by its key (the 今日 widget's line): as held here, else read from [day]'s range
+     * (the server has no route for one occurrence, CALENDAR.md §10.11), else the event [fallbackId] itself.
+     */
+    suspend fun getOccurrence(seriesId: String, occurrenceStart: String, day: String?, fallbackId: String): CalendarEventOut {
+        findOccurrence(seriesId, occurrenceStart)?.let { return it }
+        val date = day?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+        if (date != null) {
+            val (from, to) = CalendarDates.rangeParams(date, date.plusDays(1))
+            requireApi().calendarEvents(from, to).firstOrNull { it.series == seriesId && it.occurrenceStart == occurrenceStart }?.let { return it }
+        }
+        return get(fallbackId)
+    }
+
     /** An event known only by its id (a notification tapped): as held here, else read. */
     suspend fun get(eventId: String): CalendarEventOut = find(eventId) ?: requireApi().calendarEvent(eventId)
 
