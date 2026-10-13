@@ -7,7 +7,7 @@ import { t } from "../i18n";
 /**
  * The profile picture when the user has one (M14a), else initials on a colour derived from the id. A picture never loaded
  * before shows a neutral tile of the same shape while it loads (not the initials, which would flash). `presence` adds the
- * status dot: green online, amber away, and 取り込み中 a red disc with a white bar (docs/PRESENCE.md §11). Offline draws
+ * status dot: green online, amber away, and 取り込み中 a plain red disc (docs/PRESENCE.md §11; no white bar since 2026-10-13). Offline draws
  * nothing unless `showOffline` (my own avatar in the sidebar header: a hollow ring, so オフライン表示 shows).
  */
 export function Avatar({ id, name, size = 36, className, presence, presenceClassName, showOffline = false, dotSize }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; showOffline?: boolean; dotSize?: number }) {
@@ -43,7 +43,6 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
             )}
             style={{ width: dot, height: dot, right: overhang, bottom: overhang }}
           >
-            {presence === "dnd" && <span data-dnd-bar className="block rounded-full bg-white" style={{ width: "62%", height: dndBarHeight(dot) }} />}
             {presence === "offline" && <span className="block h-full w-full rounded-full border-solid border-muted" style={{ borderWidth: dot >= 12 ? 2 : 1.5 }} />}
           </span>
         </HoverList>
@@ -71,11 +70,6 @@ export const HEADER_DOT_SIZE = 14;
 export const BOARD_AVATAR_SIZE = 36;
 export function boardDotSize(size: number): number {
   return Math.max(12, Math.round(size * 0.38));
-}
-
-/** 取り込み中's white bar keeps to the dot: about a fifth of it, at least 1.5 px (2 px on a 10 px dot, 3 px on 14 px). */
-export function dndBarHeight(dot: number): number {
-  return Math.max(1.5, Math.round(dot * 0.18));
 }
 
 export function presenceLabel(status: PresenceLook): string {

@@ -41,9 +41,7 @@ export function PresenceDot({ look, size = 10 }: { look: PresenceLook; size?: nu
         look === "online" ? "bg-success" : look === "away" ? "bg-warning" : look === "dnd" ? "bg-danger" : "border-[1.5px] border-muted",
       )}
       style={{ width: size, height: size }}
-    >
-      {look === "dnd" && <span className="block rounded-full bg-white" style={{ width: "62%", height: Math.max(1.5, Math.round(size * 0.18)) }} />}
-    </span>
+    />
   );
 }
 

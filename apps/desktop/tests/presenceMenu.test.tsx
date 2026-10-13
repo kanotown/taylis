@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DndDuration, PresenceChoice, PresenceStatus, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { Avatar, avatarDotSize, dndBarHeight, HEADER_AVATAR_SIZE } from "../src/ui/Avatar";
+import { Avatar, avatarDotSize, HEADER_AVATAR_SIZE } from "../src/ui/Avatar";
 import { DirectoryDialog } from "../src/ui/DirectoryDialog";
 import { isIndefiniteDnd, pauseValue } from "../src/ui/dnd";
 import { MyStatusMenu } from "../src/ui/MyStatusMenu";
@@ -142,11 +142,11 @@ describe("the store's look", () => {
 });
 
 describe("the dot", () => {
-  it("取り込み中 is a red disc with a white bar; offline draws nothing unless asked", () => {
+  it("取り込み中 is a plain red disc (no white bar since 2026-10-13); offline draws nothing unless asked", () => {
     const { container, rerender } = render(<Avatar id={ALICE} name="アリス" presence="dnd" />);
     const dot = container.querySelector('[data-presence="dnd"]')!;
     expect(dot.className).toContain("bg-danger");
-    expect(dot.querySelector("[data-dnd-bar]")!.className).toContain("bg-white");
+    expect(dot.childElementCount).toBe(0);
     rerender(<Avatar id={ALICE} name="アリス" presence="offline" />);
     expect(container.querySelector("[data-presence]")).toBeNull();
     rerender(<Avatar id={ALICE} name="アリス" presence="offline" showOffline />);
@@ -206,11 +206,6 @@ describe("the dot", () => {
     expect(dot.className).toContain("border-sidebar");
     expect(dot.style.right).toBe("-3px");
     expect(dot.style.bottom).toBe("-3px");
-    // 取り込み中's bar: 62 % wide and 3 px tall on the 14 px dot (2 px on the usual 10 px one).
-    const bar = dot.querySelector<HTMLElement>("[data-dnd-bar]")!;
-    expect(bar.style.width).toBe("62%");
-    expect(bar.style.height).toBe("3px");
-    expect(dndBarHeight(avatarDotSize(34))).toBe(2);
   });
 
   it("other pictures keep their dot: three tenths of the picture, at least 8 px, 2 px off the corner", () => {

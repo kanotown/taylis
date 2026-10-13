@@ -1,11 +1,7 @@
 package jp.chikuwachat.android.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.contentDescription
@@ -59,8 +55,8 @@ fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 3
 }
 
 /**
- * The dot at an avatar's corner (with the surface's ring around it): green online, amber away, and 取り込み中 a red
- * disc with a white bar (docs/PRESENCE.md §11.5); offline a hollow grey ring (my own avatar only, `showOffline`, so
+ * The dot at an avatar's corner (with the surface's ring around it): green online, amber away, and 取り込み中 a plain red
+ * disc (docs/PRESENCE.md §11.5; its white bar went on 2026-10-13); offline a hollow grey ring (my own avatar only, `showOffline`, so
  * オフライン表示 shows).
  */
 @Composable
@@ -76,15 +72,7 @@ fun PresenceDot(look: String, modifier: Modifier = Modifier) {
     when (look) {
         PresenceRules.ONLINE -> Box(modifier.background(PRESENCE_GREEN, CircleShape))
         PresenceRules.AWAY -> Box(modifier.background(PRESENCE_AMBER, CircleShape))
-        PresenceRules.DND -> Box(modifier.background(PRESENCE_RED, CircleShape), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.matchParentSize()) {
-                val bar = maxOf(1.5.dp.toPx(), size.height * 0.18f)
-                drawRoundRect(
-                    Color.White, topLeft = Offset(size.width * 0.19f, (size.height - bar) / 2), size = Size(size.width * 0.62f, bar),
-                    cornerRadius = CornerRadius(bar / 2, bar / 2),
-                )
-            }
-        }
+        PresenceRules.DND -> Box(modifier.background(PRESENCE_RED, CircleShape))
         else -> Box(modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
     }
 }
