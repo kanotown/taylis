@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import type { AppController } from "../state/app";
 import type { MessageState, ThreadEntry, ThreadFilter } from "../sync/types";
 import { Avatar } from "./Avatar";
+import { SenderAvatar } from "./SenderAvatar";
 import { dateLabel, fullTimestamp, timeLabel } from "./format";
 import { isDmChannel } from "./channels";
 import { channelTitle } from "./MainScreen";
@@ -180,7 +181,7 @@ function ThreadRow({ entry, controller, selected, onOpen: openAt, onOpenChannel,
             aria-current={selected ? "true" : undefined}
             className="flex w-full gap-3 px-4 pb-3 pt-1 text-left"
           >
-            <Avatar id={parent.sender_id} name={author?.display_name ?? "?"} size={36} className="mt-0.5 rounded-lg" />
+            <SenderAvatar store={store} userId={parent.sender_id} name={author?.display_name ?? "?"} size={36} className="mt-0.5 rounded-lg" />
             <div className="min-w-0 flex-1">
               <div className={cn("flex items-baseline gap-2 text-sm", unread ? "font-semibold" : "font-medium")}>
                 <span className="truncate">{author?.display_name ?? "…"}</span>
@@ -249,7 +250,7 @@ function ThreadPreviewReply({ reply, controller, onOpen }: { reply: ThreadCardRe
       }}
       className="flex cursor-pointer gap-2 rounded-lg px-1.5 py-1 hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
     >
-      <Avatar id={message.sender_id} name={author?.display_name ?? "?"} size={24} className="mt-0.5 rounded-md text-[10px]" />
+      <SenderAvatar store={store} userId={message.sender_id} name={author?.display_name ?? "?"} size={24} className="mt-0.5 rounded-md text-[10px]" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 text-[13px]">
           <span className={cn("truncate", unread ? "font-bold" : "font-medium")}>{name}</span>

@@ -4,6 +4,7 @@ import type { ChannelOut, MessageOut, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
+import { SenderAvatar } from "./SenderAvatar";
 import { sinceLabel } from "./format";
 import { highlightPieces, leadToFirstHit } from "./highlight";
 import { type LiveQuery, useLiveQuery } from "./liveQuery";
@@ -54,7 +55,7 @@ export function LiveMessageRow({ controller, message, keywords, other }: { contr
   const Icon = channel?.type === "private" ? Lock : channel?.type === "public" ? Hash : AtSign;
   return (
     <>
-      <Avatar id={message.sender_id} name={sender} size={24} className="mt-0.5 self-start rounded-md text-[10px]" />
+      <SenderAvatar store={controller.store} userId={message.sender_id} name={sender} size={24} className="mt-0.5 self-start rounded-md text-[10px]" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 text-xs text-muted">
           <strong className="min-w-0 truncate font-semibold text-ink">{sender}</strong>

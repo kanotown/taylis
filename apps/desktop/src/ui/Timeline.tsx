@@ -13,6 +13,7 @@ import { AckBar } from "./AckBar";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
+import { SenderAvatar } from "./SenderAvatar";
 import { linkFromPaste, replaceThroughBrowser } from "./composerEdit";
 import { keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
 import { EDIT_MIN, editBoxHeight, editCap, editMax, type EditRoom, handleKeyHeight, readEditHeight, revealDelta, writeEditHeight } from "./editBox";
@@ -1069,7 +1070,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <span className="pt-1 text-[11px] leading-4 text-muted tabular-nums">{timeLabel(message.created_at)}</span>
         ) : (
           <UserPopover controller={controller} userId={message.sender_id} className="rounded-lg">
-            <Avatar id={message.sender_id} name={senderName} size={size} />
+            <SenderAvatar store={store} userId={message.sender_id} name={senderName} size={size} />
           </UserPopover>
         )}
       </div>
