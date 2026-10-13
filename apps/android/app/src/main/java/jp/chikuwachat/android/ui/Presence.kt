@@ -45,7 +45,7 @@ object PresenceRules {
     const val ONLINE = "online"
     const val AWAY = "away"
     const val OFFLINE = "offline"
-    /** The look of someone in 取り込み中: a red disc with a white bar (never sent in a `presence` frame). */
+    /** The look of someone in 取り込み中: a plain red disc (never sent in a `presence` frame). */
     const val DND = "dnd"
 
     /** A `dnd_until` at or after this means 「解除するまで」 (the server stores 9999-12-31T00:00:00Z). */
@@ -60,6 +60,13 @@ object PresenceRules {
 
     /** What an avatar shows (§11.5): 取り込み中 beats the connection (online, away and offline alike). */
     fun look(connection: String, until: String?, now: Instant = Instant.now()): String = if (dndUntil(until, now) != null) DND else connection
+
+    /**
+     * The dot on a message's sender avatar (§11.5), or null for none: only on a row that draws the avatar (the first of a
+     * group; grouped rows show the time there), never a bot's (webhooks, AI, feeds), and nothing while offline.
+     */
+    fun senderDot(look: String, isBot: Boolean, avatarShown: Boolean): String? =
+        look.takeIf { avatarShown && !isBot && (it == ONLINE || it == AWAY || it == DND) }
 
     /** My choice (§11.1): 取り込み中 > オフライン表示 > 離席中 > 自動 (an unknown `presence_manual` is automatic). */
     fun myChoice(me: UserMe?, now: Instant = Instant.now()): PresenceChoice = when {

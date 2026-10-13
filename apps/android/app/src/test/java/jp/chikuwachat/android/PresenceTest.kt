@@ -216,6 +216,37 @@ class PresenceTest {
         assertTrue(store.version.value > before)
     }
 
+    // --- the dot on a message's sender avatar (conversations, threads, saved, search) ---
+
+    @Test fun theSenderDotShowsOnlineAwayAndDoNotDisturb() {
+        assertEquals("online", PresenceRules.senderDot("online", isBot = false, avatarShown = true))
+        assertEquals("away", PresenceRules.senderDot("away", isBot = false, avatarShown = true))
+        assertEquals("dnd", PresenceRules.senderDot("dnd", isBot = false, avatarShown = true))
+    }
+
+    @Test fun noSenderDotOfflineForBotsOrOnGroupedRows() {
+        assertNull(PresenceRules.senderDot("offline", isBot = false, avatarShown = true))
+        assertNull(PresenceRules.senderDot("online", isBot = true, avatarShown = true)) // webhooks, AI, feeds
+        assertNull(PresenceRules.senderDot("dnd", isBot = true, avatarShown = true))
+        assertNull(PresenceRules.senderDot("online", isBot = false, avatarShown = false)) // a continuation row: no avatar
+        assertNull(PresenceRules.senderDot("something-new", isBot = false, avatarShown = true)) // an unknown value draws nothing
+    }
+
+    @Test fun theSenderDotFollowsTheStore() {
+        val store = Store()
+        store.upsertUser(user("a"))
+        store.upsertUser(user("d", dndUntil = forever))
+        fun dot(id: String) = PresenceRules.senderDot(store.presenceOf(id, now), isBot = store.users[id]?.role == "bot", avatarShown = true)
+        assertNull(dot("a"))
+        store.setPresence("a", "online")
+        assertEquals("online", dot("a"))
+        store.setPresence("a", "away")
+        assertEquals("away", dot("a"))
+        store.setPresence("a", "offline")
+        assertNull(dot("a"))
+        assertEquals("dnd", dot("d")) // 取り込み中 shows while offline
+    }
+
     // --- the engine: my choice from another device, and no local notification while 取り込み中 ---
 
     private suspend fun settle(engine: SyncEngine) { repeat(20) { engine.idle(); yield() } }

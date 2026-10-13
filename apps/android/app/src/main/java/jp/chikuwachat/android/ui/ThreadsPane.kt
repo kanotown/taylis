@@ -199,7 +199,7 @@ private fun ThreadRow(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Avatar(parent.senderId, author, size = 36.dp)
+            SenderAvatar(store, parent.senderId, author, size = 36.dp, ring = MaterialTheme.colorScheme.surface)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
