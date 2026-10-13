@@ -156,6 +156,30 @@ final class QuickReactionsTests: XCTestCase {
         XCTAssertEqual(QuickReactions.row(chosen: [], recent: "🍤"), ["🍤", "👍", "❤️", "😂", "🎉", "👀"], "an empty list is no choice")
     }
 
+    /// apps/shared/quick-reactions.json: the rule's cases (a chosen custom emoji kept in its place since 2026-10-13),
+    /// the defaults, and a chosen custom emoji the client does not know skipped where shown.
+    func testTheSharedCases() throws {
+        struct Case: Decodable { let name: String; let chosen: [String]?; let recent: [String]; let count: Int; let expected: [String] }
+        struct Cases: Decodable { let defaults: [String]; let rule: [Case]; let valid: [String] }
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/quick-reactions.json")
+        let cases = try JSONDecoder().decode(Cases.self, from: Data(contentsOf: url))
+        XCTAssertEqual(cases.defaults, reactionPalette)
+        for rule in cases.rule {
+            let row = QuickReactions.row(chosen: rule.chosen, recent: rule.recent.joined(separator: " "))
+            XCTAssertEqual(Array(row.prefix(rule.count)), rule.expected, rule.name)
+        }
+        // Every valid custom `:name:` is one the picker hands back (and the reaction sends) as it is.
+        for item in cases.valid where item.hasPrefix(":") { XCTAssertNotNil(CustomEmoji.name(of: item), item) }
+        // Shown: a known custom emoji stays in its place, an unknown (deleted) one is skipped.
+        let chosen = [":hanpen:", "👍", ":gone:", "🎉"]
+        XCTAssertEqual(QuickReactions.shown(chosen) { $0 == "hanpen" }, [":hanpen:", "👍", "🎉"])
+        XCTAssertEqual(QuickReactions.shown(chosen) { _ in false }, ["👍", "🎉"])
+        // A custom emoji takes a slot (and trades places) like any other.
+        XCTAssertEqual(QuickReactions.replacing(["👍", "❤️"], slot: 1, with: ":hanpen:"), ["👍", ":hanpen:"])
+        XCTAssertEqual(QuickReactions.replacing(["👍", ":hanpen:"], slot: 0, with: ":hanpen:"), [":hanpen:", "👍"])
+    }
+
     func testReplacingASlot() {
         let row = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
         XCTAssertEqual(QuickReactions.replacing(row, slot: 2, with: "🍤"), ["👍", "❤️", "🍤", "🎉", "👀", "✅"])
@@ -214,6 +238,10 @@ final class QuickReactionsTests: XCTestCase {
         XCTAssertTrue(saved)
         XCTAssertEqual(sent.last, ["quick_reactions": .array([.string("🍤"), .string("🙏")])], "only the one field")
         XCTAssertEqual(controller.store.me?.quickReactions, .chosen(["🍤", "🙏"]))
+        // A custom emoji goes as its `:name:`, as a reaction sends it (2026-10-13).
+        _ = await controller.setQuickReactions([":hanpen:", "🍤"])
+        XCTAssertEqual(sent.last, ["quick_reactions": .array([.string(":hanpen:"), .string("🍤")])])
+        XCTAssertEqual(controller.store.me?.quickReactions, .chosen([":hanpen:", "🍤"]))
         let reset = await controller.setQuickReactions(nil)
         XCTAssertTrue(reset)
         XCTAssertEqual(sent.last, ["quick_reactions": .null])

@@ -145,7 +145,8 @@ private struct MessageSheets: ViewModifier {
 enum QuickReactions {
     static let count = 6
 
-    /// The ones I chose (M50, the same on every device), exactly and in their order. Without a choice: the ones used
+    /// The ones I chose (M50, the same on every device; since 2026-10-13 a custom emoji's `:name:` too), exactly and in
+    /// their order. Without a choice: the ones used
     /// lately first (the picker's recents, standard emoji only), then the palette, six in all — as on the web and
     /// Android (parity audit 2026-09-29).
     static func row(chosen: [String]?, recent recentRaw: String) -> [String] {
@@ -153,6 +154,12 @@ enum QuickReactions {
         let recent = recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty && CustomEmoji.name(of: $0) == nil }
         var seen: Set<String> = []
         return (recent + reactionPalette).filter { seen.insert($0).inserted }.prefix(count).map { $0 }
+    }
+
+    /// `row` as shown: a custom emoji this workspace does not have (deleted since it was chosen) is skipped
+    /// (apps/shared/quick-reactions.json).
+    static func shown(_ row: [String], known: (String) -> Bool) -> [String] {
+        row.filter { CustomEmoji.name(of: $0).map(known) ?? true }
     }
 
     /// 「リアクションの候補」: `glyph` in slot `index` of `row` (an empty slot past the end adds it). One already in
@@ -167,6 +174,22 @@ enum QuickReactions {
         if let other = result.firstIndex(of: glyph) { result[other] = result[index] }
         result[index] = glyph
         return result
+    }
+}
+
+/// One quick reaction in its 44 pt circle (the long-press sheet, 「リアクションの候補」): a standard emoji as text, a
+/// custom one as its image (ReactionGlyph), a wide one or a text pill made smaller to stay inside the circle.
+struct QuickReactionGlyph: View {
+    let controller: AppController
+    let emoji: String
+
+    var body: some View {
+        if let name = CustomEmoji.name(of: emoji), let custom = controller.store.customEmoji[name] {
+            let width = CustomEmoji.size(of: custom, height: 26).width
+            ReactionGlyph(controller: controller, emoji: emoji, height: width > 38 ? max(10, (26 * 38 / width).rounded(.down)) : 26)
+        } else {
+            Text(emoji).font(.system(size: 26))
+        }
     }
 }
 
@@ -188,7 +211,9 @@ struct MessageActionsSheet: View {
     private var store: Store { controller.store }
     private var isMine: Bool { store.me?.id == message.senderId }
     @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
-    private var quickReactions: [String] { QuickReactions.row(chosen: store.me?.quickReactions.chosen, recent: recentRaw) }
+    private var quickReactions: [String] {
+        QuickReactions.shown(QuickReactions.row(chosen: store.me?.quickReactions.chosen, recent: recentRaw)) { store.customEmoji[$0] != nil }
+    }
     private var mine: Set<String> {
         guard let me = store.me?.id else { return [] }
         return Set(message.reactions.filter { $0.userIds.contains(me) }.map(\.emoji))
@@ -213,7 +238,7 @@ struct MessageActionsSheet: View {
                             if !mine.contains(emoji) { EmojiUsage.note(emoji) } // C10: counts toward the picker's 「よく使う」
                             run { await controller.toggleReaction(message, emoji: emoji) }
                         } label: {
-                            Text(emoji).font(.system(size: 26))
+                            QuickReactionGlyph(controller: controller, emoji: emoji)
                                 .frame(width: 44, height: 44)
                                 .background(mine.contains(emoji) ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground), in: Circle())
                         }

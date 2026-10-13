@@ -472,8 +472,12 @@ struct AppearanceView: View {
     @State private var slot: Int?
 
     private var me: UserMe? { controller.store.me ?? controller.me }
-    /// What the long-press sheet shows now: my choice, or the recent-first rule's six.
-    private var quickRow: [String] { QuickReactions.row(chosen: me?.quickReactions.chosen, recent: recentRaw) }
+    /// What the long-press sheet shows now: my choice, or the recent-first rule's six; a custom emoji deleted since it
+    /// was chosen is skipped there and here (a slot changed then saves the row without it).
+    private var quickRow: [String] {
+        let store = controller.store
+        return QuickReactions.shown(QuickReactions.row(chosen: me?.quickReactions.chosen, recent: recentRaw)) { store.customEmoji[$0] != nil }
+    }
 
     var body: some View {
         Form {
@@ -497,9 +501,12 @@ struct AppearanceView: View {
         .navigationTitle("表示")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: Binding(get: { slot != nil }, set: { if !$0 { slot = nil } })) {
-            // Standard emoji only (no custom list; 「よく使う」 then leaves custom ones out), and choosing is not using.
-            EmojiPickerView(countsUse: false) { glyph in
-                guard let index = slot, CustomEmoji.name(of: glyph) == nil else { return }
+            // As the reaction picker (custom emoji too since 2026-10-13, sent as `:name:`), but choosing is not using.
+            let store = controller.store
+            EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
+                            onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
+                            packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }, countsUse: false) { glyph in
+                guard let index = slot else { return }
                 let row = QuickReactions.replacing(quickRow, slot: index, with: glyph)
                 Task { _ = await controller.setQuickReactions(row) }
             }
@@ -514,7 +521,7 @@ struct AppearanceView: View {
                     let glyph = index < row.count ? row[index] : nil
                     Button { slot = index } label: {
                         Group {
-                            if let glyph { Text(glyph).font(.system(size: 26)) } else { Image(systemName: "plus").font(.system(size: 18)).foregroundStyle(.secondary) }
+                            if let glyph { QuickReactionGlyph(controller: controller, emoji: glyph) } else { Image(systemName: "plus").font(.system(size: 18)).foregroundStyle(.secondary) }
                         }
                         .frame(width: 44, height: 44)
                         .background(Color(.tertiarySystemFill), in: Circle())
