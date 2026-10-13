@@ -1,8 +1,9 @@
 // Adds what the demo seed (python -m app.cli seed-demo, infra/demo/README.md) does not have, so the documentation
-// screenshots (scripts/docs-shots.mjs) can show it: a few Docs pages and a database, the attendance board and two
-// action buttons. Fictional content only; run it against a throwaway demo database, never a real workspace.
+// screenshots (scripts/docs-shots.mjs) can show it: a few Docs pages and a database, the attendance board, two
+// action buttons and two workflows. Fictional content only; run it against a throwaway demo database, never a real workspace.
 // Usage: API=http://127.0.0.1:8061 ADMIN_USER=tanaka ADMIN_PASS=... REVIEW_PASS=... node scripts/docs-shots-setup.mjs
-// Stops (does nothing) when the Docs page 「研究室マニュアル」 already exists.
+// Run again, it refreshes the attendance board and adds what is missing; the Docs pages, the database and the action buttons
+// are made only when the Docs page 「研究室マニュアル」 does not exist yet.
 const API = (process.env.API ?? "http://127.0.0.1:8061").replace(/\/$/, "") + "/api/v1";
 const uuid = () => crypto.randomUUID();
 
@@ -31,14 +32,76 @@ if (process.env.REVIEW_PASS) {
   }
 }
 
-const tree = await api("GET", "/wiki/tree");
-if (JSON.stringify(tree).includes("研究室マニュアル")) {
-  console.log("already set up");
-  process.exit(0);
-}
-
 const users = await api("GET", "/users");
 const byName = Object.fromEntries((users.items ?? users).map((u) => [u.username, u]));
+const myChannels = await api("GET", "/channels");
+const channelId = (name) => myChannels.find((c) => c.name === name)?.id;
+
+// Attendance: on, with the default states; everyone somewhere (run again, it refreshes the 「〜から」 times), and the
+// screenshot account itself 在室 (its header badge and the state menu show it).
+await api("PATCH", "/admin/attendance/settings", { enabled: true });
+const att = await api("GET", "/admin/attendance/settings");
+const stateOf = (kind) => (att.states ?? []).find((s) => s.kind === kind && !s.owner_id)?.id;
+for (const [who, kind, note] of [["tanaka", "in_room", null], ["watanabe", "in_room", "論文執筆"], ["takahashi", "in_room", "実験中"], ["yamamoto", "in_room", null], ["suzuki", "on_site", "講義"], ["nakamura", "off_site", "学会（〜金）"], ["ito", "gone", null]]) {
+  const id = stateOf(kind);
+  if (id && byName[who]) await api("PUT", `/admin/attendance/users/${byName[who].id}`, { state_id: id, note });
+}
+if (process.env.REVIEW_PASS) {
+  const reviewToken = await login("review", process.env.REVIEW_PASS);
+  const r = await fetch(`${API}/attendance/me`, { method: "PUT", headers: { authorization: `Bearer ${reviewToken}`, "content-type": "application/json" }, body: JSON.stringify({ state_id: stateOf("in_room"), note: null }) });
+  if (!r.ok) throw new Error(`attendance review: ${r.status}`);
+}
+
+// Workflows in #研究ミーティング: an absence report with a form, and a seminar notice that asks for acknowledgement.
+const meeting = channelId("研究ミーティング");
+const workflows = meeting ? await api("GET", `/channels/${meeting}/workflows`) : [];
+if (meeting && !workflows.some((w) => w.name === "ゼミ欠席連絡")) {
+  await api("POST", "/workflows", {
+    name: "ゼミ欠席連絡",
+    emoji: "🙇",
+    description: "研究ミーティングを休むときに使います。",
+    channel_id: meeting,
+    fields: [
+      { key: "日付", label: "休む日", type: "date", required: true, default: { kind: "next_weekday", weekday: 0 } },
+      { key: "理由", label: "理由", type: "select", required: true, options: ["授業", "体調不良", "就職活動", "学会・出張", "その他"] },
+      { key: "進捗", label: "進捗の共有", type: "textarea", help: "今週の進み具合を短く書いてください（任意）" },
+      { key: "資料", label: "資料を #週報 に置いた", type: "checkbox" },
+    ],
+    template: "*【欠席連絡】* {{日付}} の研究ミーティングを休みます。\n*【理由】* {{理由}}\n*【進捗】* {{進捗}}\n*【資料を #週報 に置いた】* {{資料}}",
+  });
+}
+if (meeting && !workflows.some((w) => w.name === "ゼミの案内")) {
+  await api("POST", "/workflows", {
+    name: "ゼミの案内",
+    emoji: "📣",
+    description: "次の研究ミーティングの案内を出します。全員に「確認しました」を押してもらいます。",
+    channel_id: meeting,
+    fields: [
+      { key: "日時", label: "日時", type: "datetime", required: true, default: { kind: "next_weekday", weekday: 0, time: "10:00" } },
+      { key: "場所", label: "場所", type: "text", required: true, default: { kind: "literal", value: "演習室 2" } },
+      { key: "発表者", label: "発表者", type: "user", multiple: true },
+    ],
+    template: "次の研究ミーティングの案内です。\n*【日時】* {{日時}}\n*【場所】* {{場所}}\n*【発表者】* {{発表者}}",
+    request_ack: true,
+    priority: "important",
+  });
+}
+
+// One seminar notice posted with it (a fixed idempotency key: running this again returns the same post).
+const notice = (await api("GET", `/channels/${meeting}/workflows`)).find((w) => w.name === "ゼミの案内");
+if (notice) {
+  const monday = new Date(Date.now() + ((8 - new Date().getDay()) % 7 || 7) * 86400000).toISOString().slice(0, 10);
+  await api("POST", `/workflows/${notice.id}/submit`, {
+    client_msg_id: "6f1e3c2a-7d1b-4c8e-9a51-2b7d0c9e4f10",
+    values: { 日時: `${monday}T10:00`, 場所: "演習室 2", 発表者: [byName.yamamoto.id, byName.ito.id] },
+  });
+}
+
+const tree = await api("GET", "/wiki/tree");
+if (JSON.stringify(tree).includes("研究室マニュアル")) {
+  console.log("done (the Docs pages were there already)");
+  process.exit(0);
+}
 
 // Docs: a manual with two child pages, and a database of papers.
 const manual = await api("POST", "/wiki/pages", {
@@ -118,16 +181,6 @@ for (const [title, author, year, state, who, offset] of rows) {
   });
 }
 await api("PUT", `/wiki/databases/${db.id}/views/board`, { name: "ボード", type: "board", group_by: { prop_id: prop("状態").id } });
-
-// Attendance: on, with the default states; a few people somewhere.
-await api("PATCH", "/admin/attendance/settings", { enabled: true });
-const att = await api("GET", "/admin/attendance/settings");
-const states = att.states ?? [];
-const stateOf = (kind) => states.find((s) => s.kind === kind)?.id;
-for (const [who, kind, note] of [["tanaka", "in_room", null], ["suzuki", "on_site", "講義"], ["watanabe", "in_room", null], ["takahashi", "in_room", "実験中"], ["nakamura", "off_site", "学会"], ["yamamoto", "gone", null]]) {
-  const id = stateOf(kind);
-  if (id) await api("PUT", `/admin/attendance/users/${byName[who].id}`, { state_id: id, note });
-}
 
 // Action buttons (the relay URL is a placeholder: pressing them in the demo only shows an error).
 await api("PATCH", "/admin/actions/settings", { enabled: true, show_on_attendance: true });
