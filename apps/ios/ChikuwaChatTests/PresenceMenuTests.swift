@@ -365,8 +365,8 @@ final class PresenceMenuTests: XCTestCase {
         XCTAssertEqual(PresenceDot.Style(look: "dnd"), .dnd)
         XCTAssertEqual(PresenceDot.Style(look: "online"), .online)
         XCTAssertEqual(PresenceDot.Style(look: "away"), .away)
-        XCTAssertNil(PresenceDot.Style(look: "offline"), "offline draws nothing")
-        XCTAssertNil(PresenceDot.Style(look: nil))
+        XCTAssertEqual(PresenceDot.Style(look: "offline"), .offline, "offline: the grey ring (2026-10-13)")
+        XCTAssertNil(PresenceDot.Style(look: nil), "no one to show (a bot): nothing")
         XCTAssertEqual(PresenceDot.Style(look: "offline", showOffline: true), .offline, "my own picture: the grey ring")
 
         let renderer = ImageRenderer(content: PresenceDot(style: .dnd, side: 40).environment(\.colorScheme, .light))
@@ -384,6 +384,37 @@ final class PresenceMenuTests: XCTestCase {
     /// show through it, and the ring around it is what is behind the picture (a hole cut out of the picture), not
     /// systemBackground drawn over it (black on dark grouped rows) — iOS 26's glass sheet blended the dot with the
     /// picture under it.
+    /// Someone offline (2026-10-13): a hollow grey ring on their picture, its middle and the gap around it the row's
+    /// colour (the hole cut out of the picture), so it reads as one ring — a white circle on a light row — not two.
+    func testOfflineIsAHollowGreyRingOnTheRow() throws {
+        for (scheme, row) in [(ColorScheme.light, (r: 1.0, g: 1.0, b: 1.0)), (.dark, (r: 0.11, g: 0.11, b: 0.12))] {
+            let avatar = AvatarView(id: "u-ring", name: "加納", size: 40, presence: "offline").padding(8)
+            let image = try renderAt4x(avatar.background(Color(red: row.r, green: row.g, blue: row.b)), scheme: scheme)
+            // The 10 pt dot's centre (see below); its 2 pt stroke spans 3–5 pt from it, the hole reaches 7 pt.
+            let centre = 8 + 40 - 5 + 2.2
+            func at(_ dx: Double) throws -> (r: Double, g: Double, b: Double, a: Double) {
+                try pixelOf(image, x: Int(4 * (centre - dx)), y: Int(4 * centre))
+            }
+            let label = "\(scheme)"
+            for (dx, what) in [(0.0, "the middle"), (1.5, "inside the ring"), (6.0, "the gap around it")] {
+                let pixel = try at(dx)
+                XCTAssertEqual(pixel.r, row.r, accuracy: 0.03, "\(what) is the row: \(label)")
+                XCTAssertEqual(pixel.g, row.g, accuracy: 0.03, label)
+                XCTAssertEqual(pixel.b, row.b, accuracy: 0.03, label)
+            }
+            let ring = try at(4)
+            XCTAssertEqual(ring.a, 1, accuracy: 0.01, label)
+            XCTAssertEqual(ring.r, ring.g, accuracy: 0.05, "grey: \(label)")
+            XCTAssertEqual(ring.g, ring.b, accuracy: 0.06, "grey: \(label)")
+            XCTAssertGreaterThan(ring.r, 0.35, label); XCTAssertLessThan(ring.r, 0.75, label)
+            // Past the hole: the picture.
+            let picture = try at(10)
+            XCTAssertGreaterThan(abs(picture.r - row.r) + abs(picture.g - row.g) + abs(picture.b - row.b), 0.2, "the picture: \(label)")
+        }
+        // No ring on a bot's picture (nil).
+        XCTAssertNil(PresenceDot.Style(look: nil))
+    }
+
     func testTheDotOnAPictureIsSolidWithTheGroundAsItsRing() throws {
         let ground = (r: 1.0, g: 0.8, b: 0.0)
         for scheme in [ColorScheme.light, .dark] {
@@ -437,10 +468,10 @@ final class MessageAvatarPresenceTests: XCTestCase {
                    updatedAt: "2026-10-01T00:00:00Z", dndUntil: dndUntil)
     }
 
-    func testTheSenderDotShowsOnlineAwayAndDndButNotOfflineOrBots() {
+    func testTheSenderDotShowsEveryLookButNotBots() {
         let store = Store()
         store.upsertUser(user("alice"))
-        XCTAssertNil(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), "offline: nothing")
+        XCTAssertEqual(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), .offline, "offline: the hollow ring")
         store.setPresence("alice", status: "online")
         XCTAssertEqual(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), .online)
         store.setPresence("alice", status: "away")
@@ -454,6 +485,9 @@ final class MessageAvatarPresenceTests: XCTestCase {
         store.upsertUser(user("hook", role: "bot"))
         store.setPresence("hook", status: "online")
         XCTAssertNil(SenderAvatar.look("hook", store: store))
+        store.setPresence("hook", status: "offline")
+        XCTAssertNil(SenderAvatar.look("hook", store: store), "no ring either")
+        XCTAssertNil(store.dotLook("hook"))
         // Someone the directory does not know yet: the presence alone.
         store.setPresence("stranger", status: "online")
         XCTAssertEqual(SenderAvatar.look("stranger", store: store), "online")
@@ -476,7 +510,7 @@ final class MessageAvatarPresenceTests: XCTestCase {
     }
 
     /// The message picture (36 pt) on a highlighted / jumped-to row's colour, light and dark: the ring is the row's
-    /// colour (a hole in the picture), the dot solid; offline cuts no hole.
+    /// colour (a hole in the picture), the dot solid; offline's ring is hollow, its middle the row's colour too.
     func testTheDotOnAMessagePictureHasTheRowAsItsRing() throws {
         let store = Store()
         store.upsertUser(user("alice"))
@@ -492,15 +526,16 @@ final class MessageAvatarPresenceTests: XCTestCase {
                 let image = try renderAt4x(row, scheme: scheme)
                 let ring = try pixelOf(image, x: Int(ringAt), y: Int(ringAt))
                 let label = "\(status) \(scheme)"
-                if status == "offline" {
-                    XCTAssertGreaterThan(abs(ring.b - ground.b) + abs(ring.g - ground.g), 0.1, "no hole: the picture: \(label)")
-                    continue
-                }
                 XCTAssertEqual(ring.r, ground.r, accuracy: 0.03, "the ring is the row: \(label)")
                 XCTAssertEqual(ring.g, ground.g, accuracy: 0.03, label)
                 XCTAssertEqual(ring.b, ground.b, accuracy: 0.03, label)
                 let dot = try pixelOf(image, x: Int(centre), y: Int(centre))
                 XCTAssertEqual(dot.a, 1, accuracy: 0.01, label)
+                if status == "offline" {
+                    XCTAssertEqual(dot.r, ground.r, accuracy: 0.03, "hollow: \(label)")
+                    XCTAssertEqual(dot.b, ground.b, accuracy: 0.03, label)
+                    continue
+                }
                 XCTAssertGreaterThan(dot.g, 0.7, label); XCTAssertLessThan(dot.r, 0.35, label)  // green
             }
         }

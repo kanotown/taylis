@@ -208,7 +208,7 @@ struct DMListView: View {
     /// My DM with myself before it exists: a row like the others.
     private func notesRow(_ meId: String) -> some View {
         HStack(spacing: 12) {
-            AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: store.presenceOf(meId))
+            AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: store.dotLook(meId))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(store.me?.displayName ?? "…").lineLimit(1)
@@ -238,7 +238,7 @@ struct DMListView: View {
             : preview
         return HStack(spacing: 12) {
             AvatarView(id: avatarId, name: store.users[avatarId]?.displayName ?? store.me?.displayName ?? "?", size: 36,
-                       presence: statusId.map { store.presenceOf($0) })
+                       presence: statusId.flatMap { store.dotLook($0) })
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(channelTitle(channel, store: store)).fontWeight(unread ? .semibold : .regular).lineLimit(1)

@@ -1354,6 +1354,12 @@ final class Store {
         return PresenceRules.look(connection: connectionOf(userId), dndUntil: dndUntilOf(userId))
     }
 
+    /// The look a person's picture shows as its dot (AvatarView `presence`): none for a bot (an incoming webhook posts
+    /// as one, the AI bot is one), else `presenceOf` (offline is the hollow ring).
+    func dotLook(_ userId: String) -> String? {
+        users[userId]?.role == "bot" ? nil : presenceOf(userId)
+    }
+
     /// The `presence` frames' status alone (online / away / offline).
     func connectionOf(_ userId: String) -> String { presence[userId] ?? "offline" }
 

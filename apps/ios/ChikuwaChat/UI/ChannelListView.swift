@@ -468,7 +468,7 @@ struct ChannelListView: View {
         } label: {
             HStack(spacing: 10) {
                 AvatarView(id: meId ?? "", name: controller.store.me?.displayName ?? "?", size: 22,
-                           presence: meId.map { controller.store.presenceOf($0) })
+                           presence: meId.flatMap { controller.store.dotLook($0) })
                 Text(controller.store.me?.displayName ?? "…").foregroundStyle(Color.primary.opacity(0.72)).lineLimit(1)
                 Spacer(minLength: 4)
                 StatusEmojiView(user: controller.store.me?.asPublic, controller: controller) // M38: mine too, as on the others' rows
@@ -567,7 +567,7 @@ struct ChannelListView: View {
             HStack(spacing: 10) {
                 if channel.channel.isDm {
                     let other = (channel.channel.dmUserIds ?? []).first { $0 != store.me?.id } ?? store.me?.id ?? channel.id
-                    AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", size: 22, presence: store.presenceOf(other))
+                    AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", size: 22, presence: store.dotLook(other))
                 } else {
                     Image(systemName: channel.channel.type == "private" ? "lock" : "number")
                         .font(.system(size: 16, weight: .medium)).foregroundStyle(.secondary)

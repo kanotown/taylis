@@ -243,7 +243,7 @@ struct ChannelInfoView: View {
         let removable = canManage && member.userId != store.me?.id && !(channel?.channel.isDm ?? true)
         return Button { profileUserId = member.userId } label: {
             HStack(spacing: 10) {
-                AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: presence)
+                AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: store.dotLook(member.userId))
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 6) {
                         Text(user?.displayName ?? "?")

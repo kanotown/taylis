@@ -161,7 +161,7 @@ struct AttendanceView: View {
         let user = person.user
         return Button { profileUserId = user.id } label: {
             HStack(spacing: 10) {
-                AvatarView(id: user.id, name: user.displayName, size: 32, presence: store.presenceOf(user.id))
+                AvatarView(id: user.id, name: user.displayName, size: 32, presence: store.dotLook(user.id))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(user.id == meId ? user.displayName + " " + tr("（自分）") : user.displayName).lineLimit(1)
                     if let entry = person.entry {
