@@ -32,6 +32,27 @@ description: 共有の機材やアカウントを時間で予約する、今す�
 割り当ての前なら予約を **取り消せます**。次の時間が空いていれば 1 時間ずつ **延長** でき、使い終わったら
 「返却する」を押します。
 
+予約と今すぐ（順番待ち）は、次のように進みます。割り当てと外す作業は担当者が行います。
+
+```mermaid
+stateDiagram-v2
+  state "予約中" as booked
+  state "順番待ち" as waiting
+  state "利用中" as holding
+  state "返却済み" as returning
+  state "終わり" as done
+  state "取り消し" as cancelled
+  [*] --> booked: 予約する
+  [*] --> waiting: 今すぐ
+  booked --> holding: 割り当て
+  waiting --> holding: 割り当て
+  holding --> returning: 返却する
+  returning --> done: 外す
+  holding --> done: 外す・入れ替え
+  booked --> cancelled: 取り消す
+  waiting --> cancelled: 取り消す
+```
+
 ## 今すぐ使いたいとき（順番待ち）
 
 「今すぐ（順番待ち）」を押すと、空いている枠を **次の予約が始まるまで** 使えます（「〜13:00 まで」のように表示されます）。

@@ -24,6 +24,16 @@ Taylis の設計でいちばん重視しているのは、**メッセージを�
 - **seq を 1 つ進めるたびに、その seq を持つイベントがちょうど 1 つ作られます**。アプリは届いたイベントの seq が
   飛んでいれば、取りこぼしに気づけます。
 
+WebSocket でイベントを受け取ったアプリは、自分の持っている seq（`synced_seq`）と比べて次のように扱います。
+
+```mermaid
+flowchart TD
+  E["イベントが届く（seq = n）"] --> Q{"n と synced_seq"}
+  Q -- "n = synced_seq + 1" --> OK["そのまま反映<br>synced_seq = n"]
+  Q -- "n > synced_seq + 1" --> GAP["取りこぼしあり<br>差分を取り寄せる"]
+  Q -- "n ≤ synced_seq" --> SKIP["反映済み<br>何もしない"]
+```
+
 ## 重複しない送信（冪等性）
 
 アプリはメッセージを送る前に、ランダムな ID（`client_msg_id`）を作ります。
@@ -45,6 +55,24 @@ Taylis の設計でいちばん重視しているのは、**メッセージを�
 処理は何度実行しても結果が同じ（冪等）になるように作っています。この仕組みは PostgreSQL だけで動いていて、
 Kafka や RabbitMQ は使っていません。
 
+メッセージを送ってから、ほかの人の画面に出るまでの流れです。
+
+```mermaid
+sequenceDiagram
+  participant A as 送る人のアプリ
+  participant S as サーバー
+  participant DB as PostgreSQL
+  participant B as ほかの人のアプリ
+  A->>A: client_msg_id を作り<br>送信待ちの列に入れる
+  A->>S: 投稿（client_msg_id）
+  S->>DB: 1 つのトランザクションで<br>メッセージ（seq 101）と outbox を保存
+  S-->>A: 保存したメッセージ（seq 101）
+  Note over A,S: 応答が届かず送り直しても、<br>同じメッセージが返るだけ
+  S->>DB: outbox を読む（バックグラウンドの処理）
+  S-)B: WebSocket：message.created（seq 101）
+  S-)B: プッシュ通知（スマートフォン、合図だけ）
+```
+
 ## 再接続：足りない分を取り寄せる
 
 アプリはチャンネルごとに「この seq までは反映済み」というカーソルを覚えています。
@@ -53,6 +81,24 @@ Kafka や RabbitMQ は使っていません。
   サーバーにカーソルより後の変更を問い合わせ、足りない分を取り寄せます。
 - 通信が一時的に切れた・アプリが止められた・端末を再起動した・プッシュが届かなかった、のどれでも同じ手順で回復します。
 - 同じイベントを何度受け取っても、端末の状態は同じになります（新しい `updated_seq` のときだけ上書き）。
+
+たとえば、切断している間に 3 件の変更があった場合は次のようになります。
+
+```mermaid
+sequenceDiagram
+  participant B as アプリ
+  participant S as サーバー
+  Note over B: synced_seq = 100 のまま切断
+  Note over S: 切断の間に<br>101 投稿・102 リアクション・103 削除
+  B->>S: WebSocket に接続し直す
+  S-->>B: hello（ここから後の変更はイベントで届く）
+  B->>S: 全体の状態（bootstrap）
+  B->>S: since_seq=100 より後の変更
+  S-->>B: 変わったメッセージ（101 の投稿は 👍 付き、削除の印）
+  Note over B: synced_seq = 103
+```
+
+イベントを 1 つずつ再生するのではなく、「変わったメッセージの今の状態」をまとめて受け取ります。
 
 ## 既読の同期
 

@@ -22,12 +22,28 @@ Push notifications additionally need an Apple Developer Program membership (iOS)
 
 ## Components
 
-```text
-users ──https──▶ Caddy (TLS, serves the browser client) ──▶ app (FastAPI, WebSocket)
-                                                           ├─▶ db (PostgreSQL 17 + PGroonga)
-                                                           ├─▶ objectstore (versitygw: S3-compatible, attachments)
-                                                           └─▶ converter (Gotenberg: Office document previews)
+```mermaid
+flowchart TD
+  U["users' apps<br>and browsers"] -- "HTTPS" --> C
+  subgraph host["Docker Compose"]
+    C["caddy<br>TLS, browser client"] --> APP["app<br>FastAPI, WebSocket"]
+    APP --> DB[("db<br>PostgreSQL + PGroonga")]
+    APP --> OS[("objectstore<br>versitygw")]
+    subgraph closed["internal-only network"]
+      CV["converter<br>Gotenberg"]
+    end
+    APP --> CV
+  end
+  APP -. "push" .-> P["APNs / FCM"]
 ```
+
+| Service | Role |
+| --- | --- |
+| `caddy` | Terminates TLS (certificates are obtained automatically), sends `/api/*` to the app and serves the browser client |
+| `app` | The Taylis server (Python / FastAPI). Applies database migrations when it starts |
+| `db` | PostgreSQL with PGroonga for Japanese and English full-text search |
+| `objectstore` | Attachment storage (versitygw: the S3 API on top of a plain directory) |
+| `converter` | Turns Office documents into PDF previews; it cannot reach the host or the internet |
 
 **All state lives in two places: the PostgreSQL volume and the versitygw data directory.** Backups copy exactly these
 two (`infra/backup.sh`, `infra/restore.sh`).

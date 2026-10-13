@@ -26,13 +26,21 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy 
 自分のリポジトリ（フォーク）で `v1.2.3` の形のタグを push すると、GitHub Actions がテスト → イメージの作成 →
 サーバーへのデプロイまでを自動で実行します（`.github/workflows/release.yml`）。
 
-```text
+```sh
 git tag v1.2.3 && git push origin v1.2.3
-  1. checks   サーバーのテストとブラウザ版のビルド
-  2. images   サーバーとブラウザ版のイメージを作り、GitHub Container Registry に置く
-  3. deploy   サーバーに SSH (決まったコマンドしか実行できない鍵) で入り、
-              バックアップ → イメージの取得 → 入れ替え → 動いているかの確認
-              起動しなければ、直前のリリースに自動で戻す
+```
+
+```mermaid
+flowchart TD
+  T["タグを push"] --> C["checks<br>テストとビルド"]
+  C --> I["images<br>イメージを作り<br>GitHub に置く"]
+  I --> D["deploy<br>SSH でサーバーへ"]
+  subgraph server["サーバーの上で"]
+    P["イメージの取得"] --> B["バックアップ"] --> U["入れ替え"] --> H{"動いている？"}
+  end
+  D --> P
+  H -- "はい" --> OK["新しい版で公開"]
+  H -- "いいえ" --> RB["直前のリリースに<br>自動で戻す"]
 ```
 
 - 秘密の値（`.env`、`secrets/`）はサーバーにだけ置き、GitHub には SSH の接続情報だけを置きます。

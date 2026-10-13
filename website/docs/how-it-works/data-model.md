@@ -26,6 +26,33 @@ description: Taylis の主な表と、ID・シーケンスの役割
 | `push_deliveries` | 端末ごとのプッシュの送信の状態 |
 | `audit_logs` | 管理の操作の記録 |
 
+主な表のつながりは次のとおりです（DM も `channels` の 1 行です）。
+
+```mermaid
+erDiagram
+  users ||--o{ channel_members : "参加"
+  channels ||--o{ channel_members : "メンバー"
+  channels ||--o{ messages : "seq の順"
+  users ||--o{ messages : "送る"
+  messages |o--o{ messages : "スレッドの返信"
+  messages ||--o{ reactions : ""
+  messages |o--o{ attachments : ""
+  users ||--o{ read_states : ""
+  channels ||--o{ read_states : "どこまで読んだか"
+  users ||--o{ devices : "端末"
+  devices ||--o{ sessions : "ログイン"
+  devices ||--o{ push_deliveries : "プッシュ"
+  messages {
+    uuid id
+    bigint seq
+    uuid client_msg_id
+    text body
+  }
+  read_states {
+    bigint last_read_seq
+  }
+```
+
 ほかに、カスタム絵文字、招待、グループ、キャンバス、カレンダー、タスク、ワークフロー、予約、AI などの表があります。
 
 ## 3 種類の識別子

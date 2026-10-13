@@ -23,6 +23,21 @@ description: 認証、権限、添付ファイル、通信と秘密の情報の�
 | 2 要素認証 | 認証アプリ（TOTP）と回復コード |
 | Google でログイン | OpenID Connect + PKCE。Google とやり取りするのはサーバーだけで、許可したドメインのアカウントだけを受け付けます |
 
+アクセストークンとリフレッシュトークンの使い方は次のとおりです。
+
+```mermaid
+sequenceDiagram
+  participant A as アプリ
+  participant S as サーバー
+  A->>S: ログイン（パスワード、2 要素認証のコード）
+  S-->>A: アクセストークン（15 分）<br>リフレッシュトークン
+  A->>S: API・WebSocket（アクセストークン）
+  Note over S: 毎回セッションが<br>有効かを確かめる
+  A->>S: 期限の前にリフレッシュ
+  S-->>A: 新しい 2 つのトークン<br>（古いリフレッシュトークンは使えなくなる）
+  Note over A,S: 古いリフレッシュトークンがもう一度使われたら、<br>盗難の疑いとしてセッションを失効させる
+```
+
 端末に保存する秘密は、iOS は Keychain、Android は Android Keystore の鍵で暗号化した保存先、デスクトップ版は OS の
 資格情報ストアに置きます。ブラウザ版のリフレッシュトークンは、スクリプトから読めない cookie（`HttpOnly`）に入れます。
 

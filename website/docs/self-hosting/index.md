@@ -23,11 +23,19 @@ Taylis のサーバーは、Linux のサーバー 1 台に Docker Compose で立
 
 ## 構成
 
-```text
-利用者 ──https──▶ Caddy (TLS、ブラウザ版の配信) ──▶ app (FastAPI、WebSocket)
-                                                     ├─▶ db (PostgreSQL 17 + PGroonga)
-                                                     ├─▶ objectstore (versitygw: S3 互換、添付ファイル)
-                                                     └─▶ converter (Gotenberg: Office 文書のプレビュー)
+```mermaid
+flowchart TD
+  U["利用者の<br>アプリ・ブラウザ"] -- "HTTPS" --> C
+  subgraph host["Docker Compose"]
+    C["caddy<br>TLS・ブラウザ版"] --> APP["app<br>FastAPI・WebSocket"]
+    APP --> DB[("db<br>PostgreSQL + PGroonga")]
+    APP --> OS[("objectstore<br>versitygw")]
+    subgraph closed["外に出られないネットワーク"]
+      CV["converter<br>Gotenberg"]
+    end
+    APP --> CV
+  end
+  APP -. "プッシュ" .-> P["APNs / FCM"]
 ```
 
 | サービス | 役割 |

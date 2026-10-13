@@ -97,7 +97,12 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.keys
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      # Mermaid diagrams: Material renders ```mermaid blocks itself and follows the light / dark palette.
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tilde:
       subscript: false
   - pymdownx.tabbed:
