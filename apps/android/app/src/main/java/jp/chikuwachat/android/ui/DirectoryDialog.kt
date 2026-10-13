@@ -92,7 +92,7 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
                         }
                         items(rows, key = { it.id }) { user ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Avatar(user.id, user.displayName, size = 36.dp, presence = if (user.role == "bot") null else store.presenceOf(user.id))
+                                Avatar(user.id, user.displayName, size = 36.dp, presence = store.presenceDotOf(user.id))
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {

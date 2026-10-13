@@ -1,12 +1,13 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import jp.chikuwachat.android.platform.AvatarCache
 import androidx.compose.foundation.layout.Box
@@ -35,12 +36,12 @@ import androidx.compose.ui.res.stringResource
 
 /**
  * The profile picture when the user has one (M14a), else initials on a colour derived from the user id; `presence` adds
- * the online / away dot (SYNC_PROTOCOL.md §5.2). `onClick` (M28c) opens the person's profile: TalkBack then names the
+ * the presence dot (SYNC_PROTOCOL.md §5.2; offline is a hollow ring, null draws none). `onClick` (M28c) opens the person's profile: TalkBack then names the
  * person and the action, and the touch target is at least 48 dp around a small avatar; a plain avatar stays decorative.
  */
 @Composable
 fun Avatar(
-    id: String, name: String, modifier: Modifier = Modifier, size: Dp = 36.dp, presence: String? = null, onClick: (() -> Unit)? = null, showOffline: Boolean = false,
+    id: String, name: String, modifier: Modifier = Modifier, size: Dp = 36.dp, presence: String? = null, onClick: (() -> Unit)? = null,
     /** The colour behind the avatar, for the dot's ring (null: the surface). */
     presenceRing: Color? = null,
 ) {
@@ -57,7 +58,7 @@ fun Avatar(
                 Text(Timeline.initials(name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.42f).sp, maxLines = 1)
             }
         }
-        if (presence != null && (presence != PresenceRules.OFFLINE || showOffline)) {
+        if (presence != null) {
             PresenceBadge(presence, size * 0.32f, Modifier.align(Alignment.BottomEnd), ring = presenceRing ?: MaterialTheme.colorScheme.surface)
         }
     }
@@ -65,8 +66,8 @@ fun Avatar(
 
 /**
  * A message's sender avatar (conversations, threads, the thread list, saved / pinned messages, search hits) with the
- * sender's dot (docs/PRESENCE.md §11.5, [PresenceRules.senderDot]): online, away and 取り込み中 show, offline and bots
- * do not. The dot is read here, from the Store's version through derivedStateOf, so a presence change redraws this
+ * sender's dot (docs/PRESENCE.md §11.5, [PresenceRules.senderDot]): online, away, 取り込み中 and offline (a hollow
+ * ring) show, bots have none. The dot is read here, from the Store's version through derivedStateOf, so a presence change redraws this
  * avatar alone and not the list around it. `ring` is the row's background (a highlighted row's too), so the dot looks
  * cut out of the avatar. Like the other lists' dots it is not read out (a tappable avatar keeps its name).
  */
@@ -84,8 +85,8 @@ fun SenderAvatar(store: Store, userId: String, name: String, size: Dp, ring: Col
 
 /**
  * The dot at an avatar's corner (with the surface's ring around it): green online, amber away, and 取り込み中 a plain red
- * disc (docs/PRESENCE.md §11.5; its white bar went on 2026-10-13); offline a hollow grey ring (my own avatar only, `showOffline`, so
- * オフライン表示 shows).
+ * disc (docs/PRESENCE.md §11.5; its white bar went on 2026-10-13); offline a hollow grey ring (everyone's since 2026-10-13,
+ * not only mine), its inside the `ring` colour too, so it reads as one white circle with a grey edge.
  */
 @Composable
 fun PresenceBadge(look: String, size: Dp, modifier: Modifier = Modifier, ring: Color = MaterialTheme.colorScheme.surface) {
@@ -101,7 +102,14 @@ fun PresenceDot(look: String, modifier: Modifier = Modifier) {
         PresenceRules.ONLINE -> Box(modifier.background(PRESENCE_GREEN, CircleShape))
         PresenceRules.AWAY -> Box(modifier.background(PRESENCE_AMBER, CircleShape))
         PresenceRules.DND -> Box(modifier.background(PRESENCE_RED, CircleShape))
-        else -> Box(modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
+        else -> {
+            // A hollow ring ~0.2 × the dot thick (as on Desktop / Web and iOS); the inside shows what is behind it.
+            val outline = MaterialTheme.colorScheme.outline
+            Box(modifier.drawBehind {
+                val stroke = size.minDimension * 0.2f
+                drawCircle(outline, radius = (size.minDimension - stroke) / 2, style = Stroke(width = stroke))
+            })
+        }
     }
 }
 

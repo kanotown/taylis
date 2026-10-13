@@ -10,6 +10,7 @@ import jp.chikuwachat.android.ui.DndDuration
 import jp.chikuwachat.android.ui.PresenceChoice
 import jp.chikuwachat.android.ui.PresenceRules
 import jp.chikuwachat.android.ui.YouSettings
+import jp.chikuwachat.android.ui.presenceDotOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -218,14 +219,15 @@ class PresenceTest {
 
     // --- the dot on a message's sender avatar (conversations, threads, saved, search) ---
 
-    @Test fun theSenderDotShowsOnlineAwayAndDoNotDisturb() {
+    @Test fun theSenderDotShowsOnlineAwayDoNotDisturbAndOffline() {
         assertEquals("online", PresenceRules.senderDot("online", isBot = false, avatarShown = true))
         assertEquals("away", PresenceRules.senderDot("away", isBot = false, avatarShown = true))
         assertEquals("dnd", PresenceRules.senderDot("dnd", isBot = false, avatarShown = true))
+        assertEquals("offline", PresenceRules.senderDot("offline", isBot = false, avatarShown = true)) // the hollow ring (2026-10-13)
     }
 
-    @Test fun noSenderDotOfflineForBotsOrOnGroupedRows() {
-        assertNull(PresenceRules.senderDot("offline", isBot = false, avatarShown = true))
+    @Test fun noSenderDotForBotsOrOnGroupedRows() {
+        assertNull(PresenceRules.senderDot("offline", isBot = true, avatarShown = true))
         assertNull(PresenceRules.senderDot("online", isBot = true, avatarShown = true)) // webhooks, AI, feeds
         assertNull(PresenceRules.senderDot("dnd", isBot = true, avatarShown = true))
         assertNull(PresenceRules.senderDot("online", isBot = false, avatarShown = false)) // a continuation row: no avatar
@@ -237,14 +239,30 @@ class PresenceTest {
         store.upsertUser(user("a"))
         store.upsertUser(user("d", dndUntil = forever))
         fun dot(id: String) = PresenceRules.senderDot(store.presenceOf(id, now), isBot = store.users[id]?.role == "bot", avatarShown = true)
-        assertNull(dot("a"))
+        assertEquals("offline", dot("a")) // no frame yet: offline, the hollow ring
         store.setPresence("a", "online")
         assertEquals("online", dot("a"))
         store.setPresence("a", "away")
         assertEquals("away", dot("a"))
         store.setPresence("a", "offline")
-        assertNull(dot("a"))
+        assertEquals("offline", dot("a"))
         assertEquals("dnd", dot("d")) // 取り込み中 shows while offline
+    }
+
+    @Test fun othersDotsShowOfflineAsTheRingButNotForBots() { // DM lists, member lists, the profile, …
+        assertEquals("offline", PresenceRules.othersDot("offline", isBot = false))
+        assertEquals("online", PresenceRules.othersDot("online", isBot = false))
+        assertNull(PresenceRules.othersDot("offline", isBot = true))
+        assertNull(PresenceRules.othersDot("something-new", isBot = false))
+        val store = Store()
+        store.upsertUser(user("a"))
+        store.upsertUser(user("b").copy(role = "bot"))
+        assertEquals("offline", store.presenceDotOf("a")) // never connected: offline
+        assertNull(store.presenceDotOf("b"))
+        store.setPresence("b", "online")
+        assertNull(store.presenceDotOf("b"))
+        store.setPresence("a", "away")
+        assertEquals("away", store.presenceDotOf("a"))
     }
 
     // --- the engine: my choice from another device, and no local notification while 取り込み中 ---

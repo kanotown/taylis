@@ -4,6 +4,7 @@ import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.sync.Store
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -62,11 +63,18 @@ object PresenceRules {
     fun look(connection: String, until: String?, now: Instant = Instant.now()): String = if (dndUntil(until, now) != null) DND else connection
 
     /**
-     * The dot on a message's sender avatar (§11.5), or null for none: only on a row that draws the avatar (the first of a
-     * group; grouped rows show the time there), never a bot's (webhooks, AI, feeds), and nothing while offline.
+     * The dot on someone else's avatar (§11.5; DM lists, member lists, the profile, …), or null for none: online, away,
+     * 取り込み中 and, since 2026-10-13, offline as a hollow ring (users asked to tell offline apart at a glance); never a
+     * bot's (webhooks, AI, feeds: they have no presence), and nothing for a value this client does not know.
      */
-    fun senderDot(look: String, isBot: Boolean, avatarShown: Boolean): String? =
-        look.takeIf { avatarShown && !isBot && (it == ONLINE || it == AWAY || it == DND) }
+    fun othersDot(look: String, isBot: Boolean): String? =
+        look.takeIf { !isBot && (it == ONLINE || it == AWAY || it == DND || it == OFFLINE) }
+
+    /**
+     * The dot on a message's sender avatar (§11.5), or null for none: [othersDot], only on a row that draws the avatar
+     * (the first of a group; grouped rows show the time there).
+     */
+    fun senderDot(look: String, isBot: Boolean, avatarShown: Boolean): String? = if (avatarShown) othersDot(look, isBot) else null
 
     /** My choice (§11.1): 取り込み中 > オフライン表示 > 離席中 > 自動 (an unknown `presence_manual` is automatic). */
     fun myChoice(me: UserMe?, now: Instant = Instant.now()): PresenceChoice = when {
@@ -145,3 +153,6 @@ object PresenceRules {
      */
     fun clearPauseBody(): JsonObject = buildJsonObject { put("dnd_until", JsonNull) }
 }
+
+/** Someone's dot as the Store has them ([PresenceRules.othersDot]): null for a bot, a hollow ring while offline. */
+fun Store.presenceDotOf(userId: String): String? = PresenceRules.othersDot(presenceOf(userId), isBot = users[userId]?.role == "bot")

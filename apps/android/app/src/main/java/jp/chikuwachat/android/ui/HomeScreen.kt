@@ -540,7 +540,7 @@ private fun HomeChannelRow(channel: ChannelState, controller: AppController, ver
             }
             else -> {
                 val other = others.firstOrNull() ?: meId ?: channel.id
-                Avatar(other, store.users[other]?.displayName ?: title, size = ROW_ICON, presence = store.presenceOf(other))
+                Avatar(other, store.users[other]?.displayName ?: title, size = ROW_ICON, presence = store.presenceDotOf(other))
             }
         }
         Spacer(Modifier.width(12.dp))

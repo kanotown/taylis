@@ -284,7 +284,7 @@ private fun PersonRow(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(user.id, user.displayName, size = 36.dp, presence = controller.store.presenceOf(user.id))
+        Avatar(user.id, user.displayName, size = 36.dp, presence = controller.store.presenceDotOf(user.id))
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(
                 user.displayName + if (user.id == meId) " " + stringResource(R.string.attendance_me) else "",

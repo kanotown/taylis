@@ -60,7 +60,7 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(userId, user?.displayName ?: "?", size = 56.dp, presence = presence)
+                    Avatar(userId, user?.displayName ?: "?", size = 56.dp, presence = store.presenceDotOf(userId))
                     Column(Modifier.padding(start = 14.dp)) {
                         Text(user?.displayName ?: "?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         if (user?.role == "guest") Text(stringResource(R.string.profile_dialog_guest_sees_only_channels_theyve_joined), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

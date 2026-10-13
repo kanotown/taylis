@@ -316,7 +316,7 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                     Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = L10n.str(R.string.common_open_profile)) { profileUserId = member.userId }.padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val presence = store.presenceOf(member.userId)
+                    val presence = store.presenceDotOf(member.userId)
                     Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence)
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -327,7 +327,7 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                         }
                         Text("@" + (user?.username ?: "") + (Roster.titleExtra(user?.title, store.roster[member.userId])?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
+                    if (presence != null && presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                     if (member.role == "owner") Text(L10n.str(R.string.dialogs_owner), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     // M31: 「オーナーにする」 / 「オーナーから外す」 behind a 48 dp menu button (a text button leaves no room for
                     // the name at 360 dp).
