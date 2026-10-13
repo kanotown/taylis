@@ -42,6 +42,8 @@ done
 [ -d secrets/attendance ] || install -d -m 755 secrets/attendance
 # 操作ボタン (docs/ACTIONS.md §5, M143): the keys the relays' requests are signed with, one file per secret_name.
 [ -d secrets/actions ] || install -d -m 755 secrets/actions
+# プッシュの中継 (docs/PUSH_RELAY.md): client_secret (this server sends through a relay) and clients/ (it relays).
+[ -d secrets/push-relay ] || install -d -m 755 secrets/push-relay
 
 # In-app calls (docs/CALLS.md §8.3, M130), when deploy.conf adds docker-compose.livekit.yml: the app reads the API
 # secret from secrets/livekit_api_secret (mode 644 like the AI keys); LiveKit takes it as LIVEKIT_KEYS from

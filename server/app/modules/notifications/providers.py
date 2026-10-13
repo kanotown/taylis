@@ -369,6 +369,18 @@ class FCMPushProvider:
 def build_providers(settings: Any) -> dict[str, PushProvider]:
     """Provider registry from settings; unconfigured platforms log instead of sending."""
     providers: dict[str, PushProvider] = {}
+    if getattr(settings, "push_relay_url", ""):
+        # docs/PUSH_RELAY.md: both platforms through the relay (it holds the keys).
+        from app.modules.notifications.relay import RelayPushProvider
+
+        for name in ("apns", "fcm"):
+            providers[name] = RelayPushProvider(
+                name,
+                url=settings.push_relay_url,
+                client_id=settings.push_relay_client_id,
+                settings=settings,
+            )
+        return providers
     if settings.push_apns_enabled:
         providers["apns"] = APNsPushProvider.from_files(
             key_path=settings.push_apns_key_path,

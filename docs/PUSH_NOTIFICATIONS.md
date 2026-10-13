@@ -20,6 +20,8 @@ PushProvider
 └── FakePushProvider   # テスト用
 ```
 
+APNs / FCM の鍵を持たないサーバーが、鍵を持つ別の Taylis サーバーに送ってもらう仕組み（中継）は [PUSH_RELAY.md](PUSH_RELAY.md)。
+
 ## 2. 構成と流れ
 
 ```
