@@ -78,6 +78,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -698,15 +699,19 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
 }
 
 /**
- * M50 (tester request, 2026-10-01): the long-press sheet's six reactions. A slot opens the picker (standard emoji only,
- * as the server takes); the pick replaces the slot, or swaps with the slot that has it already. Each change saves at once.
+ * M50 (tester request, 2026-10-01): the long-press sheet's six reactions. A slot opens the picker (the reaction picker's,
+ * custom emoji too since 2026-10-13: the server takes a `:name:`, drawn here as its image); the pick replaces the slot, or swaps with the slot that has it already. Each change saves at once.
  * Not chosen yet, the slots show today's row (recent first, then the defaults), and the first change keeps it.
  */
 @Composable
 private fun QuickReactionsSection(controller: AppController, me: UserMe) {
     val scope = rememberCoroutineScope()
+    val store = controller.store
+    val version by store.version.collectAsState()  // a custom emoji's image that lands redraws its slot
     val chosen = me.quickReactions
-    val slots = chosen ?: QuickReactions.pick(QuickReactions.read(controller.prefs))
+    // A chosen custom emoji this workspace no longer has (deleted) is skipped, as in the long-press row.
+    val slots = chosen?.let { QuickReactions.shown(it, QuickReactions.knownIn(store.customEmoji.keys)) }?.takeIf { it.isNotEmpty() }
+        ?: QuickReactions.pick(QuickReactions.read(controller.prefs))
     var saving by remember { mutableStateOf(false) }
     var picking by rememberSaveable { mutableStateOf<Int?>(null) }
     fun save(value: List<String>?) {
@@ -726,10 +731,13 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                     .clickable(enabled = !saving, role = Role.Button, onClickLabel = stringResource(R.string.common_change)) { picking = index }
-                    .semantics { contentDescription = L10n.str(R.string.you_screens_reaction_choice, index + 1, glyph ?: L10n.str(R.string.you_screens_empty_slot)) },
+                    .semantics { contentDescription = L10n.str(R.string.you_screens_reaction_choice, index + 1, glyph?.let { CustomEmoji.name(it) ?: it } ?: L10n.str(R.string.you_screens_empty_slot)) },
                 contentAlignment = Alignment.Center,
             ) {
-                if (glyph != null) Text(glyph, fontSize = 24.sp, modifier = Modifier.clearAndSetSemantics {})
+                if (glyph != null) ReactionEmoji(
+                    glyph, store, { controller.loadEmojiImage(it) }, height = 28.dp, textStyle = TextStyle(fontSize = 24.sp),
+                    modifier = Modifier.clearAndSetSemantics {}, version = version,
+                )
                 else Icon(Icons.Outlined.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -739,7 +747,8 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
     TextButton(enabled = !saving && chosen != null, onClick = { save(null) }) { Text(stringResource(R.string.you_screens_reset)) }
     picking?.let { index ->
         EmojiPickerSheet(
-            recent = QuickReactions.read(controller.prefs), store = controller.store, plainOnly = true,
+            recent = QuickReactions.read(controller.prefs), store = store,
+            onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) },
             onDismiss = { picking = null },
             onPick = { glyph ->
                 picking = null
