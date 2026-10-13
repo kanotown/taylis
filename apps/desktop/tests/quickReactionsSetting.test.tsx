@@ -11,7 +11,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "../src/api/client";
-import type { UserUpdate } from "../src/api/types";
+import type { CustomEmojiOut, UserUpdate } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { LONG_PRESS_MS, quickReactions, SHEET_REACTIONS } from "../src/ui/MessageActionsSheet";
 import { SettingsSectionBody } from "../src/ui/Settings";
@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   HTMLElement.prototype.scrollIntoView = () => {};
+  URL.createObjectURL = vi.fn(() => "blob:emoji");
 });
 
 afterEach(() => {
@@ -54,6 +55,7 @@ async function setup(options: { fail?: boolean } = {}) {
   const inner = w.api as unknown as Record<string, unknown>;
   const extra = {
     baseUrl: "http://server",
+    fetchBlob: async () => new Blob(["img"], { type: "image/png" }),
     updateMe: async (patch: UserUpdate) => {
       patches.push(patch);
       if (options.fail) throw new Error("サーバに接続できません");
@@ -122,8 +124,8 @@ describe("「リアクションの候補」 in 入力", () => {
 
     fireEvent.click(slot(1));
     expect(slot(1).getAttribute("aria-pressed")).toBe("true");
-    // Plain emoji only: no 「カスタム」 tab, and the recent :party: is not offered.
-    expect(within(screen.getByTestId("settings")).queryByText("カスタム")).toBeNull();
+    // The recent :party: is no emoji of this workspace: not offered.
+    expect(within(screen.getByTestId("settings")).queryByTitle(":party:")).toBeNull();
     await pickInPicker(":sushi:");
     expect(patches).toEqual([{ quick_reactions: ["🙏", "🍣", "❤️", "😂", "🎉", "👀"] }]);
     expect(slots()).toEqual(["🙏", "🍣", "❤️", "😂", "🎉", "👀"]);
@@ -172,6 +174,52 @@ describe("「リアクションの候補」 in 入力", () => {
   });
 });
 
+const emojiRow = (name: string): CustomEmojiOut => ({ id: `emoji-quick-${name}`, name, kind: "image", content_type: "image/png", width: 32, height: 32, keywords: [], position: 0, created_by: "u", created_at: "" });
+
+describe("custom emoji as quick reactions (2026-10-13)", () => {
+  it("the shared valid list has custom :name: items, the invalid list malformed ones", () => {
+    const all = JSON.parse(readFileSync(join(process.cwd(), "..", "shared", "quick-reactions.json"), "utf8")) as { valid: string[]; invalid: string[] };
+    expect(all.valid).toContain(":hanpen:");
+    expect(all.invalid).toContain(":A:");
+  });
+
+  it("a deleted custom emoji is skipped where shown (known given), kept in the settings (no known); none left: the rule", () => {
+    const known = (name: string) => name === "hanpen";
+    expect(quickReactions([], 3, [":gone:", ":hanpen:", "👍", "🔥"], known)).toEqual([":hanpen:", "👍", "🔥"]);
+    expect(quickReactions([], 6, [":gone:", ":hanpen:"])).toEqual([":gone:", ":hanpen:"]);
+    expect(quickReactions(["🙏"], 3, [":gone:"], known)).toEqual(["🙏", "👍", "❤️"]);
+  });
+
+  it("a slot's picker offers the workspace's custom emoji; picking one saves its :name: and shows its image", async () => {
+    const { w, patches } = await setup();
+    act(() => w.store.replaceCustomEmoji([emojiRow("hanpen")]));
+    fireEvent.click(slot(2));
+    // The 「カスタム」 tab is there, as in the reaction picker.
+    expect(within(screen.getByTestId("settings")).getAllByRole("tab").map((tab) => tab.textContent)).toContain("カスタム");
+    await pickInPicker(":hanpen:");
+    expect(patches).toEqual([{ quick_reactions: ["👍", "❤️", ":hanpen:", "🎉", "👀", "✅"] }]);
+    await vi.waitFor(() => expect(slot(2).querySelector("img[data-custom-emoji='hanpen']")).not.toBeNull());
+    // The hover bar's first three: the image there too, and a click reacts with `:hanpen:` as the picker would.
+    expect(hoverBar()).toEqual(["👍", "❤️", ":hanpen:"]);
+    const button = [...document.querySelectorAll(".row-actions button")].find((b) => (b as HTMLElement).title === ":hanpen: でリアクション") as HTMLElement;
+    await vi.waitFor(() => expect(button.querySelector("img[data-custom-emoji='hanpen']")).not.toBeNull());
+  });
+
+  it("reacting from the hover bar sends :name:; a chosen custom emoji the workspace lost is skipped there and a placeholder in its slot", async () => {
+    const { w, controller } = await setup();
+    act(() => w.store.replaceCustomEmoji([emojiRow("hanpen")]));
+    w.server.quickReactions.set(w.bob.id, [":gone:", ":hanpen:", "👍", "🔥"]);
+    await act(async () => { await w.engine.refreshMe(); });
+    expect(hoverBar()).toEqual([":hanpen:", "👍", "🔥"]);
+    const toggle = vi.spyOn(controller, "toggleReaction").mockResolvedValue(undefined as never);
+    fireEvent.click([...document.querySelectorAll(".row-actions button")].find((b) => (b as HTMLElement).title === ":hanpen: でリアクション")!);
+    expect(toggle).toHaveBeenCalledWith(expect.objectContaining({ id: expect.any(String) }), ":hanpen:");
+    // The settings keep it in its slot, as `:gone:` in small text, to be replaced.
+    expect(slot(0).querySelector("[data-missing-emoji='gone']")?.textContent).toBe(":gone:");
+    expect(slots()).toEqual([":gone:", "", "👍", "🔥"]);
+  });
+});
+
 describe("the long-press sheet", () => {
   it("shows exactly the chosen ones in order, and its action rows are 44px with no extra padding", async () => {
     hover = false;
@@ -193,6 +241,31 @@ describe("the long-press sheet", () => {
       expect(button.className).toContain("h-11");
       expect(button.className).not.toMatch(/\bpy-|\bmin-h-/);
     }
+  });
+});
+
+describe("the long-press sheet with a custom emoji chosen", () => {
+  it("shows it as its image, skips a deleted one, and reacts with :name:", async () => {
+    hover = false;
+    const { w, controller } = await setup();
+    act(() => w.store.replaceCustomEmoji([emojiRow("hanpen")]));
+    w.server.quickReactions.set(w.bob.id, ["🍣", ":gone:", ":hanpen:"]);
+    await act(async () => { await w.engine.refreshMe(); });
+    const toggle = vi.spyOn(controller, "toggleReaction").mockResolvedValue(undefined as never);
+    const row = document.querySelector('[id^="timeline-"]') as HTMLElement;
+    vi.useFakeTimers();
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    vi.useRealTimers();
+    const sheet = screen.getByRole("dialog", { name: "メッセージの操作" });
+    const buttons = within(sheet).getAllByRole("button");
+    expect(buttons.slice(0, 3).map((b) => b.getAttribute("aria-label"))).toEqual(["🍣 でリアクション", ":hanpen: でリアクション", "その他のリアクション"]);
+    await vi.waitFor(() => expect(buttons[1]!.querySelector("img[data-custom-emoji='hanpen']")).not.toBeNull());
+    // The sheet ignores taps in its first 350 ms (the long press's own release).
+    const later = Date.now() + 10_000;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    fireEvent.click(buttons[1]!);
+    expect(toggle).toHaveBeenCalledWith(expect.anything(), ":hanpen:");
   });
 });
 

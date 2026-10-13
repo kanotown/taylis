@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
+import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { type MessageActionKey, messageActions } from "./messageActions";
 import { cn } from "./primitives";
@@ -18,13 +19,29 @@ export const MAX_QUICK_REACTIONS = 6;
 /**
  * The quick reactions (apps/shared/quick-reactions.json). M50: the ones I chose (`chosen`, UserMe.quick_reactions),
  * exactly and in their order; the hover bar takes the first `count`. Not chosen (null): the ones I used last first, then
- * the defaults (tester request, 2026-09-28; the same rule on iOS and Android). Custom emoji stay in the picker: the quick
- * row shows plain emoji.
+ * the defaults (tester request, 2026-09-28; the same rule on iOS and Android). Custom emoji I used last stay in the
+ * picker: the rule's row shows plain emoji. Since 2026-10-13 a chosen one may be a custom emoji's `:name:`; where the
+ * quick reactions are shown (`known` given: the sheet, the hover bar) one the workspace no longer has is skipped, and
+ * when none is left the rule applies as if none were chosen. The settings' slots pass no `known`: they show every
+ * chosen one, so a deleted one can be replaced.
  */
-export function quickReactions(recent: readonly string[], count = 6, chosen?: readonly string[] | null): string[] {
-  if (chosen && chosen.length > 0) return chosen.slice(0, count);
+export function quickReactions(recent: readonly string[], count = 6, chosen?: readonly string[] | null, known?: (name: string) => boolean): string[] {
+  const kept = known && chosen ? chosen.filter((glyph) => { const name = customEmojiName(glyph); return !name || known(name); }) : chosen;
+  if (kept && kept.length > 0) return kept.slice(0, count);
   const custom = /^:[^:\s]+:$/;
   return [...new Set([...recent.filter((glyph) => !custom.test(glyph)), ...SHEET_REACTIONS])].slice(0, count);
+}
+
+/**
+ * One quick reaction as drawn (the sheet, the hover bar, the settings' slots): a plain emoji as it is, a custom one as
+ * its image (`size` px), and a custom name the workspace does not have as `:name:` in small muted text.
+ */
+export function QuickReactionGlyph({ controller, emoji, size }: { controller: AppController; emoji: string; size: number }) {
+  const name = customEmojiName(emoji);
+  if (!name) return <>{emoji}</>;
+  const custom = controller.store.customEmoji.get(name);
+  if (custom) return <CustomEmojiImage controller={controller} emoji={custom} size={size} square />;
+  return <span data-missing-emoji={name} className="max-w-full truncate px-0.5 text-[10px] leading-tight text-muted">{emoji}</span>;
 }
 
 /** A press this long on a message row opens the sheet (touch screens; a mouse has the hover bar). */
@@ -176,7 +193,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
         ) : (
           <>
             <div className="flex justify-center gap-2 px-3 pb-2 pt-1">
-              {quickReactions(readRecentEmoji(), 6, me?.quick_reactions).map((emoji) => (
+              {quickReactions(readRecentEmoji(), 6, me?.quick_reactions, (name) => store.customEmoji.has(name)).map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
@@ -184,7 +201,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
                   className={cn("flex h-11 w-11 items-center justify-center rounded-full text-2xl", reacted.has(emoji) ? "bg-accent-soft ring-1 ring-accent" : "bg-panel")}
                   onClick={then(() => void controller.toggleReaction(message, emoji))}
                 >
-                  {emoji}
+                  <QuickReactionGlyph controller={controller} emoji={emoji} size={26} />
                 </button>
               ))}
               <button type="button" aria-label={t("sheet.moreReactions")} className="flex h-11 w-11 items-center justify-center rounded-full bg-panel text-muted" onClick={() => { if (settled()) setView("emoji"); }}>

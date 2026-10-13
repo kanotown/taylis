@@ -18,7 +18,7 @@ import { currentMe, myPresenceLine } from "./presence";
 import { OVERALL_LEVEL_LABELS, overallLevel, overallLevelNote } from "./channels";
 import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18n";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
-import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
+import { MAX_QUICK_REACTIONS, QuickReactionGlyph, quickReactions } from "./MessageActionsSheet";
 import { pressable } from "./actions";
 import { chosenSpot, type PlaceSpot, placesChosen, railShown, TIMES_PLACE_KEYS, withDefaultPlaces, withRail, withSpot } from "./desktopPlaces";
 import { desktopNavKeys, fullNavItems, moveNavItem, navLabel, reorderNavItems, resetNavOrder, shownNavItems } from "./navItems";
@@ -1011,8 +1011,10 @@ export function DownloadLocationCard() {
 
 /**
  * M50 「リアクションの候補」: the six quick reactions of the long-press sheet (the hover bar shows the first three), mine on
- * every device (users.quick_reactions). A slot opens the picker (plain emoji only) and replaces its emoji; one already in
- * another slot trades places with it. Not chosen: the slots show today's rule (the ones I used last, then the defaults),
+ * every device (users.quick_reactions). A slot opens the picker (since 2026-10-13 with the workspace's custom emoji too,
+ * saved as `:name:`) and replaces its emoji; one already in another slot trades places with it. A chosen custom emoji the
+ * workspace no longer has stays in its slot as `:name:` in small muted text (the sheet and the hover bar skip it), so it
+ * can be replaced. Not chosen: the slots show today's rule (the ones I used last, then the defaults),
  * and choosing one keeps the others as shown. 「元に戻す」 goes back to that rule. A server before M50 has no such setting.
  */
 export function QuickReactionsSettings({ controller }: { controller: AppController }) {
@@ -1054,7 +1056,7 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
               slot === index ? "bg-accent-soft ring-2 ring-accent" : "bg-panel hover:bg-panel-2",
             )}
           >
-            {emoji}
+            <QuickReactionGlyph controller={controller} emoji={emoji} size={28} />
           </button>
         ))}
         <Button size="sm" variant="secondary" disabled={busy || chosen === null} onClick={() => save(null)} className="ml-auto">
@@ -1072,8 +1074,8 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
             <span>{t("settings.quickReactions.pick", { n: slot + 1 })}</span>
             <button type="button" className="rounded px-1.5 py-0.5 hover:bg-panel hover:text-ink" onClick={() => setSlot(null)}>{t("common.cancel")}</button>
           </div>
-          {/* Plain emoji only: no custom emoji (no `custom`, and recent ones like :name: are left out). */}
-          <EmojiPicker recent={recent.filter((glyph) => !glyph.startsWith(":"))} onPick={(entry) => pick(slot, entry.glyph)} />
+          {/* The reaction picker's tabs, custom emoji and packs included (2026-10-13); a custom one is picked as `:name:`. */}
+          <EmojiPicker recent={recent} custom={[...controller.store.customEmoji.values()]} controller={controller} onPick={(entry) => pick(slot, entry.glyph)} />
         </div>
       )}
     </section>
