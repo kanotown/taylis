@@ -147,7 +147,7 @@ fun ChannelDetailsHeader(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(34.dp),
                 )
             }
-            others.size == 1 -> Avatar(others[0], store.users[others[0]]?.displayName ?: "?", size = 64.dp, presence = store.presenceOf(others[0]))
+            others.size == 1 -> Avatar(others[0], store.users[others[0]]?.displayName ?: "?", size = 64.dp, presence = store.presenceDotOf(others[0]))
             others.isEmpty() && meId != null -> Avatar(meId, myDisplayName(store), size = 64.dp)
             else -> Box(
                 Modifier.size(64.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)),

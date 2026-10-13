@@ -523,7 +523,7 @@ private fun ColumnScope.JumpList(
                     ListItem(
                         headlineContent = { Text(user.displayName + if (mine) stringResource(R.string.common_you_2) else "", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(if (mine) MainTabs.SELF_NOTES_HINT else "@" + user.username, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingContent = { Avatar(user.id, user.displayName, size = 28.dp, presence = store.presenceOf(user.id)) },
+                        leadingContent = { Avatar(user.id, user.displayName, size = 28.dp, presence = store.presenceDotOf(user.id)) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.search_pane_open_dm)) { jump.onOpenPerson(user.id) },
                     )
@@ -576,7 +576,7 @@ private fun JumpConversationRow(store: Store, channel: ChannelState, onClick: ()
             when {
                 !channel.channel.isDm -> Icon(conversationIcon(channel), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 others.size > 1 -> Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> (others.firstOrNull() ?: meId ?: channel.id).let { id -> Avatar(id, store.users[id]?.displayName ?: title, size = 28.dp, presence = store.presenceOf(id)) }
+                else -> (others.firstOrNull() ?: meId ?: channel.id).let { id -> Avatar(id, store.users[id]?.displayName ?: title, size = 28.dp, presence = store.presenceDotOf(id)) }
             }
         },
         trailingContent = if (unread) { { Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) }) } } else null,
@@ -660,7 +660,7 @@ private fun SuggestionRow(store: Store, row: Suggestion, onClick: () -> Unit, on
             when (row) {
                 is Suggestion.Words -> Icon(Icons.Default.Search, contentDescription = null, tint = muted)
                 is Suggestion.Recent -> Icon(Icons.Default.History, contentDescription = null, tint = muted)
-                is Suggestion.Person -> Avatar(row.user.id, row.user.displayName, size = 28.dp, presence = store.presenceOf(row.user.id))
+                is Suggestion.Person -> Avatar(row.user.id, row.user.displayName, size = 28.dp, presence = store.presenceDotOf(row.user.id))
                 is Suggestion.Conversation -> Icon(conversationIcon(row.channel), contentDescription = null, tint = muted)
                 is Suggestion.Kind -> Icon(kindIcon(row.flag), contentDescription = null, tint = muted)
                 Suggestion.Thread -> Icon(Icons.Default.Forum, contentDescription = null, tint = muted)

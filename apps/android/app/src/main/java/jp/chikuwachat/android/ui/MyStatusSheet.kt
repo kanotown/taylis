@@ -80,7 +80,7 @@ fun MyStatusButton(controller: AppController, version: Int, size: androidx.compo
             Modifier.semantics { contentDescription = label }.clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
         },
     ) {
-        Avatar(me.id, me.displayName, size = size, presence = PresenceRules.myLook(choice, store.connectionOf(me.id)), showOffline = true)
+        Avatar(me.id, me.displayName, size = size, presence = PresenceRules.myLook(choice, store.connectionOf(me.id)))
     }
 }
 
@@ -131,7 +131,7 @@ fun MyStatusSheet(
         Column(Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).semantics { paneTitle = title }) {
             // 1. Me: the picture with the dot, the name, the state now; 「解除」 while 取り込み中.
             Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(me.id, me.displayName, size = 48.dp, presence = PresenceRules.myLook(choice, store.connectionOf(me.id)), showOffline = true)
+                Avatar(me.id, me.displayName, size = 48.dp, presence = PresenceRules.myLook(choice, store.connectionOf(me.id)))
                 Column(Modifier.weight(1f).padding(start = 14.dp).semantics(mergeDescendants = true) { heading() }) {
                     Text(me.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(PresenceRules.myLine(me), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

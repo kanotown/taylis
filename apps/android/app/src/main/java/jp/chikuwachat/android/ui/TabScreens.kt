@@ -296,7 +296,7 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
             }
         } else {
             val id = single ?: meId ?: channel.id
-            Avatar(id, store.users[id]?.displayName ?: title, size = 40.dp, presence = presence)
+            Avatar(id, store.users[id]?.displayName ?: title, size = 40.dp, presence = single?.let { store.presenceDotOf(it) })
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
