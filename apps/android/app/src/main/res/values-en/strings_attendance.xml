@@ -57,4 +57,13 @@
     <string name="attendance_pill_label">Attendance: %1$s</string>
     <string name="attendance_pill_open">Open attendance</string>
     <string name="attendance_pill_menu">Change attendance</string>
+    <string name="attendance_widget_name">Attendance</string>
+    <string name="attendance_widget_description">Shows your attendance and how many are in the room; switch it with one tap</string>
+    <string name="attendance_widget_stale">Couldn\'t update</string>
+    <string name="attendance_widget_sign_in">Open Taylis and sign in</string>
+    <string name="attendance_widget_off">Attendance is off</string>
+    <string name="attendance_widget_set">Set attendance to “%1$s”</string>
+    <string name="attendance_widget_open">%1$s: %2$s, %3$s (open attendance)</string>
+    <string name="attendance_widget_channel">Attendance updates</string>
+    <string name="attendance_widget_updating">Updating your attendance</string>
 </resources>

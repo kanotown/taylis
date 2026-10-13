@@ -496,8 +496,12 @@ class Store(private val persistence: Persistence? = null) {
      */
     var attendance: jp.chikuwachat.android.api.AttendanceBoardOut? = null
         private set
+    /** Whether [attendance] came from the server in this session (null before the bootstrap is not 「off」: the widget waits). */
+    var attendanceKnown = false
+        private set
     fun setAttendance(board: jp.chikuwachat.android.api.AttendanceBoardOut?) {
         attendance = board?.takeIf { it.enabled && me?.role != "guest" }
+        attendanceKnown = true
         emit()
     }
     /** One person's row (attendance.updated, or my own change). False when its state is not known here (read the board again). */

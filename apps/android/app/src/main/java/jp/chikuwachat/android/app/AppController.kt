@@ -1121,6 +1121,15 @@ class AppController(private val app: Application) {
                 if (this@AppController.store === store) store.me?.let { reconcileLanguage(api, it) }
             }
         }
+        // The 在室状況 home-screen widget follows the workspace on screen: its snapshot is written whenever what it draws
+        // changes (the bootstrap at launch and after reconnecting, attendance events, my own change, the workspace's name).
+        scope.launch {
+            store.version.map { widgetSnapshot(store, workspaceUrl) }.distinctUntilChanged().collect { snapshot ->
+                if (this@AppController.store === store && snapshot != null) {
+                    jp.chikuwachat.android.widget.AttendanceWidgetData.publish(app, snapshot.copy(updatedAt = System.currentTimeMillis()))
+                }
+            }
+        }
         store.onWorkspaceIcon = { version -> scope.launch { if (this@AppController.store === store) updateWorkspace(workspaceUrl) { it.copy(iconVersion = version) } } }
         val engine = SyncEngine(
             api = api,
@@ -1595,8 +1604,10 @@ class AppController(private val app: Application) {
                 RecentConversations.clear(prefs, jp.chikuwachat.android.share.ShareModel.recentKey(account(serverUrl, it)))
             }
             replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
+            jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
         } else {
             updateWorkspace(serverUrl) { it.copy(signedOut = true, badge = 0, hasUnread = false) }
+            jp.chikuwachat.android.widget.AttendanceWidgetData.signedOut(app, serverUrl)
         }
         if (!wasActive && !(leave && serverUrl == activeKey)) return
         if (leave) {
@@ -1614,6 +1625,7 @@ class AppController(private val app: Application) {
         push.detach(serverUrl)
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
         replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
+        jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
         if (serverUrl != activeKey) return
         if (api != null || engine != null) closeActive()
         val next = workspaces.firstOrNull { !it.signedOut } ?: workspaces.firstOrNull()
@@ -3121,6 +3133,45 @@ class AppController(private val app: Application) {
         api!!.deleteMyAttendanceState(id)
         engine?.loadAttendance(); true
     }.getOrElse { error = describe(it); false }
+
+    /**
+     * The home-screen widget's state button (widget/AttendanceWidgetWorker): sets my state in [serverUrl]'s workspace
+     * through that workspace's own client (its token refresh, its sign-out), started or not. The board is read first so
+     * that the note follows the app's one-tap rule with the server's current note (kept only for the same state). The
+     * workspace on screen takes my new row at once like a press in the app. Answers the widget's snapshot after the
+     * change; throws when signed out or the server could not be reached.
+     */
+    suspend fun widgetSetAttendance(serverUrl: String, meId: String, stateId: String): jp.chikuwachat.android.widget.AttendanceWidgetSnapshot {
+        ensureWorkspacesLoaded()
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
+        val client = clientFor(entry) ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
+        val board = client.attendance()
+        val press = jp.chikuwachat.android.widget.AttendanceWidgetRules.press(board, meId, stateId)
+        val mine = client.setMyAttendance(press.stateId, press.note)
+        val onScreen = serverUrl == activeKey && store.me?.id == meId
+        if (onScreen && !store.applyAttendanceEntry(mine)) engine?.loadAttendance()
+        val users = store.users.values.takeIf { onScreen && it.isNotEmpty() }
+        return jp.chikuwachat.android.widget.AttendanceWidgetRules.snapshot(
+            serverUrl, entry.name, meId, jp.chikuwachat.android.ui.AttendanceRules.withEntry(board, mine), users, System.currentTimeMillis(),
+        )
+    }
+
+    /** The snapshot of the workspace on screen for the widget; null until its board is known (the bootstrap). */
+    private fun widgetSnapshot(store: Store, serverUrl: String): jp.chikuwachat.android.widget.AttendanceWidgetSnapshot? {
+        if (!store.attendanceKnown) return null
+        val me = store.me ?: return null
+        val name = workspaces.firstOrNull { it.serverUrl == serverUrl }?.name ?: return null
+        return jp.chikuwachat.android.widget.AttendanceWidgetRules.snapshot(serverUrl, name, me.id, store.attendance, store.users.values, 0L)
+    }
+
+    /** A tapped widget: its workspace comes on screen, then 「在室状況」 opens on the home tab (MainScreen). */
+    var pendingAttendance by mutableStateOf(false)
+
+    fun openAttendanceFromWidget(workspaceKey: String?) {
+        pendingWorkspaceKey = workspaceKey
+        pendingAttendance = true
+        bringWorkspace { pendingAttendance = true }
+    }
 
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 

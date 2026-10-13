@@ -68,6 +68,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takeConversation(intent: Intent?) {
+        // The 在室状況 home-screen widget: its workspace, then 「在室状況」 on the home tab.
+        if (intent?.getBooleanExtra(jp.chikuwachat.android.widget.AttendanceWidget.EXTRA_OPEN, false) == true) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(jp.chikuwachat.android.widget.AttendanceWidget.EXTRA_OPEN)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openAttendanceFromWidget(workspace)
+            return
+        }
         // M56: a task's notification opens the task (a personal one has no conversation).
         val taskId = intent?.getStringExtra(Notifier.EXTRA_TASK_ID)
         if (taskId != null) {

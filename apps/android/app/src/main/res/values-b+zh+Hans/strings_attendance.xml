@@ -56,4 +56,13 @@
     <string name="attendance_pill_label">在室状况：%1$s</string>
     <string name="attendance_pill_open">打开在室状况</string>
     <string name="attendance_pill_menu">更改在室状况</string>
+    <string name="attendance_widget_name">在室状况</string>
+    <string name="attendance_widget_description">显示自己的在室状况和在室人数，一键切换</string>
+    <string name="attendance_widget_stale">无法更新</string>
+    <string name="attendance_widget_sign_in">请打开 Taylis 并登录</string>
+    <string name="attendance_widget_off">在室状况已关闭</string>
+    <string name="attendance_widget_set">将在室状况设为“%1$s”</string>
+    <string name="attendance_widget_open">%1$s：%2$s，%3$s（打开在室状况）</string>
+    <string name="attendance_widget_channel">在室状况更新</string>
+    <string name="attendance_widget_updating">正在更新在室状况</string>
 </resources>
