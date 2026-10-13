@@ -3,8 +3,8 @@
 <!--
   The widget extension's privacy manifest (the 在室状況 widget, docs/STORE_RELEASE.md). It reads and changes my
   在室状況 only on the workspace server signed in to (self-hosted); the data types are declared in the app's manifest.
-  Required-reason APIs: only UserDefaults, the App Group's defaults shared with the app (1C8F.1: the 在室状況 snapshot
-  the app writes and the UI language). No file timestamps, no disk space, no boot time.
+  Required-reason APIs: only UserDefaults, the App Group's defaults shared with the app (1C8F.1: the UI language the app
+  leaves there; the 在室状況 snapshot is a file in the group's folder). No file timestamps, no disk space, no boot time.
 -->
 <plist version="1.0">
 <dict>

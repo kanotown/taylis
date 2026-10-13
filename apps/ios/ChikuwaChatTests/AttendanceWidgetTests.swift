@@ -50,11 +50,10 @@ final class AttendanceWidgetTests: XCTestCase {
         AppController.attendanceWidgetSnapshot(board: board(entries), users: users, workspace: workspace, meId: "me", now: now)
     }
 
-    private func defaults() -> UserDefaults {
-        let name = "AttendanceWidgetTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
-        return defaults
+    private func storeFile() -> URL {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("AttendanceWidgetTests-\(UUID().uuidString)/attendance.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        return file
     }
 
     // MARK: the snapshot
@@ -103,19 +102,19 @@ final class AttendanceWidgetTests: XCTestCase {
     }
 
     func testStoreSavesPerAccountSaysWhenSomethingChangedAndForgets() {
-        let defaults = defaults()
+        let file = storeFile()
         let first = snapshot([entry("me", "room")])
-        XCTAssertTrue(AttendanceWidgetStore.save(first, active: true, to: defaults))
+        XCTAssertTrue(AttendanceWidgetStore.save(first, active: true, to: file))
         var later = first
         later.updatedAt = first.updatedAt.addingTimeInterval(60)
-        XCTAssertFalse(AttendanceWidgetStore.save(later, active: true, to: defaults), "only the time changed: no reload")
-        XCTAssertEqual(AttendanceWidgetStore.snapshot(account: first.account, defaults)?.updatedAt, later.updatedAt)
+        XCTAssertFalse(AttendanceWidgetStore.save(later, active: true, to: file), "only the time changed: no reload")
+        XCTAssertEqual(AttendanceWidgetStore.snapshot(account: first.account, file)?.updatedAt, later.updatedAt)
         let moved = snapshot([entry("me", "gone")])
-        XCTAssertTrue(AttendanceWidgetStore.save(moved, active: true, to: defaults))
-        XCTAssertEqual(AttendanceWidgetStore.current(defaults).flatMap(AttendanceWidgetRules.myState)?.id, "gone")
-        AttendanceWidgetStore.remove(account: first.account, defaults)
-        XCTAssertNil(AttendanceWidgetStore.current(defaults))
-        XCTAssertNil(AttendanceWidgetStore.active(defaults))
+        XCTAssertTrue(AttendanceWidgetStore.save(moved, active: true, to: file))
+        XCTAssertEqual(AttendanceWidgetStore.current(file).flatMap(AttendanceWidgetRules.myState)?.id, "gone")
+        AttendanceWidgetStore.remove(account: first.account, file)
+        XCTAssertNil(AttendanceWidgetStore.current(file))
+        XCTAssertNil(AttendanceWidgetStore.active(file))
     }
 
     func testTheActiveWorkspaceWinsWhileItHasTheBoardElseTheLastOneSeen() {
@@ -238,14 +237,14 @@ final class AttendanceWidgetTests: XCTestCase {
 
     /// The whole button press without a server: the stub answers PUT /attendance/me, then fails, then refuses the token.
     func testButtonPressUpdatesTheSnapshotOrKeepsItWithTheProblem() async throws {
-        let defaults = defaults()
+        let file = storeFile()
         let account = "https://widget.test|kano-\(UUID().uuidString)"
         SharedTokens.store(account: account, accessToken: "access", expiresIn: 3600, refreshToken: "refresh")
         addTeardownBlock { Keychain.delete(account: account) }
         var s = snapshot([entry("me", "room", note: "3 号室"), entry("u2", "room")])
         s.serverUrl = "https://widget.test"
         s.account = account
-        AttendanceWidgetStore.save(s, active: true, to: defaults)
+        AttendanceWidgetStore.save(s, active: true, to: file)
         let make: (AttendanceWidgetSnapshot) -> ShareApi? = { snapshot in
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [WidgetStubProtocol.self]
@@ -259,7 +258,7 @@ final class AttendanceWidgetTests: XCTestCase {
         WidgetStubProtocol.reset { request in
             (200, #"{"user_id": "me", "state_id": "gone", "since": "2026-10-13T18:00:00Z", "note": null, "source": "app"}"#)
         }
-        let moved = await AttendanceWidgetActions.setState("gone", account: account, defaults: defaults, makeApi: make)
+        let moved = await AttendanceWidgetActions.setState("gone", account: account, file: file, makeApi: make)
         XCTAssertEqual(moved.flatMap(AttendanceWidgetRules.myState)?.id, "gone")
         XCTAssertEqual(moved.map(AttendanceWidgetRules.inRoomCount), 1)
         let request = try XCTUnwrap(WidgetStubProtocol.requests.first)
@@ -269,21 +268,21 @@ final class AttendanceWidgetTests: XCTestCase {
         let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(WidgetStubProtocol.bodies.first)) as? [String: Any])
         XCTAssertEqual(sent["state_id"] as? String, "gone")
         XCTAssertTrue(sent["note"] is NSNull, "another state starts without the note")
-        XCTAssertEqual(AttendanceWidgetStore.snapshot(account: account, defaults)?.entries.first { $0.userId == "me" }?.stateId, "gone")
+        XCTAssertEqual(AttendanceWidgetStore.snapshot(account: account, file)?.entries.first { $0.userId == "me" }?.stateId, "gone")
 
         WidgetStubProtocol.reset { _ in nil }  // no answer
-        let offline = await AttendanceWidgetActions.setState("room", account: account, defaults: defaults, makeApi: make)
+        let offline = await AttendanceWidgetActions.setState("room", account: account, file: file, makeApi: make)
         XCTAssertEqual(offline?.problem, .offline)
         XCTAssertEqual(offline.flatMap(AttendanceWidgetRules.myState)?.id, "gone", "the last known state stays")
 
         WidgetStubProtocol.reset { _ in (401, #"{"error": {"code": "invalid_token", "message": "", "details": {}}}"#) }
-        let signedOut = await AttendanceWidgetActions.setState("room", account: account, defaults: defaults, makeApi: make)
+        let signedOut = await AttendanceWidgetActions.setState("room", account: account, file: file, makeApi: make)
         XCTAssertEqual(signedOut?.problem, .signedOut)
 
         WidgetStubProtocol.reset { _ in
             (200, #"{"enabled": true, "can_personalize": false, "states": [{"id": "room", "owner_id": null, "label": "在室", "color": "green", "kind": "in_room", "position": 0}], "entries": [{"user_id": "me", "state_id": "room", "since": "2026-10-13T19:00:00Z", "note": null, "source": "app"}]}"#)
         }
-        let refreshed = await AttendanceWidgetActions.refresh(account: account, defaults: defaults, makeApi: make)
+        let refreshed = await AttendanceWidgetActions.refresh(account: account, file: file, makeApi: make)
         XCTAssertNil(refreshed?.problem)
         XCTAssertEqual(refreshed?.states.map(\.id), ["room"])
         XCTAssertEqual(WidgetStubProtocol.requests.first?.httpMethod, "GET")
@@ -302,7 +301,7 @@ final class AttendanceWidgetTests: XCTestCase {
     }
 
     func testTappedWidgetOpensTheBoardOnceStarted() async {
-        let controller = AppController(defaults: defaults())
+        let controller = AppController(defaults: UserDefaults(suiteName: "AttendanceWidgetTests.\(UUID().uuidString)")!)
         XCTAssertTrue(controller.openWidgetLink(AttendanceWidgetLink.url(serverUrl: "https://lab.example.jp")))
         XCTAssertFalse(controller.openWidgetLink(URL(string: "https://example.com")!))
         await Task.yield()

@@ -292,57 +292,75 @@ enum AttendanceWidgetLink {
     }
 }
 
-/// The snapshots in the App Group's defaults: one per account, and which account the app has on screen.
+/// The snapshots in a file of the App Group's folder (Widget/attendance.json): one per account, and which account the
+/// app has on screen. A file, not the group's UserDefaults: a process that has the defaults open (the widget extension
+/// stays alive between reloads) may keep reading its cached copy for a while after another process (the app, or the
+/// intent run in the app's process) wrote, and the widget then showed the state from before a button press.
 enum AttendanceWidgetStore {
-    static let snapshotsKey = "widget.attendance.snapshots"
-    static let activeKey = "widget.attendance.active"
     /// The kind of the home-screen / lock-screen widget (WidgetCenter reloads it).
     static let widgetKind = "jp.chikuwachat.ios.attendance"
     /// The Control Center / lock-screen control (iOS 18).
     static let controlKind = "jp.chikuwachat.ios.attendance.toggle"
 
-    static func all(_ defaults: UserDefaults = SharedContainer.defaults) -> [String: AttendanceWidgetSnapshot] {
-        guard let data = defaults.data(forKey: snapshotsKey),
-              let decoded = try? JSONDecoder().decode([String: AttendanceWidgetSnapshot].self, from: data) else { return [:] }
-        return decoded
+    /// The file in the App Group (the app's own temporary folder when the build is not entitled to the group).
+    static let defaultFile: URL = (SharedContainer.url ?? FileManager.default.temporaryDirectory)
+        .appendingPathComponent("Widget/attendance.json")
+
+    struct Contents: Codable, Equatable {
+        var active: String?
+        var snapshots: [String: AttendanceWidgetSnapshot] = [:]
     }
 
-    static func active(_ defaults: UserDefaults = SharedContainer.defaults) -> String? { defaults.string(forKey: activeKey) }
-
-    static func current(_ defaults: UserDefaults = SharedContainer.defaults) -> AttendanceWidgetSnapshot? {
-        AttendanceWidgetRules.select(all(defaults), active: active(defaults))
+    static func read(_ file: URL = defaultFile) -> Contents {
+        guard let data = try? Data(contentsOf: file), let contents = try? JSONDecoder().decode(Contents.self, from: data) else { return Contents() }
+        return contents
     }
 
-    static func snapshot(account: String, _ defaults: UserDefaults = SharedContainer.defaults) -> AttendanceWidgetSnapshot? {
-        all(defaults)[account]
+    private static func write(_ contents: Contents, _ file: URL) {
+        guard let data = try? JSONEncoder().encode(contents) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    static func all(_ file: URL = defaultFile) -> [String: AttendanceWidgetSnapshot] { read(file).snapshots }
+
+    static func active(_ file: URL = defaultFile) -> String? { read(file).active }
+
+    static func current(_ file: URL = defaultFile) -> AttendanceWidgetSnapshot? {
+        let contents = read(file)
+        return AttendanceWidgetRules.select(contents.snapshots, active: contents.active)
+    }
+
+    static func snapshot(account: String, _ file: URL = defaultFile) -> AttendanceWidgetSnapshot? {
+        read(file).snapshots[account]
     }
 
     /// Saves one account's snapshot. Returns whether anything but its time changed (the caller reloads the widget then).
     @discardableResult
-    static func save(_ snapshot: AttendanceWidgetSnapshot, active: Bool = false, to defaults: UserDefaults = SharedContainer.defaults) -> Bool {
-        var list = all(defaults)
+    static func save(_ snapshot: AttendanceWidgetSnapshot, active: Bool = false, to file: URL = defaultFile) -> Bool {
+        var contents = read(file)
         var changed = false
-        if active, defaults.string(forKey: activeKey) != snapshot.account {
-            defaults.set(snapshot.account, forKey: activeKey)
+        if active, contents.active != snapshot.account {
+            contents.active = snapshot.account
             changed = true
         }
-        if var old = list[snapshot.account] {
+        if var old = contents.snapshots[snapshot.account] {
             old.updatedAt = snapshot.updatedAt
             if old != snapshot { changed = true }
         } else {
             changed = true
         }
-        list[snapshot.account] = snapshot
-        if let data = try? JSONEncoder().encode(list) { defaults.set(data, forKey: snapshotsKey) }
+        contents.snapshots[snapshot.account] = snapshot
+        write(contents, file)
         return changed
     }
 
     /// The account left this device (signed out or removed).
-    static func remove(account: String, _ defaults: UserDefaults = SharedContainer.defaults) {
-        var list = all(defaults)
-        guard list.removeValue(forKey: account) != nil || defaults.string(forKey: activeKey) == account else { return }
-        if let data = try? JSONEncoder().encode(list) { defaults.set(data, forKey: snapshotsKey) }
-        if defaults.string(forKey: activeKey) == account { defaults.removeObject(forKey: activeKey) }
+    static func remove(account: String, _ file: URL = defaultFile) {
+        var contents = read(file)
+        guard contents.snapshots.removeValue(forKey: account) != nil || contents.active == account else { return }
+        if contents.active == account { contents.active = nil }
+        write(contents, file)
     }
 }
 
@@ -368,9 +386,9 @@ extension ShareApi {
 enum AttendanceWidgetActions {
     /// My state → `stateId` in the account's workspace. Returns the snapshot as saved (nil: nothing to act on).
     @discardableResult
-    static func setState(_ stateId: String, account: String, defaults: UserDefaults = SharedContainer.defaults,
+    static func setState(_ stateId: String, account: String, file: URL = AttendanceWidgetStore.defaultFile,
                          makeApi: (AttendanceWidgetSnapshot) -> ShareApi? = { api(for: $0) }) async -> AttendanceWidgetSnapshot? {
-        guard let snapshot = AttendanceWidgetStore.snapshot(account: account, defaults), snapshot.available else { return nil }
+        guard let snapshot = AttendanceWidgetStore.snapshot(account: account, file), snapshot.available else { return nil }
         guard let api = makeApi(snapshot) else { return nil }
         let note = AttendanceWidgetRules.noteForChoice(snapshot, stateId: stateId)
         var next: AttendanceWidgetSnapshot
@@ -384,15 +402,15 @@ enum AttendanceWidgetActions {
         } catch {
             next = AttendanceWidgetRules.failed(snapshot, .temporary("unknown"))
         }
-        AttendanceWidgetStore.save(next, to: defaults)
+        AttendanceWidgetStore.save(next, to: file)
         return next
     }
 
     /// The board read again (the widget's timeline, when the snapshot is old or the last try failed).
     @discardableResult
-    static func refresh(account: String, defaults: UserDefaults = SharedContainer.defaults,
+    static func refresh(account: String, file: URL = AttendanceWidgetStore.defaultFile,
                         makeApi: (AttendanceWidgetSnapshot) -> ShareApi? = { api(for: $0) }) async -> AttendanceWidgetSnapshot? {
-        guard let snapshot = AttendanceWidgetStore.snapshot(account: account, defaults), let api = makeApi(snapshot) else { return nil }
+        guard let snapshot = AttendanceWidgetStore.snapshot(account: account, file), let api = makeApi(snapshot) else { return nil }
         let next: AttendanceWidgetSnapshot
         do {
             next = AttendanceWidgetRules.applying(try await api.attendanceBoard(), to: snapshot)
@@ -402,8 +420,8 @@ enum AttendanceWidgetActions {
             next = AttendanceWidgetRules.failed(snapshot, .temporary("unknown"))
         }
         // The app wrote a newer one meanwhile (it is on screen and synced): that one stays.
-        if let stored = AttendanceWidgetStore.snapshot(account: account, defaults), stored.updatedAt > snapshot.updatedAt { return stored }
-        AttendanceWidgetStore.save(next, to: defaults)
+        if let stored = AttendanceWidgetStore.snapshot(account: account, file), stored.updatedAt > snapshot.updatedAt { return stored }
+        AttendanceWidgetStore.save(next, to: file)
         return next
     }
 
