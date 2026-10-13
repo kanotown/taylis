@@ -6,9 +6,10 @@ struct AvatarView: View {
     let name: String
     var size: CGFloat = 36
     /// The dot (SYNC_PROTOCOL.md §5.2, PRESENCE.md §11.5): "online" / "away" / "dnd" (取り込み中: a red disc; it
-    /// had a white bar until 2026-10-13); nil or "offline" shows none.
+    /// had a white bar until 2026-10-13), "offline" a hollow grey ring (since 2026-10-13; it showed none before); nil
+    /// shows none (a bot, a group DM, no one to show).
     var presence: String? = nil
-    /// "offline" as a grey ring (my own picture while I appear offline, PRESENCE.md §11.6).
+    /// nil as the grey ring too (my own picture, PRESENCE.md §11.6).
     var showOffline = false
 
     var body: some View {
@@ -66,25 +67,25 @@ struct SenderAvatar: View {
     }
 
     /// The sender's dot: none for a bot (an incoming webhook posts as one, the AI bot is one), else the store's look
-    /// (online / away / dnd; offline draws nothing).
-    static func look(_ userId: String, store: Store) -> String? {
-        store.users[userId]?.role == "bot" ? nil : store.presenceOf(userId)
-    }
+    /// (online / away / dnd, or offline's hollow ring).
+    static func look(_ userId: String, store: Store) -> String? { store.dotLook(userId) }
 }
 
 /// The presence dot alone (an avatar's corner, the quick status menu's choices): green, orange, 取り込み中's red disc
-/// plain (as on Desktop / Web; no white bar since 2026-10-13), or a grey ring.
+/// plain (as on Desktop / Web; no white bar since 2026-10-13), or offline's grey ring (hollow: the hole under it shows
+/// what is behind the picture, so it reads as a white circle in light mode).
 struct PresenceDot: View {
     enum Style: Equatable {
         case online, away, dnd, offline
 
-        /// The dot for a look; "offline" (or none) draws nothing unless `showOffline`.
+        /// The dot for a look: "offline" the grey ring; none (nil) draws nothing unless `showOffline`.
         init?(look: String?, showOffline: Bool = false) {
             switch look {
             case "online": self = .online
             case "away": self = .away
             case "dnd": self = .dnd
-            default:
+            case .some: self = .offline
+            case nil:
                 guard showOffline else { return nil }
                 self = .offline
             }

@@ -24,7 +24,7 @@ struct ProfileSheet: View {
             List {
                 Section {
                     HStack(spacing: 14) {
-                        AvatarView(id: userId, name: user?.displayName ?? "?", size: 64, presence: controller.store.presenceOf(userId))
+                        AvatarView(id: userId, name: user?.displayName ?? "?", size: 64, presence: controller.store.dotLook(userId))
                         VStack(alignment: .leading, spacing: 3) {
                             Text(user?.displayName ?? "?").font(.title3).bold()
                             if user?.role == "guest" { Text("ゲスト（参加したチャンネルだけ見えます）").font(.caption).foregroundStyle(.secondary) }

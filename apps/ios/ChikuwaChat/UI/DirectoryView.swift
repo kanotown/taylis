@@ -45,7 +45,7 @@ struct DirectoryView: View {
 
     private func row(_ user: UserPublic) -> some View {
         HStack(spacing: 12) {
-            AvatarView(id: user.id, name: user.displayName, size: 40, presence: user.role == "bot" ? nil : controller.store.presenceOf(user.id))
+            AvatarView(id: user.id, name: user.displayName, size: 40, presence: controller.store.dotLook(user.id))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(user.displayName).fontWeight(.semibold)

@@ -53,7 +53,7 @@ struct ConversationLabel: View {
             if channel.channel.isDm {
                 let other = (channel.channel.dmUserIds ?? []).first { $0 != meId } ?? meId ?? channel.id
                 AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", size: 24,
-                           presence: store.presenceOf(other))
+                           presence: store.dotLook(other))
             } else {
                 Image(systemName: channel.channel.type == "private" ? "lock" : "number")
                     .font(.system(size: 16, weight: .medium)).foregroundStyle(.secondary).frame(width: 24)
@@ -89,7 +89,7 @@ struct PersonLabel: View {
     var body: some View {
         let isMe = user.id == controller.store.me?.id
         HStack(spacing: 10) {
-            AvatarView(id: user.id, name: user.displayName, size: 24, presence: controller.store.presenceOf(user.id))
+            AvatarView(id: user.id, name: user.displayName, size: 24, presence: controller.store.dotLook(user.id))
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(user.displayName).lineLimit(1)

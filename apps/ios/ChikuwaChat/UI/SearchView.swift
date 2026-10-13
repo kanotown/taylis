@@ -565,7 +565,7 @@ struct SearchSuggestionLabel: View {
             Label(params.words, systemImage: "clock")
         case .user(let user):
             HStack(spacing: 10) {
-                AvatarView(id: user.id, name: user.displayName, size: 26, presence: controller.store.presenceOf(user.id))
+                AvatarView(id: user.id, name: user.displayName, size: 26, presence: controller.store.dotLook(user.id))
                 Text(user.displayName).lineLimit(1)
                 Text("@\(user.username)").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
             }
