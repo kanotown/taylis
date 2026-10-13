@@ -26,7 +26,8 @@ async def _connect(live: LiveServer, token: str) -> websockets.ClientConnection:
     ws = await websockets.connect(live.ws_url)
     await ws.send(json.dumps({"type": "auth", "token": token}))
     hello = await _recv(ws)
-    assert hello["type"] == "hello" and hello["heartbeat_interval_sec"] == 1
+    # The frame itself on failure: CI once got an "error" here (2026-10-13), not seen locally.
+    assert hello["type"] == "hello" and hello["heartbeat_interval_sec"] == 1, hello
     return ws
 
 
