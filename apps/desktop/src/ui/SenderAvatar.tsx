@@ -17,7 +17,7 @@ export function usePresenceLook(store: Store, userId: string): PresenceLook | un
 /**
  * A message's sender, with the presence dot at the picture's corner (channels, DMs, threads, the threads view, search):
  * the dot's ring is cut out of the picture, so it matches the row's background whatever it is (hovered, highlighted,
- * selected, dark mode). Offline draws nothing.
+ * selected, dark mode). Offline is the hollow grey ring (Avatar), in its hole too.
  */
 export function SenderAvatar({ store, userId, name, size, className }: { store: Store; userId: string; name: string; size: number; className?: string }) {
   const presence = usePresenceLook(store, userId);

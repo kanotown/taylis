@@ -142,17 +142,55 @@ describe("the store's look", () => {
 });
 
 describe("the dot", () => {
-  it("取り込み中 is a plain red disc (no white bar since 2026-10-13); offline draws nothing unless asked", () => {
+  it("取り込み中 is a plain red disc (no white bar since 2026-10-13); offline is a hollow grey ring for everyone; no presence, no dot", () => {
     const { container, rerender } = render(<Avatar id={ALICE} name="アリス" presence="dnd" />);
     const dot = container.querySelector('[data-presence="dnd"]')!;
     expect(dot.className).toContain("bg-danger");
     expect(dot.childElementCount).toBe(0);
     rerender(<Avatar id={ALICE} name="アリス" presence="offline" />);
-    expect(container.querySelector("[data-presence]")).toBeNull();
-    rerender(<Avatar id={ALICE} name="アリス" presence="offline" showOffline />);
     expect(container.querySelector('[data-presence="offline"]')).toBeTruthy();
+    rerender(<Avatar id={ALICE} name="アリス" />);
+    expect(container.querySelector("[data-presence]")).toBeNull();
     rerender(<Avatar id={ALICE} name="アリス" presence="away" />);
     expect(container.querySelector('[data-presence="away"]')!.className).toContain("bg-warning");
+  });
+
+  it("offline is one ring (one bordered element, no second circle), cut out of the picture so its gap and centre are the surface", () => {
+    const { container, rerender } = render(<Avatar id={ALICE} name="アリス" size={36} presence="offline" />);
+    const ring = container.querySelector('[data-presence="offline"]') as HTMLElement;
+    expect(ring.childElementCount).toBe(0);
+    expect(ring.className).toContain("border-muted");
+    expect(ring.className).toContain("bg-transparent");
+    expect(ring.className).not.toMatch(/border-(canvas|sidebar)\b/);
+    expect(ring.style.borderWidth).toBe("2px");
+    // 36 px: an 11 px dot, 1 px of gap around a 9 px ring.
+    expect(ring.style.width).toBe("9px");
+    // The picture (initials here) has the hole, so the row, the sidebar or the popover shows in the gap and the centre.
+    const picture = container.querySelector("span > span") as HTMLElement;
+    expect(picture.style.maskImage || picture.style.getPropertyValue("-webkit-mask-image")).toContain("radial-gradient");
+    // A caller's ring colour (the sidebar's) is for the coloured dots only: the offline ring has no second circle.
+    rerender(<Avatar id={ALICE} name="アリス" size={36} dotSize={14} presence="offline" presenceClassName="border-sidebar" />);
+    const header = container.querySelector('[data-presence="offline"]') as HTMLElement;
+    expect(header.className).not.toContain("border-sidebar");
+    expect(header.style.width).toBe("10px");
+    expect(container.querySelectorAll("[data-presence] *")).toHaveLength(0);
+    // Online keeps its painted ring (no hole) off the message rows.
+    rerender(<Avatar id={ALICE} name="アリス" size={36} presence="online" />);
+    expect((container.querySelector("span > span") as HTMLElement).style.maskImage).toBe("");
+  });
+
+  it("an offline person's DM row in the sidebar shows the ring; a bot's shows no dot", () => {
+    const store = storeWith(meWith());
+    store.upsertUser(alice());
+    store.upsertUser({ ...alice(), id: "bot-1", username: "bot", display_name: "ボット", role: "bot" } as never);
+    const controller = controllerFor(store);
+    const dm = { id: "c1", type: "dm", name: null, isMember: true, member_ids: [ME, ALICE], dm_user_ids: [ME, ALICE], last_seq: 0, last_read_seq: 0, unread_count: 0, mention_count: 0 } as never;
+    const botDm = { id: "c2", type: "dm", name: null, isMember: true, member_ids: [ME, "bot-1"], dm_user_ids: [ME, "bot-1"], last_seq: 0, last_read_seq: 0, unread_count: 0, mention_count: 0 } as never;
+    render(<Sidebar controller={controller} channels={[dm, botDm]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />);
+    const aliceRow = screen.getByText("アリス").closest("button")!;
+    expect(aliceRow.querySelector('[data-presence="offline"]')).toBeTruthy();
+    const botRow = screen.getByText("ボット").closest("button")!;
+    expect(botRow.querySelector("[data-presence]")).toBeNull();
   });
 
   it("the sidebar's DM row and my header avatar draw it", () => {

@@ -179,7 +179,7 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
               aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(controller.store)) })}
               className="shrink-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
-              <Avatar id={me.id} name={me.display_name} size={page ? 64 : 40} className="rounded-2xl" presence={controller.store.presenceOf(me.id)} showOffline />
+              <Avatar id={me.id} name={me.display_name} size={page ? 64 : 40} className="rounded-2xl" presence={controller.store.presenceOf(me.id)} />
             </button>
           </MyStatusMenu>
           <div className="min-w-0 flex-1">

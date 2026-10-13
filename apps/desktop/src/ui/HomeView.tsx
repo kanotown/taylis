@@ -4,7 +4,7 @@ import { type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import { WorkspaceIcon } from "./workspaceIcons";
 import type { ChannelState } from "../sync/types";
-import { Avatar } from "./Avatar";
+import { Avatar, presenceDotOf } from "./Avatar";
 import type { DefaultSectionKey } from "../api/types";
 import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
@@ -391,7 +391,7 @@ function HomeRow({ controller, channel, folded, onOpen }: { controller: AppContr
               group ? (
                 <span className="flex h-6 w-6 items-center justify-center rounded-md bg-panel-2 text-[11px] font-semibold">{(channel.dm_user_ids ?? []).length - 1}</span>
               ) : other ? (
-                <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={24} className="rounded-md text-[10px]" presence={store.presenceOf(other)} presenceClassName="border border-canvas" />
+                <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={24} className="rounded-md text-[10px]" presence={presenceDotOf(store, other)} presenceClassName="border border-canvas" />
               ) : (
                 <AtSign size={20} />
               )

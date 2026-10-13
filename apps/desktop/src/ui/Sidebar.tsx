@@ -4,7 +4,7 @@ import { type ReactNode, useState } from "react";
 import type { DefaultSectionKey } from "../api/types";
 import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { Avatar, HEADER_AVATAR_SIZE, HEADER_DOT_SIZE, presenceLabel } from "./Avatar";
+import { Avatar, HEADER_AVATAR_SIZE, HEADER_DOT_SIZE, presenceDotOf, presenceLabel } from "./Avatar";
 import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
@@ -300,7 +300,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           {isDmChannel(channel) ? (
             other ? <Avatar
               id={other} name={store.users.get(other)?.display_name ?? "?"} size={18} className="rounded-md text-[9px]"
-              presence={store.presenceOf(other)}
+              presence={presenceDotOf(store, other)}
               presenceClassName="border border-sidebar"
             /> : <AtSign size={15} className="shrink-0 opacity-70" />
           ) : channel.type === "private" ? (
@@ -539,7 +539,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               aria-label={t("presence.openMenu", { state: myPresenceLine(currentMe(store)) })}
               className="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-0.5 pl-0.5 pr-1 text-left outline-none hover:bg-sidebar-strong/10 focus-visible:ring-2 focus-visible:ring-accent/60"
             >
-              <Avatar id={me.id} name={me.display_name} size={HEADER_AVATAR_SIZE} dotSize={HEADER_DOT_SIZE} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" showOffline />
+              <Avatar id={me.id} name={me.display_name} size={HEADER_AVATAR_SIZE} dotSize={HEADER_DOT_SIZE} className="rounded-xl" presence={store.presenceOf(me.id)} presenceClassName="border-sidebar" />
               <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} presence={myHeaderLine(controller)} withAvatar={false} />
             </button>
           </MyStatusMenu>

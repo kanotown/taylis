@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { AiBadge } from "./ai";
-import { Avatar } from "./Avatar";
+import { Avatar, presenceDotOf } from "./Avatar";
 import { selfNotesHint } from "./channels";
 import { pickerChannels, pickerPeople } from "./home";
 import { matchScore } from "./jumpMatch";
@@ -155,7 +155,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
               const on = selected.includes(user.id);
               return (
                 <button key={user.id} type="button" data-pick="person" aria-pressed={on} onClick={() => toggle(user.id)} className={cn(PICK_ROW, on && "bg-accent-soft/60")}>
-                  <Avatar id={user.id} name={user.display_name} size={24} className="rounded-md text-[10px]" presence={store.presenceOf(user.id)} presenceClassName="border border-canvas" />
+                  <Avatar id={user.id} name={user.display_name} size={24} className="rounded-md text-[10px]" presence={presenceDotOf(store, user.id)} presenceClassName="border border-canvas" />
                   <span className="min-w-0 truncate">{user.display_name}</span>
                   {key === "bots" && <AiBadge />}
                   <span className="min-w-0 flex-1 truncate text-[13px] text-muted">@{user.username}</span>

@@ -3,7 +3,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import type { ChannelOut, MessageOut, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
-import { Avatar } from "./Avatar";
+import { Avatar, presenceDotOf } from "./Avatar";
 import { isImeKeyEvent } from "./ime";
 import { LiveMessageRow, LiveStatus, useLiveSearch } from "./LiveSearch";
 import { channelTitle } from "./MainScreen";
@@ -293,7 +293,7 @@ function SuggestionRow({ controller, row }: { controller: AppController; row: Su
     case "user":
       return (
         <>
-          <Avatar id={row.user.id} name={row.user.display_name} size={20} className="rounded-md text-[9px]" presence={store.presenceOf(row.user.id)} />
+          <Avatar id={row.user.id} name={row.user.display_name} size={20} className="rounded-md text-[9px]" presence={presenceDotOf(store, row.user.id)} />
           <span className="min-w-0 truncate font-medium">{row.user.display_name}</span>
           <span className="shrink-0 text-xs text-muted">@{row.user.username}</span>
         </>
