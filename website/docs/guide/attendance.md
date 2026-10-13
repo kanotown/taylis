@@ -13,6 +13,8 @@ description: 「在室」「学内」「学外」「帰宅」をワンタップ�
 
 <div class="screens" markdown>
 ![在室状況の画面。上に操作ボタン（研究室のドアの鍵）、自分の状態のボタン（在室を選んでいる）、その下に在室 5 人・学内 1 人・学外 1 人・帰宅 1 人のボード。名前の下にメモと「9:26 から」（デモのデータ）](../assets/screens/web-attendance.webp){ .wide }
+![iPhone の在室状況のボード。在室・学内・学外・帰宅ごとに、誰がいつからいるかとメモが並ぶ（デモのデータ）](../assets/screens/ios-attendance-board.jpg){ .phone }
+![Android の在室状況。ドアの鍵の操作、自分の状態、ボード（デモのデータ）](../assets/screens/android-attendance.jpg){ .phone }
 </div>
 
 ### 状態の種類
@@ -35,6 +37,9 @@ description: 「在室」「学内」「学外」「帰宅」をワンタップ�
 
 <div class="screens" markdown>
 ![上のバッジ「在室」を押したところ。在室・学内・学外・帰宅から選べ、メモの欄と操作ボタン、「在室状況を開く」が並ぶ（デモのデータ）](../assets/screens/web-attendance-menu.webp){ .narrow }
+![iPhone のヘッダーの「在室」を押したところ。4 つの状態とメモ、ドアの鍵の操作（デモのデータ）](../assets/screens/ios-attendance-picker.jpg){ .phone }
+![Android の「在室状況を変える」（デモのデータ）](../assets/screens/android-attendance-picker.jpg){ .phone }
+![iPhone の在室状況の画面の上部。自分の状態のボタンとメモ（デモのデータ）](../assets/screens/ios-attendance.jpg){ .phone }
 </div>
 
 1. 上のバッジ、またはアイコン列の「在室状況」（ドアのアイコン。スマートフォンはホームのタイル）を開きます。

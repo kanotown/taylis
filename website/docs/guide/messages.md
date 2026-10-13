@@ -40,6 +40,12 @@ description: メッセージを送る・スレッドで返信する・直す・�
 
 ### ほかのアプリから送る（iPhone / iPad・Android）
 
+<div class="screens" markdown>
+![写真アプリの共有メニューに Taylis が出ている（デモのデータ）](../assets/screens/ios-share-sheet.jpg){ .phone }
+![「Taylis に送る」画面。送り先 #研究ミーティング、写真、メッセージ（デモのデータ）](../assets/screens/ios-share-extension.jpg){ .phone }
+![Android の共有先の画面。写真とメッセージ、送り先を選ぶ（デモのデータ）](../assets/screens/android-share.jpg){ .phone }
+</div>
+
 写真・ファイル・PDF・Safari や Chrome のページなどを、そのアプリの **共有** から Taylis の会話に送れます。
 
 1. ほかのアプリで共有のボタンを押し、一覧から **Taylis** を選びます。
@@ -50,6 +56,11 @@ description: メッセージを送る・スレッドで返信する・直す・�
 iPhone では、先に Taylis のアプリを開いてサインインしておいてください。
 
 ### ファイルを見る・保存する
+
+<div class="screens" markdown>
+![iPhone の会話の中の PDF。1 ページ目のプレビューが出る（デモのデータ）](../assets/screens/ios-attachments.jpg){ .phone }
+![iPhone で PDF を開いたところ。下に引くと閉じる（デモのデータ）](../assets/screens/ios-document-preview.jpg){ .phone }
+</div>
 
 PDF や Word・Excel・PowerPoint は、1 ページ目のサムネイル付きで表示され、押すとアプリの中で全ページを見られます。
 
@@ -97,6 +108,7 @@ PDF や Word・Excel・PowerPoint は、1 ページ目のサムネイル付き�
 
 <div class="screens" markdown>
 ![ほかの人のメッセージの ⋯ のメニュー。リンクをコピー、別のチャンネルに共有、リマインド、タスクにする、レビューを依頼、ピン留め、ここから未読にする、報告する（デモのデータ）](../assets/screens/web-message-menu.webp){ .wide }
+![iPhone でメッセージを長押ししたところ。リアクション、スレッドで返信、リマインド、タスクにするなど（デモのデータ）](../assets/screens/ios-message-actions.jpg){ .phone }
 </div>
 
 | 操作 | 内容 |
