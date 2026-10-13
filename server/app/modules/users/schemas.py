@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from datetime import datetime
 from typing import Literal
@@ -23,6 +24,15 @@ NAV_ITEM_KEY_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
 # Where the desktop's Times section stands: before "favorites" / "channels" / "dms", one of my own
 # sections (its id), or "end" (after every section).
 SECTION_ANCHOR_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
+
+
+# A custom emoji in the quick reactions: `:name:` with the names custom emoji may have (EMOJI.md).
+CUSTOM_QUICK_REACTION = re.compile(r":[a-z0-9][a-z0-9_+-]{1,31}:")
+
+
+def is_quick_reaction(value: str) -> bool:
+    """One item of UserMe.quick_reactions: a plain emoji, or a custom emoji's `:name:`."""
+    return is_plain_emoji(value) or CUSTOM_QUICK_REACTION.fullmatch(value) is not None
 
 
 def is_plain_emoji(value: str) -> bool:
@@ -174,8 +184,8 @@ class UserMe(UserPublic):
     notify_tasks: bool = True
     # M48: false for an account made by Google sign-in; clients hide 「パスワードを変更」.
     has_password: bool = True
-    # M50: my quick reactions in order (1-6 plain emoji); null = not chosen, the clients' rule
-    # (the ones I used last, then the defaults).
+    # M50: my quick reactions in order (1-6 plain emoji or custom `:name:`); null = not chosen,
+    # the clients' rule (the ones I used last, then the defaults).
     quick_reactions: list[str] | None = None
     # M111: my sidebar items (desktop / Web) and home tiles (phones) in order; null = default,
     # the clients' defaults. Keys a client does not implement are ignored there, kept when it saves.
@@ -223,7 +233,8 @@ class UserUpdate(BaseModel):
     notify_reactions: bool | None = None
     # M55: task pushes (assignments, due dates) on or off.
     notify_tasks: bool | None = None
-    # M50: 1-6 distinct plain emoji; null resets to the clients' rule.
+    # M50: 1-6 distinct plain emoji or custom `:name:` (2026-10-13); null resets to the
+    # clients' rule.
     quick_reactions: list[str] | None = Field(
         default=None, min_length=1, max_length=MAX_QUICK_REACTIONS
     )
@@ -253,8 +264,10 @@ class UserUpdate(BaseModel):
         if value is None:
             return None
         for emoji in value:
-            if not is_plain_emoji(emoji):
-                raise ValueError("Quick reactions are plain emoji (no text or custom emoji)")
+            # 2026-10-13: a custom emoji by its `:name:` too (EMOJI.md's name rule; whether it
+            # still exists is the clients' business: one deleted later is skipped where shown).
+            if not is_quick_reaction(emoji):
+                raise ValueError("Quick reactions are plain emoji or a custom emoji's :name:")
         if len(set(value)) != len(value):
             raise ValueError("Quick reactions must be distinct")
         return value
