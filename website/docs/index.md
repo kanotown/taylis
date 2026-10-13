@@ -27,7 +27,7 @@ Taylis は、研究室・ゼミ・小さなチームのためのチャットで�
 管理します。アプリは Windows・macOS・iOS・Android 版と、ブラウザ版があります。
 
 <div class="screens" markdown>
-![デスクトップ版の画面。左にチャンネルの一覧、真ん中に会話、右にスレッド（デモのデータ）](assets/screens/web-overview.webp){ .full }
+![デスクトップ版の画面。左端に場所のアイコン列、左にチャンネルの一覧、真ん中に会話、右にスレッド（デモのデータ）](assets/screens/web-overview.webp){ .full }
 </div>
 
 <div class="screens" markdown>

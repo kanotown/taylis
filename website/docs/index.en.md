@@ -27,7 +27,7 @@ You run the server yourself. Messages and files are stored on that server, and y
 conversation history. There are apps for Windows, macOS, iOS and Android, and a browser client.
 
 <div class="screens" markdown>
-![The desktop app: the sidebar, a channel and a thread open on the right (demo data)](assets/screens/web-overview.webp){ .full }
+![The desktop app: the icon rail of places, the sidebar, a channel and a thread open on the right (demo data)](assets/screens/web-overview.webp){ .full }
 </div>
 
 <div class="screens" markdown>
