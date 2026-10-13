@@ -634,6 +634,9 @@ struct ProfileEditView: View {
     // M16g: a picked photo loads (large ones take a moment), then its square is chosen in the crop screen.
     @State private var loadingPhoto = false
     @State private var cropping: PickedPhoto?
+    /// The field being typed in: 保存 clears it, so the keyboard goes down with the save.
+    @FocusState private var focus: Field?
+    enum Field: Hashable { case displayName, title, topic, reading }
 
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var rosterLine: LabProfileOut? { me.flatMap { controller.store.roster[$0.id] } }
@@ -690,10 +693,12 @@ struct ProfileEditView: View {
                 Section {
                     LabeledContent("表示名") {
                         TextField("必須", text: $displayName).multilineTextAlignment(.trailing)
+                            .focused($focus, equals: .displayName)
                             .onChange(of: displayName) { _, _ in saved = false }
                     }
                     LabeledContent("肩書") {
                         TextField("例：研究室長 / TA（学年・職位は自動）", text: $title).multilineTextAlignment(.trailing)
+                            .focused($focus, equals: .title)
                             .onChange(of: title) { _, _ in saved = false }
                     }
                     if rosterLine != nil {
@@ -701,10 +706,12 @@ struct ProfileEditView: View {
                         // (MyLabProfileUpdate): 200 and 80 characters.
                         LabeledContent("研究テーマ") {
                             TextField("任意", text: $topic).multilineTextAlignment(.trailing)
+                                .focused($focus, equals: .topic)
                                 .onChange(of: topic) { _, value in saved = false; if value.count > 200 { topic = String(value.prefix(200)) } }
                         }
                         LabeledContent("よみ") {
                             TextField("任意、名簿の並び順に使います", text: $reading).multilineTextAlignment(.trailing)
+                                .focused($focus, equals: .reading)
                                 .onChange(of: reading) { _, value in saved = false; if value.count > 80 { reading = String(value.prefix(80)) } }
                         }
                     }
@@ -725,8 +732,11 @@ struct ProfileEditView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("保存") { Task { await save() } }
-                    .disabled(busy || trimmedName.isEmpty || !changed)
+                Button("保存") {
+                    focus = nil // the keyboard goes down with the save
+                    Task { await save() }
+                }
+                .disabled(busy || trimmedName.isEmpty || !changed)
             }
         }
         .onChange(of: avatarItem) { _, item in
