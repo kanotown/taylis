@@ -8,6 +8,7 @@ import { PageResults } from "./DocsSearch";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
+import { SenderAvatar } from "./SenderAvatar";
 import { FileRow } from "./FilesView";
 import { fullTimestamp } from "./format";
 import { highlightPieces } from "./highlight";
@@ -535,7 +536,7 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
         <time className="ml-auto shrink-0">{fullTimestamp(message.created_at)}</time>
       </div>
       <div className="mt-1.5 flex gap-2.5">
-        <Avatar id={message.sender_id} name={sender} size={32} className="rounded-lg text-[11px]" />
+        <SenderAvatar store={controller.store} userId={message.sender_id} name={sender} size={32} className="rounded-lg text-[11px]" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-ink">{sender}</div>
           {text && (

@@ -9,35 +9,46 @@ import { t } from "../i18n";
  * before shows a neutral tile of the same shape while it loads (not the initials, which would flash). `presence` adds the
  * status dot: green online, amber away, and 取り込み中 a plain red disc (docs/PRESENCE.md §11; no white bar since 2026-10-13). Offline draws
  * nothing unless `showOffline` (my own avatar in the sidebar header: a hollow ring, so オフライン表示 shows).
+ *
+ * `presenceCutout` (message rows, whose background changes under the pointer, when highlighted or selected): the dot's
+ * ring is not painted but cut out of the picture (a hole a ring wider than the dot, as iOS's `badgeHole`), so whatever
+ * is behind the avatar shows through it and the ring always matches the row.
  */
-export function Avatar({ id, name, size = 36, className, presence, presenceClassName, showOffline = false, dotSize }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; showOffline?: boolean; dotSize?: number }) {
+export function Avatar({ id, name, size = 36, className, presence, presenceClassName, showOffline = false, dotSize, presenceCutout = false }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; showOffline?: boolean; dotSize?: number; presenceCutout?: boolean }) {
   const hue = avatarHue(id);
   const dot = dotSize ?? avatarDotSize(size);
   // The dot overhangs the corner by a fifth of itself (2 px for the usual 8–10 px dots, 3 px for my header's 14 px).
   const overhang = -Math.max(2, Math.round(dot * 0.2));
   const picture = useAvatar(id);
+  const showDot = !!presence && (presence !== "offline" || showOffline);
+  // The hole: a circle the dot's size (its 2 px border included) centred where the dot is.
+  const centre = size - overhang - dot / 2;
+  const hole = `radial-gradient(circle at ${centre}px ${centre}px, transparent ${dot / 2}px, #000 ${dot / 2 + 0.5}px)`;
+  const cut = showDot && presenceCutout ? { maskImage: hole, WebkitMaskImage: hole } : undefined;
   return (
     // A rounded square (Slack) unless the caller sets its own radius; the picture and initials inherit it.
     <span className={cn("relative inline-flex shrink-0 rounded-[22%]", className)} style={{ width: size, height: size }} aria-hidden="true">
       {picture.state === "ready" ? (
-        <img src={picture.url} alt="" className={cn("h-full w-full rounded-[inherit] object-cover", className)} style={{ width: size, height: size }} draggable={false} />
+        <img src={picture.url} alt="" className={cn("h-full w-full rounded-[inherit] object-cover", className)} style={{ width: size, height: size, ...cut }} draggable={false} />
       ) : picture.state === "loading" ? (
-        <span data-testid="avatar-loading" className={cn("h-full w-full rounded-[inherit]", className)} style={{ background: "rgb(128 128 128 / 0.22)", width: size, height: size }} />
+        <span data-testid="avatar-loading" className={cn("h-full w-full rounded-[inherit]", className)} style={{ background: "rgb(128 128 128 / 0.22)", width: size, height: size, ...cut }} />
       ) : (
         <span
           className={cn("inline-flex h-full w-full select-none items-center justify-center rounded-[inherit] font-bold text-white", className)}
-          style={{ fontSize: Math.round(size * 0.42), background: `hsl(${hue} 55% 45%)`, width: size, height: size }}
+          style={{ fontSize: Math.round(size * 0.42), background: `hsl(${hue} 55% 45%)`, width: size, height: size, ...cut }}
         >
           {initials(name)}
         </span>
       )}
-      {presence && (presence !== "offline" || showOffline) && (
+      {presence && showDot && (
         // Above the dot (HoverList), not a native title under the pointer.
         <HoverList content={presenceLabel(presence)}>
           <span
             data-presence={presence}
             className={cn(
-              "absolute inline-flex items-center justify-center rounded-full border-2 border-canvas",
+              "absolute inline-flex items-center justify-center rounded-full border-2",
+              // Cut out: a transparent border the hole shows through, the colour inside it only.
+              presenceCutout ? "border-transparent bg-clip-padding" : "border-canvas",
               presence === "online" ? "bg-success" : presence === "away" ? "bg-warning" : presence === "dnd" ? "bg-danger" : "bg-canvas",
               presenceClassName,
             )}
