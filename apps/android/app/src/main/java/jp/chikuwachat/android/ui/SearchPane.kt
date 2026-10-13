@@ -1142,7 +1142,7 @@ private fun ResultRow(
             Text(Timeline.stampLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
         }
         Row(Modifier.padding(top = 6.dp)) {
-            Avatar(message.senderId, sender, size = 36.dp)
+            SenderAvatar(store, message.senderId, sender, size = 36.dp, ring = MaterialTheme.colorScheme.surface)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(sender, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

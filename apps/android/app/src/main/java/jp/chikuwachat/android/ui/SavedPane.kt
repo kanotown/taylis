@@ -78,7 +78,7 @@ fun MessageCard(message: MessageOut, store: Store, version: Int, onNeedEmojiImag
     val channel = store.channel(message.channelId)
     val text = messageLine(message.body, message.attachments, store)
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.Top) {
-        Avatar(message.senderId, sender, size = 32.dp)
+        SenderAvatar(store, message.senderId, sender, size = 32.dp, ring = MaterialTheme.colorScheme.surface)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -17,6 +17,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import jp.chikuwachat.android.sync.Store
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,7 +39,11 @@ import androidx.compose.ui.res.stringResource
  * person and the action, and the touch target is at least 48 dp around a small avatar; a plain avatar stays decorative.
  */
 @Composable
-fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 36.dp, presence: String? = null, onClick: (() -> Unit)? = null, showOffline: Boolean = false) {
+fun Avatar(
+    id: String, name: String, modifier: Modifier = Modifier, size: Dp = 36.dp, presence: String? = null, onClick: (() -> Unit)? = null, showOffline: Boolean = false,
+    /** The colour behind the avatar, for the dot's ring (null: the surface). */
+    presenceRing: Color? = null,
+) {
     val color = Color.hsl(Timeline.hue(id).toFloat(), 0.55f, 0.45f)
     val tappable = if (onClick == null) modifier else modifier.touchTarget { source ->
         Modifier.semantics { contentDescription = name }.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.common_open_profile), onClick = onClick)
@@ -49,9 +58,28 @@ fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 3
             }
         }
         if (presence != null && (presence != PresenceRules.OFFLINE || showOffline)) {
-            PresenceBadge(presence, size * 0.32f, Modifier.align(Alignment.BottomEnd))
+            PresenceBadge(presence, size * 0.32f, Modifier.align(Alignment.BottomEnd), ring = presenceRing ?: MaterialTheme.colorScheme.surface)
         }
     }
+}
+
+/**
+ * A message's sender avatar (conversations, threads, the thread list, saved / pinned messages, search hits) with the
+ * sender's dot (docs/PRESENCE.md §11.5, [PresenceRules.senderDot]): online, away and 取り込み中 show, offline and bots
+ * do not. The dot is read here, from the Store's version through derivedStateOf, so a presence change redraws this
+ * avatar alone and not the list around it. `ring` is the row's background (a highlighted row's too), so the dot looks
+ * cut out of the avatar. Like the other lists' dots it is not read out (a tappable avatar keeps its name).
+ */
+@Composable
+fun SenderAvatar(store: Store, userId: String, name: String, size: Dp, ring: Color, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val version = store.version.collectAsState()
+    val dot by remember(store, userId) {
+        derivedStateOf {
+            version.value  // re-read on each Store change; only a different dot recomposes
+            PresenceRules.senderDot(store.presenceOf(userId), isBot = store.users[userId]?.role == "bot", avatarShown = true)
+        }
+    }
+    Avatar(userId, name, modifier, size = size, presence = dot, onClick = onClick, presenceRing = ring)
 }
 
 /**
@@ -60,8 +88,8 @@ fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 3
  * オフライン表示 shows).
  */
 @Composable
-fun PresenceBadge(look: String, size: Dp, modifier: Modifier = Modifier) {
-    Box(modifier.size(size).background(MaterialTheme.colorScheme.surface, CircleShape).padding(2.dp)) {
+fun PresenceBadge(look: String, size: Dp, modifier: Modifier = Modifier, ring: Color = MaterialTheme.colorScheme.surface) {
+    Box(modifier.size(size).background(ring, CircleShape).padding(2.dp)) {
         PresenceDot(look, Modifier.matchParentSize())
     }
 }

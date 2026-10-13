@@ -607,7 +607,8 @@ fun MessageRow(
             else if (!message.pending && onOpenThread != null && !KeyboardBehavior.upAtTouch) onOpenThread()
         },
     )
-    Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
+    val highlighted = controller.messageFocus?.messageId == message.id
+    Box(Modifier.fillMaxWidth().background(if (highlighted) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (newDot != null) {
                 Box(Modifier.width(12.dp).padding(top = 14.dp), contentAlignment = Alignment.TopStart) {
@@ -622,7 +623,11 @@ fun MessageRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), textAlign = TextAlign.Center,
                     modifier = Modifier.width(36.dp).padding(top = 3.dp),
                 )
-            } else Avatar(message.senderId, sender, size = 36.dp, onClick = if (message.pending) null else ({ profileUserId = message.senderId }))
+            } else SenderAvatar(
+                // The sender's dot (docs/PRESENCE.md §11.5), its ring the row's colour (the list's surface, or the jumped-to highlight).
+                store, message.senderId, sender, size = 36.dp, ring = if (highlighted) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface,
+                onClick = if (message.pending) null else ({ profileUserId = message.senderId }),
+            )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, version, { controller.loadEmojiImage(it) }, onOpenThread)  // M15c
