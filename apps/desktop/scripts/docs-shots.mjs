@@ -196,6 +196,35 @@ async function shot(name, clip = null, { png = null } = {}) {
   sizes.push(name);
 }
 
+/**
+ * The topmost dialog alone, with transparent corners (2026-10-13): everything else is hidden and the page's background is
+ * transparent while it is taken, so the rounded corners and the shadow are not cut out of the dark overlay. A dialog
+ * opened from another one is the last [role=dialog] (the first is the one under it).
+ */
+async function dialogShot(name, pad = 16) {
+  const clip = await run(`(() => {
+    const all = [...document.querySelectorAll("[role=dialog]")];
+    const el = all[all.length - 1];
+    if (!el) return null;
+    el.setAttribute("data-shot-dialog", "");
+    const style = document.createElement("style");
+    style.id = "shot-dialog-style";
+    style.textContent = "html, body { background: transparent !important; } * { visibility: hidden !important; } [data-shot-dialog], [data-shot-dialog] * { visibility: visible !important; }";
+    document.head.append(style);
+    const r = el.getBoundingClientRect();
+    const x = Math.max(0, r.left - ${pad}), y = Math.max(0, r.top - ${pad});
+    return { x, y, width: Math.min(innerWidth - x, r.width + 2 * ${pad}), height: Math.min(innerHeight - y, r.height + 2 * ${pad}) };
+  })()`);
+  await send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
+  await sleep(200);
+  try {
+    await shot(name, clip);
+  } finally {
+    await send("Emulation.setDefaultBackgroundColorOverride", {});
+    await run(`(() => { document.getElementById("shot-dialog-style")?.remove(); document.querySelector("[data-shot-dialog]")?.removeAttribute("data-shot-dialog"); return true; })()`);
+  }
+}
+
 async function openDoc(title) {
   await place("ドキュメント", 800);
   await waitFor(`[...document.querySelectorAll("main [role=treeitem] button")].some((b) => b.textContent.includes(${JSON.stringify(title)}))`);
@@ -553,7 +582,7 @@ def("web-workflow-list", async () => {
   await openChannel("研究ミーティング");
   await click("ファイルを添付・その他", { within: "main", wait: 700 });
   await click("ワークフロー…", { within: "[role=menu]", wait: 900 });
-  await shot("web-workflow-list", await rectOf("[role=dialog]", null, 16));
+  await dialogShot("web-workflow-list", 16);
   await settle();
 });
 
@@ -568,7 +597,7 @@ def("web-workflow-form", async () => {
   const text = await rectOf("[role=dialog] p");
   if (text) await mouse(text.x + 4, text.y + text.height / 2);
   await sleep(300);
-  await shot("web-workflow-form", await rectOf("[role=dialog]", null, 16));
+  await dialogShot("web-workflow-form", 16);
   await settle();
 });
 
@@ -600,21 +629,21 @@ async function settings(section, wait = 800) {
 def("web-settings-notifications", async () => {
   await viewport(NORMAL);
   await settings("通知");
-  await shot("web-settings-notifications", await rectOf("[role=dialog]"));
+  await dialogShot("web-settings-notifications");
   await settle();
 });
 
 def("web-settings-quiet", async () => {
   await viewport(NORMAL);
   await settings("おやすみ時間");
-  await shot("web-settings-quiet", await rectOf("[role=dialog]"));
+  await dialogShot("web-settings-quiet");
   await settle();
 });
 
 def("web-settings-display", async () => {
   await viewport(NORMAL);
   await settings("表示");
-  await shot("web-settings-display", await rectOf("[role=dialog]"));
+  await dialogShot("web-settings-display");
   await settle();
 });
 
@@ -624,7 +653,7 @@ def("web-settings-places", async () => {
   await settings("表示");
   await run(`([...document.querySelectorAll("[role=dialog] h2, [role=dialog] h3, [role=dialog] h4")].find((e) => e.textContent.includes("サイドバーの項目")).scrollIntoView({ block: "start" }), true)`);
   await sleep(500);
-  await shot("web-settings-places", await rectOf("[role=dialog]"));
+  await dialogShot("web-settings-places");
   await settle();
 });
 
@@ -646,7 +675,7 @@ def(
   async () => {
     await viewport(NORMAL);
     await settings("管理", 1500);
-    await shot("web-admin", await rectOf("[role=dialog]"));
+    await dialogShot("web-admin");
     await settle();
   },
   "admin",
@@ -664,7 +693,7 @@ def(
     await click("編集", { within: "[role=dialog]", wait: 1000 });
     await run(`([...document.querySelectorAll("[role=dialog] label")].find((e) => e.textContent.includes("実行するときに確認する")).scrollIntoView({ block: "center" }), true)`);
     await sleep(400);
-    await shot("web-workflow-editor", await rectOf("[role=dialog]", null, 16));
+    await dialogShot("web-workflow-editor", 16);
     await settle();
   },
   "admin",
@@ -677,7 +706,7 @@ def(
     await viewport(TALL);
     await settings("管理", 1500);
     await click("在室状況", { within: "[role=dialog]", wait: 1200 });
-    await shot("web-admin-attendance", await rectOf("[role=dialog]"));
+    await dialogShot("web-admin-attendance");
     await settle();
   },
   "admin",
