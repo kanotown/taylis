@@ -167,14 +167,14 @@ final class ShareApi: @unchecked Sendable {
 
     // MARK: transport
 
-    private func getJSON<T: Decodable>(_ path: String) async throws -> T {
+    func getJSON<T: Decodable>(_ path: String) async throws -> T {
         let (data, _) = try await authorized { token in try await self.send(path: path, method: "GET", json: nil, token: token, timeout: 20) }
         do { return try JSON.snakeDecoder.decode(T.self, from: data) } catch { throw ShareFailure.temporary("decode_error") }
     }
 
     /// One call with the access token; a 401 token_expired refreshes once and tries again. Any other non-2xx is
-    /// turned into a ShareFailure.
-    private func authorized(_ call: @escaping (String) async throws -> (Data, Int)) async throws -> (Data, Int) {
+    /// turned into a ShareFailure. (Internal: the widget's calls, AttendanceWidgetData.swift, use it too.)
+    func authorized(_ call: @escaping (String) async throws -> (Data, Int)) async throws -> (Data, Int) {
         var token = try await accessToken()
         var retried = false
         while true {
@@ -190,7 +190,20 @@ final class ShareApi: @unchecked Sendable {
         }
     }
 
-    private func send(path: String, method: String, json: [String: Any]?, token: String?, timeout: TimeInterval) async throws -> (Data, Int) {
+    func send(path: String, method: String, json: [String: Any]?, token: String?, timeout: TimeInterval) async throws -> (Data, Int) {
+        let request = try Self.request(baseUrl: baseUrl, path: path, method: method, json: json, token: token, language: language,
+                                       timeout: timeout)
+        do {
+            let (data, response) = try await session.data(for: request)
+            return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+        } catch {
+            throw ShareFailure.temporary("network_error")
+        }
+    }
+
+    /// One JSON request to the server (the tests look at what a call sends without sending it).
+    static func request(baseUrl: URL, path: String, method: String, json: [String: Any]?, token: String?, language: String,
+                        timeout: TimeInterval) throws -> URLRequest {
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
         request.timeoutInterval = timeout
@@ -201,12 +214,7 @@ final class ShareApi: @unchecked Sendable {
             request.httpBody = try JSONSerialization.data(withJSONObject: json)
         }
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        do {
-            let (data, response) = try await session.data(for: request)
-            return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
-        } catch {
-            throw ShareFailure.temporary("network_error")
-        }
+        return request
     }
 
     static func errorCode(_ data: Data) -> String? {

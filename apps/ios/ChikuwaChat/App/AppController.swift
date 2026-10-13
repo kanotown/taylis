@@ -125,6 +125,8 @@ final class AppController {
     @ObservationIgnored private var activeBadge = 0
     /// Startup is over: a tapped notification can be routed.
     @ObservationIgnored private(set) var booted = false
+    /// The 在室状況 widget's link that arrived before startup ended (its server, `.some(nil)` without one).
+    @ObservationIgnored var pendingWidgetServer: String??
 
     /// The login form starts from the workspace to sign back in to, else the last one used on this device.
     var loginServer: String {
@@ -228,6 +230,7 @@ final class AppController {
         Task { await refreshServerInfo() }
         Task { await refreshSummaries() }
         if let late = PushCenter.shared.takePendingTap() { await openNotification(late) }
+        await openPendingWidgetLink() // the 在室状況 widget was tapped while the app was starting
     }
 
     /// Puts another workspace on screen: this one's engine stops (its store keeps the open state and drafts), the
@@ -640,6 +643,7 @@ final class AppController {
     func didEnterBackground() {
         engine?.reportActivity()
         publishShareCache() // MOBILE_UI.md §21.2: the share sheet's recent conversations
+        publishAttendanceWidget() // the 在室状況 widget (AppController+Widget.swift)
         // M45 (CANVAS.md §4.4 「背面に回るとき」): what was typed in a canvas is saved now, not after the pause.
         if let canvases = engine?.canvases { Task { await canvases.flushAll() } }
         if let wiki = engine?.wiki { Task { await wiki.flushAll() } }  // M122
@@ -2200,6 +2204,7 @@ final class AppController {
         }
         Keychain.delete(account: workspace.account)
         SharedContainer.forget(account: workspace.account) // MOBILE_UI.md §21: the share sheet's cache of it
+        forgetAttendanceWidget(account: workspace.account) // the 在室状況 widget's snapshot of it
         SQLitePersistence.destroy(profile: workspace.account)
         RecentSearches.clear(key: RecentSearches.key(account: workspace.account))
         if remove {

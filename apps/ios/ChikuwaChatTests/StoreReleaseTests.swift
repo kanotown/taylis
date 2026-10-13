@@ -67,4 +67,22 @@ final class StoreReleaseTests: XCTestCase {
         XCTAssertEqual(rule["NSExtensionActivationSupportsWebURLWithMaxCount"] as? Int, 1)
         XCTAssertEqual(rule["NSExtensionActivationSupportsText"] as? Bool, true)
     }
+
+    /// The 在室状況 widget's extension is embedded with the app's version and build number, is a WidgetKit extension,
+    /// names the same App Group and Keychain group as the app, and has its privacy manifest.
+    func testWidgetExtensionIsEmbeddedWithTheAppsVersionAndGroups() throws {
+        let url = try XCTUnwrap(Bundle.main.builtInPlugInsURL?.appendingPathComponent("Widgets.appex"))
+        let appex = try XCTUnwrap(Bundle(url: url), "Widgets.appex is not embedded")
+        let app = Bundle.main.infoDictionary ?? [:]
+        let ext = appex.infoDictionary ?? [:]
+        XCTAssertEqual(ext["CFBundleShortVersionString"] as? String, app["CFBundleShortVersionString"] as? String)
+        XCTAssertEqual(ext["CFBundleVersion"] as? String, app["CFBundleVersion"] as? String,
+                       "raise CFBundleVersion in Widgets/Info.plist too")
+        XCTAssertEqual(appex.bundleIdentifier, "jp.chikuwachat.ios.Widgets")
+        XCTAssertEqual(ext["TaylisAppGroup"] as? String, app["TaylisAppGroup"] as? String)
+        XCTAssertEqual(ext["TaylisKeychainGroup"] as? String, app["TaylisKeychainGroup"] as? String)
+        let extensionInfo = try XCTUnwrap(ext["NSExtension"] as? [String: Any])
+        XCTAssertEqual(extensionInfo["NSExtensionPointIdentifier"] as? String, "com.apple.widgetkit-extension")
+        XCTAssertNotNil(appex.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"), "the widget's privacy manifest")
+    }
 }

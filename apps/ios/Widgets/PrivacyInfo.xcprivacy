@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The widget extension's privacy manifest (the 在室状況 widget, docs/STORE_RELEASE.md). It reads and changes my
+  在室状況 only on the workspace server signed in to (self-hosted); the data types are declared in the app's manifest.
+  Required-reason APIs: only UserDefaults, the App Group's defaults shared with the app (1C8F.1: the 在室状況 snapshot
+  the app writes and the UI language). No file timestamps, no disk space, no boot time.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+</dict>
+</plist>
