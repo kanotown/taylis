@@ -5,8 +5,8 @@ struct AvatarView: View {
     let id: String
     let name: String
     var size: CGFloat = 36
-    /// The dot (SYNC_PROTOCOL.md §5.2, PRESENCE.md §11.5): "online" / "away" / "dnd" (取り込み中: a red disc with a
-    /// white bar); nil or "offline" shows none.
+    /// The dot (SYNC_PROTOCOL.md §5.2, PRESENCE.md §11.5): "online" / "away" / "dnd" (取り込み中: a red disc; it
+    /// had a white bar until 2026-10-13); nil or "offline" shows none.
     var presence: String? = nil
     /// "offline" as a grey ring (my own picture while I appear offline, PRESENCE.md §11.6).
     var showOffline = false
@@ -51,7 +51,7 @@ struct AvatarView: View {
 }
 
 /// The presence dot alone (an avatar's corner, the quick status menu's choices): green, orange, 取り込み中's red disc
-/// with a white bar (as on Desktop / Web), or a grey ring.
+/// plain (as on Desktop / Web; no white bar since 2026-10-13), or a grey ring.
 struct PresenceDot: View {
     enum Style: Equatable {
         case online, away, dnd, offline
@@ -88,11 +88,6 @@ struct PresenceDot: View {
                 Circle().strokeBorder(style.color, lineWidth: max(1.5, side * 0.2))
             } else {
                 Circle().fill(style.color)
-                    .overlay {
-                        if style == .dnd {
-                            Capsule().fill(Color.white).frame(width: side * 0.62, height: max(1.5, side * 0.2))
-                        }
-                    }
             }
         }
         .frame(width: side, height: side)

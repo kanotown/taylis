@@ -4,7 +4,7 @@ import XCTest
 
 /// The quick status menu (docs/PRESENCE.md §11): the shared rules (apps/shared/presence-rules.json), the store's look
 /// and its end by the clock, PUT /users/me/presence, a change from another of my devices, the settings' pause showing
-/// 「解除するまで」, and the dot itself (red disc, white bar).
+/// 「解除するまで」, and the dot itself (a plain red disc).
 @MainActor
 final class PresenceMenuTests: XCTestCase {
     // MARK: the shared rules
@@ -360,8 +360,8 @@ final class PresenceMenuTests: XCTestCase {
 
     // MARK: the dot
 
-    /// 取り込み中 is a red disc with a white bar across its middle (the same shape as Desktop / Web).
-    func testTheDndDotIsARedDiscWithAWhiteBar() throws {
+    /// 取り込み中 is a plain red disc (the same as Desktop / Web; its white bar went on 2026-10-13).
+    func testTheDndDotIsAPlainRedDisc() throws {
         XCTAssertEqual(PresenceDot.Style(look: "dnd"), .dnd)
         XCTAssertEqual(PresenceDot.Style(look: "online"), .online)
         XCTAssertEqual(PresenceDot.Style(look: "away"), .away)
@@ -373,7 +373,7 @@ final class PresenceMenuTests: XCTestCase {
         renderer.scale = 1
         let image = try XCTUnwrap(renderer.cgImage)
         let centre = try pixel(image, x: 20, y: 20)
-        XCTAssertGreaterThan(centre.r, 0.9); XCTAssertGreaterThan(centre.g, 0.9); XCTAssertGreaterThan(centre.b, 0.9)  // the bar
+        XCTAssertGreaterThan(centre.r, 0.8); XCTAssertLessThan(centre.g, 0.4); XCTAssertLessThan(centre.b, 0.4)  // red, no bar
         let above = try pixel(image, x: 20, y: 9)
         XCTAssertGreaterThan(above.r, 0.8); XCTAssertLessThan(above.g, 0.4); XCTAssertLessThan(above.b, 0.4)  // red
         let corner = try pixel(image, x: 1, y: 1)
