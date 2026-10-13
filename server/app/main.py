@@ -73,6 +73,8 @@ from app.modules.moderation.router import router as moderation_router
 from app.modules.notifications import repository as notifications_repo
 from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
+from app.modules.notifications.relay import RateLimiter as PushRelayLimiter
+from app.modules.notifications.relay import router as push_relay_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.notifications.sender import PushSender
 from app.modules.recurring import service as recurring
@@ -538,6 +540,7 @@ def build_api_router() -> APIRouter:
     api.include_router(auth_router)
     api.include_router(sso_router)
     api.include_router(totp_router)
+    api.include_router(push_relay_router)
     api.include_router(
         avatars_router
     )  # before users: /users/me/avatar must not read as /users/{id}
@@ -721,6 +724,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.bus.subscribe(app.state.hub.on_event)
     app.state.push_providers = build_providers(settings)
+    app.state.push_relay_limiter = PushRelayLimiter()  # docs/PUSH_RELAY.md
     app.state.push_sender = PushSender(
         app.state.db,
         app.state.push_providers,

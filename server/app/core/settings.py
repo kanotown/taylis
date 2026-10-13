@@ -109,6 +109,17 @@ class Settings(BaseSettings):
     push_concurrency: int = 10
     push_lease_seconds: int = 60
     push_retention_days: int = 7
+    # docs/PUSH_RELAY.md (2026-10-13): send this server's pushes through another Taylis server that
+    # holds the APNs / FCM keys (PUSH_RELAY_URL, its full /api/v1/push-relay/send address, and
+    # PUSH_RELAY_CLIENT_ID; the key is the file client_secret in PUSH_RELAY_SECRETS_DIR). Empty URL:
+    # send directly (or log, when no keys).
+    push_relay_url: str = ""
+    push_relay_client_id: str = ""
+    push_relay_secrets_dir: str = "/run/secrets/push-relay"
+    # This server relays for others: one key file per asking server in
+    # PUSH_RELAY_SECRETS_DIR/clients.
+    push_relay_serve: bool = False
+    push_relay_rate_per_minute: int = 1200
     attachment_max_bytes: int = 100 * 1024 * 1024
     attachment_pending_ttl_hours: int = 24
     attachment_gc_interval_seconds: int = 3600
