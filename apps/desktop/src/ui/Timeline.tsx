@@ -40,7 +40,7 @@ import { isSelfNotes, selfNotesIntro } from "./channels";
 import { intlLocale, t } from "../i18n";
 import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
 import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
-import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
+import { LONG_PRESS_MS, MessageActionsSheet, QuickReactionGlyph, quickReactions } from "./MessageActionsSheet";
 import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
@@ -1210,9 +1210,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex max-w-[calc(100%-1rem)] items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete || remindOpen || menuOpen) && "pointer-events-auto opacity-100")}>
           {/* The first three I chose (M50), else the three I used last (then the defaults), as the phone sheet's six (M25).
               Left out on a narrow row (the thread pane): 「リアクションを追加」 still has them. */}
-          {wideRow && quickReactions(recentEmoji, 3, chosenReactions).map((emoji) => (
-            <button key={emoji} type="button" title={t("timeline.reactWith", { emoji })} className="h-7 w-7 shrink-0 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
-              {emoji}
+          {wideRow && quickReactions(recentEmoji, 3, chosenReactions, (name) => store.customEmoji.has(name)).map((emoji) => (
+            <button key={emoji} type="button" title={t("timeline.reactWith", { emoji })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
+              <QuickReactionGlyph controller={controller} emoji={emoji} size={18} />
             </button>
           ))}
           <PopoverRoot open={pickerOpen} onOpenChange={setPickerOpen}>
