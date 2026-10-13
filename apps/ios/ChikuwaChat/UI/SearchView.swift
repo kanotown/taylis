@@ -959,7 +959,7 @@ struct SearchResultRow: View {
                 Text(Self.stamp(message.createdAt)).font(.caption).foregroundStyle(.secondary).fixedSize()
             }
             HStack(alignment: .top, spacing: 10) {
-                AvatarView(id: message.senderId, name: sender, size: 34)
+                SenderAvatar(id: message.senderId, name: sender, size: 34, store: store)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sender).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if !text.isEmpty {

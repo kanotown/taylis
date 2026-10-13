@@ -50,6 +50,28 @@ struct AvatarView: View {
     }
 }
 
+/// A message's sender picture with their presence dot (PRESENCE.md §11.5) in the message lists: conversations and DMs,
+/// threads, the channel preview, the times feed, followed threads and search results. Its own view so that it alone
+/// reads the presence: a presence or 取り込み中 change redraws these pictures, not the rows (MessageRow is `.equatable()`
+/// and skips its body), and the upside-down conversation keeps its layout (the dot is an overlay, the hole a mask).
+/// Hidden from VoiceOver like every picture here: the row reads the sender's name.
+struct SenderAvatar: View {
+    let id: String
+    let name: String
+    var size: CGFloat = 36
+    let store: Store
+
+    var body: some View {
+        AvatarView(id: id, name: name, size: size, presence: Self.look(id, store: store))
+    }
+
+    /// The sender's dot: none for a bot (an incoming webhook posts as one, the AI bot is one), else the store's look
+    /// (online / away / dnd; offline draws nothing).
+    static func look(_ userId: String, store: Store) -> String? {
+        store.users[userId]?.role == "bot" ? nil : store.presenceOf(userId)
+    }
+}
+
 /// The presence dot alone (an avatar's corner, the quick status menu's choices): green, orange, 取り込み中's red disc
 /// plain (as on Desktop / Web; no white bar since 2026-10-13), or a grey ring.
 struct PresenceDot: View {

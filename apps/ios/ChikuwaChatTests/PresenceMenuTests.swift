@@ -372,11 +372,11 @@ final class PresenceMenuTests: XCTestCase {
         let renderer = ImageRenderer(content: PresenceDot(style: .dnd, side: 40).environment(\.colorScheme, .light))
         renderer.scale = 1
         let image = try XCTUnwrap(renderer.cgImage)
-        let centre = try pixel(image, x: 20, y: 20)
+        let centre = try pixelOf(image, x: 20, y: 20)
         XCTAssertGreaterThan(centre.r, 0.8); XCTAssertLessThan(centre.g, 0.4); XCTAssertLessThan(centre.b, 0.4)  // red, no bar
-        let above = try pixel(image, x: 20, y: 9)
+        let above = try pixelOf(image, x: 20, y: 9)
         XCTAssertGreaterThan(above.r, 0.8); XCTAssertLessThan(above.g, 0.4); XCTAssertLessThan(above.b, 0.4)  // red
-        let corner = try pixel(image, x: 1, y: 1)
+        let corner = try pixelOf(image, x: 1, y: 1)
         XCTAssertLessThan(corner.a, 0.1, "a disc")
     }
 
@@ -392,24 +392,24 @@ final class PresenceMenuTests: XCTestCase {
                 // hole 2 pt wider all round. Drawn at 4× with 8 pt around it.
                 let avatar = AvatarView(id: "u-dot", name: "加納", size: 40, presence: look, showOffline: true).padding(8)
                 let centre = 4 * (8 + 40 - 5 + 2.2), ringAt = 4 * (8 + 40 - 5 + 2.2 - 6 / 2.0.squareRoot())
-                let onGround = try render(avatar.background(Color(red: ground.r, green: ground.g, blue: ground.b)), scheme: scheme)
-                let alone = try render(avatar, scheme: scheme)
+                let onGround = try renderAt4x(avatar.background(Color(red: ground.r, green: ground.g, blue: ground.b)), scheme: scheme)
+                let alone = try renderAt4x(avatar, scheme: scheme)
                 let label = "\(look) \(scheme)"
 
-                let ring = try pixel(onGround, x: Int(ringAt), y: Int(ringAt))
+                let ring = try pixelOf(onGround, x: Int(ringAt), y: Int(ringAt))
                 XCTAssertEqual(ring.a, 1, accuracy: 0.01, label)
                 XCTAssertEqual(ring.r, ground.r, accuracy: 0.03, "the ring is the ground: \(label)")
                 XCTAssertEqual(ring.g, ground.g, accuracy: 0.03, label)
                 XCTAssertEqual(ring.b, ground.b, accuracy: 0.03, label)
-                XCTAssertLessThan(try pixel(alone, x: Int(ringAt), y: Int(ringAt)).a, 0.05, "a hole in the picture: \(label)")
-                XCTAssertEqual(try pixel(alone, x: 4 * 20, y: 4 * 20).a, 1, accuracy: 0.01, "the picture: \(label)")
+                XCTAssertLessThan(try pixelOf(alone, x: Int(ringAt), y: Int(ringAt)).a, 0.05, "a hole in the picture: \(label)")
+                XCTAssertEqual(try pixelOf(alone, x: 4 * 20, y: 4 * 20).a, 1, accuracy: 0.01, "the picture: \(label)")
 
                 // The dot's middle: solid, and the same colour on the ground as alone (nothing under it blends in).
-                let dot = try pixel(onGround, x: Int(centre), y: Int(centre - 4 * 3))
-                let dotAlone = try pixel(alone, x: Int(centre), y: Int(centre - 4 * 3))
+                let dot = try pixelOf(onGround, x: Int(centre), y: Int(centre - 4 * 3))
+                let dotAlone = try pixelOf(alone, x: Int(centre), y: Int(centre - 4 * 3))
                 if look == "offline" {
                     // The grey ring is hollow: its middle is the ground too.
-                    let middle = try pixel(onGround, x: Int(centre), y: Int(centre))
+                    let middle = try pixelOf(onGround, x: Int(centre), y: Int(centre))
                     XCTAssertEqual(middle.r, ground.r, accuracy: 0.03, label)
                     XCTAssertEqual(middle.b, ground.b, accuracy: 0.03, label)
                     continue
@@ -426,20 +426,100 @@ final class PresenceMenuTests: XCTestCase {
             }
         }
     }
+}
 
-    private func render(_ view: some View, scheme: ColorScheme) throws -> CGImage {
-        let renderer = ImageRenderer(content: view.environment(\.colorScheme, scheme))
-        renderer.scale = 4
-        return try XCTUnwrap(renderer.cgImage)
+/// The dot on a message's sender picture (PRESENCE.md §11.5): conversations, threads, followed threads and search
+/// results draw it on the first message of a group (a continuation row has the time where the picture would be).
+@MainActor
+final class MessageAvatarPresenceTests: XCTestCase {
+    private func user(_ id: String, role: String = "member", dndUntil: String? = nil) -> UserPublic {
+        UserPublic(id: id, username: id, displayName: id, role: role, deactivatedAt: nil, createdAt: "2026-10-01T00:00:00Z",
+                   updatedAt: "2026-10-01T00:00:00Z", dndUntil: dndUntil)
     }
 
-    private func pixel(_ image: CGImage, x: Int, y: Int) throws -> (r: Double, g: Double, b: Double, a: Double) {
-        var bytes = [UInt8](repeating: 0, count: 4)
-        let context = try XCTUnwrap(CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-        context.draw(image, in: CGRect(x: -x, y: -(image.height - 1 - y), width: image.width, height: image.height))
-        let a = Double(bytes[3]) / 255
-        guard a > 0 else { return (0, 0, 0, 0) }
-        return (Double(bytes[0]) / 255 / a, Double(bytes[1]) / 255 / a, Double(bytes[2]) / 255 / a, a)
+    func testTheSenderDotShowsOnlineAwayAndDndButNotOfflineOrBots() {
+        let store = Store()
+        store.upsertUser(user("alice"))
+        XCTAssertNil(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), "offline: nothing")
+        store.setPresence("alice", status: "online")
+        XCTAssertEqual(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), .online)
+        store.setPresence("alice", status: "away")
+        XCTAssertEqual(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), .away)
+        // 取り込み中 beats the connection, even disconnected.
+        store.upsertUser(user("alice", dndUntil: "9999-12-31T00:00:00Z"))
+        store.setPresence("alice", status: "offline")
+        XCTAssertEqual(PresenceDot.Style(look: SenderAvatar.look("alice", store: store)), .dnd)
+
+        // A bot (an incoming webhook, the AI bot): no dot whatever the hub says.
+        store.upsertUser(user("hook", role: "bot"))
+        store.setPresence("hook", status: "online")
+        XCTAssertNil(SenderAvatar.look("hook", store: store))
+        // Someone the directory does not know yet: the presence alone.
+        store.setPresence("stranger", status: "online")
+        XCTAssertEqual(SenderAvatar.look("stranger", store: store), "online")
     }
+
+    /// The picture alone reads the presence, so a presence frame or a pause redraws it (not the row around it).
+    func testTheSenderPictureRedrawsOnAPresenceChange() async {
+        let store = Store()
+        store.upsertUser(user("alice"))
+        let redrawn = expectation(description: "redraw")
+        withObservationTracking { _ = SenderAvatar.look("alice", store: store) } onChange: { redrawn.fulfill() }
+        store.setPresence("alice", status: "online")
+        await fulfillment(of: [redrawn], timeout: 1)
+
+        let paused = expectation(description: "pause")
+        withObservationTracking { _ = SenderAvatar.look("alice", store: store) } onChange: { paused.fulfill() }
+        store.upsertUser(user("alice", dndUntil: "9999-12-31T00:00:00Z"))
+        await fulfillment(of: [paused], timeout: 1)
+        XCTAssertEqual(SenderAvatar.look("alice", store: store), "dnd")
+    }
+
+    /// The message picture (36 pt) on a highlighted / jumped-to row's colour, light and dark: the ring is the row's
+    /// colour (a hole in the picture), the dot solid; offline cuts no hole.
+    func testTheDotOnAMessagePictureHasTheRowAsItsRing() throws {
+        let store = Store()
+        store.upsertUser(user("alice"))
+        let ground = (r: 1.0, g: 0.8, b: 0.0)
+        // 36 pt: the dot is 8.8 pt (36 × 0.3 − 2), its centre 2.52 pt inside the corner (4.4 − 1.88), the hole 6.4 pt
+        // across its radius. Drawn at 4× with 8 pt around it; the ring is checked 5.4 pt from the centre, diagonally.
+        let centre = 4 * (8 + 36 - 2.52), ringAt = 4 * (8 + 36 - 2.52 - 5.4 / 2.0.squareRoot())
+        for scheme in [ColorScheme.light, .dark] {
+            for status in ["online", "offline"] {
+                store.setPresence("alice", status: status)
+                let row = SenderAvatar(id: "alice", name: "alice", store: store).padding(8)
+                    .background(Color(red: ground.r, green: ground.g, blue: ground.b))
+                let image = try renderAt4x(row, scheme: scheme)
+                let ring = try pixelOf(image, x: Int(ringAt), y: Int(ringAt))
+                let label = "\(status) \(scheme)"
+                if status == "offline" {
+                    XCTAssertGreaterThan(abs(ring.b - ground.b) + abs(ring.g - ground.g), 0.1, "no hole: the picture: \(label)")
+                    continue
+                }
+                XCTAssertEqual(ring.r, ground.r, accuracy: 0.03, "the ring is the row: \(label)")
+                XCTAssertEqual(ring.g, ground.g, accuracy: 0.03, label)
+                XCTAssertEqual(ring.b, ground.b, accuracy: 0.03, label)
+                let dot = try pixelOf(image, x: Int(centre), y: Int(centre))
+                XCTAssertEqual(dot.a, 1, accuracy: 0.01, label)
+                XCTAssertGreaterThan(dot.g, 0.7, label); XCTAssertLessThan(dot.r, 0.35, label)  // green
+            }
+        }
+    }
+}
+
+@MainActor
+private func renderAt4x(_ view: some View, scheme: ColorScheme) throws -> CGImage {
+    let renderer = ImageRenderer(content: view.environment(\.colorScheme, scheme))
+    renderer.scale = 4
+    return try XCTUnwrap(renderer.cgImage)
+}
+
+private func pixelOf(_ image: CGImage, x: Int, y: Int) throws -> (r: Double, g: Double, b: Double, a: Double) {
+    var bytes = [UInt8](repeating: 0, count: 4)
+    let context = try XCTUnwrap(CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                          space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.draw(image, in: CGRect(x: -x, y: -(image.height - 1 - y), width: image.width, height: image.height))
+    let a = Double(bytes[3]) / 255
+    guard a > 0 else { return (0, 0, 0, 0) }
+    return (Double(bytes[0]) / 255 / a, Double(bytes[1]) / 255 / a, Double(bytes[2]) / 255 / a, a)
 }

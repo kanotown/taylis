@@ -1111,7 +1111,7 @@ struct MessageRow: View {
                     .frame(width: 36, alignment: .center)
                     .padding(.top, 3)
             } else {
-                AvatarView(id: message.senderId, name: senderName)
+                SenderAvatar(id: message.senderId, name: senderName, store: store)  // with the presence dot (§11.5)
                     .onTapGesture { if !message.pending { show(.profile) } }
             }
             VStack(alignment: .leading, spacing: 2) {
