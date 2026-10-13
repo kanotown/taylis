@@ -737,10 +737,7 @@ class ApiClient(
 
     /** My state (a workspace state or one of mine) and note (null = none); 422 attendance_state_invalid. */
     suspend fun setMyAttendance(stateId: String, note: String?): AttendanceEntryOut =
-        request("PUT", "/api/v1/attendance/me", buildJsonObject {
-            put("state_id", stateId)
-            put("note", note?.let { JsonPrimitive(it) } ?: JsonNull)
-        })
+        request("PUT", "/api/v1/attendance/me", setMyAttendanceBody(stateId, note))
 
     /** One of my own states (403 attendance_personal_not_allowed, 409 attendance_label_taken / attendance_state_limit). */
     suspend fun createMyAttendanceState(label: String, icon: String?, emoji: String?, color: String, kind: String): AttendanceStateOut =
@@ -1286,6 +1283,12 @@ class ApiClient(
     companion object {
         /** M93: the workspace icon of `version`; the version in the query keeps a new icon from being cached away. */
         fun serverIconPath(version: String): String = "/api/v1/server/icon?v=" + java.net.URLEncoder.encode(version, "UTF-8")
+
+        /** PUT /attendance/me's body: the state and the note (null = none). The app's buttons and the home-screen widget. */
+        fun setMyAttendanceBody(stateId: String, note: String?): kotlinx.serialization.json.JsonObject = buildJsonObject {
+            put("state_id", stateId)
+            put("note", note?.let { JsonPrimitive(it) } ?: JsonNull)
+        }
 
         /** Refresh retries stay this far inside the server's 30 s grace for the previous token. */
         const val REFRESH_GRACE_MS = 25_000L

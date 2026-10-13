@@ -625,6 +625,12 @@ fun MainScreen(controller: AppController) {
             )
         }
     }
+    // The 在室状況 home-screen widget's body: 「在室状況」 over the home tab, as 「在室状況を開く」 opens it.
+    LaunchedEffect(controller.pendingAttendance) {
+        if (!controller.pendingAttendance) return@LaunchedEffect
+        controller.pendingAttendance = false
+        openAttendanceBoard()
+    }
     // M112: a tapped reservation notice (or an activity row): 「予約」 on the home tab.
     LaunchedEffect(controller.pendingReservations) {
         if (!controller.pendingReservations) return@LaunchedEffect

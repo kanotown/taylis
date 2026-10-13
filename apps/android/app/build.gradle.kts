@@ -168,6 +168,9 @@ dependencies {
     implementation(libs.androidx.webkit)
     // MOBILE_UI.md §20.4: a share's uploads and post run as background work that survives the share screen and retries.
     implementation(libs.androidx.work.runtime)
+    // The 在室状況 home-screen widget (widget/AttendanceWidget.kt): Jetpack Glance draws it (sizes, colours, actions) with
+    // Compose-style code instead of hand-written RemoteViews per size and Android version.
+    implementation(libs.androidx.glance.appwidget)
     // TeX math in messages (ui/MathRender.kt; MIT, THIRD_PARTY_NOTICES.md). Its POM lists test and AppCompat artifacts
     // as runtime dependencies it never uses; only the library itself (Kotlin's stdlib is the app's own).
     implementation(libs.androidmath) { isTransitive = false }

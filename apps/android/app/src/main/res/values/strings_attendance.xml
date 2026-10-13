@@ -56,4 +56,14 @@
     <string name="attendance_pill_label">在室状況：%1$s</string>
     <string name="attendance_pill_open">在室状況を開く</string>
     <string name="attendance_pill_menu">在室状況を変える</string>
+    <!-- The home-screen widget (widget/AttendanceWidget.kt). -->
+    <string name="attendance_widget_name">在室状況</string>
+    <string name="attendance_widget_description">自分の在室状況と在室人数を表示し、ワンタップで切り替えます</string>
+    <string name="attendance_widget_stale">更新できません</string>
+    <string name="attendance_widget_sign_in">Taylis を開いてサインインしてください</string>
+    <string name="attendance_widget_off">在室状況はオフです</string>
+    <string name="attendance_widget_set">在室状況を「%1$s」にする</string>
+    <string name="attendance_widget_open">%1$s：%2$s、%3$s（在室状況を開く）</string>
+    <string name="attendance_widget_channel">在室状況の更新</string>
+    <string name="attendance_widget_updating">在室状況を更新しています</string>
 </resources>
