@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.models import OutboxEvent
 from app.modules.users.models import User
-from app.modules.users.schemas import is_plain_emoji
+from app.modules.users.schemas import is_plain_emoji, is_quick_reaction
 from tests.conftest import LiveServer
 from tests.helpers import http_login, make_user
 from tests.test_realtime import PASSWORD, _connect, _recv_type, _wait_outbox_drained
@@ -80,8 +80,8 @@ async def test_quick_reactions_validation(
 def test_shared_cases_match_the_rule() -> None:
     """apps/shared/quick-reactions.json: what the clients may check before sending."""
     cases = json.loads(CASES.read_text(encoding="utf-8"))
-    assert all(is_plain_emoji(item) for item in cases["valid"])
-    assert not any(is_plain_emoji(item) for item in cases["invalid"])
+    assert all(is_quick_reaction(item) for item in cases["valid"])
+    assert not any(is_quick_reaction(item) for item in cases["invalid"])
     emoji = json.loads((CASES.parent / "emoji.json").read_text(encoding="utf-8"))["emoji"]
     assert all(is_plain_emoji(row[1]) for row in emoji)  # every glyph the pickers offer
 

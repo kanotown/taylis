@@ -98,7 +98,7 @@ CREATE TABLE users (
   activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (「すべて既読にする」。進むだけ)。メンション・スレッドの返信は read_states / thread_follows の last_read_seq で読んだものも既読 (2026-10-06)。開いた項目は activity_item_reads (2026-10-07、MOBILE_UI.md §6.4)
   notify_reactions      boolean NOT NULL DEFAULT false,   -- M39 自分の投稿へのリアクションをプッシュする (アクティビティには常に出る)
   notify_tasks          boolean NOT NULL DEFAULT true,    -- M55 タスクの割り当てと期限をプッシュする (TASKS.md §5)
-  quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
+  quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字。2026-10-13 からカスタム絵文字の `:name:` も)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   nav_items             jsonb,                  -- M111 サイドバーの項目 / ホームのタイルの順と表示 [{key, visible}] (64 個まで、key は ^[a-z][a-z0-9-]{0,31}$ で重複なし、知らない key もそのまま保存)。NULL = 既定 (apps/shared/nav-items.json、MOBILE_UI.md §14)
   desktop_places        jsonb,                  -- 2026-10-12 (移行 0115) Desktop / Web の場所の置き場所 {rail: bool, items: [{key, place}], times_before}、place は 'rail'（場所のレール）| 'sidebar'（サイドバーの上の行）| 'hidden'（「その他」だけ）。times_before はサイドバーの Times の節がその前に立つセクション（favorites・channels・dms・自分のセクションの id・末尾の end、NULL = 既定の「チャンネル」の上。消えたセクションの id も既定。TIMES_FEED.md §7）。NULL = 既定 (MOBILE_UI.md §18.2)。nav_items とは別で、スマホのタイルの表示は変わらない。スマホは読まない
   locale                text,                   -- M115 UI の言語 'ja' | 'en' | 'zh-Hans'。NULL = 端末に合わせる (Accept-Language)。1 人向けのサーバの文 (エラー・プッシュ・知らせ) もこれ (I18N.md §1)
