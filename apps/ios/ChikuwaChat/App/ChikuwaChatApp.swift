@@ -12,6 +12,8 @@ struct ChikuwaChatApp: App {
         WindowGroup {
             RootView(controller: controller)
                 .task { await controller.boot() }
+                // The 在室状況 widget's tap (chikuwachat://attendance?server=…, AppController+Widget.swift).
+                .onOpenURL { url in controller.openWidgetLink(url) }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { controller.didBecomeActive() }
                     if phase == .background { controller.didEnterBackground() }

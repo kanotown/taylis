@@ -280,6 +280,16 @@ struct MainView: View {
             PushCenter.shared.pendingReservations = false
             nav.landList(ReservationsView.selectionId)
         }
+        .onChange(of: PushCenter.shared.pendingAttendance, initial: true) { _, pending in
+            // The 在室状況 widget was tapped: 「在室状況」, as its pill's 「在室状況を開く」.
+            guard pending else { return }
+            PushCenter.shared.pendingAttendance = false
+            openAttendance()
+        }
+        .onChange(of: controller.attendanceWidgetSnapshot(now: .distantPast), initial: true) { _, _ in
+            // The 在室状況 widget follows the board, my state and the count (AppController+Widget.swift).
+            controller.publishAttendanceWidget()
+        }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id {

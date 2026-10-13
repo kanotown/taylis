@@ -6,9 +6,11 @@
 #
 # 1. Checks: the version (CFBundleShortVersionString) and the build number (CFBundleVersion) in Info.plist, and that
 #    project.yml says the same. Nothing is bumped here: raise the build number (both files) and commit first —
-#    App Store Connect refuses a build number it has already seen for the version. The Notification Service Extension
-#    and the Share Extension (NotificationService/Info.plist, ShareExtension/Info.plist and their blocks in
-#    project.yml) carry the same version and build number.
+#    App Store Connect refuses a build number it has already seen for the version. The Notification Service Extension,
+#    the Share Extension and the widget extension (NotificationService/Info.plist, ShareExtension/Info.plist,
+#    Widgets/Info.plist and their blocks in project.yml) carry the same version and build number. To bump: raise
+#    CFBundleVersion (and CFBundleShortVersionString for a new version) in all four Info.plist files and in all four
+#    blocks of project.yml, then commit.
 # 2. xcodebuild archive: Release, generic iOS device, automatic signing (the team's Apple Distribution certificate and
 #    an App Store profile are created / fetched with the App Store Connect API key, no Xcode login needed).
 # 3. xcodebuild -exportArchive with ExportOptions (method app-store-connect, destination upload): signs the .ipa and
@@ -85,9 +87,9 @@ step "Checks: Taylis $VERSION (build $BUILD), $BUNDLE_ID, team $TEAM_ID"
 [[ "$BUILD" =~ ^[0-9]+$ ]] || fail "CFBundleVersion is not an integer: $BUILD"
 grep -q "CFBundleShortVersionString: \"$VERSION\"" "$IOS/project.yml" || fail "project.yml's CFBundleShortVersionString differs from Info.plist ($VERSION)"
 grep -q "CFBundleVersion: \"$BUILD\"" "$IOS/project.yml" || fail "project.yml's CFBundleVersion differs from Info.plist ($BUILD)"
-# The Notification Service Extension (PUSH_NOTIFICATIONS.md §16) and the Share Extension (MOBILE_UI.md §21) must
-# carry the app's version and build number.
-EXTENSIONS=(NotificationService ShareExtension)
+# The Notification Service Extension (PUSH_NOTIFICATIONS.md §16), the Share Extension (MOBILE_UI.md §21) and the
+# widget extension (the 在室状況 widget, PRESENCE.md) must carry the app's version and build number.
+EXTENSIONS=(NotificationService ShareExtension Widgets)
 for EXT in "${EXTENSIONS[@]}"; do
   EXT_PLIST="$IOS/$EXT/Info.plist"
   [ -f "$EXT_PLIST" ] || fail "$EXT/Info.plist is missing (run xcodegen in apps/ios)"
@@ -167,5 +169,5 @@ else
   echo "uploaded Taylis $VERSION build $BUILD. App Store Connect processes it for a few minutes, then it shows in"
   echo "TestFlight (the export compliance question is answered by ITSAppUsesNonExemptEncryption = false)."
   echo "Next build: raise CFBundleVersion to $((BUILD + 1)) in apps/ios/ChikuwaChat/Info.plist, apps/ios/NotificationService/Info.plist,"
-  echo "apps/ios/ShareExtension/Info.plist and apps/ios/project.yml (all three targets)."
+  echo "apps/ios/ShareExtension/Info.plist, apps/ios/Widgets/Info.plist and apps/ios/project.yml (all four targets)."
 fi

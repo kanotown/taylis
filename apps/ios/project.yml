@@ -84,9 +84,10 @@ targets:
         TaylisAppGroup: group.jp.chikuwachat.ios
         TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
     dependencies:
-      # Embedded in the app (PlugIns/NotificationService.appex, PlugIns/ShareExtension.appex).
+      # Embedded in the app (PlugIns/NotificationService.appex, PlugIns/ShareExtension.appex, PlugIns/Widgets.appex).
       - target: NotificationService
       - target: ShareExtension
+      - target: Widgets
       - package: SwiftMath
     settings:
       base:
@@ -169,6 +170,46 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.ShareExtension
+        TARGETED_DEVICE_FAMILY: "1,2"
+  # The 在室状況 widget (docs/PRESENCE.md): home screen (small, medium), lock screen and, on iOS 18, a Control Center
+  # toggle. The app writes a snapshot into the App Group (ChikuwaChat/Widget, AppController+Widget.swift); the widget
+  # reads it, reads the board again and switches my state with the tokens in the shared Keychain group. Its versions
+  # must equal the app's (release-ios.sh and StoreReleaseTests check it). ChikuwaChat/Widget is compiled into both.
+  Widgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+        excludes: ["Info.plist", "Widgets.entitlements"]
+      - path: ChikuwaChat/Widget
+      - path: ChikuwaChat/Share/Keychain.swift
+      - path: ChikuwaChat/Share/SharedContainer.swift
+      - path: ChikuwaChat/Share/ShareDestinations.swift
+      - path: ChikuwaChat/Share/ShareSession.swift
+      - path: ChikuwaChat/Api/JSON.swift
+      - path: ChikuwaChat/App/Workspaces.swift
+    entitlements:
+      path: Widgets/Widgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.jp.chikuwachat.ios]
+        keychain-access-groups: [$(AppIdentifierPrefix)jp.chikuwachat.ios.shared]
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Taylis
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "117"
+        TaylisAppGroup: group.jp.chikuwachat.ios
+        TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
+        # The servers may be plain HTTP on a LAN (as in the app's Info.plist).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.Widgets
         TARGETED_DEVICE_FAMILY: "1,2"
   ChikuwaChatTests:
     type: bundle.unit-test

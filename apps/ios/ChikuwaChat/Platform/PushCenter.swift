@@ -23,6 +23,8 @@ final class PushCenter {
     var pendingReservations = false
     /// M122: a tapped page notification: MainView opens the page (over 「ドキュメント」 on the home tab).
     var pendingPage: String?
+    /// The 在室状況 widget was tapped: MainView opens 「在室状況」 (AppController.openWidgetLink).
+    var pendingAttendance = false
     @ObservationIgnored private weak var controller: AppController?
     /// A tap that arrived before the app finished starting; routed after startup.
     @ObservationIgnored private var pendingTap: PushPayload?
@@ -83,6 +85,7 @@ final class PushCenter {
         pendingTasks = false
         pendingReservations = false
         pendingPage = nil
+        pendingAttendance = false
         pendingTap = nil
         setBadge(0)
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
