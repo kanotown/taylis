@@ -118,7 +118,7 @@ struct ThreadRowView: View {
         let author = store.users[parent.senderId]?.displayName ?? "…"
         let last = state.lastReplyAt ?? parent.createdAt
         HStack(alignment: .top, spacing: 12) {
-            AvatarView(id: parent.senderId, name: author, size: 36)
+            SenderAvatar(id: parent.senderId, name: author, size: 36, store: store)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     if let channel = store.channel(state.channelId) {
@@ -220,7 +220,7 @@ struct ThreadPreviewReplyView: View {
         let message = reply.message
         let name = store.users[message.senderId]?.displayName ?? "…"
         HStack(alignment: .top, spacing: 8) {
-            AvatarView(id: message.senderId, name: name, size: 22)
+            SenderAvatar(id: message.senderId, name: name, size: 22, store: store)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(name).font(.footnote).fontWeight(reply.unread ? .bold : .medium).lineLimit(1)
