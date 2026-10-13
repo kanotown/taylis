@@ -56,9 +56,9 @@ final class InfoWidgetsTests: XCTestCase {
         UserPublic(id: id, username: id, displayName: name, role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "")
     }
 
-    private func unreadSnapshot(_ channels: [ChannelState], stamp: Date = Date(timeIntervalSince1970: 1_800_000_000)) -> UnreadWidgetSnapshot {
+    private func unreadSnapshot(_ channels: [ChannelState], others: Int = 0, stamp: Date = Date(timeIntervalSince1970: 1_800_000_000)) -> UnreadWidgetSnapshot {
         let users = ["me": user("me", "加納"), "u2": user("u2", "花子"), "u3": user("u3", "次郎")]
-        return AppController.unreadWidgetSnapshot(channels: channels, users: users, workspace: workspace, meId: "me",
+        return AppController.unreadWidgetSnapshot(channels: channels, users: users, workspace: workspace, meId: "me", others: others,
                                                   title: { $0.channel.isDm ? "DM \($0.id)" : "#\($0.channel.name ?? "")" }, stamp: stamp)
     }
 
@@ -138,6 +138,15 @@ final class InfoWidgetsTests: XCTestCase {
         XCTAssertFalse(s.needsRefresh(now: s.updatedAt.addingTimeInterval(60)))
         XCTAssertTrue(s.needsRefresh(now: s.updatedAt.addingTimeInterval(15 * 60)))
         XCTAssertTrue(UnreadWidgetRules.failed(s, .temporary("x")).needsRefresh(now: s.updatedAt))
+
+        // The app icon also counts followed threads' mentions and fired reminders (Store.badgeCount), which the
+        // server's summary does not: they are kept on top of its count.
+        let withThreads = unreadSnapshot([conversation("c", mentions: 1)], others: 2)
+        XCTAssertEqual(withThreads.total, 3)
+        XCTAssertTrue(UnreadWidgetRules.rowsCurrent(withThreads))
+        XCTAssertEqual(UnreadWidgetRules.applying(summaryBadge: 1, to: withThreads).total, 3)
+        XCTAssertTrue(UnreadWidgetRules.rowsCurrent(UnreadWidgetRules.applying(summaryBadge: 1, to: withThreads)))
+        XCTAssertEqual(UnreadWidgetRules.applying(summaryBadge: 0, to: withThreads).total, 2)
     }
 
     func testSnapshotFileKeepsAccountsSaysWhatChangedAndForgets() {
@@ -417,6 +426,7 @@ final class InfoWidgetsTests: XCTestCase {
         var unreadStale = UnreadWidgetRules.applying(summaryBadge: 12, to: unread)
         unreadStale.problem = .offline
         let unreadNone = unreadSnapshot([])
+        let unreadThreads = unreadSnapshot([], others: 4)
         let today = try todaySnapshot()
         var todayEmpty = today
         todayEmpty.events = []
@@ -431,6 +441,7 @@ final class InfoWidgetsTests: XCTestCase {
             try render(u(unreadStale, .systemMedium), size: medium, style: style, name: "unread-medium-stale-\(suffix).png")
             try render(u(unreadNone, .systemMedium), size: medium, style: style, name: "unread-medium-none-\(suffix).png")
             try render(u(unreadNone, .systemSmall), size: small, style: style, name: "unread-small-none-\(suffix).png")
+            try render(u(unreadThreads, .systemMedium), size: medium, style: style, name: "unread-medium-threads-\(suffix).png")
             try render(u(nil, .systemSmall), size: small, style: style, name: "unread-small-signed-out-\(suffix).png")
             try render(u(unread, .accessoryCircular), size: circle, style: style, name: "unread-lock-circular-\(suffix).png")
             try render(u(unread, .accessoryRectangular), size: rect, style: style, name: "unread-lock-rectangular-\(suffix).png")

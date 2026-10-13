@@ -81,6 +81,38 @@
         }
       }
     },
+    "スレッドなど" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Threads etc."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "话题等"
+          }
+        }
+      }
+    },
+    "スレッドなど %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Threads etc. %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "话题等 %lld"
+          }
+        }
+      }
+    },
     "ゼミ" : {
       "localizations" : {
         "en" : {

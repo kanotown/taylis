@@ -109,7 +109,19 @@ struct UnreadHomeView: View {
     private func rows(_ snapshot: UnreadWidgetSnapshot) -> some View {
         let shown = Array(snapshot.rows.prefix(UnreadWidgetRules.mediumRows))
         VStack(alignment: .leading, spacing: 4) {
-            if shown.isEmpty {
+            if shown.isEmpty && snapshot.others > 0 {
+                Spacer(minLength: 0)
+                Link(destination: WidgetLink.open(server: snapshot.serverUrl).url) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.left.and.text.bubble.right").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+                        Text("スレッドなど").font(.footnote.weight(.semibold))
+                        Spacer(minLength: 4)
+                        UnreadWidgetCount(count: snapshot.others)
+                    }
+                    .foregroundStyle(Color.primary)
+                }
+                Spacer(minLength: 0)
+            } else if shown.isEmpty {
                 Spacer(minLength: 0)
                 Image(systemName: "checkmark.circle")
                     .font(.system(size: 34, weight: .light))
@@ -147,13 +159,15 @@ struct UnreadHomeView: View {
         .contentShape(Rectangle())
     }
 
-    /// 「ほか n 件」, and when the server's count no longer matches the app's rows, how old they are.
+    /// 「ほか n 件」, 「スレッドなど n」 (followed threads' mentions and reminders, counted but not listed), and when the
+    /// server's count no longer matches the app's rows, how old they are.
     @ViewBuilder
     private func footer(_ snapshot: UnreadWidgetSnapshot, hidden: Int) -> some View {
         let current = UnreadWidgetRules.rowsCurrent(snapshot)
-        if hidden > 0 || !current {
+        if hidden > 0 || !current || snapshot.others > 0 {
             HStack(spacing: 6) {
                 if hidden > 0 { Text("ほか \(hidden) 件") }
+                if snapshot.others > 0 { Text("スレッドなど \(snapshot.others)") }
                 if !current { Text("一覧は \(snapshot.rowsAt, style: .time) 時点") }
             }
             .font(.caption2)
@@ -242,7 +256,7 @@ enum UnreadWidgetSamples {
             UnreadWidgetRow(id: "c2", name: "Taro", isDm: true, count: 3, mentions: 0, lastAt: "2026-10-14T04:00:00Z"),
             UnreadWidgetRow(id: "c3", name: "#general", isDm: false, count: 1, mentions: 1, lastAt: "2026-10-14T03:00:00Z", lastSender: "Jiro"),
         ]
-        return UnreadWidgetSnapshot(serverUrl: "", account: "", workspaceName: "Taylis", userId: "me", total: 6, rows: rows,
+        return UnreadWidgetSnapshot(serverUrl: "", account: "", workspaceName: "Taylis", userId: "me", total: 6, others: 0, rows: rows,
                                     rowsAt: .distantFuture, updatedAt: .distantFuture, problem: nil)
     }
 }

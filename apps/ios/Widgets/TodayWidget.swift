@@ -31,7 +31,9 @@ struct TodayTimelineProvider: TimelineProvider {
 
     func getSnapshot(in context: Context, completion: @escaping (TodayTimelineEntry) -> Void) {
         let stored = TodayWidgetStore.file.current()
-        completion(TodayTimelineEntry(date: Date(), snapshot: context.isPreview ? (stored ?? TodayWidgetSamples.snapshot()) : stored))
+        // The gallery: what was read, else the sample (not an empty 「読み込み中」).
+        let preview = stored.flatMap { $0.from == nil ? nil : $0 } ?? TodayWidgetSamples.snapshot()
+        completion(TodayTimelineEntry(date: Date(), snapshot: context.isPreview ? preview : stored))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayTimelineEntry>) -> Void) {
