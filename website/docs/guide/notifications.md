@@ -81,6 +81,8 @@ Taylis の通知は、端末の OS の許可と、Taylis の中の設定の両�
 
 <div class="screens" markdown>
 ![設定の「おやすみ時間」。既定でオン、22:00〜07:00、毎日（デモのデータ）](../assets/screens/web-settings-quiet.webp){ .wide }
+![iPhone のおやすみ時間の設定。オン、22:00〜7:00、毎日、Asia/Tokyo（デモのデータ）](../assets/screens/ios-quiet-hours.jpg){ .phone }
+![iPhone の「自分」タブ。ステータス、通知の一時停止、おやすみ時間（デモのデータ）](../assets/screens/ios-you.jpg){ .phone }
 </div>
 
 - **通知を一時停止**（取り込み中）：30 分・1 時間・2 時間・明日の 8:00 まで（または日時を指定して）、通知を止めます。

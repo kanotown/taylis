@@ -181,6 +181,7 @@ iPhone と Android では、Slack と同じように横のスワイプで会話�
 
 <div class="screens" markdown>
 ![自分のアイコンを押すと出るメニュー。取り込み中にポインタを合わせると、長さ（30 分〜解除するまで）が選べる（デモのデータ）](../assets/screens/web-status-menu.webp){ .narrow }
+![iPhone で自分のアイコンを押したところ。オンライン（自動）・離席中・取り込み中・オフライン表示と、在室状況（デモのデータ）](../assets/screens/ios-status-menu.jpg){ .phone }
 </div>
 
 サイドバーの上の **自分のアイコンと名前**（スマートフォンは「自分」やホームの自分のアイコン）を押すと、ほかの人からの

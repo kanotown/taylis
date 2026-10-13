@@ -51,6 +51,8 @@ Taylis はパソコンでもスマートフォンでも使えます。どのア�
 <div class="screens" markdown>
 ![iPhone のホーム。未読のある会話とタイルが並ぶ（デモのデータ）](../assets/screens/ios-home.jpg){ .phone }
 ![iPhone の会話の画面（デモのデータ）](../assets/screens/ios-conversation.jpg){ .phone }
+![Android のホーム（デモのデータ）](../assets/screens/android-home.jpg){ .phone }
+![Android の会話。メンション、タスク、ワークフローからの案内（デモのデータ）](../assets/screens/android-conversation.jpg){ .phone }
 </div>
 
 - 画面の下に「ホーム」「DM」「アクティビティ」「自分」の 4 つのタブがあります。設定は「自分」の中です。

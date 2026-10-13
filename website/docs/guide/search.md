@@ -20,6 +20,7 @@ description: メッセージ・ファイル・キャンバス・ドキュメン�
 
 <div class="screens" markdown>
 ![検索欄に「GPU」と打ったところ。欄の下に合うメッセージが会話の名前と日時つきで並び、「「GPU」のすべての結果を見る」（デモのデータ）](../assets/screens/web-search-live.webp){ .wide }
+![iPhone で「実験」を検索したところ。メッセージ・ファイルなどのタブと、送信者・チャンネル・期間の絞り込み（デモのデータ）](../assets/screens/ios-search.jpg){ .phone }
 </div>
 
 日本語と英語のどちらも、文の途中の言葉で見つかります（「較正」で「センサの較正データ」が見つかる、など）。探すのは、
