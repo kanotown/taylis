@@ -382,6 +382,22 @@
         }
       }
     },
+    "ほか %lld 件" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld more"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另有 %lld 项"
+          }
+        }
+      }
+    },
     "ほかの人にはオフラインに見えます" : {
       "localizations" : {
         "en" : {
@@ -570,6 +586,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "单选"
+          }
+        }
+      }
+    },
+    "ゼミ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seminar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研讨会"
           }
         }
       }
@@ -862,6 +894,54 @@
         }
       }
     },
+    "メンションと DM の未読の数と、その会話。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How many mentions and unread DMs you have, and where."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提及和未读私信的数量及其会话。"
+          }
+        }
+      }
+    },
+    "メンション・DM の未読" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentions & unread DMs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提及和未读私信"
+          }
+        }
+      }
+    },
+    "メンション・DM の未読 %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentions & unread DMs: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提及和未读私信 %lld"
+          }
+        }
+      }
+    },
     "メンバーに通知が届き、会議のリンクが投稿されます。" : {
       "localizations" : {
         "en" : {
@@ -906,6 +986,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关联"
+          }
+        }
+      }
+    },
+    "一覧は %@ 時点" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "List as of %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列表截至 %@"
           }
         }
       }
@@ -1002,6 +1098,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前为“今天（新建行的日期）”。"
+          }
+        }
+      }
+    },
+    "今日の予定" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天的日程"
+          }
+        }
+      }
+    },
+    "今日の予定と、今日が期限・期限切れの自分のタスク。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today's events and your tasks due today or overdue."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天的日程，以及今天到期或已逾期的我的任务。"
+          }
+        }
+      }
+    },
+    "今日の予定なし" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No events today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天没有日程"
+          }
+        }
+      }
+    },
+    "今日の予定は終わりました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more events today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天的日程已结束"
+          }
+        }
+      }
+    },
+    "今日の予定・締切" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today's Events & Deadlines"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日日程与截止"
           }
         }
       }
@@ -1934,6 +2110,86 @@
         }
       }
     },
+    "期限のタスク" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tasks due"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "到期任务"
+          }
+        }
+      }
+    },
+    "期限のタスク %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tasks due: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "到期任务 %lld"
+          }
+        }
+      }
+    },
+    "期限のタスクなし" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No tasks due"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有到期任务"
+          }
+        }
+      }
+    },
+    "期限切れ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overdue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已逾期"
+          }
+        }
+      }
+    },
+    "未読 %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读 %lld"
+          }
+        }
+      }
+    },
     "未読のみ" : {
       "localizations" : {
         "en" : {
@@ -1982,6 +2238,22 @@
         }
       }
     },
+    "未読・メンション" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread & Mentions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读与提及"
+          }
+        }
+      }
+    },
     "消す" : {
       "localizations" : {
         "en" : {
@@ -1994,6 +2266,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除"
+          }
+        }
+      }
+    },
+    "発表資料" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slides"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发表资料"
           }
         }
       }
@@ -2430,6 +2718,22 @@
         }
       }
     },
+    "輪講" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading group"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轮讲"
+          }
+        }
+      }
+    },
     "送信しました。管理者が確認します" : {
       "localizations" : {
         "en" : {
@@ -2634,6 +2938,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "（已提交）"
+          }
+        }
+      }
+    },
+    "（期限切れ %lld）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (%lld overdue)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（已逾期 %lld）"
           }
         }
       }

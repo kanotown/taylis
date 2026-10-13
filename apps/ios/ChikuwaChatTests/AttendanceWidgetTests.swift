@@ -306,7 +306,7 @@ final class AttendanceWidgetTests: XCTestCase {
         XCTAssertFalse(controller.openWidgetLink(URL(string: "https://example.com")!))
         await Task.yield()
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(controller.pendingWidgetServer, .some("https://lab.example.jp"), "kept until startup ends")
+        XCTAssertEqual(controller.pendingWidgetLink, .attendance(server: "https://lab.example.jp"), "kept until startup ends")
     }
 
     // MARK: faces

@@ -125,8 +125,10 @@ final class AppController {
     @ObservationIgnored private var activeBadge = 0
     /// Startup is over: a tapped notification can be routed.
     @ObservationIgnored private(set) var booted = false
-    /// The 在室状況 widget's link that arrived before startup ended (its server, `.some(nil)` without one).
-    @ObservationIgnored var pendingWidgetServer: String??
+    /// A widget's link that arrived before startup ended (AppController+Widget.swift).
+    @ObservationIgnored var pendingWidgetLink: WidgetLink?
+    /// The 今日の予定・締切 widget's reload, asked once for a burst of changes (AppController+TodayWidget.swift).
+    @ObservationIgnored var todayWidgetReload: Task<Void, Never>?
 
     /// The login form starts from the workspace to sign back in to, else the last one used on this device.
     var loginServer: String {
@@ -596,6 +598,11 @@ final class AppController {
             guard let self, let store, self.store === store else { return }
             self.timesFeed.thread(thread)
         }
+        // The 今日の予定・締切 widget reads again after a sync and a calendar / task change (AppController+TodayWidget.swift).
+        engine.onWidgetData = { [weak self, weak engine] in
+            guard let self, self.engine === engine else { return }
+            self.todayWidgetChanged()
+        }
         engine.onBadge = { [weak self, weak engine] count in
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
             self.activeBadgeChanged(count)
@@ -644,6 +651,7 @@ final class AppController {
         engine?.reportActivity()
         publishShareCache() // MOBILE_UI.md §21.2: the share sheet's recent conversations
         publishAttendanceWidget() // the 在室状況 widget (AppController+Widget.swift)
+        publishUnreadWidget() // the 未読・メンション widget (AppController+UnreadWidget.swift)
         // M45 (CANVAS.md §4.4 「背面に回るとき」): what was typed in a canvas is saved now, not after the pause.
         if let canvases = engine?.canvases { Task { await canvases.flushAll() } }
         if let wiki = engine?.wiki { Task { await wiki.flushAll() } }  // M122
@@ -2204,7 +2212,7 @@ final class AppController {
         }
         Keychain.delete(account: workspace.account)
         SharedContainer.forget(account: workspace.account) // MOBILE_UI.md §21: the share sheet's cache of it
-        forgetAttendanceWidget(account: workspace.account) // the 在室状況 widget's snapshot of it
+        forgetAttendanceWidget(account: workspace.account) // the 在室状況 widget's snapshot of it (and the other widgets')
         SQLitePersistence.destroy(profile: workspace.account)
         RecentSearches.clear(key: RecentSearches.key(account: workspace.account))
         if remove {

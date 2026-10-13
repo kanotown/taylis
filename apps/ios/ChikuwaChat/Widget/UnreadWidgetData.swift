@@ -1,0 +1,130 @@
+import Foundation
+
+// The 未読・メンション widget: the conversations that count on the app icon (unread DMs, mentions; SYNC_PROTOCOL.md
+// §10.5's badge rule) in the workspace on screen. The app writes the snapshot from its store (AppController+UnreadWidget
+// .swift); the extension draws it and, while the app is away, checks the count with GET /sync/summary (the same rule on
+// the server). There is no cheap call for the rows themselves, so they are the app's last ones. No message text is kept.
+
+/// One conversation that counts.
+struct UnreadWidgetRow: Codable, Equatable, Identifiable {
+    /// The channel's id.
+    let id: String
+    /// 「#general」, or the people of a DM (as the app's lists name it).
+    let name: String
+    let isDm: Bool
+    /// What it adds to the badge: a DM's unread messages, else its mentions (a muted DM: its mentions).
+    let count: Int
+    let mentions: Int
+    /// The newest message's time (ISO 8601) and who wrote it (a group DM's or a channel's; nil for a 1:1 DM, my own, a
+    /// system row).
+    var lastAt: String?
+    var lastSender: String?
+}
+
+struct UnreadWidgetSnapshot: WidgetAccountSnapshot {
+    var serverUrl: String
+    var account: String
+    var workspaceName: String
+    var userId: String
+    /// The badge: the rows' counts as the app wrote them, or the server's /sync/summary after the widget checked.
+    var total: Int
+    /// Every conversation that counts, in the widget's order (UnreadWidgetRules.inOrder).
+    var rows: [UnreadWidgetRow]
+    /// When the app wrote the rows.
+    var rowsAt: Date
+    /// When the count was last known right (the app's write, or the server's answer).
+    var updatedAt: Date
+    var problem: WidgetProblem?
+
+    /// The widget checks the count with the server when the snapshot is older (or the last check failed).
+    static let freshFor: TimeInterval = 15 * 60
+
+    func needsRefresh(now: Date = Date()) -> Bool {
+        problem != nil || now.timeIntervalSince(updatedAt) >= Self.freshFor
+    }
+}
+
+enum UnreadWidgetRules {
+    /// Rows on the medium widget and on the lock screen's rectangle.
+    static let mediumRows = 3
+    static let rectangularRows = 2
+
+    /// Newest first (the DM list's order), then by name.
+    static func inOrder(_ a: UnreadWidgetRow, _ b: UnreadWidgetRow) -> Bool {
+        let x = a.lastAt ?? "", y = b.lastAt ?? ""
+        if x != y { return x > y }
+        let byName = a.name.localizedStandardCompare(b.name)
+        return byName == .orderedSame ? a.id < b.id : byName == .orderedAscending
+    }
+
+    static func rowsTotal(_ rows: [UnreadWidgetRow]) -> Int { rows.reduce(0) { $0 + $1.count } }
+
+    /// Whether the rows still add up to the count (else the server's count is newer than the app's rows).
+    static func rowsCurrent(_ snapshot: UnreadWidgetSnapshot) -> Bool { snapshot.total == rowsTotal(snapshot.rows) }
+
+    /// The mentions among the rows (the small widget's 「@ n」).
+    static func mentions(_ snapshot: UnreadWidgetSnapshot) -> Int { snapshot.rows.reduce(0) { $0 + $1.mentions } }
+
+    /// The server's count (GET /sync/summary's `badge`): 0 means everything was read elsewhere, so the rows go; the
+    /// app's rows stay otherwise (the widget says how old they are when they no longer add up).
+    static func applying(summaryBadge badge: Int, to snapshot: UnreadWidgetSnapshot, now: Date = Date()) -> UnreadWidgetSnapshot {
+        var next = snapshot
+        next.total = max(0, badge)
+        if badge <= 0 { next.rows = [] }
+        next.problem = nil
+        next.updatedAt = now
+        return next
+    }
+
+    static func failed(_ snapshot: UnreadWidgetSnapshot, _ failure: ShareFailure) -> UnreadWidgetSnapshot {
+        var next = snapshot
+        next.problem = WidgetProblem(failure)
+        return next
+    }
+}
+
+enum UnreadWidgetStore {
+    static let widgetKind = "jp.chikuwachat.ios.unread"
+    static let file = WidgetSnapshotFile<UnreadWidgetSnapshot>(name: "unread")
+}
+
+extension ShareApi {
+    struct UnreadSummary: Decodable, Equatable {
+        let badge: Int
+        let hasUnread: Bool
+    }
+
+    /// GET /sync/summary: the workspace's badge by the app's rule (WORKSPACES.md §6).
+    func unreadSummary() async throws -> UnreadSummary { try await getJSON("/api/v1/sync/summary") }
+}
+
+enum UnreadWidgetActions {
+    /// The count checked with the server (the widget's timeline, when the snapshot is old or the last try failed).
+    @discardableResult
+    static func refresh(account: String, file: WidgetSnapshotFile<UnreadWidgetSnapshot> = UnreadWidgetStore.file,
+                        makeApi: (String, String) -> ShareApi? = WidgetApis.make) async -> UnreadWidgetSnapshot? {
+        guard let snapshot = file.snapshot(account: account), let api = makeApi(snapshot.serverUrl, snapshot.account) else { return nil }
+        let next: UnreadWidgetSnapshot
+        do {
+            next = UnreadWidgetRules.applying(summaryBadge: try await api.unreadSummary().badge, to: snapshot)
+        } catch let failure as ShareFailure {
+            next = UnreadWidgetRules.failed(snapshot, failure)
+        } catch {
+            next = UnreadWidgetRules.failed(snapshot, .temporary("unknown"))
+        }
+        // The app wrote a newer one meanwhile: that one stays.
+        if let stored = file.snapshot(account: account), stored.updatedAt > snapshot.updatedAt { return stored }
+        file.save(next)
+        return next
+    }
+}
+
+/// The widgets' API clients: the shared tokens of an account (as the 在室状況 widget's, a short refresh retry).
+enum WidgetApis {
+    static func make(serverUrl: String, account: String) -> ShareApi? {
+        guard let url = URL(string: serverUrl) else { return nil }
+        let api = ShareApi(baseUrl: url, account: account)
+        api.refreshRetryDelays = [1]
+        return api
+    }
+}

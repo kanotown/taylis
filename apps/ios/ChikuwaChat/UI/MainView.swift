@@ -290,6 +290,10 @@ struct MainView: View {
             // The 在室状況 widget follows the board, my state and the count (AppController+Widget.swift).
             controller.publishAttendanceWidget()
         }
+        .onChange(of: controller.unreadWidgetSnapshot(stamp: .distantPast), initial: true) { _, _ in
+            // The 未読・メンション widget follows the counts and the conversations (AppController+UnreadWidget.swift).
+            controller.publishUnreadWidget()
+        }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id {

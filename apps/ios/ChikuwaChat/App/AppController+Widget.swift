@@ -40,9 +40,12 @@ extension AppController {
     }
 
     /// An account left this device: its snapshot goes (the widget falls back to another workspace or says to sign in).
+    /// The 未読・メンション and 今日の予定・締切 widgets' snapshots of it go too.
     func forgetAttendanceWidget(account: String) {
         AttendanceWidgetStore.remove(account: account)
         Self.reloadAttendanceWidgets()
+        if UnreadWidgetStore.file.remove(account: account) { WidgetCenter.shared.reloadTimelines(ofKind: UnreadWidgetStore.widgetKind) }
+        if TodayWidgetStore.file.remove(account: account) { WidgetCenter.shared.reloadTimelines(ofKind: TodayWidgetStore.widgetKind) }
     }
 
     static func reloadAttendanceWidgets() {
@@ -50,36 +53,55 @@ extension AppController {
         if #available(iOS 18.0, *) { ControlCenter.shared.reloadControls(ofKind: AttendanceWidgetStore.controlKind) }
     }
 
-    /// The widget was tapped (`chikuwachat://attendance?server=…`): its workspace comes on screen (switching if needed),
-    /// then 「在室状況」 opens (MainView watches PushCenter.pendingAttendance). False: not the widget's link.
+    /// A widget was tapped (WidgetLink: `chikuwachat://attendance|open|channel/<id>|calendar|tasks|event/<id>|task/<id>
+    /// ?server=…`): its workspace comes on screen (switching if needed), then what it names opens, as a notification's tap
+    /// opens it (an event or a task in its channel's tab, or the calendar / 「自分のタスク」 for my own). False: not a
+    /// widget's link.
     @discardableResult
     func openWidgetLink(_ url: URL) -> Bool {
-        guard let parsed = AttendanceWidgetLink.parse(url) else { return false }
-        let server = parsed
+        guard let link = WidgetLink.parse(url) else { return false }
         Task {
             guard booted else {
-                pendingWidgetServer = .some(server)
+                pendingWidgetLink = link
                 return
             }
-            await openAttendanceFromWidget(server: server)
+            await openFromWidget(link)
         }
         return true
     }
 
     /// After startup (a link that arrived while the app was starting).
     func openPendingWidgetLink() async {
-        guard let server = pendingWidgetServer else { return }
-        pendingWidgetServer = nil
-        await openAttendanceFromWidget(server: server)
+        guard let link = pendingWidgetLink else { return }
+        pendingWidgetLink = nil
+        await openFromWidget(link)
     }
 
-    private func openAttendanceFromWidget(server: String?) async {
-        if let server, let target = workspaces.first(where: { $0.serverUrl == server }), target.isSignedIn,
+    private func openFromWidget(_ link: WidgetLink) async {
+        if let server = link.server, let target = workspaces.first(where: { $0.serverUrl == server }), target.isSignedIn,
            server != activeServerUrl || screen != .main {
             await switchTo(server)
         }
         guard screen == .main else { return }
-        PushCenter.shared.pendingAttendance = true
+        switch link {
+        case .attendance:
+            PushCenter.shared.pendingAttendance = true
+        case .open:
+            break
+        case .channel(let id, _):
+            PushCenter.shared.pendingChannelId = id
+            PushCenter.shared.pendingParentId = nil
+        case .calendar:
+            PushCenter.shared.pendingCalendar = true
+        case .tasks:
+            PushCenter.shared.pendingTasks = true
+        case .event(let id, let channelId, _):
+            await openNotification(PushPayload(channelId: channelId, kind: "calendar", eventId: id))
+            return
+        case .task(let id, let channelId, _):
+            await openNotification(PushPayload(channelId: channelId, kind: "task", taskId: id))
+            return
+        }
         engine?.reconnectNow()
     }
 }

@@ -113,6 +113,8 @@ final class SyncEngine {
     var onPostedHere: ((_ channelId: String) -> Void)?
     /// The app badge (unread DMs + mentions) changed.
     var onBadge: ((Int) -> Void)?
+    /// A bootstrap, or a calendar or task event: what the 今日の予定・締切 widget shows may have changed.
+    var onWidgetData: (() -> Void)?
     /// L8 (TIMES_FEED.md §5): every live message.created / .updated / .deleted of a channel the store knows, as it
     /// arrives (the Times feed keeps its rows with them).
     /// The reply's parent_thread rides along (review #11: the feed's parent counters move with it).
@@ -682,6 +684,7 @@ final class SyncEngine {
         let wikiFeed = bootstrap.wiki
         Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
         onBadge?(store.badgeCount)
+        onWidgetData?()
     }
 
     /// The store dropped a conversation (left, removed, made private): it is no longer the open one, so the next
@@ -855,8 +858,10 @@ final class SyncEngine {
             scheduleActivityRefresh()
         case "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated":  // M52 (CALENDAR.md §5)
             calendar.applyEvent(frame.event, frame.data)
+            onWidgetData?()
         case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done", "task.columns.updated":  // M56 (TASKS.md §4), L9, M81
             tasks.applyEvent(frame.event, frame.data)
+            onWidgetData?()
         case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state; M71: my question's
             ai.applyEvent(frame.data)
         case "sidebar.updated":
