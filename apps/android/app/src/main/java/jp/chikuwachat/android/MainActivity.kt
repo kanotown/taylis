@@ -68,6 +68,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takeConversation(intent: Intent?) {
+        // The 未読・メンション / 今日の予定・締切 widgets: a conversation, an event, a task or a screen, in their workspace.
+        if (intent?.hasExtra(jp.chikuwachat.android.widget.WidgetLinks.EXTRA_LINK) == true) {
+            val link = jp.chikuwachat.android.widget.WidgetLinks.parse { intent.getStringExtra(it) }
+            jp.chikuwachat.android.widget.WidgetLinks.KEYS.forEach { intent.removeExtra(it) }
+            if (link != null) controller.openFromWidget(link)
+            return
+        }
         // The 在室状況 home-screen widget: its workspace, then 「在室状況」 on the home tab.
         if (intent?.getBooleanExtra(jp.chikuwachat.android.widget.AttendanceWidget.EXTRA_OPEN, false) == true) {
             val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The unread & mentions and today widgets, English. -->
+<resources>
+    <string name="widget_sign_in">Open Taylis and sign in</string>
+    <string name="widget_stale">Couldn\'t update</string>
+    <string name="widget_more">Others: %1$d</string>
+
+    <string name="unread_widget_name">Unread &amp; mentions</string>
+    <string name="unread_widget_description">Shows your mentions and unread DMs and the conversations they are in</string>
+    <string name="unread_widget_parts">Mentions %1$d · DMs %2$d</string>
+    <string name="unread_widget_none">Nothing unread</string>
+    <string name="unread_widget_open">%1$s: mentions and unread DMs %2$d (open Taylis)</string>
+    <string name="unread_widget_row">%1$s, %2$d (open the conversation)</string>
+
+    <string name="today_widget_name">Today</string>
+    <string name="today_widget_description">Shows today\'s events and your tasks due today</string>
+    <string name="today_widget_empty">Nothing today</string>
+    <string name="today_widget_tasks">Tasks due: %1$d</string>
+    <string name="today_widget_no_tasks">No tasks due today</string>
+    <string name="today_widget_overdue">Overdue</string>
+    <string name="today_widget_open">%1$s: events today %2$d, tasks due %3$d (open the calendar)</string>
+    <string name="today_widget_event_row">%1$s %2$s (open the event)</string>
+    <string name="today_widget_task_row">Task %1$s, %2$s (open the task)</string>
+    <string name="today_widget_tasks_open">%1$s (open tasks)</string>
+</resources>

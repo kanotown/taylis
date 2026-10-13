@@ -101,6 +101,7 @@ import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
 import jp.chikuwachat.android.ui.Mentions
 import jp.chikuwachat.android.ui.channelTitle
+import jp.chikuwachat.android.ui.myDisplayName
 import jp.chikuwachat.android.ui.formatSize
 import jp.chikuwachat.android.ui.messageLine
 import kotlinx.coroutines.CancellationException
@@ -246,8 +247,14 @@ class AppController(private val app: Application) {
     var pendingCanvas by mutableStateOf<Pair<String, String>?>(null)
     /** M122: a page of 「ドキュメント」 to open on the home tab (a tapped notification, a page activity row from elsewhere). */
     var pendingPage by mutableStateOf<String?>(null)
-    /** M52: a calendar event to open once the main screen sees it (a tapped alarm): its channel (null: my own) and id. */
-    data class PendingEvent(val channelId: String?, val eventId: String)
+    /**
+     * M52: a calendar event to open once the main screen sees it (a tapped alarm): its channel (null: my own) and id. From
+     * the 今日 widget, one occurrence of a series: its series, its key and the local day it is on (read from that day).
+     */
+    data class PendingEvent(
+        val channelId: String?, val eventId: String,
+        val seriesId: String? = null, val occurrenceStart: String? = null, val day: String? = null,
+    )
     var pendingEvent by mutableStateOf<PendingEvent?>(null)
     /** M52: the event form on screen (a row tapped, 「予定を追加」, an alarm); kept here so a rotation keeps it open. */
     var calendarForm by mutableStateOf<jp.chikuwachat.android.ui.CalendarForm?>(null)
@@ -421,6 +428,7 @@ class AppController(private val app: Application) {
     fun changeLanguage(value: String?) {
         AppLanguage.choose(app, value)
         languageApplied()
+        redrawWidgets()
         languageRecreate?.invoke()
         val api = api ?: return
         scope.launch { pushLanguage(api) }
@@ -433,7 +441,17 @@ class AppController(private val app: Application) {
     fun languageMayHaveChanged() {
         val changed = AppLanguage.refresh(app)
         languageApplied()
+        if (changed) redrawWidgets()
         if (changed) api?.let { api -> scope.launch { pushLanguage(api) } }
+    }
+
+    /** The home-screen widgets draw their words in the app's language: a new one redraws them. */
+    private fun redrawWidgets() {
+        scope.launch {
+            jp.chikuwachat.android.widget.AttendanceWidgetData.redraw(app)
+            jp.chikuwachat.android.widget.UnreadWidgetData.store.redraw(app)
+            jp.chikuwachat.android.widget.TodayWidgetData.redrawNow(app)
+        }
     }
 
     private fun languageApplied() {
@@ -482,6 +500,7 @@ class AppController(private val app: Application) {
         if (server == AppLanguage.chosen) return
         AppLanguage.choose(app, server)
         languageApplied()
+        redrawWidgets()
         languageRecreate?.invoke()
     }
 
@@ -1130,6 +1149,15 @@ class AppController(private val app: Application) {
                 }
             }
         }
+        // The 未読・メンション widget follows the same workspace: the app icon's number and its conversations, written
+        // whenever they change (the cached store at once, then the bootstrap, live events, reads here and elsewhere).
+        scope.launch {
+            store.version.map { unreadWidgetSnapshot(store, workspaceUrl) }.distinctUntilChanged().collect { snapshot ->
+                if (this@AppController.store === store && snapshot != null) {
+                    jp.chikuwachat.android.widget.UnreadWidgetData.publish(app, snapshot.copy(updatedAt = System.currentTimeMillis()))
+                }
+            }
+        }
         store.onWorkspaceIcon = { version -> scope.launch { if (this@AppController.store === store) updateWorkspace(workspaceUrl) { it.copy(iconVersion = version) } } }
         val engine = SyncEngine(
             api = api,
@@ -1216,7 +1244,15 @@ class AppController(private val app: Application) {
                 )
             }
         }
+        // The 今日の予定・締切 widget reads today's events and my tasks again when one of them changes (a few seconds later,
+        // so a burst reads once), and after every connect (below): nothing is read while no such widget is placed.
+        engine.onPlanChanged = { if (this@AppController.engine === engine) requestTodayWidgetRead() }
         this.engine = engine
+        scope.launch {
+            engine.status.collect { status ->
+                if (status == EngineStatus.ONLINE && this@AppController.engine === engine) requestTodayWidgetRead()
+            }
+        }
         // M66: the AI status and the summary sheet follow this engine's AI hub (another workspace's never show).
         aiStatus = null
         aiSummary = null
@@ -1340,6 +1376,10 @@ class AppController(private val app: Application) {
             val target = routePush(message) ?: return@launch
             // An entry that predates GET /server learns its id from the payload (routing, duplicate checks).
             if (target.workspaceId == null && message.workspaceId != null) updateWorkspace(target.serverUrl) { it.copy(workspaceId = message.workspaceId) }
+            // The widgets of a workspace the app is not live in (not started, or another one on screen): the push's own
+            // number and conversation for 未読・メンション; a calendar or task push reads 今日の予定・締切 again. While it is
+            // live, the engine catches up below and the store writes both.
+            if (!(target.serverUrl == activeKey && api != null)) pushReachedWidgets(target.serverUrl, message)
             val key = message.notificationKey
             // §15: each test alerts again (an update of the one still on screen would be silent: setOnlyAlertOnce).
             if (message.isTest && key != null) notifier.clear(key)
@@ -1605,9 +1645,11 @@ class AppController(private val app: Application) {
             }
             replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
             jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
+            forgetPlanWidgets(serverUrl)
         } else {
             updateWorkspace(serverUrl) { it.copy(signedOut = true, badge = 0, hasUnread = false) }
             jp.chikuwachat.android.widget.AttendanceWidgetData.signedOut(app, serverUrl)
+            forgetPlanWidgets(serverUrl)
         }
         if (!wasActive && !(leave && serverUrl == activeKey)) return
         if (leave) {
@@ -1626,6 +1668,7 @@ class AppController(private val app: Application) {
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
         replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
         jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
+        forgetPlanWidgets(serverUrl)
         if (serverUrl != activeKey) return
         if (api != null || engine != null) closeActive()
         val next = workspaces.firstOrNull { !it.signedOut } ?: workspaces.firstOrNull()
@@ -3162,6 +3205,95 @@ class AppController(private val app: Application) {
         val me = store.me ?: return null
         val name = workspaces.firstOrNull { it.serverUrl == serverUrl }?.name ?: return null
         return jp.chikuwachat.android.widget.AttendanceWidgetRules.snapshot(serverUrl, name, me.id, store.attendance, store.users.values, 0L)
+    }
+
+    // --- the 未読・メンション and 今日の予定・締切 widgets ---------------------------------------------------
+
+    /**
+     * The 未読・メンション widget's snapshot of the workspace on screen: the app icon's number by the shared rule
+     * (Channels.badgeCount) and its conversations, named as the lists name them; null before I am known.
+     */
+    private fun unreadWidgetSnapshot(store: Store, serverUrl: String): jp.chikuwachat.android.widget.UnreadWidgetSnapshot? {
+        val me = store.me ?: return null
+        val name = workspaces.firstOrNull { it.serverUrl == serverUrl }?.name ?: return null
+        val channels = store.channels.values
+        val people = jp.chikuwachat.android.widget.UnreadWidgetRules.people(channels, me.id) { id ->
+            if (id == me.id) myDisplayName(store) else store.users[id]?.displayName
+        }
+        return jp.chikuwachat.android.widget.UnreadWidgetRules.snapshot(serverUrl, name, me.id, channels, { channelTitle(it, store) }, people)
+    }
+
+    /** The workspace on screen's 今日 widget reads again soon (only while one is placed; WorkManager waits for a network). */
+    private fun requestTodayWidgetRead() {
+        scope.launch {
+            if (jp.chikuwachat.android.widget.TodayWidgetData.store.placed(app)) jp.chikuwachat.android.widget.TodayWidgetWorker.requestRead(app)
+        }
+    }
+
+    /** A push for a workspace the app is not live in (handlePush). */
+    private suspend fun pushReachedWidgets(serverUrl: String, message: PushMessage) {
+        jp.chikuwachat.android.widget.UnreadWidgetData.pushed(app, serverUrl, message)
+        val today = jp.chikuwachat.android.widget.TodayWidgetData.store.read(app)
+        if ((message.isCalendar || message.isTask) && today?.serverUrl == serverUrl) requestTodayWidgetRead()
+    }
+
+    /** A workspace signed out or left: its numbers, events and tasks leave the widgets (they ask to sign in). */
+    private suspend fun forgetPlanWidgets(serverUrl: String) {
+        jp.chikuwachat.android.widget.UnreadWidgetData.forget(app, serverUrl)
+        jp.chikuwachat.android.widget.TodayWidgetData.forget(app, serverUrl)
+    }
+
+    /**
+     * The 今日の予定・締切 widget's read (widget/TodayWidgetWorker), for the workspace on screen (the saved one when the
+     * app has not started): today's and tomorrow's events of my calendars and my tasks, through that workspace's own
+     * client (its token refresh, its sign-out). Null when no workspace is signed in; throws when the server could not be
+     * reached. A server without a calendar or tasks (404) gives none of them.
+     */
+    suspend fun widgetReadToday(): jp.chikuwachat.android.widget.TodayWidgetSnapshot? {
+        ensureWorkspacesLoaded()
+        val entry = workspaces.firstOrNull { it.serverUrl == activeKey } ?: return null
+        if (entry.signedOut) return null
+        val client = clientFor(entry) ?: return null
+        val meId = entry.userId ?: store.me?.id?.takeIf { entry.serverUrl == activeKey } ?: client.me().id
+        val day = CalendarDates.today()
+        val (from, to) = jp.chikuwachat.android.widget.TodayWidgetRules.range(day)
+        val events = try {
+            client.calendarEvents(from, to, null)
+        } catch (e: ApiException.Api) {
+            if (jp.chikuwachat.android.sync.CalendarHub.serverLacksCalendar(e)) emptyList() else throw e
+        }
+        val tasks = try {
+            client.myTasks()
+        } catch (e: ApiException.Api) {
+            if (jp.chikuwachat.android.sync.TaskHub.serverLacksTasks(e)) emptyList() else throw e
+        }
+        return jp.chikuwachat.android.widget.TodayWidgetRules.snapshot(entry.serverUrl, entry.name, meId, day, events, tasks, System.currentTimeMillis())
+    }
+
+    /** A widget's screen to open once the main screen is up in its workspace (MainScreen): home, the calendar or 「タスク」. */
+    var pendingWidgetScreen by mutableStateOf<jp.chikuwachat.android.widget.WidgetScreen?>(null)
+
+    /**
+     * A tapped widget (WidgetLinks): its workspace comes on screen (switching if needed), then what was tapped opens as
+     * the same notification's tap would — a conversation, an event (a series' occurrence read for its day), a task — or
+     * the widget's screen.
+     */
+    fun openFromWidget(link: jp.chikuwachat.android.widget.WidgetLink) {
+        when (link) {
+            is jp.chikuwachat.android.widget.WidgetLink.Conversation -> openFromNotification(link.workspace, link.channelId)
+            is jp.chikuwachat.android.widget.WidgetLink.Task -> openTaskFromNotification(link.workspace, link.channelId, link.taskId)
+            is jp.chikuwachat.android.widget.WidgetLink.Event -> {
+                pendingWorkspaceKey = link.workspace
+                val target = PendingEvent(link.channelId, link.eventId, link.seriesId, link.occurrenceStart, link.day)
+                pendingEvent = target
+                bringWorkspace { pendingEvent = target }
+            }
+            is jp.chikuwachat.android.widget.WidgetLink.Screen -> {
+                pendingWorkspaceKey = link.workspace
+                pendingWidgetScreen = link.screen
+                bringWorkspace { pendingWidgetScreen = link.screen }
+            }
+        }
     }
 
     /** A tapped widget: its workspace comes on screen, then 「在室状況」 opens on the home tab (MainScreen). */

@@ -213,6 +213,12 @@ class SyncEngine(
     /** M122 (docs/WIKI.md §10, SYNC_PROTOCOL.md §17): 「ドキュメント」 — the tree (kept in Room) and the open pages' save loops. */
     val wiki = WikiHub(api as? WikiApi, store, scope, options.canvasSave)
 
+    /**
+     * An event or task changed (calendar.event.updated / deleted, task.updated / deleted / assigned; my own changes come
+     * back this way too): the 今日の予定・締切 home-screen widget reads its day again.
+     */
+    var onPlanChanged: (() -> Unit)? = null
+
     /** M52: the ranges of the calendar on screen and the channels' 「予定」 counts (CALENDAR.md §5, §15). */
     val calendar = CalendarHub(api as? CalendarApi, scope, { store.me?.id })
 
@@ -969,9 +975,15 @@ class SyncEngine(
                 maybeNotifyCanvasMention(frame.data)
             }
             // M52 (CALENDAR.md §5): outside the channel seq; the ranges on screen take them.
-            "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
+            "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> {
+                calendar.applyEvent(frame.event, frame.data)
+                if (frame.event != "calendar.alarm.updated") onPlanChanged?.invoke()
+            }
             // M56 (SYNC_PROTOCOL.md §16): outside the channel seq too; the windows on screen take them.
-            "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done", "task.columns.updated" -> tasks.applyEvent(frame.event, frame.data)
+            "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done", "task.columns.updated" -> {
+                tasks.applyEvent(frame.event, frame.data)
+                if (frame.event == "task.updated" || frame.event == "task.deleted" || frame.event == "task.assigned") onPlanChanged?.invoke()
+            }
             // M66 (docs/AI.md §5): my summary's run moved on (to me only, outside the channel seq).
             "ai.run_updated" -> ai.applyEvent(frame.event, frame.data)
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))

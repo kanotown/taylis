@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日の予定・締切 on the home screen (widget/TodayWidget.kt): 4×2 when placed, resizable down to 2×1 and up. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/today_widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="100dp"
+    android:minResizeHeight="40dp"
+    android:previewImage="@mipmap/ic_launcher"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

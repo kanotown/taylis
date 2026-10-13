@@ -136,6 +136,9 @@ object MainTabs {
     fun landEvents(state: TabStacks, channelId: String): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openEvents(rootStack(MainTab.HOME), channelId)).copy(selected = MainTab.HOME)
 
+    /** A home-screen widget's body: the home tab at its root (its list). */
+    fun landHome(state: TabStacks): TabStacks = withStack(state, MainTab.HOME, rootStack(MainTab.HOME)).copy(selected = MainTab.HOME)
+
     /** M52: an alarm of my own calendar: the home tab shows the calendar over its list. */
     fun landCalendar(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openCalendar(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
