@@ -26,9 +26,14 @@ extension Color {
 }
 
 enum WidgetReload {
-    /// Everything that shows my state (the intents' changes; the system reloads the widget that was pressed itself).
+    /// Everything that shows my state (the control's change).
     static func all() {
         WidgetCenter.shared.reloadTimelines(ofKind: AttendanceWidgetStore.widgetKind)
+        controls()
+    }
+
+    /// The control only (a widget button's change: the system reloads the widgets after it).
+    static func controls() {
         if #available(iOS 18.0, *) { ControlCenter.shared.reloadControls(ofKind: AttendanceWidgetStore.controlKind) }
     }
 }

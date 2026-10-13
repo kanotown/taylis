@@ -19,7 +19,9 @@ struct SetAttendanceIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         await AttendanceWidgetActions.setState(stateId, account: account)
-        WidgetReload.all()
+        // The system reloads the widget whose button ran this; a second reload of our own raced it (the pressed widget kept
+        // half of the old face on the simulator, 2026-10-13). Only the control is told.
+        WidgetReload.controls()
         return .result()
     }
 }

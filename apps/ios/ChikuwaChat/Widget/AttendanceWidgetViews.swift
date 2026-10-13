@@ -20,6 +20,10 @@ struct AttendanceWidgetView: View {
         content
             .widgetURL(AttendanceWidgetLink.url(serverUrl: entry.snapshot?.serverUrl))
             .environment(\.locale, WidgetLanguage.locale)
+            // A new state is drawn at once, without WidgetKit's animation between entries: on the simulator the
+            // pressed widget sometimes kept parts of the old face (2026-10-13).
+            .transaction { $0.animation = nil }
+            .contentTransition(.identity)
     }
 
     @ViewBuilder
@@ -65,7 +69,7 @@ struct AttendanceWidgetBadge: View {
         if let state = AttendanceWidgetRules.myState(snapshot) {
             HStack(spacing: 4) {
                 AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 15)
-                Text(verbatim: state.label).font(font).lineLimit(1).minimumScaleFactor(0.8)
+                Text(verbatim: state.label).font(font).lineLimit(1).minimumScaleFactor(0.8).contentTransition(.identity)
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 9)
@@ -104,6 +108,8 @@ struct AttendanceWidgetButton: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .foregroundStyle(selected ? Color.white : Color.primary)
+                    // No cross-fade between entries: on the simulator a press left the old name half faded in (2026-10-13).
+                    .contentTransition(.identity)
             }
             .padding(.horizontal, 6)
             .frame(maxWidth: .infinity, minHeight: height)
@@ -171,14 +177,12 @@ struct AttendanceHomeView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             AttendanceWidgetBadge(snapshot: snapshot)
-                .invalidatableContent()
             HStack(spacing: 4) {
                 Image(systemName: "person.2.fill").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true)
                 Text("在室 \(AttendanceWidgetRules.inRoomCount(snapshot)) 人")
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
             }
-            .invalidatableContent()
             if let problem = snapshot.problem { AttendanceWidgetProblemLine(problem: problem) }
         }
     }
