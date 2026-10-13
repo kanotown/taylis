@@ -8,9 +8,12 @@ description: nginx などがすでに 80 / 443 を使っているサーバーで
 ほかのサイトの nginx がすでに 80 / 443 と証明書（certbot）を持っているサーバーでは、Caddy に 80 / 443 を渡さず、
 nginx の後ろで動かします。
 
-```text
-利用者 ──https──▶ nginx (TLS、certbot の証明書) ──http──▶ 127.0.0.1:18080 Caddy ──▶ app
-                                                            (ブラウザ版、本文の大きさの上限、CSP)
+```mermaid
+flowchart TD
+  U["利用者"] -- "HTTPS" --> N["nginx<br>TLS・certbot の証明書"]
+  N -- "HTTP<br>127.0.0.1:18080" --> C["Caddy<br>ブラウザ版・大きさの上限・CSP"]
+  C --> APP["app"]
+  N --> O["ほかのサイト"]
 ```
 
 ## 1. Caddy をローカルのポートだけで動かす

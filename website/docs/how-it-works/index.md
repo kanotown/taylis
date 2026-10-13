@@ -22,13 +22,30 @@ GitHub の [docs/](https://github.com/kanotown/taylis/tree/main/docs) にあり�
 
 ## 全体の構成
 
-```text
-デスクトップ (Tauri + React)  ┐
-ブラウザ (React)              ├─ HTTPS (REST) + WebSocket ─▶ Caddy ─▶ app (FastAPI、1 プロセス)
-iOS (SwiftUI)                 │                                        ├─ PostgreSQL + PGroonga
-Android (Jetpack Compose)     ┘                                        ├─ versitygw (S3 互換)
-                                                                       ├─ converter (Gotenberg)
-                     APNs / FCM ◀──── プッシュ (送信待ちの表から) ─────┘
+```mermaid
+flowchart TD
+  D["デスクトップ<br>Tauri + React"] --> C
+  W["ブラウザ<br>React"] --> C
+  I["iOS<br>SwiftUI"] --> C
+  A["Android<br>Compose"] --> C
+  C["Caddy<br>HTTPS・WebSocket"] --> APP["app<br>FastAPI・1 プロセス"]
+  APP --> DB[("PostgreSQL<br>+ PGroonga")]
+  APP --> S3[("versitygw<br>S3 互換")]
+  APP --> CV["converter<br>Gotenberg"]
+  APP -. "プッシュ" .-> P["APNs / FCM"] -. "通知" .-> PH["iPhone・Android"]
+```
+
+アプリはどれも Caddy を通して 1 つのサーバー（app）とやり取りします。データは PostgreSQL（メッセージ・検索の索引など）と
+versitygw（添付ファイルの中身）の 2 か所に置きます。スマートフォンへのプッシュは、サーバーから APNs と FCM を経由して届きます。
+
+サーバーの中では、API・WebSocket・送信待ちの表（outbox）の処理・プッシュの送信が 1 つのプロセスで動いています。
+
+```mermaid
+flowchart TD
+  API["REST API"] -- "同じトランザクション" --> DB[("PostgreSQL<br>データ + outbox")]
+  DB -- "outbox を読む" --> R["OutboxRelay"]
+  R --> BUS["EventBus"] --> HUB["RealtimeHub"] -- "WebSocket" --> CL["アプリ"]
+  R --> PL["PushPlanner"] --> PS["PushSender"] --> P["APNs / FCM"]
 ```
 
 | 部分 | 技術 |

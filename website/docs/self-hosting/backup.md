@@ -8,6 +8,19 @@ description: 毎日のバックアップ、復元、復元のリハーサル
 Taylis のデータは **PostgreSQL** と **オブジェクトストレージ（versitygw）のデータディレクトリ** の 2 か所だけです。
 付属のスクリプトが、この 2 つをまとめてバックアップします。
 
+```mermaid
+flowchart TD
+  DB[("PostgreSQL")] -- "pg_dump" --> D["db.dump"]
+  OS[("versitygw の<br>データディレクトリ")] -- "増分（ハードリンク）" --> O["objects/"]
+  subgraph B["/srv/backups/&lt;時刻&gt;/（14 世代）"]
+    D
+    O
+    S["チェックサム"]
+  end
+  B -. "rsync -aH・restic" .-> R["別のマシン・<br>外部のストレージ"]
+  E[".env と secrets/"] -. "別に保管" .-> X["安全な場所"]
+```
+
 ## 毎日のバックアップ
 
 `infra/backup.sh` は、データベースを `pg_dump` で書き出した後に、添付ファイルを写します。cron で毎日動かします。
