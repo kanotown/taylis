@@ -1,7 +1,8 @@
 import Foundation
 
-// The 未読・メンション widget: the conversations that count on the app icon (unread DMs, mentions; SYNC_PROTOCOL.md
-// §10.5's badge rule) in the workspace on screen. The app writes the snapshot from its store (AppController+UnreadWidget
+// The 未読・メンション widget: the app icon's number in the workspace on screen (Store.badgeCount: the conversations that
+// count — unread DMs, mentions, SYNC_PROTOCOL.md §10.5's badge rule — plus followed threads' unread mentions and fired
+// reminders). The app writes the snapshot from its store (AppController+UnreadWidget
 // .swift); the extension draws it and, while the app is away, checks the count with GET /sync/summary (the same rule on
 // the server). There is no cheap call for the rows themselves, so they are the app's last ones. No message text is kept.
 
@@ -26,8 +27,12 @@ struct UnreadWidgetSnapshot: WidgetAccountSnapshot {
     var account: String
     var workspaceName: String
     var userId: String
-    /// The badge: the rows' counts as the app wrote them, or the server's /sync/summary after the widget checked.
+    /// The badge: the rows' counts and `others` as the app wrote them, or the server's /sync/summary (+ `others`) after
+    /// the widget checked.
     var total: Int
+    /// What the app icon counts besides the conversations: unread mentions in followed threads and fired reminders
+    /// (GET /sync/summary does not count them: kept as the app last knew them).
+    var others: Int = 0
     /// Every conversation that counts, in the widget's order (UnreadWidgetRules.inOrder).
     var rows: [UnreadWidgetRow]
     /// When the app wrote the rows.
@@ -60,16 +65,16 @@ enum UnreadWidgetRules {
     static func rowsTotal(_ rows: [UnreadWidgetRow]) -> Int { rows.reduce(0) { $0 + $1.count } }
 
     /// Whether the rows still add up to the count (else the server's count is newer than the app's rows).
-    static func rowsCurrent(_ snapshot: UnreadWidgetSnapshot) -> Bool { snapshot.total == rowsTotal(snapshot.rows) }
+    static func rowsCurrent(_ snapshot: UnreadWidgetSnapshot) -> Bool { snapshot.total == rowsTotal(snapshot.rows) + snapshot.others }
 
     /// The mentions among the rows (the small widget's 「@ n」).
     static func mentions(_ snapshot: UnreadWidgetSnapshot) -> Int { snapshot.rows.reduce(0) { $0 + $1.mentions } }
 
-    /// The server's count (GET /sync/summary's `badge`): 0 means everything was read elsewhere, so the rows go; the
-    /// app's rows stay otherwise (the widget says how old they are when they no longer add up).
+    /// The server's count of the conversations (GET /sync/summary's `badge`): 0 means they were all read elsewhere, so
+    /// the rows go; the app's rows stay otherwise (the widget says how old they are when they no longer add up).
     static func applying(summaryBadge badge: Int, to snapshot: UnreadWidgetSnapshot, now: Date = Date()) -> UnreadWidgetSnapshot {
         var next = snapshot
-        next.total = max(0, badge)
+        next.total = max(0, badge) + snapshot.others
         if badge <= 0 { next.rows = [] }
         next.problem = nil
         next.updatedAt = now

@@ -10,13 +10,15 @@ extension AppController {
         guard let workspace = activeWorkspace, let meId = store.me?.id ?? me?.id else { return nil }
         let store = self.store
         return Self.unreadWidgetSnapshot(channels: store.channels.values, users: store.users, workspace: workspace, meId: meId,
+                                         others: store.threadSummary.mentionCount + store.firedReminderCount,
                                          title: { channelTitle($0, store: store) }, stamp: stamp, now: now)
     }
 
     /// The conversations I am in, not archived, whose badge contribution is not 0 (ChannelState.badgeContribution:
-    /// a DM's unread messages, else mentions; muted: mentions only). Their sum is GET /sync/summary's badge.
+    /// a DM's unread messages, else mentions; muted: mentions only). Their sum is GET /sync/summary's badge; with
+    /// `others` (followed threads' mentions and fired reminders) it is the app icon's number (Store.badgeCount).
     static func unreadWidgetSnapshot(channels: some Sequence<ChannelState>, users: [String: UserPublic], workspace: Workspace, meId: String,
-                                     title: (ChannelState) -> String, stamp: Date = Date(), now: Date = Date()) -> UnreadWidgetSnapshot {
+                                     others: Int = 0, title: (ChannelState) -> String, stamp: Date = Date(), now: Date = Date()) -> UnreadWidgetSnapshot {
         let rows = channels.compactMap { state -> UnreadWidgetRow? in
             guard state.isMember, !state.channel.archived else { return nil }
             let count = state.badgeContribution(now: now)
@@ -31,7 +33,8 @@ extension AppController {
                                    lastAt: last?.createdAt ?? state.channel.lastMessageAt, lastSender: sender)
         }.sorted(by: UnreadWidgetRules.inOrder)
         return UnreadWidgetSnapshot(serverUrl: workspace.serverUrl, account: workspace.account, workspaceName: workspace.name, userId: meId,
-                                    total: UnreadWidgetRules.rowsTotal(rows), rows: rows, rowsAt: stamp, updatedAt: stamp, problem: nil)
+                                    total: UnreadWidgetRules.rowsTotal(rows) + others, others: others, rows: rows, rowsAt: stamp,
+                                    updatedAt: stamp, problem: nil)
     }
 
     /// Writes the open workspace's snapshot (MainView calls it whenever the counts or the conversations change, and the

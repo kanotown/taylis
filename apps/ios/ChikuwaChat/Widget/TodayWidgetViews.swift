@@ -85,16 +85,20 @@ struct TodayWidgetModel {
         return widgetText("終日")
     }
 
-    /// A task's due on this day: 「期限切れ」 (with its date when it was another day), else its time, else nothing.
-    func due(_ task: TodayWidgetTask) -> String? {
+    /// A task's due on this day: 「期限切れ」 (with its date when it was another day, its time when today), else its time,
+    /// else nothing. `compact` (the medium widget's column) leaves the word out: the red circle and colour say it.
+    func due(_ task: TodayWidgetTask, compact: Bool = false) -> String? {
         if isOverdue(task) {
+            let word = compact ? nil : widgetText("期限切れ")
             let day = TodayWidgetRules.dueDay(task, calendar) ?? today
-            if day == today, let at = task.dueAt { return widgetText("期限切れ") + " " + clock(at) }
+            var when: String?
+            if day == today, let at = task.dueAt { when = clock(at) }
             if day != today {
                 let parts = day.split(separator: "-").compactMap { Int($0) }
-                if parts.count == 3 { return widgetText("期限切れ") + " \(parts[1])/\(parts[2])" }
+                if parts.count == 3 { when = "\(parts[1])/\(parts[2])" }
             }
-            return widgetText("期限切れ")
+            let text = [word, when].compactMap { $0 }.joined(separator: " ")
+            return text.isEmpty ? widgetText("期限切れ") : text
         }
         return task.dueAt.map(clock)
     }
@@ -304,7 +308,7 @@ struct TodayHomeView: View {
                 }
             }
             Spacer(minLength: 2)
-            if let due = model.due(task) {
+            if let due = model.due(task, compact: compact) {
                 Text(verbatim: due)
                     .font(.caption2.weight(overdue ? .bold : .regular))
                     .monospacedDigit()
