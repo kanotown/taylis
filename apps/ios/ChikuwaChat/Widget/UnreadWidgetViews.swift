@@ -215,6 +215,9 @@ struct UnreadHomeView: View {
                     number(snapshot)
                     if let breakdown = UnreadWidgetRules.breakdown(snapshot) {
                         UnreadBreakdownLine(breakdown: breakdown, vertical: true)
+                    } else {
+                        // The server counted anew: what it is made of is not known until the app lists the rows again.
+                        Text("メンション・DM").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     }
                 }
                 .frame(width: 96, alignment: .leading)
