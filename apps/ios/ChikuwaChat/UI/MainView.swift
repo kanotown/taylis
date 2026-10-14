@@ -9,10 +9,9 @@ struct MainView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The split's sidebar, shown or hidden (the conversation full width).
     @State private var columns: NavigationSplitViewVisibility = .all
-    /// The split's width, and whether the sidebar was put away for the thread pane (a narrow window: an iPad in
-    /// portrait), to bring it back when the pane closes.
+    /// The split's width, and the sidebar put away for the thread pane (a narrow window: an iPad in portrait) or by hand.
     @State private var splitWidth: CGFloat = 0
-    @State private var sidebarAutoHidden = false
+    @State private var sidebar = SidebarVisibility()
     /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
     @State private var youPath: [YouRoute] = []
     /// PRESENCE.md §11.7: the quick status menu from my picture at the home's top left (either layout; `myStatusSheet`
@@ -571,6 +570,17 @@ struct MainView: View {
         NavigationSplitView(columnVisibility: $columns) {
             homeList(sidebar: true)
                 .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
+                // The sidebar's own buttons instead of the system's toggle (MOBILE_UI.md §13.4): on iOS 26 the system
+                // puts no 「サイドバーを表示」 in the detail column's bar while that column carries the thread pane's
+                // inspector, so a hidden sidebar could not be brought back. Hide here, show from every detail screen
+                // (`SidebarShowButton`). ⌃⌘S is the system's (`SidebarCommands` in ChikuwaChatApp).
+                .toolbar(removing: .sidebarToggle)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("サイドバーを非表示", systemImage: "sidebar.left") { withAnimation { columns = .detailOnly } }
+                            .labelStyle(.iconOnly)
+                    }
+                }
         } detail: {
             NavigationStack(path: Binding(get: { Array(nav.split.dropFirst()) }, set: { tail in
                 nav.split = Array(nav.split.prefix(1)) + tail
@@ -578,12 +588,16 @@ struct MainView: View {
                 Group {
                     if let root = nav.split.first {
                         screen(root, on: .home).id(root)
+                            .modifier(SidebarShowButton(columns: $columns))
                     } else {
                         ContentUnavailableView("会話を選んでください", systemImage: "bubble.left.and.bubble.right",
                                                description: Text("左の一覧からチャンネルや DM を開きます。⌘K で移動・検索、⌘N で新しいメッセージ。"))
+                            .modifier(SidebarShowButton(columns: $columns))
                     }
                 }
-                .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
+                .navigationDestination(for: MainRoute.self) { route in
+                    screen(route, on: .home).modifier(SidebarShowButton(columns: $columns))
+                }
             }
             .environment(\.threadInPane, true)
             // The front conversation's thread, in a pane beside it (Slack's right panel); the conversation stays read.
@@ -594,20 +608,32 @@ struct MainView: View {
         .navigationSplitViewStyle(.balanced)
         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in splitWidth = width }
         // Sidebar, conversation and thread need about 1180 pt; narrower (portrait) the sidebar steps aside while the
-        // pane is open and comes back with its close — unless it was changed by hand meanwhile.
+        // pane is open and comes back with its close — unless it was changed by hand meanwhile (SidebarVisibility).
         .onChange(of: PaneRoom(thread: paneThread != nil, width: splitWidth)) { _, room in
-            if room.thread && MainNavigation.sidebarStepsAside(width: room.width) {
-                if columns != .detailOnly {
-                    columns = .detailOnly
-                    sidebarAutoHidden = true
-                }
-            } else if sidebarAutoHidden {
-                sidebarAutoHidden = false
-                if columns == .detailOnly { columns = .all }
-            }
+            if let next = sidebar.room(thread: room.thread, width: room.width, columns: columns) { columns = next }
+        }
+        .onChange(of: columns) { _, new in
+            sidebar.changed(to: new, paneOpen: paneThread != nil)
         }
         .sheet(isPresented: $nav.youSheet) {
             YouView(controller: controller, path: $youPath, onClose: { nav.youSheet = false }, onOpenAttendance: openAttendance)
+        }
+    }
+
+    /// 「サイドバーを表示」 at the start of a detail screen's bar while the sidebar is put away (by hand, or for the
+    /// thread pane): the system's toggle is removed (see `splitView`).
+    private struct SidebarShowButton: ViewModifier {
+        @Binding var columns: NavigationSplitViewVisibility
+
+        func body(content: Content) -> some View {
+            content.toolbar {
+                if columns == .detailOnly {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("サイドバーを表示", systemImage: "sidebar.left") { withAnimation { columns = .all } }
+                            .labelStyle(.iconOnly)
+                    }
+                }
+            }
         }
     }
 

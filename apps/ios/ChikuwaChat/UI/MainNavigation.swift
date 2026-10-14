@@ -8,6 +8,48 @@ enum MainLayout: Equatable {
     static func of(_ sizeClass: UserInterfaceSizeClass?) -> MainLayout { sizeClass == .regular ? .split : .tabs }
 }
 
+/// The split's sidebar, shown or put away (MOBILE_UI.md §13.1). The sidebar steps aside by itself for the thread pane
+/// where three columns do not fit (`MainNavigation.sidebarStepsAside`) and comes back when the pane closes; a change by
+/// hand (the sidebar buttons, ⌃⌘S, the edge swipe) wins: it is never undone, and while that pane stays open the sidebar
+/// does not step aside again (not even on a rotation).
+struct SidebarVisibility: Equatable {
+    /// The sidebar was put away for the pane (by this rule, not by hand): it comes back when the pane closes.
+    private(set) var autoHidden = false
+    /// Changed by hand while the pane was open: leave it alone until the pane closes.
+    private(set) var manual = false
+    /// The value this rule last wrote, to tell it from the system's and the person's changes in `changed`.
+    private var written: NavigationSplitViewVisibility?
+
+    /// The pane opened or closed, or the split's width changed. Returns the visibility to set, if any.
+    mutating func room(thread: Bool, width: CGFloat, columns: NavigationSplitViewVisibility) -> NavigationSplitViewVisibility? {
+        if !thread { manual = false }
+        if thread && MainNavigation.sidebarStepsAside(width: width) {
+            guard !manual, !autoHidden, columns != .detailOnly else { return nil }
+            autoHidden = true
+            return write(.detailOnly)
+        }
+        guard autoHidden else { return nil }
+        autoHidden = false
+        return columns == .detailOnly ? write(.all) : nil
+    }
+
+    /// The split's visibility changed (`onChange`): by this rule, or by hand (or the system) — which then wins.
+    mutating func changed(to columns: NavigationSplitViewVisibility, paneOpen: Bool) {
+        if let written, written == columns {
+            self.written = nil
+            return
+        }
+        written = nil
+        autoHidden = false
+        if paneOpen { manual = true }
+    }
+
+    private mutating func write(_ columns: NavigationSplitViewVisibility) -> NavigationSplitViewVisibility {
+        written = columns
+        return columns
+    }
+}
+
 /// A thread of a conversation: the one open in it, or one to open once the conversation shows.
 struct ThreadRef: Equatable {
     let channelId: String
