@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import ChikuwaChat
@@ -208,5 +209,96 @@ final class EmojiTests: XCTestCase {
         XCTAssertEqual(highlight.active, "activities")
         highlight.observe("travel")
         XCTAssertEqual(highlight.active, "travel")
+    }
+}
+
+/// 2026-10-14: a text emoji among the quick reactions (the long-press sheet, 「リアクションの候補」) widens its button into a
+/// capsule as wide as its pill, the standard ones stay 44 pt circles, and a row too wide for the phone wraps. It was
+/// drawn small to fit the circle, and a long label's 10 pt floor spilled over its neighbours. Run with
+/// TEST_RUNNER_SNAPSHOT_DIR=<dir> to look at them.
+@MainActor
+final class QuickReactionLayoutTests: XCTestCase {
+    private func world() -> AppController {
+        let controller = AppController()
+        let store = controller.store
+        let pill = { (id: String, name: String, label: String, color: String) in
+            CustomEmojiOut(id: id, name: name, contentType: "", width: 0, height: 0, createdBy: "u", createdAt: "", kind: "text", label: label, color: color)
+        }
+        let rows = [pill("t1", "thanks", "ありがとうございます", "green"), pill("t2", "ok", "了解", "blue"),
+                    CustomEmojiOut(id: "w1", name: "banner", contentType: "image/png", width: 96, height: 32, createdBy: "u", createdAt: "")]
+        store.replaceCustomEmoji(rows)
+        for row in rows where row.isText { store.emojiImages[row.id] = CustomEmoji.textPill(row, dark: false) }
+        store.emojiImages["w1"] = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 32)).image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 96, height: 32))
+        }
+        return controller
+    }
+
+    private func face(_ controller: AppController, _ emoji: String) -> some View {
+        QuickReactionFace(wide: QuickReactions.isWide(emoji, store: controller.store), fill: Color(.secondarySystemBackground)) {
+            QuickReactionGlyph(controller: controller, emoji: emoji)
+        }
+    }
+
+    private func row(_ controller: AppController, _ emoji: [String]) -> some View {
+        QuickReactionsRow {
+            ForEach(emoji, id: \.self) { self.face(controller, $0) }
+            Image(systemName: "face.smiling").font(.system(size: 22)).frame(width: 44, height: 44)
+                .background(Color(.secondarySystemBackground), in: Circle())
+        }
+    }
+
+    private func fitting(_ view: some View, width: CGFloat = .infinity) -> CGSize {
+        UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: width, height: .infinity))
+    }
+
+    private func snapshot(_ view: some View, width: CGFloat, name: String) throws {
+        let renderer = ImageRenderer(content: view.frame(width: width).padding(.vertical, 12).background(Color(.systemBackground))
+            .environment(\.colorScheme, .light))
+        renderer.scale = 3
+        let image = try XCTUnwrap(renderer.uiImage)
+        XCTAssertGreaterThan(image.size.height, 0)
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"], let data = image.pngData() {
+            let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url)
+            print("snapshot written: \(url.path)")
+        }
+    }
+
+    func testDrawnHeight() {
+        XCTAssertEqual(QuickReactionGlyph.drawnHeight(natural: 26, isText: false), 26)
+        XCTAssertEqual(QuickReactionGlyph.drawnHeight(natural: 78, isText: false), 12, "a 3:1 image inside the circle")
+        XCTAssertEqual(QuickReactionGlyph.drawnHeight(natural: 190, isText: true), 26, "a pill keeps its height")
+        XCTAssertEqual(QuickReactionGlyph.drawnHeight(natural: 260, isText: true), 20, "a longer one is scaled down to 200 pt")
+    }
+
+    func testATextEmojiWidensItsButtonAndTheRowWraps() throws {
+        let controller = world()
+        let thanks = CustomEmoji.size(of: try XCTUnwrap(controller.store.customEmoji["thanks"]), height: 26).width
+        XCTAssertGreaterThan(thanks, 44, "the label is wider than the circle")
+
+        XCTAssertEqual(fitting(face(controller, "👍")), CGSize(width: 44, height: 44), "a standard emoji: the circle")
+        XCTAssertEqual(fitting(face(controller, ":banner:")), CGSize(width: 44, height: 44), "a wide image: inside the circle")
+        let wide = fitting(face(controller, ":thanks:"))
+        XCTAssertEqual(wide.height, 44)
+        XCTAssertEqual(wide.width, min(thanks, QuickReactionGlyph.pillMaxWidth) + 18, accuracy: 0.5, "as wide as the pill and its margins")
+
+        // Six and 「その他」 in a 393 pt sheet: the standard ones fit, with the long pill they wrap.
+        let long = [":thanks:", "👍", "❤️", "😂", ":banner:", "🎉"]
+        XCTAssertGreaterThanOrEqual(fitting(row(controller, long), width: 393).height, 98, "two lines")
+        XCTAssertLessThanOrEqual(fitting(row(controller, long), width: 393).width, 393)
+        XCTAssertEqual(fitting(row(controller, ["👍", "❤️", "😂", ":banner:", "🎉", "🙏"]), width: 393).height, 44, "one line")
+        // 「リアクションの候補」 (a 313 pt row): a short pill keeps the six on one line, a long one wraps them.
+        let short = [":ok:", "👍", "❤️", "😂", ":banner:", "🎉"]
+        XCTAssertEqual(fitting(QuickReactionSlots(controller: controller, row: short) { _ in }, width: 313).height, 44, "one line")
+        XCTAssertGreaterThanOrEqual(fitting(QuickReactionSlots(controller: controller, row: long) { _ in }, width: 313).height, 98, "two lines")
+
+        try snapshot(row(controller, long), width: 393, name: "ios-sheet-row-long.png")
+        try snapshot(row(controller, short), width: 393, name: "ios-sheet-row-short.png")
+        try snapshot(QuickReactionSlots(controller: controller, row: long) { _ in }.padding(.horizontal, 20), width: 353, name: "ios-slots-long.png")
+        try snapshot(QuickReactionSlots(controller: controller, row: short) { _ in }.padding(.horizontal, 20), width: 353, name: "ios-slots-short.png")
+        try snapshot(QuickReactionSlots(controller: controller, row: ["👍", "❤️", "😂"]) { _ in }.padding(.horizontal, 20), width: 353, name: "ios-slots-standard.png")
     }
 }
