@@ -151,3 +151,27 @@ def test_a_relay_url_sends_both_platforms_through_the_relay(test_settings: Setti
     )
     assert all(isinstance(p, RelayPushProvider) for p in providers.values())
     assert set(providers) == {"apns", "fcm"}
+
+
+async def test_a_platform_the_relay_has_no_key_for_stays_pending_and_is_not_logged(
+    app: FastAPI, test_settings: Settings, tmp_path: Path, caplog: Any
+) -> None:
+    """REVIEW-v0.1.62 #7: no "sent / logged" for a platform this relay cannot deliver to."""
+    from app.modules.notifications.providers import LogPushProvider
+
+    fakes = _relay(app, test_settings, _secrets(tmp_path))
+    app.state.push_providers = {"apns": fakes["apns"], "fcm": LogPushProvider("fcm")}
+    android = _asker(app, test_settings, str(tmp_path), "fcm")
+    with caplog.at_level("DEBUG"):
+        result = await android.send(_device("fcm"), PAYLOAD)
+    assert result.outcome == "retry" and result.detail == "relay 503"
+    assert result.retry_after == 300.0
+    assert not any("#研究ミーティング" in r.getMessage() for r in caplog.records)
+    # Another relay is not a way to deliver either.
+    app.state.push_providers = {
+        "apns": _asker(app, test_settings, str(tmp_path)),
+        "fcm": fakes["fcm"],
+    }
+    assert (
+        await _asker(app, test_settings, str(tmp_path)).send(_device(), PAYLOAD)
+    ).detail == "relay 503"

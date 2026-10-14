@@ -75,6 +75,9 @@ def _relay_key(settings: Settings, client_id: str) -> bytes | None:
 class RelayPushProvider:
     """Sends through the relay; the outcome is the relay's (sent, retry, invalid_token, failed)."""
 
+    # A relay never relays through another relay (REVIEW-v0.1.62 #7).
+    delivers = False
+
     def __init__(
         self,
         provider: str,
@@ -208,6 +211,15 @@ async def relay_send(request: Request) -> JSONResponse:
     except ValidationError:
         return _fail(422, "validation_error")
     providers: dict[str, PushProvider] = request.app.state.push_providers
+    provider = providers.get(ask.provider)
+    if provider is None or not getattr(provider, "delivers", False):
+        # REVIEW-v0.1.62 #7: this relay has no key for that platform (the development provider
+        # would "send" by logging the title, and another relay would chain). Nothing is sent or
+        # logged; the asking server keeps the push pending and retries once the keys are set.
+        log.warning("push relay: %s is not configured here (client %s)", ask.provider, client_id)
+        unconfigured = _fail(503, "provider_not_configured")
+        unconfigured.headers["Retry-After"] = "300"
+        return unconfigured
     device = Device(
         id=uuid.uuid4(),
         platform="ios" if ask.provider == "apns" else "android",
@@ -217,9 +229,7 @@ async def relay_send(request: Request) -> JSONResponse:
         base_url=ask.base_url,
     )
     try:
-        result = await asyncio.wait_for(
-            providers[ask.provider].send(device, ask.payload), RELAY_TIMEOUT_SECONDS
-        )
+        result = await asyncio.wait_for(provider.send(device, ask.payload), RELAY_TIMEOUT_SECONDS)
     except TimeoutError:
         result = PushResult("retry", "relay: provider timeout")
     log.info(
