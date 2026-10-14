@@ -34,6 +34,9 @@ class PushProvider(Protocol):
 class LogPushProvider:
     """Development default: logs what would have been sent."""
 
+    # Whether a push it accepts reaches a device (the push relay only relays through these).
+    delivers = False
+
     def __init__(self, provider: str) -> None:
         self.provider = provider
 
@@ -50,6 +53,9 @@ class LogPushProvider:
 
 class FakePushProvider:
     """Test double: records sends and returns scripted outcomes (default: sent)."""
+
+    # Whether a push it accepts reaches a device (the push relay only relays through these).
+    delivers = True
 
     def __init__(self, provider: str = "apns") -> None:
         self.provider = provider
@@ -77,6 +83,9 @@ def avatar_url(device: Device, path: object) -> str | None:
 
 class APNsPushProvider:
     """APNs HTTP/2 with token-based (.p8) authentication."""
+
+    # Whether a push it accepts reaches a device (the push relay only relays through these).
+    delivers = True
 
     provider = "apns"
     HOSTS: ClassVar[dict[str, str]] = {
@@ -213,6 +222,9 @@ class APNsPushProvider:
 
 class FCMPushProvider:
     """FCM HTTP v1 with a service account: a JWT bearer grant yields short-lived OAuth2 tokens."""
+
+    # Whether a push it accepts reaches a device (the push relay only relays through these).
+    delivers = True
 
     provider = "fcm"
     SCOPE = "https://www.googleapis.com/auth/firebase.messaging"

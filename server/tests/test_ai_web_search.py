@@ -116,7 +116,10 @@ class _Messages:
 
     async def create(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
 
 class _AnthropicClient:
@@ -551,3 +554,33 @@ async def test_new_models_through_the_api(
     assert provider.requests[0].model == "gpt-6-astra"
     (run,) = await _runs(db)
     assert run.provider == "openai" and run.status == "done"
+
+
+async def test_a_failed_continuation_keeps_the_paused_turns_usage() -> None:
+    """REVIEW-v0.1.62 #5: the billed pause_turn's tokens and searches travel with the error."""
+    import anthropic
+    import httpx
+
+    from app.modules.ai.llm import LlmError
+
+    paused = _message(
+        [_Block(type="server_tool_use", id="srv_1", name="web_search", input={"query": "q"})],
+        stop="pause_turn",
+        searches=2,
+    )
+    failure = anthropic.BadRequestError(
+        "bad",
+        response=httpx.Response(400, request=httpx.Request("POST", "https://api.anthropic.com")),  # type: ignore[arg-type]
+        body=None,
+    )
+    provider = AnthropicProvider("k")
+    provider._client = _AnthropicClient([paused, failure])  # type: ignore[assignment]
+    try:
+        await provider.complete(_request(web_search=True))
+    except LlmError as exc:
+        assert exc.retryable is False
+        assert exc.usage is not None
+        assert (exc.usage.input_tokens, exc.usage.output_tokens) == (1000, 100)
+        assert exc.usage.web_search_requests == 2
+    else:
+        raise AssertionError("the failed continuation must raise")

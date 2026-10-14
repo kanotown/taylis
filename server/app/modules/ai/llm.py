@@ -154,7 +154,13 @@ class AnthropicProvider:
                 messages[0],
                 {"role": "assistant", "content": [_block_param(b) for b in response.content]},
             ]
-            response = await self._create(request, system, messages)
+            try:
+                response = await self._create(request, system, messages)
+            except LlmError as exc:
+                # REVIEW-v0.1.62 #5: the paused responses were billed; their tokens and
+                # searches go on the run with the failure, so the budget keeps them.
+                known = _anthropic_result(responses, request.model)
+                raise LlmError(exc.reason, retryable=exc.retryable, usage=known) from exc
             responses.append(response)
         return _anthropic_result(responses, request.model)
 
