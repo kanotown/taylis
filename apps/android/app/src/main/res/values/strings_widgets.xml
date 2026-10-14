@@ -7,7 +7,6 @@
 
     <string name="unread_widget_name">未読・メンション</string>
     <string name="unread_widget_description">メンションと未読の DM の数と、その会話を表示します</string>
-    <string name="unread_widget_parts">メンション %1$d・DM %2$d</string>
     <string name="unread_widget_none">未読はありません</string>
     <string name="unread_widget_open">%1$s：メンションと未読の DM %2$d 件（Taylis を開く）</string>
     <string name="unread_widget_row">%1$s、%2$d 件（会話を開く）</string>
@@ -22,4 +21,30 @@
     <string name="today_widget_event_row">%1$s %2$s（予定を開く）</string>
     <string name="today_widget_task_row">タスク %1$s、%2$s（タスクを開く）</string>
     <string name="today_widget_tasks_open">%1$s（タスクを開く）</string>
+
+    <string name="widget_loading">読み込んでいます…</string>
+    <string name="widget_unread_label">未読</string>
+    <string name="widget_unread_parts_short">@%1$d・DM %2$d</string>
+    <string name="widget_unread_none_short">未読なし</string>
+    <string name="today_widget_none_today">今日の予定はありません</string>
+    <string name="today_widget_deadlines">締切</string>
+    <string name="today_widget_due_count">締切 %1$d</string>
+    <string name="attendance_widget_nobody">在室中の人はいません</string>
+    <string name="widget_config_title">ウィジェットのワークスペース</string>
+    <string name="widget_config_follow">アプリで開いているワークスペース</string>
+    <string name="widget_config_follow_hint">アプリでワークスペースを切り替えると、このウィジェットも切り替わります</string>
+    <string name="widget_config_note">あとでウィジェットを長押しして変えることもできます</string>
+    <string name="widget_config_none">サインインしているワークスペースがありません。Taylis を開いてサインインしてください</string>
+    <string name="widget_preview_person_1">佐藤 花子</string>
+    <string name="widget_preview_person_2">鈴木 一郎</string>
+    <string name="widget_preview_person_3">田中 美咲</string>
+    <string name="widget_preview_channel_1">#全体連絡</string>
+    <string name="widget_preview_channel_2">#ゼミ</string>
+    <string name="widget_preview_event_1">ゼミ（輪読）</string>
+    <string name="widget_preview_event_2">研究室ミーティング</string>
+    <string name="widget_preview_task_1">中間レポート提出</string>
+    <string name="widget_preview_state_in">在室</string>
+    <string name="widget_preview_state_on">学内</string>
+    <string name="widget_preview_state_off">学外</string>
+    <string name="widget_preview_state_gone">帰宅</string>
 </resources>

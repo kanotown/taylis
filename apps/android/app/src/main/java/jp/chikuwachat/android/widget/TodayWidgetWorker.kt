@@ -40,22 +40,26 @@ class TodayWidgetWorker(context: Context, params: WorkerParameters) : CoroutineW
             return Result.success()
         }
         val today = CalendarDates.today()
-        val read = inputData.getBoolean(KEY_READ, false) || TodayWidgetRules.needsRead(TodayWidgetData.store.read(context), today)
-        if (read) {
-            val controller = (context as ChikuwaApp).controller
+        val forced = inputData.getBoolean(KEY_READ, false)
+        // Every workspace a placed widget shows (its own choice, or the one on screen in the app), each with its client.
+        val shown = TodayWidgetData.store.shown(context)
+        val controller = (context as ChikuwaApp).controller
+        for (server in shown) {
+            if (!forced && !TodayWidgetRules.needsRead(TodayWidgetData.store.read(context, server), today)) continue
             try {
-                val snapshot = withContext(Dispatchers.Main) { controller.widgetReadToday() }
-                if (snapshot != null) TodayWidgetData.publish(context, snapshot) else TodayWidgetData.store.write(context) { null }
+                val snapshot = withContext(Dispatchers.Main) { controller.widgetReadToday(server) }
+                if (snapshot != null) TodayWidgetData.publish(context, snapshot) else TodayWidgetData.store.write(context, server) { null }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w("TodayWidget", "could not read today's events and tasks", e)
-                TodayWidgetData.failed(context)
+                TodayWidgetData.failed(context, server)
             }
         }
         TodayWidgetData.redrawNow(context)
         // Last: replacing the planned tick cancels this very job when it is that tick (nothing is left to do here).
-        schedule(context, TodayWidgetRules.nextRefresh(TodayWidgetData.store.read(context), Instant.now()))
+        val held = shown.mapNotNull { TodayWidgetData.store.read(context, it) }
+        schedule(context, TodayWidgetRules.nextRefresh(held, Instant.now()))
         return Result.success()
     }
 

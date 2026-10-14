@@ -79,6 +79,20 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- A home-screen widget's workspace (widget/WidgetConfigureActivity): android:configure of all three widgets,
+             optional and reconfigurable (Android 12+), so it opens from the widget's long-press menu. Its own task:
+             choosing does not bring the app forward. -->
+        <activity
+            android:name=".widget.WidgetConfigureActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:label="@string/widget_config_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- The 在室状況 home-screen widget (Jetpack Glance). Its buttons run in this app (widget/AttendanceWidgetWorker). -->
         <receiver
             android:name=".widget.AttendanceWidgetReceiver"

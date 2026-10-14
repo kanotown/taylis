@@ -165,9 +165,12 @@ class AttendanceWidgetTest {
 
     @Test
     fun wideButtonCountFitsTheWidth() {
-        assertEquals(4, AttendanceWidgetRules.wideButtonCount(320f, tall = false))
-        assertEquals(2, AttendanceWidgetRules.wideButtonCount(230f, tall = false))
-        assertEquals(5, AttendanceWidgetRules.wideButtonCount(320f, tall = true))
+        // A 4×1 cell on a phone is about 360 dp: four round buttons beside my state and the faces.
+        assertEquals(4, AttendanceWidgetRules.wideButtonCount(360f, tall = false))
+        assertEquals(3, AttendanceWidgetRules.wideButtonCount(320f, tall = false))
+        assertEquals(1, AttendanceWidgetRules.wideButtonCount(230f, tall = false))
+        assertEquals(5, AttendanceWidgetRules.wideButtonCount(360f, tall = true))
+        assertEquals(4, AttendanceWidgetRules.wideButtonCount(320f, tall = true))
         assertEquals(1, AttendanceWidgetRules.wideButtonCount(100f, tall = false))
         assertEquals(AttendanceWidgetRules.MAX_WIDE_BUTTONS, AttendanceWidgetRules.wideButtonCount(900f, tall = true))
     }
@@ -256,5 +259,67 @@ class AttendanceWidgetTest {
             buildJsonObject { put("state_id", JsonPrimitive("room")); put("note", JsonPrimitive("until 18")) },
             ApiClient.setMyAttendanceBody("room", "until 18"),
         )
+    }
+
+    // --- who is in the room (the faces) -----------------------------------------------------------
+
+    @Test
+    fun theFacesAreThePeopleInTheRoomLongestThereFirstWithMeFirstWhileIAmIn() {
+        val b = AttendanceBoardOut(
+            enabled = true, states = states,
+            entries = listOf(
+                AttendanceEntryOut("carol", "room", since = "2026-10-13T09:00:00Z"),
+                AttendanceEntryOut("bob", "lab", since = "2026-10-13T08:00:00Z"),
+                AttendanceEntryOut("dave", "home", since = "2026-10-13T07:00:00Z"),
+                AttendanceEntryOut("guest", "room", since = "2026-10-13T06:00:00Z"),
+                AttendanceEntryOut("me", "room", since = "2026-10-13T10:00:00Z"),
+            ),
+        )
+        val s = snap(b)
+        // bob's own in_room state counts; dave is gone; a guest is not on the board.
+        assertEquals(listOf("bob", "carol"), s.present.map { it.id })
+        assertEquals(listOf("Bob", "Carol"), s.present.map { it.name })
+        assertEquals("Me", s.meName)
+        assertEquals(listOf("me", "bob", "carol"), s.faces.map { it.id })
+        assertEquals(3, s.inRoomCount)
+        // Pressed 帰宅: I leave the faces at once.
+        val pressed = AttendanceWidgetRules.pressed(s, "home", 2_000L)!!
+        assertEquals(listOf("bob", "carol"), pressed.faces.map { it.id })
+    }
+
+    @Test
+    fun withoutThePeopleTheNamesComeFromTheLastSnapshot() {
+        val first = snap(board(entry("bob", "room"), entry("me", "room")))
+        val later = AttendanceWidgetRules.snapshot(server, "Kano Lab", "me", board(entry("bob", "room"), entry("carol", "room")), null, 3_000L, known = first)
+        assertEquals(listOf("Bob", ""), later.present.map { it.name })
+        assertEquals("Me", later.meName)
+    }
+
+    @Test
+    fun namedFacesFitTheWidthWithRoomForThePlus() {
+        assertEquals(3, AttendanceWidgetRules.namedFacesThatFit(300f, 3))
+        // 300 dp holds 5 places: 7 people show 4 faces and 「+3」.
+        assertEquals(4, AttendanceWidgetRules.namedFacesThatFit(300f, 7))
+        assertEquals(9, AttendanceWidgetRules.namedFacesThatFit(2000f, 30))
+        assertEquals(0, AttendanceWidgetRules.namedFacesThatFit(10f, 5))
+    }
+
+    @Test
+    fun theNameUnderAFaceIsTheFirstWordShortened() {
+        assertEquals("佐藤", AttendanceWidgetRules.shortName("佐藤 花子"))
+        assertEquals("Hana", AttendanceWidgetRules.shortName("Hana Sato"))
+        assertEquals("android1", AttendanceWidgetRules.shortName("android1"))
+        assertEquals("Christo…", AttendanceWidgetRules.shortName("Christopher"))
+        assertEquals("ながいな…", AttendanceWidgetRules.shortName("ながいなまえのひと"))
+        assertEquals("", AttendanceWidgetRules.shortName(""))
+    }
+
+    @Test
+    fun anOlderSnapshotWithoutTheFacesStillReads() {
+        val old = """{"serverUrl":"https://lab.example.com","workspaceName":"Kano Lab","meId":"me","enabled":true,"inRoomOthers":2}"""
+        val s = AttendanceWidgetRules.decode(old)!!
+        assertTrue(s.present.isEmpty())
+        assertEquals("", s.meName)
+        assertEquals(2, s.inRoomCount)
     }
 }

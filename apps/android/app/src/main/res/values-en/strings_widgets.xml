@@ -7,7 +7,6 @@
 
     <string name="unread_widget_name">Unread &amp; mentions</string>
     <string name="unread_widget_description">Shows your mentions and unread DMs and the conversations they are in</string>
-    <string name="unread_widget_parts">Mentions %1$d · DMs %2$d</string>
     <string name="unread_widget_none">Nothing unread</string>
     <string name="unread_widget_open">%1$s: mentions and unread DMs %2$d (open Taylis)</string>
     <string name="unread_widget_row">%1$s, %2$d (open the conversation)</string>
@@ -22,4 +21,30 @@
     <string name="today_widget_event_row">%1$s %2$s (open the event)</string>
     <string name="today_widget_task_row">Task %1$s, %2$s (open the task)</string>
     <string name="today_widget_tasks_open">%1$s (open tasks)</string>
+
+    <string name="widget_loading">Loading…</string>
+    <string name="widget_unread_label">Unread</string>
+    <string name="widget_unread_parts_short">@%1$d · DM %2$d</string>
+    <string name="widget_unread_none_short">All read</string>
+    <string name="today_widget_none_today">No events today</string>
+    <string name="today_widget_deadlines">Due</string>
+    <string name="today_widget_due_count">Due %1$d</string>
+    <string name="attendance_widget_nobody">No one is in the room</string>
+    <string name="widget_config_title">Widget workspace</string>
+    <string name="widget_config_follow">The workspace open in the app</string>
+    <string name="widget_config_follow_hint">Switching workspaces in the app switches this widget too</string>
+    <string name="widget_config_note">You can change this later by long-pressing the widget</string>
+    <string name="widget_config_none">No workspace is signed in. Open Taylis and sign in</string>
+    <string name="widget_preview_person_1">Hana Sato</string>
+    <string name="widget_preview_person_2">Ichiro Suzuki</string>
+    <string name="widget_preview_person_3">Misaki Tanaka</string>
+    <string name="widget_preview_channel_1">#announcements</string>
+    <string name="widget_preview_channel_2">#seminar</string>
+    <string name="widget_preview_event_1">Seminar (reading)</string>
+    <string name="widget_preview_event_2">Lab meeting</string>
+    <string name="widget_preview_task_1">Submit the midterm report</string>
+    <string name="widget_preview_state_in">In</string>
+    <string name="widget_preview_state_on">Campus</string>
+    <string name="widget_preview_state_off">Out</string>
+    <string name="widget_preview_state_gone">Home</string>
 </resources>

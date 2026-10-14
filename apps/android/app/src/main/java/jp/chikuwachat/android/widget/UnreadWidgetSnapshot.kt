@@ -41,6 +41,9 @@ data class UnreadWidgetSnapshot(
 ) {
     /** The widget's number: the server's from a push when newer than the app's sync, else the app's own count. */
     val total: Int get() = pushedTotal ?: (mentions + dms)
+
+    /** Whether 「@n・DM n」 adds up to [total] (a summary's number alone does not say how it splits). */
+    val partsKnown: Boolean get() = pushedTotal == null || pushedTotal == mentions + dms
 }
 
 /** One conversation's line: its name (`#name`, or the other people for a DM) and its number. */
@@ -52,6 +55,10 @@ data class UnreadRow(
     val dm: Boolean,
     /** The newest message's time (ISO), the order; null when not known. */
     val lastAt: String? = null,
+    /** A 1:1 DM: the other person (their avatar's colour); null otherwise or not known. */
+    val userId: String? = null,
+    /** A group DM (drawn with the people icon). */
+    val group: Boolean = false,
 )
 
 object UnreadWidgetRules {
@@ -90,7 +97,12 @@ object UnreadWidgetRules {
             val count = Channels.badgeCount(channel, now)
             if (count <= 0) continue
             if (channel.channel.isDm) dms += count else mentions += count
-            rows += UnreadRow(channel.id, title(channel), count, channel.channel.isDm, channel.channel.lastMessageAt)
+            // A 1:1 DM's other person (my own DM: me) for the row's face; unknown without the member list.
+            val other = if (channel.channel.type == "dm") channel.channel.dmUserIds?.let { ids -> ids.firstOrNull { it != meId } ?: ids.firstOrNull() } else null
+            rows += UnreadRow(
+                channel.id, title(channel), count, channel.channel.isDm, channel.channel.lastMessageAt,
+                userId = other, group = channel.channel.type == "group_dm",
+            )
         }
         val ordered = rows.sortedWith(rowOrder)
         return UnreadWidgetSnapshot(
@@ -128,7 +140,11 @@ object UnreadWidgetRules {
             if (dm || grew) {
                 val held = old.rows.firstOrNull { it.channelId == channelId }
                 val title = held?.title ?: pushTitle(push, dm)
-                val row = UnreadRow(channelId, title, (held?.count ?: 0) + 1, held?.dm ?: dm, Instant.ofEpochMilli(now).toString())
+                val row = UnreadRow(
+                    channelId, title, (held?.count ?: 0) + 1, held?.dm ?: dm, Instant.ofEpochMilli(now).toString(),
+                    userId = held?.userId ?: push.senderId.takeIf { push.channelType == "dm" },
+                    group = held?.group ?: (push.channelType == "group_dm"),
+                )
                 val rows = (listOf(row) + old.rows.filter { it.channelId != channelId }).take(MAX_ROWS)
                 next = next.copy(
                     rows = rows,
@@ -140,6 +156,20 @@ object UnreadWidgetRules {
         }
         if (next == old) return null
         return next.copy(updatedAt = now)
+    }
+
+    /**
+     * GET /sync/summary of a workspace that is not on screen (the app's switcher reads it when the app comes back, the
+     * widgets' refresh every so often): its `badge` becomes the number. 0 clears the rows (nothing is waiting); another
+     * number keeps the last known rows (the summary does not list conversations; the app's next sync there does). With
+     * no snapshot yet (a widget chose a workspace the app has not opened since), one with the number alone.
+     */
+    fun summarized(old: UnreadWidgetSnapshot?, serverUrl: String, workspaceName: String, meId: String, badge: Int, now: Long): UnreadWidgetSnapshot {
+        val base = old?.takeIf { it.meId == meId } ?: UnreadWidgetSnapshot(serverUrl, workspaceName, meId)
+        val named = base.copy(workspaceName = workspaceName.ifBlank { base.workspaceName })
+        val next = if (badge <= 0) named.copy(mentions = 0, dms = 0, rows = emptyList(), conversations = 0, pushedTotal = null)
+        else named.copy(pushedTotal = badge.takeIf { it != named.mentions + named.dms })
+        return if (old != null && next == old) old else next.copy(updatedAt = now)
     }
 
     /** A conversation the snapshot did not list yet, named from the push: the sender for a 1:1 DM, else the title. */
