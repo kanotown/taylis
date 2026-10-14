@@ -179,21 +179,28 @@ final class AppController {
         final class Session { var generation: Int?; init(_ generation: Int?) { self.generation = generation } }
         let session = Session(generation)
         api.sharedAccount = account
-        api.onTokens = { [weak self, weak api] tokens in
+        // `sent`: the refresh token a refresh was sent with (nil: a sign-in). A refresh's answer that arrives after the
+        // token lock went with the background time is kept only while the Keychain still holds it (false: another
+        // process refreshed meanwhile; the client takes the stored tokens instead).
+        let save: (TokenResponse, String?) -> Bool = { [weak self, weak api] tokens, sent in
             if let generation = session.generation {
-                if SharedTokens.commit(account: account, generation: generation, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
-                                       refreshToken: tokens.refreshToken) { return }
+                switch SharedTokens.commitRefresh(account: account, generation: generation, sent: sent, accessToken: tokens.accessToken,
+                                                  expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken) {
+                case .stored: return true
+                case .superseded: return false
+                case .sessionChanged: break
+                }
                 guard let self, let api, self.clients[serverUrl] === api else {
                     api?.signOut()
-                    return
+                    return true
                 }
-                session.generation = SharedTokens.signIn(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
-                                                         refreshToken: tokens.refreshToken)
-            } else {
-                session.generation = SharedTokens.signIn(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
-                                                         refreshToken: tokens.refreshToken)
             }
+            session.generation = SharedTokens.signIn(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
+                                                     refreshToken: tokens.refreshToken)
+            return true
         }
+        api.onTokens = { tokens in _ = save(tokens, nil) }
+        api.onRefreshed = { tokens, sent in save(tokens, sent) }
         api.onSignedOut = { [weak self, weak api] in Task { @MainActor in
             guard let self, let api, self.clients[serverUrl] === api else { return }
             self.sessionEnded(serverUrl)
@@ -677,15 +684,28 @@ final class AppController {
 
     /// Background: the server learns at once that this phone is not in use, so its pushes are not held back for
     /// the activity window (PUSH_NOTIFICATIONS.md §4.1); iOS suspends the socket soon after.
+    ///
+    /// All of it runs in a background task (MOBILE_UI.md §21.3): the App Group writes (the share sheet's list, the
+    /// widgets' snapshots) and the canvases' saves are not cut off by the suspension that follows.
     func didEnterBackground() {
+        let activity = (backgroundActivities ?? FileLock.activities).begin("Taylis.didEnterBackground", expired: {})
         engine?.reportActivity()
         publishShareCache() // MOBILE_UI.md §21.2: the share sheet's recent conversations
         publishAttendanceWidget() // the 在室状況 widget (AppController+Widget.swift)
         publishUnreadWidget() // the 未読・メンション widget (AppController+UnreadWidget.swift)
         // M45 (CANVAS.md §4.4 「背面に回るとき」): what was typed in a canvas is saved now, not after the pause.
-        if let canvases = engine?.canvases { Task { await canvases.flushAll() } }
-        if let wiki = engine?.wiki { Task { await wiki.flushAll() } }  // M122
+        let canvases = engine?.canvases
+        let wiki = engine?.wiki // M122
+        Task {
+            async let canvasesSaved: Void = { await canvases?.flushAll() }()
+            async let wikiSaved: Void = { await wiki?.flushAll() }()
+            _ = await (canvasesSaved, wikiSaved)
+            activity?.end()
+        }
     }
+
+    /// Where `didEnterBackground` gets its background time (nil: FileLock.activities, the app's background tasks).
+    @ObservationIgnored var backgroundActivities: BackgroundActivityProvider?
 
     // MARK: workspaces that are not open (WORKSPACES.md §6, §7, §8)
 

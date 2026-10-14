@@ -4,7 +4,22 @@ import Foundation
 /// on every refresh and a rotated one used again ends the session (SECURITY.md §2.3), so a refresh happens only while
 /// holding the token lock (a file lock in the App Group) and always from the token the Keychain holds then: whoever
 /// refreshed before (the app or the extension) left the newest one there.
+///
+/// The lock is let go when the process runs out of background time (FileLock: iOS kills a process suspended with it,
+/// 0xdead10cc), possibly with the refresh's request still on its way. Its answer is then stored only while the Keychain
+/// still holds the refresh token it was sent with (`commitRefresh`): another process that refreshed in the meantime
+/// left a newer one, and the late answer is dropped.
 enum SharedTokens {
+    /// What became of a refresh's tokens.
+    enum Commit: Equatable {
+        case stored
+        /// The account signed out or in again since the refresh started (AccountSessions): dropped.
+        case sessionChanged
+        /// Another process refreshed since (the Keychain holds another refresh token than the one sent): dropped; the
+        /// stored tokens are the newer ones.
+        case superseded
+    }
+
     struct Access: Codable, Equatable {
         var token: String
         var expiresAt: Date
@@ -52,9 +67,19 @@ enum SharedTokens {
     @discardableResult
     static func commit(account: String, generation: Int, accessToken: String, expiresIn: Int, refreshToken: String,
                        sessions: AccountSessions = .shared) -> Bool {
-        sessions.ifCurrent(account: account, generation: generation) {
+        commitRefresh(account: account, generation: generation, sent: nil, accessToken: accessToken, expiresIn: expiresIn,
+                      refreshToken: refreshToken, sessions: sessions) == .stored
+    }
+
+    /// `commit`, and when `sent` (the refresh token the request was sent with) is given, only while the Keychain still
+    /// holds it (or none): checked and stored in one step under the session lock.
+    static func commitRefresh(account: String, generation: Int, sent: String?, accessToken: String, expiresIn: Int,
+                              refreshToken: String, sessions: AccountSessions = .shared) -> Commit {
+        sessions.whenCurrent(account: account, generation: generation) { () -> Commit in
+            if let sent, let stored = Self.refreshToken(account: account), stored != sent { return .superseded }
             store(account: account, accessToken: accessToken, expiresIn: expiresIn, refreshToken: refreshToken)
-        }
+            return .stored
+        } ?? .sessionChanged
     }
 
     /// After a sign-in or a refresh: both tokens, the access token with its expiry on this device's clock. (Outside the
@@ -96,7 +121,8 @@ struct AccountSessions {
                                         lockURL: folder.appendingPathComponent("Locks/sessions.lock"))
 
     /// The lock is held for a file write and a Keychain call: a holder that does not let go within this (a process
-    /// suspended while holding it) is passed rather than hang the app's sign-out.
+    /// stuck while holding it) is passed rather than hang the app's sign-out. (A process is not suspended with it:
+    /// FileLock holds it in a background activity.)
     static let lockTimeout: TimeInterval = 2
 
     func records() -> [String: Record] {
@@ -119,10 +145,14 @@ struct AccountSessions {
     /// Runs `body` under the session lock only while the session noted as `generation` is current. Returns whether it ran.
     @discardableResult
     func ifCurrent(account: String, generation: Int, _ body: () -> Void) -> Bool {
+        whenCurrent(account: account, generation: generation, body) != nil
+    }
+
+    /// `body`'s answer, run under the session lock only while the session noted as `generation` is current; nil when not.
+    func whenCurrent<T>(account: String, generation: Int, _ body: () -> T) -> T? {
         locked {
-            guard isCurrent(account: account, generation: generation) else { return false }
-            body()
-            return true
+            guard isCurrent(account: account, generation: generation) else { return nil }
+            return body()
         }
     }
 
@@ -177,6 +207,8 @@ final class ShareApi: @unchecked Sendable {
     let account: String
     let language: String
     private let session: URLSession
+    /// Another process refreshed while this one's answer was on its way (and left no usable access token): not retried.
+    static let superseded = ShareFailure.temporary("refresh_superseded")
     /// Pauses between refresh attempts whose answer did not arrive (the server honours the old token 30 s).
     var refreshRetryDelays: [TimeInterval] = [1, 2, 4]
     /// Tests: the lock (nil: none).
@@ -221,6 +253,10 @@ final class ShareApi: @unchecked Sendable {
     /// session is still the account's (AccountSessions, checked under the session lock): an answer that comes back
     /// after the app signed out (or in again) is dropped, so it neither restores the deleted tokens nor overwrites a new
     /// session's.
+    ///
+    /// The lock goes when this process runs out of background time (FileLock); the request on its way then still
+    /// finishes, but no further attempt is made, and its answer is stored only while the Keychain still holds the
+    /// refresh token it was sent with (`SharedTokens.commitRefresh`).
     func refreshedToken(replacing failed: String?) async throws -> String {
         let lock = await lockProvider()
         defer { lock?.release() }
@@ -238,11 +274,20 @@ final class ShareApi: @unchecked Sendable {
                 }
                 struct Tokens: Decodable { let accessToken: String; let refreshToken: String; let expiresIn: Int }
                 guard let tokens = try? JSON.snakeDecoder.decode(Tokens.self, from: data) else { throw ShareFailure.temporary("decode_error") }
-                guard SharedTokens.commit(account: account, generation: generation, accessToken: tokens.accessToken,
-                                          expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken, sessions: sessions)
-                else { throw ShareFailure.notSignedIn }
-                return tokens.accessToken
-            } catch let failure as ShareFailure where failure.isTemporary && attempt < refreshRetryDelays.count {
+                switch SharedTokens.commitRefresh(account: account, generation: generation, sent: refresh, accessToken: tokens.accessToken,
+                                                  expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken, sessions: sessions) {
+                case .stored:
+                    return tokens.accessToken
+                case .sessionChanged:
+                    throw ShareFailure.notSignedIn
+                case .superseded:
+                    if let stored = SharedTokens.access(account: account), stored.valid(for: 30) { return stored.token }
+                    throw Self.superseded
+                }
+            } catch let failure as ShareFailure where failure.isTemporary && failure != Self.superseded && attempt < refreshRetryDelays.count
+                        && lock?.isHeld != false {
+                // Retried only while the lock is held: once it went with the background time, another process may be
+                // refreshing from the same token.
                 try? await Task.sleep(nanoseconds: UInt64(refreshRetryDelays[attempt] * 1_000_000_000))
                 attempt += 1
             }
