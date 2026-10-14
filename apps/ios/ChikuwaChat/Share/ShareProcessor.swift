@@ -88,10 +88,7 @@ actor ShareProcessor {
 
     /// Sends the share as far as it goes now and answers how it ended.
     func send(_ id: String) async -> ShareOutcome {
-        if claims[id] == nil {
-            guard let lock = store.claim(id) else { return .busy }
-            claims[id] = lock
-        }
+        guard holdClaim(id) else { return .busy }
         return await withCheckedContinuation { continuation in
             waiters[id, default: []].append(continuation)
             if waiters[id]?.count == 1 { Task { await self.advance(id) } }
@@ -100,7 +97,7 @@ actor ShareProcessor {
 
     /// Every saved share that nobody is sending (the app at start and on return to the front), oldest first.
     func resumeAll() async {
-        let ids = store.all().map(\.id).filter { claims[$0] == nil }
+        let ids = store.all().map(\.id).filter { !(claims[$0]?.isHeld ?? false) }
         await withTaskGroup(of: Void.self) { group in
             for id in ids { group.addTask { _ = await self.send(id) } }
         }
@@ -114,6 +111,17 @@ actor ShareProcessor {
         sent[id] = nil
         claims.removeValue(forKey: id)?.release()
         resume(id, .pending(.temporary("background")))
+    }
+
+    /// This process holds the share's claim: still, or taken again. A claim is a FileLock in the App Group, let go
+    /// when the process runs out of background time (iOS kills a process suspended with it, 0xdead10cc) while the
+    /// uploads go on in the system; their end (or the next start) takes it again here.
+    private func holdClaim(_ id: String) -> Bool {
+        if let claim = claims[id], claim.isHeld { return true }
+        claims[id] = nil
+        guard let lock = store.claim(id) else { return false }
+        claims[id] = lock
+        return true
     }
 
     // MARK: steps
@@ -186,7 +194,7 @@ actor ShareProcessor {
         }
         try? store.save(share)
         // Only the process holding the claim goes on; another one's late event just leaves its record.
-        guard claims[id] != nil, !advancing.contains(id) else { return }
+        guard claims[id] != nil, holdClaim(id), !advancing.contains(id) else { return }
         await decide(id)
     }
 

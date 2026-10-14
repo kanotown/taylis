@@ -672,3 +672,494 @@ final class SessionGenerationTests: XCTestCase {
         XCTAssertNil(store.load("old"), "given up")
     }
 }
+
+/// Background time handed out by hand: a test grants or refuses it, sees what is running, and makes it run out.
+final class FakeActivities: BackgroundActivityProvider, @unchecked Sendable {
+    final class Activity: BackgroundActivity, @unchecked Sendable {
+        let name: String
+        let expired: () -> Void
+        weak var owner: FakeActivities?
+        private var ended = false
+        private let lock = NSLock()
+
+        init(name: String, expired: @escaping () -> Void) {
+            self.name = name
+            self.expired = expired
+        }
+
+        func end() {
+            lock.lock()
+            let first = !ended
+            ended = true
+            lock.unlock()
+            if first { owner?.ended(self) }
+        }
+    }
+
+    private let lock = NSLock()
+    var grants = true
+    private var names: [String] = []
+    private var running: [Activity] = []
+
+    var begun: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return names
+    }
+
+    var active: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return running.count
+    }
+
+    func begin(_ name: String, expired: @escaping () -> Void) -> BackgroundActivity? {
+        lock.lock()
+        defer { lock.unlock() }
+        names.append(name)
+        guard grants else { return nil }
+        let activity = Activity(name: name, expired: expired)
+        activity.owner = self
+        running.append(activity)
+        return activity
+    }
+
+    fileprivate func ended(_ activity: Activity) {
+        lock.lock()
+        running.removeAll { $0 === activity }
+        lock.unlock()
+    }
+
+    /// The process is about to be suspended: every activity's holder lets go, then the activity ends (as
+    /// UIApplication's expiration handler and ProcessInfo's expired call do).
+    func expireAll() {
+        lock.lock()
+        let all = running
+        lock.unlock()
+        for activity in all {
+            activity.expired()
+            activity.end()
+        }
+    }
+}
+
+/// 0xdead10cc (TestFlight builds 115 and 119): iOS kills an app suspended while it holds a file lock in the App Group.
+/// Every App Group lock is held in a background activity and let go when that time runs out (MOBILE_UI.md §21.3).
+final class AppGroupLockTests: XCTestCase {
+    private var folder: URL!
+    private var url: URL!
+    private var activities: FakeActivities!
+
+    override func setUp() {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("locks-\(UUID().uuidString)", isDirectory: true)
+        url = folder.appendingPathComponent("Locks/test.lock")
+        activities = FakeActivities()
+    }
+
+    override func tearDown() {
+        StubProtocol.handler = nil
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// Whether another holder (another descriptor, as another process) could take the lock now.
+    private func isFree() -> Bool {
+        let other = FakeActivities()
+        guard let lock = FileLock.tryAcquire(url, activities: other) else { return false }
+        lock.release()
+        return other.active == 0
+    }
+
+    func testALockIsHeldInsideAnActivityThatEndsWithTheRelease() throws {
+        let lock = try XCTUnwrap(FileLock.tryAcquire(url, activities: activities))
+        XCTAssertTrue(lock.isHeld)
+        XCTAssertEqual(activities.active, 1)
+        XCTAssertFalse(isFree())
+        XCTAssertNil(FileLock.tryAcquire(url, activities: activities), "taken")
+        XCTAssertEqual(activities.active, 1, "a refused attempt leaves no activity behind")
+        lock.release()
+        XCTAssertFalse(lock.isHeld)
+        XCTAssertEqual(activities.active, 0)
+        XCTAssertTrue(isFree())
+        lock.release() // twice: nothing more
+        XCTAssertEqual(activities.active, 0)
+    }
+
+    func testRunningOutOfBackgroundTimeReleasesTheLockAndTellsTheHolder() throws {
+        let lock = try XCTUnwrap(FileLock.tryAcquire(url, activities: activities))
+        var told = 0
+        lock.onExpiration { told += 1 }
+        activities.expireAll()
+        XCTAssertFalse(lock.isHeld)
+        XCTAssertTrue(lock.expired)
+        XCTAssertEqual(told, 1)
+        XCTAssertEqual(activities.active, 0)
+        XCTAssertTrue(isFree(), "another process can take it while this one is suspended")
+        var late = 0
+        lock.onExpiration { late += 1 }
+        XCTAssertEqual(late, 1, "a handler added after the expiry runs at once")
+        lock.release()
+        XCTAssertEqual(told, 1)
+    }
+
+    func testAPlainReleaseIsNotAnExpiry() throws {
+        let lock = try XCTUnwrap(FileLock.tryAcquire(url, activities: activities))
+        var told = false
+        lock.onExpiration { told = true }
+        lock.release()
+        activities.expireAll()
+        XCTAssertFalse(told)
+        XCTAssertFalse(lock.expired)
+    }
+
+    func testNoLockIsTakenWithoutBackgroundTime() async {
+        activities.grants = false
+        XCTAssertNil(FileLock.tryAcquire(url, activities: activities))
+        XCTAssertTrue(isFree(), "the flock taken before asking for the time is let go")
+        let started = Date()
+        let waited = await FileLock.acquire(url, timeout: 5, activities: activities)
+        XCTAssertNil(waited)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1, "no waiting for time that will not come")
+        XCTAssertNil(FileLock.acquireNow(url, timeout: 5, activities: activities))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
+    func testADroppedLockIsReleasedAndItsActivityEnded() {
+        do {
+            let lock = FileLock.tryAcquire(url, activities: activities)
+            XCTAssertNotNil(lock)
+            XCTAssertEqual(activities.active, 1)
+        }
+        XCTAssertEqual(activities.active, 0)
+        XCTAssertTrue(isFree())
+    }
+
+    func testWaitingForATakenLockGivesUpAtTheTimeoutAndGetsItWhenTheHolderExpires() async throws {
+        let held = try XCTUnwrap(FileLock.tryAcquire(url, activities: activities))
+        XCTAssertNil(FileLock.acquireNow(url, timeout: 0.05, activities: activities))
+        let none = await FileLock.acquire(url, timeout: 0.15, activities: activities)
+        XCTAssertNil(none)
+        XCTAssertEqual(activities.active, 1, "only the holder's")
+        let url = url!
+        let waiterActivities = FakeActivities()
+        let waiter = Task { await FileLock.acquire(url, timeout: 5, activities: waiterActivities) }
+        try await Task.sleep(nanoseconds: 150_000_000)
+        activities.expireAll() // the holder is about to be suspended: the waiter gets it
+        let next = await waiter.value
+        XCTAssertNotNil(next)
+        XCTAssertFalse(held.isHeld)
+        XCTAssertEqual(waiterActivities.active, 1)
+        next?.release()
+        XCTAssertEqual(waiterActivities.active, 0)
+    }
+
+    /// The real providers grant time to a running app and end it (from any thread) without hanging.
+    @MainActor
+    func testTheRealProvidersGrantAndEnd() async throws {
+        for provider in [ApplicationActivityProvider(UIApplication.shared), ExpiringActivityProvider()] as [BackgroundActivityProvider] {
+            let lock = try XCTUnwrap(FileLock.tryAcquire(url, activities: provider))
+            XCTAssertFalse(isFree())
+            await Task.detached { lock.release() }.value
+            XCTAssertTrue(isFree())
+        }
+    }
+
+    // MARK: AccountSessions (sessions.lock)
+
+    func testTheSessionLockIsLetGoOnEveryPath() throws {
+        let previous = FileLock.activities
+        FileLock.activities = activities
+        defer { FileLock.activities = previous }
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        let sessions = AccountSessions(file: folder.appendingPathComponent("sessions.json"), lockURL: url)
+        let generation = SharedTokens.signIn(account: account, accessToken: "a", expiresIn: 900, refreshToken: "r", sessions: sessions)
+        XCTAssertEqual(activities.active, 0)
+        XCTAssertEqual(SharedTokens.commitRefresh(account: account, generation: generation + 1, sent: "r", accessToken: "x", expiresIn: 900,
+                                                  refreshToken: "y", sessions: sessions), .sessionChanged)
+        XCTAssertEqual(SharedTokens.commitRefresh(account: account, generation: generation, sent: "other", accessToken: "x", expiresIn: 900,
+                                                  refreshToken: "y", sessions: sessions), .superseded)
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "r", "a superseded answer is dropped")
+        XCTAssertEqual(SharedTokens.commitRefresh(account: account, generation: generation, sent: "r", accessToken: "a2", expiresIn: 900,
+                                                  refreshToken: "r2", sessions: sessions), .stored)
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "r2")
+        SharedTokens.signOut(account: account, sessions: sessions)
+        XCTAssertEqual(activities.active, 0, "every step let go of the lock and ended its activity")
+        XCTAssertTrue(isFree())
+        XCTAssertEqual(activities.begun.count, 5)
+    }
+
+    // MARK: the extension's refresh (tokens.lock)
+
+    private static let rotated = Data(#"{"access_token":"a2","refresh_token":"r2","expires_in":900}"#.utf8)
+
+    private func shareApi(account: String) -> ShareApi {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let sessions = AccountSessions(file: folder.appendingPathComponent("sessions.json"),
+                                       lockURL: folder.appendingPathComponent("Locks/sessions.lock"))
+        let api = ShareApi(baseUrl: URL(string: "http://share.test")!, account: account, language: "ja",
+                           session: URLSession(configuration: configuration), sessions: sessions)
+        let url = url!, activities = activities!
+        api.lockProvider = { FileLock.tryAcquire(url, activities: activities) }
+        api.refreshRetryDelays = [0.01, 0.01]
+        return api
+    }
+
+    func testTheExtensionsRefreshLetsGoOfTheLockWhenItEnds() async throws {
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        SharedTokens.store(account: account, accessToken: "a1", expiresIn: 0, refreshToken: "r1")
+        let activities = activities!
+        var heldDuringRequest = false
+        StubProtocol.handler = { [self] _ in
+            heldDuringRequest = activities.active == 1 && !isFree()
+            return (200, Self.rotated)
+        }
+        let token = try await shareApi(account: account).accessToken()
+        XCTAssertEqual(token, "a2")
+        XCTAssertTrue(heldDuringRequest, "the lock is held, in an activity, across the request")
+        XCTAssertEqual(activities.active, 0)
+        XCTAssertTrue(isFree())
+
+        StubProtocol.handler = { _ in (401, Data(#"{"error":{"code":"invalid_token","message":"","details":{}}}"#.utf8)) }
+        do {
+            _ = try await shareApi(account: account).refreshedToken(replacing: "a2")
+            XCTFail("expected notSignedIn")
+        } catch {
+            XCTAssertEqual(error as? ShareFailure, .notSignedIn)
+        }
+        XCTAssertEqual(activities.active, 0, "let go on a failure too")
+        XCTAssertTrue(isFree())
+    }
+
+    func testAnAnswerAfterTheLockExpiredIsStoredWhenNobodyRefreshedMeanwhile() async throws {
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        SharedTokens.store(account: account, accessToken: "a1", expiresIn: 0, refreshToken: "r1")
+        let activities = activities!
+        StubProtocol.handler = { _ in
+            activities.expireAll() // suspended while the request was on its way
+            return (200, Self.rotated)
+        }
+        let token = try await shareApi(account: account).accessToken()
+        XCTAssertEqual(token, "a2")
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "r2", "the rotated token is not lost")
+        XCTAssertTrue(isFree())
+    }
+
+    func testAnAnswerAfterTheLockExpiredIsDroppedWhenAnotherProcessRefreshed() async throws {
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        SharedTokens.store(account: account, accessToken: "a1", expiresIn: 0, refreshToken: "r1")
+        let activities = activities!
+        StubProtocol.handler = { _ in
+            activities.expireAll()
+            // The app took the lock meanwhile and refreshed (its answer came first).
+            SharedTokens.store(account: account, accessToken: "app-a", expiresIn: 900, refreshToken: "app-r")
+            return (200, Self.rotated)
+        }
+        let token = try await shareApi(account: account).accessToken()
+        XCTAssertEqual(token, "app-a", "the newer stored token is used")
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "app-r", "the newer refresh token is not overwritten")
+    }
+
+    func testNoFurtherAttemptOnceTheLockExpired() async throws {
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        SharedTokens.store(account: account, accessToken: "a1", expiresIn: 0, refreshToken: "r1")
+        let activities = activities!
+        var attempts = 0
+        StubProtocol.handler = { _ in
+            attempts += 1
+            activities.expireAll()
+            return (-1, Data()) // no answer
+        }
+        do {
+            _ = try await shareApi(account: account).accessToken()
+            XCTFail("expected a temporary failure")
+        } catch {
+            XCTAssertEqual(error as? ShareFailure, .temporary("network_error"))
+        }
+        XCTAssertEqual(attempts, 1, "another process may be refreshing from the same token now")
+        XCTAssertTrue(isFree())
+    }
+
+    // MARK: the app's refresh (ApiClient)
+
+    private static func tokens(_ n: Int) -> Data {
+        Data("""
+        {"access_token":"access-\(n)","refresh_token":"refresh-\(n)","token_type":"bearer","expires_in":900,"session_id":"s",
+         "device":{"id":"d","platform":"ios","device_name":null,"app_version":null,"enabled":true,"disabled_reason":null,"last_seen_at":null,"created_at":"","updated_at":""},
+         "user":{"id":"u","username":"alice","display_name":"Alice","role":"member","deactivated_at":null,"created_at":"","updated_at":"","email":null,"must_change_password":false}}
+        """.utf8)
+    }
+
+    @MainActor
+    private func appClient(account: String) -> ApiClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let client = ApiClient(baseUrl: URL(string: "http://share.test")!, session: URLSession(configuration: configuration))
+        client.refreshRetryDelays = [0.01]
+        client.sharedAccount = account
+        client.refreshToken = "refresh-1"
+        let sessions = AccountSessions(file: folder.appendingPathComponent("sessions.json"),
+                                       lockURL: folder.appendingPathComponent("Locks/sessions.lock"))
+        client.onRefreshed = { tokens, sent in
+            SharedTokens.commitRefresh(account: account, generation: 0, sent: sent, accessToken: tokens.accessToken,
+                                       expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken, sessions: sessions) == .stored
+        }
+        return client
+    }
+
+    @MainActor
+    func testTheAppsRefreshHoldsTheTokenLockInABackgroundTaskAndLetsGo() async throws {
+        let previous = FileLock.activities
+        FileLock.activities = activities
+        defer { FileLock.activities = previous }
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        SharedTokens.store(account: account, accessToken: "access-1", expiresIn: 0, refreshToken: "refresh-1")
+        let activities = activities!
+        var during = 0
+        StubProtocol.handler = { _ in
+            during = activities.active
+            return (200, Self.tokens(2))
+        }
+        let client = appClient(account: account)
+        _ = try await client.refresh()
+        XCTAssertGreaterThanOrEqual(during, 1, "the token lock's background task runs across the request")
+        XCTAssertEqual(activities.active, 0, "and ends with it")
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "refresh-2")
+        XCTAssertEqual(client.refreshToken, "refresh-2")
+    }
+
+    @MainActor
+    func testTheAppTakesTheStoredTokensWhenAnotherProcessRefreshedAfterItsLockExpired() async throws {
+        let previous = FileLock.activities
+        FileLock.activities = activities
+        defer { FileLock.activities = previous }
+        let account = "http://share.test|locks-\(UUID().uuidString)"
+        defer { Keychain.delete(account: account) }
+        SharedTokens.store(account: account, accessToken: "access-1", expiresIn: 0, refreshToken: "refresh-1")
+        let activities = activities!
+        var attempts = 0
+        StubProtocol.handler = { _ in
+            attempts += 1
+            activities.expireAll() // the app is about to be suspended: the lock goes
+            SharedTokens.store(account: account, accessToken: "ext-a", expiresIn: 900, refreshToken: "ext-r")
+            return (200, Self.tokens(2))
+        }
+        let client = appClient(account: account)
+        do {
+            _ = try await client.refresh()
+            XCTFail("expected refresh_superseded")
+        } catch {
+            XCTAssertEqual((error as? ApiError)?.code, "refresh_superseded")
+        }
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "ext-r", "the extension's newer token stays")
+        XCTAssertEqual(client.refreshToken, "ext-r", "and the client goes on with it")
+        XCTAssertEqual(client.accessToken, "ext-a")
+        XCTAssertFalse(client.needsRefresh())
+        XCTAssertEqual(activities.active, 0)
+    }
+
+    // MARK: going to the background
+
+    @MainActor
+    func testGoingToTheBackgroundWritesInsideABackgroundTask() async throws {
+        let controller = AppController(defaults: UserDefaults(suiteName: "AppGroupLockTests.\(UUID().uuidString)")!)
+        controller.backgroundActivities = activities
+        controller.didEnterBackground()
+        XCTAssertEqual(activities.begun, ["Taylis.didEnterBackground"])
+        for _ in 0..<100 where activities.active > 0 { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(activities.active, 0, "ended once the writes and the saves are done")
+    }
+}
+
+/// The pending-share claim (PendingShares/<id>/claim.lock): let go when the app runs out of background time while the
+/// uploads go on in the system, taken again when their end wakes it.
+final class ShareClaimExpiryTests: XCTestCase {
+    /// Uploads that end only when the test says so.
+    final class HeldTransport: ShareUploadTransport, @unchecked Sendable {
+        var onFinished: ((ShareUploadResult) -> Void)?
+        var onProgress: ((String, Int, Int64) -> Void)?
+        private let lock = NSLock()
+        private var started: [(String, Int)] = []
+
+        func running(shareId: String) async -> Set<Int> { [] }
+        func start(shareId: String, index: Int, request: URLRequest, body: URL) {
+            lock.lock()
+            started.append((shareId, index))
+            lock.unlock()
+        }
+        func detach(shareId: String) {}
+
+        var startedCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return started.count
+        }
+
+        func finishAll() {
+            lock.lock()
+            let all = started
+            lock.unlock()
+            for (id, index) in all {
+                onFinished?(ShareUploadResult(shareId: id, index: index, status: 201, data: Data(#"{"id":"att-\#(index)"}"#.utf8),
+                                              failedToConnect: false))
+            }
+        }
+    }
+
+    func testAnExpiredClaimIsTakenAgainWhenTheUploadsEnd() async throws {
+        let activities = FakeActivities()
+        let previous = FileLock.activities
+        FileLock.activities = activities
+        defer { FileLock.activities = previous }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("claims-\(UUID().uuidString)", isDirectory: true)
+        let account = "http://share.test|claims-\(UUID().uuidString)"
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            Keychain.delete(account: account)
+            StubProtocol.handler = nil
+        }
+        SharedTokens.store(account: account, accessToken: "access-1", expiresIn: 900, refreshToken: "refresh-1")
+        let store = PendingShareStore(root: root)
+        _ = try store.makeFolder("s1")
+        var share = PendingShareStoreTests.share("s1", items: 1)
+        share.account = account
+        try Data("pdf".utf8).write(to: store.fileURL(share, 0))
+        try store.save(share)
+        var posts = 0
+        StubProtocol.handler = { request in
+            if request.url!.path.hasSuffix("/messages") {
+                posts += 1
+                return (201, Data(#"{"id":"m1"}"#.utf8))
+            }
+            return (404, Data())
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let transport = HeldTransport()
+        let processor = ShareProcessor(store: store, transport: transport) { share in
+            let api = ShareApi(baseUrl: URL(string: share.serverUrl)!, account: account, language: "ja", session: session)
+            api.lockProvider = { nil }
+            return api
+        }
+        let sending = Task { await processor.send("s1") }
+        for _ in 0..<300 where transport.startedCount == 0 { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(transport.startedCount, 1)
+        XCTAssertEqual(activities.active, 1, "the claim is held in a background task while the upload runs")
+        activities.expireAll() // the app is about to be suspended with the upload still running
+        XCTAssertEqual(activities.active, 0)
+        let other = try XCTUnwrap(store.claim("s1"), "nothing is held while suspended")
+        other.release()
+        transport.finishAll() // the upload's end wakes the app
+        let outcome = await sending.value
+        XCTAssertEqual(outcome, .posted)
+        XCTAssertEqual(posts, 1)
+        XCTAssertEqual(activities.active, 0, "the claim taken again is let go at the end")
+    }
+}

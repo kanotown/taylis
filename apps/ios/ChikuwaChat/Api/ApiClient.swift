@@ -56,6 +56,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// Pauses between attempts of a refresh that failed on the way (SYNC_PROTOCOL.md §7.2).
     var refreshRetryDelays: [TimeInterval] = [1, 2, 4, 8]
     var onTokens: ((TokenResponse) -> Void)?
+    /// A refresh's tokens, with the refresh token the request was sent with: stores them (the app: the Keychain, only
+    /// while it still holds that token) and answers false when another process refreshed meanwhile, so they are
+    /// dropped and the stored ones used (MOBILE_UI.md §21.3). nil: `onTokens` as for a sign-in.
+    var onRefreshed: ((TokenResponse, String) -> Bool)?
     var onSignedOut: (() -> Void)?
     /// The Keychain account ("server|username") whose tokens the Share Extension shares (MOBILE_UI.md §21.3): a refresh
     /// then takes the shared token lock and starts from the stored refresh token. nil (tests, a sign-in in progress)
@@ -138,7 +142,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         let account = sharedAccount
         let task = Task<TokenResponse, Error> {
             // MOBILE_UI.md §21.3: the Share Extension refreshes this account's session too. Under the shared lock, and
-            // from the refresh token the Keychain holds now (the extension may have rotated it since it was read).
+            // from the refresh token the Keychain holds now (the extension may have rotated it since it was read). The
+            // lock is held in a background task and let go when the app runs out of background time (FileLock,
+            // 0xdead10cc): then no further attempt is made, and an answer still on its way is kept only while the
+            // Keychain holds the token it was sent with (onRefreshed).
             let lock = account != nil ? await SharedTokens.lock() : nil
             defer { lock?.release() }
             if let account, version == sessionVersion, let stored = SharedTokens.refreshToken(account: account), stored != refreshToken {
@@ -152,9 +159,18 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
                     let tokens: TokenResponse = try await request("POST", "/api/v1/auth/refresh", body: .object(["refresh_token": .string(token)]),
                                                                   auth: false, timeout: Self.refreshTimeout)
                     guard version == sessionVersion else { throw ApiError.api(status: 401, code: "session_changed", message: "Session changed") }
-                    apply(tokens)
+                    guard let onRefreshed else {
+                        apply(tokens)
+                        return tokens
+                    }
+                    hold(tokens)
+                    if !onRefreshed(tokens, token) {
+                        if let account { adoptStored(account: account) }
+                        throw Self.refreshSuperseded
+                    }
                     return tokens
-                } catch let error as ApiError where error.isRetryable && attempt < delays.count {
+                } catch let error as ApiError where error.isRetryable && attempt < delays.count && lock?.isHeld != false
+                            && error.code != Self.refreshSuperseded.code {
                     // The server may have rotated the token and the answer got lost: the old one still works for
                     // 30 s, so try again at short intervals inside that grace (SYNC_PROTOCOL.md §7.2).
                     try? await Task.sleep(nanoseconds: UInt64(delays[attempt] * 1_000_000_000))
@@ -186,11 +202,27 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     }
 
     private func apply(_ tokens: TokenResponse) {
+        hold(tokens)
+        onTokens?(tokens)
+    }
+
+    private func hold(_ tokens: TokenResponse) {
         accessToken = tokens.accessToken
         accessTokenExpiresAt = Date().addingTimeInterval(TimeInterval(tokens.expiresIn))
         refreshToken = tokens.refreshToken
-        onTokens?(tokens)
     }
+
+    /// Another process's newer tokens (its refresh came after this one's request): this client goes on with them.
+    private func adoptStored(account: String) {
+        guard let stored = SharedTokens.refreshToken(account: account) else { return }
+        refreshToken = stored
+        let access = SharedTokens.access(account: account)
+        accessToken = access?.token
+        accessTokenExpiresAt = access?.expiresAt
+    }
+
+    /// A refresh whose answer came after another process's refresh (see `onRefreshed`): temporary, not retried.
+    static let refreshSuperseded = ApiError.api(status: 503, code: "refresh_superseded", message: "Refreshed by another process")
 
     /// A path with a query. URLComponents leaves "+" as it is, which servers read as a space ("C++", links with
     /// "+" in them), so it is percent-encoded as well.
