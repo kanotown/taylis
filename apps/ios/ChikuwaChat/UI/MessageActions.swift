@@ -177,18 +177,68 @@ enum QuickReactions {
     }
 }
 
-/// One quick reaction in its 44 pt circle (the long-press sheet, 「リアクションの候補」): a standard emoji as text, a
-/// custom one as its image (ReactionGlyph), a wide one or a text pill made smaller to stay inside the circle.
+/// One quick reaction (the long-press sheet, 「リアクションの候補」): a standard emoji as text, a custom one as its image
+/// (ReactionGlyph), a wide image made smaller to stay inside the 44 pt circle. A text emoji's pill keeps its height and
+/// widens its button instead (`QuickReactionFace`): it was made smaller to fit the circle, and the 10 pt floor left a
+/// long label (「ありがとうございます」) wider than the circle, over its neighbours (2026-10-14, as on the web).
 struct QuickReactionGlyph: View {
     let controller: AppController
     let emoji: String
 
+    static let height: CGFloat = 26
+    /// The widest an image is drawn inside the 44 pt circle.
+    static let circleWidth: CGFloat = 38
+    /// The widest a text pill is drawn; a wider one (12 wide letters) is scaled down to it.
+    static let pillMaxWidth: CGFloat = 200
+
+    /// The height a custom emoji `natural` wide at `height` is drawn at: a text pill as high as an emoji up to
+    /// `pillMaxWidth` wide, an image within the circle.
+    static func drawnHeight(natural: CGFloat, isText: Bool) -> CGFloat {
+        let limit = isText ? pillMaxWidth : circleWidth
+        return natural > limit ? (height * limit / natural).rounded(.down) : height
+    }
+
     var body: some View {
         if let name = CustomEmoji.name(of: emoji), let custom = controller.store.customEmoji[name] {
-            let width = CustomEmoji.size(of: custom, height: 26).width
-            ReactionGlyph(controller: controller, emoji: emoji, height: width > 38 ? max(10, (26 * 38 / width).rounded(.down)) : 26)
+            let width = CustomEmoji.size(of: custom, height: Self.height).width
+            ReactionGlyph(controller: controller, emoji: emoji, height: Self.drawnHeight(natural: width, isText: custom.isText))
         } else {
-            Text(emoji).font(.system(size: 26))
+            Text(emoji).font(.system(size: Self.height))
+        }
+    }
+}
+
+/// A quick reaction's 44 pt button face: a circle, or for a text emoji (`wide`) a capsule as wide as its pill.
+struct QuickReactionFace<Content: View>: View {
+    let wide: Bool
+    let fill: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(.horizontal, wide ? 9 : 0)
+            .frame(minWidth: 44, minHeight: 44, maxHeight: 44)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(fill, in: Capsule())
+    }
+}
+
+extension QuickReactions {
+    /// A text emoji, whose button grows with its pill.
+    @MainActor static func isWide(_ emoji: String, store: Store) -> Bool {
+        CustomEmoji.name(of: emoji).flatMap { store.customEmoji[$0] }?.isText ?? false
+    }
+}
+
+/// The quick reactions in one centred line, or wrapped onto more when a text emoji makes them too wide.
+struct QuickReactionsRow<Content: View>: View {
+    var spacing: CGFloat = 10
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: spacing) { content }
+            ChipsLayout(spacing: spacing) { content }
         }
     }
 }
@@ -232,15 +282,16 @@ struct MessageActionsSheet: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
+                QuickReactionsRow {
                     ForEach(quickReactions, id: \.self) { emoji in
                         Button {
                             if !mine.contains(emoji) { EmojiUsage.note(emoji) } // C10: counts toward the picker's 「よく使う」
                             run { await controller.toggleReaction(message, emoji: emoji) }
                         } label: {
-                            QuickReactionGlyph(controller: controller, emoji: emoji)
-                                .frame(width: 44, height: 44)
-                                .background(mine.contains(emoji) ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground), in: Circle())
+                            QuickReactionFace(wide: QuickReactions.isWide(emoji, store: store),
+                                              fill: mine.contains(emoji) ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground)) {
+                                QuickReactionGlyph(controller: controller, emoji: emoji)
+                            }
                         }
                         .buttonStyle(.plain)
                     }

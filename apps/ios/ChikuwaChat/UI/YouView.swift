@@ -516,23 +516,8 @@ struct AppearanceView: View {
     private func quickReactionsSection(_ setting: QuickReactionsSetting) -> some View {
         let row = quickRow
         return Section {
-            HStack(spacing: 0) {
-                ForEach(0..<QuickReactions.count, id: \.self) { index in
-                    let glyph = index < row.count ? row[index] : nil
-                    Button { slot = index } label: {
-                        Group {
-                            if let glyph { QuickReactionGlyph(controller: controller, emoji: glyph) } else { Image(systemName: "plus").font(.system(size: 18)).foregroundStyle(.secondary) }
-                        }
-                        .frame(width: 44, height: 44)
-                        .background(Color(.tertiarySystemFill), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityLabel(glyph.map { "候補 \(index + 1)：\($0)" } ?? "候補 \(index + 1)：空き")
-                    .accessibilityHint("タップして絵文字を選びます")
-                }
-            }
-            .padding(.vertical, 4)
+            QuickReactionSlots(controller: controller, row: row) { slot = $0 }
+                .padding(.vertical, 4)
             Button("元に戻す") { Task { _ = await controller.setQuickReactions(nil) } }
                 .disabled(setting == .unset)
         } header: {
@@ -1053,5 +1038,36 @@ private struct AdminInfoView: View {
         }
         .navigationTitle("管理")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// 「リアクションの候補」's six slots, spread across the row; a text emoji's slot as wide as its pill (2026-10-14: it
+/// spilled over the next ones), and the slots wrap onto a second line when they no longer fit.
+struct QuickReactionSlots: View {
+    let controller: AppController
+    let row: [String]
+    let onPick: (Int) -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                ForEach(0..<QuickReactions.count, id: \.self) { index in slot(index).frame(maxWidth: .infinity) }
+            }
+            ChipsLayout(spacing: 10) {
+                ForEach(0..<QuickReactions.count, id: \.self) { index in slot(index) }
+            }
+        }
+    }
+
+    private func slot(_ index: Int) -> some View {
+        let glyph = index < row.count ? row[index] : nil
+        return Button { onPick(index) } label: {
+            QuickReactionFace(wide: glyph.map { QuickReactions.isWide($0, store: controller.store) } ?? false, fill: Color(.tertiarySystemFill)) {
+                if let glyph { QuickReactionGlyph(controller: controller, emoji: glyph) } else { Image(systemName: "plus").font(.system(size: 18)).foregroundStyle(.secondary) }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(glyph.map { "候補 \(index + 1)：\($0)" } ?? "候補 \(index + 1)：空き")
+        .accessibilityHint("タップして絵文字を選びます")
     }
 }
