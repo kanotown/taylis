@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.ui.QuickReactions
 import jp.chikuwachat.android.ui.REACTION_PALETTE
+import jp.chikuwachat.android.ui.TextEmojiPill
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.jsonObject
 import java.io.File
@@ -117,5 +118,23 @@ class QuickReactionsTest {
         assertEquals(row, QuickReactions.replace(row, 2, "😂"))
         assertEquals(listOf("👍", "🙏"), QuickReactions.replace(listOf("👍"), 4, "🙏")) // an empty slot adds at the end
         assertEquals(listOf("👍"), QuickReactions.replace(listOf("👍"), 3, "👍"))
+    }
+
+    /**
+     * 2026-10-14: in a quick reaction button a text emoji's pill keeps the emoji's height (its button grows into a
+     * capsule) up to PILL_MAX wide; an image stays inside the circle. 「ありがとうございます」 was drawn 5 dp high.
+     */
+    @Test
+    fun aTextEmojiKeepsItsHeightAndAnImageStaysInTheCircle() {
+        val thanks = TextEmojiPill.aspect("ありがとうございます")
+        assertEquals(26f, QuickReactions.glyphHeight(thanks, isText = true, height = 26f, circle = 40f))
+        assertTrue("wider than the circle: its button grows", 26f * thanks > 46f)
+        assertEquals(26f, QuickReactions.glyphHeight(TextEmojiPill.aspect("了解"), isText = true, height = 26f, circle = 40f))
+        // Twelve wide letters (the longest label) would be 26 × 8.72 = 227 dp: scaled down to 200.
+        val longest = TextEmojiPill.aspect("あいうえおかきくけこさし")
+        val height = QuickReactions.glyphHeight(longest, isText = true, height = 26f, circle = 40f)
+        assertTrue(height < 26f && height * longest <= QuickReactions.PILL_MAX)
+        assertEquals(26f, QuickReactions.glyphHeight(1f, isText = false, height = 26f, circle = 40f))
+        assertEquals("a 3:1 image inside the circle", 13f, QuickReactions.glyphHeight(3f, isText = false, height = 26f, circle = 40f))
     }
 }

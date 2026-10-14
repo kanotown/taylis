@@ -722,21 +722,27 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
         }
     }
     SectionTitle(stringResource(R.string.you_screens_reaction_choices))
-    Row(Modifier.fillMaxWidth().widthIn(max = 376.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // A text emoji's slot is as wide as its pill (2026-10-14: it was drawn too small to read); the slots wrap when they
+    // no longer fit on one line, and share what is left of it.
+    FlowRow(
+        Modifier.fillMaxWidth().widthIn(max = 376.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         repeat(QuickReactions.COUNT) { index ->
             val glyph = slots.getOrNull(index)
             val shape = RoundedCornerShape(12.dp)
             Box(
-                Modifier.weight(1f).height(52.dp).clip(shape)
+                Modifier.weight(1f).widthIn(min = 48.dp).height(52.dp).clip(shape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                     .clickable(enabled = !saving, role = Role.Button, onClickLabel = stringResource(R.string.common_change)) { picking = index }
                     .semantics { contentDescription = L10n.str(R.string.you_screens_reaction_choice, index + 1, glyph?.let { CustomEmoji.name(it) ?: it } ?: L10n.str(R.string.you_screens_empty_slot)) },
                 contentAlignment = Alignment.Center,
             ) {
-                if (glyph != null) ReactionEmoji(
-                    glyph, store, { controller.loadEmojiImage(it) }, height = 28.dp, textStyle = TextStyle(fontSize = 24.sp),
-                    modifier = Modifier.clearAndSetSemantics {}, version = version,
+                if (glyph != null) QuickReactionGlyph(
+                    glyph, store, { controller.loadEmojiImage(it) }, height = 28.dp, circle = 40.dp, textStyle = TextStyle(fontSize = 24.sp),
+                    modifier = Modifier.padding(horizontal = if (isTextEmoji(glyph, store)) 8.dp else 0.dp).clearAndSetSemantics {}, version = version,
                 )
                 else Icon(Icons.Outlined.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

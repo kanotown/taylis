@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -116,6 +117,20 @@ object QuickReactions {
     /** The slots 自分 → 表示 edits. */
     const val COUNT = 6
 
+    /** The widest a text emoji's pill is drawn in a quick reaction button; a longer label is scaled down to it. */
+    const val PILL_MAX = 200f
+
+    /**
+     * 2026-10-14: the height (dp) a custom emoji `aspect` : 1 is drawn at in a quick reaction button whose emoji are
+     * `height` high. A text emoji's pill keeps that height up to [PILL_MAX] wide and its button grows into a capsule
+     * (drawn small enough for the circle it could not be read); an image stays inside the circle (`circle` wide).
+     */
+    fun glyphHeight(aspect: Float, isText: Boolean, height: Float, circle: Float): Float {
+        val limit = if (isText) PILL_MAX else circle
+        val natural = height * aspect
+        return if (natural > limit) kotlin.math.floor(height * limit / natural) else height
+    }
+
     /**
      * M50: slot `index` becomes `glyph`. The server takes each emoji once, so one already in another slot swaps places
      * with this slot's; an empty slot (past the end) adds it at the end, unless it is already there.
@@ -180,18 +195,21 @@ fun MessageMenu(
         scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); then() }
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
-        Row(
+        // A text emoji's button is as wide as its pill (2026-10-14); a row too wide for the phone wraps.
+        FlowRow(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             quick.forEach { emoji ->
                 Box(
-                    Modifier.size(46.dp).clip(CircleShape)
+                    Modifier.height(46.dp).widthIn(min = 46.dp).clip(CircleShape)
                         .background(if (emoji in reacted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { close { onReact(emoji) } },
+                        .clickable { close { onReact(emoji) } }
+                        .padding(horizontal = if (store != null && isTextEmoji(emoji, store)) 10.dp else 0.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (store != null) ReactionEmoji(emoji, store, onNeedEmojiImage, height = 26.dp, textStyle = MaterialTheme.typography.titleLarge, version = version ?: 0)
+                    if (store != null) QuickReactionGlyph(emoji, store, onNeedEmojiImage, height = 26.dp, circle = 40.dp, textStyle = MaterialTheme.typography.titleLarge, version = version ?: 0)
                     else Text(emoji, style = MaterialTheme.typography.titleLarge)
                 }
             }
@@ -262,6 +280,29 @@ fun ReactionEmoji(
     val box = modifier.height(height).width(height * CustomEmoji.aspect(custom))
     if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = custom.label ?: emoji, modifier = box)
     else Spacer(box)
+}
+
+/** A text emoji (its button grows with its pill, [QuickReactions.glyphHeight]). */
+fun isTextEmoji(emoji: String, store: Store): Boolean = CustomEmoji.name(emoji)?.let { store.customEmoji[it] }?.isText == true
+
+/**
+ * One quick reaction (the long-press sheet, 自分 → 表示's slots): [ReactionEmoji] at `height`, a custom one at
+ * [QuickReactions.glyphHeight] — a text emoji's pill as high as an emoji, an image inside the `circle`.
+ */
+@Composable
+fun QuickReactionGlyph(
+    emoji: String,
+    store: Store,
+    onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit,
+    height: androidx.compose.ui.unit.Dp,
+    circle: androidx.compose.ui.unit.Dp,
+    textStyle: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    version: Int = 0,
+) {
+    val custom = remember(emoji, version) { CustomEmoji.name(emoji)?.let { store.customEmoji[it] } }
+    val drawn = custom?.let { QuickReactions.glyphHeight(CustomEmoji.aspect(it), it.isText, height.value, circle.value).dp } ?: height
+    ReactionEmoji(emoji, store, onNeedEmojiImage, height = drawn, textStyle = textStyle, modifier = modifier, version = version)
 }
 
 /**
