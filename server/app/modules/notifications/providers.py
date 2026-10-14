@@ -81,6 +81,16 @@ def avatar_url(device: Device, path: object) -> str | None:
     return base + path
 
 
+def recipient_id(device: Device, payload: dict[str, Any]) -> str | None:
+    """Who the push is for (2026-10-15): the device's owner, or what the relay was told. A client
+    signed in as someone else since (a sign-out on the same server) ignores it for its widgets."""
+    given = payload.get("recipient_id")
+    if given:
+        return str(given)
+    owner = getattr(device, "user_id", None)
+    return str(owner) if owner else None
+
+
 class APNsPushProvider:
     """APNs HTTP/2 with token-based (.p8) authentication."""
 
@@ -160,6 +170,7 @@ class APNsPushProvider:
         body = {
             "aps": aps,
             "kind": payload.get("kind"),
+            "recipient_id": recipient_id(device, payload),
             "workspace_id": payload.get("workspace_id"),
             "channel_id": payload.get("channel_id"),
             "message_id": payload.get("message_id"),
@@ -327,6 +338,9 @@ class FCMPushProvider:
             )
             if payload.get(key) is not None
         }
+        recipient = recipient_id(device, payload)
+        if recipient:
+            data["recipient_id"] = recipient
         android: dict[str, Any] = {"priority": "NORMAL" if silent else "HIGH"}
         if payload.get("collapse_key"):
             android["collapse_key"] = str(payload["collapse_key"])[:64]

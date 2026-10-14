@@ -129,6 +129,8 @@ object UnreadWidgetRules {
      * next sync replaces all of it with the exact rows. Null when it changes nothing.
      */
     fun pushed(old: UnreadWidgetSnapshot, push: PushMessage, now: Long): UnreadWidgetSnapshot? {
+        // A push sent to the previous account of this server (it signed out; REVIEW-v0.1.62 follow-up) is not mine.
+        if (push.recipientId != null && push.recipientId != old.meId) return null
         val badge = push.badge
         var next = old
         val before = old.total

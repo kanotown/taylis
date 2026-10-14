@@ -34,6 +34,8 @@ data class PushMessage(
     val senderName: String? = null,
     val senderAvatar: String? = null,
     val channelType: String? = null,
+    /** 2026-10-15: whom the server sent it to (the device's owner); absent from older servers. */
+    val recipientId: String? = null,
 ) {
     val isSilent: Boolean get() = kind == "silent"
 
@@ -128,6 +130,7 @@ data class PushMessage(
                 senderName = data["sender_name"]?.takeIf { it.isNotBlank() },
                 senderAvatar = data["sender_avatar"]?.takeIf { it.isNotBlank() },
                 channelType = data["channel_type"]?.takeIf { it.isNotBlank() },
+                recipientId = data["recipient_id"]?.takeIf { it.isNotBlank() },
             )
         }
     }
