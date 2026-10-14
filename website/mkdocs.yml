@@ -134,6 +134,7 @@ nav:
       - 予約: guide/reservations.md
       - 在室状況と操作ボタン: guide/attendance.md
       - AI: guide/ai.md
+      - ホーム画面のウィジェット: guide/widgets.md
       - 通知の設定: guide/notifications.md
       - サイドバーと表示: guide/sidebar.md
   - 管理者:
