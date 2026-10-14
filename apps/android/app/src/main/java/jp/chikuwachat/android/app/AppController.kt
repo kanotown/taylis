@@ -447,10 +447,12 @@ class AppController(private val app: Application) {
 
     /** The home-screen widgets draw their words in the app's language: a new one redraws them. */
     private fun redrawWidgets() {
+        jp.chikuwachat.android.widget.WidgetLook.recompose()
         scope.launch {
-            jp.chikuwachat.android.widget.AttendanceWidgetData.redraw(app)
+            jp.chikuwachat.android.widget.AttendanceWidgetData.store.redraw(app)
             jp.chikuwachat.android.widget.UnreadWidgetData.store.redraw(app)
             jp.chikuwachat.android.widget.TodayWidgetData.redrawNow(app)
+            jp.chikuwachat.android.widget.WidgetPreviews.publish(app)
         }
     }
 
@@ -583,8 +585,16 @@ class AppController(private val app: Application) {
     private fun saveWorkspaces() = Workspaces.save(prefs, workspaces, activeKey)
 
     private fun replaceWorkspaces(list: List<Workspace>) {
+        val names = workspaces.map { it.serverUrl to it.name }
         workspaces = list
         saveWorkspaces()
+        if (list.map { it.serverUrl to it.name } != names) widgetWorkspacesChanged()
+    }
+
+    /** The widgets' workspace choices follow the list (names for their headers; a removed workspace's choices go). */
+    private fun widgetWorkspacesChanged() {
+        val names = workspaces.associate { it.serverUrl to it.name }
+        scope.launch { jp.chikuwachat.android.widget.WidgetWorkspaces.registered(app, names) }
     }
 
     private fun updateWorkspace(serverUrl: String, change: (Workspace) -> Workspace) {
@@ -610,6 +620,8 @@ class AppController(private val app: Application) {
         savedServer = legacyServer ?: DEFAULT_SERVER
         savedUsername = legacyUsername ?: ""
         workspacesLoaded = true
+        widgetWorkspacesChanged()
+        scope.launch { jp.chikuwachat.android.widget.WidgetRefreshWorker.ensure(app) }
     }
 
     /** Startup: the saved workspaces, then the active one's session (SYNC_PROTOCOL.md §7.2, WORKSPACES.md §5.2). */
@@ -635,6 +647,8 @@ class AppController(private val app: Application) {
         }.join()
         ssoPending.purgeExpired()
         push.refresh() // WORKSPACES.md §8: at startup the token goes to every signed-in workspace
+        // The widget picker's previews (Android 15+), once per version and language.
+        scope.launch { jp.chikuwachat.android.widget.WidgetPreviews.publish(app) }
     }
 
     /**
@@ -799,7 +813,10 @@ class AppController(private val app: Application) {
                 val client = clientFor(entry) ?: return@launch
                 try {
                     val summary = client.syncSummary()
-                    if (entry.serverUrl != activeKey) updateWorkspace(entry.serverUrl) { it.copy(badge = summary.badge, hasUnread = summary.hasUnread) }
+                    if (entry.serverUrl != activeKey) {
+                        updateWorkspace(entry.serverUrl) { it.copy(badge = summary.badge, hasUnread = summary.hasUnread) }
+                        entry.userId?.let { meId -> jp.chikuwachat.android.widget.UnreadWidgetData.summarized(app, entry.serverUrl, entry.name, meId, summary.badge) }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -1140,8 +1157,14 @@ class AppController(private val app: Application) {
                 if (this@AppController.store === store) store.me?.let { reconcileLanguage(api, it) }
             }
         }
-        // The 在室状況 home-screen widget follows the workspace on screen: its snapshot is written whenever what it draws
-        // changes (the bootstrap at launch and after reconnecting, attendance events, my own change, the workspace's name).
+        // The widgets that follow the app show this workspace now (its snapshots are kept per workspace, so the last known
+        // ones show at once); a widget that chose another workspace keeps it.
+        scope.launch {
+            jp.chikuwachat.android.widget.WidgetWorkspaces.setCurrent(app, workspaceUrl)
+            jp.chikuwachat.android.widget.WidgetRefreshWorker.ensure(app)
+        }
+        // The 在室状況 home-screen widget's snapshot of this workspace is written whenever what it draws changes (the
+        // bootstrap at launch and after reconnecting, attendance events, my own change, the workspace's name).
         scope.launch {
             store.version.map { widgetSnapshot(store, workspaceUrl) }.distinctUntilChanged().collect { snapshot ->
                 if (this@AppController.store === store && snapshot != null) {
@@ -3196,7 +3219,39 @@ class AppController(private val app: Application) {
         val users = store.users.values.takeIf { onScreen && it.isNotEmpty() }
         return jp.chikuwachat.android.widget.AttendanceWidgetRules.snapshot(
             serverUrl, entry.name, meId, jp.chikuwachat.android.ui.AttendanceRules.withEntry(board, mine), users, System.currentTimeMillis(),
+            known = jp.chikuwachat.android.widget.AttendanceWidgetData.read(app, serverUrl),
         )
+    }
+
+    /**
+     * The 在室状況 and 未読・メンション widgets of a workspace that is not on screen (widget/WidgetRefreshWorker): its board
+     * with the people (who is in the room, the app's count rule) and GET /sync/summary, through that workspace's own
+     * client. The workspace on screen is left to the app's own snapshots. Throws when the server could not be reached.
+     */
+    suspend fun widgetRefresh(serverUrl: String) {
+        ensureWorkspacesLoaded()
+        if (serverUrl == activeKey && api != null) return
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: return
+        val client = clientFor(entry) ?: return
+        val meId = entry.userId ?: client.me().id
+        val summary = client.syncSummary()
+        if (serverUrl != activeKey) updateWorkspace(serverUrl) { it.copy(badge = summary.badge, hasUnread = summary.hasUnread) }
+        jp.chikuwachat.android.widget.UnreadWidgetData.summarized(app, serverUrl, entry.name, meId, summary.badge)
+        val board = try {
+            client.attendance()
+        } catch (e: ApiException.Api) {
+            if (e.status == 403 || e.status == 404) null else throw e // a guest, or a server without the board: off
+        }
+        val users = if (board?.enabled == true) client.users() else null
+        jp.chikuwachat.android.widget.AttendanceWidgetData.publish(
+            app, jp.chikuwachat.android.widget.AttendanceWidgetRules.snapshot(serverUrl, entry.name, meId, board, users, System.currentTimeMillis()),
+        )
+    }
+
+    /** The workspaces a widget may show (its configuration screen): the signed-in ones, in the switcher's order. */
+    suspend fun widgetWorkspaces(): List<Workspace> {
+        ensureWorkspacesLoaded()
+        return workspaces.filter { !it.signedOut }
     }
 
     /** The snapshot of the workspace on screen for the widget; null until its board is known (the bootstrap). */
@@ -3233,8 +3288,7 @@ class AppController(private val app: Application) {
     /** A push for a workspace the app is not live in (handlePush). */
     private suspend fun pushReachedWidgets(serverUrl: String, message: PushMessage) {
         jp.chikuwachat.android.widget.UnreadWidgetData.pushed(app, serverUrl, message)
-        val today = jp.chikuwachat.android.widget.TodayWidgetData.store.read(app)
-        if ((message.isCalendar || message.isTask) && today?.serverUrl == serverUrl) requestTodayWidgetRead()
+        if ((message.isCalendar || message.isTask) && serverUrl in jp.chikuwachat.android.widget.TodayWidgetData.store.shown(app)) requestTodayWidgetRead()
     }
 
     /** A workspace signed out or left: its numbers, events and tasks leave the widgets (they ask to sign in). */
@@ -3244,14 +3298,14 @@ class AppController(private val app: Application) {
     }
 
     /**
-     * The 今日の予定・締切 widget's read (widget/TodayWidgetWorker), for the workspace on screen (the saved one when the
-     * app has not started): today's and tomorrow's events of my calendars and my tasks, through that workspace's own
+     * The 今日の予定・締切 widget's read (widget/TodayWidgetWorker), for a workspace a widget shows (its own choice, or the
+     * one on screen in the app): today's and tomorrow's events of my calendars and my tasks, through that workspace's own
      * client (its token refresh, its sign-out). Null when no workspace is signed in; throws when the server could not be
      * reached. A server without a calendar or tasks (404) gives none of them.
      */
-    suspend fun widgetReadToday(): jp.chikuwachat.android.widget.TodayWidgetSnapshot? {
+    suspend fun widgetReadToday(serverUrl: String): jp.chikuwachat.android.widget.TodayWidgetSnapshot? {
         ensureWorkspacesLoaded()
-        val entry = workspaces.firstOrNull { it.serverUrl == activeKey } ?: return null
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: return null
         if (entry.signedOut) return null
         val client = clientFor(entry) ?: return null
         val meId = entry.userId ?: store.me?.id?.takeIf { entry.serverUrl == activeKey } ?: client.me().id

@@ -14,7 +14,7 @@ import jp.chikuwachat.android.ui.AttendanceIcons
 /**
  * The states' icons for the widget: a home-screen widget cannot draw a Compose [ImageVector], so the same Material icon
  * the app draws (AttendanceIcons) is painted once into a small white bitmap, then tinted by the widget (ColorFilter).
- * Kept per key for the process (16 icons at most, a few KB each).
+ * Kept per key for the process (a few dozen icons at most, a few KB each).
  */
 object WidgetIcons {
     private const val PX = 72
@@ -26,6 +26,10 @@ object WidgetIcons {
         val vector = AttendanceIcons.vector(key) ?: return null
         return cache.getOrPut(key!!) { render(vector) }
     }
+
+    /** The white picture of any Material icon (the widgets' row and kind glyphs), kept under [key]. */
+    @Synchronized
+    fun bitmap(key: String, vector: ImageVector): Bitmap = cache.getOrPut("ui:$key") { render(vector) }
 
     private fun render(vector: ImageVector): Bitmap {
         val bitmap = Bitmap.createBitmap(PX, PX, Bitmap.Config.ARGB_8888)

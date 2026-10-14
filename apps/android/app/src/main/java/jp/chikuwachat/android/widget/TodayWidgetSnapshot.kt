@@ -208,6 +208,20 @@ object TodayWidgetRules {
         return if (at.isBefore(floor)) floor else at
     }
 
+    /** The soonest of [nextRefresh] over the workspaces the widgets show (midnight when they hold nothing). */
+    fun nextRefresh(snapshots: Collection<TodayWidgetSnapshot>, now: Instant, zone: ZoneId = CalendarDates.zone()): Instant =
+        snapshots.map { nextRefresh(it, now, zone) }.minOrNull() ?: nextRefresh(null as TodayWidgetSnapshot?, now, zone)
+
+    /**
+     * Whether the wide and tall widget's list ([heightDp] high: 14 dp padding each side, the 20 dp header and 8 dp under
+     * it) cannot show every line: [events] rows of 30 dp, then the 「締切」 heading (26 dp) and [tasks] rows.
+     */
+    fun listOverflows(heightDp: Float, events: Int, tasks: Int): Boolean {
+        val room = heightDp - 28f - 20f - 8f
+        val needed = maxOf(events, 1) * 30f + if (tasks > 0) 26f + tasks * 30f else 0f
+        return needed > room
+    }
+
     /** Whether a scheduled redraw at [now] should read the server again: the snapshot is not of today (a new day). */
     fun needsRead(snapshot: TodayWidgetSnapshot?, today: LocalDate): Boolean = snapshot == null || snapshot.day != today.toString()
 

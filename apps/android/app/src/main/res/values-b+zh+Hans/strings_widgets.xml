@@ -7,7 +7,6 @@
 
     <string name="unread_widget_name">未读与提及</string>
     <string name="unread_widget_description">显示提及和未读私信的数量，以及所在的会话</string>
-    <string name="unread_widget_parts">提及 %1$d · 私信 %2$d</string>
     <string name="unread_widget_none">没有未读</string>
     <string name="unread_widget_open">%1$s：提及和未读私信 %2$d 条（打开 Taylis）</string>
     <string name="unread_widget_row">%1$s，%2$d 条（打开会话）</string>
@@ -22,4 +21,30 @@
     <string name="today_widget_event_row">%1$s %2$s（打开日程）</string>
     <string name="today_widget_task_row">任务 %1$s，%2$s（打开任务）</string>
     <string name="today_widget_tasks_open">%1$s（打开任务）</string>
+
+    <string name="widget_loading">正在加载…</string>
+    <string name="widget_unread_label">未读</string>
+    <string name="widget_unread_parts_short">@%1$d · 私信 %2$d</string>
+    <string name="widget_unread_none_short">无未读</string>
+    <string name="today_widget_none_today">今天没有日程</string>
+    <string name="today_widget_deadlines">截止</string>
+    <string name="today_widget_due_count">截止 %1$d</string>
+    <string name="attendance_widget_nobody">没有人在室</string>
+    <string name="widget_config_title">小组件的工作区</string>
+    <string name="widget_config_follow">应用中打开的工作区</string>
+    <string name="widget_config_follow_hint">在应用中切换工作区时，此小组件也会切换</string>
+    <string name="widget_config_note">之后也可以长按小组件进行更改</string>
+    <string name="widget_config_none">没有已登录的工作区。请打开 Taylis 并登录</string>
+    <string name="widget_preview_person_1">佐藤 花子</string>
+    <string name="widget_preview_person_2">铃木 一郎</string>
+    <string name="widget_preview_person_3">田中 美咲</string>
+    <string name="widget_preview_channel_1">#全体通知</string>
+    <string name="widget_preview_channel_2">#研讨会</string>
+    <string name="widget_preview_event_1">研讨会（轮读）</string>
+    <string name="widget_preview_event_2">研究室例会</string>
+    <string name="widget_preview_task_1">提交期中报告</string>
+    <string name="widget_preview_state_in">在室</string>
+    <string name="widget_preview_state_on">校内</string>
+    <string name="widget_preview_state_off">校外</string>
+    <string name="widget_preview_state_gone">回家</string>
 </resources>

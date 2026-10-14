@@ -38,12 +38,12 @@ class AttendanceWidgetWorker(context: Context, params: WorkerParameters) : Corou
         try {
             val fresh = withContext(Dispatchers.Main) { controller.widgetSetAttendance(serverUrl, meId, stateId) }
             val now = System.currentTimeMillis()
-            AttendanceWidgetData.update(applicationContext) { old -> AttendanceWidgetRules.answered(old, fresh, stateId, now) }
+            AttendanceWidgetData.store.update(applicationContext, serverUrl) { old -> AttendanceWidgetRules.answered(old, fresh, stateId, now) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w("AttendanceWidget", "could not set the attendance state", e)
-            AttendanceWidgetData.update(applicationContext) { old -> AttendanceWidgetRules.failedPress(old, stateId) }
+            AttendanceWidgetData.store.update(applicationContext, serverUrl) { old -> AttendanceWidgetRules.failedPress(old, stateId) }
         }
         AttendanceWidgetData.redraw(applicationContext)
         // Always success: the next press in the chain still runs (a failed one would cancel it).

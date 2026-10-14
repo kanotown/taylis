@@ -81,6 +81,21 @@ class PlanWidgetsTest {
         assertEquals(listOf("alice", "general", "group", "muted"), s.rows.map { it.channelId })
         assertEquals(UnreadRow("alice", "dm:alice", 3, dm = true, lastAt = "2026-10-14T02:30:00Z"), s.rows[0])
         assertEquals(1, s.rows.first { it.channelId == "muted" }.count)
+        assertTrue(s.rows.first { it.channelId == "group" }.group)
+    }
+
+    @Test
+    fun aDmRowKnowsTheOtherPersonForItsFace() {
+        val s = unread(
+            listOf(
+                channel("bob-dm", type = "dm", unread = 1, dmUsers = listOf("me", "bob")),
+                channel("self", type = "dm", unread = 1, dmUsers = listOf("me")),
+                channel("group", type = "group_dm", unread = 1, dmUsers = listOf("me", "bob", "carol")),
+            ),
+        )
+        assertEquals("bob", s.rows.first { it.channelId == "bob-dm" }.userId)
+        assertEquals("me", s.rows.first { it.channelId == "self" }.userId)
+        assertNull(s.rows.first { it.channelId == "group" }.userId)
     }
 
     @Test

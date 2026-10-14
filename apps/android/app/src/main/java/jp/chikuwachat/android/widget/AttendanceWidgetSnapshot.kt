@@ -36,13 +36,25 @@ data class AttendanceWidgetSnapshot(
     val pendingStateId: String? = null,
     val pendingAt: Long = 0,
     val failed: Boolean = false,
+    /** The people in an in_room state other than me, longest there first (the face pile; a name may be unknown, ""). */
+    val present: List<WidgetPerson> = emptyList(),
+    /** My name (my face in the pile while I am in the room); "" when not known. */
+    val meName: String = "",
 ) {
     /** What the widget shows as my state: the press waiting for its answer, else the confirmed one. */
     val shownState: WidgetState? get() = pendingStateId?.let { id -> states.firstOrNull { it.id == id } } ?: myState
 
     /** 「在室 n 人」 as the app counts it, with my shown state. */
     val inRoomCount: Int get() = inRoomOthers + if (meCounted && shownState?.kind == "in_room") 1 else 0
+
+    /** The faces of the people in the room: me first while my shown state is in the room, then the others. */
+    val faces: List<WidgetPerson> get() =
+        (if (meCounted && shownState?.kind == "in_room") listOf(WidgetPerson(meId, meName)) else emptyList()) + present
 }
+
+/** Someone in the room as the widget draws them: initials on their avatar colour (the app's picture-less avatar). */
+@Serializable
+data class WidgetPerson(val id: String, val name: String)
 
 /** One state as the widget draws it (a copy of [AttendanceStateOut]'s visible parts). */
 @Serializable
@@ -93,12 +105,17 @@ object AttendanceWidgetRules {
      */
     fun snapshot(
         serverUrl: String, workspaceName: String, meId: String, board: AttendanceBoardOut?, users: Collection<UserPublic>?, now: Long,
+        known: AttendanceWidgetSnapshot? = null,
     ): AttendanceWidgetSnapshot {
         if (board == null || !board.enabled) return AttendanceWidgetSnapshot(serverUrl, workspaceName, meId, enabled = false, updatedAt = now)
         val people = users?.filter(AttendanceRules::onBoard)?.map { it.id }?.toSet()
-        val others = board.entries.count { entry ->
+        val inRoom = board.entries.filter { entry ->
             entry.userId != meId && (people == null || entry.userId in people) && AttendanceRules.stateOf(board, entry.stateId)?.kind == "in_room"
         }
+        // Names: the people this device knows; without them (a press while the workspace is not loaded) the last snapshot's.
+        val names = users?.associate { it.id to it.displayName }
+            ?: (known?.present.orEmpty().associate { it.id to it.name } + (meId to (known?.meName ?: "")))
+        val present = inRoom.sortedBy { it.since }.map { WidgetPerson(it.userId, names[it.userId].orEmpty()) }
         val mine = AttendanceRules.entryOf(board, meId)
         return AttendanceWidgetSnapshot(
             serverUrl = serverUrl,
@@ -108,9 +125,11 @@ object AttendanceWidgetRules {
             states = AttendanceRules.myChoices(board, meId).map(WidgetState::of),
             myState = AttendanceRules.stateOf(board, mine?.stateId)?.let(WidgetState::of),
             myNote = mine?.note,
-            inRoomOthers = others,
+            inRoomOthers = inRoom.size,
             meCounted = people == null || meId in people,
             updatedAt = now,
+            present = present,
+            meName = names[meId].orEmpty(),
         )
     }
 
@@ -188,12 +207,33 @@ object AttendanceWidgetRules {
     private val KIND_PRIORITY = listOf("in_room", "gone", "on_site", "off_site")
 
     /**
-     * How many state buttons fit across a wide widget [widthDp] wide: [tall] = a row of buttons with their names under
-     * the icons below my state; short = round icon buttons beside my state (about 120 dp).
+     * How many state buttons fit across a wide widget [widthDp] wide (16 dp padding each side): [tall] = a row of
+     * buttons with their names under the icons (about 62 dp each); short = round icon buttons (42 dp and a 6 dp gap)
+     * beside my state's badge and the faces (about 130 dp).
      */
     fun wideButtonCount(widthDp: Float, tall: Boolean): Int {
-        val room = if (tall) widthDp - 16f else widthDp - 16f - 120f
-        val each = if (tall) 60f else 44f
+        val room = if (tall) widthDp - 32f else widthDp - 32f - 130f
+        val each = if (tall) 62f else 48f
         return (room / each).toInt().coerceIn(1, MAX_WIDE_BUTTONS)
+    }
+
+    /** The width of one named face (the wide and tall widget's people). */
+    const val NAMED_FACE_DP = 52
+
+    /**
+     * How many named faces fit [roomDp] for [total] people: all when they fit, else one place fewer for 「+n」; at most
+     * 9 (a Row draws at most 10 children).
+     */
+    fun namedFacesThatFit(roomDp: Float, total: Int): Int {
+        val places = (roomDp / NAMED_FACE_DP).toInt().coerceIn(1, 10)
+        return if (total <= places) total else (places - 1).coerceIn(0, 9)
+    }
+
+    /** The name under a face: the first word (a family name 「佐藤 花子」 → 佐藤, "Hana Sato" → Hana), at most what fits under the face. */
+    fun shortName(name: String): String {
+        val first = name.trim().split(Regex("[\\s\u3000]+")).firstOrNull().orEmpty()
+        // About 50 dp of 10 sp text: 8 narrow letters, or 5 wide (CJK) ones.
+        val max = if (first.all { it.code < 0x2E80 }) 8 else 5
+        return if (first.length > max) first.take(max - 1) + "…" else first
     }
 }
