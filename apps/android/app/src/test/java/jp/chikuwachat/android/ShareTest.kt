@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.app.Workspace
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
@@ -10,6 +11,8 @@ import jp.chikuwachat.android.share.ShareApi
 import jp.chikuwachat.android.share.ShareDestinations
 import jp.chikuwachat.android.share.ShareFileMissing
 import jp.chikuwachat.android.share.ShareIntentData
+import jp.chikuwachat.android.share.ShareStream
+import jp.chikuwachat.android.share.OwnProviders
 import jp.chikuwachat.android.share.ShareJob
 import jp.chikuwachat.android.share.ShareJobFile
 import jp.chikuwachat.android.share.ShareJobs
@@ -30,19 +33,35 @@ import java.nio.file.Files
 
 /** MOBILE_UI.md §20: sharing from other apps (intent → items, destinations, the background send). */
 class ShareTest {
-    private val own = setOf("jp.chikuwachat.android.files", "jp.chikuwachat.android.androidx-startup")
+    private val ownNames = setOf("jp.chikuwachat.android.files", "jp.chikuwachat.android.androidx-startup")
+    private val own = OwnProviders(ownNames)
+
+    /**
+     * What android.net.Uri gives for a URI (ShareActivity.read): the scheme, and the authority percent-decoded as
+     * Uri.getAuthority() decodes it — what ContentResolver resolves.
+     */
+    private fun stream(uri: String): ShareStream {
+        val scheme = uri.substringBefore(':', "").ifEmpty { null }
+        val rest = uri.substringAfter(':', "")
+        val raw = if (rest.startsWith("//")) rest.substring(2).takeWhile { it != '/' && it != '?' && it != '#' } else null
+        return ShareStream(uri, scheme, raw?.let { java.net.URLDecoder.decode(it.replace("+", "%2B"), "UTF-8") })
+    }
+
+    private fun streams(vararg uris: String) = uris.map(::stream)
+
+    private fun readable(uri: String, providers: OwnProviders = own) = stream(uri).let { SharePayload.isReadable(it.scheme, it.authority, providers) }
     private val send = SharePayload.ACTION_SEND
     private val multiple = SharePayload.ACTION_SEND_MULTIPLE
 
     // --- intent → items ---------------------------------------------------------------------------
 
     @Test fun aSharedFileIsItsContentUri() {
-        val request = SharePayload.parse(ShareIntentData(send, streams = listOf("content://com.android.providers.downloads.documents/document/12")), own)
+        val request = SharePayload.parse(ShareIntentData(send, streams = streams("content://com.android.providers.downloads.documents/document/12")), own)
         assertEquals(ShareRequest(listOf("content://com.android.providers.downloads.documents/document/12"), "", null), request)
     }
 
     @Test fun severalFilesKeepTheirOrderOnce() {
-        val request = SharePayload.parse(ShareIntentData(multiple, streams = listOf("content://media/external/images/1", "content://media/external/images/2", "content://media/external/images/1")), own)!!
+        val request = SharePayload.parse(ShareIntentData(multiple, streams = streams("content://media/external/images/1", "content://media/external/images/2", "content://media/external/images/1")), own)!!
         assertEquals(listOf("content://media/external/images/1", "content://media/external/images/2"), request.uris)
     }
 
@@ -50,7 +69,7 @@ class ShareTest {
         val request = SharePayload.parse(
             ShareIntentData(
                 multiple,
-                streams = listOf(
+                streams = streams(
                     "file:///data/data/jp.chikuwachat.android/databases/chikuwa.db",
                     "content://jp.chikuwachat.android.files/downloads/a.pdf",
                     "CONTENT://JP.CHIKUWACHAT.ANDROID.FILES/x",
@@ -62,9 +81,50 @@ class ShareTest {
         assertEquals(listOf("content://com.google.android.apps.photos.contentprovider/0/1"), request.uris)
         assertEquals(3, request.refused)
         // Only refused files and no text: still a share, so the screen can say why nothing can be sent.
-        assertEquals(1, SharePayload.parse(ShareIntentData(send, streams = listOf("file:///sdcard/a.txt")), own)!!.refused)
-        assertTrue(SharePayload.isReadable("content://user@com.other/1", own))
-        assertTrue(!SharePayload.isReadable("content://", own))
+        assertEquals(1, SharePayload.parse(ShareIntentData(send, streams = streams("file:///sdcard/a.txt")), own)!!.refused)
+        assertTrue(readable("content://user@com.other/1"))
+        assertTrue(!readable("content://"))
+    }
+
+    @Test fun ownProvidersAreRefusedHoweverTheAuthorityIsSpelled() {
+        // REVIEW-v0.1.62 #2: Android decodes the authority before it resolves the provider; so does the check.
+        assertTrue(!readable("content://jp%2Echikuwachat%2Eandroid%2Efiles/downloads/review-private.txt"))
+        assertTrue(!readable("content://%6A%70.chikuwachat.android.files/downloads/a"))
+        assertTrue(!readable("content://jp.chikuwachat.android%2efiles/camera/b.jpg"))
+        // A user id in front (ContentProvider.getAuthorityWithoutUserId), and any case.
+        assertTrue(!readable("content://10@jp.chikuwachat.android.files/downloads/a"))
+        assertTrue(!readable("content://0@JP.CHIKUWACHAT.ANDROID.FILES/downloads/a"))
+        assertTrue(!readable("content://Jp.ChikuwaChat.Android.Files/downloads/a"))
+        assertTrue(!readable("content://10%40jp.chikuwachat.android.files/downloads/a"))
+        // An alias the manifest list misses: the system says it resolves to this app's package.
+        val resolving = OwnProviders(ownNames) { it.equals("jp.chikuwachat.android.alias", ignoreCase = true) }
+        assertTrue(!readable("content://jp.chikuwachat.android.alias/x", resolving))
+        assertTrue(!readable("content://5@jp%2Echikuwachat%2Eandroid%2Ealias/x", resolving))
+        // When the system cannot be asked, nothing is read.
+        assertTrue(!readable("content://com.other/1", OwnProviders(ownNames) { throw SecurityException("no") }))
+        // The whole intent: refused and counted.
+        val request = SharePayload.parse(
+            ShareIntentData(multiple, streams = streams("content://jp%2Echikuwachat%2Eandroid%2Efiles/downloads/x", "content://10@jp.chikuwachat.android.files/y")),
+            own,
+        )!!
+        assertEquals(emptyList<String>(), request.uris)
+        assertEquals(2, request.refused)
+    }
+
+    @Test fun otherAppsContentIsStillAccepted() {
+        val resolving = OwnProviders(ownNames) { it == "jp.chikuwachat.android.files" }
+        for (uri in listOf(
+            "content://com.android.providers.media.documents/document/image%3A12",
+            "content://media/external/images/media/1",
+            "content://com.google.android.apps.photos.contentprovider/0/1/mediakey%3A%2Flocal%253A1/ORIGINAL/NONE/1",
+            "content://0@media/external/images/media/2",
+            "CONTENT://com.example.files/a%20b.pdf",
+        )) {
+            assertTrue(uri, readable(uri, resolving))
+        }
+        // The share keeps the text exactly as Android gave it (the read parses the same text again).
+        val uri = "content://com.android.providers.media.documents/document/image%3A12"
+        assertEquals(listOf(uri), SharePayload.parse(ShareIntentData(send, streams = streams(uri)), resolving)!!.uris)
     }
 
     @Test fun aLinkFromABrowserIsTheTextWithItsTitleInFront() {
@@ -74,14 +134,14 @@ class ShareTest {
         assertEquals("Example https://example.com", SharePayload.parse(ShareIntentData(send, texts = listOf("Example https://example.com"), subject = "Example"), own)!!.text)
         assertEquals("件名だけ", SharePayload.parse(ShareIntentData(send, subject = " 件名だけ "), own)!!.text)
         // With files the subject is left out (a mail app's subject is not the message).
-        val withFile = ShareIntentData(send, streams = listOf("content://a/1"), texts = listOf("見て"), subject = "Fwd: 資料")
+        val withFile = ShareIntentData(send, streams = streams("content://a/1"), texts = listOf("見て"), subject = "Fwd: 資料")
         assertEquals("見て", SharePayload.parse(withFile, own)!!.text)
         // Several texts (SEND_MULTIPLE) one per line, blanks dropped.
         assertEquals("a\nb", SharePayload.parse(ShareIntentData(multiple, texts = listOf(" a ", "", "b")), own)!!.text)
     }
 
     @Test fun otherIntentsOrEmptySharesAreNothing() {
-        assertNull(SharePayload.parse(ShareIntentData("android.intent.action.VIEW", streams = listOf("content://a/1")), own))
+        assertNull(SharePayload.parse(ShareIntentData("android.intent.action.VIEW", streams = streams("content://a/1")), own))
         assertNull(SharePayload.parse(ShareIntentData(send), own))
         assertNull(SharePayload.parse(ShareIntentData(send, texts = listOf("  ")), own))
         assertNull(SharePayload.parse(ShareIntentData(null), own))
@@ -196,16 +256,22 @@ class ShareTest {
         /** The post stores the message but its answer is lost (the network dropped after the commit). */
         var loseAnswerOnce = false
         var next = 0
+        /** Runs after each upload's answer (an account change half-way). */
+        var afterUpload: () -> Unit = {}
+        /** Every call this server got (REVIEW-v0.1.62 #1: none may reach another person's session). */
+        val calls: Int get() = uploads.size + posts.size + failedCalls
+        var failedCalls = 0
 
         override suspend fun upload(job: ShareJob, file: ShareJobFile, sent: (Long) -> Unit): String {
-            failUploads.removeFirstOrNull()?.let { throw it }
+            failUploads.removeFirstOrNull()?.let { failedCalls++; throw it }
             sent(file.size / 2)
             uploads += file.path
+            afterUpload()
             return "att-" + (++next)
         }
 
         override suspend fun post(channelId: String, clientMsgId: String, body: String, attachmentIds: List<String>): MessageOut {
-            failPosts.removeFirstOrNull()?.let { throw it }
+            failPosts.removeFirstOrNull()?.let { failedCalls++; throw it }
             posts += Triple(clientMsgId, body, attachmentIds)
             val message = messages.getOrPut(clientMsgId) {
                 MessageOut(id = "m" + (messages.size + 1), channelId = channelId, senderId = "me", seq = messages.size + 1, updatedSeq = 1,
@@ -223,7 +289,7 @@ class ShareTest {
         val server = FakeServer()
         val saved = mutableListOf<ShareJob>()
         val progress = mutableListOf<Pair<Long, Long>>()
-        val outcome = ShareSender(server, { saved += it }) { sent, total -> progress += sent to total }.run(job())
+        val outcome = ShareSender(server, { saved += it }, progress = { sent, total -> progress += sent to total }).run(job())
         assertTrue(outcome is ShareOutcome.Posted)
         assertEquals(listOf("0", "1"), server.uploads)
         assertEquals(listOf(Triple("key-1", "見て", listOf("att-1", "att-2"))), server.posts)
@@ -300,5 +366,120 @@ class ShareTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    // --- the share's account (REVIEW-v0.1.62 #1) ------------------------------------------------------
+
+    private val alice = Workspace(serverUrl = "http://s", name = "s", username = "alice", userId = "user-a", session = "sign-in-a")
+    private val bob = Workspace(serverUrl = "http://s", name = "s", username = "bob", userId = "user-b", session = "sign-in-b")
+    private fun aliceJob(files: Int = 2) = job(files).copy(userId = "user-a", session = "sign-in-a")
+
+    /**
+     * What ShareWorker does with the controller: the client of the job's own account ([ShareJob.accountIn], else no
+     * request at all), and the account checked again around every call (AppController.shareStillOurs).
+     */
+    private suspend fun resume(job: ShareJob, workspaces: () -> List<Workspace>, servers: Map<String, FakeServer>, save: (ShareJob) -> Unit = {}): ShareOutcome {
+        val entry = job.accountIn(workspaces()) ?: return ShareOutcome.Dropped
+        val api = servers.getValue(entry.username)
+        return ShareSender(api, save, stillOurs = { job.accountIn(workspaces())?.username == entry.username }).run(job)
+    }
+
+    @Test fun aShareResumedAfterAnotherPersonSignedInIsDroppedWithoutARequest() = runBlocking {
+        val tokenA = FakeServer()
+        val tokenB = FakeServer()
+        val servers = mapOf("alice" to tokenA, "bob" to tokenB)
+        // Waiting for a network (nothing sent yet), with text only, and with files: A signs out, B signs in on the same server.
+        for (pending in listOf(aliceJob(0), aliceJob(2), aliceJob(1).copy(files = listOf(ShareJobFile("0", "a.pdf", null, 10, attachmentId = "att-a"))))) {
+            assertTrue(resume(pending, { listOf(bob) }, servers) is ShareOutcome.Dropped)
+        }
+        assertEquals(0, tokenB.calls)
+        assertEquals(0, tokenA.calls)
+        // The same with A's entry signed out, removed, signed in again (a new sign-in), or a job of an older version.
+        assertNull(aliceJob().accountIn(listOf(alice.copy(signedOut = true))))
+        assertNull(aliceJob().accountIn(emptyList()))
+        assertNull(aliceJob().accountIn(listOf(alice.copy(session = "sign-in-a2"))))
+        assertNull(job().accountIn(listOf(alice)))
+        assertNull(aliceJob().accountIn(listOf(alice.copy(serverUrl = "http://other"))))
+        // Still A's: it runs, through A's client only.
+        assertEquals(alice, aliceJob().accountIn(listOf(bob.copy(serverUrl = "http://other"), alice)))
+        assertTrue(resume(aliceJob(), { listOf(alice) }, servers) is ShareOutcome.Posted)
+        assertEquals(1, tokenA.posts.size)
+        assertEquals(0, tokenB.calls)
+        // An entry signed in before sign-in ids existed binds a job by the user id alone.
+        assertEquals(alice.copy(session = null), aliceJob().copy(session = null).accountIn(listOf(alice.copy(session = null))))
+    }
+
+    @Test fun anAccountChangeHalfWayStopsTheShare() = runBlocking {
+        val tokenA = FakeServer()
+        val servers = mapOf("alice" to tokenA, "bob" to FakeServer())
+        var workspaces = listOf(alice)
+        // Mid-upload: A signs out and B signs in while the first file goes up; nothing more is sent.
+        tokenA.afterUpload = { workspaces = listOf(bob) }
+        var stored = aliceJob(3)
+        val outcome = resume(stored, { workspaces }, servers) { stored = it }
+        assertTrue(outcome is ShareOutcome.Dropped)
+        assertEquals(listOf("0"), tokenA.uploads)
+        assertTrue(tokenA.posts.isEmpty())
+        assertEquals(0, servers.getValue("bob").calls)
+        // Waiting for a retry: the account changes before the next attempt, which sends nothing.
+        val tokenA2 = FakeServer().apply { failPosts += ApiException.Network(IOException("offline")) }
+        var signedIn = listOf(alice)
+        val sender = ShareSender(tokenA2, {}, stillOurs = { aliceJob(0).accountIn(signedIn) != null })
+        assertTrue(sender.run(aliceJob(0)) is ShareOutcome.Retry)
+        signedIn = listOf(bob)
+        assertTrue(sender.run(aliceJob(0)) is ShareOutcome.Dropped)
+        assertTrue(tokenA2.posts.isEmpty())
+        assertEquals(1, tokenA2.calls)
+        // The post on its way when A signed out: the refusal of the revoked token is the sign-out's doing, not reported.
+        val revoked = FakeServer()
+        var during = listOf(alice)
+        val flipping = object : ShareApi by revoked {
+            override suspend fun post(channelId: String, clientMsgId: String, body: String, attachmentIds: List<String>): MessageOut {
+                during = listOf(bob) // signed out while the post was on its way: the server refuses the revoked token
+                throw ApiException.Api(401, "invalid_token", "x")
+            }
+        }
+        assertTrue(ShareSender(flipping, {}, stillOurs = { aliceJob(0).accountIn(during) != null }).run(aliceJob(0)) is ShareOutcome.Dropped)
+    }
+
+    @Test fun aSignOutRemovesTheAccountsJobsAndTheirCopies() {
+        val root = Files.createTempDirectory("share").toFile()
+        try {
+            val jobs = ShareJobs(root)
+            val a1 = aliceJob().copy(id = "a1")
+            val a2 = aliceJob(0).copy(id = "a2")
+            val b1 = aliceJob().copy(id = "b1", userId = "user-b", session = "sign-in-b")
+            val other = aliceJob().copy(id = "o1", serverUrl = "http://other")
+            for (j in listOf(a1, a2, b1, other)) {
+                jobs.save(j)
+                File(jobs.dir(j.id), "0").writeText("copy of " + j.id)
+            }
+            // Another account signs in on the same server: the jobs of everyone else there go, its own stay.
+            assertEquals(setOf("a1", "a2"), jobs.dropAccount("http://s", keepUserId = "user-b").map { it.id }.toSet())
+            assertTrue(!jobs.dir("a1").exists() && !jobs.dir("a2").exists())
+            assertEquals(b1, jobs.read("b1"))
+            // A sign-out: every job of that server, with its copies; another server's stay.
+            assertEquals(listOf("b1"), jobs.dropAccount("http://s").map { it.id })
+            assertTrue(!jobs.dir("b1").exists())
+            assertEquals(other, jobs.read("o1"))
+            assertTrue(File(jobs.dir("o1"), "0").isFile)
+            // Work that runs on after its job was removed never writes it back.
+            jobs.update(a1.copy(files = a1.files.map { it.copy(attachmentId = "x") }))
+            assertNull(jobs.read("a1"))
+            assertTrue(!jobs.dir("a1").exists())
+            jobs.update(other.copy(reuploaded = true))
+            assertTrue(jobs.read("o1")!!.reuploaded)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun aWidgetPressIsSentOnlyAsThePersonWhoPressed() {
+        // AppController.widgetSetAttendance: the press carries the snapshot's meId (A); B signed in on the same server.
+        assertTrue(alice.isAccount("user-a", null))
+        assertTrue(!bob.isAccount("user-a", null))
+        assertTrue(!alice.copy(signedOut = true).isAccount("user-a", null))
+        assertTrue(!alice.isAccount(null, null))
+        assertTrue(!alice.copy(userId = null).isAccount("user-a", null))
     }
 }

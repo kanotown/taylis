@@ -18,6 +18,13 @@ data class ShareJob(
     val id: String,
     /** The workspace (its server URL, the list key, WORKSPACES.md §4). */
     val serverUrl: String,
+    /**
+     * The account that shared it (REVIEW-v0.1.62 #1): its immutable user id and its sign-in (Workspace.session). The
+     * job runs only while that account is the one signed in to [serverUrl], never as whoever signed in there next. A
+     * job saved by an older version has no user id and is not sent.
+     */
+    val userId: String? = null,
+    val session: String? = null,
     val channelId: String,
     /** For the notifications (「#general に送信しました」). */
     val channelTitle: String,
@@ -27,6 +34,13 @@ data class ShareJob(
     /** The uploads were made again once already because the server no longer took the first ones (§20.4). */
     val reuploaded: Boolean = false,
 ) {
+    /**
+     * REVIEW-v0.1.62 #1: the entry of [workspaces] this job may run in — its server, signed in as its account in its
+     * sign-in ([Workspace.isAccount]); null when that account signed out or another one signed in there since.
+     */
+    fun accountIn(workspaces: List<jp.chikuwachat.android.app.Workspace>): jp.chikuwachat.android.app.Workspace? =
+        workspaces.firstOrNull { it.serverUrl == serverUrl }?.takeIf { it.isAccount(userId, session) }
+
     /** Bytes still to upload. */
     val pendingBytes: Long get() = files.filter { it.attachmentId == null }.sumOf { it.size }
 
@@ -67,6 +81,8 @@ sealed interface ShareOutcome {
     data class Retry(val error: Throwable) : ShareOutcome
     /** Refused (a 4xx, signed out, a missing file): the share ends with a notification. */
     data class Failed(val error: Throwable) : ShareOutcome
+    /** Its account is no longer the one signed in (signed out, another person signed in): dropped, nothing sent as another. */
+    data object Dropped : ShareOutcome
 }
 
 /**
@@ -80,7 +96,18 @@ class ShareSender(
     private val api: ShareApi,
     private val save: (ShareJob) -> Unit,
     private val progress: (sent: Long, total: Long) -> Unit = { _, _ -> },
+    /**
+     * Whether the job's account is still the one signed in (REVIEW-v0.1.62 #1): asked before every call and after every
+     * answer, so an account change half-way (a sign-out, another person signing in) stops the share there.
+     */
+    private val stillOurs: suspend () -> Boolean = { true },
 ) {
+    private class AccountChanged : Exception("the share's account is no longer signed in")
+
+    private suspend fun ensureOurs() {
+        if (!stillOurs()) throw AccountChanged()
+    }
+
     suspend fun run(start: ShareJob): ShareOutcome {
         var job = start
         while (true) {
@@ -89,17 +116,25 @@ class ShareSender(
                 var done = 0L
                 job.files.forEachIndexed { index, file ->
                     if (file.attachmentId != null) return@forEachIndexed
+                    ensureOurs()
                     val id = api.upload(job, file) { sent -> progress(done + sent, total) }
+                    ensureOurs()
                     done += file.size
                     progress(done, total)
                     job = job.copy(files = job.files.toMutableList().also { it[index] = file.copy(attachmentId = id) })
                     save(job)
                 }
+                ensureOurs()
                 val message = api.post(job.channelId, job.clientMsgId, job.body, job.files.mapNotNull { it.attachmentId })
+                ensureOurs()
                 return ShareOutcome.Posted(message)
             } catch (e: CancellationException) {
                 throw e
+            } catch (_: AccountChanged) {
+                return ShareOutcome.Dropped
             } catch (e: Exception) {
+                // A failure after the account changed comes from that change: nothing to retry or to report.
+                if (!stillOurs()) return ShareOutcome.Dropped
                 if (e is ApiException.Api && e.code == "attachment_invalid" && !job.reuploaded && job.files.isNotEmpty()) {
                     job = job.copy(reuploaded = true, files = job.files.map { it.copy(attachmentId = null) })
                     save(job)

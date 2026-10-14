@@ -193,13 +193,16 @@ class AttendanceWidgetTest {
     @Test
     fun aFailedPressKeepsTheLastKnownState() {
         val pressed = AttendanceWidgetRules.pressed(snap(board(entry("me", "home"))), "room", 50L)!!
-        val failed = AttendanceWidgetRules.failedPress(pressed, "room")!!
+        val failed = AttendanceWidgetRules.failedPress(pressed, "room", "me")!!
         assertTrue(failed.failed)
         assertEquals("home", failed.shownState?.id)
         assertNull(failed.pendingStateId)
         // A newer press is waiting: the old failure leaves it alone.
         val newer = AttendanceWidgetRules.pressed(pressed, "out", 60L)!!
-        assertEquals(newer, AttendanceWidgetRules.failedPress(newer, "room"))
+        assertEquals(newer, AttendanceWidgetRules.failedPress(newer, "room", "me"))
+        // REVIEW-v0.1.62 #1: the press was mine, but the snapshot there is now another person's: left as it is.
+        val others = pressed.copy(meId = "someone-else")
+        assertEquals(others, AttendanceWidgetRules.failedPress(others, "room", "me"))
         // The next press clears the hint.
         assertFalse(AttendanceWidgetRules.pressed(failed, "room", 70L)!!.failed)
     }

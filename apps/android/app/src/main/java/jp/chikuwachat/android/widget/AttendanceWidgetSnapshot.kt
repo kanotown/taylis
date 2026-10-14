@@ -162,9 +162,13 @@ object AttendanceWidgetRules {
     fun answered(old: AttendanceWidgetSnapshot?, fresh: AttendanceWidgetSnapshot, stateId: String, now: Long): AttendanceWidgetSnapshot =
         if (old?.pendingStateId != null && old.pendingStateId != stateId) merge(old, fresh, now) else fresh
 
-    /** The press of [stateId] failed; a newer press waiting for its answer is left alone. */
-    fun failedPress(old: AttendanceWidgetSnapshot?, stateId: String): AttendanceWidgetSnapshot? = when {
+    /**
+     * The press of [stateId] by [meId] failed; a newer press waiting for its answer is left alone, and so is another
+     * person's snapshot (REVIEW-v0.1.62 #1: the account there changed after the press).
+     */
+    fun failedPress(old: AttendanceWidgetSnapshot?, stateId: String, meId: String): AttendanceWidgetSnapshot? = when {
         old == null -> null
+        old.meId != meId -> old
         old.pendingStateId != null && old.pendingStateId != stateId -> old
         else -> failed(old)
     }

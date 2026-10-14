@@ -56,6 +56,7 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
     private var copying: Job? = null
     private var started = false
     private var handedOver = false
+    private var own: OwnProviders = OwnProviders(emptySet()) { true }
 
     /** The files as they will be checked: the copy's size when the provider did not say, unreadable when the copy failed. */
     val checkedFiles: List<SharedFile>
@@ -66,10 +67,11 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
     fun problems(limits: Limits?): List<String> = SharePayload.problems(checkedFiles, text, limits)
 
     /** Called once with the intent's contents (a rotation keeps the model and calls it again: ignored). */
-    fun start(data: ShareIntentData, ownAuthorities: Set<String>) {
+    fun start(data: ShareIntentData, own: OwnProviders) {
         if (started) return
         started = true
-        val parsed = SharePayload.parse(data, ownAuthorities) ?: ShareRequest(emptyList(), "", null)
+        this.own = own
+        val parsed = SharePayload.parse(data, own) ?: ShareRequest(emptyList(), "", null)
         request = parsed
         text = parsed.text
         viewModelScope.launch {
@@ -81,8 +83,17 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun describe(uri: String): SharedFile {
+    /**
+     * REVIEW-v0.1.62 #2: the one Uri every read of a shared file uses (describe, copy, thumbnail), checked again on that
+     * same object: its decoded authority is not one of this app's providers. Null: refused, nothing is read.
+     */
+    private fun foreign(uri: String): Uri? {
         val parsed = uri.toUri()
+        return parsed.takeIf { SharePayload.isReadable(it.scheme, it.authority, own) }
+    }
+
+    private fun describe(uri: String): SharedFile {
+        val parsed = foreign(uri) ?: return SharedFile(uri, SharePayload.fileName(null, uri), null, null, readable = false)
         var name: String? = null
         var size: Long? = null
         val readable = runCatching {
@@ -107,7 +118,8 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
             if (limit != null && file.size != null && file.size > limit) return@forEachIndexed
             val target = File(dir, index.toString())
             try {
-                val input = resolver.openInputStream(file.uri.toUri()) ?: throw IOException("no stream")
+                val source = foreign(file.uri) ?: throw IOException("refused")
+                val input = resolver.openInputStream(source) ?: throw IOException("no stream")
                 var total = 0L
                 input.use { source ->
                     target.outputStream().use { out ->
@@ -135,7 +147,8 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
         for (file in described) {
             val mime = file.mime ?: continue
             if (!file.readable || !(mime.startsWith("image/") || mime.startsWith("video/"))) continue
-            val bitmap = runCatching { thumbnail(file.uri.toUri(), mime) }.getOrNull() ?: continue
+            val uri = foreign(file.uri) ?: continue
+            val bitmap = runCatching { thumbnail(uri, mime) }.getOrNull() ?: continue
             withContext(Dispatchers.Main) { thumbnails[file.uri] = bitmap }
         }
     }
@@ -167,10 +180,19 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
                 onDone(false)
                 return@launch
             }
+            // REVIEW-v0.1.62 #1: the job belongs to the account signed in there now, and runs only as that account.
+            val account = controller.shareAccount(target.first)
+            if (account == null) {
+                sending = false
+                onDone(false)
+                return@launch
+            }
             val checked = checkedFiles
             val job = ShareJob(
                 id = jobId,
                 serverUrl = target.first,
+                userId = account.first,
+                session = account.second,
                 channelId = target.second,
                 channelTitle = channelTitle,
                 body = text.trim(),
@@ -180,7 +202,7 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
                 },
             )
             withContext(Dispatchers.IO) { jobs.save(job) }
-            ShareWorker.enqueue(getApplication(), jobId)
+            ShareWorker.enqueue(getApplication(), jobId, target.first)
             handedOver = true
             controller.accountKey?.let { RecentConversations.push(controller.prefs, recentKey(it), target.second) }
             onDone(true)

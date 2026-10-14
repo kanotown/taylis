@@ -29,7 +29,6 @@ import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.MainActivity
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.api.ApiClient
-import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.platform.ConversationStyle
 import jp.chikuwachat.android.platform.Notifier
@@ -63,8 +62,32 @@ class ShareJobs(private val root: File) {
         }
     }
 
+    /**
+     * The worker's save of an uploaded attachment id: only while the job is still there, so work that runs on after its
+     * account's jobs were removed ([dropAccount]) never brings the job back.
+     */
+    fun update(job: ShareJob) {
+        if (File(dir(job.id), JOB_FILE).isFile) save(job)
+    }
+
     fun delete(id: String) {
         dir(id).deleteRecursively()
+    }
+
+    /**
+     * REVIEW-v0.1.62 #1: the jobs of [serverUrl] that do not belong to [keepUserId] (all of them when null) — a
+     * sign-out, a removed workspace, or another account signing in there. Each job and its copies are deleted; the
+     * jobs are returned so that their work and notifications can go too.
+     */
+    fun dropAccount(serverUrl: String, keepUserId: String? = null): List<ShareJob> {
+        val dropped = mutableListOf<ShareJob>()
+        root.listFiles()?.forEach { dir ->
+            val job = runCatching { File(dir, JOB_FILE).takeIf { it.isFile }?.readText() }.getOrNull()?.let { ShareJob.decode(it) } ?: return@forEach
+            if (job.serverUrl != serverUrl || (keepUserId != null && job.userId == keepUserId)) return@forEach
+            dir.deleteRecursively()
+            dropped += job
+        }
+        return dropped
     }
 
     /** Copies left behind by a share screen that was closed without sending (or killed): older than [maxAgeMs], no job. */
@@ -106,8 +129,11 @@ class ShareWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val jobId = inputData.getString(KEY_JOB) ?: return Result.failure()
         val job = withContext(Dispatchers.IO) { jobs.read(jobId) } ?: return Result.failure()
         val controller = (applicationContext as ChikuwaApp).controller
-        val client = withContext(Dispatchers.Main) { controller.shareClient(job.serverUrl) }
-        if (client == null) return finish(job, ShareOutcome.Failed(ApiException.Api(401, "signed_out", "Signed out")))
+        // REVIEW-v0.1.62 #1: the client of the account that shared it, never the one now signed in to the same server.
+        val client = withContext(Dispatchers.Main) { controller.shareClient(job) }
+        // Signed out, or another person signed in there: the share goes without a request in anyone's name (the
+        // sign-out itself removed the account's jobs and said so when it was not asked for, AppController.endSession).
+        if (client == null) return finish(job, ShareOutcome.Dropped)
         if (job.files.any { it.attachmentId == null }) {
             // Android 12+ may refuse a foreground start from the background (a retry): the work goes on without it.
             runCatching { setForeground(foregroundInfo(job, 0, job.pendingBytes)) }
@@ -115,7 +141,7 @@ class ShareWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         var shown = 0L
         val sender = ShareSender(
             api = WorkerShareApi(client, jobs),
-            save = { jobs.save(it) },
+            save = { jobs.update(it) },
             progress = { sent, total ->
                 val now = System.currentTimeMillis()
                 if (now - shown >= PROGRESS_INTERVAL_MS || sent == total) {
@@ -123,6 +149,7 @@ class ShareWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                     notifications.showProgress(job, sent, total)
                 }
             },
+            stillOurs = { withContext(Dispatchers.Main) { controller.shareStillOurs(job, client) } },
         )
         val outcome = withContext(Dispatchers.IO) { sender.run(job) }
         if (outcome is ShareOutcome.Retry && runAttemptCount + 1 < MAX_ATTEMPTS) {
@@ -146,6 +173,7 @@ class ShareWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                 val controller = (applicationContext as ChikuwaApp).controller
                 notifications.showFailed(job, if (error is ShareFileMissing) L10n.str(R.string.share_in_failed_files_gone) else controller.describe(error))
             }
+            ShareOutcome.Dropped -> Unit // its account left: nothing is said in another person's session
         }
         withContext(Dispatchers.IO) { jobs.delete(job.id) }
         return if (outcome is ShareOutcome.Posted) Result.success() else Result.failure()
@@ -158,18 +186,40 @@ class ShareWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         private const val PROGRESS_INTERVAL_MS = 700L
 
         /** Starts the job's work now (expedited while the quota lasts), once a network is there. */
-        fun enqueue(context: Context, jobId: String) {
+        fun enqueue(context: Context, jobId: String, serverUrl: String) {
             val request = OneTimeWorkRequestBuilder<ShareWorker>()
                 .setInputData(workDataOf(KEY_JOB to jobId))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .addTag(TAG)
+                .addTag(serverTag(serverUrl))
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("share:$jobId", ExistingWorkPolicy.KEEP, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(workName(jobId), ExistingWorkPolicy.KEEP, request)
         }
 
         const val TAG = "share"
+
+        fun workName(jobId: String) = "share:$jobId"
+
+        /** Every share work of one workspace carries this tag, so a sign-out can cancel the lot. */
+        fun serverTag(serverUrl: String) = "share-server:$serverUrl"
+
+        /**
+         * REVIEW-v0.1.62 #1: the account of [serverUrl] signed out, left this device or was replaced by another one
+         * ([keepUserId] the new account's, whose own jobs stay): its jobs, their copies, their work and their
+         * notifications go. A job already running is cancelled with its work (and checks its account between calls).
+         * [reason] (a session the server ended) says once per job that it was not sent; a sign-out on purpose says nothing.
+         */
+        fun dropAccount(context: Context, serverUrl: String, keepUserId: String? = null, reason: String? = null) {
+            val manager = WorkManager.getInstance(context)
+            if (keepUserId == null) manager.cancelAllWorkByTag(serverTag(serverUrl))
+            val dropped = ShareJobs(context).dropAccount(serverUrl, keepUserId)
+            for (job in dropped) manager.cancelUniqueWork(workName(job.id))
+            val notifications = ShareNotifications(context)
+            notifications.clearWorkspace(serverUrl)
+            if (reason != null) for (job in dropped) notifications.showFailed(job, reason)
+        }
     }
 }
 
@@ -232,6 +282,7 @@ class ShareNotifications(private val context: Context) {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        if (job != null) builder.addExtras(workspaceExtras(job))
         if (total > 0) {
             val percent = ((sent * 100) / total).toInt().coerceIn(0, 100)
             builder.setProgress(100, percent, false).setContentText("$percent%")
@@ -254,6 +305,7 @@ class ShareNotifications(private val context: Context) {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(L10n.str(R.string.share_in_sending_to, job.channelTitle))
             .setContentText(L10n.str(R.string.share_in_waiting))
+            .addExtras(workspaceExtras(job))
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setContentIntent(open(job, null))
@@ -268,6 +320,7 @@ class ShareNotifications(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_RESULT)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(L10n.str(R.string.share_in_posted_to, job.channelTitle))
+            .addExtras(workspaceExtras(job))
             .setContentIntent(open(job, message.id))
             .setAutoCancel(true)
             .setTimeoutAfter(RESULT_TIMEOUT_MS)
@@ -280,12 +333,26 @@ class ShareNotifications(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_RESULT)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(L10n.str(R.string.share_in_failed_to, job.channelTitle))
+            .addExtras(workspaceExtras(job))
             .setContentText(reason)
             .setStyle(NotificationCompat.BigTextStyle().bigText(reason))
             .setContentIntent(open(job, null))
             .setAutoCancel(true)
             .build()
         manager.notify(job.id, RESULT_ID, notification)
+    }
+
+    /** The workspace the notification belongs to: its sign-out removes it (Notifier.clearWorkspace, [clearWorkspace]). */
+    private fun workspaceExtras(job: ShareJob) = android.os.Bundle().apply { putString(Notifier.EXTRA_WORKSPACE, job.serverUrl) }
+
+    /** REVIEW-v0.1.62 #1: a workspace's share notifications (progress, waiting, sent, not sent) go with its account. */
+    fun clearWorkspace(serverUrl: String) {
+        runCatching { manager.activeNotifications }.getOrNull()?.forEach { shown ->
+            val channel = shown.notification.channelId
+            if ((channel == CHANNEL_PROGRESS || channel == CHANNEL_RESULT) && shown.notification.extras?.getString(Notifier.EXTRA_WORKSPACE) == serverUrl) {
+                manager.cancel(shown.tag, shown.id)
+            }
+        }
     }
 
     /** The conversation in its workspace, as a message notification opens it ([messageId] only tells the intents apart). */
