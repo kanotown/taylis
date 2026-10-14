@@ -541,6 +541,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "composer.noWorkflow": "This channel has no workflow “{name}”",
   "composer.wfUsage": "Type the workflow's name after /wf",
   "composer.tooLong": "Up to 10 attachments and 20,000 characters",
+  "composer.tableTooLarge": "The table is too large (up to 200 rows, 30 columns and 20,000 characters), so it was pasted as text",
   "composer.pickLater": "Choose a time at least a minute from now",
   "composer.stillReading": "Still reading the files you chose before",
   "composer.format.boldKey": "Bold ({key})",

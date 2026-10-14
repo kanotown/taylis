@@ -541,6 +541,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "composer.noWorkflow": "此频道没有名为“{name}”的工作流",
   "composer.wfUsage": "请在 /wf 后输入工作流的名称",
   "composer.tooLong": "附件最多 10 个，正文最多 20,000 个字符",
+  "composer.tableTooLarge": "表格过大（最多 200 行、30 列、20,000 个字符），已按文本粘贴",
   "composer.pickLater": "请选择至少一分钟之后的时间",
   "composer.stillReading": "仍在读取之前选择的文件",
   "composer.format.boldKey": "粗体（{key}）",

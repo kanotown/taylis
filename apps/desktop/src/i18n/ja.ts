@@ -540,6 +540,7 @@ export const ja = {
   "composer.noWorkflow": "「{name}」というワークフローはこのチャンネルにありません",
   "composer.wfUsage": "/wf の後にワークフローの名前を続けてください",
   "composer.tooLong": "添付は10件、本文は20,000文字までです",
+  "composer.tableTooLarge": "表が大きすぎるため（200行・30列・20,000文字まで）、テキストのまま貼り付けました",
   "composer.pickLater": "1 分以上先の時刻を選んでください",
   "composer.stillReading": "前に選んだファイルを読み込み中です",
   "composer.format.boldKey": "太字（{key}）",
