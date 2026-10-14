@@ -26,7 +26,8 @@ import kotlinx.coroutines.withContext
  * A widget button's change of my state, in the app process: the app's own client for that workspace (its stored session,
  * token refresh and sign-out; AppController.widgetSetAttendance), then the widget's snapshot from the answer. Expedited
  * work, so it starts at once and finishes even when the receiver that took the tap is gone; presses run one after
- * another (APPEND_OR_REPLACE), so the last tap wins. A failure (offline, signed out, the server refused) leaves the last
+ * another (APPEND_OR_REPLACE, one chain per workspace), so the last tap wins. A press carries the person who pressed
+ * (the snapshot's meId) and is sent only while that person is the one signed in there (REVIEW-v0.1.62 #1). A failure (offline, signed out, the server refused) leaves the last
  * known state with 「更新できません」; nothing is retried behind the user's back.
  */
 class AttendanceWidgetWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -43,7 +44,7 @@ class AttendanceWidgetWorker(context: Context, params: WorkerParameters) : Corou
             throw e
         } catch (e: Exception) {
             Log.w("AttendanceWidget", "could not set the attendance state", e)
-            AttendanceWidgetData.store.update(applicationContext, serverUrl) { old -> AttendanceWidgetRules.failedPress(old, stateId) }
+            AttendanceWidgetData.store.update(applicationContext, serverUrl) { old -> AttendanceWidgetRules.failedPress(old, stateId, meId) }
         }
         AttendanceWidgetData.redraw(applicationContext)
         // Always success: the next press in the chain still runs (a failed one would cancel it).
@@ -70,7 +71,7 @@ class AttendanceWidgetWorker(context: Context, params: WorkerParameters) : Corou
         private const val KEY_SERVER = "server"
         private const val KEY_ME = "me"
         private const val KEY_STATE = "state"
-        private const val WORK_NAME = "attendance-widget-press"
+        private const val WORK_NAME = "attendance-widget-press:"
         private const val CHANNEL = "attendance_widget"
         private const val NOTIFICATION_ID = 0x6100
 
@@ -79,7 +80,15 @@ class AttendanceWidgetWorker(context: Context, params: WorkerParameters) : Corou
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setInputData(workDataOf(KEY_SERVER to serverUrl, KEY_ME to meId, KEY_STATE to stateId))
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME + serverUrl, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        }
+
+        /**
+         * REVIEW-v0.1.62 #1: [serverUrl]'s account signed out or was replaced: its presses still waiting go (one that
+         * runs anyway is refused, AppController.widgetSetAttendance checks the person).
+         */
+        fun cancel(context: Context, serverUrl: String) {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME + serverUrl)
         }
     }
 }

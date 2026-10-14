@@ -27,6 +27,12 @@ import java.util.concurrent.TimeUnit
  * When: at once after a widget chooses such a workspace, and every [PERIOD_MIN] minutes (ordinary inexact work that
  * waits for a network) only while some placed widget shows one; with none, the periodic work is cancelled.
  */
+/**
+ * REVIEW-v0.1.62 #1: a widget's read or press found that its workspace's account changed meanwhile (a sign-out, another
+ * person signing in on the same server): what it read or was to send belongs to the session before, so it is dropped.
+ */
+class WidgetAccountChanged : Exception("the workspace's account changed")
+
 class WidgetRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val context = applicationContext
@@ -42,6 +48,8 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
                 withContext(Dispatchers.Main) { controller.widgetRefresh(server) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (_: WidgetAccountChanged) {
+                // Read in a session that ended meantime: nothing of it is written (the sign-out cleared the widgets).
             } catch (e: Exception) {
                 Log.w(TAG, "could not refresh a workspace's widgets", e)
                 AttendanceWidgetData.store.write(context, server) { old -> old?.copy(failed = true) }

@@ -99,7 +99,7 @@ class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        model.start(read(intent), ownAuthorities())
+        model.start(read(intent), ownProviders())
         setContent {
             ChikuwaTheme(controller.appearance) {
                 ShareRoot(controller, model, onClose = { finish() }, onSent = {
@@ -110,14 +110,25 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
-    /** Every authority of this app's own providers: a share of one of them is refused (SharePayload.parse). */
-    private fun ownAuthorities(): Set<String> {
+    /**
+     * Every authority of this app's own providers, and the system's answer for any other spelling (REVIEW-v0.1.62 #2):
+     * an authority that resolves to a provider of this package (or of this app's uid) is ours. A share of one of them
+     * is refused (SharePayload.parse).
+     */
+    private fun ownProviders(): OwnProviders {
         val info = runCatching {
             if (Build.VERSION.SDK_INT >= 33) packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_PROVIDERS.toLong()))
             else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, PackageManager.GET_PROVIDERS)
         }.getOrNull()
         val listed = info?.providers.orEmpty().flatMap { it.authority?.split(';').orEmpty() }
-        return (listed + "$packageName.files").toSet()
+        val pm = packageManager
+        val ownPackage = packageName
+        val ownUid = applicationInfo.uid
+        return OwnProviders((listed + "$packageName.files").toSet()) { authority ->
+            val provider = if (Build.VERSION.SDK_INT >= 33) pm.resolveContentProvider(authority, PackageManager.ComponentInfoFlags.of(0))
+            else @Suppress("DEPRECATION") pm.resolveContentProvider(authority, 0)
+            provider != null && (provider.packageName == ownPackage || provider.applicationInfo?.uid == ownUid)
+        }
     }
 
     companion object {
@@ -137,7 +148,8 @@ class ShareActivity : ComponentActivity() {
             // which is not what is shared. EXTRA_STREAM alone names the files.
             return ShareIntentData(
                 action = intent.action,
-                streams = streams.map { it.toString() },
+                // REVIEW-v0.1.62 #2: Android's own parse (the decoded authority ContentResolver resolves), not the text.
+                streams = streams.map { ShareStream(it.toString(), it.scheme, it.authority) },
                 texts = texts,
                 subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
                 // Intent.EXTRA_SHORTCUT_ID (API 29; an older system never sends it).

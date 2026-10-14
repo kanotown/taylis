@@ -51,6 +51,8 @@ class TodayWidgetWorker(context: Context, params: WorkerParameters) : CoroutineW
                 if (snapshot != null) TodayWidgetData.publish(context, snapshot) else TodayWidgetData.store.write(context, server) { null }
             } catch (e: CancellationException) {
                 throw e
+            } catch (_: WidgetAccountChanged) {
+                // Read in a session that ended meantime: dropped (the next read is the new account's).
             } catch (e: Exception) {
                 Log.w("TodayWidget", "could not read today's events and tasks", e)
                 TodayWidgetData.failed(context, server)

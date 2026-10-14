@@ -31,9 +31,23 @@ data class Workspace(
     val hasUnread: Boolean = false,
     /** M93 (WORKSPACES.md §3.4.1): the admin's workspace icon (GET /server's `icon_version`); null = the letter tile. */
     val iconVersion: String? = null,
+    /**
+     * A random id made at each sign-in (REVIEW-v0.1.62 #1): work queued for this sign-in (a share, a widget press) names
+     * it with [userId] and runs only while both are still the ones here; null for an entry signed in before it existed.
+     */
+    val session: String? = null,
 ) {
     /** M96: the name to show and to sign in with ([username] may be the old one). */
     val signInName: String get() = loginName ?: username
+
+    /**
+     * Whether work queued for [queuedUserId] in sign-in [queuedSession] may still run here: the same person (the
+     * immutable user id, never the server URL alone) in the same sign-in, still signed in. A job without a user id
+     * (queued by an older version) is not trusted; one queued while the entry had no session yet (signed in before
+     * sessions existed) is bound by the user id alone.
+     */
+    fun isAccount(queuedUserId: String?, queuedSession: String?): Boolean =
+        !signedOut && queuedUserId != null && userId == queuedUserId && (queuedSession == null || session == queuedSession)
 }
 
 /** M16c: the workspace list, its storage and migration, URL rules, tiles and push routing (WORKSPACES.md). */

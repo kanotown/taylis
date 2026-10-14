@@ -1035,6 +1035,8 @@ class AppController(private val app: Application) {
         }
         // One account per server: the account this replaces leaves nothing on this device.
         if (known != null && known.username != username) forgetAccountData(account(serverUrl, known.username))
+        // REVIEW-v0.1.62 #1: nor any share another account queued here (this account's own stay; they check their sign-in).
+        dropAccountWork(serverUrl, keepUserId = me.id)
         clients[serverUrl] = client
         push.detach(serverUrl)
         val entry = Workspace(
@@ -1044,6 +1046,7 @@ class AppController(private val app: Application) {
             username = username,
             userId = me.id,
             iconVersion = if (info?.knowsIcon == true) info.iconVersion else known?.iconVersion,
+            session = java.util.UUID.randomUUID().toString(),
         )
         workspaces = if (known != null) workspaces.map { if (it.serverUrl == serverUrl) entry else it } else workspaces + entry
         activeKey = serverUrl
@@ -1660,6 +1663,9 @@ class AppController(private val app: Application) {
         }
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
         val leave = leaving.remove(serverUrl)
+        // REVIEW-v0.1.62 #1: the account's pending shares go with it (never sent as whoever signs in here next); a
+        // session the server ended says so on each, a sign-out on purpose does not.
+        dropAccountWork(serverUrl, reason = if (leave) null else L10n.str(R.string.app_controller_you_need_to_sign_in))
         if (leave) {
             username?.let {
                 RecentSearches.clear(prefs, RecentSearches.key(account(serverUrl, it)))
@@ -1689,6 +1695,7 @@ class AppController(private val app: Application) {
         forgetAccountData(account(serverUrl, entry.username))
         push.detach(serverUrl)
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
+        dropAccountWork(serverUrl)
         replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
         jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
         forgetPlanWidgets(serverUrl)
@@ -1696,6 +1703,16 @@ class AppController(private val app: Application) {
         if (api != null || engine != null) closeActive()
         val next = workspaces.firstOrNull { !it.signedOut } ?: workspaces.firstOrNull()
         if (next != null) openWorkspace(next) else showLogin(null)
+    }
+
+    /**
+     * REVIEW-v0.1.62 #1: the work queued for [serverUrl]'s account (other than [keepUserId]'s) goes: its pending shares
+     * with their copies, work and notifications ([ShareWorker.dropAccount]), and the 在室状況 widget presses waiting
+     * there (each checks its account anyway, widgetSetAttendance).
+     */
+    private suspend fun dropAccountWork(serverUrl: String, keepUserId: String? = null, reason: String? = null) {
+        withContext(Dispatchers.IO) { jp.chikuwachat.android.share.ShareWorker.dropAccount(app, serverUrl, keepUserId, reason) }
+        jp.chikuwachat.android.widget.AttendanceWidgetWorker.cancel(app, serverUrl)
     }
 
     /** An account's token, local store, recent searches and conversations (§11); its database must not be open. */
@@ -2642,12 +2659,28 @@ class AppController(private val app: Application) {
     /**
      * §20.4: the signed-in client of a workspace for the share work, the same one the app uses (its refreshes are
      * serialised: two clients rotating one refresh token would look like reuse, SECURITY.md §2.3). Null when the
-     * workspace is gone or signed out.
+     * workspace is gone or signed out, and (REVIEW-v0.1.62 #1) when the account signed in there now is not the one that
+     * queued the share (its user id and sign-in, [ShareJob.accountIn]): a share never goes out in another person's name.
      */
-    suspend fun shareClient(serverUrl: String): ApiClient? {
+    suspend fun shareClient(job: jp.chikuwachat.android.share.ShareJob): ApiClient? {
         ensureWorkspacesLoaded()
-        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: return null
+        val entry = job.accountIn(workspaces) ?: return null
         return clientFor(entry)
+    }
+
+    /**
+     * REVIEW-v0.1.62 #1: asked by the share work before each call and after each answer: [client] is still that
+     * workspace's client (not ended by a sign-out, not replaced by a new sign-in) and the account is still the job's.
+     */
+    fun shareStillOurs(job: jp.chikuwachat.android.share.ShareJob, client: ApiClient): Boolean =
+        clients[job.serverUrl] === client && job.serverUrl !in leaving && job.accountIn(workspaces) != null
+
+    /** The account a share to [serverUrl] is queued for: (user id, sign-in id); null when none is signed in there. */
+    fun shareAccount(serverUrl: String): Pair<String, String?>? {
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl && !it.signedOut } ?: return null
+        val userId = entry.userId ?: store.me?.id?.takeIf { serverUrl == activeKey } ?: return null
+        if (entry.userId == null) updateWorkspace(serverUrl) { it.copy(userId = userId) } // the job is checked against it
+        return userId to entry.session
     }
 
     /** §20.4: a share's message was posted; the workspace on screen shows it at once (the socket brings it as well). */
@@ -3210,10 +3243,15 @@ class AppController(private val app: Application) {
     suspend fun widgetSetAttendance(serverUrl: String, meId: String, stateId: String): jp.chikuwachat.android.widget.AttendanceWidgetSnapshot {
         ensureWorkspacesLoaded()
         val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
+        // REVIEW-v0.1.62 #1: the press is the person's who pressed ([meId]); after a sign-out and another person's sign-in
+        // on the same server it is dropped, never sent (nor its note carried) as the account signed in now.
+        if (!entry.isAccount(meId, null)) throw jp.chikuwachat.android.widget.WidgetAccountChanged()
         val client = clientFor(entry) ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val board = client.attendance()
+        widgetStillFor(serverUrl, client, meId)
         val press = jp.chikuwachat.android.widget.AttendanceWidgetRules.press(board, meId, stateId)
         val mine = client.setMyAttendance(press.stateId, press.note)
+        widgetStillFor(serverUrl, client, meId)
         val onScreen = serverUrl == activeKey && store.me?.id == meId
         if (onScreen && !store.applyAttendanceEntry(mine)) engine?.loadAttendance()
         val users = store.users.values.takeIf { onScreen && it.isNotEmpty() }
@@ -3235,6 +3273,7 @@ class AppController(private val app: Application) {
         val client = clientFor(entry) ?: return
         val meId = entry.userId ?: client.me().id
         val summary = client.syncSummary()
+        widgetStillFor(serverUrl, client, meId)
         if (serverUrl != activeKey) updateWorkspace(serverUrl) { it.copy(badge = summary.badge, hasUnread = summary.hasUnread) }
         jp.chikuwachat.android.widget.UnreadWidgetData.summarized(app, serverUrl, entry.name, meId, summary.badge)
         val board = try {
@@ -3243,9 +3282,22 @@ class AppController(private val app: Application) {
             if (e.status == 403 || e.status == 404) null else throw e // a guest, or a server without the board: off
         }
         val users = if (board?.enabled == true) client.users() else null
+        widgetStillFor(serverUrl, client, meId)
         jp.chikuwachat.android.widget.AttendanceWidgetData.publish(
             app, jp.chikuwachat.android.widget.AttendanceWidgetRules.snapshot(serverUrl, entry.name, meId, board, users, System.currentTimeMillis()),
         )
+    }
+
+    /**
+     * REVIEW-v0.1.62 #1: after each answer a widget's read or press checks that [client] is still [serverUrl]'s (no
+     * sign-out, no new sign-in meanwhile) and the account still [meId]'s; otherwise what it read is another session's
+     * and is thrown away (the widget workers drop it without writing anything).
+     */
+    private fun widgetStillFor(serverUrl: String, client: ApiClient, meId: String) {
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl }
+        if (clients[serverUrl] !== client || serverUrl in leaving || entry == null || entry.signedOut || (entry.userId != null && entry.userId != meId)) {
+            throw jp.chikuwachat.android.widget.WidgetAccountChanged()
+        }
     }
 
     /** The workspaces a widget may show (its configuration screen): the signed-in ones, in the switcher's order. */
@@ -3321,6 +3373,7 @@ class AppController(private val app: Application) {
         } catch (e: ApiException.Api) {
             if (jp.chikuwachat.android.sync.TaskHub.serverLacksTasks(e)) emptyList() else throw e
         }
+        widgetStillFor(serverUrl, client, meId)
         return jp.chikuwachat.android.widget.TodayWidgetRules.snapshot(entry.serverUrl, entry.name, meId, day, events, tasks, System.currentTimeMillis())
     }
 
