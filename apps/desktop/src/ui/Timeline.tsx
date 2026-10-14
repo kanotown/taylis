@@ -1212,7 +1212,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           {/* The first three I chose (M50), else the three I used last (then the defaults), as the phone sheet's six (M25).
               Left out on a narrow row (the thread pane): 「リアクションを追加」 still has them. */}
           {wideRow && quickReactions(recentEmoji, 3, chosenReactions, (name) => store.customEmoji.has(name)).map((emoji) => (
-            <button key={emoji} type="button" title={t("timeline.reactWith", { emoji })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
+            <button key={emoji} type="button" title={t("timeline.reactWith", { emoji })} className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-0.5 text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               <QuickReactionGlyph controller={controller} emoji={emoji} size={18} />
             </button>
           ))}

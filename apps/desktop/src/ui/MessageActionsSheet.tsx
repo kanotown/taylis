@@ -192,13 +192,14 @@ export function MessageActionsSheet({ controller, message, initialView = "action
           </div>
         ) : (
           <>
-            <div className="flex justify-center gap-2 px-3 pb-2 pt-1">
+            {/* A text emoji's pill (up to 3 × its height) widens its button; a row too wide for the phone wraps. */}
+            <div className="flex flex-wrap justify-center gap-2 px-3 pb-2 pt-1">
               {quickReactions(readRecentEmoji(), 6, me?.quick_reactions, (name) => store.customEmoji.has(name)).map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
                   aria-label={t("timeline.reactWith", { emoji })}
-                  className={cn("flex h-11 w-11 items-center justify-center rounded-full text-2xl", reacted.has(emoji) ? "bg-accent-soft ring-1 ring-accent" : "bg-panel")}
+                  className={cn("flex h-11 min-w-11 items-center justify-center rounded-full px-1.5 text-2xl", reacted.has(emoji) ? "bg-accent-soft ring-1 ring-accent" : "bg-panel")}
                   onClick={then(() => void controller.toggleReaction(message, emoji))}
                 >
                   <QuickReactionGlyph controller={controller} emoji={emoji} size={26} />

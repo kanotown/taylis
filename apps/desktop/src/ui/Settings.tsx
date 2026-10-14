@@ -1052,7 +1052,8 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
             disabled={busy}
             onClick={() => setSlot(slot === index ? null : index)}
             className={cn(
-              "flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-colors disabled:opacity-60",
+              // A text emoji's pill (up to 3 × its height) widens its slot instead of spilling over the next ones.
+              "flex h-11 min-w-11 items-center justify-center rounded-full px-1.5 text-2xl transition-colors disabled:opacity-60",
               slot === index ? "bg-accent-soft ring-2 ring-accent" : "bg-panel hover:bg-panel-2",
             )}
           >
