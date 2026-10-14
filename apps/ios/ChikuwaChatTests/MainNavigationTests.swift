@@ -28,6 +28,89 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertFalse(MainNavigation.sidebarStepsAside(width: 0)) // not measured yet
     }
 
+    // MARK: the sidebar put away for the thread pane (SidebarVisibility)
+
+    private let portrait: CGFloat = 1032
+    private let landscape: CGFloat = 1376
+
+    /// Applies what the rule returns, and reports it back as the split's onChange would.
+    private func room(_ rule: inout SidebarVisibility, _ columns: inout NavigationSplitViewVisibility, thread: Bool, width: CGFloat) {
+        if let next = rule.room(thread: thread, width: width, columns: columns) {
+            columns = next
+            rule.changed(to: next, paneOpen: thread)
+        }
+    }
+
+    func testSidebarStepsAsideForThePaneAndComesBack() {
+        var rule = SidebarVisibility()
+        var columns = NavigationSplitViewVisibility.all
+        room(&rule, &columns, thread: true, width: portrait)
+        XCTAssertEqual(columns, .detailOnly)
+        XCTAssertTrue(rule.autoHidden)
+        room(&rule, &columns, thread: false, width: portrait)
+        XCTAssertEqual(columns, .all)
+        XCTAssertFalse(rule.autoHidden)
+    }
+
+    func testSidebarStaysInLandscapeAndReturnsOnRotation() {
+        var rule = SidebarVisibility()
+        var columns = NavigationSplitViewVisibility.all
+        room(&rule, &columns, thread: true, width: landscape)
+        XCTAssertEqual(columns, .all)
+        room(&rule, &columns, thread: true, width: portrait) // rotated to portrait
+        XCTAssertEqual(columns, .detailOnly)
+        room(&rule, &columns, thread: true, width: landscape) // and back
+        XCTAssertEqual(columns, .all)
+    }
+
+    func testSidebarShownByHandWithThePaneOpenIsNotPutAwayAgain() {
+        var rule = SidebarVisibility()
+        var columns = NavigationSplitViewVisibility.all
+        room(&rule, &columns, thread: true, width: portrait)
+        columns = .all // 「サイドバーを表示」, ⌃⌘S
+        rule.changed(to: columns, paneOpen: true)
+        XCTAssertTrue(rule.manual)
+        room(&rule, &columns, thread: true, width: landscape) // rotations
+        room(&rule, &columns, thread: true, width: portrait)
+        XCTAssertEqual(columns, .all)
+        room(&rule, &columns, thread: false, width: portrait)
+        XCTAssertEqual(columns, .all)
+        // The next pane puts it away again: the choice was for that pane.
+        room(&rule, &columns, thread: true, width: portrait)
+        XCTAssertEqual(columns, .detailOnly)
+    }
+
+    func testSidebarHiddenByHandStaysHidden() {
+        // Before the pane: it was not put away by the rule, so closing the pane does not bring it back.
+        var rule = SidebarVisibility()
+        var columns = NavigationSplitViewVisibility.detailOnly
+        rule.changed(to: columns, paneOpen: false)
+        room(&rule, &columns, thread: true, width: portrait)
+        XCTAssertFalse(rule.autoHidden)
+        room(&rule, &columns, thread: false, width: portrait)
+        XCTAssertEqual(columns, .detailOnly)
+
+        // Shown and hidden again by hand while the pane is open: the close keeps it hidden.
+        rule = SidebarVisibility()
+        columns = .all
+        room(&rule, &columns, thread: true, width: portrait)
+        columns = .all
+        rule.changed(to: columns, paneOpen: true)
+        columns = .detailOnly
+        rule.changed(to: columns, paneOpen: true)
+        room(&rule, &columns, thread: false, width: portrait)
+        XCTAssertEqual(columns, .detailOnly)
+    }
+
+    func testSidebarRuleIgnoresItsOwnWrite() {
+        var rule = SidebarVisibility()
+        XCTAssertEqual(rule.room(thread: true, width: portrait, columns: .all), .detailOnly)
+        rule.changed(to: .detailOnly, paneOpen: true) // its own write comes back through onChange
+        XCTAssertTrue(rule.autoHidden)
+        XCTAssertFalse(rule.manual)
+        XCTAssertNil(rule.room(thread: true, width: portrait - 100, columns: .detailOnly)) // a narrower window
+    }
+
     func testLandingInEachLayout() {
         var tabs = navigation(.tabs)
         tabs.land("dm-1", isDm: true)

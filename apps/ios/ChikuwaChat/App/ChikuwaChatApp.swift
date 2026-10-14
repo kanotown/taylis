@@ -21,6 +21,8 @@ struct ChikuwaChatApp: App {
         }
         // A hardware keyboard's shortcuts (MOBILE_UI.md §13): held ⌘ lists them on an iPad; MainView acts on them.
         .commands {
+            // ⌃⌘S shows / hides the split's sidebar (MOBILE_UI.md §13.3); without it iPadOS has no such shortcut.
+            SidebarCommands()
             CommandMenu("移動") {
                 Button("移動・検索") { KeyCommand.jump.post() }.keyboardShortcut("k", modifiers: .command)
                 Button("新しいメッセージ") { KeyCommand.compose.post() }.keyboardShortcut("n", modifiers: .command)
