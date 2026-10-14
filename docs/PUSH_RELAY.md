@@ -48,7 +48,52 @@ APNs と FCM は、**アプリを配っている人の鍵** で署名したプ�
    `up -d app`。`python -m app.cli push-test --user <名前>` が `sent` になれば通っている。
 4. 戻すとき：使う側の `PUSH_RELAY_URL` を消して `up -d app`（自分の APNs / FCM の設定で直接送る）。
 
-## 4. 決めたこと
+## 4. 段階 2 の設計（第三者に開く前。iOS のストア公開を待って実装する）
+
+段階 1 では、依頼元が端末のトークンと本文をそのまま中継に渡す。研究室の 2 台どうしなら問題ないが、第三者のサーバーには
+次の 2 つを渡さないようにする。どちらも **中継は何も保存しない** 形を保つ（鍵ファイルだけ）。
+
+### 4.1 端末の合言葉（トークンを依頼元に渡さない）
+
+```mermaid
+sequenceDiagram
+  participant App as アプリ
+  participant Relay as 中継
+  participant Srv as 依頼元のサーバー
+  Srv-->>App: GET /server に relay（URL と client_id）
+  App->>Relay: POST /push-relay/handles {client_id, provider, token, environment}
+  Relay-->>App: handle（client_id と端末のトークンを中継の鍵で暗号化したもの）
+  App->>Srv: 端末の登録（push_token の代わりに handle）
+  Srv->>Relay: POST /push-relay/send {handle, payload}
+  Relay->>Relay: handle を開き、client_id が依頼元と一致するか確かめる
+```
+
+- handle は中継だけが開ける（AES-GCM、鍵は `secrets/push-relay/handle_key`。鍵を替えるときは古い鍵でも開けるよう 2 つ持つ）。
+  中身は `{client_id, provider, token, environment, 作った時刻}`。依頼元は handle を読めず、別の依頼元の handle を使っても断られる。
+- アプリが中継に handle を頼む口は認証しない（誰でも自分の端末のトークンを包める。包んだものは、指名した client_id の
+  依頼元しか使えない）。上限は IP ごと。
+- 端末のトークンが変わったら、アプリが handle を作り直して登録し直す（今の「トークンの更新」と同じ流れ）。
+- 中継が `invalid_token` を返したら、依頼元は今までどおりその端末を消す。
+
+### 4.2 本文の暗号化（中継に中身を見せない）
+
+- アプリは端末ごとに対称鍵（32 バイト）を作り、**依頼元のサーバーにだけ** 端末の登録で渡す（`devices.push_key`、
+  DB に保存。中継には渡さない）。
+- 依頼元は、通知の中身（題・本文・送り主など）を AES-GCM で暗号化し、`{v: 1, nonce, ciphertext}` を中継に渡す。中継に見える
+  のは種類・バッジ・会話の id だけ（通知をまとめる `thread-id` と `collapse` のため）。
+- iOS：中継は `mutable-content: 1` と「新しいメッセージ」という仮の文で送り、Notification Service Extension が鍵で開いて
+  中身に差し替える。拡張が鍵を読めるよう、鍵は共有の鍵束に置く（拡張の entitlements に keychain-access-groups を足す
+  → App ID の Capabilities の変更がいる）。開けなければ仮の文のまま出す。
+- Android：data-only のまま `ciphertext` を送り、`FirebaseMessagingService` が開いて通知を作る。
+- 古いアプリ（鍵を登録しない端末）には、段階 1 と同じく平文で送る（依頼元が端末ごとに決める）。
+
+### 4.3 運用
+
+- 依頼元の登録は申し込み制（運営者が `clients/<id>` の鍵を作って渡す）。上限・止め方は段階 1 と同じ。
+- 公開の手順書（セルフホストの説明）・利用規約・プライバシーポリシーに、中継に渡るもの（種類・バッジ・会話の id・暗号文）
+  を書く。
+
+## 5. 決めたこと
 
 | # | 決めたこと | 理由 |
 | --- | --- | --- |
