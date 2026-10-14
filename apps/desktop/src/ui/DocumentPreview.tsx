@@ -1,5 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, FileText, Loader2, MoveHorizontal, X, ZoomIn, ZoomOut } from "lucide-react";
-import { Dialog } from "radix-ui";
+import { ChevronLeft, ChevronRight, Download, FileText, Loader2, MoveHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -8,7 +7,7 @@ import { formatSize, keepOpenForToasts, ViewerFileButtons } from "./Attachments"
 import { DOCUMENT_CARD_WIDTH, documentPreviewState, documentThumbBox, pageCountLabel } from "./attachmentLayout";
 import type { PDFDocumentProxy } from "./pdfLoader";
 import { cn, modKey } from "./primitives";
-import { VIEWER_BUTTON, ViewerHeader } from "./ViewerHeader";
+import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
 import { claimZoomKeys, zoomKey } from "../platform/zoom";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
@@ -132,10 +131,12 @@ const prefersReducedMotion = () => typeof window !== "undefined" && !!window.mat
 
 /**
  * The document viewer (M108, docs/PREVIEWS.md §5 and §11): every page of the preview PDF, drawn with PDF.js as they
- * come near (a 300-page file draws only what is seen), on the dark backdrop. Fits the width at first (100 %, at most
+ * come near (a 300-page file draws only what is seen), centred in the viewer's card (ViewerFrame) while they are
+ * shorter than it. Fits the width at first (100 %, at most
  * 900 px wide); 50–300 % with the buttons, ⌘ / Ctrl + 「+」 「-」 「0」 (the window's text size keys are lent to the
  * viewer while it is open). 「n / N」 follows the scroll; ← / → (also PageUp / PageDown when the pages are not focused,
- * Home / End) go a page back / on, smoothly; Esc closes. The top row moves the window in the desktop app.
+ * Home / End) go a page back / on, smoothly; Esc, the × and a click on the dark space around the pages close. The
+ * strip above the card and the header move the window in the desktop app.
  */
 export function PdfViewer({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
@@ -262,75 +263,70 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
 
   const zoomIndex = PDF_ZOOMS.indexOf(zoom);
   return (
-    <Dialog.Root open onOpenChange={(value) => { if (!value) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/90" />
-        <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none" onKeyDown={onKeyDown} onPointerDownOutside={keepOpenForToasts}>
-          <Dialog.Title className="sr-only">{attachment.filename}</Dialog.Title>
-          <Dialog.Description className="sr-only">{t("docPreview.description")}</Dialog.Description>
-          <ViewerHeader>
-            <div className="min-w-0 flex-1">
-              <FileName name={attachment.filename} className="text-sm font-medium" />
-              <div className="text-xs text-white/70">{[formatSize(attachment.size_bytes), pageCountLabel(pages)].filter(Boolean).join(" · ")}</div>
-            </div>
-            {doc && doc.numPages > 1 && (
-              <div className="flex items-center" role="group" aria-label={t("docPreview.pages")}>
-                <button type="button" className={VIEWER_BUTTON} title={t("docPreview.prevPage")} aria-label={t("docPreview.prevPage")} disabled={page <= 1} onClick={() => goTo(page - 1)}>
-                  <ChevronLeft size={18} />
-                </button>
-                <span data-page-counter="" aria-live="polite" className="min-w-14 text-center text-xs tabular-nums text-white/90">
-                  {t("docPreview.pageOf", { n: page, total: doc.numPages })}
-                </span>
-                <button type="button" className={VIEWER_BUTTON} title={t("docPreview.nextPage")} aria-label={t("docPreview.nextPage")} disabled={page >= doc.numPages} onClick={() => goTo(page + 1)}>
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            )}
-            <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
-            <button type="button" className={VIEWER_BUTTON} title={`${t("docPreview.zoomOut")} (${modKey()} −)`} aria-label={t("docPreview.zoomOut")} disabled={zoomIndex <= 0} onClick={() => changeZoom(stepPdfZoom(zoom, -1))}>
-              <ZoomOut size={18} />
-            </button>
-            <button type="button" data-zoom-level="" className="min-w-12 rounded-lg px-1 py-2 text-xs tabular-nums text-white hover:bg-white/15" title={`${t("docPreview.fitWidth")} (${modKey()} 0)`} onClick={() => changeZoom(1)}>
-              {Math.round(zoom * 100)}%
-            </button>
-            <button type="button" className={VIEWER_BUTTON} title={`${t("docPreview.zoomIn")} (${modKey()} +)`} aria-label={t("docPreview.zoomIn")} disabled={zoomIndex >= PDF_ZOOMS.length - 1} onClick={() => changeZoom(stepPdfZoom(zoom, 1))}>
-              <ZoomIn size={18} />
-            </button>
-            <button type="button" className={VIEWER_BUTTON} title={t("docPreview.fitWidth")} aria-label={t("docPreview.fitWidth")} aria-pressed={zoom === 1} onClick={() => changeZoom(1)}>
-              <MoveHorizontal size={18} />
-            </button>
-            <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
-            <ViewerFileButtons attachment={attachment} controller={controller} />
-            <Dialog.Close asChild>
-              <button type="button" className={VIEWER_BUTTON} title={t("attach.closeEsc")} aria-label={t("common.close")}>
-                <X size={20} />
-              </button>
-            </Dialog.Close>
-          </ViewerHeader>
-          <div ref={attachScroller} data-pdf-pages="" tabIndex={-1} onScroll={onScroll} className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 pt-2 focus:outline-none">
-            {doc ? (
-              <div className="mx-auto flex w-max flex-col items-center gap-4">
-                {Array.from({ length: doc.numPages }, (_, index) => (
-                  <PdfPage key={index} doc={doc} number={index + 1} width={width} aspect={aspect} root={scroller.current} />
-                ))}
-              </div>
-            ) : failed ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-white">
-                <p role="status">{t("docPreview.failed")}</p>
-                <div className="flex gap-2">
-                  <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => setAttempt((n) => n + 1)}>{t("common.retry")}</button>
-                  <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>{t("attach.download")}</button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 size={28} role="status" aria-label={t("docPreview.loading")} className="animate-spin text-white/70" />
-              </div>
-            )}
+    <ViewerFrame
+      title={attachment.filename}
+      description={t("docPreview.description")}
+      onClose={onClose}
+      onKeyDown={onKeyDown}
+      onPointerDownOutside={keepOpenForToasts}
+      header={
+        <>
+          <div className="min-w-0 flex-1 max-sm:basis-full">
+            <FileName name={attachment.filename} className="text-sm font-medium" />
+            <div className="text-xs text-white/70">{[formatSize(attachment.size_bytes), pageCountLabel(pages)].filter(Boolean).join(" · ")}</div>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          {doc && doc.numPages > 1 && (
+            <div className="flex items-center" role="group" aria-label={t("docPreview.pages")}>
+              <button type="button" className={VIEWER_BUTTON} title={t("docPreview.prevPage")} aria-label={t("docPreview.prevPage")} disabled={page <= 1} onClick={() => goTo(page - 1)}>
+                <ChevronLeft size={18} />
+              </button>
+              <span data-page-counter="" aria-live="polite" className="min-w-14 text-center text-xs tabular-nums text-white/90">
+                {t("docPreview.pageOf", { n: page, total: doc.numPages })}
+              </span>
+              <button type="button" className={VIEWER_BUTTON} title={t("docPreview.nextPage")} aria-label={t("docPreview.nextPage")} disabled={page >= doc.numPages} onClick={() => goTo(page + 1)}>
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          )}
+          <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
+          <button type="button" className={VIEWER_BUTTON} title={`${t("docPreview.zoomOut")} (${modKey()} −)`} aria-label={t("docPreview.zoomOut")} disabled={zoomIndex <= 0} onClick={() => changeZoom(stepPdfZoom(zoom, -1))}>
+            <ZoomOut size={18} />
+          </button>
+          <button type="button" data-zoom-level="" className="min-w-12 rounded-lg px-1 py-2 text-xs tabular-nums text-white hover:bg-white/15" title={`${t("docPreview.fitWidth")} (${modKey()} 0)`} onClick={() => changeZoom(1)}>
+            {Math.round(zoom * 100)}%
+          </button>
+          <button type="button" className={VIEWER_BUTTON} title={`${t("docPreview.zoomIn")} (${modKey()} +)`} aria-label={t("docPreview.zoomIn")} disabled={zoomIndex >= PDF_ZOOMS.length - 1} onClick={() => changeZoom(stepPdfZoom(zoom, 1))}>
+            <ZoomIn size={18} />
+          </button>
+          <button type="button" className={VIEWER_BUTTON} title={t("docPreview.fitWidth")} aria-label={t("docPreview.fitWidth")} aria-pressed={zoom === 1} onClick={() => changeZoom(1)}>
+            <MoveHorizontal size={18} />
+          </button>
+          <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
+          <ViewerFileButtons attachment={attachment} controller={controller} />
+          <ViewerCloseButton />
+        </>
+      }
+    >
+      <ViewerBody onClose={onClose} scrollerRef={attachScroller} onScroll={onScroll}>
+        {doc ? (
+          <div data-pdf-pages="" data-viewer-content="" className="m-auto flex w-max flex-col items-center gap-4">
+            {Array.from({ length: doc.numPages }, (_, index) => (
+              <PdfPage key={index} doc={doc} number={index + 1} width={width} aspect={aspect} root={scroller.current} />
+            ))}
+          </div>
+        ) : failed ? (
+          <div className="m-auto flex flex-col items-center gap-3 text-white">
+            <p role="status">{t("docPreview.failed")}</p>
+            <div className="flex gap-2">
+              <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => setAttempt((n) => n + 1)}>{t("common.retry")}</button>
+              <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>{t("attach.download")}</button>
+            </div>
+          </div>
+        ) : (
+          <Loader2 size={28} role="status" aria-label={t("docPreview.loading")} className="m-auto animate-spin text-white/70" />
+        )}
+      </ViewerBody>
+    </ViewerFrame>
   );
 }
 
@@ -385,7 +381,7 @@ function PdfPage({ doc, number, width, aspect, root }: { doc: PDFDocumentProxy; 
 
   const height = Math.round(width * (ownAspect ?? aspect));
   return (
-    <div ref={holder} data-pdf-page={number} className="relative bg-white shadow-lg" style={{ width, height }}>
+    <div ref={holder} data-pdf-page={number} className="relative rounded-sm bg-white shadow-2xl" style={{ width, height }}>
       <canvas ref={canvas} className="block" style={{ width, height }} aria-label={t("docPreview.page", { n: number })} />
       {failed && <span className={cn("absolute inset-0 flex items-center justify-center text-sm text-muted")}>{t("docPreview.pageFailed")}</span>}
     </div>
