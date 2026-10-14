@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { AttachmentList } from "../src/ui/Attachments";
 import { documentPreviewState, documentThumbBox, pageCountLabel } from "../src/ui/attachmentLayout";
 import { currentPage, stepPdfZoom } from "../src/ui/DocumentPreview";
-import { ViewerHeader } from "../src/ui/ViewerHeader";
+import { ViewerBody, ViewerFrame } from "../src/ui/ViewerHeader";
 import { setUpZoom } from "../src/platform/zoom";
 
 // PDF.js does not run in jsdom: the viewer's loader hands back a document of three pages that draw nothing.
@@ -173,13 +173,106 @@ it("moves page by page with ← / → and zooms with Ctrl (⌘) + 「+」 「-�
   document.documentElement.style.removeProperty("--ui-zoom");
 });
 
-it("keeps the macOS window buttons' room, and draws our own on Windows", () => {
-  const { rerender } = render(<ViewerHeader kind="overlay"><span>名前</span></ViewerHeader>);
-  const header = document.querySelector("[data-viewer-header]") as HTMLElement;
-  expect(header.style.paddingLeft).toContain("84px");
+const frame = (kind: "overlay" | "custom" | "native", onClose = vi.fn()) => (
+  <ViewerFrame title="名前" description="説明" kind={kind} onClose={onClose} header={<span>名前</span>}>
+    <ViewerBody onClose={onClose}><div data-testid="page" style={{ width: 100, height: 100 }} /></ViewerBody>
+  </ViewerFrame>
+);
+
+it("keeps a strip above the card to drag the window by (the macOS buttons sit in it, ours on Windows), none in the browser", () => {
+  const { rerender } = render(frame("overlay"));
+  const strip = () => document.querySelector("[data-viewer-drag-strip]") as HTMLElement | null;
+  expect(strip()?.getAttribute("data-tauri-drag-region")).toBe("deep");
+  expect(strip()?.style.height).toContain("40px");
   expect(screen.queryByRole("group", { name: "ウィンドウ" })).toBeNull();
-  rerender(<ViewerHeader kind="custom"><span>名前</span></ViewerHeader>);
-  expect(screen.getByRole("button", { name: "最小化" })).toBeTruthy();
-  rerender(<ViewerHeader kind="native"><span>名前</span></ViewerHeader>);
+  // The card's header moves the window too.
+  expect(document.querySelector("[data-viewer-header]")!.getAttribute("data-tauri-drag-region")).toBe("deep");
+  rerender(frame("custom"));
+  expect(strip()!.contains(screen.getByRole("button", { name: "最小化" }))).toBe(true);
+  rerender(frame("native"));
+  expect(strip()).toBeNull();
   expect(screen.queryByRole("button", { name: "最小化" })).toBeNull();
+});
+
+const press = (element: Element, up: Element = element) => {
+  fireEvent.pointerDown(element, { button: 0 });
+  fireEvent.mouseDown(element, { button: 0 });
+  fireEvent.pointerUp(up, { button: 0 });
+  fireEvent.mouseUp(up, { button: 0 });
+  // A click goes to the nearest element holding both ends of the press.
+  const common = element.contains(up) ? element : up.contains(element) ? up : element.parentElement!;
+  fireEvent.click(common, { button: 0 });
+};
+
+it("closes on a press on the dark space around the card or the page, not on the page, the header or the drag strip", () => {
+  const onClose = vi.fn();
+  render(frame("overlay", onClose));
+  const outside = document.querySelector("[data-viewer-frame]")!;
+  const around = document.querySelector("[data-viewer-backdrop]")!;
+  const page = screen.getByTestId("page");
+  press(page);
+  press(document.querySelector("[data-viewer-header]")!);
+  press(document.querySelector("[data-viewer-drag-strip]")!);
+  press(document.querySelector("[data-viewer-card]")!);
+  press(document.querySelector("[data-viewer-scroller]")!); // its scroll bars
+  expect(onClose).not.toHaveBeenCalled();
+  // A drag (a text selection) from the page that ends outside it, and one from outside that ends on the page.
+  press(page, around);
+  press(around, page);
+  expect(onClose).not.toHaveBeenCalled();
+  // A right click does not close.
+  fireEvent.pointerDown(around, { button: 2 });
+  fireEvent.pointerUp(around, { button: 2 });
+  fireEvent.click(around, { button: 2 });
+  expect(onClose).not.toHaveBeenCalled();
+  press(around);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  press(outside);
+  expect(onClose).toHaveBeenCalledTimes(2);
+});
+
+it("centres what is shorter than the view and scrolls what is taller from its top", () => {
+  render(frame("native"));
+  const around = document.querySelector("[data-viewer-backdrop]") as HTMLElement;
+  // At least the view's size, growing with its content: the content's auto margins centre it without cutting its top.
+  expect(around.className).toContain("min-h-full");
+  expect(around.className).toContain("min-w-full");
+  expect(around.className).toContain("flex");
+  expect(around.className).not.toContain("justify-center");
+  expect((document.querySelector("[data-viewer-scroller]") as HTMLElement).className).toContain("overflow-auto");
+});
+
+it("closes the document viewer on a press beside the pages and keeps it on the pages", async () => {
+  const page = { getViewport: ({ scale }: { scale: number }) => ({ width: 595 * scale, height: 842 * scale }), render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }) };
+  openPdf.mockResolvedValue({ numPages: 2, getPage: async () => page, loadingTask: { destroy: vi.fn() } });
+  render(<AttachmentList attachments={[ready]} controller={controller(vi.fn(async () => new Blob(["%PDF"])))} />);
+  fireEvent.click(screen.getByRole("button", { name: "議事録.docx のプレビューを開く" }));
+  await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(2));
+  expect((document.querySelector("[data-pdf-pages]") as HTMLElement).className).toContain("m-auto");
+  const close = screen.getByRole("button", { name: "閉じる" });
+  expect(close.getAttribute("title")).toBe("閉じる（Esc）");
+  press(document.querySelector("[data-pdf-page='1']")!);
+  press(document.querySelector("[data-pdf-pages]")!); // the gap between pages
+  press(document.querySelector("[data-pdf-page='1']")!, document.querySelector("[data-viewer-backdrop]")!);
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  press(document.querySelector("[data-viewer-backdrop]")!);
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+it("closes the photo viewer on a press beside the photo; a press on the photo zooms it", async () => {
+  const photo: AttachmentOut = { ...base, id: "p", filename: "写真.png", content_type: "image/png", has_thumbnail: true, width: 400, height: 300 };
+  render(<AttachmentList attachments={[photo]} controller={controller(vi.fn(async () => new Blob(["png"])))} />);
+  fireEvent.click(document.querySelector("[data-photo-box]")!);
+  const img = await waitFor(() => within(screen.getByRole("dialog")).getByRole("img", { name: "写真.png" }));
+  expect(img.className).toContain("m-auto");
+  expect(img.className).toContain("cursor-zoom-in");
+  press(img);
+  expect(img.className).toContain("cursor-zoom-out");
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  fireEvent.click(document.querySelector("[data-photo-box]")!);
+  await waitFor(() => within(screen.getByRole("dialog")).getByRole("img", { name: "写真.png" }));
+  press(document.querySelector("[data-viewer-backdrop]")!);
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });

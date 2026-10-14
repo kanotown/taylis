@@ -1,5 +1,4 @@
 import { Download, ExternalLink, FileText, Film, Loader2, Play, X } from "lucide-react";
-import { Dialog } from "radix-ui";
 import { type FocusEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -11,7 +10,7 @@ import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
-import { VIEWER_BUTTON, ViewerHeader } from "./ViewerHeader";
+import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
 import { isTauri } from "../platform/env";
 
 export function formatSize(bytes: number): string {
@@ -223,44 +222,41 @@ function DownloadOverlay({ attachment, controller, shown }: { attachment: Attach
 }
 
 /**
- * The dark full-window viewer shared by photos and videos: name, size and shape on top with download and close; a
- * click on the backdrop closes it, Esc too.
+ * The viewer shared by photos and videos (ViewerFrame): name, size and shape in the header with download and close,
+ * the photo or clip centred below; a click on the dark space around it closes, Esc too.
  */
-function ViewerShell({ attachment, description, shape, controller, onClose, bodyClassName, children }: {
+function ViewerShell({ attachment, description, shape, controller, onClose, fill = true, children }: {
   attachment: AttachmentOut;
   description: string;
   shape?: { width: number; height: number } | null;
   controller: AppController;
   onClose: () => void;
-  bodyClassName?: string;
+  /** The content shrinks to fit the view (false: the photo at its own size, scrolled). */
+  fill?: boolean;
   children: ReactNode;
 }) {
   return (
-    <Dialog.Root open onOpenChange={(value) => { if (!value) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/85" />
-        <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none" onClick={onClose} onPointerDownOutside={keepOpenForToasts}>
-          <Dialog.Title className="sr-only">{attachment.filename}</Dialog.Title>
-          <Dialog.Description className="sr-only">{description}</Dialog.Description>
-          <ViewerHeader>
-            <div className="min-w-0 flex-1">
-              <FileName name={attachment.filename} className="text-sm font-medium" />
-              <div className="text-xs text-white/70">
-                {formatSize(attachment.size_bytes)}
-                {shape ? ` · ${shape.width}×${shape.height}` : ""}
-              </div>
+    <ViewerFrame
+      title={attachment.filename}
+      description={description}
+      onClose={onClose}
+      onPointerDownOutside={keepOpenForToasts}
+      header={
+        <>
+          <div className="min-w-0 flex-1 max-sm:basis-full">
+            <FileName name={attachment.filename} className="text-sm font-medium" />
+            <div className="text-xs text-white/70">
+              {formatSize(attachment.size_bytes)}
+              {shape ? ` · ${shape.width}×${shape.height}` : ""}
             </div>
-            <ViewerFileButtons attachment={attachment} controller={controller} />
-            <Dialog.Close asChild>
-              <button type="button" className={VIEWER_BUTTON} title={t("attach.closeEsc")} aria-label={t("common.close")}>
-                <X size={20} />
-              </button>
-            </Dialog.Close>
-          </ViewerHeader>
-          <div className={cn("flex min-h-0 flex-1 items-center justify-center overflow-auto p-4", bodyClassName)}>{children}</div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </div>
+          <ViewerFileButtons attachment={attachment} controller={controller} />
+          <ViewerCloseButton />
+        </>
+      }
+    >
+      <ViewerBody onClose={onClose} fill={fill}>{children}</ViewerBody>
+    </ViewerFrame>
   );
 }
 
@@ -295,22 +291,23 @@ export function Lightbox({ attachment, controller, onClose }: { attachment: Atta
   const [fit, setFit] = useState(true);
   const shape = attachment.width && attachment.height ? { width: attachment.width, height: attachment.height } : null;
   return (
-    <ViewerShell attachment={attachment} description={t("attach.photoPreview")} shape={shape} controller={controller} onClose={onClose} bodyClassName={fit ? undefined : "block"}>
+    <ViewerShell attachment={attachment} description={t("attach.photoPreview")} shape={shape} controller={controller} onClose={onClose} fill={fit}>
       {url ? (
         <img
           src={url}
           alt={attachment.filename}
           onError={onError}
-          onClick={(e) => { e.stopPropagation(); setFit((v) => !v); }}
-          className={cn("select-none", fit ? "max-h-full max-w-full cursor-zoom-in object-contain" : "mx-auto cursor-zoom-out")}
+          data-viewer-content=""
+          onClick={() => setFit((v) => !v)}
+          className={cn("m-auto block select-none rounded-md shadow-2xl", fit ? "min-h-0 min-w-0 max-h-full max-w-full cursor-zoom-in object-contain" : "max-w-none cursor-zoom-out")}
         />
       ) : failed ? (
-        <div className="flex flex-col items-center gap-3 text-white" onClick={(e) => e.stopPropagation()}>
+        <div className="m-auto flex flex-col items-center gap-3 text-white">
           <p role="status">{t("attach.imageFailed")}</p>
           <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={retry}>{t("common.retry")}</button>
         </div>
       ) : (
-        <Loader2 size={28} className="animate-spin text-white/70" />
+        <Loader2 size={28} className="m-auto animate-spin text-white/70" />
       )}
     </ViewerShell>
   );
@@ -459,13 +456,13 @@ export function VideoViewer({ attachment, controller, onClose }: { attachment: A
           controls
           autoPlay
           playsInline
-          onClick={(e) => e.stopPropagation()}
+          data-viewer-content=""
           onLoadedMetadata={(e) => rememberVideoSize(attachment.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
           onError={() => setUnplayable(true)}
-          className="max-h-full max-w-full bg-black object-contain"
+          className="m-auto min-h-0 min-w-0 max-h-full max-w-full rounded-md bg-black object-contain shadow-2xl"
         />
       ) : unplayable || failed ? (
-        <div className="flex flex-col items-center gap-3 text-center text-white" onClick={(e) => e.stopPropagation()}>
+        <div className="m-auto flex flex-col items-center gap-3 text-center text-white">
           <p role="status">{unplayable ? t("attach.unplayable") : t("attach.videoFailed")}</p>
           <div className="flex flex-wrap justify-center gap-2">
             {!unplayable && <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={retry}>{t("common.retry")}</button>}
@@ -473,7 +470,7 @@ export function VideoViewer({ attachment, controller, onClose }: { attachment: A
           </div>
         </div>
       ) : (
-        <div role="status" className="flex min-h-0 max-h-full flex-col items-center gap-2 text-sm text-white/70">
+        <div role="status" className="m-auto flex min-h-0 max-h-full flex-col items-center gap-2 text-sm text-white/70">
           {poster && <img data-video-poster="" src={poster} alt="" className="min-h-0 max-w-full flex-1 object-contain opacity-60" />}
           <Loader2 size={28} className="animate-spin" />
           {t("attach.loadingVideoSize", { size: formatSize(attachment.size_bytes) })}
