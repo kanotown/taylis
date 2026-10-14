@@ -33,7 +33,7 @@ struct UnreadTimelineProvider: AppIntentTimelineProvider {
     }
 
     private func resolve(_ configuration: WidgetWorkspaceIntent) -> UnreadWidgetSnapshot? {
-        UnreadWidgetStore.file.resolve(configuration.selection, workspace: { WidgetWorkspaces.workspace(account: $0) }, seed: UnreadWidgetRules.seed)
+        UnreadWidgetStore.file.resolve(configuration.selection, workspace: { WidgetWorkspaces.signedInWorkspace(account: $0) }, seed: UnreadWidgetRules.seed)
     }
 
     func snapshot(for configuration: WidgetWorkspaceIntent, in context: Context) async -> UnreadTimelineEntry {
@@ -49,6 +49,8 @@ struct UnreadTimelineProvider: AppIntentTimelineProvider {
         if let stored = snapshot, stored.needsRefresh() {
             snapshot = await UnreadWidgetActions.refresh(account: stored.account) ?? stored
         }
+        // Signed out while the refresh was on its way: nothing of the account is drawn (WIDGETS.md).
+        if let shown = snapshot, !AccountSessions.shared.isSignedIn(account: shown.account) { snapshot = nil }
         let now = Date()
         let entry = UnreadTimelineEntry(date: now, snapshot: snapshot, workspace: WidgetWorkspaces.header(configuration.selection, account: snapshot?.account))
         return Timeline(entries: [entry], policy: .after(now.addingTimeInterval(Self.refreshInterval)))

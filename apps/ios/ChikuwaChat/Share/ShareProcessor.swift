@@ -54,10 +54,16 @@ actor ShareProcessor {
     /// Every outcome of a share this process sent (the app shows a notice for a failure).
     private var outcomeHandler: ((PendingShare, ShareOutcome) -> Void)?
 
-    init(store: PendingShareStore, transport: ShareUploadTransport,
-         makeApi: @escaping (PendingShare) -> ShareApi? = { share in URL(string: share.serverUrl).map { ShareApi(baseUrl: $0, account: share.account) } }) {
+    /// Whose sessions a share's generation is checked against (AccountSessions).
+    private let sessions: AccountSessions
+
+    init(store: PendingShareStore, transport: ShareUploadTransport, sessions: AccountSessions = .shared,
+         makeApi: @escaping (PendingShare) -> ShareApi? = { share in
+             URL(string: share.serverUrl).map { ShareApi(baseUrl: $0, account: share.account, generation: share.generation ?? 0) }
+         }) {
         self.store = store
         self.transport = transport
+        self.sessions = sessions
         self.makeApi = makeApi
         transport.onFinished = { [weak self] result in
             guard let self else { return }
@@ -116,6 +122,7 @@ actor ShareProcessor {
         advancing.insert(id)
         defer { advancing.remove(id) }
         guard let first = store.load(id) else { return conclude(id, nil, .failed(.refused(status: 0, code: "share_missing"))) }
+        guard isCurrent(first) else { return conclude(id, first, .failed(.notSignedIn)) }
         if first.isUploaded { return await post(first) }
         // Uploads an earlier process started may still run, or have ended while nobody listened: attaching to the
         // share's session delivers those ends first (uploadFinished), then what is still running is left alone.
@@ -205,7 +212,14 @@ actor ShareProcessor {
         conclude(id, share, .pending(.temporary(errors.first ?? "network")))
     }
 
+    /// The account is still in the session the share was made in: signed out (or signed in again) since, the share is
+    /// given up instead of being sent with another session (MOBILE_UI.md §21.3).
+    private func isCurrent(_ share: PendingShare) -> Bool {
+        sessions.isCurrent(account: share.account, generation: share.generation ?? 0)
+    }
+
     private func post(_ share: PendingShare) async {
+        guard isCurrent(share) else { return conclude(share.id, share, .failed(.notSignedIn)) }
         guard let api = makeApi(share) else { return conclude(share.id, share, .pending(.notSignedIn)) }
         do {
             _ = try await api.postMessage(channelId: share.channelId, clientMsgId: share.clientMsgId, body: share.text,

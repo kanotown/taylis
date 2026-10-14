@@ -539,3 +539,136 @@ final class KeychainMigrationTests: XCTestCase {
         XCTAssertEqual(item.group, shared)
     }
 }
+
+/// REVIEW-v0.1.62 #4: the session generation (AccountSessions) the app moves on sign-in and sign-out, and the extension's
+/// refresh that drops an answer of an older session (no network: the stub signs out while the request is on its way).
+final class SessionGenerationTests: XCTestCase {
+    private var account: String!
+    private var folder: URL!
+    private var sessions: AccountSessions!
+
+    override func setUp() {
+        account = "http://share.test|generation-\(UUID().uuidString)"
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("sessions-\(UUID().uuidString)", isDirectory: true)
+        sessions = AccountSessions(file: folder.appendingPathComponent("sessions.json"), lockURL: folder.appendingPathComponent("sessions.lock"))
+    }
+
+    override func tearDown() {
+        StubProtocol.handler = nil
+        Keychain.delete(account: account)
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    private func api() -> ShareApi {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let api = ShareApi(baseUrl: URL(string: "http://share.test")!, account: account, language: "ja",
+                           session: URLSession(configuration: configuration), sessions: sessions)
+        api.lockProvider = { nil }
+        api.refreshRetryDelays = []
+        return api
+    }
+
+    private static let rotated = Data(#"{"access_token":"old-a2","refresh_token":"old-r2","expires_in":900}"#.utf8)
+
+    func testSignInAndSignOutMoveTheGenerationAndARecordlessAccountFollowsTheKeychain() {
+        XCTAssertEqual(sessions.generation(account: account), 0)
+        XCTAssertFalse(sessions.isSignedIn(account: account), "no record, no token")
+        SharedTokens.store(account: account, accessToken: "a", expiresIn: 900, refreshToken: "r")
+        XCTAssertTrue(sessions.isSignedIn(account: account), "an install from before the record: its token says")
+        XCTAssertTrue(sessions.isCurrent(account: account, generation: 0))
+
+        let first = SharedTokens.signIn(account: account, accessToken: "a1", expiresIn: 900, refreshToken: "r1", sessions: sessions)
+        XCTAssertEqual(first, 1)
+        XCTAssertTrue(sessions.isCurrent(account: account, generation: 1))
+        XCTAssertFalse(sessions.isCurrent(account: account, generation: 0))
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "r1")
+
+        SharedTokens.signOut(account: account, sessions: sessions)
+        XCTAssertEqual(sessions.generation(account: account), 2)
+        XCTAssertFalse(sessions.isSignedIn(account: account))
+        XCTAssertFalse(sessions.isCurrent(account: account, generation: 2), "signed out: no generation is current")
+        XCTAssertNil(SharedTokens.refreshToken(account: account))
+        XCTAssertFalse(SharedTokens.commit(account: account, generation: 1, accessToken: "x", expiresIn: 900, refreshToken: "y", sessions: sessions))
+        XCTAssertNil(SharedTokens.refreshToken(account: account), "nothing stored after the sign-out")
+    }
+
+    func testARefreshAnsweredAfterTheSignOutRestoresNoToken() async {
+        SharedTokens.signIn(account: account, accessToken: "old-a1", expiresIn: 0, refreshToken: "old-r1", sessions: sessions)
+        let account = account!, sessions = sessions!
+        StubProtocol.handler = { _ in
+            // The app signs out while the refresh is on its way; then the server's (late) answer arrives.
+            SharedTokens.signOut(account: account, sessions: sessions)
+            return (200, Self.rotated)
+        }
+        do {
+            _ = try await api().accessToken()
+            XCTFail("expected notSignedIn")
+        } catch {
+            XCTAssertEqual(error as? ShareFailure, .notSignedIn)
+        }
+        XCTAssertNil(SharedTokens.refreshToken(account: account), "the deleted refresh token stays deleted")
+        XCTAssertNil(SharedTokens.access(account: account), "and the access token")
+    }
+
+    func testARefreshAnsweredAfterASignInAgainLeavesTheNewSessionsTokens() async {
+        SharedTokens.signIn(account: account, accessToken: "old-a1", expiresIn: 0, refreshToken: "old-r1", sessions: sessions)
+        let account = account!, sessions = sessions!
+        StubProtocol.handler = { _ in
+            SharedTokens.signOut(account: account, sessions: sessions)
+            SharedTokens.signIn(account: account, accessToken: "new-a", expiresIn: 900, refreshToken: "new-r", sessions: sessions)
+            return (200, Self.rotated)
+        }
+        do {
+            _ = try await api().refreshedToken(replacing: "old-a1")
+            XCTFail("expected notSignedIn")
+        } catch {
+            XCTAssertEqual(error as? ShareFailure, .notSignedIn)
+        }
+        XCTAssertEqual(SharedTokens.refreshToken(account: account), "new-r", "the new sign-in's token is not overwritten")
+        XCTAssertEqual(SharedTokens.access(account: account)?.token, "new-a")
+    }
+
+    func testAClientOfAnOlderSessionUsesNoTokenOfTheNewOne() async {
+        let api = api() // made in the session before the sign-out
+        SharedTokens.signIn(account: account, accessToken: "new-a", expiresIn: 900, refreshToken: "new-r", sessions: sessions)
+        StubProtocol.handler = { _ in XCTFail("no request expected"); return (500, Data()) }
+        do {
+            _ = try await api.accessToken()
+            XCTFail("expected notSignedIn")
+        } catch {
+            XCTAssertEqual(error as? ShareFailure, .notSignedIn)
+        }
+    }
+
+    func testAPendingShareOfAnOlderSessionIsGivenUpNotSent() async throws {
+        let root = folder.appendingPathComponent("pending", isDirectory: true)
+        let generation = SharedTokens.signIn(account: account, accessToken: "a1", expiresIn: 900, refreshToken: "r1", sessions: sessions)
+        let store = PendingShareStore(root: root)
+        _ = try store.makeFolder("old")
+        var share = PendingShareStoreTests.share("old", items: 0)
+        share.account = account
+        share.generation = generation
+        try store.save(share)
+        // Signed out and in again before it was sent.
+        SharedTokens.signOut(account: account, sessions: sessions)
+        SharedTokens.signIn(account: account, accessToken: "a2", expiresIn: 900, refreshToken: "r2", sessions: sessions)
+        StubProtocol.handler = { request in
+            XCTFail("nothing is sent: \(request.url?.path ?? "")")
+            return (500, Data())
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let sessions = sessions!
+        let processor = ShareProcessor(store: store, transport: FakeShareTransport(), sessions: sessions) { share in
+            let api = ShareApi(baseUrl: URL(string: share.serverUrl)!, account: share.account, language: "ja", session: session,
+                               generation: share.generation ?? 0, sessions: sessions)
+            api.lockProvider = { nil }
+            return api
+        }
+        let outcome = await processor.send("old")
+        XCTAssertEqual(outcome, .failed(.notSignedIn))
+        XCTAssertNil(store.load("old"), "given up")
+    }
+}

@@ -10,6 +10,9 @@ struct PendingShare: Codable, Equatable, Identifiable {
     var serverUrl: String
     /// "server|username": names the Keychain items of the session to send with.
     var account: String
+    /// The account's session it was shared in (AccountSessions; nil: a share from before the record = generation 0).
+    /// Once the account signed out or in again it is not sent: it is given up.
+    var generation: Int? = nil
     var channelId: String
     /// The destination's name as picked (「#general」, a DM's names), for a notice about the share.
     var channelTitle: String

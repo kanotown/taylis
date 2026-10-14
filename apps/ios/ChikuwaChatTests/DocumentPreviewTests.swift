@@ -1,4 +1,5 @@
 import PDFKit
+import SwiftUI
 import XCTest
 @testable import ChikuwaChat
 
@@ -83,8 +84,12 @@ final class DocumentPreviewTests: XCTestCase {
         XCTAssertFalse(ViewerDismiss.shouldClose(offset: 200, velocity: -600, extent: 800))
     }
 
-    /// A real PDFView with five pages: the pull begins at the top, not after scrolling down, not while zoomed in.
-    func testTheViewersPullFollowsTheRealPDFView() throws {
+
+    /// A real PDFView with five pages, as the viewer shows it (PDFKitView in a hosting controller in the app's window
+    /// scene, measured once it is laid out): the pull begins at the top, not after scrolling down, not while zoomed in.
+    /// (A bare PDFView added to a window by hand starts 3 pt below its top on iOS 27 — PDFKit's page break margin — which
+    /// the viewer never does: the earlier version of this test measured that.)
+    func testTheViewersPullFollowsTheRealPDFView() async throws {
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
         let data = renderer.pdfData { context in
             for i in 1...5 {
@@ -93,20 +98,39 @@ final class DocumentPreviewTests: XCTestCase {
             }
         }
         let document = try XCTUnwrap(PDFDocument(data: data))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
-        let view = PDFView(frame: window.bounds)
-        view.displayMode = .singlePageContinuous
-        view.displayDirection = .vertical
-        view.autoScales = true
-        view.document = document
-        window.addSubview(view)
-        window.isHidden = false
-        defer { window.isHidden = true }
-        let pull = DocumentPullController()
-        pull.attach(to: view)
-        view.layoutIfNeeded()
-        let scroll = try XCTUnwrap(pull.scrollView)
-        XCTAssertTrue(pull.isAtTop)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 700)
+        let host = UIHostingController(rootView: PDFKitView(document: document))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            previous?.makeKeyAndVisible()
+        }
+        func find(_ root: UIView) -> PDFView? {
+            if let pdf = root as? PDFView { return pdf }
+            for child in root.subviews { if let found = find(child) { return found } }
+            return nil
+        }
+        // Laid out: the pages fill the width and the scroll view has its content.
+        // The viewer's own controller (the pull's delegate), wired by PDFKitView.
+        func controller(_ pdf: PDFView) -> DocumentPullController? {
+            pdf.gestureRecognizers?.compactMap { $0.delegate as? DocumentPullController }.first
+        }
+        var found: (PDFView, DocumentPullController, UIScrollView)?
+        for _ in 0..<40 {
+            host.view.layoutIfNeeded()
+            if let pdf = find(host.view), pdf.scaleFactorForSizeToFit > 0, let pull = controller(pdf), let scroll = pull.scrollView,
+               scroll.contentSize.height > pdf.bounds.height {
+                found = (pdf, pull, scroll)
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        let (pdf, pull, scroll) = try XCTUnwrap(found, "the PDFView laid out")
+        XCTAssertTrue(pull.isAtTop, "offset \(scroll.contentOffset.y), inset \(scroll.adjustedContentInset.top)")
         XCTAssertFalse(pull.isZoomed)
         XCTAssertTrue(pull.begins(motion: CGPoint(x: 0, y: 20)))
         XCTAssertFalse(pull.begins(motion: CGPoint(x: 0, y: -20)))
@@ -116,7 +140,8 @@ final class DocumentPreviewTests: XCTestCase {
         XCTAssertFalse(pull.begins(motion: CGPoint(x: 0, y: 20)))
 
         scroll.contentOffset = CGPoint(x: 0, y: -scroll.adjustedContentInset.top)
-        view.scaleFactor = view.scaleFactorForSizeToFit * 3
+        XCTAssertTrue(pull.isAtTop)
+        pdf.scaleFactor = pdf.scaleFactorForSizeToFit * 3
         XCTAssertTrue(pull.isZoomed)
         XCTAssertFalse(pull.begins(motion: CGPoint(x: 0, y: 20)))
     }
