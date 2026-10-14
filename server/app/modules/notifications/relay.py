@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.settings import Settings
 from app.modules.auth.models import Device
-from app.modules.notifications.providers import PushProvider, PushResult
+from app.modules.notifications.providers import PushProvider, PushResult, recipient_id
 from app.modules.outbound import signed
 
 log = logging.getLogger("app.push.relay")
@@ -72,6 +72,12 @@ def _relay_key(settings: Settings, client_id: str) -> bytes | None:
 # --- the asking server ---------------------------------------------------------------------
 
 
+def _with_recipient(device: Device, payload: dict[str, Any]) -> dict[str, Any]:
+    """The payload with whom it is for, when known (the relay's devices have no owner)."""
+    recipient = recipient_id(device, payload)
+    return {**payload, "recipient_id": recipient} if recipient else payload
+
+
 class RelayPushProvider:
     """Sends through the relay; the outcome is the relay's (sent, retry, invalid_token, failed)."""
 
@@ -102,7 +108,7 @@ class RelayPushProvider:
                 "token": device.push_token,
                 "environment": device.push_environment,
                 "base_url": device.base_url,
-                "payload": payload,
+                "payload": _with_recipient(device, payload),
             }
         )
 

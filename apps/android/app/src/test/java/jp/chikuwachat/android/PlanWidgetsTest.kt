@@ -198,6 +198,11 @@ class PlanWidgetsTest {
         // A reaction's push carries no conversation to count; the same number changes nothing.
         assertNull(UnreadWidgetRules.pushed(old, push(kind = "reaction", badge = null), 1_000L))
         assertNull(UnreadWidgetRules.pushed(old.copy(pushedTotal = 3), push(kind = "calendar", channelId = null, badge = 3), 1_000L))
+        // A push for the server's previous account (it signed out, someone else signed in): not counted.
+        assertNull(UnreadWidgetRules.pushed(old, push(channelId = "dm2", type = "dm", badge = 4).copy(recipientId = "someone-else"), 1_000L))
+        // Mine (and from an older server, without a recipient): counted.
+        assertEquals(4, UnreadWidgetRules.pushed(old, push(channelId = "dm2", type = "dm", badge = 4).copy(recipientId = "me"), 1_000L)!!.total)
+        assertEquals("u1", PushMessage.parse(mapOf("kind" to "message", "recipient_id" to "u1"))!!.recipientId)
     }
 
     // --- 今日の予定・締切 ---------------------------------------------------------------------------

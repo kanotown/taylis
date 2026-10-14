@@ -175,3 +175,16 @@ async def test_a_platform_the_relay_has_no_key_for_stays_pending_and_is_not_logg
     assert (
         await _asker(app, test_settings, str(tmp_path)).send(_device(), PAYLOAD)
     ).detail == "relay 503"
+
+
+def test_pushes_name_their_recipient() -> None:
+    """2026-10-15: every push says whose device it is for (a client signed in as someone else
+    since ignores it); the relay passes on what the asking server said."""
+    from app.modules.notifications.providers import recipient_id
+
+    device = _device()
+    owner = uuid.uuid4()
+    device.user_id = owner
+    assert recipient_id(device, PAYLOAD) == str(owner)
+    assert recipient_id(_device(), {**PAYLOAD, "recipient_id": "given"}) == "given"
+    assert recipient_id(_device(), PAYLOAD) is None
