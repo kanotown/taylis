@@ -227,8 +227,10 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
         handlePaste: (view, event) => {
           // A spreadsheet range becomes a GFM table, kept as a raw Markdown block like any table here (tablePaste.ts).
           const data = event.clipboardData;
-          // `pasteText` below comes back here with the same event: ProseMirror's own paste then.
-          if (data && !pastingText.current) {
+          // `pasteText` below comes back here with the same event: ProseMirror's own text paste then, never the
+          // event's files (Excel's picture of the range would replace the text: REVIEW-v0.1.62 #6).
+          if (pastingText.current) return false;
+          if (data) {
             const { selection } = view.state;
             const used = docToMarkdown(view.state.doc.toJSON() as RichNode).length - view.state.doc.textBetween(selection.from, selection.to, "\n").length;
             const decision = decidePaste(data, { room: MAX_BODY - used, inCode: Boolean(selection.$from.parent.type.spec.code) || editorRef.current?.isActive("code") === true, plain: plainPasteRequested() });

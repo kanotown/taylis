@@ -233,6 +233,19 @@ describe("rich mode", () => {
     expect(w.send.mock.calls[0]![1]).toBe(`集計です\n${EXCEL_TABLE}\n以上`);
   });
 
+  it("a range pasted back as text (one cell, too large) keeps its text and never attaches Excel's picture", async () => {
+    // REVIEW-v0.1.62 #6: ProseMirror's text paste re-enters handlePaste with the same event and its files.
+    const w = await richWorld();
+    act(() => void w.editor().commands.focus());
+    w.paste({ "text/html": "<table><tr><td>42</td></tr></table>", "text/plain": "42" }, [snapshot()]);
+    expect(w.draft()).toBe("42");
+    act(() => void w.editor().commands.setContent(""));
+    const rows = Array.from({ length: 201 }, (_, i) => `r${i}\tv${i}`).join("\n");
+    w.paste({ "text/plain": rows }, [snapshot()]);
+    expect(w.draft()).toContain("r200\tv200");
+    expect(w.uploadAttachment).not.toHaveBeenCalled();
+  });
+
   it("a screenshot attaches; ⌘⇧V pastes the plain text; Google Sheets converts", async () => {
     const w = await richWorld();
     act(() => void w.editor().commands.focus());
