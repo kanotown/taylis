@@ -1,6 +1,7 @@
 // Adds what the demo seed (python -m app.cli seed-demo, infra/demo/README.md) does not have, so the documentation
 // screenshots (scripts/docs-shots.mjs) can show it: a few Docs pages and a database, the attendance board, two
-// action buttons and two workflows. Fictional content only; run it against a throwaway demo database, never a real workspace.
+// action buttons and two workflows, a post with a table and the screenshot account's quick reactions (custom emoji among
+// them). Fictional content only; run it against a throwaway demo database, never a real workspace.
 // Usage: API=http://127.0.0.1:8061 ADMIN_USER=tanaka ADMIN_PASS=... REVIEW_PASS=... node scripts/docs-shots-setup.mjs
 // Run again, it refreshes the attendance board and adds what is missing; the Docs pages, the database and the action buttons
 // are made only when the Docs page 「研究室マニュアル」 does not exist yet.
@@ -14,6 +15,8 @@ async function login(username, password) {
 }
 
 const token = await login(process.env.ADMIN_USER ?? "tanaka", process.env.ADMIN_PASS ?? "");
+// One login for the screenshot account (the server limits logins per IP).
+const reviewToken = process.env.REVIEW_PASS ? await login("review", process.env.REVIEW_PASS) : null;
 async function api(method, path, body) {
   const r = await fetch(`${API}${path}`, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await r.text();
@@ -23,7 +26,6 @@ async function api(method, path, body) {
 
 // The screenshot account (review) follows two students' times, so the Times feed has more than its own posts.
 if (process.env.REVIEW_PASS) {
-  const reviewToken = await login("review", process.env.REVIEW_PASS);
   const headers = { authorization: `Bearer ${reviewToken}` };
   const channels = await (await fetch(`${API}/channels?include=public`, { headers })).json();
   for (const c of channels.filter((c) => /^times-(watanabe|takahashi)$/.test(c.name))) {
@@ -47,7 +49,6 @@ for (const [who, kind, note] of [["tanaka", "in_room", null], ["watanabe", "in_r
   if (id && byName[who]) await api("PUT", `/admin/attendance/users/${byName[who].id}`, { state_id: id, note });
 }
 if (process.env.REVIEW_PASS) {
-  const reviewToken = await login("review", process.env.REVIEW_PASS);
   const r = await fetch(`${API}/attendance/me`, { method: "PUT", headers: { authorization: `Bearer ${reviewToken}`, "content-type": "application/json" }, body: JSON.stringify({ state_id: stateOf("in_room"), note: null }) });
   if (!r.ok) throw new Error(`attendance review: ${r.status}`);
 }
@@ -95,6 +96,42 @@ if (notice) {
     client_msg_id: "6f1e3c2a-7d1b-4c8e-9a51-2b7d0c9e4f10",
     values: { 日時: `${monday}T10:00`, 場所: "演習室 2", 発表者: [byName.yamamoto.id, byName.ito.id] },
   });
+}
+
+// A table pasted from a spreadsheet (the composer turns it into a Markdown table) in #学会準備, as the admin. A fixed
+// idempotency key: running this again returns the same post.
+const conference = channelId("学会準備");
+if (conference) {
+  const md = (offset) => { const d = new Date(Date.now() + offset * 86400000); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  await api("POST", `/channels/${conference}/messages`, {
+    client_msg_id: "3b9d6c41-2f7e-4a0b-8e15-7c2d9a6f0b83",
+    body: [
+      "発表練習の割り当てです（スプレッドシートから貼り付け）。都合が悪い人は早めに知らせてください。",
+      "",
+      "| 日付 | 発表者 | 題目 | 持ち時間 |",
+      "| --- | --- | --- | --- |",
+      `| ${md(6)} | 山本 さくら | 関連研究のサーベイ | 15 分 |`,
+      `| ${md(8)} | 中村 大輝 | 大規模モデルの評価 | 20 分 |`,
+      `| ${md(13)} | 伊藤 翔 | センサデータのノイズ除去 | 15 分 |`,
+    ].join("\n"),
+  });
+}
+
+// The screenshot account's 「リアクションの候補」 with two custom (text) emoji among them (since 2026-10-13).
+if (process.env.REVIEW_PASS) {
+  const r = await fetch(`${API}/users/me`, { method: "PATCH", headers: { authorization: `Bearer ${reviewToken}`, "content-type": "application/json" }, body: JSON.stringify({ quick_reactions: ["👍", "❤️", ":thanks:", "🎉", "👀", ":confirmed:"] }) });
+  if (!r.ok) throw new Error(`quick reactions: ${r.status} ${await r.text()}`);
+  // Today (Asia/Tokyo) for the phones' 「今日の予定・締切」 widget: two events of mine and a task due today. The
+  // idempotency keys carry the date, so a run on another day adds that day's.
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const key = (n) => `5e1d0c2b-${today.replaceAll("-", "").slice(0, 4)}-4${today.slice(5, 7)}${n}-8${today.slice(8, 10)}0-0000d0c5${n}00${n}`;
+  const as = { authorization: `Bearer ${reviewToken}`, "content-type": "application/json" };
+  for (const [n, title, from, to, location] of [[1, "研究ミーティング", "13:00", "14:30", "演習室 2"], [2, "論文紹介の準備", "16:30", "17:30", null]]) {
+    const e = await fetch(`${API}/calendar/events`, { method: "POST", headers: as, body: JSON.stringify({ client_event_id: key(n), title, starts_at: `${today}T${from}:00+09:00`, ends_at: `${today}T${to}:00+09:00`, location, tz: "Asia/Tokyo" }) });
+    if (!e.ok) throw new Error(`event ${title}: ${e.status} ${await e.text()}`);
+  }
+  const t = await fetch(`${API}/tasks`, { method: "POST", headers: as, body: JSON.stringify({ client_task_id: key(3), title: "中間発表のスライドを送る", due_on: today, tz: "Asia/Tokyo" }) });
+  if (!t.ok) throw new Error(`task: ${t.status} ${await t.text()}`);
 }
 
 const tree = await api("GET", "/wiki/tree");

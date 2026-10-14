@@ -85,6 +85,10 @@ Taylis を使うメンバー向けの説明です。画面はデスクトップ�
 
     AI のボット、要約、AI に聞く（管理者が有効にしたとき）。
 
+-   :material-widgets-outline:{ .lg } **[ホーム画面のウィジェット](widgets.md)**
+
+    iPhone と Android のホーム画面で、在室状況・未読・今日の予定を見る。
+
 -   :material-bell-outline:{ .lg } **[通知の設定](notifications.md)**
 
     端末ごとの許可、会話ごとの通知、おやすみ時間（既定は 22:00〜7:00）、テスト通知。

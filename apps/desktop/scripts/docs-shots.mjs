@@ -18,6 +18,9 @@
 //
 // Online dots and 取り込み中 come from the server: keep a few demo members connected (a WebSocket each, `ping` with
 // active: true) while the shots are taken if the pictures should show them; the script itself only logs in as APP_USER.
+// web-presence wants all three kinds of dot in the thread of #研究ミーティング: tanaka and takahashi connected, watanabe in
+// 取り込み中 (as watanabe, PUT /users/me/presence {"status": "dnd", "duration": "4h"}) and yamamoto offline (so take the
+// app's shots before README_USER, yamamoto, logs in; the script does).
 //
 // The page is shown at 120 % (a 1080×680 CSS-pixel window, like 1296×816 at the app's 120 % text size) with 2.4 device
 // pixels per CSS pixel, light theme unless the shot says dark, so the text stays readable when the image is shown at
@@ -430,14 +433,52 @@ def("web-drop", async () => {
   await sleep(1500);
 });
 
-/** The document viewer on a PDF. */
+/**
+ * The document viewer on a PDF: a modal over the dimmed app (2026-10-14), the page zoomed out a step so it sits in the
+ * middle of the card.
+ */
 def("web-pdf-viewer", async () => {
   await viewport(NORMAL);
   await openChannel("学会準備");
   await click("proceedings-draft-nakamura.pdf のプレビューを開く", { within: "main", wait: 2500 });
+  await click("縮小", { wait: 600 });
+  await click("縮小", { wait: 1200 });
   await mouse(1, 400, false);
   await shot("web-pdf-viewer");
   await settle();
+});
+
+/**
+ * The senders' presence dots (2026-10-13): online green, 取り込み中 red (keep watanabe in 取り込み中 for it), offline a
+ * hollow grey ring. The replies of the thread in #研究ミーティング (tanaka, takahashi, watanabe and yamamoto).
+ */
+def("web-presence", async () => {
+  await viewport(TALL);
+  await openThread("研究ミーティング", "5 件の返信");
+  await mouse(5, 5, false);
+  await sleep(600);
+  // The thread panel's replies: the articles right of the conversation, without the root message.
+  const r = await run(`(() => {
+    const main = document.querySelector("main").getBoundingClientRect();
+    const replies = [...document.querySelectorAll("article")].filter((a) => !a.textContent.includes("今週の進捗です")).map((a) => a.getBoundingClientRect()).filter((r) => r.left >= main.right - 1 && r.height);
+    const top = Math.min(...replies.map((r) => r.top)) - 6, bottom = Math.max(...replies.map((r) => r.bottom)) + 6;
+    return { x: replies[0].left, y: top, width: replies[0].width, height: bottom - top };
+  })()`);
+  await shot("web-presence", r);
+  await settle();
+});
+
+/** A table pasted from a spreadsheet, as it reads once sent (the post comes from docs-shots-setup.mjs). */
+def("web-table", async () => {
+  await viewport(NORMAL);
+  await openChannel("学会準備");
+  await click("最新のメッセージへ", { within: "main", wait: 1200 }).catch(() => {});
+  const r = await message("発表練習の割り当て");
+  if (!r) throw new Error("no table post (run docs-shots-setup.mjs)");
+  await mouse(1, 400, false);
+  await sleep(500);
+  const again = await message("発表練習の割り当て");
+  await shot("web-table", { x: again.x, y: again.y - 8, width: again.width, height: again.height + 16 });
 });
 
 def("web-thread", async () => {
@@ -640,6 +681,16 @@ def("web-settings-quiet", async () => {
   await settle();
 });
 
+/** 設定 → 入力 →「リアクションの候補」: six slots, custom emoji among them (docs-shots-setup.mjs chooses them). */
+def("web-settings-reactions", async () => {
+  await viewport(NORMAL);
+  await settings("入力");
+  await run(`([...document.querySelectorAll("[role=dialog] h2, [role=dialog] h3, [role=dialog] h4")].find((e) => e.textContent.includes("リアクションの候補")).scrollIntoView({ block: "start" }), true)`);
+  await sleep(500);
+  await dialogShot("web-settings-reactions");
+  await settle();
+});
+
 def("web-settings-display", async () => {
   await viewport(NORMAL);
   await settings("表示");
@@ -662,6 +713,7 @@ def("web-dark", async () => {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
   await openChannel("研究ミーティング");
   await settle();
+  await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
   await mouse(5, 5, false);
   await sleep(800);
   await shot("web-dark");
