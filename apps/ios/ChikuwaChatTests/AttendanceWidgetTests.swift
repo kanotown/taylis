@@ -14,13 +14,13 @@ final class AttendanceWidgetTests: XCTestCase {
                            archived: archived)
     }
 
-    private func user(_ id: String, role: String = "member", deactivated: Bool = false) -> UserPublic {
-        UserPublic(id: id, username: id, displayName: id, role: role, deactivatedAt: deactivated ? "2026-10-01T00:00:00Z" : nil,
+    private func user(_ id: String, _ name: String? = nil, role: String = "member", deactivated: Bool = false) -> UserPublic {
+        UserPublic(id: id, username: id, displayName: name ?? id, role: role, deactivatedAt: deactivated ? "2026-10-01T00:00:00Z" : nil,
                    createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z")
     }
 
-    private func entry(_ userId: String, _ stateId: String, note: String? = nil) -> AttendanceEntryOut {
-        AttendanceEntryOut(userId: userId, stateId: stateId, since: "2026-10-13T09:15:00Z", note: note, source: "app")
+    private func entry(_ userId: String, _ stateId: String, note: String? = nil, since: String = "2026-10-13T09:15:00Z") -> AttendanceEntryOut {
+        AttendanceEntryOut(userId: userId, stateId: stateId, since: since, note: note, source: "app")
     }
 
     /// The default four (out of order), my own two (one deleted), someone else's own one.
@@ -37,7 +37,8 @@ final class AttendanceWidgetTests: XCTestCase {
     }
 
     private var users: [UserPublic] {
-        [user("me"), user("u2"), user("u3"), user("u4"), user("g", role: "guest"), user("b", role: "bot"), user("x", deactivated: true)]
+        [user("me", "加納 徹"), user("u2", "花子"), user("u3", "次郎"), user("u4", "Taro Yamada"), user("u5", "美咲"), user("u6", "Ken Sato"),
+         user("g", role: "guest"), user("b", role: "bot"), user("x", deactivated: true)]
     }
 
     private let workspace = Workspace(serverUrl: "https://lab.example.jp", name: "加納研", username: "kano")
@@ -309,55 +310,128 @@ final class AttendanceWidgetTests: XCTestCase {
         XCTAssertEqual(controller.pendingWidgetLink, .attendance(server: "https://lab.example.jp"), "kept until startup ends")
     }
 
-    // MARK: faces
-
-    /// The face at the widget's size (with the system's 16 pt margins) on a wallpaper-like grey, drawn by ImageRenderer.
-    private func render<V: View>(_ view: V, size: CGSize, style: UIUserInterfaceStyle, name: String) throws {
-        let dark = style == .dark
-        let framed = view
-            .padding(16)
-            .frame(width: size.width, height: size.height)
-            .background(dark ? Color.black : Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .padding(20)
-            .background(dark ? Color(white: 0.12) : Color(white: 0.82))
-            .environment(\.colorScheme, dark ? .dark : .light)
-        let renderer = ImageRenderer(content: framed)
-        renderer.scale = 3
-        let image = try XCTUnwrap(renderer.uiImage)
-        XCTAssertEqual(image.size.width, size.width + 40, accuracy: 1)
-        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"], let data = image.pngData() {
-            let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url)
-            print("snapshot written: \(url.path)")
-        }
+    func testThePileIsWhoIsInTheRoomMeFirstThenByArrival() {
+        let entries = [entry("u2", "room", since: "2026-10-13T10:00:00Z"), entry("u3", "meeting", since: "2026-10-13T08:00:00Z"),
+                       entry("u4", "gone"), entry("me", "room")]
+        let s = snapshot(entries)
+        let pile = AttendanceWidgetRules.inRoomPeople(s)
+        XCTAssertEqual(pile.map(\.id), ["me", "u3", "u2"], "me, then who came first; not who went home")
+        XCTAssertEqual(pile.map(\.person.name), ["加納 徹", "次郎", "花子"])
+        XCTAssertEqual(pile.first?.person.initials, "加")
+        XCTAssertEqual(pile.count, AttendanceWidgetRules.inRoomCount(s))
+        XCTAssertNil(s.people?.first { $0.id == "g" }, "not the guest")
+        // Someone the app has not named (the widget's own read): a grey 「?」.
+        var unnamed = s
+        unnamed.entries.append(AttendanceWidgetEntry(userId: "new", stateId: "room", since: "2026-10-13T11:00:00Z"))
+        XCTAssertEqual(AttendanceWidgetRules.inRoomPeople(unnamed).last?.person.initials, "?")
+        // A snapshot written before the people were kept still reads.
+        var old = s
+        old.people = nil
+        let data = try! JSONEncoder().encode(old)
+        XCTAssertEqual(try? JSONDecoder().decode(AttendanceWidgetSnapshot.self, from: data), old)
     }
 
+    // MARK: faces
+
     func testFacesRender() throws {
-        let small = CGSize(width: 170, height: 170), medium = CGSize(width: 364, height: 170)
-        let inRoom = snapshot([entry("me", "room"), entry("u2", "room"), entry("u3", "meeting"), entry("u4", "gone")])
+        let small = WidgetFaceRenderer.small, medium = WidgetFaceRenderer.medium
+        // The test's short ids hash to near colours; real ids (UUIDs) spread over the wheel as these do.
+        func spread(_ s: AttendanceWidgetSnapshot) -> AttendanceWidgetSnapshot {
+            var s = s
+            s.people = s.people?.map { p in
+                WidgetPerson(id: p.id, name: p.name, initials: p.initials, color: AppController.widgetPerson(user("\(p.id)-0192f3a1-\(p.name.count * 7)", p.name)).color)
+            }
+            return s
+        }
+        let inRoom = snapshot([entry("me", "room"), entry("u2", "room"), entry("u3", "meeting"), entry("u4", "gone"), entry("u5", "room"),
+                               entry("u6", "room")])
         let site = snapshot([entry("me", "site"), entry("u2", "room")])
+        let alone = snapshot([entry("me", "gone")])
         var failed = inRoom
         failed.problem = .offline
         var signedOut = site
         signedOut.problem = .signedOut
         var off = inRoom
         off.available = false
-        for (style, suffix) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
-            func entry(_ s: AttendanceWidgetSnapshot?) -> AttendanceTimelineEntry { AttendanceTimelineEntry(date: Date(), snapshot: s) }
-            try render(AttendanceWidgetView(entry: entry(inRoom), family: .systemSmall), size: small, style: style, name: "small-in-room-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(site), family: .systemSmall), size: small, style: style, name: "small-on-site-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(failed), family: .systemSmall), size: small, style: style, name: "small-offline-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(inRoom), family: .systemMedium), size: medium, style: style, name: "medium-in-room-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(signedOut), family: .systemMedium), size: medium, style: style, name: "medium-signed-out-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(off), family: .systemMedium), size: medium, style: style, name: "medium-off-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(nil), family: .systemSmall), size: small, style: style, name: "small-none-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(inRoom), family: .accessoryRectangular), size: CGSize(width: 172, height: 76), style: style,
-                       name: "lock-rectangular-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(inRoom), family: .accessoryCircular), size: CGSize(width: 76, height: 76), style: style,
-                       name: "lock-circular-\(suffix).png")
-            try render(AttendanceWidgetView(entry: entry(inRoom), family: .accessoryInline), size: CGSize(width: 260, height: 40), style: style,
-                       name: "lock-inline-\(suffix).png")
+        let loading = AttendanceWidgetRules.seed(workspace, tables: inRoom)
+        let header = Workspace(serverUrl: workspace.serverUrl, workspaceId: "lab-1", name: workspace.name, username: "kano")
+        for look in WidgetFaceRenderer.Look.allCases {
+            func face(_ s: AttendanceWidgetSnapshot?, _ family: WidgetFamily) -> AttendanceWidgetView {
+                AttendanceWidgetView(entry: AttendanceTimelineEntry(date: Date(), snapshot: s.map(spread), workspace: s == nil ? nil : header), family: family)
+            }
+            if look != .lock {
+                try WidgetFaceRenderer.render(face(inRoom, .systemSmall), size: small, look: look, name: "attendance-small-in-room")
+                try WidgetFaceRenderer.render(face(site, .systemSmall), size: small, look: look, name: "attendance-small-on-site")
+                try WidgetFaceRenderer.render(face(alone, .systemSmall), size: small, look: look, name: "attendance-small-gone-alone")
+                try WidgetFaceRenderer.render(face(failed, .systemSmall), size: small, look: look, name: "attendance-small-offline")
+                try WidgetFaceRenderer.render(face(nil, .systemSmall), size: small, look: look, name: "attendance-small-signed-out")
+                try WidgetFaceRenderer.render(face(inRoom, .systemMedium), size: medium, look: look, name: "attendance-medium-in-room")
+                try WidgetFaceRenderer.render(face(site, .systemMedium), size: medium, look: look, name: "attendance-medium-on-site")
+                try WidgetFaceRenderer.render(face(signedOut, .systemMedium), size: medium, look: look, name: "attendance-medium-session-ended")
+                try WidgetFaceRenderer.render(face(off, .systemMedium), size: medium, look: look, name: "attendance-medium-off")
+                try WidgetFaceRenderer.render(face(loading, .systemMedium), size: medium, look: look, name: "attendance-medium-loading")
+            } else {
+                try WidgetFaceRenderer.render(face(inRoom, .accessoryRectangular), size: WidgetFaceRenderer.rectangular, look: look, name: "attendance-lock-rectangular")
+                try WidgetFaceRenderer.render(face(inRoom, .accessoryCircular), size: WidgetFaceRenderer.circular, look: look, name: "attendance-lock-circular")
+                try WidgetFaceRenderer.render(face(inRoom, .accessoryInline), size: WidgetFaceRenderer.inline, look: look, name: "attendance-lock-inline")
+            }
+        }
+        // One size larger text than the default (the widgets cap it at xLarge).
+        for (family, size, name) in [(WidgetFamily.systemSmall, small, "attendance-small-in-room"), (.systemMedium, medium, "attendance-medium-in-room")] {
+            try WidgetFaceRenderer.render(AttendanceWidgetView(entry: AttendanceTimelineEntry(date: Date(), snapshot: inRoom, workspace: header), family: family),
+                                          size: size, look: .light, name: name, textSize: .xLarge)
+        }
+    }
+}
+
+/// Draws a widget face to a PNG (SNAPSHOT_DIR=<dir>; TEST_RUNNER_SNAPSHOT_DIR when run by xcodebuild) at the widget's
+/// size, with the system's 16 pt margins on the home screen (none on the lock screen), on a wallpaper-like ground:
+/// light, dark, the tinted home screen (iOS 18: the face drawn in the accented mode, then washed into one tint as the
+/// system does — an approximation: the system tints the accented parts apart) and the lock screen (vibrant, monochrome).
+@MainActor
+enum WidgetFaceRenderer {
+    static let small = CGSize(width: 170, height: 170)
+    static let medium = CGSize(width: 364, height: 170)
+    static let large = CGSize(width: 364, height: 382)
+    static let rectangular = CGSize(width: 172, height: 76)
+    static let circular = CGSize(width: 76, height: 76)
+    static let inline = CGSize(width: 260, height: 26)
+
+    enum Look: String, CaseIterable {
+        case light, dark, tinted, lock
+    }
+
+    static func render<V: View>(_ view: V, size: CGSize, look: Look, name: String, textSize: DynamicTypeSize = .large) throws {
+        let accessory = size.height <= 76
+        let dark = look != .light
+        let shape = RoundedRectangle(cornerRadius: accessory ? 0 : 22, style: .continuous)
+        let inner = view
+            .padding(accessory ? 0 : 16)
+            .frame(width: size.width, height: size.height)
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .environment(\.dynamicTypeSize, textSize)
+            .environment(\.widgetModeOverride, look == .tinted ? .accented : look == .lock ? .vibrant : nil)
+        let washed = inner.grayscale(1).colorMultiply(Color(red: 0.86, green: 0.93, blue: 1))
+        let framed = ZStack {
+            switch look {
+            case .light: inner.background(Color.white, in: shape)
+            case .dark: inner.background(Color.black, in: shape)
+            case .tinted: washed.background(Color(red: 0.16, green: 0.24, blue: 0.34).opacity(0.9), in: shape)
+            case .lock: inner.grayscale(1)
+            }
+        }
+        .padding(20)
+        .background(look == .light ? Color(white: 0.82) : look == .dark ? Color(white: 0.12) : Color(red: 0.07, green: 0.11, blue: 0.19))
+        let renderer = ImageRenderer(content: framed)
+        renderer.scale = 3
+        let image = try XCTUnwrap(renderer.uiImage)
+        XCTAssertEqual(image.size.width, size.width + 40, accuracy: 1)
+        let suffix = textSize == .large ? look.rawValue : "\(look.rawValue)-xl"
+        let env = ProcessInfo.processInfo.environment
+        if let dir = env["SNAPSHOT_DIR"] ?? env["TEST_RUNNER_SNAPSHOT_DIR"], let data = image.pngData() {
+            let url = URL(fileURLWithPath: dir).appendingPathComponent("\(name)-\(suffix).png")
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url)
         }
     }
 }

@@ -29,8 +29,15 @@ extension AppController {
             if let last, last.type == "user", last.senderId != meId, state.channel.type != "dm" {
                 sender = users[last.senderId].map { $0.displayName.isEmpty ? $0.username : $0.displayName }
             }
+            // A 1:1 DM's picture: the other person's initials (my notes to myself: mine).
+            var avatar: WidgetPerson?
+            if state.channel.type == "dm" {
+                let ids = state.channel.dmUserIds ?? []
+                if let other = ids.first(where: { $0 != meId }) ?? ids.first, let user = users[other] { avatar = widgetPerson(user) }
+            }
             return UnreadWidgetRow(id: state.id, name: title(state), isDm: state.channel.isDm, count: count, mentions: state.mentionCount,
-                                   lastAt: last?.createdAt ?? state.channel.lastMessageAt, lastSender: sender)
+                                   lastAt: last?.createdAt ?? state.channel.lastMessageAt, lastSender: sender, avatar: avatar,
+                                   group: state.channel.isDm ? state.channel.type == "group_dm" : nil)
         }.sorted(by: UnreadWidgetRules.inOrder)
         return UnreadWidgetSnapshot(serverUrl: workspace.serverUrl, account: workspace.account, workspaceName: workspace.name, userId: meId,
                                     total: UnreadWidgetRules.rowsTotal(rows) + others, others: others, rows: rows, rowsAt: stamp,

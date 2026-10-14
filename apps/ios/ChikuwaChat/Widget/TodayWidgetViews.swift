@@ -7,8 +7,10 @@ import WidgetKit
 
 struct TodayTimelineEntry: TimelineEntry {
     let date: Date
-    /// nil: the app has written none (nobody signed in yet).
+    /// nil: nothing to show (nobody signed in yet, or the chosen workspace signed out).
     let snapshot: TodayWidgetSnapshot?
+    /// The workspace's row for the header.
+    var workspace: Workspace? = nil
 }
 
 struct TodayWidgetView: View {
@@ -19,8 +21,9 @@ struct TodayWidgetView: View {
     var body: some View {
         content
             // Tapping outside a row opens the calendar of that workspace.
-            .widgetURL(WidgetLink.calendar(server: entry.snapshot?.serverUrl).url)
+            .widgetURL(WidgetLink.calendar(server: entry.snapshot?.serverUrl ?? entry.workspace?.serverUrl).url)
             .environment(\.locale, WidgetLanguage.locale)
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
     }
 
     @ViewBuilder
@@ -29,9 +32,9 @@ struct TodayWidgetView: View {
         switch family {
         case .accessoryRectangular: TodayRectangularView(model: model)
         case .accessoryInline: TodayInlineView(model: model)
-        case .systemMedium: TodayHomeView(model: model, size: .medium)
-        case .systemLarge: TodayHomeView(model: model, size: .large)
-        default: TodayHomeView(model: model, size: .small)
+        case .systemMedium: TodayHomeView(model: model, workspace: entry.workspace, size: .medium)
+        case .systemLarge: TodayHomeView(model: model, workspace: entry.workspace, size: .large)
+        default: TodayHomeView(model: model, workspace: entry.workspace, size: .small)
         }
     }
 }
@@ -71,6 +74,12 @@ struct TodayWidgetModel {
                                        timeZone: calendar.timeZone).month(.abbreviated).day().weekday(.abbreviated))
     }
 
+    /// 「10/14(水)」: the small widget's header.
+    var shortDayLabel: String {
+        now.formatted(Date.FormatStyle(date: .omitted, time: .omitted, locale: WidgetLanguage.locale, calendar: calendar,
+                                       timeZone: calendar.timeZone).month(.defaultDigits).day().weekday(.abbreviated))
+    }
+
     func clock(_ date: Date) -> String {
         let p = calendar.dateComponents([.hour, .minute], from: date)
         return String(format: "%d:%02d", p.hour!, p.minute!)
@@ -83,6 +92,18 @@ struct TodayWidgetModel {
         if days.first == today, let start = event.startsAt { return clock(start) }
         if days.last == today, let end = event.endsAt { return "〜" + clock(end) }
         return widgetText("終日")
+    }
+
+    /// From when to when on this day: 「終日」, 「13:00–15:00」, 「22:00〜」 (goes on past midnight), 「〜12:00」 (began
+    /// earlier).
+    func range(_ event: TodayWidgetEvent) -> String {
+        guard !event.allDay, let start = event.startsAt else { return widgetText("終日") }
+        let days = TodayWidgetRules.eventDays(event, calendar)
+        if days.first == today {
+            guard let end = event.endsAt, end > start else { return clock(start) }
+            return days.last == today ? "\(clock(start))–\(clock(end))" : clock(start) + "〜"
+        }
+        return time(event)
     }
 
     /// A task's due on this day: 「期限切れ」 (with its date when it was another day, its time when today), else its time,
@@ -109,105 +130,150 @@ enum TodayWidgetSize { case small, medium, large }
 /// The home screen's small, medium and large widgets.
 struct TodayHomeView: View {
     let model: TodayWidgetModel
+    var workspace: Workspace? = nil
     let size: TodayWidgetSize
+    @WidgetFullColor private var fullColor
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Group {
             if let snapshot = model.snapshot {
-                switch size {
-                case .small: small(snapshot)
-                case .medium: medium(snapshot)
-                case .large: large(snapshot)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(verbatim: "Taylis").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                    Image(systemName: "calendar").font(.title2).foregroundStyle(.secondary).accessibilityHidden(true)
-                    Text("Taylis を開いてサインインしてください").font(.footnote).foregroundStyle(.secondary).lineLimit(3)
+                VStack(alignment: .leading, spacing: 0) {
+                    header(snapshot)
+                    switch size {
+                    case .small: small(snapshot)
+                    case .medium: medium(snapshot)
+                    case .large: large(snapshot)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                WidgetMessageFace.signIn(workspace, compact: size == .small)
             }
         }
         .containerBackground(for: .widget) { Color(.systemBackground) }
     }
 
-    /// The day and the workspace (and why the list may be old).
-    private func header(_ snapshot: TodayWidgetSnapshot, workspace: Bool) -> some View {
-        HStack(spacing: 6) {
-            Text(verbatim: model.dayLabel).font(.caption.weight(.bold)).foregroundStyle(.red).lineLimit(1)
-            if workspace {
-                Text(verbatim: snapshot.workspaceName).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if let problem = snapshot.problem {
-                Image(systemName: problem == .offline ? "wifi.exclamationmark" : "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .accessibilityLabel(Text(problem == .offline ? "更新できません" : "サインインし直してください"))
+    /// The workspace, and on the right the day (and why the list may be old).
+    private func header(_ snapshot: TodayWidgetSnapshot) -> some View {
+        WidgetHeader(workspace: workspace ?? Workspace(serverUrl: snapshot.serverUrl, name: snapshot.workspaceName, username: ""),
+                     name: snapshot.workspaceName) {
+            HStack(spacing: 4) {
+                if let problem = snapshot.problem { WidgetProblemIcon(problem: problem) }
+                Text(verbatim: size == .small ? model.shortDayLabel : model.dayLabel)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(fullColor ? Color.red : Color.primary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .widgetAccentable()
             }
         }
     }
 
+    private func ink(_ rgb: UInt32) -> Color { fullColor ? Color.widgetInk(rgb, dark: scheme == .dark) : Color.primary }
+
+    /// A calendar's colour bar (a soft primary one in the tinted modes, so it does not vanish).
+    private func bar(_ event: TodayWidgetEvent, height: CGFloat? = nil) -> some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(fullColor ? Color(rgb: TodayWidgetRules.color(event.channelId)) : Color.primary.opacity(0.55))
+            .frame(width: 4, height: height)
+            .widgetAccentable()
+    }
+
+    /// Nothing today: an icon and its words (centred in what is left).
+    private func emptyDay(withTasksLine: Bool) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: model.known ? "calendar.badge.checkmark" : "arrow.triangle.2.circlepath")
+                .font(.system(size: 26, weight: .regular))
+                .foregroundStyle(fullColor ? Color.red.opacity(0.85) : Color.primary)
+                .widgetAccentable()
+                .accessibilityHidden(true)
+            Text(model.known ? (model.events.isEmpty ? "今日の予定はありません" : "今日の予定は終わりました") : "読み込み中")
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+            if withTasksLine && model.known {
+                Text("期限のタスクもありません").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: small: the next event and the tasks' count
 
+    @ViewBuilder
     private func small(_ snapshot: TodayWidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            header(snapshot, workspace: false)
-            if let next = model.next {
-                HStack(alignment: .top, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 1.5).fill(Color(rgb: TodayWidgetRules.color(next.channelId))).frame(width: 3)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: model.time(next)).font(.caption.weight(.semibold)).monospacedDigit()
-                        Text(verbatim: next.title).font(.subheadline.weight(.bold)).lineLimit(2).privacySensitive()
+        if let next = model.next {
+            Spacer(minLength: 8)
+            Link(destination: TodayWidgetRules.link(next, server: snapshot.serverUrl).url) {
+                HStack(alignment: .top, spacing: 8) {
+                    bar(next)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: model.range(next))
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(ink(TodayWidgetRules.color(next.channelId)))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(verbatim: next.title).font(.headline).lineLimit(2).privacySensitive()
                         if let channel = next.channelName {
                             Text(verbatim: "#" + channel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                let more = model.events.filter { !TodayWidgetRules.isOver($0, now: model.now) && $0.id != next.id }.count
-                if more > 0 { Text("ほか \(more) 件").font(.caption2).foregroundStyle(.secondary) }
-            } else {
-                Text(model.known ? (model.events.isEmpty ? "今日の予定なし" : "今日の予定は終わりました") : "読み込み中")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                .foregroundStyle(Color.primary)
             }
-            Spacer(minLength: 0)
-            taskCount
+            let more = model.events.filter { !TodayWidgetRules.isOver($0, now: model.now) && $0.id != next.id }.count
+            if more > 0 {
+                Text("ほか \(more) 件").font(.caption2.weight(.medium)).foregroundStyle(.secondary).padding(.top, 4).padding(.leading, 12)
+            }
+            Spacer(minLength: 6)
+        } else {
+            emptyDay(withTasksLine: false)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        taskCount
     }
 
-    /// 「期限のタスク 2」 (red with 「期限切れ 1」 when some are overdue), a link to the tasks.
+    /// 「タスク 2 · 期限切れ 1」 in a soft row, a link to the tasks.
     private var taskCount: some View {
         Link(destination: WidgetLink.tasks(server: model.snapshot?.serverUrl).url) {
-            HStack(spacing: 4) {
-                Image(systemName: model.overdue > 0 ? "exclamationmark.circle.fill" : "checklist")
-                    .foregroundStyle(model.overdue > 0 ? Color.red : Color.secondary)
+            HStack(spacing: 5) {
+                Image(systemName: model.tasks.isEmpty ? "checkmark.circle" : "checklist")
+                    .foregroundStyle(fullColor && model.overdue > 0 ? Color.red : Color.secondary)
+                    .widgetAccentable()
                 if model.tasks.isEmpty {
                     Text("期限のタスクなし").foregroundStyle(.secondary)
                 } else {
-                    Text("期限のタスク \(model.tasks.count)")
-                    if model.overdue > 0 { Text("（期限切れ \(model.overdue)）").foregroundStyle(.red) }
+                    Text("\(model.tasks.count) 件")
+                    if model.overdue > 0 {
+                        Text("期限切れ \(model.overdue)").foregroundStyle(fullColor ? Color.red : Color.primary)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
+            .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .foregroundStyle(Color.primary)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(fullColor ? 0.05 : 0.1)))
         }
     }
 
     // MARK: medium: events | tasks
 
+    @ViewBuilder
     private func medium(_ snapshot: TodayWidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            header(snapshot, workspace: true)
-            HStack(alignment: .top, spacing: 10) {
+        if model.events.isEmpty && model.tasks.isEmpty {
+            emptyDay(withTasksLine: true)
+        } else {
+            Spacer(minLength: WidgetMetrics.gapUnderHeader).frame(maxHeight: WidgetMetrics.gapUnderHeader)
+            HStack(alignment: .top, spacing: 12) {
                 eventList(snapshot, limit: TodayWidgetRules.mediumEvents, compact: true)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                Divider()
+                Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 1)
                 taskList(snapshot, limit: TodayWidgetRules.mediumTasks, compact: true)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -217,24 +283,33 @@ struct TodayHomeView: View {
 
     // MARK: large: events, then tasks
 
+    @ViewBuilder
     private func large(_ snapshot: TodayWidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            header(snapshot, workspace: true)
-            eventList(snapshot, limit: TodayWidgetRules.largeEvents, compact: false)
-            Divider()
-            taskList(snapshot, limit: TodayWidgetRules.largeTasks, compact: false)
-            Spacer(minLength: 0)
+        if model.events.isEmpty && model.tasks.isEmpty {
+            emptyDay(withTasksLine: true)
+        } else {
+            let limits = TodayWidgetRules.largeLimits(events: model.events.count, tasks: model.tasks.count)
+            VStack(alignment: .leading, spacing: 10) {
+                eventList(snapshot, limit: max(limits.events, 1), compact: false)
+                Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 1)
+                taskList(snapshot, limit: max(limits.tasks, 1), compact: false)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, WidgetMetrics.gapUnderHeader)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func sectionTitle(_ title: LocalizedStringKey, count: Int, link: WidgetLink) -> some View {
+    /// 「予定 5」 on the left, 「ほか 2 件」 on the right when not all fit; a link to the list.
+    private func sectionTitle(_ title: LocalizedStringKey, count: Int, hidden: Int, link: WidgetLink) -> some View {
         Link(destination: link.url) {
             HStack(spacing: 4) {
                 Text(title)
                 if count > 0 { Text(verbatim: "\(count)").monospacedDigit() }
+                Spacer(minLength: 4)
+                if hidden > 0 { Text("ほか \(hidden) 件").fontWeight(.medium) }
             }
-            .font(.caption2.weight(.semibold))
+            .font(.caption2.weight(.bold))
+            .lineLimit(1)
         }
         // A link's label takes the tint otherwise.
         .foregroundStyle(Color.secondary)
@@ -242,67 +317,64 @@ struct TodayHomeView: View {
 
     private func eventList(_ snapshot: TodayWidgetSnapshot, limit: Int, compact: Bool) -> some View {
         let shown = TodayWidgetRules.visible(model.events, now: model.now, limit: limit)
-        return VStack(alignment: .leading, spacing: compact ? 3 : 5) {
-            sectionTitle("予定", count: model.events.count, link: .calendar(server: snapshot.serverUrl))
+        return VStack(alignment: .leading, spacing: compact ? 5 : 4) {
+            sectionTitle("予定", count: model.events.count, hidden: model.events.count - shown.count, link: .calendar(server: snapshot.serverUrl))
             if shown.isEmpty {
                 Text(model.known ? "今日の予定なし" : "読み込み中").font(.caption).foregroundStyle(.secondary)
             }
             ForEach(shown) { event in
                 Link(destination: TodayWidgetRules.link(event, server: snapshot.serverUrl).url) { eventRow(event, compact: compact).foregroundStyle(Color.primary) }
             }
-            if model.events.count > shown.count {
-                Text("ほか \(model.events.count - shown.count) 件").font(.caption2).foregroundStyle(.secondary)
-            }
         }
     }
 
     private func eventRow(_ event: TodayWidgetEvent, compact: Bool) -> some View {
         let over = TodayWidgetRules.isOver(event, now: model.now)
-        return HStack(alignment: .center, spacing: 5) {
-            RoundedRectangle(cornerRadius: 1.5).fill(Color(rgb: TodayWidgetRules.color(event.channelId))).frame(width: 3, height: compact ? 14 : 28)
+        return HStack(alignment: .center, spacing: 6) {
+            bar(event, height: compact ? 16 : 30)
             Text(verbatim: model.time(event))
                 .font(.caption2.weight(.semibold))
                 .monospacedDigit()
                 .lineLimit(1)
-                .frame(width: compact ? 40 : 48, alignment: .leading)
                 .minimumScaleFactor(0.7)
+                .frame(width: compact ? 40 : 46, alignment: .leading)
             VStack(alignment: .leading, spacing: 0) {
-                Text(verbatim: event.title).font(.caption.weight(compact ? .medium : .semibold)).lineLimit(1).privacySensitive()
+                Text(verbatim: event.title).font(compact ? .caption.weight(.medium) : .footnote.weight(.semibold)).lineLimit(1).privacySensitive()
                 if !compact, let channel = event.channelName {
                     Text(verbatim: "#" + channel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
         }
-        .opacity(over ? 0.45 : 1)
+        .frame(height: compact ? 18 : 30)
+        .opacity(over ? 0.4 : 1)
         .contentShape(Rectangle())
     }
 
     private func taskList(_ snapshot: TodayWidgetSnapshot, limit: Int, compact: Bool) -> some View {
         let shown = Array(model.tasks.prefix(limit))
-        return VStack(alignment: .leading, spacing: compact ? 3 : 5) {
-            sectionTitle("期限のタスク", count: model.tasks.count, link: .tasks(server: snapshot.serverUrl))
+        return VStack(alignment: .leading, spacing: compact ? 5 : 4) {
+            sectionTitle("期限のタスク", count: model.tasks.count, hidden: model.tasks.count - shown.count, link: .tasks(server: snapshot.serverUrl))
             if shown.isEmpty {
                 Text(model.known ? "期限のタスクなし" : "読み込み中").font(.caption).foregroundStyle(.secondary)
             }
             ForEach(shown) { task in
                 Link(destination: TodayWidgetRules.link(task, server: snapshot.serverUrl).url) { taskRow(task, compact: compact).foregroundStyle(Color.primary) }
             }
-            if model.tasks.count > shown.count {
-                Text("ほか \(model.tasks.count - shown.count) 件").font(.caption2).foregroundStyle(.secondary)
-            }
         }
     }
 
     private func taskRow(_ task: TodayWidgetTask, compact: Bool) -> some View {
         let overdue = model.isOverdue(task)
-        return HStack(alignment: .center, spacing: 5) {
-            Image(systemName: "circle")
-                .font(.system(size: compact ? 10 : 12, weight: .semibold))
-                .foregroundStyle(overdue ? Color.red : Color.secondary)
+        let alert = fullColor ? Color.red : Color.primary
+        return HStack(alignment: .center, spacing: 6) {
+            Image(systemName: "square")
+                .font(.system(size: compact ? 12 : 15, weight: .medium))
+                .foregroundStyle(overdue ? alert : Color.secondary)
+                .widgetAccentable(overdue)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
-                Text(verbatim: task.title).font(.caption.weight(compact ? .medium : .semibold)).lineLimit(1).privacySensitive()
+                Text(verbatim: task.title).font(compact ? .caption.weight(.medium) : .footnote.weight(.semibold)).lineLimit(1).privacySensitive()
                 if !compact, let channel = task.channelName {
                     Text(verbatim: "#" + channel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -310,14 +382,15 @@ struct TodayHomeView: View {
             Spacer(minLength: 2)
             if let due = model.due(task, compact: compact) {
                 Text(verbatim: due)
-                    .font(.caption2.weight(overdue ? .bold : .regular))
+                    .font(.caption2.weight(overdue ? .bold : .medium))
                     .monospacedDigit()
-                    .foregroundStyle(overdue ? Color.red : Color.secondary)
+                    .foregroundStyle(overdue ? alert : Color.secondary)
                     .lineLimit(1)
                     .layoutPriority(1)
+                    .widgetAccentable(overdue)
             }
         }
-        .frame(minHeight: compact ? 14 : 28)
+        .frame(height: compact ? 18 : 30)
         .contentShape(Rectangle())
     }
 }
@@ -333,7 +406,11 @@ struct TodayRectangularView: View {
                 Text("Taylis を開いてサインインしてください").font(.caption).lineLimit(2)
             } else {
                 if let next = model.next {
-                    Text(verbatim: model.time(next)).font(.caption.weight(.semibold)).monospacedDigit()
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar").widgetAccentable()
+                        Text(verbatim: model.range(next)).monospacedDigit()
+                    }
+                    .font(.caption.weight(.semibold))
                     Text(verbatim: next.title).font(.headline).lineLimit(1).privacySensitive()
                 } else {
                     Text(verbatim: model.dayLabel).font(.caption.weight(.semibold))

@@ -67,6 +67,12 @@ enum AttendanceWidgetSamples {
             serverUrl: "", account: "", workspaceName: "Taylis", userId: "me", available: true, states: states, entries: entries,
             symbols: ["in_room": "door.left.hand.open", "on_site": "building.2", "off_site": "mappin.and.ellipse", "gone": "house"],
             colors: ["green": 0x15803D, "blue": 0x2563EB, "purple": 0x7C3AED, "red": 0xDC2626, "gray": 0x4B5563],
-            updatedAt: .distantFuture, problem: nil)
+            updatedAt: .distantFuture, problem: nil,
+            people: [
+                WidgetPerson(id: "me", name: widgetText("自分"), initials: "K", color: 0x5B5BD6),
+                WidgetPerson(id: "u2", name: "Hanako", initials: "H", color: 0x2F9E6E),
+                WidgetPerson(id: "u3", name: "Jiro", initials: "J", color: 0xC2410C),
+                WidgetPerson(id: "u4", name: "Taro", initials: "T", color: 0x2F7FA8),
+            ])
     }
 }

@@ -20,6 +20,10 @@ struct UnreadWidgetRow: Codable, Equatable, Identifiable {
     /// system row).
     var lastAt: String?
     var lastSender: String?
+    /// A 1:1 DM's other person (their initials on their colour as the row's picture); nil otherwise.
+    var avatar: WidgetPerson? = nil
+    /// A group DM (several people).
+    var group: Bool? = nil
 }
 
 struct UnreadWidgetSnapshot: WidgetAccountSnapshot {
@@ -69,6 +73,31 @@ enum UnreadWidgetRules {
 
     /// The mentions among the rows (the small widget's 「@ n」).
     static func mentions(_ snapshot: UnreadWidgetSnapshot) -> Int { snapshot.rows.reduce(0) { $0 + $1.mentions } }
+
+    /// What the count is made of (「@3・DM 4・スレッドなど 1」): the channels' mentions, the DMs' counts, the followed
+    /// threads' mentions and reminders. nil while the rows no longer add up to the count (the server's is newer).
+    struct Breakdown: Equatable {
+        var mentions: Int
+        var dms: Int
+        var others: Int
+    }
+
+    static func breakdown(_ snapshot: UnreadWidgetSnapshot) -> Breakdown? {
+        guard rowsCurrent(snapshot) else { return nil }
+        let dms = snapshot.rows.filter(\.isDm).reduce(0) { $0 + $1.count }
+        return Breakdown(mentions: rowsTotal(snapshot.rows) - dms, dms: dms, others: snapshot.others)
+    }
+
+    /// The snapshot of a workspace the app has written none for yet (a widget set to it): the count the app last knew
+    /// for it (its switcher's), no rows, checked with the server at once.
+    static func seed(_ workspace: Workspace) -> UnreadWidgetSnapshot {
+        UnreadWidgetSnapshot(serverUrl: workspace.serverUrl, account: workspace.account, workspaceName: workspace.name,
+                             userId: workspace.userId ?? "", total: workspace.badge ?? 0, others: 0, rows: [], rowsAt: .distantPast,
+                             updatedAt: .distantPast, problem: nil)
+    }
+
+    /// The app has never listed this workspace's conversations (a seed): the count stands alone.
+    static func hasRows(_ snapshot: UnreadWidgetSnapshot) -> Bool { snapshot.rowsAt != .distantPast }
 
     /// The server's count of the conversations (GET /sync/summary's `badge`): 0 means they were all read elsewhere, so
     /// the rows go; the app's rows stay otherwise (the widget says how old they are when they no longer add up).

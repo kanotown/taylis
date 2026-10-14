@@ -110,6 +110,9 @@ struct AttendanceWidgetSnapshot: Codable, Equatable {
     var updatedAt: Date
     /// Set when the last refresh or change failed; nil once the server answered.
     var problem: AttendanceWidgetProblem?
+    /// The people on the board, for the faces of those in the room (names and initials' colours; nil in a snapshot
+    /// written before they were kept). The widget's own refresh keeps them: GET /attendance names nobody.
+    var people: [WidgetPerson]? = nil
 
     /// The snapshot is old enough for the widget to ask the server again when it is drawn (it is also asked when a
     /// refresh failed).
@@ -180,6 +183,32 @@ enum AttendanceWidgetRules {
 
     /// Whether the control shows 「on」: my state is of the in_room kind.
     static func isInRoom(_ snapshot: AttendanceWidgetSnapshot) -> Bool { myState(snapshot)?.kind == countedKind }
+
+    /// The people in the room (an in_room-kind state), as the face pile shows them: me first, then by arrival (who came
+    /// first), then by name. Someone the snapshot has no name for is a grey 「?」.
+    static func inRoomPeople(_ snapshot: AttendanceWidgetSnapshot) -> [AttendanceWidgetPersonEntry] {
+        let counted = Set(snapshot.states.filter { $0.kind == countedKind }.map(\.id))
+        let people = Dictionary((snapshot.people ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return snapshot.entries.filter { counted.contains($0.stateId) }
+            .map { AttendanceWidgetPersonEntry(person: people[$0.userId] ?? .unknown($0.userId), since: $0.since ?? "", me: $0.userId == snapshot.userId) }
+            .sorted { a, b in
+                if a.me != b.me { return a.me }
+                if a.since != b.since { return a.since < b.since }
+                return a.person.name.localizedStandardCompare(b.person.name) == .orderedAscending
+            }
+    }
+
+    /// The snapshot of a workspace the app has written none for yet (a widget set to it): nothing known but who I am,
+    /// read from the server at once (`updatedAt` long ago). The icon and colour tables are the app's, copied from
+    /// another workspace's snapshot.
+    static func seed(_ workspace: Workspace, tables: AttendanceWidgetSnapshot?) -> AttendanceWidgetSnapshot {
+        AttendanceWidgetSnapshot(serverUrl: workspace.serverUrl, account: workspace.account, workspaceName: workspace.name,
+                                 userId: workspace.userId ?? "", available: true, states: [], entries: [],
+                                 symbols: tables?.symbols ?? [:], colors: tables?.colors ?? [:], updatedAt: .distantPast, problem: nil)
+    }
+
+    /// Not read yet: a seed whose first read has not come back.
+    static func isLoading(_ snapshot: AttendanceWidgetSnapshot) -> Bool { snapshot.available && snapshot.states.isEmpty }
 
     /// 「在室 n 人」: the people on the board whose state is of the in_room kind (the app's AttendanceRules.inRoomCount;
     /// `entries` holds only the people on the board).
@@ -270,6 +299,15 @@ enum AttendanceWidgetRules {
     }
 }
 
+/// One face of the pile.
+struct AttendanceWidgetPersonEntry: Equatable, Identifiable {
+    let person: WidgetPerson
+    let since: String
+    let me: Bool
+
+    var id: String { person.id }
+}
+
 /// The widget's link into the app: `chikuwachat://attendance?server=<server URL>` opens 「在室状況」 in that workspace
 /// (the scheme the app already uses for its sign-in redirect, Sso.swift).
 enum AttendanceWidgetLink {
@@ -333,6 +371,22 @@ enum AttendanceWidgetStore {
 
     static func snapshot(account: String, _ file: URL = defaultFile) -> AttendanceWidgetSnapshot? {
         read(file).snapshots[account]
+    }
+
+    /// What a widget set to `selection` draws (WidgetSnapshotFile.resolve's rule: the app's choice, or the chosen
+    /// workspace's snapshot, a seed when there is none yet; nil when it is signed out or gone).
+    static func resolve(_ selection: WidgetWorkspaceSelection, _ file: URL = defaultFile,
+                        workspace: (String) -> Workspace? = { WidgetWorkspaces.workspace(account: $0) }) -> AttendanceWidgetSnapshot? {
+        switch selection {
+        case .followApp:
+            return current(file)
+        case .account(let account):
+            guard let row = workspace(account) else { return nil }
+            if let stored = snapshot(account: account, file) { return stored }
+            let seed = AttendanceWidgetRules.seed(row, tables: all(file).values.first { !$0.symbols.isEmpty })
+            save(seed, to: file)
+            return seed
+        }
     }
 
     /// Saves one account's snapshot. Returns whether anything but its time changed (the caller reloads the widget then).

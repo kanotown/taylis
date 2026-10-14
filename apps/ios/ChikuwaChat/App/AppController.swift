@@ -180,7 +180,12 @@ final class AppController {
 
     private func persistWorkspaces() {
         Workspaces.save(Workspaces.Saved(list: workspaces, active: activeServerUrl), to: defaults)
-        if defaults === UserDefaults.standard { SharedContainer.saveWorkspaces(workspaces, active: activeServerUrl) }
+        if defaults === UserDefaults.standard {
+            SharedContainer.saveWorkspaces(workspaces, active: activeServerUrl)
+            // The widgets' choice of workspace (AppController+Widget.swift): a file, as their snapshots (the group's
+            // defaults went stale in the extension's process).
+            publishWidgetWorkspaces()
+        }
     }
 
     /// M114 (WORKSPACES.md §5.4): the switcher's order, kept on this device only (each workspace is its own server).
@@ -228,6 +233,7 @@ final class AppController {
             screen = .login
         }
         booted = true
+        if defaults === UserDefaults.standard { publishWidgetWorkspaces() } // the widgets' list, also when nothing changed
         if let tap { PushCenter.shared.pendingChannelId = tap.channelId }
         Task { await refreshServerInfo() }
         Task { await refreshSummaries() }
@@ -689,6 +695,7 @@ final class AppController {
                 entry.badge = summary.badge
                 entry.hasUnread = summary.hasUnread
             }
+            unreadWidgetSummary(account: workspace.account, badge: summary.badge) // a widget set to that workspace
         }
         updateAppBadge()
     }

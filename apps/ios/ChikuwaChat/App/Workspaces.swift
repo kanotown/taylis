@@ -184,6 +184,10 @@ enum Workspaces {
         return String(first).uppercased()
     }
 
+    /// The eight tile colours of the desktop rail (apps/desktop/src/state/workspaces.ts), so a workspace looks the same on
+    /// both (the app's tiles and the widgets' headers).
+    static let paletteHex: [UInt32] = [0x5b5bd6, 0x0f9d8a, 0xd9480f, 0xc2255c, 0x1c7ed6, 0x7048e8, 0x2b8a3e, 0xe67700]
+
     /// Which of the eight tile colours a workspace gets (the desktop's hash, so both show the same colour).
     static func paletteIndex(_ key: String) -> Int {
         var hash: UInt32 = 0
