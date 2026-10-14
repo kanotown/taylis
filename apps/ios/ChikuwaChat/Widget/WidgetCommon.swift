@@ -41,11 +41,11 @@ struct WidgetSnapshotFile<Snapshot: WidgetAccountSnapshot> {
         try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    /// The workspace on screen in the app, else the one written last.
-    func current() -> Snapshot? {
+    /// The workspace on screen in the app, else the one written last (among the accounts `included` keeps).
+    func current(_ included: (String) -> Bool = { _ in true }) -> Snapshot? {
         let contents = read()
-        if let active = contents.active, let snapshot = contents.snapshots[active] { return snapshot }
-        return contents.snapshots.values.max { $0.updatedAt < $1.updatedAt }
+        if let active = contents.active, included(active), let snapshot = contents.snapshots[active] { return snapshot }
+        return contents.snapshots.values.filter { included($0.account) }.max { $0.updatedAt < $1.updatedAt }
     }
 
     func snapshot(account: String) -> Snapshot? { read().snapshots[account] }

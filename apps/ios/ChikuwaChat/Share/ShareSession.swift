@@ -31,13 +31,130 @@ enum SharedTokens {
         return try? JSONDecoder().decode(Access.self, from: data)
     }
 
-    /// After a sign-in or a refresh: both tokens, the access token with its expiry on this device's clock.
+    /// A new sign-in of the account (the app: login, invite, Google): a new generation, then both tokens, as one step
+    /// under the session lock (AccountSessions). Returns the generation the session has.
+    @discardableResult
+    static func signIn(account: String, accessToken: String, expiresIn: Int, refreshToken: String,
+                       sessions: AccountSessions = .shared) -> Int {
+        sessions.signIn(account: account) {
+            store(account: account, accessToken: accessToken, expiresIn: expiresIn, refreshToken: refreshToken)
+        }
+    }
+
+    /// The account signs out or leaves this device (the app): a new generation, then both tokens go, as one step under
+    /// the session lock, so a refresh or a widget's answer that was on its way can no longer put anything back.
+    static func signOut(account: String, sessions: AccountSessions = .shared) {
+        sessions.signOut(account: account) { Keychain.delete(account: account) }
+    }
+
+    /// A refresh's tokens (the app's or an extension's), stored only while the session it started from is still the
+    /// account's (same generation, still signed in), checked and stored under the session lock. False: dropped.
+    @discardableResult
+    static func commit(account: String, generation: Int, accessToken: String, expiresIn: Int, refreshToken: String,
+                       sessions: AccountSessions = .shared) -> Bool {
+        sessions.ifCurrent(account: account, generation: generation) {
+            store(account: account, accessToken: accessToken, expiresIn: expiresIn, refreshToken: refreshToken)
+        }
+    }
+
+    /// After a sign-in or a refresh: both tokens, the access token with its expiry on this device's clock. (Outside the
+    /// tests it is reached through signIn / commit, which order it with a sign-out.)
     static func store(account: String, accessToken: String, expiresIn: Int, refreshToken: String, now: Date = Date()) {
         Keychain.set(account: account, value: refreshToken)
         let access = Access(token: accessToken, expiresAt: now.addingTimeInterval(TimeInterval(expiresIn)))
         if let data = try? JSONEncoder().encode(access), let text = String(data: data, encoding: .utf8) {
             Keychain.set(account: Keychain.accessAccount(account), value: text)
         }
+    }
+}
+
+/// Which session of an account the app, the Share Extension and the widgets are working for (MOBILE_UI.md §21.3,
+/// WIDGETS.md): a generation per account, raised by the app on every sign-in and on every sign-out or removal, with
+/// whether the account is signed in now. An extension's refresh, a widget's refresh or button and a pending share note
+/// the generation when they start and store their result (tokens, a snapshot) only while it is unchanged and the
+/// account still signed in; the app's sign-out raises it and deletes the tokens in one step. Both sides take the
+/// session lock (a file lock in the App Group held for a few milliseconds — never across a request, unlike the token
+/// lock), so an answer that was on its way when the account signed out never brings its tokens or its private snapshot
+/// back, and a late answer of an old session never overwrites a new sign-in's tokens.
+///
+/// Kept in the App Group (`Auth/sessions.json`, nothing secret). An account without a record (an install from before
+/// the record: generation 0) counts as signed in while its refresh token is in the Keychain.
+struct AccountSessions {
+    struct Record: Codable, Equatable {
+        var generation: Int
+        var signedIn: Bool
+    }
+
+    let file: URL
+    let lockURL: URL
+    /// Whether the account's refresh token is in the Keychain (an account without a record).
+    var hasTokens: (String) -> Bool = { SharedTokens.refreshToken(account: $0) != nil }
+
+    private static var folder: URL { SharedContainer.url ?? FileManager.default.temporaryDirectory }
+
+    static let shared = AccountSessions(file: folder.appendingPathComponent("Auth/sessions.json"),
+                                        lockURL: folder.appendingPathComponent("Locks/sessions.lock"))
+
+    /// The lock is held for a file write and a Keychain call: a holder that does not let go within this (a process
+    /// suspended while holding it) is passed rather than hang the app's sign-out.
+    static let lockTimeout: TimeInterval = 2
+
+    func records() -> [String: Record] {
+        guard let data = try? Data(contentsOf: file) else { return [:] }
+        return (try? JSONDecoder().decode([String: Record].self, from: data)) ?? [:]
+    }
+
+    /// The account's generation now (0: none recorded yet).
+    func generation(account: String) -> Int { records()[account]?.generation ?? 0 }
+
+    /// Whether the account is signed in on this device now.
+    func isSignedIn(account: String) -> Bool { records()[account]?.signedIn ?? hasTokens(account) }
+
+    /// The session noted as `generation` is still the account's, signed in.
+    func isCurrent(account: String, generation: Int) -> Bool {
+        let record = records()[account]
+        return (record?.generation ?? 0) == generation && (record?.signedIn ?? hasTokens(account))
+    }
+
+    /// Runs `body` under the session lock only while the session noted as `generation` is current. Returns whether it ran.
+    @discardableResult
+    func ifCurrent(account: String, generation: Int, _ body: () -> Void) -> Bool {
+        locked {
+            guard isCurrent(account: account, generation: generation) else { return false }
+            body()
+            return true
+        }
+    }
+
+    /// A sign-in: the next generation, signed in, then `body` (the tokens stored). Returns the new generation.
+    @discardableResult
+    func signIn(account: String, _ body: () -> Void) -> Int { advance(account, signedIn: true, body) }
+
+    /// A sign-out or removal: the next generation, signed out, then `body` (the tokens deleted).
+    @discardableResult
+    func signOut(account: String, _ body: () -> Void) -> Int { advance(account, signedIn: false, body) }
+
+    private func advance(_ account: String, signedIn: Bool, _ body: () -> Void) -> Int {
+        locked {
+            var all = records()
+            let next = (all[account]?.generation ?? 0) + 1
+            all[account] = Record(generation: next, signedIn: signedIn)
+            write(all)
+            body()
+            return next
+        }
+    }
+
+    private func write(_ all: [String: Record]) {
+        guard let data = try? JSONEncoder().encode(all) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        let lock = FileLock.acquireNow(lockURL, timeout: Self.lockTimeout)
+        defer { lock?.release() }
+        return body()
     }
 }
 
@@ -64,12 +181,19 @@ final class ShareApi: @unchecked Sendable {
     var refreshRetryDelays: [TimeInterval] = [1, 2, 4]
     /// Tests: the lock (nil: none).
     var lockProvider: () async -> FileLock? = { await SharedTokens.lock() }
+    /// The account's session this client works for (AccountSessions), noted when it is made (for a pending share: when
+    /// it was shared). Once the account signed out or in again, this client uses no token and stores none.
+    let generation: Int
+    let sessions: AccountSessions
 
-    init(baseUrl: URL, account: String, language: String = SharedContainer.language() ?? "ja", session: URLSession = .shared) {
+    init(baseUrl: URL, account: String, language: String = SharedContainer.language() ?? "ja", session: URLSession = .shared,
+         generation: Int? = nil, sessions: AccountSessions = .shared) {
         self.baseUrl = baseUrl
         self.account = account
         self.language = language
         self.session = session
+        self.sessions = sessions
+        self.generation = generation ?? sessions.generation(account: account)
     }
 
     convenience init?(workspace: Workspace, session: URLSession = .shared) {
@@ -79,18 +203,28 @@ final class ShareApi: @unchecked Sendable {
 
     // MARK: tokens
 
+    /// The account signed out or in again since this client's session began: nothing more is sent with it.
+    private func checkSession() throws {
+        guard sessions.isCurrent(account: account, generation: generation) else { throw ShareFailure.notSignedIn }
+    }
+
     /// An access token good for at least `margin` seconds: the stored one, else a refresh.
     func accessToken(margin: TimeInterval = 60) async throws -> String {
+        try checkSession()
         if let stored = SharedTokens.access(account: account), stored.valid(for: margin) { return stored.token }
         return try await refreshedToken(replacing: nil)
     }
 
     /// A new access token after `failed` was refused (401 token_expired) or none was usable. Under the lock: when the
     /// Keychain already holds another valid one (the app or another request refreshed meanwhile) it is used as it is;
-    /// else the refresh starts from the refresh token stored now.
+    /// else the refresh starts from the refresh token stored now. The answer's tokens are stored only while this client's
+    /// session is still the account's (AccountSessions, checked under the session lock): an answer that comes back
+    /// after the app signed out (or in again) is dropped, so it neither restores the deleted tokens nor overwrites a new
+    /// session's.
     func refreshedToken(replacing failed: String?) async throws -> String {
         let lock = await lockProvider()
         defer { lock?.release() }
+        try checkSession()
         if let stored = SharedTokens.access(account: account), stored.token != failed, stored.valid(for: 30) { return stored.token }
         guard let refresh = SharedTokens.refreshToken(account: account) else { throw ShareFailure.notSignedIn }
         var attempt = 0
@@ -104,7 +238,9 @@ final class ShareApi: @unchecked Sendable {
                 }
                 struct Tokens: Decodable { let accessToken: String; let refreshToken: String; let expiresIn: Int }
                 guard let tokens = try? JSON.snakeDecoder.decode(Tokens.self, from: data) else { throw ShareFailure.temporary("decode_error") }
-                SharedTokens.store(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken)
+                guard SharedTokens.commit(account: account, generation: generation, accessToken: tokens.accessToken,
+                                          expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken, sessions: sessions)
+                else { throw ShareFailure.notSignedIn }
                 return tokens.accessToken
             } catch let failure as ShareFailure where failure.isTemporary && attempt < refreshRetryDelays.count {
                 try? await Task.sleep(nanoseconds: UInt64(refreshRetryDelays[attempt] * 1_000_000_000))

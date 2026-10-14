@@ -38,7 +38,7 @@ struct ToggleInRoomIntent: SetValueIntent {
     init() {}
 
     func perform() async throws -> some IntentResult {
-        guard let snapshot = AttendanceWidgetStore.current(), snapshot.available,
+        guard let snapshot = AttendanceWidgetStore.resolve(.followApp), snapshot.available,
               let target = AttendanceWidgetRules.firstChoice(snapshot, kind: value ? AttendanceWidgetRules.countedKind : AttendanceWidgetRules.goneKind)
         else { return .result() }
         await AttendanceWidgetActions.setState(target.id, account: snapshot.account)

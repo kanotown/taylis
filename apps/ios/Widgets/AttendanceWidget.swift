@@ -46,6 +46,8 @@ struct AttendanceTimelineProvider: AppIntentTimelineProvider {
         if let stored = snapshot, stored.needsRefresh() {
             snapshot = await AttendanceWidgetActions.refresh(account: stored.account) ?? stored
         }
+        // Signed out while the refresh was on its way: nothing of the account is drawn (WIDGETS.md).
+        if let shown = snapshot, !AccountSessions.shared.isSignedIn(account: shown.account) { snapshot = nil }
         let now = Date()
         let entry = AttendanceTimelineEntry(date: now, snapshot: snapshot, workspace: WidgetWorkspaces.header(configuration.selection, account: snapshot?.account))
         return Timeline(entries: [entry], policy: .after(now.addingTimeInterval(Self.refreshInterval)))

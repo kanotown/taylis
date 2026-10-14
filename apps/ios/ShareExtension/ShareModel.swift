@@ -35,6 +35,9 @@ final class ShareModel {
     @ObservationIgnored private let shareId = UUID().uuidString.lowercased()
     /// Held while the sheet is open, so the app's sweep leaves the folder alone.
     @ObservationIgnored private var stagingLock: FileLock?
+    /// Each workspace's session when the sheet opened (AccountSessions): the share carries it, and is not sent once
+    /// the account signed out or in again.
+    @ObservationIgnored private var generations: [String: Int] = [:]
 
     init(providers: [NSItemProvider], finish: @escaping (Bool) -> Void) {
         self.providers = providers
@@ -54,7 +57,11 @@ final class ShareModel {
     var canSend: Bool { phase == .editing && destination != nil && !isEmpty && tooLarge.isEmpty && !tooMany }
 
     func start() async {
-        workspaces = SharedContainer.workspaces().filter { $0.isSignedIn && SharedTokens.refreshToken(account: $0.account) != nil }
+        let sessions = AccountSessions.shared
+        for workspace in SharedContainer.workspaces() { generations[workspace.account] = sessions.generation(account: workspace.account) }
+        workspaces = SharedContainer.workspaces().filter {
+            $0.isSignedIn && sessions.isSignedIn(account: $0.account) && SharedTokens.refreshToken(account: $0.account) != nil
+        }
         guard let store, let first = workspaces.first else {
             phase = .notSignedIn
             return
@@ -104,6 +111,7 @@ final class ShareModel {
         phase = .sending
         let share = PendingShare(
             id: shareId, clientMsgId: UUID().uuidString.lowercased(), serverUrl: workspace.serverUrl, account: workspace.account,
+            generation: generations[workspace.account] ?? AccountSessions.shared.generation(account: workspace.account),
             channelId: destination.id, channelTitle: destination.title, parentId: nil,
             text: text.trimmingCharacters(in: .whitespacesAndNewlines), createdAt: Date(),
             items: files.map { PendingShare.Item(file: $0.file, filename: $0.filename, contentType: $0.contentType, size: $0.size,

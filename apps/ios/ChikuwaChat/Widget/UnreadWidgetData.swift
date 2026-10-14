@@ -133,10 +133,13 @@ extension ShareApi {
 }
 
 enum UnreadWidgetActions {
-    /// The count checked with the server (the widget's timeline, when the snapshot is old or the last try failed).
+    /// The count checked with the server (the widget's timeline, when the snapshot is old or the last try failed). Saved
+    /// only while the account is still in the session the refresh started in (AccountSessions); nil otherwise.
     @discardableResult
     static func refresh(account: String, file: WidgetSnapshotFile<UnreadWidgetSnapshot> = UnreadWidgetStore.file,
+                        sessions: AccountSessions = .shared,
                         makeApi: (String, String) -> ShareApi? = WidgetApis.make) async -> UnreadWidgetSnapshot? {
+        let generation = sessions.generation(account: account)
         guard let snapshot = file.snapshot(account: account), let api = makeApi(snapshot.serverUrl, snapshot.account) else { return nil }
         let next: UnreadWidgetSnapshot
         do {
@@ -146,10 +149,17 @@ enum UnreadWidgetActions {
         } catch {
             next = UnreadWidgetRules.failed(snapshot, .temporary("unknown"))
         }
-        // The app wrote a newer one meanwhile: that one stays.
-        if let stored = file.snapshot(account: account), stored.updatedAt > snapshot.updatedAt { return stored }
-        file.save(next)
-        return next
+        var result: UnreadWidgetSnapshot?
+        sessions.ifCurrent(account: account, generation: generation) {
+            // The app wrote a newer one meanwhile: that one stays.
+            if let stored = file.snapshot(account: account), stored.updatedAt > snapshot.updatedAt {
+                result = stored
+            } else {
+                file.save(next)
+                result = next
+            }
+        }
+        return result
     }
 }
 

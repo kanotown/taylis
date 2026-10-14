@@ -31,7 +31,7 @@ struct TodayTimelineProvider: AppIntentTimelineProvider {
     }
 
     private func resolve(_ configuration: WidgetWorkspaceIntent) -> TodayWidgetSnapshot? {
-        TodayWidgetStore.file.resolve(configuration.selection, workspace: { WidgetWorkspaces.workspace(account: $0) }, seed: TodayWidgetSnapshot.seed)
+        TodayWidgetStore.file.resolve(configuration.selection, workspace: { WidgetWorkspaces.signedInWorkspace(account: $0) }, seed: TodayWidgetSnapshot.seed)
     }
 
     func snapshot(for configuration: WidgetWorkspaceIntent, in context: Context) async -> TodayTimelineEntry {
@@ -49,6 +49,8 @@ struct TodayTimelineProvider: AppIntentTimelineProvider {
         if let stored = snapshot, TodayWidgetRules.needsRefresh(stored) {
             snapshot = await TodayWidgetActions.refresh(account: stored.account) ?? stored
         }
+        // Signed out while the refresh was on its way: nothing of the account is drawn (WIDGETS.md).
+        if let shown = snapshot, !AccountSessions.shared.isSignedIn(account: shown.account) { snapshot = nil }
         let now = Date()
         let workspace = WidgetWorkspaces.header(configuration.selection, account: snapshot?.account)
         let entries = TodayWidgetRules.entryDates(snapshot, now: now).map { TodayTimelineEntry(date: $0, snapshot: snapshot, workspace: workspace) }

@@ -57,6 +57,13 @@ enum WidgetWorkspaces {
         signedIn(file, snapshots: snapshots).first { $0.account == account }
     }
 
+    /// What the widgets draw from: the workspace of `account` while the app's list has it signed in and its session is
+    /// signed in now (AccountSessions: the app's sign-out says so before the list is written again).
+    static func signedInWorkspace(account: String, _ file: URL = defaultFile, sessions: AccountSessions = .shared) -> Workspace? {
+        guard sessions.isSignedIn(account: account) else { return nil }
+        return workspace(account: account, file)
+    }
+
     /// Any workspace of the list by account (signed out ones too): the header of a snapshot the app wrote.
     static func known(account: String, _ file: URL = defaultFile) -> Workspace? {
         read(file)?.workspaces.first { $0.account == account }
@@ -178,13 +185,14 @@ struct WidgetWorkspaceIntent: WidgetConfigurationIntent {
 }
 
 extension WidgetSnapshotFile {
-    /// The snapshot a widget set to `selection` draws: the app's choice (`current()`), or the chosen workspace's —
-    /// started from its row (`seed`) when the app has written none yet, so the widget reads it from the server. nil:
-    /// nothing to show (the chosen workspace is signed out or gone: the sign-in face).
+    /// The snapshot a widget set to `selection` draws: the app's choice (`current()`, among the workspaces `workspace`
+    /// finds signed in: a snapshot of an account that signed out is never drawn), or the chosen workspace's — started
+    /// from its row (`seed`) when the app has written none yet, so the widget reads it from the server. nil: nothing
+    /// to show (the chosen workspace is signed out or gone: the sign-in face).
     func resolve(_ selection: WidgetWorkspaceSelection, workspace: (String) -> Workspace?, seed: (Workspace) -> Snapshot) -> Snapshot? {
         switch selection {
         case .followApp:
-            return current()
+            return current { workspace($0) != nil }
         case .account(let account):
             guard let row = workspace(account) else { return nil }
             if let stored = snapshot(account: account) { return stored }

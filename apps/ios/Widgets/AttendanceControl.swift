@@ -37,7 +37,7 @@ struct AttendanceControl: ControlWidget {
         }
 
         func currentValue() async throws -> Value {
-            guard let snapshot = AttendanceWidgetStore.current(), snapshot.available else {
+            guard let snapshot = AttendanceWidgetStore.resolve(.followApp), snapshot.available else {
                 return Value(isOn: false, title: "Taylis", onLabel: widgetText("在室"), offLabel: widgetText("在室状況はオフです"),
                              onSymbol: "door.left.hand.open", offSymbol: "door.left.hand.closed", onColor: 0x15803D)
             }

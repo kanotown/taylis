@@ -97,6 +97,17 @@ final class FileLock {
         }
     }
 
+    /// Waits for the lock on the calling thread (polling every few milliseconds) up to `timeout`, for a lock held only
+    /// for a moment (AccountSessions); nil when it stayed taken.
+    static func acquireNow(_ url: URL, timeout: TimeInterval) -> FileLock? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            if let lock = tryAcquire(url) { return lock }
+            if Date() >= deadline { return nil }
+            usleep(2_000)
+        }
+    }
+
     func release() {
         guard fd >= 0 else { return }
         flock(fd, LOCK_UN)

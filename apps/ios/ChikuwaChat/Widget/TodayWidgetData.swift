@@ -365,11 +365,13 @@ extension ShareApi {
 
 enum TodayWidgetActions {
     /// Today's and tomorrow's events and my tasks read again (the widget's timeline). A server without a calendar
-    /// (before M51: 404) has no events; one without tasks, none.
+    /// (before M51: 404) has no events; one without tasks, none. Saved only while the account is still in the session
+    /// the refresh started in (AccountSessions); nil otherwise.
     @discardableResult
     static func refresh(account: String, now: Date = Date(), calendar: Calendar = .current,
-                        file: WidgetSnapshotFile<TodayWidgetSnapshot> = TodayWidgetStore.file,
+                        file: WidgetSnapshotFile<TodayWidgetSnapshot> = TodayWidgetStore.file, sessions: AccountSessions = .shared,
                         makeApi: (String, String) -> ShareApi? = WidgetApis.make) async -> TodayWidgetSnapshot? {
+        let generation = sessions.generation(account: account)
         guard let snapshot = file.snapshot(account: account), let api = makeApi(snapshot.serverUrl, snapshot.account) else { return nil }
         let started = Date()
         let from = TodayWidgetRules.dayKey(now, calendar)
@@ -393,9 +395,11 @@ enum TodayWidgetActions {
         } catch {
             next = TodayWidgetRules.failed(snapshot, .temporary("unknown"))
         }
-        // The app marked it stale meanwhile (a change the answers may predate): its mark stays, the next timeline reads again.
-        if let mark = file.snapshot(account: account)?.staleSince, mark > started { next.staleSince = mark }
-        file.save(next)
-        return next
+        let saved = sessions.ifCurrent(account: account, generation: generation) {
+            // The app marked it stale meanwhile (a change the answers may predate): its mark stays, the next timeline reads again.
+            if let mark = file.snapshot(account: account)?.staleSince, mark > started { next.staleSince = mark }
+            file.save(next)
+        }
+        return saved ? next : nil
     }
 }

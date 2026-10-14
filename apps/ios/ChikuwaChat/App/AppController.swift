@@ -150,27 +150,49 @@ final class AppController {
     /// The API client of a workspace, made from its saved refresh token the first time.
     private func client(for workspace: Workspace) -> ApiClient {
         if let api = clients[workspace.serverUrl] { return api }
-        let api = makeClient(serverUrl: workspace.serverUrl, username: workspace.username)
+        let api = makeClient(serverUrl: workspace.serverUrl, username: workspace.username,
+                             generation: AccountSessions.shared.generation(account: workspace.account))
         api.refreshToken = Keychain.get(account: workspace.account)
         clients[workspace.serverUrl] = api
         return api
     }
 
     /// Rotated refresh tokens go to the Keychain; a session the server ended signs out that workspace only.
-    private func makeClient(serverUrl: String, username: String) -> ApiClient {
+    /// `generation`: the saved session the client continues (AccountSessions); nil for a sign-in, whose tokens start a
+    /// new one.
+    private func makeClient(serverUrl: String, username: String, generation: Int? = nil) -> ApiClient {
         let api = ApiClient(baseUrl: URL(string: serverUrl) ?? URL(string: "https://invalid.invalid")!)
-        wire(api, serverUrl: serverUrl, username: username)
+        wire(api, serverUrl: serverUrl, username: username, generation: generation)
         return api
     }
 
     /// The callbacks of a workspace's client (M48: a Google sign-in learns the username only from the exchange).
-    private func wire(_ api: ApiClient, serverUrl: String, username: String) {
+    private func wire(_ api: ApiClient, serverUrl: String, username: String, generation: Int? = nil) {
         let account = "\(serverUrl)|\(username)"
         // Both tokens go to the Keychain group shared with the Share Extension (MOBILE_UI.md §21.3), and a refresh
-        // coordinates with the extension's through the shared lock.
+        // coordinates with the extension's through the shared lock. The first tokens of a sign-in start a new session
+        // generation (AccountSessions); a refresh's are stored only while that session is still the account's. A client
+        // left over from before a sign-out or another sign-in (its own sessionVersion already drops what it was
+        // refreshing) then signs out; the workspace's current client cannot lose its session that way (only the app
+        // moves the generation, and it replaces the client when it does), so a refusal there — a record the app cannot
+        // read — renews the record instead of signing the person out.
+        final class Session { var generation: Int?; init(_ generation: Int?) { self.generation = generation } }
+        let session = Session(generation)
         api.sharedAccount = account
-        api.onTokens = { tokens in
-            SharedTokens.store(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn, refreshToken: tokens.refreshToken)
+        api.onTokens = { [weak self, weak api] tokens in
+            if let generation = session.generation {
+                if SharedTokens.commit(account: account, generation: generation, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
+                                       refreshToken: tokens.refreshToken) { return }
+                guard let self, let api, self.clients[serverUrl] === api else {
+                    api?.signOut()
+                    return
+                }
+                session.generation = SharedTokens.signIn(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
+                                                         refreshToken: tokens.refreshToken)
+            } else {
+                session.generation = SharedTokens.signIn(account: account, accessToken: tokens.accessToken, expiresIn: tokens.expiresIn,
+                                                         refreshToken: tokens.refreshToken)
+            }
         }
         api.onSignedOut = { [weak self, weak api] in Task { @MainActor in
             guard let self, let api, self.clients[serverUrl] === api else { return }
@@ -435,7 +457,9 @@ final class AppController {
         closeSession()
         if let known, known.username != username {
             // Another account of this server leaves this device (one account per server).
-            Keychain.delete(account: known.account)
+            SharedTokens.signOut(account: known.account) // a new session generation, then its tokens go (AccountSessions)
+            SharedContainer.forget(account: known.account)
+            forgetAttendanceWidget(account: known.account) // its widgets' snapshots too
             SQLitePersistence.destroy(profile: known.account)
             RecentSearches.clear(key: RecentSearches.key(account: known.account))
         }
@@ -2191,7 +2215,7 @@ final class AppController {
         // Out of the clients first: its own signed-out callback must not mark the entry instead of removing it.
         var api = clients.removeValue(forKey: serverUrl)
         if api == nil, workspace.isSignedIn, let token = Keychain.get(account: workspace.account) {
-            api = makeClient(serverUrl: serverUrl, username: workspace.username)
+            api = makeClient(serverUrl: serverUrl, username: workspace.username, generation: AccountSessions.shared.generation(account: workspace.account))
             api?.refreshToken = token
         }
         if let api, api.refreshToken != nil || api.accessToken != nil { await api.logout() }
@@ -2217,7 +2241,7 @@ final class AppController {
             closeSession()
             activeBadge = 0
         }
-        Keychain.delete(account: workspace.account)
+        SharedTokens.signOut(account: workspace.account) // a new session generation, then its tokens go: nothing on its way comes back (AccountSessions)
         SharedContainer.forget(account: workspace.account) // MOBILE_UI.md §21: the share sheet's cache of it
         forgetAttendanceWidget(account: workspace.account) // the 在室状況 widget's snapshot of it (and the other widgets')
         SQLitePersistence.destroy(profile: workspace.account)

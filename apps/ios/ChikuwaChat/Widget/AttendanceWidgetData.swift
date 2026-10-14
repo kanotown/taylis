@@ -373,13 +373,14 @@ enum AttendanceWidgetStore {
         read(file).snapshots[account]
     }
 
-    /// What a widget set to `selection` draws (WidgetSnapshotFile.resolve's rule: the app's choice, or the chosen
-    /// workspace's snapshot, a seed when there is none yet; nil when it is signed out or gone).
+    /// What a widget set to `selection` draws (WidgetSnapshotFile.resolve's rule: the app's choice among the signed-in
+    /// workspaces, or the chosen workspace's snapshot, a seed when there is none yet; nil when it is signed out or gone).
     static func resolve(_ selection: WidgetWorkspaceSelection, _ file: URL = defaultFile,
-                        workspace: (String) -> Workspace? = { WidgetWorkspaces.workspace(account: $0) }) -> AttendanceWidgetSnapshot? {
+                        workspace: (String) -> Workspace? = { WidgetWorkspaces.signedInWorkspace(account: $0) }) -> AttendanceWidgetSnapshot? {
         switch selection {
         case .followApp:
-            return current(file)
+            let contents = read(file)
+            return AttendanceWidgetRules.select(contents.snapshots.filter { workspace($0.key) != nil }, active: contents.active)
         case .account(let account):
             guard let row = workspace(account) else { return nil }
             if let stored = snapshot(account: account, file) { return stored }
@@ -438,10 +439,13 @@ extension ShareApi {
 /// What the widget's buttons and the control do (in the extension's process): the change goes to the server and the
 /// snapshot follows its answer; a failure keeps what was shown, with the problem noted.
 enum AttendanceWidgetActions {
-    /// My state → `stateId` in the account's workspace. Returns the snapshot as saved (nil: nothing to act on).
+    /// My state → `stateId` in the account's workspace. Returns the snapshot as saved (nil: nothing to act on, or the
+    /// account signed out — or in again — while the change was on its way: nothing is saved then, WIDGETS.md).
     @discardableResult
     static func setState(_ stateId: String, account: String, file: URL = AttendanceWidgetStore.defaultFile,
+                         sessions: AccountSessions = .shared,
                          makeApi: (AttendanceWidgetSnapshot) -> ShareApi? = { api(for: $0) }) async -> AttendanceWidgetSnapshot? {
+        let generation = sessions.generation(account: account)
         guard let snapshot = AttendanceWidgetStore.snapshot(account: account, file), snapshot.available else { return nil }
         guard let api = makeApi(snapshot) else { return nil }
         let note = AttendanceWidgetRules.noteForChoice(snapshot, stateId: stateId)
@@ -456,14 +460,16 @@ enum AttendanceWidgetActions {
         } catch {
             next = AttendanceWidgetRules.failed(snapshot, .temporary("unknown"))
         }
-        AttendanceWidgetStore.save(next, to: file)
-        return next
+        let saved = sessions.ifCurrent(account: account, generation: generation) { _ = AttendanceWidgetStore.save(next, to: file) }
+        return saved ? next : nil
     }
 
-    /// The board read again (the widget's timeline, when the snapshot is old or the last try failed).
+    /// The board read again (the widget's timeline, when the snapshot is old or the last try failed). Saved only while
+    /// the account is still in the session the refresh started in (AccountSessions); nil otherwise.
     @discardableResult
-    static func refresh(account: String, file: URL = AttendanceWidgetStore.defaultFile,
+    static func refresh(account: String, file: URL = AttendanceWidgetStore.defaultFile, sessions: AccountSessions = .shared,
                         makeApi: (AttendanceWidgetSnapshot) -> ShareApi? = { api(for: $0) }) async -> AttendanceWidgetSnapshot? {
+        let generation = sessions.generation(account: account)
         guard let snapshot = AttendanceWidgetStore.snapshot(account: account, file), let api = makeApi(snapshot) else { return nil }
         let next: AttendanceWidgetSnapshot
         do {
@@ -473,10 +479,17 @@ enum AttendanceWidgetActions {
         } catch {
             next = AttendanceWidgetRules.failed(snapshot, .temporary("unknown"))
         }
-        // The app wrote a newer one meanwhile (it is on screen and synced): that one stays.
-        if let stored = AttendanceWidgetStore.snapshot(account: account, file), stored.updatedAt > snapshot.updatedAt { return stored }
-        AttendanceWidgetStore.save(next, to: file)
-        return next
+        var result: AttendanceWidgetSnapshot?
+        sessions.ifCurrent(account: account, generation: generation) {
+            // The app wrote a newer one meanwhile (it is on screen and synced): that one stays.
+            if let stored = AttendanceWidgetStore.snapshot(account: account, file), stored.updatedAt > snapshot.updatedAt {
+                result = stored
+            } else {
+                AttendanceWidgetStore.save(next, to: file)
+                result = next
+            }
+        }
+        return result
     }
 
     static func api(for snapshot: AttendanceWidgetSnapshot) -> ShareApi? {

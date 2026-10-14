@@ -602,3 +602,170 @@ final class InfoWidgetsTests: XCTestCase {
         try WidgetFaceRenderer.render(t(today, .systemLarge), size: large, look: .light, name: "today-large", textSize: .xLarge)
     }
 }
+
+/// REVIEW-v0.1.62 #3: a widget's refresh or button whose answer (or failure) comes back after its account signed out or
+/// left the device saves nothing — the app deleted the snapshot and it stays deleted — while the other accounts'
+/// snapshots stay; 「アプリで開いているワークスペース」 draws only a signed-in account. The stub signs out (as the app's
+/// forget: a new generation and the tokens gone, then the snapshots removed) while the request is on its way.
+@MainActor
+final class WidgetSignOutTests: XCTestCase {
+    private var folder: URL!
+    private var sessions: AccountSessions!
+    private var accounts: [String] = []
+
+    override func setUp() {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("WidgetSignOutTests-\(UUID().uuidString)", isDirectory: true)
+        sessions = AccountSessions(file: folder.appendingPathComponent("sessions.json"), lockURL: folder.appendingPathComponent("sessions.lock"))
+        accounts = []
+    }
+
+    override func tearDown() {
+        for account in accounts { Keychain.delete(account: account) }
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    private func signedIn(_ name: String) -> Workspace {
+        let workspace = Workspace(serverUrl: "https://widget.test", name: name, username: "\(name)-\(UUID().uuidString)", userId: "me")
+        SharedTokens.signIn(account: workspace.account, accessToken: "access", expiresIn: 3600, refreshToken: "refresh", sessions: sessions)
+        accounts.append(workspace.account)
+        return workspace
+    }
+
+    private func api(_ serverUrl: String, _ account: String) -> ShareApi? {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [WidgetStubProtocol.self]
+        let api = ShareApi(baseUrl: URL(string: serverUrl)!, account: account, language: "ja", session: URLSession(configuration: configuration),
+                           sessions: sessions)
+        api.refreshRetryDelays = []
+        api.lockProvider = { nil }
+        return api
+    }
+
+    /// The server answers `answer` (nil: no answer) after the app signed `account` out and ran `forget`.
+    private func signOutMidRequest(_ account: String, answer: (Int, String)?, forget: @escaping () -> Void) {
+        let sessions = sessions!
+        WidgetStubProtocol.reset { _ in
+            SharedTokens.signOut(account: account, sessions: sessions)
+            forget()
+            return answer
+        }
+    }
+
+    private func attendance(_ workspace: Workspace) -> AttendanceWidgetSnapshot {
+        var s = AttendanceWidgetSamples.snapshot
+        s.serverUrl = workspace.serverUrl
+        s.account = workspace.account
+        s.workspaceName = workspace.name
+        s.entries[0].note = "非公開のメモ"
+        s.updatedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        return s
+    }
+
+    private static let board = #"{"enabled": true, "states": [{"id": "s-in", "owner_id": null, "label": "在室", "color": "green", "kind": "in_room", "position": 0}], "entries": [{"user_id": "me", "state_id": "s-in", "since": "2026-10-14T09:00:00Z", "note": "新しいメモ", "source": "app"}]}"#
+
+    func testAttendanceRefreshAndButtonSaveNothingAfterTheSignOut() async throws {
+        let file = folder.appendingPathComponent("attendance.json")
+        let other = signedIn("other")
+        let otherSnapshot = attendance(other)
+        AttendanceWidgetStore.save(otherSnapshot, to: file)
+        let make: (AttendanceWidgetSnapshot) -> ShareApi? = { [unowned self] in api($0.serverUrl, $0.account) }
+        let answers: [(Int, String)?] = [(200, Self.board), nil, (401, #"{"error": {"code": "invalid_token", "message": "", "details": {}}}"#)]
+        for answer in answers {
+            let workspace = signedIn("lab")
+            AttendanceWidgetStore.save(attendance(workspace), active: true, to: file)
+            signOutMidRequest(workspace.account, answer: answer) { AttendanceWidgetStore.remove(account: workspace.account, file) }
+            let refreshed = await AttendanceWidgetActions.refresh(account: workspace.account, file: file, sessions: sessions, makeApi: make)
+            XCTAssertNil(refreshed, "answer \(String(describing: answer))")
+            XCTAssertNil(AttendanceWidgetStore.snapshot(account: workspace.account, file), "not brought back: \(String(describing: answer))")
+            let sessions = sessions!
+            let shown = AttendanceWidgetStore.resolve(.followApp, file, workspace: {
+                sessions.isSignedIn(account: $0) ? Workspace(serverUrl: "https://widget.test", name: "x", username: "x") : nil
+            })
+            XCTAssertEqual(shown?.account, other.account, "following the app: the signed-in workspace left, not the one that signed out")
+
+            // A button pressed just before the sign-out.
+            let pressed = signedIn("lab")
+            AttendanceWidgetStore.save(attendance(pressed), active: true, to: file)
+            let entry = #"{"user_id": "me", "state_id": "s-gone", "since": "2026-10-14T18:00:00Z", "note": null, "source": "app"}"#
+            signOutMidRequest(pressed.account, answer: answer.map { $0.0 == 200 ? (200, entry) : $0 }) {
+                AttendanceWidgetStore.remove(account: pressed.account, file)
+            }
+            let moved = await AttendanceWidgetActions.setState("s-gone", account: pressed.account, file: file, sessions: sessions, makeApi: make)
+            XCTAssertNil(moved)
+            XCTAssertNil(AttendanceWidgetStore.snapshot(account: pressed.account, file), "nothing saved: \(String(describing: answer))")
+        }
+        XCTAssertEqual(AttendanceWidgetStore.snapshot(account: other.account, file), otherSnapshot, "another workspace's snapshot stays as it was")
+    }
+
+    func testFollowingTheAppDrawsOnlyASignedInAccount() throws {
+        let file = folder.appendingPathComponent("attendance.json")
+        let index = folder.appendingPathComponent("workspaces.json")
+        let lab = signedIn("lab")
+        AttendanceWidgetStore.save(attendance(lab), active: true, to: file)
+        WidgetWorkspaces.save(WidgetWorkspaceIndex(active: lab.account, workspaces: [lab]), to: index)
+        let sessions = sessions!
+        let lookup: (String) -> Workspace? = { WidgetWorkspaces.signedInWorkspace(account: $0, index, sessions: sessions) }
+        XCTAssertEqual(AttendanceWidgetStore.resolve(.followApp, file, workspace: lookup)?.account, lab.account)
+
+        // Signed out; even a snapshot of it left behind (the app's list not written again yet) is not drawn.
+        SharedTokens.signOut(account: lab.account, sessions: sessions)
+        XCTAssertNil(AttendanceWidgetStore.resolve(.followApp, file, workspace: lookup))
+        XCTAssertNil(AttendanceWidgetStore.resolve(.account(lab.account), file, workspace: lookup))
+
+        let unread = WidgetSnapshotFile<UnreadWidgetSnapshot>(url: folder.appendingPathComponent("unread.json"))
+        unread.save(UnreadWidgetRules.seed(lab), active: true)
+        XCTAssertNil(unread.resolve(.followApp, workspace: lookup, seed: UnreadWidgetRules.seed))
+        let today = WidgetSnapshotFile<TodayWidgetSnapshot>(url: folder.appendingPathComponent("today.json"))
+        today.save(TodayWidgetSnapshot.seed(lab), active: true)
+        XCTAssertNil(today.resolve(.followApp, workspace: lookup, seed: TodayWidgetSnapshot.seed))
+
+        // Another signed-in workspace is drawn instead of the one on screen that left.
+        let other = signedIn("other")
+        WidgetWorkspaces.save(WidgetWorkspaceIndex(active: lab.account, workspaces: [lab, other]), to: index)
+        unread.save(UnreadWidgetRules.seed(other))
+        XCTAssertEqual(unread.resolve(.followApp, workspace: lookup, seed: UnreadWidgetRules.seed)?.account, other.account)
+    }
+
+    func testUnreadAndTodayRefreshesSaveNothingAfterTheSignOut() async throws {
+        let unread = WidgetSnapshotFile<UnreadWidgetSnapshot>(url: folder.appendingPathComponent("unread.json"))
+        let today = WidgetSnapshotFile<TodayWidgetSnapshot>(url: folder.appendingPathComponent("today.json"))
+        let other = signedIn("other")
+        var otherUnread = UnreadWidgetRules.seed(other)
+        otherUnread.total = 7
+        unread.save(otherUnread)
+        let otherToday = TodayWidgetSnapshot.seed(other)
+        today.save(otherToday)
+        let make: (String, String) -> ShareApi? = { [unowned self] in api($0, $1) }
+        for answer in [(200, #"{"badge": 3, "has_unread": true}"#), nil] as [(Int, String)?] {
+            let workspace = signedIn("lab")
+            var s = UnreadWidgetRules.seed(workspace)
+            s.total = 5
+            unread.save(s, active: true)
+            signOutMidRequest(workspace.account, answer: answer) { unread.remove(account: workspace.account) }
+            let read = await UnreadWidgetActions.refresh(account: workspace.account, file: unread, sessions: sessions, makeApi: make)
+            XCTAssertNil(read)
+            XCTAssertNil(unread.snapshot(account: workspace.account), "not brought back: \(String(describing: answer))")
+        }
+        for answer in [(200, "[]"), nil] as [(Int, String)?] {
+            let workspace = signedIn("lab")
+            today.save(TodayWidgetSnapshot.seed(workspace), active: true)
+            signOutMidRequest(workspace.account, answer: answer) { today.remove(account: workspace.account) }
+            let read = await TodayWidgetActions.refresh(account: workspace.account, file: today, sessions: sessions, makeApi: make)
+            XCTAssertNil(read)
+            XCTAssertNil(today.snapshot(account: workspace.account), "not brought back: \(String(describing: answer))")
+        }
+        XCTAssertEqual(unread.snapshot(account: other.account), otherUnread, "another workspace's snapshot stays as it was")
+        XCTAssertEqual(today.snapshot(account: other.account), otherToday)
+    }
+
+    func testARefreshOfTheCurrentSessionStillSaves() async throws {
+        let unread = WidgetSnapshotFile<UnreadWidgetSnapshot>(url: folder.appendingPathComponent("unread.json"))
+        let workspace = signedIn("lab")
+        unread.save(UnreadWidgetRules.seed(workspace), active: true)
+        WidgetStubProtocol.reset { _ in (200, #"{"badge": 2, "has_unread": true}"#) }
+        let read = await UnreadWidgetActions.refresh(account: workspace.account, file: unread, sessions: sessions,
+                                                     makeApi: { [unowned self] in api($0, $1) })
+        XCTAssertEqual(read?.total, 2)
+        XCTAssertEqual(unread.snapshot(account: workspace.account)?.total, 2)
+    }
+}
