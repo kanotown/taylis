@@ -19,6 +19,7 @@ import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
+import { decidePaste, plainPasteRequested, tableInsertion } from "./tablePaste";
 import { isImeKey, LazyRichEditor, NO_FORMAT, type RichEditorApi, type RichFormat, type RichFormatState } from "./richEditorApi";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
 import { PollDialog } from "./PollDialog";
@@ -593,13 +594,24 @@ export function Composer({
         if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
       }}
       onPaste={(event) => {
+        // A spreadsheet range becomes a Markdown table; with a table on the clipboard its picture is not attached (tablePaste.ts).
+        const el = event.currentTarget;
+        const decision = decidePaste(event.clipboardData, { room: MAX_LENGTH - el.value.length + (el.selectionEnd - el.selectionStart), inCode: insideFence(el.value, el.selectionStart), plain: plainPasteRequested() });
+        if (decision?.kind === "table") {
+          event.preventDefault();
+          apply(tableInsertion({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, decision.markdown));
+          return;
+        }
+        if (decision?.kind === "text") {
+          if (decision.tooLarge) controller.setNotice(t("composer.tableTooLarge"));
+          return; // the browser pastes the plain text
+        }
         if (event.clipboardData.files.length) {
           event.preventDefault();
           void pickFiles(Array.from(event.clipboardData.files));
           return;
         }
         // A URL pasted over selected text links it (composerEdit.linkFromPaste).
-        const el = event.currentTarget;
         const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, event.clipboardData.getData("text/plain"));
         if (linked) {
           event.preventDefault();
@@ -820,6 +832,7 @@ export function Composer({
                 onContext={setRichContext}
                 onFormat={setRichFormat}
                 onFiles={(files) => void pickFiles(files)}
+                onNotice={(notice) => controller.setNotice(notice)}
                 onCompositionEnd={() => {
                   composedAt.current = Date.now();
                 }}

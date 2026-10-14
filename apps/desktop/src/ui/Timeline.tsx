@@ -14,7 +14,8 @@ import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
 import { SenderAvatar } from "./SenderAvatar";
-import { linkFromPaste, replaceThroughBrowser } from "./composerEdit";
+import { insideFence, linkFromPaste, replaceThroughBrowser } from "./composerEdit";
+import { decidePaste, MAX_BODY, plainPasteRequested, tableInsertion } from "./tablePaste";
 import { keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
 import { EDIT_MIN, editBoxHeight, editCap, editMax, type EditRoom, handleKeyHeight, readEditHeight, revealDelta, writeEditHeight } from "./editBox";
 import { bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
@@ -1498,8 +1499,21 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         onChange={(e) => setDraft(e.target.value)}
         onScroll={(e) => settle(e.currentTarget)}
         onPaste={(e) => {
-          // A URL pasted over selected text links it, as in the composer (composerEdit.linkFromPaste).
           const el = e.currentTarget;
+          // A spreadsheet range becomes a Markdown table, as in the composer (tablePaste.ts).
+          const decision = decidePaste(e.clipboardData, { room: MAX_BODY - el.value.length + (el.selectionEnd - el.selectionStart), inCode: insideFence(el.value, el.selectionStart), plain: plainPasteRequested() });
+          if (decision?.kind === "table") {
+            e.preventDefault();
+            const next = tableInsertion({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, decision.markdown);
+            if (replaceThroughBrowser(el, next.text)) el.setSelectionRange(next.start, next.end);
+            else setDraft(next.text);
+            return;
+          }
+          if (decision?.kind === "text") {
+            if (decision.tooLarge) controller.setNotice(t("composer.tableTooLarge"));
+            return; // the browser pastes the plain text
+          }
+          // A URL pasted over selected text links it, as in the composer (composerEdit.linkFromPaste).
           const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, e.clipboardData.getData("text/plain"));
           if (!linked) return;
           e.preventDefault();
@@ -1558,6 +1572,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
                 setDraft(markdown);
               }}
               onKeyDown={onRichKeyDown}
+              onNotice={(notice) => controller.setNotice(notice)}
               onCompositionEnd={() => {
                 composedAt.current = Date.now();
               }}

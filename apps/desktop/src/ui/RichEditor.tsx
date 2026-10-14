@@ -8,7 +8,8 @@
  * blocks, TeX math kept as its source (a `math` mark inline, display blocks raw like tables), and tables kept as raw
  * Markdown. Markdown typed here converts as it is typed (`**x**`, `_x_`, `` `x` ``,
  * `- `, `1. `, `> `, `# `, ``` ``` ```, `[label](https://…)`); pasted plain text stays literal (escaped when sent);
- * pasted HTML (web pages, Word, Google Docs) keeps the supported marks and drops the rest; pasted files go to the
+ * pasted HTML (web pages, Word, Google Docs) keeps the supported marks and drops the rest; a pasted spreadsheet range
+ * is a raw Markdown table (tablePaste.ts); pasted files go to the
  * attachments. The owner decides what Enter does (send or newline) through `onKeyDown`, which ProseMirror never calls
  * during an IME composition.
  */
@@ -36,6 +37,8 @@ import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "re
 import { contentLine, keepLineInView, lineHeightOf, settle } from "./composerScroll";
 import { docToMarkdown, markdownToDoc, plainTextToNodes, type RichNode } from "./richMarkdown";
 import type { RichEditorApi, RichFormat, RichFormatState } from "./richEditorApi";
+import { decidePaste, MAX_BODY, plainPasteRequested } from "./tablePaste";
+import { t } from "../i18n";
 
 /** Three levels of lists, as the renderer draws (apps/shared/lists.json). */
 const MAX_LIST_DEPTH = 3;
@@ -187,19 +190,22 @@ export interface RichEditorProps {
   onFormat?: (state: RichFormatState) => void;
   /** Files pasted (images, documents): the attachments take them. */
   onFiles?: (files: File[]) => void;
+  /** A short notice for the owner to show (a pasted table too large to convert). */
+  onNotice?: (text: string) => void;
   onCompositionEnd?: () => void;
   onFocus?: () => void;
 }
 
-export default function RichEditor({ value, onChange, placeholder = "", ariaLabel, autoFocus = false, className, maxHeight, height, holdHeight, apiRef, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus }: RichEditorProps) {
+export default function RichEditor({ value, onChange, placeholder = "", ariaLabel, autoFocus = false, className, maxHeight, height, holdHeight, apiRef, onKeyDown, onContext, onFormat, onFiles, onNotice, onCompositionEnd, onFocus }: RichEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const emitted = useRef(value);
+  const pastingText = useRef(false);
   // Part of the first render, so it is there before anything lays the page out (another composer building its editor).
   const [held] = useState(() => holdHeight?.() ?? 0);
   // The latest callbacks, read by the editor's handlers (created once).
-  const props = useRef({ onChange, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus, placeholder });
-  props.current = { onChange, onKeyDown, onContext, onFormat, onFiles, onCompositionEnd, onFocus, placeholder };
+  const props = useRef({ onChange, onKeyDown, onContext, onFormat, onFiles, onNotice, onCompositionEnd, onFocus, placeholder });
+  props.current = { onChange, onKeyDown, onContext, onFormat, onFiles, onNotice, onCompositionEnd, onFocus, placeholder };
   const capped = maxHeight !== undefined;
   const cappedRef = useRef(capped);
   cappedRef.current = capped;
@@ -218,7 +224,29 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
       editorProps: {
         attributes: { "aria-label": ariaLabel, "aria-multiline": "true", role: "textbox", class: "body rich-editor", "data-composer-input": "" },
         handleKeyDown: (_view, event) => props.current.onKeyDown?.(event) ?? false,
-        handlePaste: (_view, event) => {
+        handlePaste: (view, event) => {
+          // A spreadsheet range becomes a GFM table, kept as a raw Markdown block like any table here (tablePaste.ts).
+          const data = event.clipboardData;
+          // `pasteText` below comes back here with the same event: ProseMirror's own paste then.
+          if (data && !pastingText.current) {
+            const { selection } = view.state;
+            const used = docToMarkdown(view.state.doc.toJSON() as RichNode).length - view.state.doc.textBetween(selection.from, selection.to, "\n").length;
+            const decision = decidePaste(data, { room: MAX_BODY - used, inCode: Boolean(selection.$from.parent.type.spec.code) || editorRef.current?.isActive("code") === true, plain: plainPasteRequested() });
+            if (decision?.kind === "table") {
+              editorRef.current?.chain().focus().insertContent([{ type: "rawMarkdown", content: [{ type: "text", text: decision.markdown }] }, { type: "paragraph" }]).run();
+              return true;
+            }
+            if (decision?.kind === "text") {
+              if (decision.tooLarge) props.current.onNotice?.(t("composer.tableTooLarge"));
+              pastingText.current = true;
+              try {
+                view.pasteText(decision.text, event);
+              } finally {
+                pastingText.current = false;
+              }
+              return true;
+            }
+          }
           const files = Array.from(event.clipboardData?.files ?? []);
           if (files.length === 0) return false;
           props.current.onFiles?.(files);

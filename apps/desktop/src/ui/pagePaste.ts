@@ -182,21 +182,22 @@ function flattenLists(doc: Document, body: HTMLElement): void {
 // --- tables --------------------------------------------------------------------------------------------------------------
 
 /**
- * A pasted table as a grid the schema reads (`table` > `tr` > `td`): every cell one line (its paragraphs joined by
- * spaces), spans spread over empty cells, the header row first, every row as wide as the widest.
+ * A table's cells as a grid: `colspan` / `rowspan` spread (the positions a cell covers besides its own are null), the
+ * header row's index (the first `thead` / all-`th` row, else 0) and the row order with the header first. Nested tables'
+ * rows are not the table's. `skipHidden` leaves out rows and cells styled `display:none` (Excel's hidden rows and
+ * columns, which its plain text leaves out too). Null for a table without rows. Also the composer's pasted spreadsheet
+ * ranges (ui/tablePaste.ts).
  */
-function gridTable(doc: Document, table: HTMLTableElement): void {
-  const rows = Array.from(table.querySelectorAll("tr")).filter((tr) => tr.closest("table") === table);
-  if (rows.length === 0) {
-    table.remove();
-    return;
-  }
+export function tableGrid(table: HTMLTableElement, options: { skipHidden?: boolean } = {}): { grid: Array<Array<Element | null>>; headerIndex: number; order: number[] } | null {
+  const hidden = (el: Element) => options.skipHidden === true && /display\s*:\s*none/i.test(el.getAttribute("style") ?? "");
+  const rows = Array.from(table.querySelectorAll("tr")).filter((tr) => tr.closest("table") === table && !hidden(tr));
+  if (rows.length === 0) return null;
   const grid: Array<Array<Element | null>> = [];
   rows.forEach((tr, r) => {
     grid[r] ??= [];
     let c = 0;
     for (const cell of Array.from(tr.children)) {
-      if (cell.tagName !== "TD" && cell.tagName !== "TH") continue;
+      if ((cell.tagName !== "TD" && cell.tagName !== "TH") || hidden(cell)) continue;
       while (grid[r]![c] !== undefined) c++;
       const colspan = Math.max(1, Math.min(Number(cell.getAttribute("colspan") ?? 1) || 1, 50));
       const rowspan = Math.max(1, Math.min(Number(cell.getAttribute("rowspan") ?? 1) || 1, rows.length - r));
@@ -207,10 +208,24 @@ function gridTable(doc: Document, table: HTMLTableElement): void {
       c += colspan;
     }
   });
-  const width = Math.max(1, ...grid.map((row) => row.length));
   // The header: the rows in `thead` or of `th` cells at the top (the first of them), else the first row.
   const headerIndex = Math.max(0, rows.findIndex((tr) => tr.parentElement?.tagName === "THEAD" || (Array.from(tr.children).length > 0 && Array.from(tr.children).every((cell) => cell.tagName === "TH"))));
   const order = [headerIndex, ...grid.keys()].filter((r, k, all) => all.indexOf(r) === k);
+  return { grid, headerIndex, order };
+}
+
+/**
+ * A pasted table as a grid the schema reads (`table` > `tr` > `td`): every cell one line (its paragraphs joined by
+ * spaces), spans spread over empty cells, the header row first, every row as wide as the widest.
+ */
+function gridTable(doc: Document, table: HTMLTableElement): void {
+  const cells = tableGrid(table);
+  if (!cells) {
+    table.remove();
+    return;
+  }
+  const { grid, headerIndex, order } = cells;
+  const width = Math.max(1, ...grid.map((row) => row.length));
   const out = doc.createElement("table");
   const tbody = doc.createElement("tbody");
   out.append(tbody);
