@@ -51,6 +51,12 @@ struct TodayWidgetSnapshot: WidgetAccountSnapshot {
     var updatedAt: Date
     var problem: WidgetProblem?
 
+    /// The snapshot of a workspace the app has written none for yet (a widget set to it): read at once.
+    static func seed(_ workspace: Workspace) -> TodayWidgetSnapshot {
+        TodayWidgetSnapshot(serverUrl: workspace.serverUrl, account: workspace.account, workspaceName: workspace.name,
+                            userId: workspace.userId ?? "", updatedAt: .distantPast)
+    }
+
     /// Read again when older than this (the timeline asks every half hour; the app reloads it on every change it sees).
     static let freshFor: TimeInterval = 15 * 60
 }
@@ -59,8 +65,11 @@ enum TodayWidgetRules {
     /// Rows: the medium widget's columns, the large widget's sections.
     static let mediumEvents = 4
     static let mediumTasks = 4
-    static let largeEvents = 7
-    static let largeTasks = 5
+    /// The large widget's rows, shared between its two lists: the events take what the tasks leave (at most
+    /// `largeTasksAtMost` of those while there are more events than fit), each list at least as many as it has up to
+    /// what is left.
+    static let largeRows = 8
+    static let largeTasksAtMost = 4
     /// The days read: today and tomorrow (the timeline rolls over to tomorrow at midnight without the app).
     static let daysRead = 2
     /// The timeline's re-read.
@@ -135,6 +144,12 @@ enum TodayWidgetRules {
     static func nextEvent(_ events: [TodayWidgetEvent], now: Date, _ calendar: Calendar = .current) -> TodayWidgetEvent? {
         let today = self.events(on: dayKey(now, calendar), events, calendar)
         return today.first { !$0.allDay && !isOver($0, now: now) } ?? today.first { $0.allDay }
+    }
+
+    /// How many events and tasks the large widget lists.
+    static func largeLimits(events: Int, tasks: Int) -> (events: Int, tasks: Int) {
+        let eventRows = min(events, largeRows - min(tasks, largeTasksAtMost))
+        return (eventRows, min(tasks, largeRows - eventRows))
     }
 
     /// At most `limit` of a day's events: those already over leave first.

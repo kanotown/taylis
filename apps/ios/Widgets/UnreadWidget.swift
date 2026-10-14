@@ -1,11 +1,12 @@
 import SwiftUI
 import WidgetKit
 
-/// The 未読・メンション widget: the app icon's count (unread DMs and mentions, SYNC_PROTOCOL.md §10.5) in the workspace on
-/// screen; the medium one lists the conversations, each opening it. Lock screen: round, rectangle and one line.
+/// The 未読・メンション widget: the app icon's count (unread DMs and mentions, SYNC_PROTOCOL.md §10.5) in the workspace
+/// it is set to (by default the one open in the app); the medium one lists the conversations, each opening it. Lock
+/// screen: round, rectangle and one line.
 struct UnreadWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: UnreadWidgetStore.widgetKind, provider: UnreadTimelineProvider()) { entry in
+        AppIntentConfiguration(kind: UnreadWidgetStore.widgetKind, intent: WidgetWorkspaceIntent.self, provider: UnreadTimelineProvider()) { entry in
             UnreadFamilyView(entry: entry)
         }
         .configurationDisplayName("未読・メンション")
@@ -22,29 +23,34 @@ private struct UnreadFamilyView: View {
 }
 
 /// The snapshot the app wrote (it reloads the widget whenever the count or the conversations change); while the app is
-/// away the count is checked with GET /sync/summary once the snapshot is 15 minutes old (the conversations stay the
-/// app's: there is no cheap call for them).
-struct UnreadTimelineProvider: TimelineProvider {
+/// away — or for a workspace that is not open — the count is checked with GET /sync/summary once the snapshot is 15
+/// minutes old (the conversations stay the app's: there is no cheap call for them).
+struct UnreadTimelineProvider: AppIntentTimelineProvider {
     static let refreshInterval: TimeInterval = 15 * 60
 
     func placeholder(in context: Context) -> UnreadTimelineEntry {
         UnreadTimelineEntry(date: Date(), snapshot: UnreadWidgetSamples.snapshot)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (UnreadTimelineEntry) -> Void) {
-        let stored = UnreadWidgetStore.file.current()
-        completion(UnreadTimelineEntry(date: Date(), snapshot: context.isPreview ? (stored ?? UnreadWidgetSamples.snapshot) : stored))
+    private func resolve(_ configuration: WidgetWorkspaceIntent) -> UnreadWidgetSnapshot? {
+        UnreadWidgetStore.file.resolve(configuration.selection, workspace: { WidgetWorkspaces.workspace(account: $0) }, seed: UnreadWidgetRules.seed)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<UnreadTimelineEntry>) -> Void) {
-        Task {
-            var snapshot = UnreadWidgetStore.file.current()
-            if let stored = snapshot, stored.needsRefresh() {
-                snapshot = await UnreadWidgetActions.refresh(account: stored.account) ?? stored
-            }
-            let now = Date()
-            completion(Timeline(entries: [UnreadTimelineEntry(date: now, snapshot: snapshot)],
-                                policy: .after(now.addingTimeInterval(Self.refreshInterval))))
+    func snapshot(for configuration: WidgetWorkspaceIntent, in context: Context) async -> UnreadTimelineEntry {
+        let stored = resolve(configuration)
+        if context.isPreview, stored == nil {
+            return UnreadTimelineEntry(date: Date(), snapshot: UnreadWidgetSamples.snapshot)
         }
+        return UnreadTimelineEntry(date: Date(), snapshot: stored, workspace: WidgetWorkspaces.header(configuration.selection, account: stored?.account))
+    }
+
+    func timeline(for configuration: WidgetWorkspaceIntent, in context: Context) async -> Timeline<UnreadTimelineEntry> {
+        var snapshot = resolve(configuration)
+        if let stored = snapshot, stored.needsRefresh() {
+            snapshot = await UnreadWidgetActions.refresh(account: stored.account) ?? stored
+        }
+        let now = Date()
+        let entry = UnreadTimelineEntry(date: now, snapshot: snapshot, workspace: WidgetWorkspaces.header(configuration.selection, account: snapshot?.account))
+        return Timeline(entries: [entry], policy: .after(now.addingTimeInterval(Self.refreshInterval)))
     }
 }

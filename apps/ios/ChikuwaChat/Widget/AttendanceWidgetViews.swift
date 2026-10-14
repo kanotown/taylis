@@ -5,10 +5,12 @@ import WidgetKit
 // The 在室状況 widget's faces (Widgets/AttendanceWidget.swift configures it). Compiled into the app too, so the tests
 // render them (AttendanceWidgetTests); the buttons run SetAttendanceIntent in the extension.
 
-/// One moment of the widget: the snapshot it draws (nil: the app has written none — nobody signed in yet).
+/// One moment of the widget: the snapshot it draws (nil: nothing to show — nobody signed in yet, or the chosen
+/// workspace signed out) and the workspace's row for the header.
 struct AttendanceTimelineEntry: TimelineEntry {
     let date: Date
     let snapshot: AttendanceWidgetSnapshot?
+    var workspace: Workspace? = nil
 }
 
 /// The widget for one family.
@@ -18,8 +20,9 @@ struct AttendanceWidgetView: View {
 
     var body: some View {
         content
-            .widgetURL(AttendanceWidgetLink.url(serverUrl: entry.snapshot?.serverUrl))
+            .widgetURL(AttendanceWidgetLink.url(serverUrl: entry.snapshot?.serverUrl ?? entry.workspace?.serverUrl))
             .environment(\.locale, WidgetLanguage.locale)
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
             // A new state is drawn at once, without WidgetKit's animation between entries: on the simulator the
             // pressed widget sometimes kept parts of the old face (2026-10-13).
             .transaction { $0.animation = nil }
@@ -32,8 +35,8 @@ struct AttendanceWidgetView: View {
         case .accessoryCircular: AttendanceCircularView(snapshot: entry.snapshot)
         case .accessoryRectangular: AttendanceRectangularView(snapshot: entry.snapshot)
         case .accessoryInline: AttendanceInlineView(snapshot: entry.snapshot)
-        case .systemMedium: AttendanceHomeView(snapshot: entry.snapshot, medium: true)
-        default: AttendanceHomeView(snapshot: entry.snapshot, medium: false)
+        case .systemMedium: AttendanceHomeView(snapshot: entry.snapshot, workspace: entry.workspace, medium: true)
+        default: AttendanceHomeView(snapshot: entry.snapshot, workspace: entry.workspace, medium: false)
         }
     }
 }
@@ -59,141 +62,229 @@ struct AttendanceWidgetGlyph: View {
     }
 }
 
-/// My state as the app's badge (docs/PRESENCE.md §2.2): the state's solid colour, white icon and name; 「未設定」 with
-/// an outline while I have none.
+/// My state as a tinted badge: the state's colour softly behind its icon and name (an outline 「未設定」 while I have
+/// none).
 struct AttendanceWidgetBadge: View {
     let snapshot: AttendanceWidgetSnapshot
-    var font: Font = .subheadline.weight(.bold)
+    var height: CGFloat = 30
+    @WidgetFullColor private var fullColor
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         if let state = AttendanceWidgetRules.myState(snapshot) {
-            HStack(spacing: 4) {
-                AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 15)
-                Text(verbatim: state.label).font(font).lineLimit(1).minimumScaleFactor(0.8).contentTransition(.identity)
+            let rgb = AttendanceWidgetRules.color(state, colors: snapshot.colors)
+            HStack(spacing: 5) {
+                AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: height * 0.5).widgetAccentable()
+                Text(verbatim: state.label)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .contentTransition(.identity)
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(rgb: AttendanceWidgetRules.color(state, colors: snapshot.colors))))
+            .foregroundStyle(fullColor ? Color.widgetInk(rgb, dark: scheme == .dark) : Color.primary)
+            .padding(.horizontal, 11)
+            .frame(height: height)
+            .background(Capsule().fill(fullColor ? Color(rgb: rgb).opacity(scheme == .dark ? 0.3 : 0.14) : Color.primary.opacity(0.16)))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text("在室状況：\(state.label)"))
         } else {
             Text("未設定")
-                .font(font)
+                .font(.headline)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.secondary.opacity(0.5)))
+                .padding(.horizontal, 11)
+                .frame(height: height)
+                .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1))
         }
     }
 }
 
-/// One state as a button: my current state solid (white icon and name), the others outlined with the icon in the
-/// state's colour (the app's buttons, §2.2). Pressing switches my state (SetAttendanceIntent).
+/// One state as a button (SetAttendanceIntent). `wide` (the small widget's one button): filled with the state's
+/// colour, white icon and name — what pressing turns me into. Otherwise a tile of the medium widget's grid, icon over
+/// name: my current state filled, the others softly tinted with the icon in their colour. In the tinted modes the fills
+/// become soft primary ones (a colour fill would turn into a blank blob).
 struct AttendanceWidgetButton: View {
     let state: AttendanceWidgetState
     let snapshot: AttendanceWidgetSnapshot
-    var height: CGFloat = 40
+    var wide = false
+    var height: CGFloat = 36
+    @WidgetFullColor private var fullColor
+    @Environment(\.colorScheme) private var scheme
 
     private var selected: Bool { AttendanceWidgetRules.myEntry(snapshot)?.stateId == state.id }
-    private var color: Color { Color(rgb: AttendanceWidgetRules.color(state, colors: snapshot.colors)) }
+    private var rgb: UInt32 { AttendanceWidgetRules.color(state, colors: snapshot.colors) }
+    private var filled: Bool { wide || selected }
 
     var body: some View {
         Button(intent: SetAttendanceIntent(stateId: state.id, account: snapshot.account)) {
-            HStack(spacing: 4) {
-                AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 14)
-                    .foregroundStyle(selected ? Color.white : color)
-                Text(verbatim: state.label)
-                    .font(.footnote.weight(selected ? .bold : .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .foregroundStyle(selected ? Color.white : Color.primary)
-                    // No cross-fade between entries: on the simulator a press left the old name half faded in (2026-10-13).
-                    .contentTransition(.identity)
-            }
-            .padding(.horizontal, 6)
-            .frame(maxWidth: .infinity, minHeight: height)
-            .background {
-                let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-                if selected {
-                    shape.fill(color)
-                } else {
-                    shape.fill(Color.primary.opacity(0.04)).overlay(shape.strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
-                }
-            }
-            .contentShape(Rectangle())
+            label
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .background(background)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: state.label))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        let glyph = AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: wide ? 15 : 17)
+            .foregroundStyle(glyphStyle)
+            .widgetAccentable()
+        let name = Text(verbatim: state.label)
+            .font(wide ? .subheadline.weight(.bold) : .caption.weight(filled ? .bold : .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(filled && fullColor ? Color.white : Color.primary)
+            // No cross-fade between entries: on the simulator a press left the old name half faded in (2026-10-13).
+            .contentTransition(.identity)
+        if wide {
+            HStack(spacing: 6) { glyph; name }.padding(.horizontal, 8)
+        } else {
+            VStack(spacing: 3) { glyph; name }.padding(.horizontal, 4)
+        }
+    }
+
+    private var glyphStyle: Color {
+        guard fullColor else { return .primary }
+        return filled ? .white : Color.widgetInk(rgb, dark: scheme == .dark)
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        let shape = RoundedRectangle(cornerRadius: wide ? 12 : 13, style: .continuous)
+        if fullColor {
+            shape.fill(filled ? Color(rgb: rgb) : Color(rgb: rgb).opacity(scheme == .dark ? 0.2 : 0.1))
+        } else {
+            shape.fill(Color.primary.opacity(filled ? 0.26 : 0.1))
+                .overlay(shape.strokeBorder(Color.primary.opacity(selected ? 0.7 : 0), lineWidth: 1.5))
+        }
+    }
+}
+
+/// Who is in the room: their faces and 「在室 n 人」 (the problem's words instead, when the last try needs the user).
+struct AttendanceWidgetPeople: View {
+    let snapshot: AttendanceWidgetSnapshot
+    var limit = 3
+    var size: CGFloat = 22
+
+    var body: some View {
+        let people = AttendanceWidgetRules.inRoomPeople(snapshot).map(\.person)
+        HStack(spacing: 6) {
+            if !people.isEmpty { WidgetFacePile(people: people, limit: limit, size: size) }
+            Text("在室 \(AttendanceWidgetRules.inRoomCount(snapshot)) 人")
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("在室 \(AttendanceWidgetRules.inRoomCount(snapshot)) 人"))
     }
 }
 
 /// The home screen's small and medium widgets.
 struct AttendanceHomeView: View {
     let snapshot: AttendanceWidgetSnapshot?
+    var workspace: Workspace? = nil
     let medium: Bool
 
     var body: some View {
         Group {
             if let snapshot {
-                if snapshot.available { board(snapshot) } else { message(snapshot.workspaceName, Text("在室状況はオフです")) }
+                if !snapshot.available {
+                    message(snapshot, symbol: "door.left.hand.closed", Text("在室状況はオフです"))
+                } else if AttendanceWidgetRules.isLoading(snapshot) {
+                    message(snapshot, symbol: snapshot.problem == nil ? "arrow.triangle.2.circlepath" : "wifi.exclamationmark",
+                            Text(snapshot.problem?.words ?? "読み込み中"))
+                } else {
+                    board(snapshot)
+                }
             } else {
-                message("Taylis", Text("Taylis を開いてサインインしてください"))
+                WidgetMessageFace.signIn(workspace, compact: !medium)
             }
         }
         .containerBackground(for: .widget) { Color(.systemBackground) }
     }
 
+    private func headerRow(_ snapshot: AttendanceWidgetSnapshot) -> Workspace {
+        workspace ?? Workspace(serverUrl: snapshot.serverUrl, name: snapshot.workspaceName, username: "")
+    }
+
+    private func header(_ snapshot: AttendanceWidgetSnapshot) -> some View {
+        WidgetHeader(workspace: headerRow(snapshot), name: snapshot.workspaceName) {
+            if let problem = snapshot.problem { WidgetProblemIcon(problem: problem) }
+        }
+    }
+
+    private func message(_ snapshot: AttendanceWidgetSnapshot, symbol: String, _ text: Text) -> some View {
+        WidgetMessageFace(workspace: headerRow(snapshot), name: snapshot.workspaceName, symbol: symbol, text: text, compact: !medium)
+    }
+
     @ViewBuilder
     private func board(_ snapshot: AttendanceWidgetSnapshot) -> some View {
         if medium {
-            HStack(alignment: .top, spacing: 12) {
-                summary(snapshot)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                let buttons = AttendanceWidgetRules.mediumButtons(snapshot)
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
-                    ForEach(buttons) { state in AttendanceWidgetButton(state: state, snapshot: snapshot, height: 44) }
+            VStack(alignment: .leading, spacing: 0) {
+                header(snapshot)
+                Spacer(minLength: WidgetMetrics.gapUnderHeader)
+                HStack(alignment: .center, spacing: 12) {
+                    summary(snapshot).frame(maxWidth: .infinity, alignment: .leading)
+                    grid(snapshot).frame(width: 176)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                summary(snapshot)
+                header(snapshot)
+                Spacer(minLength: 8)
+                AttendanceWidgetBadge(snapshot: snapshot, height: 32)
                 Spacer(minLength: 6)
+                if let problem = snapshot.problem, problem != .offline {
+                    AttendanceWidgetProblemLine(problem: problem)
+                } else {
+                    AttendanceWidgetPeople(snapshot: snapshot, limit: 3, size: 22)
+                }
+                Spacer(minLength: 8)
                 if let target = AttendanceWidgetRules.toggleTarget(snapshot) {
-                    AttendanceWidgetButton(state: target, snapshot: snapshot, height: 38)
+                    AttendanceWidgetButton(state: target, snapshot: snapshot, wide: true, height: 36)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
-    /// The workspace, my state, 「在室 n 人」 and, after a failed refresh or change, why the state may be old.
+    /// My state, the faces in the room, their count and names (or why the board may be old).
     private func summary(_ snapshot: AttendanceWidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: snapshot.workspaceName)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            AttendanceWidgetBadge(snapshot: snapshot)
-            HStack(spacing: 4) {
-                Image(systemName: "person.2.fill").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true)
-                Text("在室 \(AttendanceWidgetRules.inRoomCount(snapshot)) 人")
+        let people = AttendanceWidgetRules.inRoomPeople(snapshot).map(\.person)
+        return VStack(alignment: .leading, spacing: 8) {
+            AttendanceWidgetBadge(snapshot: snapshot, height: 30)
+            if !people.isEmpty { WidgetFacePile(people: people, limit: 5, size: 24) }
+            VStack(alignment: .leading, spacing: 1) {
+                Text("在室 \(people.count) 人")
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                if let problem = snapshot.problem {
+                    AttendanceWidgetProblemLine(problem: problem)
+                } else if !people.isEmpty {
+                    Text(verbatim: people.map { $0.name.isEmpty ? "?" : $0.name }.joined(separator: "・"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .privacySensitive()
+                }
             }
-            if let problem = snapshot.problem { AttendanceWidgetProblemLine(problem: problem) }
         }
     }
 
-    private func message(_ title: String, _ text: Text) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: title).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-            Image(systemName: "door.left.hand.open").font(.title2).foregroundStyle(.secondary).accessibilityHidden(true)
-            text.font(.footnote).foregroundStyle(.secondary).lineLimit(3)
+    /// My first four states, two by two.
+    private func grid(_ snapshot: AttendanceWidgetSnapshot) -> some View {
+        let buttons = AttendanceWidgetRules.mediumButtons(snapshot)
+        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+            ForEach(buttons) { state in AttendanceWidgetButton(state: state, snapshot: snapshot, height: 52) }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -203,36 +294,35 @@ struct AttendanceWidgetProblemLine: View {
 
     var body: some View {
         Label {
-            switch problem {
-            case .offline: Text("更新できません")
-            case .signedOut: Text("サインインし直してください")
-            case .refused: Text("変更できませんでした")
-            }
+            Text(problem.words)
         } icon: {
             Image(systemName: problem == .offline ? "wifi.exclamationmark" : "exclamationmark.triangle.fill")
         }
-        .font(.caption2)
+        .font(.caption2.weight(.semibold))
         .foregroundStyle(.orange)
         .lineLimit(1)
         .minimumScaleFactor(0.8)
     }
 }
 
-/// Lock screen, round: my state's icon and 「在室」's count.
+/// Lock screen, round: my state's icon over 「在室」's count.
 struct AttendanceCircularView: View {
     let snapshot: AttendanceWidgetSnapshot?
 
     var body: some View {
         ZStack {
             AccessoryWidgetBackground()
-            VStack(spacing: 1) {
+            VStack(spacing: 0) {
                 if let snapshot, snapshot.available, let state = AttendanceWidgetRules.myState(snapshot) {
-                    AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 16)
+                    AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 17).widgetAccentable()
                 } else {
-                    Image(systemName: "door.left.hand.open").font(.system(size: 14, weight: .semibold))
+                    Image(systemName: "door.left.hand.open").font(.system(size: 15, weight: .semibold)).widgetAccentable()
                 }
                 if let snapshot, snapshot.available {
-                    Text(verbatim: "\(AttendanceWidgetRules.inRoomCount(snapshot))").font(.system(size: 15, weight: .bold)).monospacedDigit()
+                    Text(verbatim: "\(AttendanceWidgetRules.inRoomCount(snapshot))")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.7)
                 }
             }
         }
@@ -247,30 +337,43 @@ struct AttendanceCircularView: View {
     }
 }
 
-/// Lock screen, rectangle: my state, 「在室 n 人」 and the workspace.
+/// Lock screen, rectangle: my state, 「在室 n 人」 with who, and the workspace.
 struct AttendanceRectangularView: View {
     let snapshot: AttendanceWidgetSnapshot?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            if let snapshot, snapshot.available {
+            if let snapshot, snapshot.available, !AttendanceWidgetRules.isLoading(snapshot) {
                 HStack(spacing: 4) {
                     if let state = AttendanceWidgetRules.myState(snapshot) {
-                        AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 15)
+                        AttendanceWidgetGlyph(state: state, symbols: snapshot.symbols, size: 15).widgetAccentable()
                         Text(verbatim: state.label).font(.headline).lineLimit(1)
                     } else {
                         Text("未設定").font(.headline)
                     }
                 }
-                Text("在室 \(AttendanceWidgetRules.inRoomCount(snapshot)) 人").font(.subheadline)
+                let people = AttendanceWidgetRules.inRoomPeople(snapshot).map(\.person)
+                HStack(spacing: 4) {
+                    Text("在室 \(people.count) 人").font(.caption.weight(.semibold)).monospacedDigit()
+                    if !people.isEmpty {
+                        Text(verbatim: people.map { $0.name.isEmpty ? "?" : $0.name }.joined(separator: "・"))
+                            .font(.caption)
+                            .lineLimit(1)
+                            .privacySensitive()
+                    }
+                }
                 if snapshot.problem != nil {
-                    Text("更新できません").font(.caption).foregroundStyle(.secondary)
+                    Text("更新できません").font(.caption2).foregroundStyle(.secondary)
                 } else {
-                    Text(verbatim: snapshot.workspaceName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(verbatim: snapshot.workspaceName).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             } else {
-                Text("在室状況").font(.headline)
-                Text(snapshot == nil ? "Taylis を開いてサインインしてください" : "在室状況はオフです").font(.caption).lineLimit(2)
+                Label { Text("在室状況") } icon: { Image(systemName: "door.left.hand.open") }
+                    .font(.headline)
+                    .widgetAccentable()
+                Text(snapshot == nil ? "Taylis を開いてサインインしてください" : snapshot?.available == false ? "在室状況はオフです" : "読み込み中")
+                    .font(.caption)
+                    .lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

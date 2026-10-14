@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// The eight tile colours of the desktop rail (apps/desktop/src/state/workspaces.ts), so a workspace looks the same on both.
-/// Spelled out with explicit types: the literal-to-Color chain made older compilers (Xcode 26) give up type-checking.
-private let workspacePaletteHex: [UInt32] = [0x5b5bd6, 0x0f9d8a, 0xd9480f, 0xc2255c, 0x1c7ed6, 0x7048e8, 0x2b8a3e, 0xe67700]
-private let workspacePalette: [Color] = workspacePaletteHex.map(paletteColor)
+/// The eight tile colours of the desktop rail (Workspaces.paletteHex). Spelled out with explicit types: the
+/// literal-to-Color chain made older compilers (Xcode 26) give up type-checking.
+private let workspacePalette: [Color] = Workspaces.paletteHex.map(paletteColor)
 
 private func paletteColor(_ hex: UInt32) -> Color {
     let red = Double((hex >> 16) & 0xff) / 255
@@ -45,6 +44,7 @@ final class WorkspaceIconCache {
                 // An older version of this server's icon is not shown again: let it go.
                 images = images.filter { !$0.key.hasPrefix(serverUrl + "|") }
                 images[key] = image
+                WidgetWorkspaceIcons.store(data, serverUrl: serverUrl, version: version) // the widgets' headers
             } else {
                 failed.insert(key)
             }

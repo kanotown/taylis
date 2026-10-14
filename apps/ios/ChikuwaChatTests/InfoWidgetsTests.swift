@@ -391,74 +391,214 @@ final class InfoWidgetsTests: XCTestCase {
         XCTAssertEqual(controller.pendingWidgetLink, .event(id: "e1", channelId: nil, server: "https://lab.example.jp"))
     }
 
-    // MARK: faces
+    // MARK: the workspace each widget shows
 
-    private func render<V: View>(_ view: V, size: CGSize, style: UIUserInterfaceStyle, name: String) throws {
-        let dark = style == .dark
-        let framed = view
-            .padding(16)
-            .frame(width: size.width, height: size.height)
-            .background(dark ? Color.black : Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .padding(20)
-            .background(dark ? Color(white: 0.12) : Color(white: 0.82))
-            .environment(\.colorScheme, dark ? .dark : .light)
-        let renderer = ImageRenderer(content: framed)
-        renderer.scale = 3
-        let image = try XCTUnwrap(renderer.uiImage)
-        XCTAssertEqual(image.size.width, size.width + 40, accuracy: 1)
-        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"], let data = image.pngData() {
-            let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url)
-            print("snapshot written: \(url.path)")
-        }
+    private func indexFile() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("InfoWidgetsTests-\(UUID().uuidString)/workspaces.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        return url
     }
 
+    private let lab = Workspace(serverUrl: "https://lab.example.jp", workspaceId: "w1", name: "加納研", username: "kano", userId: "me")
+    private let local = Workspace(serverUrl: "http://127.0.0.1:8000", workspaceId: "w2", name: "開発", username: "android1", userId: "u9")
+    private let gone = Workspace(serverUrl: "https://old.example.jp", name: "旧研究室", username: "kano", signedOut: true)
+
+    func testChoicesAreFollowTheAppThenTheSignedInWorkspaces() async throws {
+        let file = indexFile()
+        XCTAssertNil(WidgetWorkspaces.read(file))
+        XCTAssertTrue(WidgetWorkspaces.save(WidgetWorkspaceIndex(active: lab.account, workspaces: [lab, gone, local]), to: file))
+        let choices = WidgetWorkspaceEntity.all(file, snapshots: { [] })
+        XCTAssertEqual(choices.map(\.id), [WidgetWorkspaceEntity.followAppId, lab.account, local.account], "signed out ones are not offered")
+        XCTAssertEqual(choices[1].name, "加納研")
+        XCTAssertEqual(choices[2].detail, "android1 @ 127.0.0.1:8000")
+        let defaultChoice = await WidgetWorkspaceQuery().defaultResult()
+        XCTAssertEqual(defaultChoice?.id, WidgetWorkspaceEntity.followAppId)
+
+        // A saved choice keeps its workspace when it signs out or leaves (the widget then asks to sign in).
+        let resolved = WidgetWorkspaceEntity.resolve([local.account, gone.account, "https://x.example|y", WidgetWorkspaceEntity.followAppId], file,
+                                                     snapshots: { [] })
+        XCTAssertEqual(resolved.map(\.id), [local.account, gone.account, "https://x.example|y", WidgetWorkspaceEntity.followAppId])
+        XCTAssertEqual(resolved[1].name, "旧研究室")
+
+        // Only what a widget shows reloads them: not the unread counts the list also carries.
+        var counted = lab
+        counted.badge = 4
+        XCTAssertFalse(WidgetWorkspaces.save(WidgetWorkspaceIndex(active: lab.account, workspaces: [counted, gone, local]), to: file))
+        XCTAssertEqual(WidgetWorkspaces.read(file)?.workspaces.first?.badge, 4, "written all the same")
+        var renamed = lab
+        renamed.name = "加納研究室"
+        XCTAssertTrue(WidgetWorkspaces.save(WidgetWorkspaceIndex(active: lab.account, workspaces: [renamed, gone, local]), to: file))
+        XCTAssertNil(WidgetWorkspaces.workspace(account: gone.account, file), "signed out")
+        XCTAssertEqual(WidgetWorkspaces.header(.account(gone.account), account: nil, file)?.name, "旧研究室", "its name over the sign-in face")
+    }
+
+    func testBeforeTheAppWroteItsListTheSnapshotsNameTheWorkspaces() {
+        let file = indexFile()
+        let fromSnapshots = [lab]
+        XCTAssertEqual(WidgetWorkspaceEntity.all(file, snapshots: { fromSnapshots }).map(\.id), [WidgetWorkspaceEntity.followAppId, lab.account])
+        XCTAssertEqual(WidgetWorkspaces.workspace(account: lab.account, file, snapshots: { fromSnapshots })?.name, "加納研")
+    }
+
+    func testAWidgetPlacedBeforeTheChoiceFollowsTheApp() {
+        // Placed before the update: no configuration, the parameter is nil.
+        XCTAssertEqual(WidgetWorkspaceIntent().selection, .followApp)
+        XCTAssertEqual(WidgetWorkspaceIntent(workspace: .followApp).selection, .followApp)
+        XCTAssertEqual(WidgetWorkspaceIntent(workspace: WidgetWorkspaceEntity(local)).selection, .account(local.account))
+    }
+
+    func testEachWidgetDrawsItsChosenWorkspace() {
+        let store = file(UnreadWidgetSnapshot.self)
+        var onScreen = unreadSnapshot([conversation("c", mentions: 1)])
+        onScreen.account = lab.account
+        store.save(onScreen, active: true)
+        var other = onScreen
+        other.account = "https://other.example.jp|kano"
+        other.serverUrl = "https://other.example.jp"
+        other.total = 9
+        store.save(other)
+        let rows: [String: Workspace] = [lab.account: lab, local.account: local,
+                                         other.account: Workspace(serverUrl: other.serverUrl, name: "他", username: "kano")]
+        func resolve(_ selection: WidgetWorkspaceSelection) -> UnreadWidgetSnapshot? {
+            store.resolve(selection, workspace: { rows[$0] }, seed: UnreadWidgetRules.seed)
+        }
+        XCTAssertEqual(resolve(.followApp)?.account, lab.account, "the app's")
+        XCTAssertEqual(resolve(.account(other.account))?.total, 9, "the chosen one's, not the one on screen")
+        XCTAssertNil(resolve(.account(gone.account)), "signed out or removed: the sign-in face")
+
+        // A workspace the app has written nothing for yet starts from its row and is read at once.
+        var withBadge = local
+        withBadge.badge = 3
+        let seeded = store.resolve(.account(local.account), workspace: { $0 == local.account ? withBadge : nil }, seed: UnreadWidgetRules.seed)
+        XCTAssertEqual(seeded?.serverUrl, local.serverUrl)
+        XCTAssertEqual(seeded?.userId, "u9")
+        XCTAssertEqual(seeded?.total, 3, "the switcher's last count until the server answers")
+        XCTAssertTrue(seeded?.needsRefresh() ?? false)
+        XCTAssertFalse(seeded.map(UnreadWidgetRules.hasRows) ?? true)
+        XCTAssertEqual(store.snapshot(account: local.account), seeded, "kept for the refresh")
+        XCTAssertEqual(store.current()?.account, lab.account, "the app's choice is untouched")
+
+        let today = file(TodayWidgetSnapshot.self)
+        let seededDay = today.resolve(.account(local.account), workspace: { rows[$0] }, seed: TodayWidgetSnapshot.seed)
+        XCTAssertNil(seededDay?.from)
+        XCTAssertTrue(seededDay.map { TodayWidgetRules.needsRefresh($0) } ?? false)
+    }
+
+    func testAChosenAttendanceWorkspaceStartsFromTheAppsTables() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("InfoWidgetsTests-\(UUID().uuidString)/attendance.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        var known = AttendanceWidgetSamples.snapshot
+        known.account = lab.account
+        known.serverUrl = lab.serverUrl
+        AttendanceWidgetStore.save(known, active: true, to: url)
+        let rows = [lab.account: lab, local.account: local]
+        XCTAssertEqual(AttendanceWidgetStore.resolve(.followApp, url, workspace: { rows[$0] })?.account, lab.account)
+        let seeded = AttendanceWidgetStore.resolve(.account(local.account), url, workspace: { rows[$0] })
+        XCTAssertEqual(seeded?.account, local.account)
+        XCTAssertEqual(seeded?.userId, "u9")
+        XCTAssertEqual(seeded?.symbols, known.symbols, "the app's icon table")
+        XCTAssertTrue(seeded.map(AttendanceWidgetRules.isLoading) ?? false)
+        XCTAssertTrue(seeded?.needsRefresh() ?? false)
+        XCTAssertNil(AttendanceWidgetStore.resolve(.account(gone.account), url, workspace: { rows[$0] }))
+        XCTAssertEqual(AttendanceWidgetStore.current(url)?.account, lab.account, "the app's choice is untouched")
+    }
+
+    func testAChosenWorkspaceIsReadWithItsOwnAccount() async throws {
+        let store = file(UnreadWidgetSnapshot.self)
+        let account = signedInAccount()
+        let row = Workspace(serverUrl: "https://widget.test", name: "テスト", username: String(account.dropFirst("https://widget.test|".count)), userId: "me")
+        XCTAssertEqual(row.account, account)
+        let seeded = try XCTUnwrap(store.resolve(.account(account), workspace: { $0 == account ? row : nil }, seed: UnreadWidgetRules.seed))
+        WidgetStubProtocol.reset { _ in (200, #"{"badge": 4, "has_unread": true}"#) }
+        let read = await UnreadWidgetActions.refresh(account: seeded.account, file: store, makeApi: stubApi)
+        XCTAssertEqual(read?.total, 4)
+        XCTAssertEqual(WidgetStubProtocol.requests.first?.url?.host, "widget.test")
+    }
+
+    func testUnreadBreakdownAndThePeopleInTheRoom() {
+        let s = unreadSnapshot([
+            conversation("dm", type: "dm", unread: 3, dm: ["me", "u2"], last: ("u2", "2026-10-14T03:00:00Z")),
+            conversation("group", type: "group_dm", unread: 2, dm: ["me", "u2", "u3"], last: ("u3", "2026-10-14T05:00:00Z")),
+            conversation("seminar", unread: 9, mentions: 1, last: ("u2", "2026-10-14T04:00:00Z")),
+        ], others: 2)
+        XCTAssertEqual(UnreadWidgetRules.breakdown(s), UnreadWidgetRules.Breakdown(mentions: 1, dms: 5, others: 2))
+        XCTAssertNil(UnreadWidgetRules.breakdown(UnreadWidgetRules.applying(summaryBadge: 9, to: s)), "the rows no longer add up")
+        let dm = s.rows.first { $0.id == "dm" }
+        XCTAssertEqual(dm?.avatar?.name, "花子", "a 1:1 DM shows the other person")
+        XCTAssertEqual(dm?.avatar?.initials, "花")
+        XCTAssertEqual(dm?.group, false)
+        XCTAssertNil(s.rows.first { $0.id == "group" }?.avatar)
+        XCTAssertEqual(s.rows.first { $0.id == "group" }?.group, true)
+        XCTAssertNil(s.rows.first { $0.id == "seminar" }?.group)
+    }
+
+    func testLargeTodayListsShareTheirRows() {
+        XCTAssertEqual(TodayWidgetRules.largeLimits(events: 5, tasks: 4).events, 4)
+        XCTAssertEqual(TodayWidgetRules.largeLimits(events: 5, tasks: 4).tasks, 4)
+        XCTAssertEqual(TodayWidgetRules.largeLimits(events: 12, tasks: 2).events, 6)
+        XCTAssertEqual(TodayWidgetRules.largeLimits(events: 2, tasks: 12).tasks, 6)
+        XCTAssertEqual(TodayWidgetRules.largeLimits(events: 0, tasks: 12).tasks, 8)
+        XCTAssertEqual(TodayWidgetRules.largeLimits(events: 3, tasks: 0).events, 3)
+    }
+
+    // MARK: faces
+
     func testFacesRender() throws {
-        let small = CGSize(width: 170, height: 170), medium = CGSize(width: 364, height: 170), large = CGSize(width: 364, height: 382)
-        let rect = CGSize(width: 172, height: 76), circle = CGSize(width: 76, height: 76), inline = CGSize(width: 260, height: 40)
+        let small = WidgetFaceRenderer.small, medium = WidgetFaceRenderer.medium, large = WidgetFaceRenderer.large
+        let rect = WidgetFaceRenderer.rectangular, circle = WidgetFaceRenderer.circular, inline = WidgetFaceRenderer.inline
         let unread = unreadSnapshot([
             conversation("dm", type: "dm", name: nil, unread: 3, dm: ["me", "u2"], last: ("u2", "2026-10-14T03:00:00Z")),
             conversation("group", type: "group_dm", unread: 2, dm: ["me", "u2", "u3"], last: ("u3", "2026-10-14T05:00:00Z")),
             conversation("seminar-m2-progress", unread: 9, mentions: 1, last: ("u2", "2026-10-14T04:00:00Z")),
             conversation("general", unread: 1, mentions: 1, last: ("u3", "2026-10-14T01:00:00Z")),
-        ])
+        ], others: 1)
         var unreadStale = UnreadWidgetRules.applying(summaryBadge: 12, to: unread)
         unreadStale.problem = .offline
         let unreadNone = unreadSnapshot([])
         let unreadThreads = unreadSnapshot([], others: 4)
+        let unreadSeed = UnreadWidgetRules.applying(summaryBadge: 5, to: UnreadWidgetRules.seed(workspace))
         let today = try todaySnapshot()
         var todayEmpty = today
         todayEmpty.events = []
         todayEmpty.tasks = []
         let evening = now.addingTimeInterval(9 * 3600)
-        for (style, suffix) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
-            func u(_ s: UnreadWidgetSnapshot?, _ family: WidgetFamily) -> UnreadWidgetView {
-                UnreadWidgetView(entry: UnreadTimelineEntry(date: now, snapshot: s), family: family)
-            }
-            try render(u(unread, .systemSmall), size: small, style: style, name: "unread-small-\(suffix).png")
-            try render(u(unread, .systemMedium), size: medium, style: style, name: "unread-medium-\(suffix).png")
-            try render(u(unreadStale, .systemMedium), size: medium, style: style, name: "unread-medium-stale-\(suffix).png")
-            try render(u(unreadNone, .systemMedium), size: medium, style: style, name: "unread-medium-none-\(suffix).png")
-            try render(u(unreadNone, .systemSmall), size: small, style: style, name: "unread-small-none-\(suffix).png")
-            try render(u(unreadThreads, .systemMedium), size: medium, style: style, name: "unread-medium-threads-\(suffix).png")
-            try render(u(nil, .systemSmall), size: small, style: style, name: "unread-small-signed-out-\(suffix).png")
-            try render(u(unread, .accessoryCircular), size: circle, style: style, name: "unread-lock-circular-\(suffix).png")
-            try render(u(unread, .accessoryRectangular), size: rect, style: style, name: "unread-lock-rectangular-\(suffix).png")
-            try render(u(unread, .accessoryInline), size: inline, style: style, name: "unread-lock-inline-\(suffix).png")
-
-            func t(_ s: TodayWidgetSnapshot?, _ family: WidgetFamily, at date: Date? = nil) -> TodayWidgetView {
-                TodayWidgetView(entry: TodayTimelineEntry(date: date ?? now, snapshot: s), family: family, calendar: tokyo)
-            }
-            try render(t(today, .systemSmall), size: small, style: style, name: "today-small-\(suffix).png")
-            try render(t(today, .systemMedium), size: medium, style: style, name: "today-medium-\(suffix).png")
-            try render(t(today, .systemLarge), size: large, style: style, name: "today-large-\(suffix).png")
-            try render(t(today, .systemMedium, at: evening), size: medium, style: style, name: "today-medium-evening-\(suffix).png")
-            try render(t(todayEmpty, .systemSmall), size: small, style: style, name: "today-small-empty-\(suffix).png")
-            try render(t(todayEmpty, .systemMedium), size: medium, style: style, name: "today-medium-empty-\(suffix).png")
-            try render(t(nil, .systemMedium), size: medium, style: style, name: "today-medium-signed-out-\(suffix).png")
-            try render(t(today, .accessoryRectangular), size: rect, style: style, name: "today-lock-rectangular-\(suffix).png")
-            try render(t(today, .accessoryInline), size: inline, style: style, name: "today-lock-inline-\(suffix).png")
+        let header = Workspace(serverUrl: workspace.serverUrl, workspaceId: "lab-1", name: workspace.name, username: "kano")
+        func u(_ s: UnreadWidgetSnapshot?, _ family: WidgetFamily) -> UnreadWidgetView {
+            UnreadWidgetView(entry: UnreadTimelineEntry(date: now, snapshot: s, workspace: s == nil ? nil : header), family: family)
         }
+        func t(_ s: TodayWidgetSnapshot?, _ family: WidgetFamily, at date: Date? = nil) -> TodayWidgetView {
+            TodayWidgetView(entry: TodayTimelineEntry(date: date ?? now, snapshot: s, workspace: s == nil ? nil : header), family: family, calendar: tokyo)
+        }
+        for look in WidgetFaceRenderer.Look.allCases {
+            if look == .lock {
+                try WidgetFaceRenderer.render(u(unread, .accessoryCircular), size: circle, look: look, name: "unread-lock-circular")
+                try WidgetFaceRenderer.render(u(unread, .accessoryRectangular), size: rect, look: look, name: "unread-lock-rectangular")
+                try WidgetFaceRenderer.render(u(unread, .accessoryInline), size: inline, look: look, name: "unread-lock-inline")
+                try WidgetFaceRenderer.render(t(today, .accessoryRectangular), size: rect, look: look, name: "today-lock-rectangular")
+                try WidgetFaceRenderer.render(t(today, .accessoryInline), size: inline, look: look, name: "today-lock-inline")
+                continue
+            }
+            try WidgetFaceRenderer.render(u(unread, .systemSmall), size: small, look: look, name: "unread-small")
+            try WidgetFaceRenderer.render(u(unreadNone, .systemSmall), size: small, look: look, name: "unread-small-none")
+            try WidgetFaceRenderer.render(u(nil, .systemSmall), size: small, look: look, name: "unread-small-signed-out")
+            try WidgetFaceRenderer.render(u(unread, .systemMedium), size: medium, look: look, name: "unread-medium")
+            try WidgetFaceRenderer.render(u(unreadStale, .systemMedium), size: medium, look: look, name: "unread-medium-stale")
+            try WidgetFaceRenderer.render(u(unreadNone, .systemMedium), size: medium, look: look, name: "unread-medium-none")
+            try WidgetFaceRenderer.render(u(unreadThreads, .systemMedium), size: medium, look: look, name: "unread-medium-threads")
+            try WidgetFaceRenderer.render(u(unreadSeed, .systemMedium), size: medium, look: look, name: "unread-medium-not-opened")
+
+            try WidgetFaceRenderer.render(t(today, .systemSmall), size: small, look: look, name: "today-small")
+            try WidgetFaceRenderer.render(t(todayEmpty, .systemSmall), size: small, look: look, name: "today-small-empty")
+            try WidgetFaceRenderer.render(t(today, .systemMedium), size: medium, look: look, name: "today-medium")
+            try WidgetFaceRenderer.render(t(today, .systemMedium, at: evening), size: medium, look: look, name: "today-medium-evening")
+            try WidgetFaceRenderer.render(t(todayEmpty, .systemMedium), size: medium, look: look, name: "today-medium-empty")
+            try WidgetFaceRenderer.render(t(nil, .systemMedium), size: medium, look: look, name: "today-medium-signed-out")
+            try WidgetFaceRenderer.render(t(today, .systemLarge), size: large, look: look, name: "today-large")
+        }
+        // One size larger text than the default (the widgets cap it at xLarge).
+        try WidgetFaceRenderer.render(u(unread, .systemSmall), size: small, look: .light, name: "unread-small", textSize: .xLarge)
+        try WidgetFaceRenderer.render(u(unread, .systemMedium), size: medium, look: .light, name: "unread-medium", textSize: .xLarge)
+        try WidgetFaceRenderer.render(t(today, .systemSmall), size: small, look: .light, name: "today-small", textSize: .xLarge)
+        try WidgetFaceRenderer.render(t(today, .systemMedium), size: medium, look: .light, name: "today-medium", textSize: .xLarge)
+        try WidgetFaceRenderer.render(t(today, .systemLarge), size: large, look: .light, name: "today-large", textSize: .xLarge)
     }
 }

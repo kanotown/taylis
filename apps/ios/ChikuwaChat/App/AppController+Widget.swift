@@ -24,11 +24,44 @@ extension AppController {
         let entries = (board?.entries ?? []).filter { onBoard.contains($0.userId) || $0.userId == meId }.map {
             AttendanceWidgetEntry(userId: $0.userId, stateId: $0.stateId, since: $0.since, note: $0.note)
         }
+        // The people on the board (and me), for the faces of those in the room: names and initials only.
+        let people = users.filter { onBoard.contains($0.id) || $0.id == meId }.map(widgetPerson).sorted { $0.id < $1.id }
         return AttendanceWidgetSnapshot(
             serverUrl: workspace.serverUrl, account: workspace.account, workspaceName: workspace.name, userId: meId,
             available: board != nil, states: states, entries: entries,
             symbols: Dictionary(uniqueKeysWithValues: AttendanceIcons.catalogue.map { ($0.key, $0.sf) }),
-            colors: AttendancePalette.badgeColors, updatedAt: now, problem: nil)
+            colors: AttendancePalette.badgeColors, updatedAt: now, problem: nil, people: board == nil ? nil : people)
+    }
+
+    /// A person as the widgets draw one: the name the app shows and the initials on the colour of their id (the app's
+    /// avatar without a picture, InitialsAvatar).
+    static func widgetPerson(_ user: UserPublic) -> WidgetPerson {
+        let name = user.displayName.isEmpty ? user.username : user.displayName
+        let c = InitialsAvatar.rgb(user.id)
+        func byte(_ v: Double) -> UInt32 { UInt32(max(0, min(255, (v * 255).rounded()))) }
+        return WidgetPerson(id: user.id, name: name, initials: InitialsAvatar.initials(name), color: byte(c.red) << 16 | byte(c.green) << 8 | byte(c.blue))
+    }
+
+    /// The workspace list as the widgets see it (Widget/workspaces.json: the choice in each widget's configuration and
+    /// the tiles of their headers), written whenever the app saves its list; the widgets reload when what they show of
+    /// it changed. A workspace's icon the app has not loaded yet is asked for (its file follows, WidgetWorkspaceIcons).
+    func publishWidgetWorkspaces() {
+        let active = workspaces.first { $0.serverUrl == activeServerUrl }?.account
+        if WidgetWorkspaces.save(WidgetWorkspaceIndex(active: active, workspaces: workspaces)) {
+            WidgetCenter.shared.reloadAllTimelines()
+            if #available(iOS 18.0, *) { ControlCenter.shared.reloadControls(ofKind: AttendanceWidgetStore.controlKind) }
+        }
+        for workspace in workspaces where workspace.isSignedIn && workspace.iconVersion != nil && WidgetWorkspaceIcons.image(for: workspace) == nil {
+            _ = WorkspaceIconCache.shared.image(for: workspace)
+        }
+    }
+
+    /// A workspace that is not open was counted again (GET /sync/summary): its 未読・メンション snapshot follows, as the
+    /// widget's own check would (the rows stay the app's last ones; 0 clears them).
+    func unreadWidgetSummary(account: String, badge: Int) {
+        guard let stored = UnreadWidgetStore.file.snapshot(account: account) else { return }
+        let next = UnreadWidgetRules.applying(summaryBadge: badge, to: stored)
+        if UnreadWidgetStore.file.save(next) { WidgetCenter.shared.reloadTimelines(ofKind: UnreadWidgetStore.widgetKind) }
     }
 
     /// Writes the open workspace's snapshot (MainView calls it whenever the board, my account or the counts change,
