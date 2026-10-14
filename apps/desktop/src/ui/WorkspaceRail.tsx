@@ -60,8 +60,8 @@ export function dragOffset(drag: Pick<Drag, "from" | "gap" | "tops">, index: num
 }
 
 export { RAIL_WIDTH };
-/** A workspace tile's side (h-9 w-9; 40 px until 2026-10-13, when the rail went from 68 to 56 px). */
-const TILE = 36;
+/** A workspace tile's side (h-[38px] w-[38px]; 40 px in the 68 px rail until 2026-10-13, 36 px in 56 px until 2026-10-15). */
+const TILE = 38;
 
 /**
  * M16c: the workspaces down the left edge (Slack): number / dot for unread, ⌘1 … ⌘9, + to add (WORKSPACES.md §5).
@@ -80,7 +80,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
   // The tile that just landed shows again at once, without its usual opacity fade (no flicker as the lifted copy goes).
   const [landing, setLanding] = useState<string | null>(null);
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
-  // macOS: the overlay window buttons sit in the title row across the top (Slack); the rail keeps its 56 px and starts
+  // macOS: the overlay window buttons sit in the title row across the top (Slack); the rail keeps its 60 px and starts
   // below that row, whose cell over the rail has the top bar's colour on every screen (the other screens draw the rest
   // of the row, ScreenTitleRow). Also in full screen: macOS shows the buttons all through the exit animation, before
   // the app could learn that full screen is ending (README「ウィンドウのタイトルバー」).
@@ -222,7 +222,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
   const slide = drag?.moving && !reducedMotion && drag.settling !== "drop" ? `transform ${DRAG_SLIDE_MS}ms ease` : undefined;
 
   return (
-    <nav aria-label={t("settings.section.workspaces")} className="flex w-[56px] shrink-0 flex-col" data-drop-gap={lifted ? drag.gap : undefined}>
+    <nav aria-label={t("settings.section.workspaces")} className="flex w-[60px] shrink-0 flex-col" data-drop-gap={lifted ? drag.gap : undefined}>
       {trafficLights && (
         <div
           data-tauri-drag-region
@@ -231,7 +231,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
           style={{ height: TITLE_ROW_HEIGHT }}
         />
       )}
-      <div data-tauri-drag-region data-testid="rail-tiles" className="flex min-h-0 flex-1 flex-col items-center gap-2.5 overflow-y-auto border-r border-black/20 bg-sidebar-rail py-3">
+      <div data-tauri-drag-region data-testid="rail-tiles" className="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-sidebar-rail py-3">
         {entries.map((entry, index) => (
           <WorkspaceTile
             key={entry.serverUrl}
@@ -267,7 +267,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
           title={t("settings.workspaces.add")}
           aria-label={t("settings.workspaces.add")}
           onClick={() => controller.beginAddWorkspace()}
-          className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-dashed border-sidebar-strong/30 text-sidebar-strong/70 transition-colors hover:border-sidebar-strong/60 hover:text-sidebar-strong", controller.addingWorkspace && "border-solid border-sidebar-strong bg-sidebar-strong/10 text-sidebar-strong")}
+          className={cn("flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border border-dashed border-sidebar-strong/30 text-sidebar-strong/70 transition-colors hover:border-sidebar-strong/60 hover:text-sidebar-strong", controller.addingWorkspace && "border-solid border-sidebar-strong bg-sidebar-strong/10 text-sidebar-strong")}
         >
           <Plus size={18} />
         </button>
@@ -295,7 +295,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
                   : "scale 80ms ease",
             }}
           >
-            <WorkspaceIcon serverUrl={draggedEntry.serverUrl} version={draggedEntry.iconVersion} name={draggedEntry.name} colorKey={draggedEntry.workspaceId ?? draggedEntry.serverUrl} className="h-9 w-9 rounded-[10px]" />
+            <WorkspaceIcon serverUrl={draggedEntry.serverUrl} version={draggedEntry.iconVersion} name={draggedEntry.name} colorKey={draggedEntry.workspaceId ?? draggedEntry.serverUrl} className="h-[38px] w-[38px] rounded-[10px]" />
           </div>,
           document.body,
         )}
@@ -357,7 +357,7 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
             <span
               data-testid="workspace-drop-gap"
               aria-hidden
-              className="pointer-events-none absolute top-0 h-9 w-9 rounded-[10px] border-2 border-dashed border-sidebar-strong/35 bg-sidebar-strong/15"
+              className="pointer-events-none absolute top-0 h-[38px] w-[38px] rounded-[10px] border-2 border-dashed border-sidebar-strong/35 bg-sidebar-strong/15"
             />
           )}
           {/* Slack's marker: a bar on the left edge for the open workspace, a short one for unread. */}
@@ -380,14 +380,14 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
               onMove(index + (event.key === "ArrowUp" ? -1 : 1));
             }}
             className={cn(
-              "relative flex h-9 w-9 touch-none select-none items-center justify-center rounded-[10px] text-[14px] font-bold text-white shadow-sm transition-all",
+              "relative flex h-[38px] w-[38px] touch-none select-none items-center justify-center rounded-[10px] text-[14px] font-bold text-white shadow-sm transition-all",
               active ? "shadow-none" : "opacity-85 hover:opacity-100",
               !signedIn && !active && "opacity-45 grayscale",
               placeholder && "cursor-grabbing opacity-0 transition-none",
               landing && "transition-none",
             )}
           >
-            <WorkspaceIcon serverUrl={entry.serverUrl} version={entry.iconVersion} name={entry.name} colorKey={entry.workspaceId ?? entry.serverUrl} className="h-9 w-9 rounded-[10px]" />
+            <WorkspaceIcon serverUrl={entry.serverUrl} version={entry.iconVersion} name={entry.name} colorKey={entry.workspaceId ?? entry.serverUrl} className="h-[38px] w-[38px] rounded-[10px]" />
             {/* The open workspace's frame: a 2 px line 2 px out from the tile, its own box with a transparent gap. Not
                 ring + ring-offset: those are two box-shadows stacked, and along the tile's rounded edge the ring's
                 colour showed through the offset's anti-aliased inner edge as a thin line inside the frame (dark on the

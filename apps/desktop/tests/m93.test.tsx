@@ -122,13 +122,13 @@ const A: WorkspaceEntry = { serverUrl: "https://a.example.com", workspaceId: "wa
 const B: WorkspaceEntry = { serverUrl: "https://b.example.com", workspaceId: "wb", name: "研究室", username: "alice", userId: null, iconVersion: "v1" };
 
 describe("the rail under the macOS window buttons", () => {
-  it("stays 56 px and starts below the title row that holds them, with the top bar's colour", () => {
+  it("stays 60 px and starts below the title row that holds them, with the top bar's colour", () => {
     const restore = macApp();
     try {
       render(<WorkspaceRail controller={{ ...railController([A, B]), screen: "main" } as AppController} />);
       const rail = screen.getByRole("navigation", { name: "ワークスペース" });
       // Slack: the window buttons sit in the title row across the window; the rail is not widened for them.
-      expect(rail.className).toContain("w-[56px]");
+      expect(rail.className).toContain("w-[60px]");
       expect(rail.style.width).toBe("");
       const cell = screen.getByTestId("rail-title-cell");
       expect(cell.style.height).toBe("max(40px, calc(40px / var(--ui-zoom, 1)))"); // the top bar's height (points at least)
@@ -171,7 +171,7 @@ describe("the rail under the macOS window buttons", () => {
   it("reserves nothing outside the macOS app (Windows keeps its own title bar)", () => {
     render(<WorkspaceRail controller={railController([A, B])} />);
     expect(screen.queryByTestId("rail-title-cell")).toBeNull();
-    expect(screen.getByRole("navigation", { name: "ワークスペース" }).className).toContain("w-[56px]");
+    expect(screen.getByRole("navigation", { name: "ワークスペース" }).className).toContain("w-[60px]");
   });
 });
 
@@ -209,13 +209,12 @@ describe("the title row on screens without the top bar (macOS, with the rail)", 
 
 describe("the title row's inset after the rail", () => {
   it("keeps what the rail leaves of the 84 points for the window buttons, and at least 8 px", () => {
-    expect(TITLE_ROW_INSET_AFTER_RAIL).toBe("max(8px, calc(84px / var(--ui-zoom, 1) - 56px))");
-    // 80 %: 105 - 56 = 49 px; 100 %: 28 px; 125 %: 67 - 56 = 11 px; 150 % and up: the rail alone clears them -> 8 px.
+    expect(TITLE_ROW_INSET_AFTER_RAIL).toBe("max(8px, calc(84px / var(--ui-zoom, 1) - 60px))");
+    // 80 %: 105 - 60 = 45 px; 100 %: 24 px; 125 %: 67 - 60 = 7 -> 8 px (and up).
     const inset = (zoom: number) => Math.max(8, TRAFFIC_LIGHTS_INSET / zoom - RAIL_WIDTH);
-    expect(inset(0.8)).toBeCloseTo(49);
-    expect(inset(1)).toBe(28);
-    expect(inset(1.25)).toBeCloseTo(11.2);
-    expect(inset(1.5)).toBe(8);
+    expect(inset(0.8)).toBeCloseTo(45);
+    expect(inset(1)).toBe(24);
+    expect(inset(1.25)).toBe(8);
     for (const zoom of [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]) expect((RAIL_WIDTH + inset(zoom)) * zoom).toBeGreaterThanOrEqual(TRAFFIC_LIGHTS_INSET - 1e-9);
   });
 });
