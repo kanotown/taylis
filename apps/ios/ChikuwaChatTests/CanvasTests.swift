@@ -174,6 +174,13 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
         XCTAssertEqual(headings, [0, 1, 4, 7])
         XCTAssertEqual(CanvasText.outline(BODY).map(\.line), headings)
         XCTAssertEqual(CanvasText.outline("```\n# not\n```\n## **太字** 見出し").map(\.text), ["太字 見出し"])
+        // 2026-10-16: four levels; five #s are text.
+        XCTAssertEqual(CanvasText.outline("### 三\n#### 四\n##### 五").map(\.level), [3, 4])
+        // A heading of four marks is made and undone like the others; previews drop its marks.
+        let four = CanvasText.setHeading(CanvasText.EditState(text: "### 見出し", start: 0, end: 0), level: 4)
+        XCTAssertEqual(four.text, "#### 見出し")
+        XCTAssertEqual(CanvasText.setHeading(four, level: 4).text, "見出し")
+        XCTAssertEqual(Timeline.plainText("#### 四\n##### 五"), "四 ##### 五")
     }
 }
 

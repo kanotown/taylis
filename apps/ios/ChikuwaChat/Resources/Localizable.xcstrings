@@ -29094,6 +29094,22 @@
         }
       }
     },
+    "見出し 4" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heading 4"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题 4"
+          }
+        }
+      }
+    },
     "解除" : {
       "localizations" : {
         "en" : {

@@ -117,7 +117,7 @@ enum BodyTokenizer {
     private static let bullet = try! NSRegularExpression(pattern: #"^(\s*)[-*•]\s+(.*)$"#)
     private static let numbered = try! NSRegularExpression(pattern: #"^(\s*)(\d{1,3})\.\s+(.*)$"#)
     private static let quote = try! NSRegularExpression(pattern: #"^>\s?(.*)$"#)
-    private static let heading = try! NSRegularExpression(pattern: #"^(#{1,3})\s+(\S.*)$"#)
+    private static let heading = try! NSRegularExpression(pattern: #"^(#{1,4})\s+(\S.*)$"#)
     private static let tableSeparator = try! NSRegularExpression(pattern: #"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#)
     // The canvas dialect (CANVAS.md §4.2), as markdown.ts: tasks as the server counts them, images of the canvas, rules.
     private static let imageLine = try! NSRegularExpression(pattern: #"^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$"#)
@@ -678,6 +678,8 @@ struct MessageBodyView: View {
     /// A mention of someone known is a link (UserLink) the row turns into their profile; where nothing handles it
     /// (previews, search results) mentions stay plain text.
     var userLinks = false
+    /// Custom emoji in the text follow the text size in use (`CustomEmoji.inlineScale`).
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// M122 (docs/WIKI.md §3.3): what a wiki page link (`page:<id>`, `<server>/p/<id>`) shows — the page's icon and title
     /// now, 「表示できないページ」, or (nil) its own label while not known.
     var pageLabel: ((String) -> WikiHub.LinkState?)? = nil
@@ -777,9 +779,10 @@ struct MessageBodyView: View {
     private func blockView(_ block: BodyBlock) -> some View {
         switch block {
         case .heading(let level, let tokens):
-            // Larger than they were (testers, 2026-09-29), custom emoji with them.
-            inlineText(tokens, emojiHeight: CustomEmoji.headingHeights[min(max(level, 1), 3) - 1])
-                .font(level == 1 ? .title.bold() : level == 2 ? .title2.bold() : .title3.bold())
+            // Larger than they were (testers, 2026-09-29), custom emoji with them. 2026-10-16: #### is a heading too,
+            // body text in bold (one step below ###, as on the desktop).
+            inlineText(tokens, style: CustomEmoji.headingStyle(level))
+                .font(level == 1 ? .title.bold() : level == 2 ? .title2.bold() : level == 3 ? .title3.bold() : .body.bold())
         case .paragraph(let lines):
             paragraphView(BodyTokenizer.paragraphLayout(lines))
         case .quote(let inner):
@@ -925,7 +928,7 @@ struct MessageBodyView: View {
     private func tableCell(_ tokens: [BodyToken], align: BodyTableAlign, header: Bool) -> some View {
         let alignment: Alignment = align == .center ? .center : align == .right ? .trailing : .leading
         return CappedWidth(max: Self.tableCellMaxWidth) {
-            inlineText(tokens).font(header ? .subheadline.bold() : .subheadline)
+            inlineText(tokens, style: .subheadline).font(header ? .subheadline.bold() : .subheadline)
         }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -941,8 +944,10 @@ struct MessageBodyView: View {
         }
     }
 
-    private func inlineText(_ tokens: [BodyToken], emojiHeight: CGFloat = CustomEmoji.inlineHeight) -> Text {
-        tokens.reduce(Text("")) { $0 + render($1, emojiHeight: emojiHeight) }
+    /// `style`: the text style the tokens are shown in (their custom emoji follow its size and the text size in use).
+    private func inlineText(_ tokens: [BodyToken], style: UIFont.TextStyle = .body) -> Text {
+        let textSize = CustomEmoji.textSize(style, dynamicTypeSize)
+        return tokens.reduce(Text("")) { $0 + render($1, textSize: textSize) }
     }
 
     /// A tab as spaces: SwiftUI's Text puts what follows a tab at the next tab stop but breaks the line as if it were not
@@ -951,16 +956,18 @@ struct MessageBodyView: View {
         text.contains("\t") ? text.replacingOccurrences(of: "\t", with: "    ") : text
     }
 
-    private func emojiText(_ text: String, height: CGFloat = CustomEmoji.inlineHeight) -> Text {
+    private func emojiText(_ text: String, textSize: CGFloat) -> Text {
         let text = Self.untabbed(text)
-        guard !keywords.isEmpty else { return plainEmojiText(text, height: height) }
+        guard !keywords.isEmpty else { return plainEmojiText(text, textSize: textSize) }
         return NotifyKeywords.pieces(text, keywords).reduce(Text("")) { sum, piece in
-            sum + (piece.hit ? Text(piece.text).bold().foregroundStyle(Color.accentColor) : plainEmojiText(piece.text, height: height))
+            sum + (piece.hit ? Text(piece.text).bold().foregroundStyle(Color.accentColor) : plainEmojiText(piece.text, textSize: textSize))
         }
     }
 
-    private func plainEmojiText(_ text: String, height: CGFloat) -> Text {
-        CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage, height: height)
+    /// Custom emoji 1.375 × the text's point size high, as on the desktop (`CustomEmoji.inlineScale`, 2026-10-16).
+    private func plainEmojiText(_ text: String, textSize: CGFloat) -> Text {
+        CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage,
+                         height: CustomEmoji.inlineHeight(textSize: textSize), textSize: textSize)
     }
 
     /// M122: 「📄 題名」 (the page's own emoji when it has one), 「📄 表示できないページ」, or the link's label while the
@@ -977,12 +984,12 @@ struct MessageBodyView: View {
         }
     }
 
-    private func render(_ token: BodyToken, emojiHeight: CGFloat = CustomEmoji.inlineHeight) -> Text {
+    private func render(_ token: BodyToken, textSize: CGFloat) -> Text {
         switch token {
-        case .text(let text): return emojiText(text, height: emojiHeight)
-        case .bold(let text): return emojiText(text, height: emojiHeight).bold()
-        case .italic(let text): return emojiText(text, height: emojiHeight).italic()
-        case .strike(let text): return emojiText(text, height: emojiHeight).strikethrough()
+        case .text(let text): return emojiText(text, textSize: textSize)
+        case .bold(let text): return emojiText(text, textSize: textSize).bold()
+        case .italic(let text): return emojiText(text, textSize: textSize).italic()
+        case .strike(let text): return emojiText(text, textSize: textSize).strikethrough()
         case .code(let text): return Self.inlineCode(text)
         case .codeBlock(let text, _): return Text(Self.untabbed(text)).font(Self.codeBlockFont)
         case .link(let url, let label):

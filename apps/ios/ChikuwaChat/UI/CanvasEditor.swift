@@ -163,6 +163,7 @@ struct CanvasEditor: View {
                     Button("見出し 1") { model.apply { CanvasText.setHeading($0, level: 1) } }
                     Button("見出し 2") { model.apply { CanvasText.setHeading($0, level: 2) } }
                     Button("見出し 3") { model.apply { CanvasText.setHeading($0, level: 3) } }
+                    Button("見出し 4") { model.apply { CanvasText.setHeading($0, level: 4) } }
                 } label: { toolIcon("textformat.size") }
                 .accessibilityLabel("見出し")
                 tool("list.bullet", tr("箇条書き")) { CanvasText.toggleLinePrefix($0, marker: "- ") }
