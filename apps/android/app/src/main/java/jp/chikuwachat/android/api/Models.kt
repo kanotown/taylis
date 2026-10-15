@@ -750,6 +750,11 @@ data class CustomEmojiOut(
     /** The pack (its own picker tab); null = 「カスタム」. */
     val packId: String? = null,
     val position: Int = 0,
+    /**
+     * docs/EMOJI.md, image cache: names the picture (a new one when the image is replaced), so a cached copy is used without
+     * asking; older servers do not send it (the type and size stand in, checked again once a day).
+     */
+    val imageVersion: String? = null,
 ) {
     val isText: Boolean get() = kind == "text"
 }
