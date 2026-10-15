@@ -1736,7 +1736,7 @@ struct ComposerView: View {
             Button("アンケート", systemImage: "chart.bar.doc.horizontal") { showPollForm = true }
             Button("日程調整", systemImage: "calendar.badge.clock") { scheduleForm = ScheduleFormInitial() }
             if offersWorkflows { Button("ワークフロー", systemImage: "bolt") { showWorkflows = true } }  // M95
-            if !typing && !templates.isEmpty { templateMenu }
+            if !templates.isEmpty { templateMenu }
             if !typing { Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true } }
             if parentId == nil {
                 Divider()
@@ -1765,7 +1765,7 @@ struct ComposerView: View {
         .accessibilityLabel("添付")
     }
 
-    /// Under the input while typing: attach, mention, emoji, formatting, send later; send on the right.
+    /// Under the input while typing: attach, mention, emoji, formatting, send later, photos; send on the right.
     private var toolRow: some View {
         HStack(spacing: 6) {
             attachMenu
@@ -1780,12 +1780,8 @@ struct ComposerView: View {
             }
             .accessibilityLabel("書式")
             toolButton("clock", label: tr("後で送信")) { showSchedule = true }.disabled(!canSend)
-            if !templates.isEmpty {
-                Menu { templateItems } label: {
-                    Image(systemName: "doc.text").font(.system(size: 20)).frame(width: 36, height: 36)
-                }
-                .accessibilityLabel("テンプレート")
-            }
+            // The photo library at the row's end (2026-10-16: used far more than the templates, which stay in 「＋」).
+            toolButton("photo.on.rectangle", label: tr("写真ライブラリ")) { showPhotoPicker = true }.disabled(uploading > 0)
             Spacer()
             if uploading > 0 {
                 ProgressView().controlSize(.small).frame(width: 36, height: 36)

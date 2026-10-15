@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -540,9 +541,11 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         if (focused) {
-            // Under the input while typing (iOS toolRow): ＋, @, emoji, Aa, /, 🚩 (top-level posts); send on the right.
+            // Under the input while typing (iOS toolRow): ＋, @, emoji, Aa, /, 🚩 (top-level posts), photos; send on the right.
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 val tint = MaterialTheme.colorScheme.onSurfaceVariant
+                // The tools scroll sideways on a narrow phone (seven of them since the photos button); send stays in view.
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(enabled = uploading == 0, onClick = { plusOpen = true }) { Icon(Icons.Outlined.AddCircleOutline, contentDescription = stringResource(R.string.composer_attach_and_more), tint = tint) }
                 IconButton(onClick = { edit(ComposerText.mention(field.text, field.selection.start, field.selection.end)) }) {
                     Icon(Icons.Outlined.AlternateEmail, contentDescription = stringResource(R.string.common_mention), tint = tint)
@@ -571,7 +574,11 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                         PriorityMenu(priorityOpen, { priorityOpen = false }, priority, ackRequested, onPriority = { priority = it }, onToggleAck = { ackRequested = !ackRequested })
                     }
                 }
-                Spacer(Modifier.weight(1f))
+                // The photo library last (2026-10-16, as iOS): it is used far more than the others.
+                IconButton(enabled = uploading == 0, onClick = { mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }) {
+                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = stringResource(R.string.composer_photos_videos), tint = tint)
+                }
+                }
                 SendControl(34.dp)
             }
         }
