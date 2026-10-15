@@ -69,6 +69,22 @@ class CustomEmojiTest {
     private fun emoji(name: String, w: Int = 180, h: Int = 180, label: String? = null, keywords: List<String> = emptyList(), packId: String? = null, position: Int = 0) =
         CustomEmojiOut(name, name, "image/png", w, h, "u", "", label = label, keywords = keywords, packId = packId, position = position)
 
+    /** 2026-10-16: in text a custom emoji is 1.375em high as on the desktop (MessageBody.tsx), its width by its aspect. */
+    @Test fun inlineEmojiAre1375EmHighLikeTheDesktop() {
+        assertEquals(1.375f, CustomEmoji.INLINE_EM, 0f)
+        assertEquals(1.375f to 1.375f, CustomEmoji.inlineBox(emoji("square")))
+        val (w, h) = CustomEmoji.inlineBox(emoji("wide", 96, 64))
+        assertEquals(1.375f, h, 0f)
+        assertEquals(1.375f * 1.5f, w, 0.001f)
+        // A pack emoji (ちくわ君) the same height; a text emoji's pill too, as wide as its label.
+        assertEquals(1.375f, CustomEmoji.inlineBox(emoji("ckw", packId = "p1")).second, 0f)
+        val pill = emoji("t1", "thanks", label = "ありがとう")
+        assertEquals(1.375f, CustomEmoji.inlineBox(pill).second, 0f)
+        assertEquals(1.375f * TextEmojiPill.aspect("ありがとう"), CustomEmoji.inlineBox(pill).first, 0.001f)
+        // Larger than the 16sp body: 22sp, as the desktop's 14.5px body draws it 19.9px.
+        assertEquals(22f, 16f * CustomEmoji.INLINE_EM, 0.001f)
+    }
+
     @Test fun wideEmojiKeepTheirShapeUpToThreeToOne() {
         assertEquals(1.5f, CustomEmoji.aspect(emoji("a", 96, 64)), 0.001f)
         assertEquals(3f, CustomEmoji.aspect(emoji("b", 400, 50)), 0.001f)

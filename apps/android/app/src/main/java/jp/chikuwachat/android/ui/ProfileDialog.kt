@@ -183,7 +183,7 @@ fun EmojiLineText(
 /**
  * The same for a row that has the Store rather than the controller: also a message's excerpt in a compact row (the
  * activity, pins, saved, mentions, threads, the DM list, a reply's 「スレッドに返信」 line; 2026-10-05: the activity
- * showed `:ckw-yay:`). Each custom emoji holds its box (its aspect, 1.25 em high) blank until its image comes.
+ * showed `:ckw-yay:`). Each custom emoji holds its box (its aspect, [CustomEmoji.INLINE_EM] high) blank until its image comes.
  */
 @Composable
 fun EmojiLineText(

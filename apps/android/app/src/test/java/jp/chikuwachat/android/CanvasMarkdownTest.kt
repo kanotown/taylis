@@ -131,9 +131,9 @@ class CanvasMarkdownTest {
 
     @Test
     fun theOutlineListsHeadingsOutsideCodeFences() {
-        val body = "# 議事録\n```\n# コード\n```\n## 決定事項 **重要**\n本文\n### TODO"
+        val body = "# 議事録\n```\n# コード\n```\n## 決定事項 **重要**\n本文\n### TODO\n#### 細目\n##### 段落"
         assertEquals(
-            listOf(CanvasText.OutlineEntry(1, "議事録", 0), CanvasText.OutlineEntry(2, "決定事項 重要", 4), CanvasText.OutlineEntry(3, "TODO", 6)),
+            listOf(CanvasText.OutlineEntry(1, "議事録", 0), CanvasText.OutlineEntry(2, "決定事項 重要", 4), CanvasText.OutlineEntry(3, "TODO", 6), CanvasText.OutlineEntry(4, "細目", 7)),
             CanvasText.outline(body),
         )
     }
@@ -144,6 +144,10 @@ class CanvasMarkdownTest {
         val h = CanvasText.setHeading(CanvasText.Edit("議題\n本文", 1), 2)
         assertEquals("## 議題\n本文", h.text)
         assertEquals("議題\n本文", CanvasText.setHeading(CanvasText.Edit(h.text, 4), 2).text)
+        // h4 (2026-10-16): a level-4 heading made and changed to another level.
+        val h4 = CanvasText.setHeading(CanvasText.Edit("議題\n本文", 1), 4)
+        assertEquals("#### 議題\n本文", h4.text)
+        assertEquals("## 議題\n本文", CanvasText.setHeading(CanvasText.Edit(h4.text, 6), 2).text)
         // Checklist: bullets become open boxes; all boxes again become text.
         val t = CanvasText.toggleTasks(CanvasText.Edit("- 資料\n発表", 0, 7))
         assertEquals("- [ ] 資料\n- [ ] 発表", t.text)

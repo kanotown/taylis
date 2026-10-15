@@ -123,7 +123,7 @@ private val FENCE_CLOSE = Regex("""^```\s*$""")
 private val BULLET = Regex("""^(\s*)[-*•]\s+(.*)$""")
 private val NUMBERED = Regex("""^(\s*)(\d{1,3})\.\s+(.*)$""")
 private val QUOTE = Regex("""^>\s?(.*)$""")
-private val HEADING = Regex("""^(#{1,3})\s+(\S.*)$""")
+private val HEADING = Regex("""^(#{1,4})\s+(\S.*)$""")
 private val TABLE_SEPARATOR = Regex("""^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$""")
 
 /** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
@@ -687,7 +687,7 @@ fun plainText(body: String, maxLength: Int = 200): String {
         .replace(Regex("""(?m)^```[A-Za-z0-9_+#.-]*\s*$"""), "")
         .replace(Regex("""(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"""), "") // M15g: table separators
         .replace(Regex("""(?m)^[ \t]*\|(.*)\|[ \t]*$""")) { match -> splitTableRow(match.value).joinToString(" ") }
-        .replace(Regex("""(?m)^#{1,3}\s+"""), "")
+        .replace(Regex("""(?m)^#{1,4}\s+"""), "")
         .replace(Regex("""(?m)^>\s?"""), "")
         .replace(Regex("""(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"""), "")
         // M107: the inline markers are those the tokenizer reads (apps/shared/inline-format.json), not patterns of their own.
