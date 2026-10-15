@@ -800,6 +800,12 @@ final class Store {
         applyPreviews(snapshot.meta)
         for (key, value) in snapshot.meta where key.hasPrefix(Self.wikiPrefix) { wikiKept[key] = value } // M122
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
+        if let raw = snapshot.meta[Self.customEmojiKey], let rows = try? JSON.plainDecoder.decode([CustomEmojiOut].self, from: Data(raw.utf8)) {
+            customEmoji = Dictionary(rows.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+        }
+        if let raw = snapshot.meta[Self.emojiPacksKey], let rows = try? JSON.plainDecoder.decode([EmojiPackOut].self, from: Data(raw.utf8)) {
+            emojiPacks = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        }
         if let raw = snapshot.meta[Self.activityKey], let data = raw.data(using: .utf8) {
             activity = try? JSON.plainDecoder.decode(ActivitySummary.self, from: data) // corrupt: the next bootstrap brings it
         }
@@ -1134,7 +1140,10 @@ final class Store {
         for old in customEmoji.values where Self.drawnDiffers(old, fresh[old.id]) { dropEmojiImage(old.id) }
         // Not uniqueKeysWithValues, which traps when a name comes twice (the server keeps names unique; the app
         // should not depend on it): the last wins.
-        customEmoji = Dictionary(rows.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+        let byName = Dictionary(rows.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+        guard byName != customEmoji else { return } // each reconnect's bootstrap: no write when nothing changed
+        customEmoji = byName
+        persistCustomEmoji()
     }
 
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
@@ -1142,14 +1151,16 @@ final class Store {
             dropEmojiImage(old.id)
         }
         if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
+        persistCustomEmoji()
     }
 
     /// Whether an emoji's cached image no longer shows `new` (nil: it is gone): a text emoji's pill is drawn from its label
     /// and colour, so a changed one is drawn again; a changed kind swaps pill and picture. An image emoji's picture is kept
-    /// by id while the app runs (docs/EMOJI.md).
+    /// by id while the app runs, unless the server names a new version of it (docs/EMOJI.md §10).
     private static func drawnDiffers(_ old: CustomEmojiOut, _ new: CustomEmojiOut?) -> Bool {
         guard let new else { return true }
         return old.isText != new.isText || (old.isText && (old.label != new.label || old.color != new.color))
+            || (!new.isText && old.imageVersion != new.imageVersion)
     }
 
     private func dropEmojiImage(_ id: String) {
@@ -1161,6 +1172,7 @@ final class Store {
 
     func replaceEmojiPacks(_ rows: [EmojiPackOut]) {
         emojiPacks = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        persistEmojiPacks()
     }
 
     /// emoji_pack.updated: a deleted pack's emoji become ungrouped (their emoji.updated come too).
@@ -1172,9 +1184,25 @@ final class Store {
                 ungrouped.packId = nil
                 customEmoji[name] = ungrouped
             }
+            persistCustomEmoji()
         } else {
             emojiPacks[row.id] = row
         }
+        persistEmojiPacks()
+    }
+
+    /// docs/EMOJI.md §10: the emoji and packs last known are kept, so a launch draws the custom emoji of the messages
+    /// it shows (their pictures from EmojiImageCache) before the bootstrap brings the lists again.
+    static let customEmojiKey = "custom_emoji", emojiPacksKey = "emoji_packs"
+
+    private func persistCustomEmoji() {
+        let json = (try? JSON.plainEncoder.encode(Array(customEmoji.values))).flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: Self.customEmojiKey, value: json) }
+    }
+
+    private func persistEmojiPacks() {
+        let json = (try? JSON.plainEncoder.encode(Array(emojiPacks.values))).flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: Self.emojiPacksKey, value: json) }
     }
 
     /// The packs in tab order (position, then name).
@@ -1691,6 +1719,8 @@ final class Store {
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
         if let activity, let data = try? JSON.plainEncoder.encode(activity) { snapshot.meta[Self.activityKey] = String(data: data, encoding: .utf8) }
         if !unsentReads.isEmpty, let data = try? JSON.plainEncoder.encode(unsentReads) { snapshot.meta[Self.unsentReadsKey] = String(data: data, encoding: .utf8) }
+        if !customEmoji.isEmpty, let data = try? JSON.plainEncoder.encode(Array(customEmoji.values)) { snapshot.meta[Self.customEmojiKey] = String(data: data, encoding: .utf8) }
+        if !emojiPacks.isEmpty, let data = try? JSON.plainEncoder.encode(Array(emojiPacks.values)) { snapshot.meta[Self.emojiPacksKey] = String(data: data, encoding: .utf8) }
         snapshot.users = Array(users.values)
         snapshot.channels = Array(channels.values)
         snapshot.messages = buckets.values.flatMap { $0.byId.values }
