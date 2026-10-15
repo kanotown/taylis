@@ -1344,6 +1344,9 @@ struct CustomEmojiOut: Codable, Identifiable, Equatable, Hashable {
     /// The pack (its own picker tab); nil = 「カスタム」.
     var packId: String? = nil
     var position: Int? = nil
+    /// The picture's version (newer servers; changes when the picture is replaced): the device keeps a picture per
+    /// (id, version) for good. Without it a kept picture is fetched again after a day (EmojiImageCache).
+    var imageVersion: String? = nil
 
     var isText: Bool { kind == "text" }
 }

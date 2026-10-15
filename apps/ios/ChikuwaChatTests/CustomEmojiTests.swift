@@ -334,3 +334,223 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertEqual(SectionLetterIcon.normalize("ｱ"), "ア")
     }
 }
+
+/// docs/EMOJI.md §10 (2026-10-15, 「毎回読み込みに結構時間かかる」): custom emoji pictures kept on disk per server,
+/// decoded once in memory, one request per emoji at a time and a few at once.
+final class EmojiImageCacheTests: XCTestCase {
+    private var directories: [URL] = []
+
+    override func tearDown() {
+        for directory in directories { try? FileManager.default.removeItem(at: directory) }
+        super.tearDown()
+    }
+
+    private func directory() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("emoji-cache-test-\(UUID().uuidString)", isDirectory: true)
+        directories.append(url)
+        return url
+    }
+
+    private static func png(_ color: UIColor, size: CGFloat = 8) -> Data {
+        UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).pngData { context in
+            color.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+        }
+    }
+
+    private let decode: (Data) -> DecodedEmoji? = { data in
+        CustomEmoji.decode(data).map { DecodedEmoji(still: $0.still, animation: $0.animation) }
+    }
+
+    /// Counts the requests a fetch closure makes (from any thread).
+    private final class Requests: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0, inFlight = 0, maxInFlight = 0
+        var total: Int { lock.withLock { count } }
+        var most: Int { lock.withLock { maxInFlight } }
+        func fetch(_ data: Data, delay: UInt64 = 0) async throws -> Data {
+            lock.withLock { count += 1; inFlight += 1; maxInFlight = max(maxInFlight, inFlight) }
+            if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+            lock.withLock { inFlight -= 1 }
+            return data
+        }
+    }
+
+    /// The next launch (a new cache on the same directory) draws a picture fetched before without asking the server,
+    /// even before the token refresh (no request at all). The request it made went through the API client with the
+    /// session's token, to the picture's version.
+    @MainActor
+    func testANewLaunchServesFromDiskWithoutTheNetwork() async throws {
+        var paths: [String] = []
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access")
+            paths.append(request.url!.path + "?" + (request.url!.query ?? ""))
+            return (200, Self.png(.red))
+        }
+        defer { StubProtocol.handler = nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let api = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+        api.accessToken = "access"
+        let path = EmojiImageCache.imagePath(id: "e1", version: "v1")
+        let directory = directory()
+
+        let first = EmojiImageCache(directory: directory)
+        let fetched = await first.image(id: "e1", version: "v1", variant: "inline", decode: decode, fetch: { try await api.fetchData(path) })
+        XCTAssertNotNil(fetched)
+        XCTAssertEqual(paths, ["/api/v1/emoji/e1/image?v=v1"])
+        XCTAssertNotNil(first.cached(id: "e1", version: "v1", variant: "inline")) // decoded once, in memory
+
+        let relaunched = EmojiImageCache(directory: directory)
+        XCTAssertNil(relaunched.cached(id: "e1", version: "v1", variant: "inline"))
+        let fromDisk = await relaunched.image(id: "e1", version: "v1", variant: "inline", decode: decode,
+                                              fetch: { XCTFail("no request"); throw URLError(.notConnectedToInternet) })
+        XCTAssertEqual(fromDisk?.stale, false)
+        XCTAssertEqual(fromDisk?.image.still.size, fetched?.image.still.size)
+        XCTAssertEqual(paths.count, 1)
+        // Offline too, and for a server that sends no version (younger than a day: not stale).
+        let unversioned = await relaunched.image(id: "e1", version: nil, variant: "pack", decode: decode,
+                                                 fetch: { throw URLError(.notConnectedToInternet) })
+        XCTAssertEqual(unversioned?.stale, false)
+    }
+
+    /// A new version is fetched; a picture with no version is fetched again behind the old one after `revalidateAfter`.
+    func testVersionsAndRevalidation() async throws {
+        let directory = directory(), requests = Requests()
+        let red = Self.png(.red), blue = Self.png(.blue)
+        let cache = EmojiImageCache(directory: directory, revalidateAfter: 0)
+        _ = await cache.image(id: "e1", version: "v1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        _ = await cache.image(id: "e1", version: "v1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        XCTAssertEqual(requests.total, 1)
+        let second = await cache.image(id: "e1", version: "v2", variant: "inline", decode: decode, fetch: { try await requests.fetch(blue) })
+        XCTAssertEqual(requests.total, 2)
+        XCTAssertEqual(second?.stale, false) // a version is trusted for good
+
+        let relaunched = EmojiImageCache(directory: directory, revalidateAfter: 0)
+        let stale = await relaunched.image(id: "e1", version: nil, variant: "inline", decode: decode, fetch: { try await requests.fetch(blue) })
+        XCTAssertEqual(stale?.stale, true)
+        XCTAssertEqual(requests.total, 2) // shown from the disk first
+        let unchanged = await relaunched.revalidate(id: "e1", variant: "inline", decode: decode, fetch: { try await requests.fetch(blue) })
+        XCTAssertNil(unchanged)
+        let replaced = await relaunched.revalidate(id: "e1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        XCTAssertNotNil(replaced) // a preset's picture replaced on the server (§8.2)
+        XCTAssertTrue(relaunched.cached(id: "e1", version: nil, variant: "inline") === replaced)
+        XCTAssertEqual(requests.total, 4)
+    }
+
+    /// Workspaces never share pictures; signing out of one (or removing it) deletes its pictures, in memory and on disk.
+    @MainActor
+    func testServersAreApartAndSignOutClearsOne() async throws {
+        let a = "https://a.example.test", b = "https://b.example.test"
+        defer { EmojiImageCache.remove(server: a); EmojiImageCache.remove(server: b) }
+        let requests = Requests(), red = Self.png(.red)
+        XCTAssertNotEqual(EmojiImageCache.directory(server: a), EmojiImageCache.directory(server: b))
+        XCTAssertTrue(EmojiImageCache.forServer(a) === EmojiImageCache.forServer(a))
+
+        _ = await EmojiImageCache.forServer(a).image(id: "e1", version: "1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        _ = await EmojiImageCache.forServer(b).image(id: "e1", version: "1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        XCTAssertEqual(requests.total, 2) // the same id on another server is another picture
+        let directoryA = EmojiImageCache.directory(server: a)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directoryA.appendingPathComponent("e1").path))
+
+        let before = EmojiImageCache.forServer(a)
+        EmojiImageCache.remove(server: a)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directoryA.path))
+        XCTAssertNil(before.cached(id: "e1", version: "1", variant: "inline"))
+        XCTAssertFalse(EmojiImageCache.forServer(a) === before)
+        _ = await EmojiImageCache.forServer(a).image(id: "e1", version: "1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        XCTAssertEqual(requests.total, 3) // signed in again: fetched again
+        // The other workspace kept its own.
+        _ = await EmojiImageCache(directory: EmojiImageCache.directory(server: b))
+            .image(id: "e1", version: "1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        XCTAssertEqual(requests.total, 3)
+        // A load under way when the workspace goes writes nothing back.
+        let leaving = EmojiImageCache.forServer(b)
+        async let late = leaving.image(id: "e2", version: "1", variant: "inline", decode: decode,
+                                       fetch: { try await requests.fetch(red, delay: 100_000_000) })
+        try await Task.sleep(nanoseconds: 20_000_000)
+        EmojiImageCache.remove(server: b)
+        _ = await late
+        XCTAssertFalse(FileManager.default.fileExists(atPath: EmojiImageCache.directory(server: b).path))
+    }
+
+    /// Many views asking for the same picture at once (a conversation full of the same reaction) make one request; a
+    /// picker full of new ones runs a few at a time.
+    func testOneRequestPerPictureAndAFewAtOnce() async throws {
+        let cache = EmojiImageCache(directory: directory(), maxConcurrent: 3), requests = Requests(), red = Self.png(.red)
+        let decode = self.decode
+        let same = await withTaskGroup(of: Bool.self) { group -> [Bool] in
+            for _ in 0..<20 {
+                group.addTask {
+                    await cache.image(id: "e1", version: nil, variant: "inline", decode: decode,
+                                      fetch: { try await requests.fetch(red, delay: 50_000_000) }) != nil
+                }
+            }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        XCTAssertEqual(same, Array(repeating: true, count: 20))
+        XCTAssertEqual(requests.total, 1)
+
+        let many = await withTaskGroup(of: Bool.self) { group -> [Bool] in
+            for index in 0..<12 {
+                group.addTask {
+                    await cache.image(id: "m\(index)", version: nil, variant: "inline", decode: decode,
+                                      fetch: { try await requests.fetch(red, delay: 20_000_000) }) != nil
+                }
+            }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        XCTAssertEqual(many.filter { $0 }.count, 12)
+        XCTAssertEqual(requests.total, 13)
+        XCTAssertLessThanOrEqual(requests.most, 3)
+        // A failed request is not remembered: the next view asks again.
+        let failed = await cache.image(id: "x", version: nil, variant: "inline", decode: decode, fetch: { throw URLError(.timedOut) })
+        XCTAssertNil(failed)
+        let retried = await cache.image(id: "x", version: nil, variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
+        XCTAssertNotNil(retried)
+    }
+
+    /// Over its cap the cache keeps the most recently used pictures.
+    func testTheCapDropsTheLeastRecentlyUsed() async throws {
+        let directory = directory()
+        let picture = Self.png(.red, size: 64)
+        let cache = EmojiImageCache(directory: directory, capacity: (picture.count + 1) * 4) // four files (an empty version line each)
+        for index in 0..<4 {
+            _ = await cache.image(id: "e\(index)", version: nil, variant: "inline", decode: decode, fetch: { picture })
+            // Older uses, oldest first (e0 the least recently used).
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(index - 10) * 60)],
+                                                  ofItemAtPath: directory.appendingPathComponent("e\(index)").path)
+        }
+        _ = await cache.image(id: "e4", version: nil, variant: "inline", decode: decode, fetch: { picture })
+        let kept = Set((try FileManager.default.contentsOfDirectory(atPath: directory.path)))
+        XCTAssertEqual(kept, ["e2", "e3", "e4"]) // down to three quarters of the cap, newest first
+    }
+
+    /// The emoji and packs last known come back with the store (a launch draws them before the bootstrap), and a new
+    /// picture version drops the drawn one.
+    @MainActor
+    func testTheListsAreKeptAndANewVersionIsDrawnAgain() throws {
+        let row = CustomEmojiOut(id: "e1", name: "party", contentType: "image/png", width: 8, height: 8, createdBy: "u", createdAt: "",
+                                 packId: "p1", imageVersion: "v1")
+        let pack = EmojiPackOut(id: "p1", name: "Pack", position: 0, tabVersion: "t", createdAt: "", updatedAt: "")
+        let store = Store()
+        store.replaceCustomEmoji([row])
+        store.replaceEmojiPacks([pack])
+        let restored = Store.fromSnapshot(store.snapshot())
+        XCTAssertEqual(restored.customEmoji, ["party": row])
+        XCTAssertEqual(restored.emojiPacks, ["p1": pack])
+
+        store.emojiImages["e1"] = UIImage()
+        var renamed = row
+        renamed.keywords = ["お祝い"]
+        store.applyCustomEmoji(renamed, deleted: false)
+        XCTAssertNotNil(store.emojiImages["e1"]) // same picture
+        var replaced = renamed
+        replaced.imageVersion = "v2"
+        store.applyCustomEmoji(replaced, deleted: false)
+        XCTAssertNil(store.emojiImages["e1"])
+        // The server's field.
+        let json = #"{"id":"e1","name":"party","content_type":"image/png","width":8,"height":8,"created_by":"u","created_at":"","image_version":"abc"}"#
+        XCTAssertEqual(try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(json.utf8)).imageVersion, "abc")
+    }
+}

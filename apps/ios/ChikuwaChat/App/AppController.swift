@@ -1065,28 +1065,47 @@ final class AppController {
             }
             return
         }
-        guard let api, store.emojiImages[emoji.id] == nil, !emojiLoads.contains(emoji.id) else { return }
+        guard let api, let serverUrl = activeServerUrl, store.emojiImages[emoji.id] == nil, !emojiLoads.contains(emoji.id) else { return }
         emojiLoads.insert(emoji.id)
+        // docs/EMOJI.md §10: from memory or the disk at once; the server only for one never fetched (or a day old with
+        // no version to trust, shown meanwhile).
+        let cache = EmojiImageCache.forServer(serverUrl), target = store
+        let pack = emoji.packId != nil, variant = pack ? "pack" : "inline"
+        let decode: (Data) -> DecodedEmoji? = { data in
+            CustomEmoji.decode(data, pack: pack).map { DecodedEmoji(still: $0.still, animation: $0.animation) }
+        }
+        let path = EmojiImageCache.imagePath(id: emoji.id, version: emoji.imageVersion)
+        let fetch: () async throws -> Data = { try await api.fetchData(path) }
         Task {
-            defer { emojiLoads.remove(emoji.id) }
-            guard let data = try? await api.fetchData("/api/v1/emoji/\(emoji.id)/image"),
-                  let decoded = await Task.detached(operation: { CustomEmoji.decode(data, pack: emoji.packId != nil) }).value else { return }
-            if let animation = decoded.animation { store.emojiAnimations[emoji.id] = animation }
-            store.emojiImages[emoji.id] = decoded.still
+            defer { if target === store { emojiLoads.remove(emoji.id) } }
+            guard let loaded = await cache.image(id: emoji.id, version: emoji.imageVersion, variant: variant, decode: decode, fetch: fetch),
+                  target === store else { return } // the workspace changed meanwhile
+            show(loaded.image, emoji.id, in: target)
+            guard loaded.stale, let fresh = await cache.revalidate(id: emoji.id, variant: variant, decode: decode, fetch: fetch),
+                  target === store else { return }
+            show(fresh, emoji.id, in: target)
         }
     }
 
-    /// M100: a pack's tab icon, once per version.
+    private func show(_ picture: DecodedEmoji, _ id: String, in store: Store) {
+        if let animation = picture.animation { store.emojiAnimations[id] = animation } else { store.emojiAnimations[id] = nil }
+        store.emojiImages[id] = picture.still
+    }
+
+    /// M100: a pack's tab icon, once per version (kept on disk as the emoji are).
     func loadPackTab(_ pack: EmojiPackOut) {
-        guard let api, let version = pack.tabVersion else { return }
+        guard let api, let serverUrl = activeServerUrl, let version = pack.tabVersion else { return }
         let key = "\(pack.id):\(version)"
         guard store.packTabImages[key] == nil, !emojiLoads.contains(key) else { return }
         emojiLoads.insert(key)
+        let cache = EmojiImageCache.forServer(serverUrl), target = store
         Task {
-            defer { emojiLoads.remove(key) }
-            guard let data = try? await api.fetchData("/api/v1/emoji/packs/\(pack.id)/tab"),
-                  let image = UIImage(data: data) else { return }
-            store.packTabImages[key] = image
+            defer { if target === store { emojiLoads.remove(key) } }
+            guard let loaded = await cache.image(id: "tab-\(pack.id)", version: version, variant: "tab",
+                                                 decode: { UIImage(data: $0).map { DecodedEmoji(still: $0) } },
+                                                 fetch: { try await api.fetchData("/api/v1/emoji/packs/\(pack.id)/tab") }),
+                  target === store else { return }
+            store.packTabImages[key] = loaded.image.still
         }
     }
 
@@ -2265,6 +2284,7 @@ final class AppController {
         SharedContainer.forget(account: workspace.account) // MOBILE_UI.md §21: the share sheet's cache of it
         forgetAttendanceWidget(account: workspace.account) // the 在室状況 widget's snapshot of it (and the other widgets')
         SQLitePersistence.destroy(profile: workspace.account)
+        EmojiImageCache.remove(server: serverUrl) // its custom emoji pictures (docs/EMOJI.md §10)
         RecentSearches.clear(key: RecentSearches.key(account: workspace.account))
         if remove {
             workspaces.removeAll { $0.serverUrl == serverUrl }
