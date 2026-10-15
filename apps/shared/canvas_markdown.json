@@ -1,5 +1,5 @@
 {
-  "_comment": "CANVAS.md §4.2 / §5: the canvas dialect the three clients share (markdown.ts parseBlocks(body, {canvas: true}), MessageBodyView.swift, BodyTokenizer.kt), ticking a task line, and keeping the caret when the body is replaced. Block descriptors: heading {level, text}, paragraph {lines}, list {ordered, items}, task {items: [{level, done, text, line}]}, image {alt, attachment_id, line}, hr, codeblock {text}. `text` is what the reader sees of the inline tokens (a link shows its label; emphasis markers are gone). Lines are 0-based.",
+  "_comment": "CANVAS.md §4.2 / §5: the canvas dialect the three clients share (markdown.ts parseBlocks(body, {canvas: true}), MessageBodyView.swift, BodyTokenizer.kt), ticking a task line, and keeping the caret when the body is replaced. Block descriptors: heading {level, text}, paragraph {lines}, list {ordered, items}, task {items: [{level, done, text, line}]}, image {alt, attachment_id, line}, hr, codeblock {text}. `text` is what the reader sees of the inline tokens (a link shows its label; emphasis markers are gone). Lines are 0-based. Headings have 1–4 #s (h4 since 2026-10-16).",
   "blocks": [
     {
       "name": "tasks: open and done boxes, * and X, two spaces nest",
@@ -19,6 +19,17 @@
       "blocks": [
         { "kind": "list", "ordered": false, "items": ["出席: alice"] },
         { "kind": "task", "items": [{ "level": 0, "done": false, "text": "担当を決める", "line": 1 }] }
+      ]
+    },
+    {
+      "name": "headings go to four levels (2026-10-16); five #s are a paragraph",
+      "body": "# 一\n## 二\n### 三\n#### 四\n##### 五",
+      "blocks": [
+        { "kind": "heading", "level": 1, "text": "一" },
+        { "kind": "heading", "level": 2, "text": "二" },
+        { "kind": "heading", "level": 3, "text": "三" },
+        { "kind": "heading", "level": 4, "text": "四" },
+        { "kind": "paragraph", "lines": ["##### 五"] }
       ]
     },
     {
