@@ -421,7 +421,7 @@ function PageView({ controller, saver, pageId, onOpenPage, onBack, startEditing,
                 <button
                   key={entry.line}
                   type="button"
-                  className={cn("block w-full truncate rounded px-2 py-1 text-left text-muted hover:bg-panel hover:text-ink", entry.level === 2 && "pl-4", entry.level === 3 && "pl-6")}
+                  className={cn("block w-full truncate rounded px-2 py-1 text-left text-muted hover:bg-panel hover:text-ink", entry.level === 2 && "pl-4", entry.level === 3 && "pl-6", entry.level === 4 && "pl-8")}
                   onClick={() => document.getElementById(headingAnchor(entry.line))?.scrollIntoView({ block: "start", behavior: "smooth" })}
                 >
                   {entry.text}

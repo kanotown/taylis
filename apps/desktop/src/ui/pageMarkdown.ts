@@ -30,7 +30,7 @@ export type PageParseOptions = InlineAtoms;
 export const SOURCE_ATTRS = ["src", "sig", "eol", "openSrc", "openEol", "closeSrc"] as const;
 
 const ZWSP = "​";
-const HEADING = /^(#{1,3})\s+(\S.*)$/;
+const HEADING = /^(#{1,4})\s+(\S.*)$/;
 const QUOTE = /^>\s?(.*)$/;
 const BULLET = /^(\s*)[-*•]\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,3})\.\s+(.*)$/;
@@ -422,7 +422,7 @@ function canonicalBlock<N>(node: N, view: SourceView<N>): string {
       return blockSafe(serializeLine(view.inline(node), true)) + markers;
     case "heading": {
       const text = serializeLine(view.inline(node), true);
-      const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 3);
+      const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 4);
       return text.trim() === "" ? markers.trimStart() : `${"#".repeat(level)} ${text.trimStart()}${markers}`;
     }
     case "blockquote":

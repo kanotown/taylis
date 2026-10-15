@@ -108,6 +108,9 @@ describe("the editor's edits", () => {
     expect(setHeading({ text: "議題", start: 1, end: 1 }, 2).text).toBe("## 議題");
     expect(setHeading({ text: "## 議題", start: 4, end: 4 }, 1).text).toBe("# 議題");
     expect(setHeading({ text: "# 議題", start: 3, end: 3 }, 1).text).toBe("議題");
+    expect(setHeading({ text: "### 議題", start: 5, end: 5 }, 4).text).toBe("#### 議題");
+    expect(setHeading({ text: "#### 議題", start: 6, end: 6 }, 2).text).toBe("## 議題");
+    expect(setHeading({ text: "#### 議題", start: 6, end: 6 }, 4).text).toBe("議題");
   });
 
   it("checklist: lines and bullets become tasks, tasks become text again", () => {
@@ -127,10 +130,11 @@ describe("the editor's edits", () => {
   });
 
   it("the outline lists headings outside code", () => {
-    expect(outline("# A\ntext\n```\n# not\n```\n## B\n### C")).toEqual([
+    expect(outline("# A\ntext\n```\n# not\n```\n## B\n### C\n#### D\n##### not")).toEqual([
       { level: 1, text: "A", line: 0 },
       { level: 2, text: "B", line: 5 },
       { level: 3, text: "C", line: 6 },
+      { level: 4, text: "D", line: 7 },
     ]);
   });
 });

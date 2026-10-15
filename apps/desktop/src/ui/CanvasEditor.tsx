@@ -8,7 +8,7 @@
  * paste back into a canvas editor (the line moved keeps its task).
  */
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
-import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
+import { AtSign, Bold, Code, Heading1, Heading2, Heading3, Heading4, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
 import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MutableRefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
@@ -422,6 +422,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     { icon: <Heading1 size={16} />, label: t("canvasEditor.heading", { n: 1 }), run: () => edit((s) => setHeading(s, 1)) },
     { icon: <Heading2 size={16} />, label: t("canvasEditor.heading", { n: 2 }), run: () => edit((s) => setHeading(s, 2)) },
     { icon: <Heading3 size={16} />, label: t("canvasEditor.heading", { n: 3 }), run: () => edit((s) => setHeading(s, 3)) },
+    { icon: <Heading4 size={16} />, label: t("canvasEditor.heading", { n: 4 }), run: () => edit((s) => setHeading(s, 4)) },
     { group: true, icon: <Bold size={16} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: () => edit((s) => toggleWrap(s, "**")) },
     { icon: <Italic size={16} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: () => edit((s) => toggleWrap(s, "_")) },
     { icon: <Strikethrough size={16} />, label: t("composer.syntax.strike"), run: () => edit((s) => toggleWrap(s, "~~")) },

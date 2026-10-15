@@ -163,7 +163,7 @@ const PageHeading = Heading.extend({
   addAttributes() {
     return { ...this.parent?.(), ...lineAttrs() };
   },
-}).configure({ levels: [1, 2, 3] });
+}).configure({ levels: [1, 2, 3, 4] });
 
 /** A list line: `kind` bullet / ordered / task, `level` 0–2 (tasks 0–1), `number` the number a numbered run starts at. */
 export const ListLine = Node.create<{ host: PageEditorHost }>({

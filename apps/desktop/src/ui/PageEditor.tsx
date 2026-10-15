@@ -36,7 +36,7 @@
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Columns3, Rows3, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, BoxSelect, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, AtSign, BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Columns3, Rows3, Bold, Code, Copy, GripVertical, Heading1, Heading2, Heading3, Heading4, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Pencil, Plus, BoxSelect, Strikethrough, Table as TableIcon, TextQuote, Trash2 } from "lucide-react";
 import { Fragment, type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
@@ -963,6 +963,7 @@ export default function PageEditor({ env, saver, links, initialLine = null, hand
     { icon: <Heading1 size={16} />, label: t("canvasEditor.heading", { n: 1 }), run: run((e) => e.chain().focus().toggleHeading({ level: 1 }).run()) },
     { icon: <Heading2 size={16} />, label: t("canvasEditor.heading", { n: 2 }), run: run((e) => e.chain().focus().toggleHeading({ level: 2 }).run()) },
     { icon: <Heading3 size={16} />, label: t("canvasEditor.heading", { n: 3 }), run: run((e) => e.chain().focus().toggleHeading({ level: 3 }).run()) },
+    { icon: <Heading4 size={16} />, label: t("canvasEditor.heading", { n: 4 }), run: run((e) => e.chain().focus().toggleHeading({ level: 4 }).run()) },
     { group: true, icon: <Bold size={16} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: run((e) => e.chain().focus().toggleBold().run()) },
     { icon: <Italic size={16} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: run((e) => e.chain().focus().toggleItalic().run()) },
     { icon: <Strikethrough size={16} />, label: t("composer.syntax.strike"), run: run((e) => e.chain().focus().toggleStrike().run()) },

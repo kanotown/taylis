@@ -4,7 +4,7 @@
  * nothing of TipTap is in the main bundle, and the text area stands in while it loads.
  *
  * Only what the dialect holds: bold, italic, strike, inline code (one mark at a time: the dialect does not nest them),
- * links (http / https), `#`–`###` headings, quotes of plain lines, bullet / numbered lists three levels deep, code
+ * links (http / https), `#`–`####` headings, quotes of plain lines, bullet / numbered lists three levels deep, code
  * blocks, TeX math kept as its source (a `math` mark inline, display blocks raw like tables), and tables kept as raw
  * Markdown. Markdown typed here converts as it is typed (`**x**`, `_x_`, `` `x` ``,
  * `- `, `1. `, `> `, `# `, ``` ``` ```, `[label](https://…)`); pasted plain text stays literal (escaped when sent);
@@ -145,7 +145,7 @@ export const extensions = (placeholder: string | (() => string)) => [
   BulletList,
   OrderedList,
   LineItem,
-  Heading.configure({ levels: [1, 2, 3] }),
+  Heading.configure({ levels: [1, 2, 3, 4] }),
   OnlyLink.configure({
     openOnClick: false,
     autolink: true,

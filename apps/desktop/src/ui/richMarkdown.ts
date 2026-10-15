@@ -9,7 +9,7 @@
  *   (apps/shared/math.json) keeps its source: an inline `$…$` / `$$…$$` is text with the `math` mark (its TeX, written
  *   back between its dollars as it was), a display block is a raw Markdown block.
  * - Document → Markdown writes the dialect: `**bold**`, `_italic_`, `~~strike~~`, `` `code` ``, `[label](url)` (a URL
- *   that is its own label is written bare), `# ` headings, `> ` quotes, `- ` / `1. ` lists two spaces per level,
+ *   that is its own label is written bare), `# ` … `#### ` headings, `> ` quotes, `- ` / `1. ` lists two spaces per level,
  *   ``` fences. Marks never nest in this dialect, so the editor keeps one mark at a time. A character typed as text is
  *   escaped (`\_ \* \~ \` \$`) only where the renderer would otherwise read it as formatting: each line is checked with the
  *   renderer's tokenizer, so `snake_case`, URLs and e-mail addresses stay as typed. `_italic_` against a letter (Japanese
@@ -29,7 +29,7 @@ export interface RichNode {
 }
 
 const ZWSP = "​";
-const HEADING = /^(#{1,3})\s+(\S.*)$/;
+const HEADING = /^(#{1,4})\s+(\S.*)$/;
 const QUOTE = /^>\s?(.*)$/;
 const BULLET = /^(\s*)[-*•]\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,3})\.\s+(.*)$/;
@@ -232,7 +232,7 @@ export function docToMarkdown(doc: RichNode): string {
         break;
       case "heading": {
         const text = serializeLine(joinLines(block.content));
-        const level = Math.min(Math.max(Number(block.attrs?.level) || 1, 1), 3);
+        const level = Math.min(Math.max(Number(block.attrs?.level) || 1, 1), 4);
         lines.push(BLANK.test(text) ? { text: "", paragraph: true } : { text: `${"#".repeat(level)} ${text.trimStart()}`, paragraph: false });
         break;
       }

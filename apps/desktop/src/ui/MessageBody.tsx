@@ -71,8 +71,9 @@ export function MessageBody({ body, users, className, internalBase, onOpenMessag
 export function BlockView({ block, users, options }: { block: Block; users: Map<string, UserPublic>; options?: InlineOptions }) {
   switch (block.kind) {
     case "heading": {
-      // Larger than they were (testers, 2026-09-29); custom emoji in them grow with the text (em).
-      const size = block.level === 1 ? "text-2xl font-bold" : block.level === 2 ? "text-xl font-bold" : "text-lg font-bold";
+      // Larger than they were (testers, 2026-09-29); custom emoji in them grow with the text (em). h4 (2026-10-16) is
+      // the body's own size, bold.
+      const size = block.level === 1 ? "text-2xl font-bold" : block.level === 2 ? "text-xl font-bold" : block.level === 3 ? "text-lg font-bold" : "font-bold";
       return <div className={cn("mt-1 leading-tight", size)}>{inline(block.tokens, users, options)}</div>;
     }
     // The canvas dialect (only parsed with `canvas: true`; ui/CanvasBody.tsx renders them with working boxes).

@@ -3,7 +3,7 @@
  * the body is replaced by the server's merged one, and the headings for the outline. apps/shared/canvas_markdown.json
  * holds the cases the three clients share.
  */
-import { TASK_LINE } from "./markdown";
+import { type HeadingLevel, TASK_LINE } from "./markdown";
 
 /**
  * The body with the task on `line` (0-based) ticked or unticked; null when that line is not a task (any more). Only the
@@ -64,7 +64,7 @@ export function preserveCaret(before: string, after: string, caret: number): num
 }
 
 export interface OutlineEntry {
-  level: 1 | 2 | 3;
+  level: HeadingLevel;
   text: string;
   line: number;
 }
@@ -79,8 +79,8 @@ export function outline(body: string): OutlineEntry[] {
       return;
     }
     if (fenced) return;
-    const match = /^(#{1,3})\s+(\S.*)$/.exec(line);
-    if (match) entries.push({ level: (match[1] ?? "#").length as 1 | 2 | 3, text: (match[2] ?? "").replace(/[*_~`]/g, "").trim(), line: index });
+    const match = /^(#{1,4})\s+(\S.*)$/.exec(line);
+    if (match) entries.push({ level: (match[1] ?? "#").length as HeadingLevel, text: (match[2] ?? "").replace(/[*_~`]/g, "").trim(), line: index });
   });
   return entries;
 }
@@ -103,7 +103,7 @@ interface Selection {
 }
 
 /** The caret's line (or the selected lines) as a heading of `level`; the same level again makes it text. */
-export function setHeading(state: Selection, level: 1 | 2 | 3): Selection {
+export function setHeading(state: Selection, level: HeadingLevel): Selection {
   const { text, start, end } = state;
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
   const lineEndIndex = text.indexOf("\n", Math.max(end - 1, start));
@@ -112,7 +112,7 @@ export function setHeading(state: Selection, level: 1 | 2 | 3): Selection {
   const marker = "#".repeat(level) + " ";
   const same = lines.every((line) => line.startsWith(marker));
   const next = lines.map((line) => {
-    const bare = line.replace(/^#{1,3}\s+/, "");
+    const bare = line.replace(/^#{1,4}\s+/, "");
     return same ? bare : marker + bare;
   });
   const joined = next.join("\n");

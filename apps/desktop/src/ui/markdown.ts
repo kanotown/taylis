@@ -5,7 +5,7 @@
  *
  * Inline: **bold** / *bold*, _italic_ (never inside a word, M107), ~~strike~~, `code`, [label](url), bare https?:// links,
  * e-mail addresses (text, never read for emphasis), \_ \* \~ \` \$ escapes, $TeX$ math (apps/shared/math.json),
- * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
+ * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "#### " headings, ``` fences (optional language),
  * "> " quotes (of paragraphs and lists), "- " / "* " bullets, "1. " numbered items (nested by indenting 2–4 spaces or a tab, three levels;
  * numbering and markers in `listItems`, apps/shared/lists.json), "$$" display math, and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
  *
@@ -33,8 +33,11 @@ export type Token =
   | { kind: "math"; text: string; display: boolean }
   | { kind: "newline" };
 
+/** `#` … `####` (h4 since 2026-10-16; five or more #s are a paragraph line). */
+export type HeadingLevel = 1 | 2 | 3 | 4;
+
 export type Block =
-  | { kind: "heading"; level: 1 | 2 | 3; tokens: Token[]; /** canvas: its line in the body */ line?: number }
+  | { kind: "heading"; level: HeadingLevel; tokens: Token[]; /** canvas: its line in the body */ line?: number }
   | { kind: "paragraph"; lines: Token[][] }
   /** Quoted lines ("> " / ">" stripped) as paragraphs and lists (apps/shared/lists.json `quoted`). */
   | { kind: "quote"; blocks: QuoteBlock[] }
@@ -285,7 +288,7 @@ function tableAlign(cell: string): TableAlign {
   const right = cell.endsWith(":");
   return left && right ? "center" : right ? "right" : left ? "left" : null;
 }
-const HEADING = /^(#{1,3})\s+(\S.*)$/;
+const HEADING = /^(#{1,4})\s+(\S.*)$/;
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
 export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
@@ -399,7 +402,7 @@ function readBlocks(lines: readonly string[], begin: number, depth: number, canv
     const heading = HEADING.exec(line);
     if (heading) {
       i++;
-      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: inl(heading[2] ?? ""), ...(canvas ? { line: start } : {}) });
+      push({ kind: "heading", level: (heading[1] ?? "#").length as HeadingLevel, tokens: inl(heading[2] ?? ""), ...(canvas ? { line: start } : {}) });
       continue;
     }
     if (isTask(i)) {
@@ -625,7 +628,7 @@ export function plainText(body: string, maxLength = 200): string {
     .replace(/^```[A-Za-z0-9_+#.-]*\s*$/gm, "")
     .replace(/^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/gm, "") // M15g: table separators
     .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, inner: string) => inner.split("|").map((cell) => cell.trim()).join(" "))
-    .replace(/^(#{1,3})\s+/gm, "")
+    .replace(/^(#{1,4})\s+/gm, "")
     .replace(/^>\s?/gm, "")
     .replace(/^\s*(?:[-*•]|\d{1,3}\.)\s+/gm, "")
     // M107: the inline markers are those the tokenizer reads (apps/shared/inline-format.json), not patterns of their own.
