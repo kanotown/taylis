@@ -36,15 +36,31 @@ struct EmojiImage: View {
 
 /// Custom emoji (M12f): `:name:` in text and reactions renders as the uploaded image.
 enum CustomEmoji {
-    /// The height of an image in body text: no taller than the text's ascent, as a standard emoji is (2026-10-04,
-    /// 「高さが違う」). Text(Image) stands on the baseline, and everything above the ascent (20 pt was 4 more) made its
-    /// line taller than the others; lowering a 20 pt one only added the same to the line below. At this height it is
-    /// lowered within the descent to sit centred (`baselineOffset(height:)`). 16 pt at the default text size, scaled
-    /// with it: one size smaller (16 pt body, the testers' phones and the plain iPhone 17 simulator) a 16 pt image was
-    /// above the ascent and its line 0.7 pt taller.
-    static var inlineHeight: CGFloat { scaled(16, .body) }
-    /// The same for the headings (.title, .title2, .title3 bold).
-    static var headingHeights: [CGFloat] { [scaled(26, .title1), scaled(20, .title2), scaled(18, .title3)] }
+    /// A custom emoji (an image or a text emoji's pill) in a message's text is this many times the text's point size
+    /// high, as on the desktop (MessageBody.tsx `size="1.375em"`; docs/EMOJI.md §2). 2026-10-16 (「スマホで見たときに
+    /// かなり小さく見える」): it was kept under the text's ascent, 16 pt in 17 pt text (0.94×, 15 pt at the testers' one
+    /// size smaller), where the desktop draws 20 px in 14.5 px text. It is centred on the text (`baselineOffset`). A line
+    /// with one is taller than without (Text(Image) keeps the image's whole height above the baseline and adds the
+    /// lowering below: a 20.3 pt body line becomes 29 pt); the desktop overlaps the lines instead, which Text cannot.
+    static let inlineScale: CGFloat = 1.375
+
+    /// The point size of `style` at `size` (nil: the size the app runs at).
+    static func textSize(_ style: UIFont.TextStyle, _ size: DynamicTypeSize? = nil) -> CGFloat {
+        let traits = size.map { UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory($0)) }
+        return UIFont.preferredFont(forTextStyle: style, compatibleWith: traits).pointSize
+    }
+
+    /// The height of an emoji in text of `textSize` points, in whole points (a placeholder's width is rounded,
+    /// `size(of:height:)`, and must equal the image's).
+    static func inlineHeight(textSize: CGFloat) -> CGFloat { (textSize * inlineScale + 0.01).rounded(.down) }
+
+    /// In body text (23 pt at the default size, 22 pt one size smaller).
+    static var inlineHeight: CGFloat { inlineHeight(textSize: textSize(.body)) }
+
+    /// The text style of a heading of `level` (# to ####: .title, .title2, .title3 bold; h4 is body text, bold).
+    static func headingStyle(_ level: Int) -> UIFont.TextStyle {
+        [.title1, .title2, .title3, .body][min(max(level, 1), 4) - 1]
+    }
 
     /// `value` (at the default text size) at the text size in use, for that text style, in whole points (down, so it
     /// stays under the ascent): a placeholder's width is rounded (`size(of:height:)`) and must equal the image's.
@@ -150,10 +166,13 @@ enum CustomEmoji {
 
     /// A Text made of runs and inline images. Until an image is cached its place is held by a blank of the image's own
     /// size (the server gives it): `:name:` there was wider, and the line re-wrapped and the row changed height when
-    /// the image came, moving the conversation as a channel opened (2026-10-02).
+    /// the image came, moving the conversation as a channel opened (2026-10-02). `height` nil: body text's
+    /// (`inlineHeight`); `textSize`: the point size of the text around it (nil: the compact rows' `height` × 17 / 16).
     static func text(_ text: String, custom: [String: CustomEmojiOut], images: [String: UIImage], onNeed: ((CustomEmojiOut) -> Void)?,
-                     height: CGFloat = inlineHeight, run makeRun: (String) -> Text = { Text($0) }) -> Text {
+                     height: CGFloat? = nil, textSize: CGFloat? = nil, run makeRun: (String) -> Text = { Text($0) }) -> Text {
         guard !custom.isEmpty else { return makeRun(text) }
+        let textSize = textSize ?? (height == nil ? Self.textSize(.body) : nil)
+        let height = height ?? inlineHeight
         return split(text, known: { custom[$0] != nil }).reduce(Text("")) { acc, piece in
             switch piece {
             case .text(let run): return acc + makeRun(run)
@@ -161,25 +180,25 @@ enum CustomEmoji {
                 guard let emoji = custom[name] else { return acc + Text(":\(name):") }
                 let shown = images[emoji.id].map { sized($0, height: height) } ?? blank(size: size(of: emoji, height: height))
                 if images[emoji.id] == nil { onNeed?(emoji) }
-                return acc + inlineImageText(shown, height: height)
+                return acc + inlineImageText(shown, height: height, textSize: textSize)
             }
         }
     }
 
     /// How far an inline image stands below the baseline, so it is centred on the line as a standard emoji and the kana
     /// are (2026-10-06, 「iPhone だけ絵文字が少し上」): standing on the baseline, its middle was 2 pt above theirs. Centred on
-    /// the capitals of the font it is sized for (`height` is that font's ascent, 16 for 17 pt): (capHeight - height) / 2,
-    /// -2 pt in body text. It stays inside the line's descent, so the line is no taller (CustomEmojiTests).
-    static func baselineOffset(height: CGFloat) -> CGFloat {
-        let capHeight = UIFont.systemFont(ofSize: height * 17 / 16).capHeight
+    /// the capitals of the text around it: (capHeight - height) / 2, -5.5 pt for a 23 pt image in 17 pt text.
+    /// `textSize` nil: the compact rows' rule, where `height` is the text's ascent (14 for 15 pt).
+    static func baselineOffset(height: CGFloat, textSize: CGFloat? = nil) -> CGFloat {
+        let capHeight = UIFont.systemFont(ofSize: textSize ?? height * 17 / 16).capHeight
         return min(0, (capHeight - height) / 2)
     }
 
-    /// An inline image lowered by `baselineOffset(height:)`. `.baselineOffset` moves the run's font with it, and the
-    /// body font's descent moved 2 pt lower made the line 2 pt taller; the image's run gets a 1 pt font, whose
-    /// descent stays inside the line's.
-    static func inlineImageText(_ image: UIImage, height: CGFloat) -> Text {
-        Text(Image(uiImage: image)).font(.system(size: 1)).baselineOffset(baselineOffset(height: height))
+    /// An inline image lowered by `baselineOffset`. `.baselineOffset` moves the run's font with it, and the body font's
+    /// descent moved lower made the line taller still; the image's run gets a 1 pt font, whose descent stays inside
+    /// the line's.
+    static func inlineImageText(_ image: UIImage, height: CGFloat, textSize: CGFloat? = nil) -> Text {
+        Text(Image(uiImage: image)).font(.system(size: 1)).baselineOffset(baselineOffset(height: height, textSize: textSize))
     }
 
     /// M100 (docs/EMOJI.md §2): a wide image emoji is drawn wider at the same height, at most 3:1.
@@ -273,10 +292,10 @@ extension CustomEmoji {
     /// A one-line excerpt of a message in a compact row (the activity, pins, saved, mentions, search, thread lists, the DM
     /// list, a reply's 「スレッドに返信」 line): custom emoji as their images, standard `:shortcode:`s as their glyphs, as
     /// in the message (2026-10-05: the activity showed `:ckw-yay:`). Images not cached yet hold their room (`text`).
-    @MainActor static func excerpt(_ text: String, controller: AppController, height: CGFloat = subheadlineHeight,
+    @MainActor static func excerpt(_ text: String, controller: AppController, height: CGFloat = subheadlineHeight, textSize: CGFloat? = nil,
                                    run: (String) -> Text = { Text($0) }) -> Text {
         CustomEmoji.text(Emoji.replaceShortcodes(text), custom: controller.store.customEmoji, images: controller.store.emojiImages,
-                         onNeed: { controller.loadEmojiImage($0) }, height: height, run: run)
+                         onNeed: { controller.loadEmojiImage($0) }, height: height, textSize: textSize, run: run)
     }
 }
 

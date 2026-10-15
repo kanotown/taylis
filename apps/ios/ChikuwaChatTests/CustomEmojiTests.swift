@@ -55,24 +55,39 @@ final class CustomEmojiTests: XCTestCase {
     }
 
     /// 2026-10-04 (「高さが違う」): Text(Image) stands on the baseline, and an image taller than the text's ascent made its
-    /// line taller than a line without one (by 4 pt in body text). At the heights used, a line with one is as tall.
+    /// line taller than a line without one. In the compact rows' text (an excerpt's 14 pt image in 15 pt text) a line
+    /// with one is as tall. 2026-10-16: in a message's text the emoji is 1.375 × the text (as on the desktop), and its
+    /// line grows to hold it (never cut), by no more than the image and its lowering need.
     @MainActor
-    func testInlineImageDoesNotMakeTheLineTaller() {
+    func testInlineImageGrowsTheLineOnlyAsMuchAsItNeeds() {
         let square = CustomEmojiOut(id: "e3", name: "sq", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "")
         let image = CustomEmoji.inlineImage(UIGraphicsImageRenderer(size: CGSize(width: 48, height: 48)).image { context in
             UIColor.orange.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 48, height: 48))
         })
-        func height(_ text: String, font: Font, emojiHeight: CGFloat) -> CGFloat {
-            let view = CustomEmoji.text(text, custom: ["sq": square], images: ["e3": image], onNeed: nil, height: emojiHeight)
+        func height(_ text: String, font: Font, emojiHeight: CGFloat, textSize: CGFloat?) -> CGFloat {
+            let view = CustomEmoji.text(text, custom: ["sq": square], images: ["e3": image], onNeed: nil, height: emojiHeight, textSize: textSize)
                 .font(font).frame(width: 300)
             return UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 300, height: 2000)).height
         }
-        let fonts: [(Font, CGFloat)] = [(.body, CustomEmoji.inlineHeight), (.title.bold(), CustomEmoji.headingHeights[0]),
-                                        (.title2.bold(), CustomEmoji.headingHeights[1]), (.title3.bold(), CustomEmoji.headingHeights[2])]
-        for (font, emojiHeight) in fonts {
-            XCTAssertEqual(height("あいう :sq: かき", font: font, emojiHeight: emojiHeight), height("あいう 😀 かき", font: font, emojiHeight: emojiHeight), accuracy: 0.5)
-            XCTAssertEqual(height("あいう :sq: かき", font: font, emojiHeight: emojiHeight), height("あいう かき", font: font, emojiHeight: emojiHeight), accuracy: 0.5)
+        // Compact rows (`excerpt`): no taller.
+        XCTAssertEqual(height("あいう :sq: かき", font: .subheadline, emojiHeight: CustomEmoji.subheadlineHeight, textSize: nil),
+                       height("あいう かき", font: .subheadline, emojiHeight: CustomEmoji.subheadlineHeight, textSize: nil), accuracy: 0.5)
+        // A message's text and headings.
+        let fonts: [(Font, UIFont.TextStyle)] = [(.body, .body), (.title.bold(), .title1), (.title2.bold(), .title2), (.title3.bold(), .title3)]
+        for (font, style) in fonts {
+            let size = CustomEmoji.textSize(style)
+            let emojiHeight = CustomEmoji.inlineHeight(textSize: size)
+            XCTAssertEqual(emojiHeight, (size * 1.375).rounded(.down))
+            let plain = height("あいう かき", font: font, emojiHeight: emojiHeight, textSize: size)
+            let with = height("あいう :sq: かき", font: font, emojiHeight: emojiHeight, textSize: size)
+            // Text(Image) keeps the image's whole height above the baseline for the line, and the lowering that centres
+            // it is added below (measured: a 23 pt image makes a 20.3 pt body line 27.3 pt standing on the baseline,
+            // 29 pt centred). The line is no taller than that.
+            let lowered = -CustomEmoji.baselineOffset(height: emojiHeight, textSize: size)
+            XCTAssertGreaterThanOrEqual(with, emojiHeight, "\(style.rawValue)")
+            XCTAssertGreaterThan(with, plain, "\(style.rawValue)")
+            XCTAssertLessThanOrEqual(with, emojiHeight + lowered + 1, "\(style.rawValue)")
         }
     }
 
@@ -85,9 +100,11 @@ final class CustomEmojiTests: XCTestCase {
             UIColor.orange.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 48, height: 48))
         })
-        let fonts: [(Font, CGFloat)] = [(.body, CustomEmoji.inlineHeight), (.title.bold(), CustomEmoji.headingHeights[0])]
-        for (font, emojiHeight) in fonts {
-            let view = CustomEmoji.text("確認しました:sq:", custom: ["sq": square], images: ["e3": image], onNeed: nil, height: emojiHeight)
+        let fonts: [(Font, CGFloat, CGFloat?)] = [(.body, CustomEmoji.inlineHeight, CustomEmoji.textSize(.body)),
+                                                  (.title.bold(), CustomEmoji.inlineHeight(textSize: CustomEmoji.textSize(.title1)), CustomEmoji.textSize(.title1)),
+                                                  (.subheadline, CustomEmoji.subheadlineHeight, nil)]
+        for (font, emojiHeight, textSize) in fonts {
+            let view = CustomEmoji.text("確認しました:sq:", custom: ["sq": square], images: ["e3": image], onNeed: nil, height: emojiHeight, textSize: textSize)
                 .font(font).foregroundStyle(.black).padding(4).background(Color.white)
             let renderer = ImageRenderer(content: view)
             renderer.scale = 2
@@ -107,6 +124,79 @@ final class CustomEmojiTests: XCTestCase {
             }
             XCTAssertGreaterThan(emoji.bottom, 0)
             XCTAssertEqual(CGFloat(emoji.top + emoji.bottom) / 4, CGFloat(text.top + text.bottom) / 4, accuracy: 0.75, "\(font)")
+        }
+    }
+
+    // MARK: inline size (2026-10-16, 「スマホで見たときにかなり小さく見える」)
+
+    struct InlineMeasure { let pack: CGFloat; let pill: CGFloat; let ink: CGFloat; let height: CGFloat; let image: UIImage }
+
+    /// `body` drawn by MessageBodyView with a pack emoji (an orange picture, `:chikuwa:`) and a text emoji (a green pill,
+    /// `:thanks:`): the drawn heights (points) of the first ones found within `rows` (points from the top), of the
+    /// text's ink there, and of the whole view.
+    @MainActor
+    static func measureInline(_ body: String, size: DynamicTypeSize?, rows: ClosedRange<CGFloat> = 0...60, width: CGFloat = 360) throws -> InlineMeasure {
+        let pack = CustomEmojiOut(id: "p1", name: "chikuwa", contentType: "image/png", width: 180, height: 180, createdBy: "u", createdAt: "", packId: "k")
+        let pillJSON = #"{"id":"t1","name":"thanks","kind":"text","label":"ありがとう","color":"green","content_type":"","width":0,"height":0,"created_by":"u","created_at":""}"#
+        let pill = try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(pillJSON.utf8))
+        let orange = UIGraphicsImageRenderer(size: CGSize(width: 60, height: 60)).image { context in
+            UIColor(red: 1, green: 0.5, blue: 0, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 60, height: 60))
+        }
+        var view = AnyView(MessageBodyView(text: body, users: [:], customEmoji: ["chikuwa": pack, "thanks": pill],
+                                           emojiImages: ["p1": CustomEmoji.inlineImage(orange, height: CustomEmoji.packStoredHeight),
+                                                         "t1": CustomEmoji.textPill(pill, dark: false)])
+            .frame(width: width).background(Color.white).foregroundStyle(.black).environment(\.colorScheme, .light))
+        if let size { view = AnyView(view.environment(\.dynamicTypeSize, size)) }
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 3
+        let cg = try XCTUnwrap(renderer.cgImage)
+        let w = cg.width, h = cg.height
+        var data = [UInt8](repeating: 0, count: w * h * 4)
+        let context = try XCTUnwrap(CGContext(data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var ink = (Int.max, -1), orangeBox = (Int.max, -1), pillBox = (Int.max, -1)
+        for y in max(0, Int(rows.lowerBound * 3))..<min(h, Int(rows.upperBound * 3)) {
+            for x in 0..<w {
+                let p = (y * w + x) * 4
+                let r = Int(data[p]), g = Int(data[p + 1]), b = Int(data[p + 2])
+                if r > 220, g > 100, g < 160, b < 40 { orangeBox = (min(orangeBox.0, y), max(orangeBox.1, y)) }
+                else if abs(r - 0xDD) < 8, abs(g - 0xF4) < 8, abs(b - 0xE4) < 8 { pillBox = (min(pillBox.0, y), max(pillBox.1, y)) }
+                else if r < 90, g < 90, b < 90 { ink = (min(ink.0, y), max(ink.1, y)) }
+            }
+        }
+        func pt(_ box: (Int, Int)) -> CGFloat { box.1 < 0 ? 0 : CGFloat(box.1 - box.0 + 1) / 3 }
+        return InlineMeasure(pack: pt(orangeBox), pill: pt(pillBox), ink: pt(ink), height: CGFloat(h) / 3,
+                             image: UIImage(cgImage: cg, scale: 3, orientation: .up))
+    }
+
+    /// Writes a render into CHIKUWA_RENDER_DIR (xcodebuild passes TEST_RUNNER_CHIKUWA_RENDER_DIR) for a person to look at.
+    static func saveRender(_ image: UIImage, _ name: String) {
+        guard let dir = ProcessInfo.processInfo.environment["CHIKUWA_RENDER_DIR"], let png = image.pngData() else { return }
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
+    }
+
+    /// 2026-10-16 (「PCではそれなりに適切なサイズに見えるけど、スマホで見たときにかなり小さく見える」): a pack emoji and a
+    /// text emoji's pill in a message were 16 pt in 17 pt text (15 pt in 16 pt, one size smaller); the desktop draws them
+    /// 1.375 × the text. Now as on the desktop, in body text, headings (#### included) and at the text size in use.
+    @MainActor
+    func testInlineEmojiAreOneAndThreeEighthsOfTheText() throws {
+        for (size, name) in [(DynamicTypeSize.large, "default"), (.medium, "M")] {
+            let body = CustomEmoji.textSize(.body, size)
+            XCTAssertEqual(body, size == .large ? 17 : 16)
+            let line = try Self.measureInline("確認しました :chikuwa: どうも :thanks: です", size: size)
+            XCTAssertEqual(line.pack, (body * 1.375).rounded(.down), accuracy: 0.7, name) // 23 / 22
+            XCTAssertEqual(line.pill, line.pack, accuracy: 0.7, name)
+            for (level, style) in [(2, UIFont.TextStyle.title2), (4, .body)] {
+                let heading = try Self.measureInline(String(repeating: "#", count: level) + " 見出し :chikuwa: :thanks:", size: size)
+                let expected = (CustomEmoji.textSize(style, size) * 1.375).rounded(.down)
+                XCTAssertEqual(heading.pack, expected, accuracy: 0.7, "h\(level) \(name)")
+                XCTAssertEqual(heading.pill, expected, accuracy: 0.7, "h\(level) \(name)")
+            }
+            let page = try Self.measureInline("確認しました :chikuwa: どうも :thanks: です\n\n## 見出し :chikuwa: :thanks:\n\n#### 小見出し :chikuwa: :thanks:\n\n- 箇条書き :chikuwa: です", size: size)
+            Self.saveRender(page.image, "ios-after-\(name)")
         }
     }
 

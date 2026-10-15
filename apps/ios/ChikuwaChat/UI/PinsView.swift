@@ -105,7 +105,7 @@ struct MessageCardView: View {
             }
             .font(.caption)
             CustomEmoji.excerpt(message.body.isEmpty ? message.attachments.map(\.filename).joined(separator: ", ") : Mentions.decode(message.body, users: store.users, groups: store.groups),
-                                controller: controller, height: CustomEmoji.inlineHeight)
+                                controller: controller, height: CustomEmoji.inlineHeight, textSize: CustomEmoji.textSize(.body))
                 .lineLimit(4)
         }
         .padding(.vertical, 2)

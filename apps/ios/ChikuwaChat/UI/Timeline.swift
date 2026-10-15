@@ -70,7 +70,7 @@ enum Timeline {
         }.joined(separator: "\n")
         // Line markers: code fences, headings, quotes and list items (on every line, not only the first).
         replace(#"(?m)^```[A-Za-z0-9_+#.-]*\s*$"#)
-        replace(#"(?m)^#{1,3}\s+"#)
+        replace(#"(?m)^#{1,4}\s+"#)
         replace(#"(?m)^>\s?"#)
         replace(#"(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"#)
         // Bold, italics, strikes, code and links keep their text (the web and Android; parity audit 2026-09-29). M107: the

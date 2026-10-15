@@ -115,7 +115,7 @@ enum CanvasText {
         var id: Int { line }
     }
 
-    private static let headingLine = try! NSRegularExpression(pattern: #"^(#{1,3})\s+(\S.*)$"#)
+    private static let headingLine = try! NSRegularExpression(pattern: #"^(#{1,4})\s+(\S.*)$"#)
 
     /// The headings of a body (outside code fences), for the outline of a long canvas.
     static func outline(_ body: String) -> [OutlineEntry] {
@@ -220,7 +220,7 @@ enum CanvasText {
         let marker = String(repeating: "#", count: level) + " "
         let same = lines.allSatisfy { $0.hasPrefix(marker) }
         let next = lines.map { line -> String in
-            let bare = line.replacingOccurrences(of: #"^#{1,3}\s+"#, with: "", options: .regularExpression)
+            let bare = line.replacingOccurrences(of: #"^#{1,4}\s+"#, with: "", options: .regularExpression)
             return same ? bare : marker + bare
         }
         let joined = next.joined(separator: "\n")
