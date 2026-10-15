@@ -121,7 +121,8 @@ fun CanvasBlockView(
             Text(
                 inline.build(block.tokens),
                 inlineContent = inline.inlineContent,
-                style = when (block.level) { 1 -> MaterialTheme.typography.headlineSmall; 2 -> MaterialTheme.typography.titleLarge; else -> MaterialTheme.typography.titleMedium },
+                // h4 (2026-10-16): the body's size and bold, as the message body's h4.
+                style = when (block.level) { 1 -> MaterialTheme.typography.headlineSmall; 2 -> MaterialTheme.typography.titleLarge; 3 -> MaterialTheme.typography.titleMedium; else -> MaterialTheme.typography.bodyLarge },
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )

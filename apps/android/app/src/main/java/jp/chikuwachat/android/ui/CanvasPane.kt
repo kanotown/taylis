@@ -690,7 +690,7 @@ internal class EditorCaretLink {
     }
 }
 
-private val HEADING_IN_SECTION = Regex("""(?m)^#{1,3}\s+\S""")
+private val HEADING_IN_SECTION = Regex("""(?m)^#{1,4}\s+\S""")
 
 /**
  * The canvas's Markdown source editor (CANVAS.md §5 「編集」): a text field with a toolbar (heading, bold, lists,
@@ -1007,7 +1007,7 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit,
         Box {
             IconButton(onClick = { headingMenu = true }) { Icon(Icons.Outlined.Title, contentDescription = stringResource(R.string.common_heading)) }
             DropdownMenu(expanded = headingMenu, onDismissRequest = { headingMenu = false }) {
-                (1..3).forEach { level ->
+                (1..4).forEach { level ->
                     DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_heading, level)) }, onClick = { headingMenu = false; apply { CanvasText.setHeading(it, level) } })
                 }
             }
@@ -1040,7 +1040,7 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit,
 @Composable
 internal fun SectionSheet(controller: AppController, saver: CanvasSaver, key: CanvasSections.Key, onDismiss: () -> Unit, presence: Boolean = true) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val heading = key.heading.replace(Regex("""^#{1,3}\s+"""), "")
+    val heading = key.heading.replace(Regex("""^#{1,4}\s+"""), "")
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {

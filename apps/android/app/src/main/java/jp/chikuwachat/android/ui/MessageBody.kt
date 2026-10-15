@@ -223,7 +223,9 @@ fun bodyInline(
                     val key = "emoji:" + emoji.id + if (image == null) ":loading" else ""
                     // In em: as large as the text around it, so a heading's emoji is a heading's size (testers, 2026-09-29).
                     // M100: a wide one (at most 3:1) or a text emoji's pill is wider, as high; known before the image comes.
-                    inlineContent[key] = InlineTextContent(Placeholder((1.25f * CustomEmoji.aspect(emoji)).em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
+                    // 2026-10-16: 1.375em as on the desktop (it was 1.25em and looked small on a phone).
+                    val (width, height) = CustomEmoji.inlineBox(emoji)
+                    inlineContent[key] = InlineTextContent(Placeholder(width.em, height.em, PlaceholderVerticalAlign.TextCenter)) {
                         if (image != null) EmojiImage(image, emojiAnimations[emoji.id], contentDescription = ":${piece.name}:", modifier = Modifier.fillMaxSize())
                     }
                     appendInlineContent(key, ":${piece.name}:")
@@ -363,7 +365,8 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
         is BodyBlock.Heading -> Text(
             inline.build(block.tokens),
             inlineContent = inlineContent,
-            style = when (block.level) { 1 -> MaterialTheme.typography.headlineMedium; 2 -> MaterialTheme.typography.headlineSmall; else -> MaterialTheme.typography.titleLarge },
+            // h4 (2026-10-16): the body's size, bold, one step below h3.
+            style = when (block.level) { 1 -> MaterialTheme.typography.headlineMedium; 2 -> MaterialTheme.typography.headlineSmall; 3 -> MaterialTheme.typography.titleLarge; else -> MaterialTheme.typography.bodyLarge },
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 2.dp),
         )

@@ -78,7 +78,7 @@ object CanvasText {
     data class OutlineEntry(val level: Int, val text: String, val line: Int)
 
     private val FENCE = Regex("^```")
-    private val HEADING_LINE = Regex("""^(#{1,3})\s+(\S.*)$""")
+    private val HEADING_LINE = Regex("""^(#{1,4})\s+(\S.*)$""")
 
     /** The headings of a body (outside code fences), for the outline of a long canvas. */
     fun outline(body: String): List<OutlineEntry> {
@@ -109,7 +109,7 @@ object CanvasText {
         val marker = "#".repeat(level) + " "
         val same = lines.all { it.startsWith(marker) }
         val next = lines.map { line ->
-            val bare = line.replace(Regex("""^#{1,3}\s+"""), "")
+            val bare = line.replace(Regex("""^#{1,4}\s+"""), "")
             if (same) bare else marker + bare
         }
         val joined = next.joinToString("\n")
@@ -343,7 +343,7 @@ object CanvasSections {
     /** Which section: its heading line as written, and which of the headings with that line it is (0 = the first). */
     data class Key(val heading: String, val occurrence: Int)
 
-    private val HEADING_LINE = Regex("""^#{1,3}\s+\S""")
+    private val HEADING_LINE = Regex("""^#{1,4}\s+\S""")
 
     /** The heading lines of a body, outside code fences. */
     fun headingLines(body: String): List<Int> {

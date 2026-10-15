@@ -50,14 +50,16 @@ class BodyTokenizerTest {
         assertEquals(BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("tail")))), blocks[5])
         assertEquals(listOf(BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("```")), listOf(BodyToken.Text("open"))))), parseBlocks("```\nopen"))
         assertEquals(
-            listOf(BodyBlock.Heading(1, listOf(BodyToken.Text("Title"))), BodyBlock.Heading(2, listOf(BodyToken.Text("Sub "), BodyToken.Bold("b"))), BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("#### not"))))),
-            parseBlocks("# Title\n## Sub **b**\n#### not"),
+            listOf(BodyBlock.Heading(1, listOf(BodyToken.Text("Title"))), BodyBlock.Heading(2, listOf(BodyToken.Text("Sub "), BodyToken.Bold("b"))), BodyBlock.Heading(4, listOf(BodyToken.Text("Four"))), BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("##### not"))))),
+            parseBlocks("# Title\n## Sub **b**\n#### Four\n##### not"),
         )
     }
 
     @Test fun plainTextForNotifications() {
         assertEquals("今日 太字 と code 引用 docs let x = 1;", jp.chikuwachat.android.ui.plainText("# 今日\n- **太字** と `code`\n> 引用 [docs](https://example.com/d)\n```ts\nlet x = 1;\n```"))
         assertEquals(200, jp.chikuwachat.android.ui.plainText("a".repeat(300)).length)
+        // h4 (2026-10-16): its #s go in a preview too; five stay.
+        assertEquals("細目 ##### 五", jp.chikuwachat.android.ui.plainText("#### 細目\n##### 五"))
     }
 
     @Test fun groupMentionTokens() {

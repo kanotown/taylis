@@ -22,6 +22,16 @@ object CustomEmoji {
         return (emoji.width.toFloat() / emoji.height).coerceIn(1f, WIDE_MAX)
     }
 
+    /**
+     * The height of a custom emoji (image or text pill) in a run of text, in em of that text: 1.375em as on the desktop
+     * (MessageBody.tsx `size="1.375em"`, docs/EMOJI.md §2), so it follows the font scale and a heading's emoji is as large
+     * as the heading. Emoji-only bodies are drawn larger ([EmojiOnly.Jumbo]).
+     */
+    const val INLINE_EM = 1.375f
+
+    /** Width and height (em) of the box a custom emoji takes in a run of text: [INLINE_EM] high, [aspect] times as wide. */
+    fun inlineBox(emoji: CustomEmojiOut): Pair<Float, Float> = INLINE_EM * aspect(emoji) to INLINE_EM
+
     /** M100: lower case, full-width as half-width (NFKC), katakana as hiragana (「アリガトウ」 finds 「ありがとう」). */
     fun fold(text: String): String =
         java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC).lowercase()
