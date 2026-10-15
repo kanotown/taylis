@@ -212,6 +212,21 @@ describe("rich composer", () => {
     expect(box.style.minHeight).toBe("");
   });
 
+  it("holds the editor's box through an edit the browser makes itself, until the frame (the list above keeps its bottom)", async () => {
+    const w = await world({ draft: "a\n\na\n\na\n\na\n\na" });
+    const host = w.dom()!.parentElement!;
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this === host ? 136 : 0;
+    });
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((run) => frames.push(run));
+    // A Backspace that empties the last paragraph: the browser deletes the text before ProseMirror draws the line back.
+    act(() => void w.dom()!.dispatchEvent(new InputEvent("beforeinput", { inputType: "deleteContentBackward", bubbles: true, cancelable: true })));
+    expect(host.style.minHeight).toBe("136px");
+    act(() => frames.splice(0).forEach((run) => run(0)));
+    expect(host.style.minHeight).toBe("");
+  });
+
   it("drops the Markdown preview when the mode is switched elsewhere (the other composer, settings)", async () => {
     const w = await world({ draft: "a\nb" });
     act(() => void fireEvent.click(screen.getByRole("button", { name: "Markdown" })));
