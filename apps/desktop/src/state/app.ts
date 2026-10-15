@@ -4,6 +4,7 @@ import { dndActive } from "../ui/dnd";
 import { calendarAlarmText } from "../sync/calendar";
 import { taskNoticeText } from "../ui/tasks";
 import { reactionText } from "../ui/customEmoji";
+import { clearEmojiImages, serverKey } from "../ui/emojiImageCache";
 import { canvasLink, messagePermalink, pageLink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
@@ -3358,6 +3359,7 @@ export class AppController {
     } catch (err) {
       console.error("could not erase the local store", err);
     }
+    await clearEmojiImages(serverKey(session.api.baseUrl)); // docs/EMOJI.md §2.1: the images kept on this device
     try {
       await this.secrets.delete(this.account(session.serverUrl, session.username));
     } catch (err) {
