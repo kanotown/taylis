@@ -558,7 +558,7 @@ describe("M155: the floating toolbar, ⌘/, the `/` menu's sections, `@` pages, 
     const menu = screen.getByRole("listbox", { name: "ブロックを追加" });
     expect(within(menu).getAllByRole("group").map((group) => group.getAttribute("aria-label"))).toEqual(["基本", "リスト", "メディア", "埋め込み", "高度"]);
     expect(within(menu).getByText("チェックボックスで進み具合を追う")).toBeTruthy();
-    expect(within(menu).getAllByRole("option")).toHaveLength(18);
+    expect(within(menu).getAllByRole("option")).toHaveLength(19);
     type(editor, "todo");
     await settle();
     const options = within(screen.getByRole("listbox")).getAllByRole("option");

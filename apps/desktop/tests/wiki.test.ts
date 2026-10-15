@@ -265,9 +265,9 @@ describe("the editor's `[[` and `/` (docEditor.ts)", () => {
     expect(slashQuery("a\n/mi", 5)).toEqual({ start: 2, query: "mi" });
     expect(slashQuery("a /mi", 5)).toBeNull();
     expect(slashQuery("/a b", 4)).toBeNull();
-    expect(slashItems("").length).toBe(18);
+    expect(slashItems("").length).toBe(19);
     expect(slashItems("table").map((i) => i.key)).toEqual(["table"]);
-    expect(slashItems("見出し").map((i) => i.key)).toEqual(["h1", "h2", "h3"]);
+    expect(slashItems("見出し").map((i) => i.key)).toEqual(["h1", "h2", "h3", "h4"]);
     expect(slashItems("子").map((i) => i.key)).toEqual(["childPage"]);
   });
 

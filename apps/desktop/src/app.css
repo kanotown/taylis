@@ -378,11 +378,13 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .page-editor p:has(> .ProseMirror-trailingBreak:only-child) + p:has(> .ProseMirror-trailingBreak:only-child) { margin-top: 0; }
 .page-editor p.is-empty:has(> .ProseMirror-trailingBreak:only-child) { height: auto; min-height: 1.75rem; margin-top: 0; }
 .page-editor p.is-empty:has(> .ProseMirror-trailingBreak:only-child) > .ProseMirror-trailingBreak { display: inline; }
-/* The reader's headings keep the line height of their size (Tailwind's text-2xl / xl / lg: 2rem, 1.75rem, 1.75rem). */
-.page-editor h1, .page-editor h2, .page-editor h3 { margin: 1rem 0 0.25rem; font-weight: 700; }
+/* The reader's headings keep the line height of their size (Tailwind's text-2xl / xl / lg / base: 2rem, 1.75rem, 1.75rem,
+   1.5rem); h4 is the body's size, bold. */
+.page-editor h1, .page-editor h2, .page-editor h3, .page-editor h4 { margin: 1rem 0 0.25rem; font-weight: 700; }
 .page-editor h1 { font-size: 1.5rem; line-height: 2rem; }
 .page-editor h2 { font-size: 1.25rem; line-height: 1.75rem; }
 .page-editor h3 { font-size: 1.125rem; line-height: 1.75rem; }
+.page-editor h4 { font-size: 1rem; line-height: 1.5rem; }
 .page-editor > :first-child, .page-editor .pe-callout-body > :first-child, .page-editor .pe-toggle-body > :nth-child(2) { margin-top: 0; }
 .page-editor [data-list-line] { display: flex; align-items: flex-start; padding-left: calc(var(--pe-level, 0) * 24px); }
 /* The reader's lists have 0.125rem above and below a run of items (`my-0.5`), checklists 0.25rem (`my-1`). */
@@ -460,10 +462,11 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 /* The rich composer (RichEditor.tsx): drawn as the message will be (MessageBody), one paragraph per line. */
 .rich-editor { outline: none; min-height: 3rem; }
 .rich-editor p { margin: 0; }
-.rich-editor h1, .rich-editor h2, .rich-editor h3 { margin: 4px 0 0; font-weight: 700; line-height: 1.25; }
+.rich-editor h1, .rich-editor h2, .rich-editor h3, .rich-editor h4 { margin: 4px 0 0; font-weight: 700; line-height: 1.25; }
 .rich-editor h1 { font-size: 1.5rem; }
 .rich-editor h2 { font-size: 1.25rem; }
 .rich-editor h3 { font-size: 1.125rem; }
+.rich-editor h4 { font-size: 1em; }
 .rich-editor blockquote { margin: 4px 0; border-left: 3px solid var(--line); padding-left: 12px; color: var(--muted-fg); }
 .rich-editor ul, .rich-editor ol { margin: 2px 0; padding-left: 1.5rem; }
 .rich-editor ol { list-style-type: decimal; }

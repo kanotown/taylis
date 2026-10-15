@@ -217,6 +217,15 @@ describe("editing one block writes that block only", () => {
     expect(edit((doc) => (blocks(doc)[0]!.content = [{ type: "text", text: "新しい題" }]))).toBe(body.replace("# 題", "# 新しい題"));
   });
 
+  it("h4 (2026-10-16): a heading of level 4 is read and written; five #s stay a paragraph", () => {
+    expect(roundTrip("#### 四\r\n##### 五")).toBe("#### 四\r\n##### 五");
+    const doc = pageToDoc("#### 四\n##### 五");
+    expect(doc.content![0]).toMatchObject({ type: "heading", attrs: { level: 4 } });
+    expect(doc.content![1]!.type).toBe("paragraph");
+    expect(edit((d) => (blocks(d)[0]!.attrs!.level = 4))).toBe(body.replace("# 題", "#### 題"));
+    expect(edit((d) => (blocks(d)[11]!.content = [{ type: "text", text: "#### not a heading" }]))).toBe(body.replace("last", "​#### not a heading"));
+  });
+
   it("one list item: its own line only (the other keeps `*   two`), the line breaks kept", () => {
     expect(edit((doc) => (blocks(doc)[2]!.content = [{ type: "text", text: "uno" }]))).toBe(body.replace("* one", "- uno"));
   });

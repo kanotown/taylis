@@ -47,7 +47,7 @@ export function slashQuery(text: string, caret: number): { start: number; query:
   return match ? { start: lineStart, query: match[1] ?? "" } : null;
 }
 
-export type SlashKey = "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "callout" | "toggle" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage" | "database" | "embedDatabase";
+export type SlashKey = "h1" | "h2" | "h3" | "h4" |"bullets" | "numbered" | "tasks" | "quote" | "callout" | "toggle" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage" | "database" | "embedDatabase";
 
 /** M155 (WIKI.md §30.2): the sections of the page editor's `/` menu (the Markdown editor's list stays flat). */
 export type SlashGroup = "basic" | "list" | "media" | "embed" | "advanced";
@@ -66,6 +66,7 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { key: "h1", label: "docs.slash.h1", hint: "docs.slash.hint.h1", group: "basic", words: ["h1", "heading", "title", "midashi", "見出し"] },
   { key: "h2", label: "docs.slash.h2", hint: "docs.slash.hint.h2", group: "basic", words: ["h2", "heading", "midashi", "見出し"] },
   { key: "h3", label: "docs.slash.h3", hint: "docs.slash.hint.h3", group: "basic", words: ["h3", "heading", "midashi", "見出し"] },
+  { key: "h4", label: "docs.slash.h4", hint: "docs.slash.hint.h4", group: "basic", words: ["h4", "heading", "midashi", "見出し"] },
   { key: "bullets", label: "docs.slash.bullets", hint: "docs.slash.hint.bullets", group: "list", words: ["list", "bullet", "bulleted", "ul", "risuto", "箇条書き", "リスト"] },
   { key: "numbered", label: "docs.slash.numbered", hint: "docs.slash.hint.numbered", group: "list", words: ["numbered", "ordered", "ol", "number", "bangou", "番号"] },
   { key: "tasks", label: "docs.slash.tasks", hint: "docs.slash.hint.tasks", group: "list", words: ["todo", "to-do", "task", "check", "checkbox", "checklist", "chekku", "チェック", "タスク"] },
@@ -196,6 +197,8 @@ export function applySlash(state: EditState, start: number, key: SlashKey): Slas
       return put("## ");
     case "h3":
       return put("### ");
+    case "h4":
+      return put("#### ");
     case "bullets":
       return put("- ");
     case "numbered":

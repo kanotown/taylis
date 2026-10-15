@@ -13,7 +13,7 @@
 import type { ChainedCommands, Editor } from "@tiptap/core";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { type EditorState, NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
-import { Bold, Check, ChevronDown, ChevronRight, Code, Copy, Database, FilePlus, Heading1, Heading2, Heading3, Image as ImageIcon, Italic, LayoutGrid, Lightbulb, Link as LinkIcon, List, ListChecks, ListOrdered, Minus, Sigma, SquareCode, Strikethrough, Table as TableIcon, TextQuote, Type } from "lucide-react";
+import { Bold, Check, ChevronDown, ChevronRight, Code, Copy, Database, FilePlus, Heading1, Heading2, Heading3, Heading4, Image as ImageIcon, Italic, LayoutGrid, Lightbulb, Link as LinkIcon, List, ListChecks, ListOrdered, Minus, Sigma, SquareCode, Strikethrough, Table as TableIcon, TextQuote, Type } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 import type { SlashKey } from "./docEditor";
@@ -22,7 +22,7 @@ import { cn, modKey } from "./primitives";
 import { type MessageKey, t } from "../i18n";
 
 /** A kind a line turns into (the handle's menu, the toolbar's 「変換 ▾」, ⌘/). */
-export type TurnKey = "text" | "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "callout" | "toggle" | "code" | "math";
+export type TurnKey = "text" | "h1" | "h2" | "h3" | "h4" | "bullets" | "numbered" | "tasks" | "quote" | "callout" | "toggle" | "code" | "math";
 
 /** The kinds a block turns into, in the order the menus show them. */
 export const TURN_INTO: ReadonlyArray<{ key: TurnKey; label: MessageKey }> = [
@@ -30,6 +30,7 @@ export const TURN_INTO: ReadonlyArray<{ key: TurnKey; label: MessageKey }> = [
   { key: "h1", label: "docs.slash.h1" },
   { key: "h2", label: "docs.slash.h2" },
   { key: "h3", label: "docs.slash.h3" },
+  { key: "h4", label: "docs.slash.h4" },
   { key: "bullets", label: "docs.slash.bullets" },
   { key: "numbered", label: "docs.slash.numbered" },
   { key: "tasks", label: "docs.slash.tasks" },
@@ -51,6 +52,8 @@ export function slashIcon(key: SlashKey | TurnKey, size = 15): ReactNode {
       return <Heading2 size={size} />;
     case "h3":
       return <Heading3 size={size} />;
+    case "h4":
+      return <Heading4 size={size} />;
     case "bullets":
       return <List size={size} />;
     case "numbered":
@@ -179,6 +182,7 @@ export function setKind(chain: ChainedCommands, key: SlashKey | TurnKey): boolea
     case "h1":
     case "h2":
     case "h3":
+    case "h4":
       chain.setNode("heading", { level: Number(key.slice(1)) }).run();
       return true;
     case "bullets":

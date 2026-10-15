@@ -92,7 +92,7 @@ export function CanvasBody({ body, controller, onToggleTask, onMakeTask = null, 
       return <CanvasImage controller={controller} attachmentId={block.attachmentId} alt={block.alt} />;
     }
     if (block.kind === "heading" && block.line !== undefined) {
-      const size = block.level === 1 ? "text-2xl" : block.level === 2 ? "text-xl" : "text-lg";
+      const size = block.level === 1 ? "text-2xl" : block.level === 2 ? "text-xl" : block.level === 3 ? "text-lg" : "text-base"; // h4: body size, bold
       // The first block gets no space above (`first:` would match every wrapped block).
       return (
         <div id={headingAnchor(block.line)} className={cn("mb-1 scroll-mt-4 font-bold leading-tight", index === 0 ? "mt-0" : "mt-4", size)}>

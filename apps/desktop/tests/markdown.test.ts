@@ -55,13 +55,18 @@ describe("light markdown blocks", () => {
     });
   });
 
-  it("parses up to three heading levels and leaves deeper or bare hashes alone", () => {
-    expect(parseBlocks("# Title\n## Sub **b**\n### Third\n#### not\n#nospace")).toEqual([
+  it("parses up to four heading levels and leaves deeper or bare hashes alone", () => {
+    expect(parseBlocks("# Title\n## Sub **b**\n### Third\n#### Fourth\n##### not\n#nospace")).toEqual([
       { kind: "heading", level: 1, tokens: [{ kind: "text", text: "Title" }] },
       { kind: "heading", level: 2, tokens: [{ kind: "text", text: "Sub " }, { kind: "bold", text: "b" }] },
       { kind: "heading", level: 3, tokens: [{ kind: "text", text: "Third" }] },
-      { kind: "paragraph", lines: [[{ kind: "text", text: "#### not" }], [{ kind: "text", text: "#nospace" }]] },
+      { kind: "heading", level: 4, tokens: [{ kind: "text", text: "Fourth" }] },
+      { kind: "paragraph", lines: [[{ kind: "text", text: "##### not" }], [{ kind: "text", text: "#nospace" }]] },
     ]);
+  });
+
+  it("plainText drops the #s of an h4 but not of five", () => {
+    expect(plainText("#### 四\n##### 五")).toBe("四 ##### 五");
   });
 
   it("keeps unterminated fences and stray markers as text", () => {

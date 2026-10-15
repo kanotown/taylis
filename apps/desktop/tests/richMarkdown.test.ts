@@ -223,6 +223,15 @@ describe("rich composer serialisation", () => {
     expect(docToMarkdown(doc({ type: "heading", attrs: { level: 2 }, content: [text("a"), { type: "hardBreak" }, text("b")] }))).toBe("## a b");
   });
 
+  it("h4 (2026-10-16): read, written and round-tripped; a typed `#### ` or `##### ` line stays text", () => {
+    expect(markdownToDoc("#### 四").content).toEqual([{ type: "heading", attrs: { level: 4 }, content: [text("四")] }]);
+    expect(docToMarkdown(doc({ type: "heading", attrs: { level: 4 }, content: [text("四")] }))).toBe("#### 四");
+    expect(docToMarkdown(doc({ type: "heading", attrs: { level: 5 }, content: [text("五")] }))).toBe("#### 五");
+    for (const body of ["# 一\n## 二\n### 三\n#### 四", "##### 五"]) expect(docToMarkdown(markdownToDoc(body))).toBe(body);
+    expect(docToMarkdown(doc(p(text("#### not a heading"))))).toBe(ZWSP + "#### not a heading");
+    expect(docToMarkdown(doc(p(text("##### five"))))).toBe("##### five");
+  });
+
   it("reads pasted plain text as literal lines", () => {
     expect(docToMarkdown(doc(...plainTextToNodes("**x**\n\n- y")))).toBe(`\\*\\*x\\*\\*\n\n${ZWSP}- y`.replace("\\*\\*x\\*\\*", docToMarkdown(doc(p(text("**x**"))))));
     expect(tokenizeInline(docToMarkdown(doc(p(text("**x**"))))).map((t) => t.kind)).toEqual(["text"]);
