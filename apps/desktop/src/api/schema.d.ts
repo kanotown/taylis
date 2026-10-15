@@ -2999,7 +2999,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Pack Tab */
+        /**
+         * Pack Tab
+         * @description The tab icon. `v` = the pack's `tab_version`: the response may then be kept for good.
+         *     ETag is the version; If-None-Match → 304.
+         */
         get: operations["pack_tab_api_v1_emoji_packs__pack_id__tab_get"];
         put?: never;
         post?: never;
@@ -3062,7 +3066,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Emoji Image */
+        /**
+         * Emoji Image
+         * @description The image. `v` = the emoji's `image_version`: the response may then be kept for good
+         *     (docs/EMOJI.md §2.1). ETag is the version; If-None-Match → 304.
+         */
         get: operations["emoji_image_api_v1_emoji__emoji_id__image_get"];
         put?: never;
         post?: never;
@@ -8592,6 +8600,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Image Version */
+            image_version?: string | null;
             /**
              * Keywords
              * @default []
@@ -19919,8 +19929,12 @@ export interface operations {
     };
     pack_tab_api_v1_emoji_packs__pack_id__tab_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                v?: string | null;
+            };
+            header?: {
+                "if-none-match"?: string | null;
+            };
             path: {
                 pack_id: string;
             };
@@ -19936,6 +19950,13 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description If-None-Match matched the icon's version (ETag) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20047,8 +20068,12 @@ export interface operations {
     };
     emoji_image_api_v1_emoji__emoji_id__image_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                v?: string | null;
+            };
+            header?: {
+                "if-none-match"?: string | null;
+            };
             path: {
                 emoji_id: string;
             };
@@ -20064,6 +20089,13 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description If-None-Match matched the image's version (ETag) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -19,6 +19,7 @@ from app.modules.attachments.blobstore import MemoryBlobStore
 from app.modules.audit.models import AuditLog
 from app.modules.emoji import presets
 from app.modules.emoji.models import CustomEmoji, EmojiPack
+from app.modules.emoji.schemas import to_emoji_out
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -127,6 +128,7 @@ async def test_import_is_idempotent_and_follows_the_manifest(
         {"file": "040_ねる.png", "shortcode": "hp-sleep", "label": "ねる"},
     ]
     old_key = emoji["hp-plain"].storage_key
+    old_version = to_emoji_out(emoji["hp-plain"]).image_version
     bow_key = emoji["hp-bow"].storage_key
     _write_pack(tmp_path, "Hanpen", name="改名", items=items, colors={"hp-plain": (0, 255, 0, 255)})
     report = await _run(app, tmp_path, test_settings)
@@ -136,6 +138,8 @@ async def test_import_is_idempotent_and_follows_the_manifest(
     assert emoji["hp-bow"].storage_key == bow_key
     assert emoji["hp-plain"].position == 1 and emoji["hp-plain"].storage_key != old_key
     assert old_key not in blobs.objects and emoji["hp-plain"].storage_key in blobs.objects
+    # A replaced image is a new version (the clients' cache key, docs/EMOJI.md §2.1).
+    assert to_emoji_out(emoji["hp-plain"]).image_version not in (None, old_version)
     assert emoji["hp-sleep"].pack_id == pack.id
     [pack] = await _packs(app)
     assert pack.name == "はんぺん"  # the manifest's name only names a new pack

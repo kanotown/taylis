@@ -2966,6 +2966,18 @@
                 "title": "Id",
                 "type": "string"
               },
+              "image_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Image Version"
+              },
               "keywords": {
                 "default": [],
                 "items": {

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Request, Response, UploadFile
+from fastapi import APIRouter, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.db import Db
@@ -16,6 +16,7 @@ from app.modules.emoji.schemas import (
     EmojiPackOut,
     EmojiPackUpdate,
     TextEmojiCreate,
+    image_version,
     to_pack_out,
 )
 from app.modules.users.models import User
@@ -25,6 +26,43 @@ router = APIRouter(tags=["emoji"])
 # A ZIP, or a folder's files together (Review v0.1.37 #8); infra/Caddyfile lets 70 MB through on
 # this path (this plus the multipart overhead), every other /api/* request stays at 1 MB.
 PACK_UPLOAD_MAX_BYTES = 64 * 1024 * 1024
+
+
+# docs/EMOJI.md §2.1: a request naming the current version (`?v=`) gets bytes that never change
+# for that URL; one without it (older clients) the day-long caching it always had.
+IMMUTABLE_CACHE = "private, max-age=31536000, immutable"
+DAY_CACHE = "private, max-age=86400"
+
+
+def _matches(if_none_match: str | None, etag: str) -> bool:
+    if if_none_match is None:
+        return False
+    tags = [t.strip().removeprefix("W/") for t in if_none_match.split(",")]
+    return "*" in tags or etag in tags
+
+
+def _image_response(
+    request: Request,
+    key: str,
+    content_type: str,
+    version: str,
+    asked: str | None,
+    if_none_match: str | None,
+) -> Response:
+    etag = f'"{version}"'
+    cache = IMMUTABLE_CACHE if asked == version else DAY_CACHE
+    if _matches(if_none_match, etag):
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": cache})
+    return StreamingResponse(
+        attachments.stream(request.app.state.blobs, key),
+        headers={
+            "Content-Type": content_type,
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": cache,
+            "ETag": etag,
+        },
+    )
 
 
 def _limit_uploads(request: Request, user: User) -> None:
@@ -95,20 +133,23 @@ async def delete_emoji(emoji_id: UUID, request: Request, user: CurrentUser, db: 
     return Response(status_code=204)
 
 
-@router.get("/emoji/{emoji_id}/image")
+@router.get(
+    "/emoji/{emoji_id}/image",
+    responses={304: {"description": "If-None-Match matched the image's version (ETag)"}},
+)
 async def emoji_image(
-    emoji_id: UUID, request: Request, user: CurrentUser, db: Db
-) -> StreamingResponse:
+    emoji_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    v: str | None = Query(default=None, max_length=64),
+    if_none_match: str | None = Header(default=None),
+) -> Response:
+    """The image. `v` = the emoji's `image_version`: the response may then be kept for good
+    (docs/EMOJI.md §2.1). ETag is the version; If-None-Match → 304."""
     row = await service.require_image(db, emoji_id)
-    return StreamingResponse(
-        attachments.stream(request.app.state.blobs, row.storage_key),
-        headers={
-            "Content-Type": row.content_type,
-            "Content-Disposition": "inline",
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, max-age=86400",
-        },
-    )
+    version = image_version(row.storage_key) or ""
+    return _image_response(request, row.storage_key, row.content_type, version, v, if_none_match)
 
 
 # ---- packs (M100) -------------------------------------------------------------------------
@@ -195,15 +236,27 @@ async def delete_pack(pack_id: UUID, request: Request, admin: EmojiManager, db: 
     return Response(status_code=204)
 
 
-@router.get("/emoji/packs/{pack_id}/tab")
-async def pack_tab(pack_id: UUID, request: Request, user: CurrentUser, db: Db) -> StreamingResponse:
+@router.get(
+    "/emoji/packs/{pack_id}/tab",
+    responses={304: {"description": "If-None-Match matched the icon's version (ETag)"}},
+)
+async def pack_tab(
+    pack_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    v: str | None = Query(default=None, max_length=64),
+    if_none_match: str | None = Header(default=None),
+) -> Response:
+    """The tab icon. `v` = the pack's `tab_version`: the response may then be kept for good.
+    ETag is the version; If-None-Match → 304."""
     row = await service.require_pack_tab(db, pack_id)
-    return StreamingResponse(
-        attachments.stream(request.app.state.blobs, row.tab_storage_key or ""),
-        headers={
-            "Content-Type": row.tab_content_type or "application/octet-stream",
-            "Content-Disposition": "inline",
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, max-age=86400",
-        },
+    version = to_pack_out(row).tab_version or ""
+    return _image_response(
+        request,
+        row.tab_storage_key or "",
+        row.tab_content_type or "application/octet-stream",
+        version,
+        v,
+        if_none_match,
     )

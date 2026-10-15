@@ -454,6 +454,8 @@ CREATE TABLE emoji_preset_removals (
 ```
 
 - 画像は添付と同じオブジェクトストアに置き、`GET /emoji/{id}/image` (要ログイン、1 日キャッシュ) で配る。
+  2026-10-15：API の `image_version`（`storage_key` の SHA-256 の先頭 16 桁、列は増えない）を `?v=` に付けると
+  ずっとキャッシュしてよい（docs/EMOJI.md §2.1）。
 - 誰でも追加でき、作成者か admin が削除できる。削除しても本文の `:name:` は文字のまま残る (クライアントは
   未知の名前を文字で表示する)。一覧は bootstrap の `custom_emoji` と `emoji.updated` (audience=all) で揃える。
 - リアクションの `emoji` 列は `:name:` 形式も受け付ける (DATA_MODEL.md `message_reactions` の注記どおり)。

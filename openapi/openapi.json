@@ -7794,6 +7794,17 @@
             "title": "Id",
             "type": "string"
           },
+          "image_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Version"
+          },
           "keywords": {
             "default": [],
             "items": {
@@ -31541,6 +31552,7 @@
     },
     "/api/v1/emoji/packs/{pack_id}/tab": {
       "get": {
+        "description": "The tab icon. `v` = the pack's `tab_version`: the response may then be kept for good.\nETag is the version; If-None-Match → 304.",
         "operationId": "pack_tab_api_v1_emoji_packs__pack_id__tab_get",
         "parameters": [
           {
@@ -31552,6 +31564,39 @@
               "title": "Pack Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "V"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
           }
         ],
         "responses": {
@@ -31562,6 +31607,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "304": {
+            "description": "If-None-Match matched the icon's version (ETag)"
           },
           "422": {
             "content": {
@@ -31733,6 +31781,7 @@
     },
     "/api/v1/emoji/{emoji_id}/image": {
       "get": {
+        "description": "The image. `v` = the emoji's `image_version`: the response may then be kept for good\n(docs/EMOJI.md §2.1). ETag is the version; If-None-Match → 304.",
         "operationId": "emoji_image_api_v1_emoji__emoji_id__image_get",
         "parameters": [
           {
@@ -31744,6 +31793,39 @@
               "title": "Emoji Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "V"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
           }
         ],
         "responses": {
@@ -31754,6 +31836,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "304": {
+            "description": "If-None-Match matched the image's version (ETag)"
           },
           "422": {
             "content": {
