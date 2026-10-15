@@ -37,7 +37,7 @@ def extract_group_mentions(body: str) -> list[uuid.UUID]:
 
 
 _FENCE_LINE = re.compile(r"^```[A-Za-z0-9_+#.-]*\s*$", re.MULTILINE)
-_HEADING = re.compile(r"^#{1,3}\s+", re.MULTILINE)
+_HEADING = re.compile(r"^#{1,4}\s+", re.MULTILINE)  # h4 since 2026-10-16
 _QUOTE = re.compile(r"^>\s?", re.MULTILINE)
 _LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d{1,3}\.)\s+", re.MULTILINE)
 # M107 (apps/shared/inline-format.json): the clients' inline tokenizer (markdown.ts INLINE),

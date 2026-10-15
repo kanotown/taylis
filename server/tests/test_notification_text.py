@@ -45,3 +45,9 @@ def test_math_keeps_its_tex_source() -> None:
     for case in cases:
         assert notification_text(case["line"], {}) == case["plain"], case["name"]
     assert notification_text("$$\na_1 * b_1 = c\n$$", {}) == "$$ a_1 * b_1 = c $$"
+
+
+def test_h4_headings_lose_their_hashes_too() -> None:
+    """2026-10-16: headings have 1 to 4 #s; five stay as written."""
+    assert notification_text("#### 四\n本文", {}) == "四 本文"
+    assert notification_text("##### 五", {}) == "##### 五"
