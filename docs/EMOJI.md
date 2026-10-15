@@ -38,13 +38,34 @@ URL (`/messages/{id}/reactions/:name:`) にもそのまま入る。日本語は 
   取る (2026-10-04 のガタつきの修正と同じ規則: 置き場所の大きさは最初から決まっている)。
 - ピッカーのマスは正方形のまま、画像を縮めて収める (`square`)。
 
+### 2.1 画像のバージョンとキャッシュ（2026-10-15）
+
+利用者の声（「カスタム絵文字、毎回読み込みに結構時間かかる」）から。画像は数百枚になり、開くたびに 1 枚ずつ
+取り直していた（HTTP のキャッシュは 1 日、クライアントのキャッシュはそのセッションだけ）。
+
+- 同じ id の画像が変わるのは、プリセットのフォルダの絵を直したときだけ（§8.2：新しい鍵 `emoji/<id>-<uuid>` に置く）。
+  そこで `CustomEmojiOut.image_version`（鍵の SHA-256 の先頭 16 桁、文字の絵文字は null）を返す。鍵が変わると
+  変わる。DB の列は増えない（`storage_key` から求める）。
+- `GET /emoji/{id}/image?v=<image_version>` と `GET /emoji/packs/{id}/tab?v=<tab_version>`：`v` が今のバージョンなら
+  `Cache-Control: private, max-age=31536000, immutable`（その URL の中身は変わらない）。`v` なし（古いクライアント）
+  か古い `v` は今までどおり `private, max-age=86400`。どちらも `ETag: "<バージョン>"` を付け、`If-None-Match` が
+  合えば 304。要ログインは変わらない。
+- クライアントは画像を **（サーバ, id, image_version）** で端末に残す（タブのアイコンは（サーバ, id, tab_version））。
+  バージョンが変わったら取り直す（`emoji.updated` で新しいバージョンが届く）。ワークスペースからサインアウトしたら
+  そのサーバの分を消す。
+  - Desktop / Web：`ui/emojiImageCache.ts`。メモリ（object URL）と IndexedDB（`chikuwa-emoji-images`、Blob）。
+    上限 3000 枚 / 64 MB、超えたら最後に使ったのが古いものから消す。ネットワークへは同時に 6 本まで、同じ画像を
+    2 本取りに行かない。IndexedDB が使えない（プライベートブラウズなど）ときはメモリだけ。`image_version` を
+    返さない古いサーバでは端末に残さない（今までどおり）。
+  - iOS / Android：各クライアントのキャッシュ（同じ鍵の規則）。
+
 ## 3. 絵文字のセット (`emoji_packs`)
 
 - 表 `emoji_packs (id, name 一意 64 文字まで, position, tab_content_type, tab_storage_key, created_by, created_at,
   updated_at)`。`custom_emoji.pack_id` (null = セットなし) と `custom_emoji.position` (セットの中の順)。
 - タブのアイコンはオブジェクトストアの `emoji-packs/<pack id>/tab-<uuid>`。差し替えると鍵が変わり、
   `EmojiPackOut.tab_version` (鍵の最後の部分) も変わる。クライアントは `(id, tab_version)` でキャッシュする。
-  `GET /emoji/packs/{id}/tab` (要ログイン)。アイコンがないセットはタブに最初の絵文字を出す。
+  `GET /emoji/packs/{id}/tab?v=<tab_version>` （要ログイン、キャッシュは §2.1）。アイコンがないセットはタブに最初の絵文字を出す。
 - API (作成・変更・削除・取り込みは管理者だけ、監査ログ `emoji_pack.create / update / delete / import`):
   - `GET /emoji/packs` (bootstrap の `emoji_packs` にも)
   - `POST /emoji/packs {name}` (空のセット)、`PATCH /emoji/packs/{id} {name?, position?}`
@@ -199,8 +220,8 @@ URL (`/messages/{id}/reactions/:name:`) にもそのまま入る。日本語は 
 - **画像**: ファイルの SHA-256 を `preset_hash` (タブは `emoji_packs.preset_tab_hash`) に覚え、変わったときだけ
   差し替える (新しい鍵 `emoji/<id>-<uuid>` に置き、確定してから古いものを消す)。絵を直したいときは、直したファイルを
   同じ名前で置き直して再起動 (か CLI) すればよい。§4 の取り込み (画面から) は今までどおり画像を差し替えない。
-  クライアントは絵文字の画像を id で覚えているので、新しい絵はアプリを開き直したとき (HTTP のキャッシュは最大 1 日)
-  に出る。
+  鍵が変わると `image_version` も変わり（§2.1）、`emoji.updated` を受けたクライアントは新しい絵を取りに行く
+  （2026-10-15 より前のクライアントは id で覚えていて、開き直したとき（HTTP のキャッシュは最大 1 日）に出る）。
 - 何も変わらなければ何も書かない (イベント・監査ログ・オブジェクトストアへの書き込みなし)。変わった絵文字ごとに
   `emoji.updated`、セットを作ったかタブが変わったら `emoji_pack.updated`。
 

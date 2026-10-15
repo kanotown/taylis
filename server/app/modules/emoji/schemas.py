@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -29,6 +30,11 @@ class CustomEmojiOut(BaseModel):
     # M100: the pack (its own picker tab); null = the 「カスタム」 tab.
     pack_id: UUID | None = None
     position: int = 0
+    # The image's version (opaque; null for a text emoji). It changes when the image is replaced
+    # (a preset folder's new file, docs/EMOJI.md §8.2): clients key their image cache by
+    # (id, image_version) and ask GET /emoji/{id}/image?v=<image_version>, which may be kept
+    # for good (docs/EMOJI.md §2.1).
+    image_version: str | None = None
     created_by: UUID
     created_at: datetime
 
@@ -92,6 +98,14 @@ class EmojiPackImportOut(BaseModel):
     unchanged: list[str]
 
 
+def image_version(storage_key: str) -> str | None:
+    """A new object key per image (service.storage_key, presets' replacements): its digest is
+    the version. None without an image (text emoji)."""
+    if not storage_key:
+        return None
+    return hashlib.sha256(storage_key.encode()).hexdigest()[:16]
+
+
 def to_emoji_out(row: CustomEmoji) -> CustomEmojiOut:
     return CustomEmojiOut(
         id=row.id,
@@ -105,6 +119,7 @@ def to_emoji_out(row: CustomEmoji) -> CustomEmojiOut:
         keywords=list(row.keywords or []),
         pack_id=row.pack_id,
         position=row.position or 0,
+        image_version=image_version(row.storage_key) if row.kind == "image" else None,
         created_by=row.created_by,
         created_at=row.created_at,
     )

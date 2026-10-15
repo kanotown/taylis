@@ -230,6 +230,13 @@ async def test_import_from_folder_is_idempotent(
     assert pack["name"] == "はんぺん" and pack["tab_version"]
     tab = await client.get(f"/api/v1/emoji/packs/{pack['id']}/tab")
     assert tab.status_code == 200 and tab.headers["content-type"] == "image/png"
+    assert tab.headers["cache-control"] == "private, max-age=86400"
+    assert tab.headers["etag"] == f'"{pack["tab_version"]}"'
+    tab_path = f"/api/v1/emoji/packs/{pack['id']}/tab?v={pack['tab_version']}"
+    kept = await client.get(tab_path)
+    assert kept.headers["cache-control"] == "private, max-age=31536000, immutable"
+    again = await client.get(tab_path, headers={"If-None-Match": tab.headers["etag"]})
+    assert again.status_code == 304
     listed = {e["name"]: e for e in (await client.get("/api/v1/emoji")).json()}
     assert listed["hp-bow"]["label"] == "おじぎ"
     assert listed["hp-bow"]["keywords"] == ["ありがとう", "よろしく"]

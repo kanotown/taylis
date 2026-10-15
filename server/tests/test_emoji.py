@@ -4,6 +4,7 @@ import io
 from collections.abc import Callable
 from typing import Any
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from PIL import Image
 from sqlalchemy import select
@@ -68,3 +69,43 @@ async def test_upload_list_image_and_delete(
         ("all", True),
     ]
     assert events[0].payload["emoji"]["name"] == "party_parrot"
+
+
+async def test_image_versions_etag_and_caching(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None], app: FastAPI
+) -> None:
+    """docs/EMOJI.md §2.1: `?v=<image_version>` may be kept for good; ETag / If-None-Match → 304;
+    without `v` (older clients) the day-long caching as before; sign-in still needed."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    emoji = (await _add(client, "parrot", _png())).json()
+    version = emoji["image_version"]
+    assert isinstance(version, str) and len(version) == 16
+    listed = (await client.get("/api/v1/emoji")).json()
+    assert listed[0]["image_version"] == version
+    path = f"/api/v1/emoji/{emoji['id']}/image"
+
+    versioned = await client.get(f"{path}?v={version}")
+    assert versioned.status_code == 200
+    assert versioned.headers["cache-control"] == "private, max-age=31536000, immutable"
+    assert versioned.headers["etag"] == f'"{version}"'
+
+    plain = await client.get(path)
+    assert plain.headers["cache-control"] == "private, max-age=86400"
+    assert plain.headers["etag"] == f'"{version}"'
+    # A stale or unknown version is not kept for good.
+    stale = await client.get(f"{path}?v=0000000000000000")
+    assert stale.status_code == 200 and stale.headers["cache-control"] == "private, max-age=86400"
+
+    for header in (f'"{version}"', f'W/"{version}"', f'"other", "{version}"', "*"):
+        hit = await client.get(f"{path}?v={version}", headers={"If-None-Match": header})
+        assert hit.status_code == 304 and hit.content == b""
+        assert hit.headers["etag"] == f'"{version}"'
+    miss = await client.get(path, headers={"If-None-Match": '"other"'})
+    assert miss.status_code == 200 and miss.content[:4] == b"\x89PNG"
+
+    text = await client.post("/api/v1/emoji/text", json={"name": "ok-text", "label": "OK"})
+    assert text.status_code == 201 and text.json()["image_version"] is None
+
+    app.dependency_overrides.clear()
+    assert (await client.get(f"{path}?v={version}")).status_code == 401
