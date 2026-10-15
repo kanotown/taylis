@@ -34,7 +34,7 @@ import { UndoRedo } from "@tiptap/extensions/undo-redo";
 import { Fragment, Slice } from "@tiptap/pm/model";
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { contentLine, keepLineInView, lineHeightOf, settle } from "./composerScroll";
+import { contentLine, holdThroughEdit, keepLineInView, lineHeightOf, settle } from "./composerScroll";
 import { docToMarkdown, markdownToDoc, plainTextToNodes, type RichNode } from "./richMarkdown";
 import type { RichEditorApi, RichFormat, RichFormatState } from "./richEditorApi";
 import { decidePaste, MAX_BODY, plainPasteRequested } from "./tablePaste";
@@ -284,10 +284,15 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
       onFocus: () => props.current.onFocus?.(),
     });
     element.style.minHeight = "";
+    // The browser's own edits leave the text a line short for a moment: the box keeps its height until the frame
+    // (composerScroll.ts). Captured, so the hold is there before ProseMirror handles the event itself.
+    const holdForEdit = () => holdThroughEdit(element);
+    element.addEventListener("beforeinput", holdForEdit, true);
     editorRef.current = editor;
     apiRef.current = apiFor(editor, (markdown) => (emitted.current = markdown));
     report(editor);
     return () => {
+      element.removeEventListener("beforeinput", holdForEdit, true);
       apiRef.current = null;
       editorRef.current = null;
       editor.destroy();

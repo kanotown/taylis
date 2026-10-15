@@ -185,3 +185,31 @@ export function textAreaCaretLine(area: HTMLTextAreaElement): Line {
   mirror.remove();
   return lineAround(line, lineHeightOf(area));
 }
+
+/** The boxes held by holdThroughEdit until their next frame. */
+const heldForEdit = new WeakSet<HTMLElement>();
+
+/**
+ * Holds `box` (the rich editor's) at its height from a `beforeinput` until the next frame, when the editor has drawn
+ * the edit (user report 2026-10-15: deleting what was typed on three lines or more moved the list above up a line).
+ * Edits the browser makes itself, such as a Backspace that empties the last paragraph, leave the DOM a line short for
+ * a moment: the emptied paragraph has no line until ProseMirror puts its trailing break back. Anything that laid the
+ * page out in between (ProseMirror's reveal of the caret, keepLineInView) saw a shorter composer and a taller list, and
+ * the browser clamped the list's scrollTop to its new end; with the line back the composer was as tall as before, so no
+ * resize observer saw a change, and the list stayed up by that line (its scroll event even taken for the reader's, so
+ * it stopped following the bottom). Released in the frame, before it is laid out and painted: an edit that really
+ * shortens the draft shrinks the box then, and the list keeps its bottom or its row as for any resize.
+ */
+export function holdThroughEdit(box: HTMLElement, nextFrame: (run: () => void) => unknown = requestAnimationFrame): void {
+  if (heldForEdit.has(box)) return;
+  const height = box.offsetHeight;
+  if (!(height > 0)) return;
+  const hold = `${height}px`;
+  const previous = box.style.minHeight;
+  box.style.minHeight = hold;
+  heldForEdit.add(box);
+  nextFrame(() => {
+    heldForEdit.delete(box);
+    if (box.style.minHeight === hold) box.style.minHeight = previous;
+  });
+}

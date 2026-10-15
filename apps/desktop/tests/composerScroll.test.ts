@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { contentLine, fits, keepLineInView, lineAround, markerLine, revealLine, settle, textAreaCaretLine } from "../src/ui/composerScroll";
+import { contentLine, fits, holdThroughEdit, keepLineInView, lineAround, markerLine, revealLine, settle, textAreaCaretLine } from "../src/ui/composerScroll";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -187,5 +187,51 @@ describe("the composer's scrolling (composerScroll.ts)", () => {
     expect(contentLine(zoomed, { top: 400 + 13.5 * 0.9, bottom: 400 + 34.5 * 0.9 }, 24)).toEqual({ top: 84, bottom: 108 });
     el.remove();
     zoomed.remove();
+  });
+});
+
+describe("the rich editor's box through an edit of the browser's own", () => {
+  it("keeps its height until the next frame, measured once, and gives back what was there", () => {
+    const el = document.createElement("div");
+    let height = 120; // five lines
+    vi.spyOn(el, "offsetHeight", "get").mockImplementation(() => height);
+    const frames: Array<() => void> = [];
+    const nextFrame = (run: () => void) => frames.push(run);
+
+    holdThroughEdit(el, nextFrame);
+    expect(el.style.minHeight).toBe("120px");
+    // The emptied last paragraph has no line until ProseMirror draws its trailing break: a layout now would see the
+    // box a line short (the list above taller, its scrollTop clamped). Another input in the same frame keeps the hold.
+    height = 96;
+    holdThroughEdit(el, nextFrame);
+    expect(el.style.minHeight).toBe("120px");
+    expect(frames).toHaveLength(1);
+
+    frames.shift()!();
+    expect(el.style.minHeight).toBe("");
+    // The next edit is held again, at the height the box has then.
+    holdThroughEdit(el, nextFrame);
+    expect(el.style.minHeight).toBe("96px");
+    frames.shift()!();
+
+    // A hold of someone else's (the composer's while the other mode's input comes in) is given back, or left alone
+    // when it was set meanwhile.
+    el.style.minHeight = "40px";
+    holdThroughEdit(el, nextFrame);
+    expect(el.style.minHeight).toBe("96px");
+    frames.shift()!();
+    expect(el.style.minHeight).toBe("40px");
+    holdThroughEdit(el, nextFrame);
+    el.style.minHeight = "200px";
+    frames.shift()!();
+    expect(el.style.minHeight).toBe("200px");
+  });
+
+  it("holds nothing that is not laid out", () => {
+    const el = document.createElement("div");
+    const nextFrame = vi.fn();
+    holdThroughEdit(el, nextFrame);
+    expect(el.style.minHeight).toBe("");
+    expect(nextFrame).not.toHaveBeenCalled();
   });
 });
