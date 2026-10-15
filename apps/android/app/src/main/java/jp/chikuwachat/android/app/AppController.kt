@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.map
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.ui.graphics.asImageBitmap
-import android.graphics.BitmapFactory
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.platform.AvatarPhoto
 import jp.chikuwachat.android.ui.QuickReactions
@@ -78,6 +77,9 @@ import kotlinx.coroutines.sync.withLock
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.platform.SharedPrefsStore
 import jp.chikuwachat.android.platform.WorkspaceIconCache
+import jp.chikuwachat.android.platform.EmojiDiskCache
+import jp.chikuwachat.android.platform.EmojiImageKey
+import jp.chikuwachat.android.platform.EmojiImageLoader
 import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.ui.openCachedFile
 import jp.chikuwachat.android.ui.DownloadCache
@@ -1662,6 +1664,7 @@ class AppController(private val app: Application) {
             withContext(Dispatchers.IO) { RoomPersistence.delete(app, account(serverUrl, username)) }
         }
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
+        withContext(Dispatchers.IO) { emojiPictures.clear(serverUrl) } // docs/EMOJI.md, image cache: its cached pictures go with it
         val leave = leaving.remove(serverUrl)
         // REVIEW-v0.1.62 #1: the account's pending shares go with it (never sent as whoever signs in here next); a
         // session the server ended says so on each, a sign-out on purpose does not.
@@ -1695,6 +1698,7 @@ class AppController(private val app: Application) {
         forgetAccountData(account(serverUrl, entry.username))
         push.detach(serverUrl)
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
+        withContext(Dispatchers.IO) { emojiPictures.clear(serverUrl) } // docs/EMOJI.md, image cache: its cached pictures go with it
         dropAccountWork(serverUrl)
         replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
         jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
@@ -1924,33 +1928,65 @@ class AppController(private val app: Application) {
             }
             return
         }
+        val key = emojiKey(emoji) ?: run { emojiLoads.remove(emoji.id); return }
+        val target = store
+        // docs/EMOJI.md, image cache: memory, else disk, else the server (each picture once, the latest wish first).
         scope.launch {
             try {
-                val bytes = fetchBytes("/api/v1/emoji/${emoji.id}/image")
-                val (bitmap, animation) = withContext(Dispatchers.Default) {
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() to jp.chikuwachat.android.ui.EmojiAnimation.decode(bytes)
-                }
-                if (bitmap != null) store.setEmojiImage(emoji.id, bitmap, animation)
+                val decoded = emojiPictures.image(key) { newer -> if (store === target) target.setEmojiImage(emoji.id, newer.still, newer.animation) }
+                if (decoded != null) target.setEmojiImage(emoji.id, decoded.still, decoded.animation)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // the text form stays; a later render retries
             } finally { emojiLoads.remove(emoji.id) }
         }
     }
 
-    /** M100: a pack's tab icon, once per version. */
+    /** M100: a pack's tab icon, once per version (kept on disk like the emoji: a version never changes its picture). */
     fun loadPackTab(pack: jp.chikuwachat.android.api.EmojiPackOut) {
         val version = pack.tabVersion ?: return
+        val server = activeKey ?: return
         val key = "${pack.id}:$version"
         if (store.packTabImages.containsKey(key) || !emojiLoads.add(key)) return
+        val target = store
         scope.launch {
             try {
-                val bytes = fetchBytes("/api/v1/emoji/packs/${pack.id}/tab")
-                val bitmap = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-                if (bitmap != null) store.setPackTab(key, bitmap)
+                val decoded = emojiPictures.image(EmojiImageKey(server, "pack-${pack.id}", version, immutable = true, path = "/api/v1/emoji/packs/${pack.id}/tab"))
+                if (decoded != null) target.setPackTab(key, decoded.still)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // the first emoji stands in
             } finally { emojiLoads.remove(key) }
         }
+    }
+
+    /**
+     * docs/EMOJI.md, image cache: the decoded pictures (memory, a sixteenth of the heap) over the bytes on disk (cacheDir/emoji,
+     * a folder per server). Requests go through the workspace's own client, 4 at a time.
+     */
+    private val emojiPictures: EmojiImageLoader<jp.chikuwachat.android.ui.DecodedEmoji> by lazy {
+        // The highest an emoji is drawn: a pack's illustration alone in a message or a picker cell (64dp / 64sp).
+        val maxHeight = (72 * app.resources.displayMetrics.density).toInt()
+        EmojiImageLoader(
+            EmojiDiskCache(java.io.File(app.cacheDir, "emoji")),
+            scope,
+            fetch = { key -> (clients[key.serverUrl] ?: throw IllegalStateException("signed out")).fetchBytes(key.path) },
+            decode = { bytes -> jp.chikuwachat.android.ui.DecodedEmoji.decode(bytes, maxHeight) },
+            sizeOf = { it.byteCount },
+            memoryBytes = Runtime.getRuntime().maxMemory() / 16,
+        )
+    }
+
+    /** Where an image emoji's picture is cached: the server, the id and its version (or what stands in for one). */
+    private fun emojiKey(emoji: CustomEmojiOut): EmojiImageKey? {
+        val server = activeKey ?: return null
+        val version = emoji.imageVersion
+        return EmojiImageKey(
+            server, emoji.id, version ?: "${emoji.contentType}-${emoji.width}x${emoji.height}", immutable = version != null,
+            path = "/api/v1/emoji/${emoji.id}/image",
+        )
     }
 
     // --- reminders (M12e) -------------------------------------------------------------------------
@@ -2274,9 +2310,10 @@ class AppController(private val app: Application) {
 
     /** M153a: a custom emoji's image for the bundled page editor (`/emoji/<id>`), off the main thread. */
     suspend fun editorEmojiImage(emojiId: String): Pair<String, ByteArray>? {
-        val api = api ?: return null
+        if (api == null) return null
         val emoji = store.customEmoji.values.firstOrNull { it.id == emojiId }?.takeIf { !it.isText } ?: return null
-        val bytes = runCatching { api.fetchBytes("/api/v1/emoji/$emojiId/image") }.getOrNull() ?: return null
+        // docs/EMOJI.md, image cache: the same copy on disk as the app's own pictures.
+        val bytes = emojiKey(emoji)?.let { emojiPictures.bytes(it) } ?: return null
         return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: emoji.contentType) to bytes
     }
 

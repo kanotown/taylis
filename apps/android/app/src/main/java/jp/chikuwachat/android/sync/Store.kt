@@ -1437,10 +1437,11 @@ class Store(private val persistence: Persistence? = null) {
     /**
      * Whether an emoji's cached image no longer shows [new] (null: it is gone): a text emoji's pill is drawn from its label
      * and colour, so a changed one is drawn again; a changed kind swaps pill and picture. An image emoji's picture is kept
-     * by id while the app runs (docs/EMOJI.md).
+     * by id until its image version (or, from older servers, its type or size) changes (docs/EMOJI.md, image cache).
      */
     private fun drawnDiffers(old: CustomEmojiOut, new: CustomEmojiOut?): Boolean =
-        new == null || old.kind != new.kind || (old.isText && (old.label != new.label || old.color != new.color))
+        new == null || old.kind != new.kind || (old.isText && (old.label != new.label || old.color != new.color)) ||
+            (!old.isText && (old.imageVersion != new.imageVersion || old.contentType != new.contentType || old.width != new.width || old.height != new.height))
 
     private fun dropEmojiImage(id: String) {
         emojiImages.remove(id)
