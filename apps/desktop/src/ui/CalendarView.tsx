@@ -266,8 +266,8 @@ export function TaskChip({ task, onOpen }: { task: TaskOut; onOpen: (task: TaskO
         e.stopPropagation();
         onOpen(task);
       }}
-      className="flex w-full min-w-0 items-center gap-1 rounded border-l-[3px] px-1 text-left text-[11.5px] leading-[18px] text-ink hover:brightness-95"
-      style={{ borderLeftColor: color, background: `color-mix(in srgb, ${color} 14%, var(--color-canvas, #fff))` }}
+      // Like a timed event's row (no tinted box with a side bar, 2026-10-15): the checkbox in the board's colour.
+      className="flex w-full min-w-0 items-center gap-1 rounded px-1 text-left text-[11.5px] leading-[18px] text-ink hover:bg-ink/5"
     >
       <span aria-hidden className="shrink-0" style={{ color }}>{done ? "☑" : "☐"}</span>
       {/* M81: a due time before the title. */}
@@ -452,14 +452,15 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
                     data-event={block.event.id}
                     onClick={() => onOpen(block.event)}
                     title={`${timeOnDay(block.event, day)} ${block.event.title}`}
-                    className="absolute z-[5] overflow-hidden rounded-md border-l-[3px] px-1 py-0.5 text-left text-[11px] leading-tight text-ink shadow-sm hover:brightness-95"
+                    className="absolute z-[5] overflow-hidden rounded-md border px-1 py-0.5 text-left text-[11px] leading-tight text-ink hover:brightness-95"
                     style={{
                       top: (block.top / 60) * HOUR_PX,
                       height: Math.max((block.height / 60) * HOUR_PX - 1, 16),
                       left: `calc(${(block.lane / block.lanes) * 100}% + 1px)`,
                       width: `calc(${100 / block.lanes}% - 2px)`,
-                      borderLeftColor: color,
-                      background: `color-mix(in srgb, ${color} 16%, var(--color-canvas, #fff))`,
+                      // An even tint with a thin outline in the calendar's colour (no side bar, 2026-10-15).
+                      borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
+                      background: `color-mix(in srgb, ${color} 18%, var(--color-canvas, #fff))`,
                     }}
                   >
                     <div className="truncate font-semibold">{block.event.title}</div>
