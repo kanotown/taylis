@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { Button, cn, Field, Input, Modal } from "./primitives";
 import { useRef } from "react";
 import { packFromDrop, readZipPackFiles } from "./emojiPackSource";
+import { cachedImageUrl, type ImageRef, imageFailed, imageKey, loadImageUrl, serverKey } from "./emojiImageCache";
 import { t } from "../i18n";
 
 /** Custom emoji (M12f): `:name:` in text and reactions renders as the uploaded image. */
@@ -48,48 +49,26 @@ export function splitCustomEmoji(text: string, known: { has(name: string): boole
   return pieces;
 }
 
-const urls = new Map<string, string>();
-const loading = new Map<string, Promise<string | null>>();
-/** Emoji whose image could not be fetched: they show as `:name:` (while loading they take their room, blank). */
-const failed = new Set<string>();
-
-/** Fetches `path` once per `key` (with the bearer token) and keeps the object URL for the session. */
-function loadBlobUrl(controller: AppController, key: string, path: string): Promise<string | null> {
-  const hit = urls.get(key);
-  if (hit) return Promise.resolve(hit);
-  let pending = loading.get(key);
-  if (!pending) {
-    pending = (async () => {
-      try {
-        const blob = await controller.api!.fetchBlob(path);
-        const url = URL.createObjectURL(blob);
-        urls.set(key, url);
-        return url;
-      } catch {
-        failed.add(key);
-        return null;
-      } finally {
-        loading.delete(key);
-      }
-    })();
-    loading.set(key, pending);
-  }
-  return pending;
+/** Where an emoji's image is in the cache (docs/EMOJI.md §2.1): the server, the id and the image's version. */
+function emojiRef(controller: AppController, emoji: CustomEmojiOut): ImageRef {
+  return { server: serverKey(controller.api?.baseUrl), kind: "emoji", id: emoji.id, version: emoji.image_version };
 }
 
-/** Fetches the image once per emoji id (with the bearer token) and keeps the object URL for the session. */
+/** The image's object URL (memory, then this device's store, then the network once); null if it failed. */
 export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): Promise<string | null> {
-  return loadBlobUrl(controller, emoji.id, `/api/v1/emoji/${emoji.id}/image`);
+  return loadImageUrl((path) => controller.api!.fetchBlob(path), emojiRef(controller, emoji));
 }
 
-/** An object URL for `key` (fetched from `path` once): state is keyed, so a reused component never shows another's. */
-function useBlobUrl(controller: AppController, key: string | null, path: string): string | null {
+/** An object URL for `ref`: state is keyed, so a reused component never shows another image (or an older version). */
+function useImageUrl(controller: AppController, ref: ImageRef | null): string | null {
+  const key = ref ? imageKey(ref.server, ref.kind, ref.id, ref.version) : null;
   const [loaded, setLoaded] = useState<{ key: string; url: string | null } | null>(null);
-  const url = key ? urls.get(key) ?? (loaded?.key === key ? loaded.url : null) : null;
+  const url = ref && key ? cachedImageUrl(ref) ?? (loaded?.key === key ? loaded.url : null) : null;
   useEffect(() => {
-    if (!key || urls.has(key) || !controller.api) return;
+    if (!ref || !key || cachedImageUrl(ref) || !controller.api) return;
     let live = true;
-    void loadBlobUrl(controller, key, path).then((next) => { if (live) setLoaded({ key, url: next }); });
+    const api = controller.api;
+    void loadImageUrl((path) => api.fetchBlob(path), ref).then((next) => { if (live) setLoaded({ key, url: next }); });
     return () => { live = false; };
   }, [key, controller.api]);
   return url;
@@ -97,12 +76,12 @@ function useBlobUrl(controller: AppController, key: string | null, path: string)
 
 /** The image of `emoji`: a component reused for another emoji never shows the previous one (state is keyed by id). */
 export function useCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): string | null {
-  return useBlobUrl(controller, emoji.id, `/api/v1/emoji/${emoji.id}/image`);
+  return useImageUrl(controller, emojiRef(controller, emoji));
 }
 
 /** M100: a pack's tab icon (GET /emoji/packs/{id}/tab), cached per `tab_version`. */
 export function usePackTabUrl(controller: AppController, pack: EmojiPackOut): string | null {
-  return useBlobUrl(controller, pack.tab_version ? `pack:${pack.id}:${pack.tab_version}` : null, `/api/v1/emoji/packs/${pack.id}/tab`);
+  return useImageUrl(controller, pack.tab_version ? { server: serverKey(controller.api?.baseUrl), kind: "tab", id: pack.id, version: pack.tab_version } : null);
 }
 
 /** M100 (docs/EMOJI.md §2): a wide image emoji is drawn wider at the same height, at most 3:1; never narrower than square. */
@@ -135,7 +114,7 @@ export function CustomEmojiImage(props: { controller: AppController; emoji: Cust
 
 function CustomEmojiPicture({ controller, emoji, size = 20, className, inline = false, square = false }: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string; inline?: boolean; square?: boolean }) {
   const url = useCustomEmojiUrl(controller, emoji);
-  if (!url && failed.has(emoji.id)) return <span className={cn("text-muted", className)}>:{emoji.name}:</span>;
+  if (!url && imageFailed(emojiRef(controller, emoji))) return <span className={cn("text-muted", className)}>:{emoji.name}:</span>;
   const aspect = square ? 1 : customEmojiAspect(emoji);
   const style = customEmojiBoxStyle(size, inline, aspect);
   // Loading: its room, blank (the name as text was wider than a picker's cell).
