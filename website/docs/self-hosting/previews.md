@@ -8,7 +8,7 @@ description: PDF と Office 文書のプレビューを作る converter（Gotenb
 PDF と Office の文書（doc / docx、xls / xlsx、ppt / pptx、odt / ods / odp、rtf）に、1 ページ目のサムネイルと、
 アプリの中で全ページを見られるビューアを付けます。
 
-- **PDF** はアプリのサーバー（`app`）が自分でプレビューを作ります。追加の準備は要りません。
+- **PDF** はアプリのサーバ（`app`）が自分でプレビューを作ります。追加の準備は要りません。
 - **Office の文書** は、`converter` サービス（[Gotenberg](https://gotenberg.dev/) 8 の LibreOffice）で PDF にしてから
   プレビューを作ります。
 

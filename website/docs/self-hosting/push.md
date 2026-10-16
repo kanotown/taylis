@@ -1,19 +1,19 @@
 ---
 title: プッシュ通知（APNs / FCM）
-description: iOS（APNs）と Android（FCM）のプッシュ通知をサーバーで有効にする
+description: iOS（APNs）と Android（FCM）のプッシュ通知をサーバで有効にする
 ---
 
 # プッシュ通知（APNs / FCM）
 
-スマートフォンにプッシュ通知を送るには、iOS は **APNs**、Android は **FCM** の設定がサーバーに要ります。
+スマートフォンにプッシュ通知を送るには、iOS は **APNs**、Android は **FCM** の設定がサーバに要ります。
 設定しなくても Taylis は動きます（スマートフォンのアプリは、開いている間だけ通知を出します）。デスクトップ版と
 ブラウザ版はプッシュを使わないので、この設定は要りません。
 
 !!! warning "プッシュはアプリの持ち主の鍵で送ります"
     APNs と FCM の通知は、**アプリを配っている人の** 鍵（Apple の Team と Firebase のプロジェクト）でしか送れません。
-    今のところ、自分で立てたサーバーから公式のストア版のアプリにプッシュを送る仕組みはありません（準備中）。
-    自分のサーバーでプッシュを使うには、自分の Apple Developer Program と Firebase のプロジェクトで iOS / Android の
-    アプリをビルドし、その鍵をサーバーに置きます。改変したアプリを配るときは、名前とアイコンを変える必要があります
+    今のところ、自分で立てたサーバから公式のストア版のアプリにプッシュを送る仕組みはありません（準備中）。
+    自分のサーバでプッシュを使うには、自分の Apple Developer Program と Firebase のプロジェクトで iOS / Android の
+    アプリをビルドし、その鍵をサーバに置きます。改変したアプリを配るときは、名前とアイコンを変える必要があります
     （[ライセンス](../license.md)、[docs/DEVELOPMENT.md の「フォークでのビルド」](https://github.com/kanotown/taylis/blob/main/docs/DEVELOPMENT.md)）。
 
 ## iOS (APNs)
@@ -25,7 +25,7 @@ APNs は .p8 の鍵による認証（token 認証）を使います。証明書�
 2. **認証キーの発行**：Keys →「+」→ Apple Push Notifications service（APNs）にチェック → Register → Download。
     - `.p8` は **一度しかダウンロードできません**。なくしたら Revoke して作り直します。
     - Key ID（10 桁）と、Membership details の Team ID（10 桁）を控えます。
-3. **サーバーに置く**：`.p8` を `infra/secrets/` に置き（コミットしないでください）、`infra/.env` に書きます。
+3. **サーバに置く**：`.p8` を `infra/secrets/` に置き（コミットしないでください）、`infra/.env` に書きます。
 
 ```ini
 APNS_KEY_FILE=./secrets/AuthKey_XXXXXXXXXX.p8
@@ -37,7 +37,7 @@ PUSH_APNS_BUNDLE_ID=jp.example.chikuwachat
 ```
 
 Xcode から入れた開発用のビルドは sandbox、TestFlight と App Store のビルドは production の APNs を使います。
-サーバーは端末ごとに自動で使い分けます。
+サーバは端末ごとに自動で使い分けます。
 
 ## Android (FCM)
 

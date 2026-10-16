@@ -227,7 +227,7 @@ it("an OpenAI target reads 「要約は …（OpenAI）に送られます」, on
 });
 
 it.each([
-  ["ai_unavailable", "このサーバーでは AI を使えません"],
+  ["ai_unavailable", "このサーバでは AI を使えません"],
   ["ai_budget_exceeded", "今月の AI の利用上限に達しました"],
   ["ai_private_not_allowed", "この AI のボットは公開チャンネルでだけ使えます（非公開チャンネルと DM には参加・要約できません）"],
 ])("target unavailable (%s): the choices are disabled and the reason is shown", async (reason, text) => {

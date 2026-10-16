@@ -592,7 +592,7 @@ struct LanguageSettingsView: View {
                 .labelsHidden()
             } footer: {
                 Text(controller.store.me?.locale.isSupported == true
-                     ? "アプリの表示と、通知などサーバーから届く文の言語です。すべての端末で同じになります。"
+                     ? "アプリの表示と、通知などサーバから届く文の言語です。すべての端末で同じになります。"
                      : "アプリの表示の言語です。この端末だけの設定です。")
             }
             Section {

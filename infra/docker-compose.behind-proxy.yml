@@ -1,4 +1,4 @@
-# 既存のリバースプロキシ (nginx など) が 80 / 443 と証明書を持つサーバー用 (infra/README.md「既存の nginx の後ろで動かす」)。
+# 既存のリバースプロキシ (nginx など) が 80 / 443 と証明書を持つサーバ用 (infra/README.md「既存の nginx の後ろで動かす」)。
 # Caddy は 127.0.0.1:${BEHIND_PROXY_PORT:-18080} で HTTP だけを受け、TLS はホストのプロキシが終端する
 # (nginx の設定例: nginx-site.conf.example)。自動デプロイでは infra/deploy.conf の
 # EXTRA_COMPOSE_FILES=docker-compose.behind-proxy.yml で使う。

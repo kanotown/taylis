@@ -1,20 +1,20 @@
 ---
-title: サーバーを立てる
-description: Taylis のサーバーを自分たちで立てて運用する
+title: サーバを立てる
+description: Taylis のサーバを自分たちで立てて運用する
 ---
 
-# サーバーを立てる
+# サーバを立てる
 
-Taylis のサーバーは、Linux のサーバー 1 台に Docker Compose で立てます。Redis・Kafka・Kubernetes などは使いません。
+Taylis のサーバは、Linux のサーバ 1 台に Docker Compose で立てます。Redis・Kafka・Kubernetes などは使いません。
 数十人・数百万件のメッセージまでを、この構成のまま扱えるように作っています。
 
 ## 必要なもの { #requirements }
 
 | もの | 内容 |
 | --- | --- |
-| サーバー | Linux（Debian 12 / 13 で確かめています）、2 vCPU / メモリ 4 GB 以上がおすすめ（2 GB ならスワップを足す） |
+| サーバ | Linux（Debian 12 / 13 で確かめています）、2 vCPU / メモリ 4 GB 以上がおすすめ（2 GB ならスワップを足す） |
 | ソフトウェア | Docker Engine と compose プラグイン |
-| ドメイン名 | サーバーを指す DNS の名前（例 `chat.example.com`） |
+| ドメイン名 | サーバを指す DNS の名前（例 `chat.example.com`） |
 | ポート | TCP 80 と 443（証明書の取得にも使います）。HTTP/3 を使うなら UDP 443 |
 | ディスク | 添付ファイルの分（移行するなら数 GB）、バックアップの置き場所 |
 
@@ -41,7 +41,7 @@ flowchart TD
 | サービス | 役割 |
 | --- | --- |
 | `caddy` | TLS の終端（証明書は自動で取得）、`/api/*` をアプリへ、それ以外はブラウザ版を配信 |
-| `app` | Taylis のサーバー本体（Python / FastAPI）。起動のときにデータベースの移行を自動で適用します |
+| `app` | Taylis のサーバ本体（Python / FastAPI）。起動のときにデータベースの移行を自動で適用します |
 | `db` | PostgreSQL と、日本語・英語の全文検索の PGroonga |
 | `objectstore` | 添付ファイルの置き場所（versitygw。ふつうのディレクトリの上に S3 の API を載せます） |
 | `converter` | Office の文書を PDF にしてプレビューを作ります（外のネットワークには出られません） |
@@ -51,9 +51,9 @@ flowchart TD
 
 ## 進め方
 
-1. [クイックスタート](quickstart.md)：サーバーを起動して、最初の管理者を作ります。
+1. [クイックスタート](quickstart.md)：サーバを起動して、最初の管理者を作ります。
 2. 必要に応じて：
-    - [既存のリバースプロキシの後ろで](reverse-proxy.md)（nginx などがすでに 80 / 443 を使っているサーバー）
+    - [既存のリバースプロキシの後ろで](reverse-proxy.md)（nginx などがすでに 80 / 443 を使っているサーバ）
     - [プッシュ通知（APNs / FCM）](push.md)
     - [文書のプレビュー](previews.md)
 3. [バックアップと復元](backup.md) を毎日動かします。
@@ -65,6 +65,6 @@ flowchart TD
 [infra/README.md](https://github.com/kanotown/taylis/blob/main/infra/README.md) と
 [infra/.env.example](https://github.com/kanotown/taylis/blob/main/infra/.env.example) にあります。
 
-!!! warning "サーバーの担当者はすべてのメッセージを読めます"
-    サーバー・データベース・バックアップを扱える人は、非公開チャンネルや DM を含むすべてのメッセージを技術的には
-    読めます。誰がサーバーを扱うかを決め、利用者に伝えてください（[プライバシーとデータの扱い](../privacy.md#admins)）。
+!!! warning "サーバの担当者はすべてのメッセージを読めます"
+    サーバ・データベース・バックアップを扱える人は、非公開チャンネルや DM を含むすべてのメッセージを技術的には
+    読めます。誰がサーバを扱うかを決め、利用者に伝えてください（[プライバシーとデータの扱い](../privacy.md#admins)）。

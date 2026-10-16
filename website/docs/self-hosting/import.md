@@ -5,7 +5,7 @@ description: Slack のエクスポートや Mattermost のチームを会話ご�
 
 # Slack / Mattermost / Notion からの移行
 
-どれも、サーバーでコマンドを実行して読み込みます。共通する点は次のとおりです。
+どれも、サーバでコマンドを実行して読み込みます。共通する点は次のとおりです。
 
 - **試し読み**（`--dry-run`）：すべてを検査して、何も書き込まずに、人の対応付け・件数・警告を表示します。
   本番の前に必ず実行してください。
@@ -42,7 +42,7 @@ Slack の無料プランで見えなくなった古いファイル、編集の�
 ```sh
 cd /srv/chikuwachat/infra
 install -d -m 700 /srv/chikuwachat/import
-# (手元から) scp 'Slack export.zip' root@<サーバー>:/srv/chikuwachat/import/slack-export.zip
+# (手元から) scp 'Slack export.zip' root@<サーバ>:/srv/chikuwachat/import/slack-export.zip
 
 # 1. 試し読み (何も書き込みません)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
@@ -113,7 +113,7 @@ Notion の書き出し（「Markdown & CSV」）を「ドキュメント」に�
 ```sh
 cd /srv/chikuwachat/infra
 install -d -m 700 /srv/chikuwachat/import
-# (手元から) scp 'Export.zip' root@<サーバー>:/srv/chikuwachat/import/notion-export.zip
+# (手元から) scp 'Export.zip' root@<サーバ>:/srv/chikuwachat/import/notion-export.zip
 
 # 1. 試し読み (何も書き込みません)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \

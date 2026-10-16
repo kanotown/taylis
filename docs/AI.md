@@ -164,7 +164,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   - `DELETE /admin/ai/agents/{id}` → 204 (ボットは全チャンネルから抜けて無効化。投稿は残る)。
   - `GET /admin/ai/usage?month=YYYY-MM` (省略は今月) → `AiUsageOut`。
   - (§12 で追加) `GET /admin/ai/providers` → `AiProviderOut[]` = `[{name: "anthropic"|"openai", configured: bool,
-    models: string[]}]`。その事業者の API キーがサーバーにあるか (キーそのものは返さない)。古いサーバーでは 404 (印を出さない)。
+    models: string[]}]`。その事業者の API キーがサーバにあるか (キーそのものは返さない)。古いサーバでは 404 (印を出さない)。
 - 全員:
   - `GET /ai/status` → `AiStatusOut`。`available` = 事業者のキーがある有効なボットが 1 体以上 (§12)。`summary_available` = `available` かつ
     今月の予算が残っている (記録済みの費用 + 待っている run の予約 < 予算。§3)。
@@ -176,7 +176,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   - (レビュー v0.1.18 で追加) `GET /ai/summaries/target?channel_id=` → `AiSummaryTargetOut`: その会話の要約の送り先
     (§2.3 の選び方)。頼めないときは `available = false` と `reason` (`ai_unavailable` / `ai_private_not_allowed` /
     `ai_budget_exceeded`)。ボットが決まれば `provider` / `model` / `agent_name` は頼めないときも入る (`ai_unavailable` では
-    null)。会話を読めなければ `404 channel_not_found`。古いサーバーでは 404 (端末はこれまでの表示のまま)。
+    null)。会話を読めなければ `404 channel_not_found`。古いサーバでは 404 (端末はこれまでの表示のまま)。
   - `GET /ai/runs/{id}` → `AiRunOut` (自分が頼んだ run だけ。ほかは 404 `ai_run_not_found`)。
   - `GET /ai/runs?kind=summary` → `AiRunOut[]` (自分の最近 20 件、新しい順)。
 - イベント `ai.run_updated` `{run: AiRunOut}`: 宛先は頼んだ人 (の全端末)。要約の状態が変わるたび (running、done、failed)。
@@ -246,7 +246,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 
 ### レビュー v0.1.18 の修正 (2026-10-02、移行 0062)
 
-外部レビュー (v0.1.18) のサーバーの指摘への対応。テストは `server/tests/test_ai_review_v018.py` (FakeProvider だけ)。
+外部レビュー (v0.1.18) のサーバの指摘への対応。テストは `server/tests/test_ai_review_v018.py` (FakeProvider だけ)。
 
 - **#2 要約の送り先**: 要約は会話のメンバーのボット (無ければ既定のボット) を使う (§2.3)。送り先 (`agent_id`・`provider`・
   `model`) は作るときに決めて `ai_runs` に残し、worker はその model だけを使う。待つ間にボットが止まった・消えた・キーが
@@ -275,7 +275,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   失敗したらスレッドに「応答できませんでした: 一時的なエラーで依頼を受け付けられませんでした」。
 - **#11 返事の投稿の失敗**: モデルの答え (`output`) と投稿の状態 (`reply_state`: pending / posted / failed、`reply_attempts`、
   `reply_next_at`) を分けた。投稿が一時的に失敗したら、30 秒・2 分・5 分・15 分あけて 5 回まで、保存した答えを同じ
-  `client_msg_id` (UUIDv5) で投稿し直す (モデルは呼び直さない)。サーバーが断る投稿 (ボットが外された・無効、会話が
+  `client_msg_id` (UUIDv5) で投稿し直す (モデルは呼び直さない)。サーバが断る投稿 (ボットが外された・無効、会話が
   アーカイブ、スレッドが消えた) は恒久的なので、run を `failed` にして理由を `error` に残す。取り消した run の「応答できません
   でした」も同じ仕組みで投稿する。
 
@@ -346,7 +346,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 - **事業者はモデルから決める** (`llm.py` の `MODEL_PROVIDERS`、DB に列は足さない)。移行 0059 は `ai_agents.model` の CHECK を
   広げるだけ (戻すときは OpenAI のボットを `claude-opus-5-5` に戻す)。
 - **キー**: `AI_OPENAI_API_KEY_FILE` (既定 `/run/secrets/openai_api_key`、compose は `infra/.env` の `OPENAI_API_KEY_FILE` を
-  マウント)。Anthropic と同じく、無い・空・ディレクトリなら「その事業者は使えない」だけで、サーバーは起動する。キーは事業者ごとに
+  マウント)。Anthropic と同じく、無い・空・ディレクトリなら「その事業者は使えない」だけで、サーバは起動する。キーは事業者ごとに
   最初に使うときに読み、無ければ次の利用でまた見る。
 - **使える / 使えない**: `available` = キーのある事業者の有効なボットが 1 体以上。要約の既定のボットは「キーのある最初の有効な
   ボット」(会話のメンバーのボットがいればそちらが先。§2.3、レビュー v0.1.18)。メンションされたボットの事業者にキーが無ければ、run を作らず「応答できませんでした: AI の API キーが設定されていません」。
@@ -494,7 +494,7 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
 ### 13.9 実装で決めたこと (M71 Android)
 
 - **入口**: 検索の「メッセージ」の結果の一番上の帯 (`ui/AskViews.kt` の `AskBar`。帯は常に LazyColumn の最初の項目で、隠れているときは空。後から出ても一覧の位置がずれない)。`summary_available` で、質問が空でなく 200 字以内で、`GET /ai/ask/target` が読めたときだけ出す (404・422・失敗は出さない)。横に「質問は <ボット名> (<事業者>) に送られます」、聞けないときは理由を赤で (Desktop と同じ文言) ボタンを無効に。質問は `Search.askQuery` (Desktop の askQuery と同じ: 打った語 + チップを `from:@` `after:` `before:` `has:` `is:thread` `is:times` に。会話は `channel_id`)。
-- **状態**: `AiHub` に `ask` (要約と別に 1 つ) と `askTarget` (質問と会話ごとに最後に読んだ 1 つ)。`put` は `kind = "ask"` の run を質問へ、ほかを要約へ。POST より先に届いた `ai.run_updated` は要約と同じ `seen` で合わせ、終わった run は戻さない。再接続で終わっていない質問を `GET /ai/runs/{id}` で読み直す。`ai_unavailable` / `ai_budget_exceeded` / `ai_private_not_allowed` で断られたら状態と送り先を読み直す。`AiApi` の新しい 3 つは既定で 404 (古いサーバーと同じ扱い)。
+- **状態**: `AiHub` に `ask` (要約と別に 1 つ) と `askTarget` (質問と会話ごとに最後に読んだ 1 つ)。`put` は `kind = "ask"` の run を質問へ、ほかを要約へ。POST より先に届いた `ai.run_updated` は要約と同じ `seen` で合わせ、終わった run は戻さない。再接続で終わっていない質問を `GET /ai/runs/{id}` で読み直す。`ai_unavailable` / `ai_budget_exceeded` / `ai_private_not_allowed` で断られたら状態と送り先を読み直す。`AiApi` の新しい 3 つは既定で 404 (古いサーバと同じ扱い)。
 - **結果**: 下からのシート (進み具合「メッセージを探しています…」→「答えを書いています…」、Markdown の答え、非公開の注記、出典 (送り手・会話・スレッド・日時・抜粋)、「この答えはあなたにだけ表示されます…」、「Anthropic · claude-opus-5-5」、失敗は「もう一度」)。[n] は `<server>/m/<id>` のリンクにして MessageBody の `citations` で「[n]」と描く (💬 を付けない)。出典や [n] を押すとシートを下げ (質問は残す。帯の「答え」で戻る)、検索の結果と同じく会話 (返信ならスレッド) で開く。閉じると質問を捨てる。
 - **履歴**: 帯の「履歴」でシートに `GET /ai/runs?kind=ask` (質問・日時・作成中 / 失敗)。押すとその答えを開き、終わっていなければ読み直す。テスト: AiAskTest 15。
 - **iOS (M71、build 69)**: 検索の「メッセージ」タブの結果の上 (リストの外。「見つかりませんでした」に隠れない) に「AI に聞く」の帯
@@ -504,7 +504,7 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
   出典・「あなたにだけ」・「Anthropic · claude-opus-5-5」、ツールバーに「履歴」(`GET /ai/runs?kind=ask`)。[n] と出典を押すとシートを
   閉じて検索画面の中でその会話 (返信はスレッド) を開く。答えは閉じても `AiHub.ask` に残り、帯の「「…」の答え」で戻れる (× と検索画面を
   閉じたときに捨てる)。`ai.run_updated` の `kind = "ask"` を受け、再接続で終わっていない run を読み直す。`question` / `sources` が
-  無いサーバーでは nil / []。エラーは共有の表 → AiRules の文言。`ai_*` で断られたら送り先を読み直し、`ai_unavailable` /
+  無いサーバでは nil / []。エラーは共有の表 → AiRules の文言。`ai_*` で断られたら送り先を読み直し、`ai_unavailable` /
   `ai_budget_exceeded` では状態も読み直す。
   （2026-10-06）答えを待っている間は、帯の「「…」の答え（作成中）」の行のアイコンを回る印にし、その下に今していること
   （「質問を送っています…」・「メッセージを探しています…」・「答えを書いています…」、シートと同じ文言）を出す。その間は
@@ -520,12 +520,12 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
 | 項目 | 決めた案 | 採らなかった案 |
 |---|---|---|
 | アイコン | ボットのユーザーのアイコン（人と同じ置き場所・検査・256px の PNG）を管理者が付ける・外す | ボット専用の列と置き場所 |
-| ネット検索 | ボットごとの「ネット検索を使う」（管理者だけ、既定はオフ）。事業者のサーバー側の検索だけを使う | 別の検索 API（新しい鍵が要る）、こちらのサーバーからの取得 |
+| ネット検索 | ボットごとの「ネット検索を使う」（管理者だけ、既定はオフ）。事業者のサーバ側の検索だけを使う | 別の検索 API（新しい鍵が要る）、こちらのサーバからの取得 |
 | 検索を使う場面 | メンションへの返事だけ | 「AI に聞く」でも（下の理由で使わない） |
 | 1 回の返事の検索 | 5 回まで | 上限なし |
 | 出典 | 返事の下に「出典：」とリンクの一覧（メッセージのリンクの形 `[題名](https://…)`） | 本文の中に番号 |
 | 既定のボット | 管理者が 1 体を選ぶ（`ai_agents.is_default`、1 体だけ） | 作成順の最初の 1 体のまま、モデルだけを選ぶ |
-| 新しいボットの初めのモデル | サーバーに OpenAI のキーがあれば GPT-6.1 Sol、無ければ Opus 5.5（一覧から何でも選べる） | サーバーの設定として持つ |
+| 新しいボットの初めのモデル | サーバに OpenAI のキーがあれば GPT-6.1 Sol、無ければ Opus 5.5（一覧から何でも選べる） | サーバの設定として持つ |
 
 「AI に聞く」で検索しない理由：答えの根拠を過去のメッセージ（[n] の出典）に限る作り（§13.3）で、ウェブの結果が混じると
 どちらが根拠か分からなくなる。また質問と見つかったメッセージから作った語がウェブに出る。要約も検索しない。
@@ -547,7 +547,7 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
 - **列**：`ai_agents.web_search`（既定 false）。`ai_runs.web_search`（メンションの run を作るときにボットから写す）と
   `ai_runs.web_search_requests`（事業者が実際に検索した回数）。移行 0114。
 - **使う道具**（2026-10-10 に公式の文書で確かめた）：
-  - Anthropic：サーバー側の web search ツール。Fable 5.1・Opus 5.5・Sonnet 5.5 は `web_search_20260318`（dynamic filtering：
+  - Anthropic：サーバ側の web search ツール。Fable 5.1・Opus 5.5・Sonnet 5.5 は `web_search_20260318`（dynamic filtering：
     モデルが結果をコードで絞ってから読む。`response_inclusion: "excluded"` で、絞るのに使った結果のブロックを応答から省く）、
     Haiku 4.5 は基本の `web_search_20250305`。どちらも `max_uses: 5`。長い検索で `stop_reason = pause_turn` になったら、
     返ってきた assistant のメッセージをそのまま送り返して続ける（3 回まで）。出典は本文のブロックの `citations` の
@@ -604,7 +604,7 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
   もの）、OpenAI は https://developers.openai.com/api/docs/pricing と https://developers.openai.com/api/docs/models/gpt-6-astra
   （短い文脈 ≤ 272K の料金。要約などはそれより短い）。
 - Fable 5.1 は考えることを止められない（`thinking` を送らない。今の Opus 5.5 と同じ呼び方）、考える量は effort、断られたときの
-  サーバー側のフォールバック（`fallbacks: "default"`）も使える。GPT-6 Astra は Responses API・reasoning effort low / medium / high・
+  サーバ側のフォールバック（`fallbacks: "default"`）も使える。GPT-6 Astra は Responses API・reasoning effort low / medium / high・
   web search に対応（モデルのページ）。
 - 今ある ID はそのまま使える。`MODEL_PROVIDERS` の順が管理画面の一覧の順（Anthropic：Fable 5.1・Opus 5.5・Sonnet 5.5・Haiku 4.5、
   OpenAI：Astra・Sol・Luna）。CHECK の制約も移行 0114 で広げた（戻すと Fable 5.1 は Opus 5.5、Astra は Sol に戻す）。
@@ -618,12 +618,12 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
   ウェブに送られる、出典がリンクで付く）、「既定のボットにする」。PATCH は変えた項目だけ。モデルの一覧に Fable 5.1 と
   GPT-6 Astra。新しいボットの初めのモデルは §14.1。使用量の「検索」の列。
 - **注意書き**（§4）：Desktop / Web・iOS・Android の 3 端末で、`AiAgentPublic.web_search` のボットがいれば検索の 1 文を足す
-  （ja / en / zh-Hans）。古いサーバー（`web_search` が無い）では今までどおり。
+  （ja / en / zh-Hans）。古いサーバ（`web_search` が無い）では今までどおり。
 - iOS / Android の管理画面は無いので、ほかの変更は無い（ボットのアイコンはユーザーのアイコンとして描かれる）。
 
 ### 14.8 テスト
 
-- サーバー：`tests/test_ai_web_search.py`（料金・予約・出典の形・プロンプト、SDK の代わりの stub で Anthropic の道具の付け方
+- サーバ：`tests/test_ai_web_search.py`（料金・予約・出典の形・プロンプト、SDK の代わりの stub で Anthropic の道具の付け方
   （検索のときだけ、`web_search_20260318` / Haiku は `web_search_20250305`、`max_uses` 5）・出典・回数・`pause_turn`、OpenAI の
   `tools` / `max_tool_calls`・`url_citation`・`web_search_call` の数、FakeProvider で API を通したメンションの返事の出典・費用・
   使用量・途中で外したとき・要約は検索しない、既定のボットの選び方と 1 体だけ、ボットのアイコンの付け外しと権限、

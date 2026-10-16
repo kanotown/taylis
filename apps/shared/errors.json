@@ -107,7 +107,7 @@
       "zh-Hans": "找不到 AI 结果。"
     },
     "ai_unavailable": {
-      "ja": "このサーバーでは AI を使えません",
+      "ja": "このサーバでは AI を使えません",
       "en": "AI is not available on this server.",
       "zh-Hans": "此服务器不支持 AI。"
     },
@@ -1107,7 +1107,7 @@
       "zh-Hans": "请将定时消息设在至少一分钟之后。"
     },
     "server_error": {
-      "ja": "サーバーで問題が発生しました。しばらくしてからお試しください",
+      "ja": "サーバで問題が発生しました。しばらくしてからお試しください",
       "en": "Something went wrong on the server. Try again later.",
       "zh-Hans": "服务器出现问题。请稍后再试。"
     },
@@ -1604,13 +1604,13 @@
       "zh-Hans": "操作过于频繁。请稍候再试。"
     },
     "5xx": {
-      "ja": "サーバーで問題が発生しました。しばらくしてからお試しください",
+      "ja": "サーバで問題が発生しました。しばらくしてからお試しください",
       "en": "Something went wrong on the server. Try again later.",
       "zh-Hans": "服务器出现问题。请稍后再试。"
     }
   },
   "network": {
-    "ja": "サーバーに接続できません。ネットワークを確認してください",
+    "ja": "サーバに接続できません。ネットワークを確認してください",
     "en": "Can't reach the server. Check your network.",
     "zh-Hans": "无法连接服务器。请检查网络。"
   },

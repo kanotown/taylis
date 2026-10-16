@@ -215,7 +215,7 @@ def _status_error(cls: Any, status: int, code: str | None = None) -> Any:
         (_status_error(openai.NotFoundError, 404), False, "モデルが見つかりません"),
         (_status_error(openai.RateLimitError, 429), True, "混み合っています"),
         (_status_error(openai.RateLimitError, 429, "insufficient_quota"), False, "利用枠"),
-        (_status_error(openai.InternalServerError, 503), True, "サーバーエラー (503)"),
+        (_status_error(openai.InternalServerError, 503), True, "サーバエラー (503)"),
         (
             openai.APIConnectionError(request=httpx2.Request("POST", "https://api.openai.com")),
             True,

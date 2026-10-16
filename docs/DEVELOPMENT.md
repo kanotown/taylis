@@ -164,16 +164,16 @@ profile の作り方は PUSH_NOTIFICATIONS.md §9.3。無ければ今までど�
 
 ### リリースの順番と「Latest」
 
-1. サーバーのリリース：タグ `vX.Y.Z` を push すると release.yml がイメージを作って本番へデプロイする。release.yml は
+1. サーバのリリース：タグ `vX.Y.Z` を push すると release.yml がイメージを作って本番へデプロイする。release.yml は
    GitHub Release を**作らない**（タグだけ）。
 2. デスクトップ版のリリース：そのあと（main の CI が通ったあと）にこの Mac で `release-desktop.sh vX.Y.Z`。
    GitHub Release はここで初めてでき、全部の添付が済んでから Latest になる。
 
-そのため kanotown/taylis の Latest は、いつも `latest.json` のあるリリース（直前のデスクトップ版）を指す。サーバーのタグから
+そのため kanotown/taylis の Latest は、いつも `latest.json` のあるリリース（直前のデスクトップ版）を指す。サーバのタグから
 デスクトップ版のリリースまでの間、またはデスクトップ版を出さないタグでは、アプリは前の版のままで「最新の版です」と出し、
 ダウンロードのページ（`…/releases/latest`）も前の版を出す。タグのページ（Tags）には新しいタグが見えるが、リリースはない。
 **GitHub の画面や `gh release create` で、`latest.json` のないリリースを手で作らない**（Latest になると、どのアプリの
-更新の確認も 404 になる）。サーバーだけのリリースノートを書きたいときは、Pre-release にするか「Set as the latest release」
+更新の確認も 404 になる）。サーバだけのリリースノートを書きたいときは、Pre-release にするか「Set as the latest release」
 を外して作る。
 
 ### 配布先の移行（kanotown/taylis-releases → kanotown/taylis、2026-10-07 決定）
@@ -191,7 +191,7 @@ profile の作り方は PUSH_NOTIFICATIONS.md §9.3。無ければ今までど�
 - **過去のリリース**：v0.1.31〜v0.1.41（v0.1.32 は無し）は、同じタイトル・リリースノート・インストーラ（.dmg／.exe／.msi）で
   kanotown/taylis の同じタグにも作った（2026-10-07。Latest にはせず、`latest.json` と更新用のファイルは付けない）。
   一覧はタグのコミットの日時の順に並ぶので、新しいものが上になる。
-- **終わらせる時期**：早くても 2026-11-30。その前に、本番のサーバーで 30 日以内に動いた v0.1.41 以前のデスクトップ版が
+- **終わらせる時期**：早くても 2026-11-30。その前に、本番のサーバで 30 日以内に動いた v0.1.41 以前のデスクトップ版が
   無いことを確かめる：
   `SELECT app_version, count(*) FROM devices WHERE platform = 'desktop' AND enabled AND last_seen_at > now() - interval '30 days' GROUP BY 1 ORDER BY 1;`
   （`app_version` は版の文字列なので、0.1.9 と 0.1.10 の並びに注意して目で見る）。残っている人には、kanotown/taylis から
@@ -204,7 +204,7 @@ profile の作り方は PUSH_NOTIFICATIONS.md §9.3。無ければ今までど�
 
 このリポジトリは公開 (Apache-2.0) なので、ワークフローはすべて GitHub のホストする runner で動かす
 (`ubuntu-latest`、iOS とデスクトップのインストーラは `macos-latest` / `windows-latest`)。self-hosted runner、
-とくに本番のサーバーの上の runner は使わない: 外部からの pull request がそこで任意のコードを動かせてしまう。
+とくに本番のサーバの上の runner は使わない: 外部からの pull request がそこで任意のコードを動かせてしまう。
 
 - ci.yml の server ジョブは、テスト用の PostgreSQL + PGroonga を service container
   (`groonga/pgroonga:latest-alpine-17`、開発用の compose と同じイメージ) で立て、Docker が選んだポートを
@@ -223,7 +223,7 @@ profile の作り方は PUSH_NOTIFICATIONS.md §9.3。無ければ今までど�
    "Allow GitHub Actions to create and approve pull requests" は切っておく。
 3. Settings → Environments の `production` と `taylis` は、Deployment branches and tags で **タグ `v*` だけ**を許可する
    (必要なら Required reviewers も)。秘密情報 (`DEPLOY_*`) は environment に置き、リポジトリの Secrets には置かない。
-4. Settings → Actions → Runners に以前の self-hosted runner が残っていれば外す (サーバーの runner のサービスも止める)。
+4. Settings → Actions → Runners に以前の self-hosted runner が残っていれば外す (サーバの runner のサービスも止める)。
 5. Settings → Code security で "Private vulnerability reporting" を有効にする (SECURITY.md)。
 
 ## 8. フォークでのビルド (Forks)
@@ -235,10 +235,10 @@ profile の作り方は PUSH_NOTIFICATIONS.md §9.3。無ければ今までど�
 | --- | --- |
 | アイコン | `apps/shared/brand/appicon.png` を差し替えて `apps/shared/brand/gen_icons.sh` (§3)。DMG の背景は `gen_dmg_background.py` |
 | iOS の Team ID | `apps/ios/project.yml` の `DEVELOPMENT_TEAM` (今は公式アプリの `3WF4YQB4L6`)。`xcodegen generate` で `ChikuwaChat.xcodeproj` を作り直す。`apps/ios/scripts/release-ios.sh` の `TEAM_ID` も |
-| iOS のバンドル ID | `apps/ios/project.yml` の `bundleIdPrefix` と `PRODUCT_BUNDLE_IDENTIFIER` (`jp.chikuwachat.ios`、テストは `.tests`)。サーバーの `.env` の `PUSH_APNS_BUNDLE_ID`・`PUSH_APNS_TEAM_ID`・`PUSH_APNS_KEY_ID` も合わせる (APNs の topic) |
+| iOS のバンドル ID | `apps/ios/project.yml` の `bundleIdPrefix` と `PRODUCT_BUNDLE_IDENTIFIER` (`jp.chikuwachat.ios`、テストは `.tests`)。サーバの `.env` の `PUSH_APNS_BUNDLE_ID`・`PUSH_APNS_TEAM_ID`・`PUSH_APNS_KEY_ID` も合わせる (APNs の topic) |
 | Android | `apps/android/app/build.gradle.kts` の `applicationId` (`jp.chikuwachat.android`。`namespace` はコードのパッケージなので替えなくてよい)。FCM は自分の Firebase プロジェクトの `google-services.json` とサービスアカウント |
 | デスクトップ | `apps/desktop/src-tauri/tauri.conf.json` の `identifier` (`jp.chikuwachat.desktop`)、`productName`。更新は `plugins.updater` の `endpoints` と `pubkey` を自分の鍵・リポジトリに替える (§6。`release-desktop.sh` の `TAYLIS_RELEASES_REPO`)。更新を使わないなら `npm run tauri:build` |
-| 表示名 | 各アプリの表示名 (iOS の `CFBundleDisplayName`、Android の `app_name`、Tauri の `productName`、Web の `<title>`) と、サーバーの `.env` の `WORKSPACE_NAME` |
+| 表示名 | 各アプリの表示名 (iOS の `CFBundleDisplayName`、Android の `app_name`、Tauri の `productName`、Web の `<title>`) と、サーバの `.env` の `WORKSPACE_NAME` |
 
 URL スキーム `chikuwachat://` や内部のパッケージ名は名前の表示ではないので、そのままでも動く (公式アプリと同じ端末に
 入れるなら、URL スキームも替えると取り合いにならない)。

@@ -41,7 +41,7 @@ description: メッセージの報告、ブロック、アカウントの削除�
 どちらも、プロフィール（名前・ユーザー名・メールアドレス・画像・ステータス）・ログイン情報・端末とプッシュの登録を消し、
 共有の会話に投稿したメッセージとファイルは「退会したユーザー」の名前で残します。
 
-サーバーの `https://chat.example.com/account-deletion` に、削除の方法を説明する公開のページがあります
+サーバの `https://chat.example.com/account-deletion` に、削除の方法を説明する公開のページがあります
 （アプリのストアの「アカウント削除の URL」に使えます）。
 
 詳しくは [docs/MODERATION.md](https://github.com/kanotown/taylis/blob/main/docs/MODERATION.md) をご覧ください。

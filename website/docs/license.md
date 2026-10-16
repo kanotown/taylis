@@ -8,7 +8,7 @@ description: Taylis のライセンス、商標、第三者のソフトウェア
 ## ソースコード：Apache License 2.0
 
 Taylis のソースコードは [Apache License 2.0](https://github.com/kanotown/taylis/blob/main/LICENSE) で公開しています。
-このライセンスの条件に従えば、使う・調べる・改変する・自分たちのサーバーで動かす、のいずれも自由です。
+このライセンスの条件に従えば、使う・調べる・改変する・自分たちのサーバで動かす、のいずれも自由です。
 
 ## 名前とアイコン（商標）
 
@@ -17,9 +17,9 @@ Apache License の対象 **外** です（Apache License 2.0 の第 6 条）。�
 
 | してよいこと | 改変版を配るときに必要なこと |
 | --- | --- |
-| コードを Apache License のもとで使い、改変し、自分たちのサーバーで動かす | **別の名前** と **別のアイコン** を使う。公式の Taylis であるかのように見せない |
+| コードを Apache License のもとで使い、改変し、自分たちのサーバで動かす | **別の名前** と **別のアイコン** を使う。公式の Taylis であるかのように見せない |
 | 公式のアプリやリリースを、改変せずに元の名前とアイコンのまま配る | ブランドの画像を差し替える（`apps/shared/brand/gen_icons.sh` で 1 枚の画像から全部を作り直せます） |
-| 「Taylis をもとにした」「Taylis のサーバーに対応」のように、名前で事実を説明する | アプリの識別子（バンドル ID など）を変え、公式のアプリと取り違えたり上書きしたりしないようにする |
+| 「Taylis をもとにした」「Taylis のサーバに対応」のように、名前で事実を説明する | アプリの識別子（バンドル ID など）を変え、公式のアプリと取り違えたり上書きしたりしないようにする |
 
 詳しくは [TRADEMARKS.md](https://github.com/kanotown/taylis/blob/main/TRADEMARKS.md) と
 [NOTICE](https://github.com/kanotown/taylis/blob/main/NOTICE) をご覧ください。

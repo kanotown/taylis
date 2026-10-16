@@ -11,7 +11,7 @@ function statusMessageFor(status: string): string | undefined {
   return STATUS_MESSAGES_BY_LOCALE[getLocale()][status] ?? STATUS_MESSAGES_BY_LOCALE.ja[status];
 }
 
-/** 「サーバーに接続できません…」 in the UI language. */
+/** 「サーバに接続できません…」 in the UI language. */
 export function networkErrorMessage(): string {
   return NETWORK_ERROR_MESSAGE_BY_LOCALE[getLocale()];
 }

@@ -35,10 +35,10 @@ flowchart TD
   APP -. "プッシュ" .-> P["APNs / FCM"] -. "通知" .-> PH["iPhone・Android"]
 ```
 
-アプリはどれも Caddy を通して 1 つのサーバー（app）とやり取りします。データは PostgreSQL（メッセージ・検索の索引など）と
-versitygw（添付ファイルの中身）の 2 か所に置きます。スマートフォンへのプッシュは、サーバーから APNs と FCM を経由して届きます。
+アプリはどれも Caddy を通して 1 つのサーバ（app）とやり取りします。データは PostgreSQL（メッセージ・検索の索引など）と
+versitygw（添付ファイルの中身）の 2 か所に置きます。スマートフォンへのプッシュは、サーバから APNs と FCM を経由して届きます。
 
-サーバーの中では、API・WebSocket・送信待ちの表（outbox）の処理・プッシュの送信が 1 つのプロセスで動いています。
+サーバの中では、API・WebSocket・送信待ちの表（outbox）の処理・プッシュの送信が 1 つのプロセスで動いています。
 
 ```mermaid
 flowchart TD
@@ -50,7 +50,7 @@ flowchart TD
 
 | 部分 | 技術 |
 | --- | --- |
-| サーバー | Python、FastAPI、SQLAlchemy、Alembic（移行） |
+| サーバ | Python、FastAPI、SQLAlchemy、Alembic（移行） |
 | データベース | PostgreSQL 17 と PGroonga（全文検索） |
 | 添付ファイル | S3 互換のオブジェクトストレージ（既定は versitygw）。`BlobStore` の抽象の後ろにあり、ほかの S3 互換のものに替えられます |
 | リアルタイム | WebSocket。イベントの配り方は `EventBus` の抽象の後ろにあり、今はメモリの中の実装です（横に増やすときは Redis などに替えられます） |
@@ -60,7 +60,7 @@ flowchart TD
 | Android | Kotlin、Jetpack Compose、Coroutines / Flow |
 
 どのアプリも、同じ API の仕様（[openapi/openapi.json](https://github.com/kanotown/taylis/blob/main/openapi/openapi.json)）
-でサーバーとやり取りします。アプリごとに違う動きを作らないようにしています。
+でサーバとやり取りします。アプリごとに違う動きを作らないようにしています。
 
 ## 使わないもの
 

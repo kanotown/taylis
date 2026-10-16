@@ -1,6 +1,6 @@
 ---
 title: 困ったとき
-description: サーバーの運用でよくある問題と確かめ方
+description: サーバの運用でよくある問題と確かめ方
 ---
 
 # 困ったとき
@@ -21,7 +21,7 @@ curl https://chat.example.com/healthz
 ## よくある問題
 
 ??? question "ブラウザで開けない・証明書のエラーになる"
-    - DNS がサーバーを指しているか：`dig +short chat.example.com`
+    - DNS がサーバを指しているか：`dig +short chat.example.com`
     - 80 / 443 が開いているか（VPS のパネルのファイアウォールも）
     - Cloudflare のプロキシがオフ（DNS only）になっているか
     - Caddy のログ：`docker compose ... logs caddy`
@@ -40,7 +40,7 @@ curl https://chat.example.com/healthz
 
 ??? question "プッシュ通知が届かない"
     1. 利用者に「テスト通知を送る」を試してもらい、結果を見ます（[通知の設定](../guide/notifications.md#test)）。
-    2. サーバーで `python -m app.cli push-test --user <名前>` を実行します。
+    2. サーバで `python -m app.cli push-test --user <名前>` を実行します。
     3. `docker compose ... logs app | grep -i apns`（または `fcm`）を見ます。
     4. 別の端末で操作中・既読・ミュート・おやすみ時間の間は、仕様として送りません。
 
@@ -48,7 +48,7 @@ curl https://chat.example.com/healthz
 
 ??? question "Office の文書のプレビューが「作成中」のまま"
     `converter` が動いているか（`docker compose ... ps converter`）、`PREVIEW_CONVERTER_URL` が空になっていないかを
-    確かめます。一時的な失敗はサーバーが後で再試行します。`generate-previews --retry-failed` でやり直せます。
+    確かめます。一時的な失敗はサーバが後で再試行します。`generate-previews --retry-failed` でやり直せます。
 
 ??? question "Google でのログインのボタンが出ない"
     クライアント ID・secret・`SSO_GOOGLE_ALLOWED_DOMAINS`・`PUBLIC_BASE_URL` のどれかが欠けていると、起動のときに
@@ -56,7 +56,7 @@ curl https://chat.example.com/healthz
 
 ??? question "パスワードを忘れた・2 要素認証の端末をなくした"
     管理者が管理画面で仮のパスワードを発行するか、2 要素認証を解除します。管理者自身が入れなくなったときは、
-    サーバーで `create-admin` を使って別の管理者を作れます。
+    サーバで `create-admin` を使って別の管理者を作れます。
 
 ??? question "ディスクがいっぱいになりそう"
     `df -h /srv` で確かめます。バックアップは 14 世代を残し、添付ファイルは増分なので、増えるのはおもに添付の分です。

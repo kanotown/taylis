@@ -81,7 +81,7 @@ MPL-2.0)。PDF の 1 ページ目とページ数は app が pypdfium2 で作る�
 
 - **起動**: `docker-compose.yml` に入っているので、開発の `docker compose up -d`、本番の `deploy.sh` (と `docker-compose.prod.yml`
   / `.release.yml` / `.behind-proxy.yml` の組み合わせ) のどれでも一緒に起動する。deploy.sh はイメージを先に pull する。
-  既存のサーバーでは、このリリースの最初のデプロイで約 440 MB のダウンロードが 1 回増える。
+  既存のサーバでは、このリリースの最初のデプロイで約 440 MB のダウンロードが 1 回増える。
 - **設定**: app には `PREVIEW_CONVERTER_URL=http://converter:3000` が既定で入る。`infra/.env` に `PREVIEW_CONVERTER_URL=` (空) と
   書くと Office のプレビューを作らない (PDF は作る)。`PREVIEWS_ENABLED=false` なら一切作らない。入力の上限は
   `PREVIEW_MAX_INPUT_BYTES` (既定 50 MB)。
@@ -323,11 +323,11 @@ git tag v1.2.3 → git push origin v1.2.3
   | HTTP/3 (無くても動く) | UDP 443 |
 
   GitHub Actions の接続元 IP は固定できないので、SSH は送信元を絞らない (鍵と強制コマンドで守る)。
-- サーバーの IPv4 アドレスを VPS パネルで確認しておく。
+- サーバの IPv4 アドレスを VPS パネルで確認しておく。
 
 **2. ドメイン (DNS)**
 
-- ドメインの DNS を管理しているところ (レジストラやネームサーバーの管理画面の「DNS レコード設定」など) で
+- ドメインの DNS を管理しているところ (レジストラやネームサーバの管理画面の「DNS レコード設定」など) で
   **A レコード**を足す:
   ホスト名 `chat`、種別 A、内容 = VPS の IPv4 アドレス。IPv6 でも使うなら AAAA も。
 - Cloudflare で管理している場合はプロキシをオフ (DNS only、灰色の雲) にする。Caddy が自分で証明書を取り、
@@ -361,7 +361,7 @@ rm /tmp/vps-bootstrap.sh /tmp/deploy-ssh.sh /tmp/.env.example /tmp/deploy.conf.e
 - 強制コマンド `/usr/local/bin/chikuwa-deploy` (root の持ち物) と、デプロイ鍵の `authorized_keys` への登録
   (`command="/usr/local/bin/chikuwa-deploy",restrict`: その 2 コマンド以外とポート転送などをすべて禁止)
 - `infra/.env` を作り、`SECRET_KEY`・`POSTGRES_PASSWORD`・`S3_SECRET_KEY` を新しいランダム値で埋める
-  (この値はサーバーにしかない。`.env` はバックアップとは別に控えておく)、`CHAT_DOMAIN` と `WORKSPACE_NAME`
+  (この値はサーバにしかない。`.env` はバックアップとは別に控えておく)、`CHAT_DOMAIN` と `WORKSPACE_NAME`
 - `infra/deploy.conf` (`REGISTRY`、`BACKUP_ROOT=/srv/backups`)、毎日 3:30 のバックアップ (`/etc/cron.d/chikuwachat-backup`)
 
 最後に GitHub に入れる値 (ホスト鍵の行と指紋) を表示する。APNs / FCM を使うなら、鍵を
@@ -392,7 +392,7 @@ root のパスワードログインは、鍵でログインできることを確
    ジョブの service container。デプロイ鍵はジョブの一時フォルダ (`RUNNER_TEMP`) にだけ置き、ジョブの終わりに消す。
    deploy ジョブは、フォークではない元のリポジトリの `v*` タグでだけ動く。公開リポジトリでは、外部からの
    pull request のワークフローに承認を求める設定にする (docs/DEVELOPMENT.md「公開リポジトリの CI」)。
-   本番のサーバーやその上の self-hosted runner で、公開リポジトリのジョブを動かさない。
+   本番のサーバやその上の self-hosted runner で、公開リポジトリのジョブを動かさない。
 
 **5. 最初のリリース**
 
@@ -407,9 +407,9 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
   exec app python -m app.cli create-admin --username admin
 ```
 
-### 既存の nginx の後ろで動かす (共用サーバー)
+### 既存の nginx の後ろで動かす (共用サーバ)
 
-他のサイトの nginx がすでに 80 / 443 と証明書 (certbot) を持っているサーバーでは、Caddy に 80 / 443 を
+他のサイトの nginx がすでに 80 / 443 と証明書 (certbot) を持っているサーバでは、Caddy に 80 / 443 を
 渡さず、nginx の後ろで動かす (ARCHITECTURE.md D22)。
 
 ```
@@ -464,13 +464,13 @@ upload / deploy、初回起動、更新 (バックアップあり)、起動し�
 (upload が置き換えるのは compose・Caddyfile・スクリプトだけ)。管理者が画面で消したセットや絵文字は戻らない。
 
 ```sh
-# 0. (このリリースより前のサーバーで、まだフォルダが無いときだけ)
-ssh -i <鍵> root@<サーバー> install -d -o deploy -g deploy -m 755 /srv/chikuwachat/infra/emoji-presets
+# 0. (このリリースより前のサーバで、まだフォルダが無いときだけ)
+ssh -i <鍵> root@<サーバ> install -d -o deploy -g deploy -m 755 /srv/chikuwachat/infra/emoji-presets
 
 # 1. 手元の Mac (リポジトリの直下) から、フォルダごと送る
-scp -r -i <鍵> emoji/Chikuwa emoji/Hanpen emoji/Hanpen_dot root@<サーバー>:/srv/chikuwachat/infra/emoji-presets/
+scp -r -i <鍵> emoji/Chikuwa emoji/Hanpen emoji/Hanpen_dot root@<サーバ>:/srv/chikuwachat/infra/emoji-presets/
 
-# ここからサーバーで (root)
+# ここからサーバで (root)
 cd /srv/chikuwachat/infra
 # 2. ほかの infra のファイルと同じく deploy の持ち物にし、コンテナのアプリ (uid 10001) が読めるようにする
 chown -R deploy:deploy emoji-presets
@@ -493,14 +493,14 @@ COMPOSE+=(--profile proxy)
 - 管理者が消したセットを戻すとき: 3. の最後を `import-emoji-presets --restore Hanpen` にする。
 - フォルダが 1 つ壊れていても (pack.json の誤りや足りない画像) そのフォルダが飛ばされるだけで、アプリは普通に起動する。
   CLI は終了コード 1 と `SKIPPED (理由)` を出す。
-- release の配布先が複数あるとき (production 以外の環境) は、入れたいサーバーごとに同じ手順で置く。
+- release の配布先が複数あるとき (production 以外の環境) は、入れたいサーバごとに同じ手順で置く。
 
 ## デモのワークスペース（seed-demo）
 
 `python -m app.cli seed-demo` は、空のデータベースに架空の研究室「Taylis デモ研究室」（人・約 2 週間分の会話・週報の回収・
 タスク・カレンダー・キャンバス・ファイル・予約の枠）を書き込む。審査・見学用の一般メンバー `review` を含む。再実行しても
 何もせず、`--reset` は全データを消して書き直す（`WORKSPACE_NAME` がデモの名前のときだけ）。手元で動かす手順は
-[demo/README.md](demo/README.md)、本番と同じサーバーに 2 つ目の Taylis として置く手順（`-p taylis-demo`、
+[demo/README.md](demo/README.md)、本番と同じサーバに 2 つ目の Taylis として置く手順（`-p taylis-demo`、
 Caddy は `127.0.0.1:18081`、毎晩のリセット）は [demo/DEPLOY_VPS.md](demo/DEPLOY_VPS.md)。
 
 ## Mattermost からの移行 (M18)
@@ -542,7 +542,7 @@ Mattermost 側で行われた編集・削除・リアクションは反映しな
 **前提**: この機能と増分バックアップを含むリリースをデプロイしてから行う (以前の `objects.tgz` 形式のままだと、
 毎晩 7 GB を丸ごと写すことになる)。添付の分だけオブジェクトストアが増える (大きなチームでは数 GB)。
 
-本番サーバー (root。Mattermost の設定とデータは root でしか読めない) での手順:
+本番サーバ (root。Mattermost の設定とデータは root でしか読めない) での手順:
 
 ```sh
 cd /srv/chikuwachat/infra
@@ -589,8 +589,8 @@ rm -rf /srv/chikuwachat/import
 
 ## Slack からの移行 (M87)
 
-Slack のワークスペースの書き出し (エクスポート ZIP) を、会話ごとこのサーバーへ読み込む。読み込み先はどの ChikuwaChat
-サーバーでもよい (このサーバー専用の前提は無い)。Mattermost の移行と同じ仕組み (`import_refs`・やり直し・`--dry-run`) を使う。
+Slack のワークスペースの書き出し (エクスポート ZIP) を、会話ごとこのサーバへ読み込む。読み込み先はどの ChikuwaChat
+サーバでもよい (このサーバ専用の前提は無い)。Mattermost の移行と同じ仕組み (`import_refs`・やり直し・`--dry-run`) を使う。
 
 **読み込むもの**: 公開チャンネル (アーカイブ済みはアーカイブのまま)、そのメンバー、メッセージ (`ts` の順にチャンネルの seq を
 振る。時刻は `ts` そのもの)、スレッド (`thread_ts`)、「チャンネルにも送信」した返信 (`thread_broadcast`)、編集の時刻
@@ -674,17 +674,17 @@ Slack の無料プランで見えなくなった古いファイル (`hidden_by_l
 
 **例: 研究室の Slack を Taylis に移す (M91)**: 移行先は `/srv/chikuwachat` のデプロイ (この例では既存のリバース
 プロキシの後ろ、`--behind-proxy`)。Slack のアドレスは `学籍番号@mail.example.ac.jp`、Taylis は Google でログイン
-(許可ドメイン `g.example.ac.jp`、自動作成オン)。以下はサーバーで root として。`--actor` は Taylis の管理者のユーザー名
+(許可ドメイン `g.example.ac.jp`、自動作成オン)。以下はサーバで root として。`--actor` は Taylis の管理者のユーザー名
 (例 `admin`)。
 
 手元の Mac から書き出しを送る:
 
 ```sh
-ssh root@<Taylis のサーバー> install -d -m 700 /srv/chikuwachat/import
-scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<Taylis のサーバー>:/srv/chikuwachat/import/slack-export.zip
+ssh root@<Taylis のサーバ> install -d -m 700 /srv/chikuwachat/import
+scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<Taylis のサーバ>:/srv/chikuwachat/import/slack-export.zip
 ```
 
-サーバーで、最初に一度だけ (イメージは deploy.conf の `REGISTRY` と `.release` のタグ):
+サーバで、最初に一度だけ (イメージは deploy.conf の `REGISTRY` と `.release` のタグ):
 
 ```sh
 cd /srv/chikuwachat/infra
@@ -696,11 +696,11 @@ chmod 600 /srv/chikuwachat/import/slack-export.zip
 
 書き出しが Mattermost からのブリッジの投稿 (bot の名前 = Mattermost のユーザー名) や日本語の名前のカスタム絵文字を
 含むときは (M92)、絵文字の画像の ZIP と付け替えのファイル (`infra/slack-import/example.emoji-rename.txt` の形で作る)
-もサーバーへ送る:
+もサーバへ送る:
 
 ```sh
-scp ~/Downloads/<絵文字の ZIP>.zip root@<Taylis のサーバー>:/srv/chikuwachat/import/emoji.zip
-scp emoji-rename.txt root@<Taylis のサーバー>:/srv/chikuwachat/import/
+scp ~/Downloads/<絵文字の ZIP>.zip root@<Taylis のサーバ>:/srv/chikuwachat/import/emoji.zip
+scp emoji-rename.txt root@<Taylis のサーバ>:/srv/chikuwachat/import/
 ```
 
 ブリッジの bot の名前ごとに `--bot-as` を 1.〜3. のすべてに付ける (例: `--bot-as 名前=U0123ABCD` (Slack の人)、
@@ -798,14 +798,14 @@ Slack の `元` の画像で Taylis のカスタム絵文字 `先` を作り、�
 (非公開チャンネルと DM が入るのは、有料プランで Slack に申請が通った場合だけ)。無料プランで見えなくなった古いメッセージ・
 ファイルは書き出しに入らない。ZIP の中のファイルの URL は時間が経つと使えなくなることがあるので、書き出しは移行の直前に作る。
 
-本番サーバー (root。書き出しには全メッセージが入っているので、root だけが読めるところに置く) での手順:
+本番サーバ (root。書き出しには全メッセージが入っているので、root だけが読めるところに置く) での手順:
 
 ```sh
-# 0. 手元の Mac から、書き出しの ZIP をサーバーへ送る
-ssh root@<サーバー> install -d -m 700 /srv/chikuwachat/import
-scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<サーバー>:/srv/chikuwachat/import/slack-export.zip
+# 0. 手元の Mac から、書き出しの ZIP をサーバへ送る
+ssh root@<サーバ> install -d -m 700 /srv/chikuwachat/import
+scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<サーバ>:/srv/chikuwachat/import/slack-export.zip
 
-# ここからサーバーで
+# ここからサーバで
 cd /srv/chikuwachat/infra
 . ./deploy.conf
 export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$(cat .release)"
@@ -869,7 +869,7 @@ zip の中に zip が入っている）をそのまま使う（展開しなく�
 ```sh
 cd /srv/chikuwachat/infra
 install -d -m 700 /srv/chikuwachat/import
-# (手元から) scp ~/Downloads/<書き出し>.zip root@<サーバー>:/srv/chikuwachat/import/notion-export.zip
+# (手元から) scp ~/Downloads/<書き出し>.zip root@<サーバ>:/srv/chikuwachat/import/notion-export.zip
 
 # release の compose はイメージの名前が要る (deploy.sh が渡すもの)。動いている版に合わせる
 export CHIKUWA_SERVER_IMAGE=$(docker inspect chikuwachat-app-1 --format '{{.Config.Image}}')

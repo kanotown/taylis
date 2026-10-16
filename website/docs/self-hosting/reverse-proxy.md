@@ -1,11 +1,11 @@
 ---
 title: 既存のリバースプロキシの後ろで
-description: nginx などがすでに 80 / 443 を使っているサーバーで Taylis を動かす
+description: nginx などがすでに 80 / 443 を使っているサーバで Taylis を動かす
 ---
 
 # 既存のリバースプロキシの後ろで
 
-ほかのサイトの nginx がすでに 80 / 443 と証明書（certbot）を持っているサーバーでは、Caddy に 80 / 443 を渡さず、
+ほかのサイトの nginx がすでに 80 / 443 と証明書（certbot）を持っているサーバでは、Caddy に 80 / 443 を渡さず、
 nginx の後ろで動かします。
 
 ```mermaid

@@ -1,7 +1,7 @@
-# デモサーバーを本番と同じサーバーに置く
+# デモサーバを本番と同じサーバに置く
 
-本番の Taylis（`/srv/chikuwachat`、ホストの nginx の後ろで Caddy が `127.0.0.1:18080`）が動いているサーバーに、
-2 つ目の Taylis としてデモ（架空のデータ、[README.md](README.md)）を置く手順です。例は Taylis の公開デモ・審査用サーバー
+本番の Taylis（`/srv/chikuwachat`、ホストの nginx の後ろで Caddy が `127.0.0.1:18080`）が動いているサーバに、
+2 つ目の Taylis としてデモ（架空のデータ、[README.md](README.md)）を置く手順です。例は Taylis の公開デモ・審査用サーバ
 `https://demo.kano-lab.com`（本番は `taylis.kano-lab.com`）で、別のドメインならコマンドの中のドメインを置き換えます。
 
 ```
@@ -17,12 +17,12 @@
 - **必要なリリース**：`seed-demo` を含むリリース（このコマンドが入った後の最初のタグ）。本番の `.release` がそれより
   古ければ、本番を先に上げるか、`TAG=` に新しいタグを書きます。
 
-以下はすべてそのサーバーで root として実行します。コマンドに `#` のコメントは入れていません（そのまま貼れます）。
+以下はすべてそのサーバで root として実行します。コマンドに `#` のコメントは入れていません（そのまま貼れます）。
 
 ## 1. DNS
 
-`demo.kano-lab.com` の **A レコード**をこのサーバーの IP アドレスに向けます（`*.kano-lab.com` のワイルドカードは別の
-サーバーを指しているので、個別のレコードが要ります）。反映を確かめます。
+`demo.kano-lab.com` の **A レコード**をこのサーバの IP アドレスに向けます（`*.kano-lab.com` のワイルドカードは別の
+サーバを指しているので、個別のレコードが要ります）。反映を確かめます。
 
 ```sh
 dig +short demo.kano-lab.com
@@ -60,7 +60,7 @@ cat secrets/demo_review_password
 
 `demo-vps.sh` は本番の `deploy.sh` と同じ compose の組み合わせ（`docker-compose.yml` + `prod` + `release` +
 `behind-proxy`、`--profile proxy`）を `-p taylis-demo` で動かし、`/readyz` が `ok` になるまで待ちます。初回はデータベースの
-移行が走ります。イメージの取得に失敗した場合（ghcr.io のパッケージが非公開など）は、このサーバーにあるイメージで起動します。
+移行が走ります。イメージの取得に失敗した場合（ghcr.io のパッケージが非公開など）は、このサーバにあるイメージで起動します。
 無ければ `docker login ghcr.io` してからやり直します。本番が同じタグで動いていれば、`unauthorized` と出ても最後に
 `demo is running <tag>` と出れば正常です（本番のデプロイが取ってきたイメージを使っています）。
 
@@ -76,7 +76,7 @@ ln -s /etc/nginx/sites-available/taylis-demo /etc/nginx/sites-enabled/taylis-dem
 nginx -t && systemctl reload nginx
 ```
 
-このサーバーには certbot のアカウントが 2 つあるので、本番（taylis）の証明書と同じアカウントを `--account` で指定します。
+このサーバには certbot のアカウントが 2 つあるので、本番（taylis）の証明書と同じアカウントを `--account` で指定します。
 まずそのアカウントの ID を調べます（本番の証明書の更新設定に書いてあります。`certbot show_account` でも確かめられます）。
 
 ```sh
@@ -149,7 +149,7 @@ git checkout -q "$TAG"
 
 ## メモリの目安
 
-このサーバー（12 GB）に足されるのは、手元で測った値でおよそ次のとおりです。
+このサーバ（12 GB）に足されるのは、手元で測った値でおよそ次のとおりです。
 
 | コンテナ | 待機中 | 備考 |
 | --- | --- | --- |
