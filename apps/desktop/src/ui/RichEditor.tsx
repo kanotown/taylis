@@ -285,14 +285,18 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
     });
     element.style.minHeight = "";
     // The browser's own edits leave the text a line short for a moment: the box keeps its height until the frame
-    // (composerScroll.ts). Captured, so the hold is there before ProseMirror handles the event itself.
+    // (composerScroll.ts). Captured, so the hold is there before ProseMirror handles the event itself. WebKit confirms
+    // an IME conversion by taking the composed text out and putting it back (`deleteCompositionText`, then
+    // `insertFromComposition`, each with its `beforeinput`); its `compositionend` comes first and holds the box too.
     const holdForEdit = () => holdThroughEdit(element);
     element.addEventListener("beforeinput", holdForEdit, true);
+    element.addEventListener("compositionend", holdForEdit, true);
     editorRef.current = editor;
     apiRef.current = apiFor(editor, (markdown) => (emitted.current = markdown));
     report(editor);
     return () => {
       element.removeEventListener("beforeinput", holdForEdit, true);
+      element.removeEventListener("compositionend", holdForEdit, true);
       apiRef.current = null;
       editorRef.current = null;
       editor.destroy();

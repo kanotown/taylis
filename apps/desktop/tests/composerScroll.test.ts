@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { contentLine, fits, holdThroughEdit, keepLineInView, lineAround, markerLine, revealLine, settle, textAreaCaretLine } from "../src/ui/composerScroll";
+import { contentLine, fits, holdThroughEdit, holdUntilFrame, keepLineInView, lineAround, markerLine, revealLine, settle, textAreaCaretLine } from "../src/ui/composerScroll";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -231,6 +231,47 @@ describe("the rich editor's box through an edit of the browser's own", () => {
     const el = document.createElement("div");
     const nextFrame = vi.fn();
     holdThroughEdit(el, nextFrame);
+    expect(el.style.minHeight).toBe("");
+    expect(nextFrame).not.toHaveBeenCalled();
+  });
+});
+
+describe("the text area's box until the frame (holdUntilFrame)", () => {
+  it("is held at the height given until the next frame, released once, and leaves someone else's height alone", () => {
+    const el = document.createElement("div");
+    const frames: Array<() => void> = [];
+    const nextFrame = (run: () => void) => frames.push(run);
+    const released = vi.fn();
+
+    // WebKit's confirmed conversion: the draft a line short, then back, within one task.
+    holdUntilFrame(el, 88, released, nextFrame);
+    expect(el.style.minHeight).toBe("88px");
+    holdUntilFrame(el, 88, released, nextFrame);
+    expect(el.style.minHeight).toBe("88px");
+    expect(frames).toHaveLength(1);
+    frames.shift()!();
+    expect(el.style.minHeight).toBe("");
+    expect(released).toHaveBeenCalledTimes(1);
+
+    // Held again before the frame at another height: that one is let go.
+    holdUntilFrame(el, 64, released, nextFrame);
+    holdUntilFrame(el, 112, released, nextFrame);
+    expect(el.style.minHeight).toBe("112px");
+    frames.shift()!();
+    expect(el.style.minHeight).toBe("");
+
+    // A height set meanwhile (the other mode's input coming in) stays.
+    holdUntilFrame(el, 64, released, nextFrame);
+    el.style.minHeight = "136px";
+    frames.shift()!();
+    expect(el.style.minHeight).toBe("136px");
+    expect(released).toHaveBeenCalledTimes(3);
+  });
+
+  it("holds nothing before the box has a height", () => {
+    const el = document.createElement("div");
+    const nextFrame = vi.fn();
+    holdUntilFrame(el, 0, undefined, nextFrame);
     expect(el.style.minHeight).toBe("");
     expect(nextFrame).not.toHaveBeenCalled();
   });

@@ -213,3 +213,34 @@ export function holdThroughEdit(box: HTMLElement, nextFrame: (run: () => void) =
     if (box.style.minHeight === hold) box.style.minHeight = previous;
   });
 }
+
+/** The height each box is held at by holdUntilFrame, until its frame. */
+const heldUntilFrame = new WeakMap<HTMLElement, string>();
+
+/**
+ * Keeps `box` (the text area's, Composer.tsx) at least `height` px tall until the next frame, as holdThroughEdit does
+ * for the rich editor's (user report 2026-10-16: a Japanese conversion running onto a third line, confirmed with
+ * Return, scrolled the list above by a line). The text area measures itself on every change of the draft, and WebKit
+ * (the macOS app, Safari) confirms a composition in two changes within one task: it takes the composed text out
+ * (`deleteCompositionText`, with its own `input`) and puts it back (`insertFromComposition`). In between the draft was
+ * short of what was composed, the text area measured itself that many lines shorter, and the page was laid out with
+ * it: the list above was taller and the browser clamped its scrollTop to its new end. With the text back the composer
+ * was as tall as before, so no resize observer saw a change, and the list stayed up by those lines. Released in the
+ * frame, before it is laid out and painted (a draft that really got shorter shrinks the box then, and the list keeps
+ * its bottom as for any resize), and `released` is told then. Held again before that, the box keeps the new height and
+ * its first release; a height someone else set meanwhile is left alone.
+ */
+export function holdUntilFrame(box: HTMLElement, height: number, released?: () => void, nextFrame: (run: () => void) => unknown = requestAnimationFrame): void {
+  if (!(height > 0)) return;
+  const hold = `${height}px`;
+  box.style.minHeight = hold;
+  const pending = heldUntilFrame.has(box);
+  heldUntilFrame.set(box, hold);
+  if (pending) return;
+  nextFrame(() => {
+    const held = heldUntilFrame.get(box);
+    heldUntilFrame.delete(box);
+    if (box.style.minHeight === held) box.style.minHeight = "";
+    released?.();
+  });
+}

@@ -192,6 +192,9 @@ describe("rich composer", () => {
     const styles = [...observer.takeRecords().map((r) => r.oldValue ?? ""), box.getAttribute("style") ?? ""];
     expect(styles).toContain("min-height: 136px;");
     expect(styles.join()).not.toContain("64px");
+    // Let go in the next frame (composerScroll.holdUntilFrame), before it is laid out and painted.
+    expect(box.style.minHeight).toBe("136px");
+    await act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
     expect(box.style.minHeight).toBe("");
     observer.disconnect();
 
@@ -225,6 +228,78 @@ describe("rich composer", () => {
     expect(host.style.minHeight).toBe("136px");
     act(() => frames.splice(0).forEach((run) => run(0)));
     expect(host.style.minHeight).toBe("");
+  });
+
+  it("holds the editor's box from the end of an IME composition until the frame (WebKit takes the text out and puts it back)", async () => {
+    const w = await world({ draft: "a\n\na\n\na" });
+    const host = w.dom()!.parentElement!;
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this === host ? 88 : 0;
+    });
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((run) => frames.push(run));
+    // WebKit sends compositionend first, then deletes the composed text and inserts it again in the same task.
+    act(() => void w.dom()!.dispatchEvent(new CompositionEvent("compositionend", { data: "にほんご", bubbles: true })));
+    expect(host.style.minHeight).toBe("88px");
+    act(() => frames.splice(0).forEach((run) => run(0)));
+    expect(host.style.minHeight).toBe("");
+  });
+
+  it("the Markdown box never lays out shorter while WebKit confirms an IME conversion (the list above keeps its bottom)", async () => {
+    // User report 2026-10-16: a conversion running from the second line onto the third, confirmed with Return, scrolled
+    // the list a line. jsdom lays nothing out: the text area is 24 px a line (40 characters) and 16 px of padding, the
+    // box around it as tall as the text area or its min-height. Every read of the box's height is a layout of the page.
+    const w = await world();
+    act(() => void fireEvent.click(screen.getByRole("button", { name: "Markdown" })));
+    const area = screen.getByRole("textbox", { name: "メッセージ" }) as HTMLTextAreaElement;
+    const box = area.parentElement!;
+    const lines = (value: string) => Math.max(1, Math.ceil(value.length / 40));
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this instanceof HTMLTextAreaElement ? 16 + 24 * lines(this.value) : 0;
+    });
+    const laidOut: number[] = [];
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      if (this !== box) return 0;
+      const height = Math.max(Number.parseFloat(box.style.minHeight) || 0, Number.parseFloat(area.style.height) || 0);
+      laidOut.push(height);
+      return height;
+    });
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((run) => frames.push(run));
+    const frame = () => act(() => frames.splice(0).forEach((run) => run(0)));
+    const typed = "あ".repeat(50); // a line and a bit
+    const composed = "い".repeat(40); // on to the third line
+    fireEvent.change(area, { target: { value: typed } });
+    frame();
+    fireEvent.compositionStart(area);
+    fireEvent.change(area, { target: { value: typed + composed } });
+    frame();
+    expect(box.offsetHeight).toBe(88);
+    expect(box.style.minHeight).toBe("");
+
+    // Return: WebKit's compositionend, the composed text out (`deleteCompositionText`) and back in
+    // (`insertFromComposition`), each with its input event, all before the next frame.
+    laidOut.length = 0;
+    fireEvent.compositionEnd(area);
+    fireEvent.change(area, { target: { value: typed } });
+    fireEvent.change(area, { target: { value: typed + composed } });
+    expect(laidOut.length).toBeGreaterThan(0);
+    expect(Math.min(...laidOut)).toBe(88);
+    frame();
+    expect(box.style.minHeight).toBe("");
+    expect(box.offsetHeight).toBe(88);
+
+    // A draft that really gets shorter: the box is let go in the frame, before it is painted, and measured then.
+    fireEvent.change(area, { target: { value: typed } });
+    expect(box.style.minHeight).toBe("88px");
+    frame();
+    expect(box.style.minHeight).toBe("");
+    expect(box.offsetHeight).toBe(64);
+    // The next change is held at that height, not the old one.
+    fireEvent.change(area, { target: { value: "あ" } });
+    expect(box.style.minHeight).toBe("64px");
+    frame();
+    expect(box.offsetHeight).toBe(40);
   });
 
   it("drops the Markdown preview when the mode is switched elsewhere (the other composer, settings)", async () => {
