@@ -18,5 +18,5 @@ description: 管理者が見られるドキュメントの一覧、引き取り�
 
 ## Notion から移す
 
-Notion の書き出し（「Markdown & CSV」）を、ページとデータベースとして取り込めます。サーバーのコマンドで行う作業です
+Notion の書き出し（「Markdown & CSV」）を、ページとデータベースとして取り込めます。サーバのコマンドで行う作業です
 （[Slack / Mattermost / Notion からの移行](../self-hosting/import.md)）。

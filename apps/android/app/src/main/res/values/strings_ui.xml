@@ -83,7 +83,7 @@
     <string name="app_controller_the_server_url_is_not_valid">サーバ URL が正しくありません</string>
     <string name="app_controller_there_is_no_public_channel_called">#%1$s という公開チャンネルはありません</string>
     <string name="app_controller_there_is_no_user_called">%1$s というユーザーはいません</string>
-    <string name="app_controller_this_is_not_a_taylis_server">Taylis のサーバーではありません</string>
+    <string name="app_controller_this_is_not_a_taylis_server">Taylis のサーバではありません</string>
     <string name="app_controller_unblocked">ブロックを解除しました</string>
     <string name="app_controller_you_need_to_sign_in">ログインが必要です</string>
     <string name="app_controller_youre_not_a_member_of_this">このキャンバスの会話のメンバーではありません</string>
@@ -1744,7 +1744,7 @@
     <string name="notification_channel_messages">メッセージ</string>
     <string name="notification_me">自分</string>
     <string name="you_language">言語</string>
-    <string name="you_language_hint">ほかの端末とサーバーからの通知も、この言語になります</string>
+    <string name="you_language_hint">ほかの端末とサーバからの通知も、この言語になります</string>
     <string name="calls_start_call">通話を始める</string>
     <string name="calls_confirm_title">通話を始めますか？</string>
     <string name="calls_confirm_text">メンバーに通知が届き、会議のリンクが投稿されます。</string>

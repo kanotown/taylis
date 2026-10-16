@@ -1,5 +1,5 @@
-# 本番サーバー用 (自動デプロイ、infra/README.md「自動デプロイ」): app と caddy をレジストリのイメージで動かし、
-# サーバー上ではビルドしない。イメージ名は infra/deploy.sh が deploy.conf と .release から決める。
+# 本番サーバ用 (自動デプロイ、infra/README.md「自動デプロイ」): app と caddy をレジストリのイメージで動かし、
+# サーバ上ではビルドしない。イメージ名は infra/deploy.sh が deploy.conf と .release から決める。
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml --profile proxy up -d
 services:
   app:

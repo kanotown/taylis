@@ -1,17 +1,17 @@
 ---
 title: クイックスタート
-description: Taylis のサーバーを起動して、最初の管理者を作るまで
+description: Taylis のサーバを起動して、最初の管理者を作るまで
 ---
 
 # クイックスタート
 
-Linux のサーバーに Taylis を立てて、ブラウザでログインするまでの手順です。[必要なもの](index.md#requirements) を
+Linux のサーバに Taylis を立てて、ブラウザでログインするまでの手順です。[必要なもの](index.md#requirements) を
 先にご確認ください。
 
 ## 1. DNS とファイアウォール
 
-- ドメインの DNS に **A レコード**（IPv6 も使うなら AAAA）を足し、`chat.example.com` がサーバーの IP アドレスを
-  指すようにします。`dig +short chat.example.com` でサーバーの IP が返れば反映されています。
+- ドメインの DNS に **A レコード**（IPv6 も使うなら AAAA）を足し、`chat.example.com` がサーバの IP アドレスを
+  指すようにします。`dig +short chat.example.com` でサーバの IP が返れば反映されています。
 - TCP 80 と 443 を開けます（HTTP/3 を使うなら UDP 443 も）。
 - Cloudflare を使っている場合は、プロキシをオフ（DNS only）にしてください。Caddy が自分で証明書を取り、
   WebSocket と大きなアップロードをそのまま通すためです。
@@ -89,5 +89,5 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
 
 - [バックアップ](backup.md) を毎日動かす（いちばん大事です）
 - [プッシュ通知](push.md) を設定する
-- 他のサイトの nginx がすでにあるサーバーなら [既存のリバースプロキシの後ろで](reverse-proxy.md)
+- 他のサイトの nginx がすでにあるサーバなら [既存のリバースプロキシの後ろで](reverse-proxy.md)
 - 新しい版への [更新](updates.md)

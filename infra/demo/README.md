@@ -1,16 +1,16 @@
 # デモのワークスペース（Taylis デモ研究室）
 
-架空の研究室「Taylis デモ研究室」（英語名 Taylis Demo Lab）を、空のサーバーに書き込むためのものです。人・会話・ファイルは
-すべて架空です。手元で Taylis を触ってみるとき、スクリーンショットを撮るとき、ストアの審査用のサーバーに使います。
+架空の研究室「Taylis デモ研究室」（英語名 Taylis Demo Lab）を、空のサーバに書き込むためのものです。人・会話・ファイルは
+すべて架空です。手元で Taylis を触ってみるとき、スクリーンショットを撮るとき、ストアの審査用のサーバに使います。
 
 | ファイル | 内容 |
 | --- | --- |
 | `server/app/demo/content.py` | 登場人物・チャンネル・会話（日時はシードした日から逆算） |
 | `server/app/demo/seed.py` | `python -m app.cli seed-demo` の本体。API をプロセス内で呼んで作り、日時だけを過去へずらす |
 | `infra/demo/README.md` | この文書（手元で動かす） |
-| `infra/demo/DEPLOY_VPS.md` | 本番と同じサーバーに 2 つ目の Taylis としてデモを置く手順 |
-| `infra/demo/demo-vps.sh` | そのサーバーでの起動・シード・リセット |
-| `infra/demo/demo.env.example` | そのサーバーの `infra/.env` のひな形 |
+| `infra/demo/DEPLOY_VPS.md` | 本番と同じサーバに 2 つ目の Taylis としてデモを置く手順 |
+| `infra/demo/demo-vps.sh` | そのサーバでの起動・シード・リセット |
+| `infra/demo/demo.env.example` | そのサーバの `infra/.env` のひな形 |
 
 ## 中身
 
@@ -70,12 +70,12 @@ docker compose -p taylis-demo -f docker-compose.yml -f docker-compose.prod.yml -
 - 片付け：`docker compose -p taylis-demo -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.behind-proxy.yml --profile proxy down -v`
   （`-v` でデータも消える）。
 
-開発用のサーバー（`uv run uvicorn …`、docs/DEVELOPMENT.md）に書き込むときは、`server/` で
+開発用のサーバ（`uv run uvicorn …`、docs/DEVELOPMENT.md）に書き込むときは、`server/` で
 `WORKSPACE_NAME="Taylis デモ研究室" uv run python -m app.cli seed-demo` とします（空のデータベースで）。
 
 ## 作り（server/app/demo）
 
-- データは公開 API を**プロセスの中で**（httpx の ASGI transport、ネットワークもサーバーの起動も不要）呼んで作ります。
+- データは公開 API を**プロセスの中で**（httpx の ASGI transport、ネットワークもサーバの起動も不要）呼んで作ります。
   チャンネルの seq・outbox・検索・投票・回収・予約は、ふだんの操作と同じコードが作ります。投稿は「今」行われるので、
   最後に UPDATE で日時だけを台本の時刻にずらし（メッセージ、スレッドの最終返信、チャンネルの最終投稿・作成・参加、
   リアクション・投票・確認の時刻）、既読の位置を API で決めます。シードのセッションは最後にログアウトします。

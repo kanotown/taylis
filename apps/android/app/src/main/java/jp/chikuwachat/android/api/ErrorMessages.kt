@@ -36,7 +36,7 @@ object ErrorMessages {
             "ai_daily_limit" to "今日の AI の利用回数の上限に達しました。明日またお試しください",
             "ai_private_not_allowed" to "この AI のボットは公開チャンネルでだけ使えます（非公開チャンネルと DM には参加・要約できません）",
             "ai_run_not_found" to "AI の結果が見つかりません",
-            "ai_unavailable" to "このサーバーでは AI を使えません",
+            "ai_unavailable" to "このサーバでは AI を使えません",
             "already_authenticated" to "すでにログインしています",
             "attachment_empty" to "空のファイルは添付できません",
             "attachment_invalid" to "添付ファイルが無効です。アップロードし直してください",
@@ -236,7 +236,7 @@ object ErrorMessages {
             "section_not_found" to "セクションが見つかりません",
             "send_at_too_far" to "予約送信は 1 年以内で設定してください",
             "send_at_too_soon" to "予約送信は 1 分以上先に設定してください",
-            "server_error" to "サーバーで問題が発生しました。しばらくしてからお試しください",
+            "server_error" to "サーバで問題が発生しました。しばらくしてからお試しください",
             "session_expired" to "ログインの有効期限が切れました。もう一度ログインしてください",
             "session_not_found" to "セッションが見つかりません",
             "session_revoked" to "ログアウトされました。もう一度ログインしてください",
@@ -966,7 +966,7 @@ object ErrorMessages {
             "413" to "ファイルが大きすぎます",
             "422" to "入力内容を確認してください",
             "429" to "操作が多すぎます。少し待ってからお試しください",
-            "5xx" to "サーバーで問題が発生しました。しばらくしてからお試しください",
+            "5xx" to "サーバで問題が発生しました。しばらくしてからお試しください",
         ),
         "en" to mapOf(
             "400" to "Check what you entered.",
@@ -992,6 +992,6 @@ object ErrorMessages {
         ),
     )
 
-    val networkByLocale: Map<String, String> = mapOf("ja" to "サーバーに接続できません。ネットワークを確認してください", "en" to "Can't reach the server. Check your network.", "zh-Hans" to "无法连接服务器。请检查网络。")
+    val networkByLocale: Map<String, String> = mapOf("ja" to "サーバに接続できません。ネットワークを確認してください", "en" to "Can't reach the server. Check your network.", "zh-Hans" to "无法连接服务器。请检查网络。")
     val unknownByLocale: Map<String, String> = mapOf("ja" to "エラーが発生しました", "en" to "An error occurred.", "zh-Hans" to "发生错误。")
 }

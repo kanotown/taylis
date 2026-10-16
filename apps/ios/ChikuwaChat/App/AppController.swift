@@ -445,7 +445,7 @@ final class AppController {
             info = nil
         }
         if adding {
-            guard let info else { return .done(.failed(tr("Taylis のサーバーではありません"))) }
+            guard let info else { return .done(.failed(tr("Taylis のサーバではありません"))) }
             if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
                 if known.isSignedIn {
                     await switchTo(known.serverUrl)
@@ -520,7 +520,7 @@ final class AppController {
         let answer = try? await ApiClient(baseUrl: URL(string: serverUrl) ?? server).serverInfo()
         let info = answer?.product == "chikuwachat" ? answer : nil
         if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info?.workspaceId, in: workspaces), known.isSignedIn {
-            return tr("\(known.name) にはすでにログインしています（1 つのサーバーに 1 アカウント）")
+            return tr("\(known.name) にはすでにログインしています（1 つのサーバに 1 アカウント）")
         }
         let api = makeClient(serverUrl: serverUrl, username: username)
         do {
@@ -1784,7 +1784,7 @@ final class AppController {
     /// L4: the author (or an admin) reminds them; each gets a reminder only they see. What happened, in words for the
     /// sheet that asked (the app's toasts are behind it), and whether it went through.
     func remindUnacknowledged(_ message: MessageState) async -> (ok: Bool, text: String) {
-        guard let api else { return (false, tr("サーバーに接続できません")) }
+        guard let api else { return (false, tr("サーバに接続できません")) }
         do {
             let count = try await api.remindUnacknowledged(messageId: message.id)
             return (true, count > 0 ? tr("\(count) 人にリマインドしました") : tr("リマインド済みの人だけです"))

@@ -7,7 +7,7 @@ description: 新しい版への更新、GitHub のリリースのタグからの
 
 ## 手で更新する
 
-[クイックスタート](quickstart.md) の手順で立てたサーバーは、次のように更新します。**更新の前にバックアップを
+[クイックスタート](quickstart.md) の手順で立てたサーバは、次のように更新します。**更新の前にバックアップを
 取ってください。**
 
 ```sh
@@ -24,7 +24,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy 
 ## タグから自動でデプロイする（GitHub Actions）
 
 自分のリポジトリ（フォーク）で `v1.2.3` の形のタグを push すると、GitHub Actions がテスト → イメージの作成 →
-サーバーへのデプロイまでを自動で実行します（`.github/workflows/release.yml`）。
+サーバへのデプロイまでを自動で実行します（`.github/workflows/release.yml`）。
 
 ```sh
 git tag v1.2.3 && git push origin v1.2.3
@@ -34,8 +34,8 @@ git tag v1.2.3 && git push origin v1.2.3
 flowchart TD
   T["タグを push"] --> C["checks<br>テストとビルド"]
   C --> I["images<br>イメージを作り<br>GitHub に置く"]
-  I --> D["deploy<br>SSH でサーバーへ"]
-  subgraph server["サーバーの上で"]
+  I --> D["deploy<br>SSH でサーバへ"]
+  subgraph server["サーバの上で"]
     P["イメージの取得"] --> B["バックアップ"] --> U["入れ替え"] --> H{"動いている？"}
   end
   D --> P
@@ -43,8 +43,8 @@ flowchart TD
   H -- "いいえ" --> RB["直前のリリースに<br>自動で戻す"]
 ```
 
-- 秘密の値（`.env`、`secrets/`）はサーバーにだけ置き、GitHub には SSH の接続情報だけを置きます。
-- サーバーの初期設定は `infra/vps-bootstrap.sh` が行います（Docker、`deploy` ユーザー、デプロイ用の鍵の登録、
+- 秘密の値（`.env`、`secrets/`）はサーバにだけ置き、GitHub には SSH の接続情報だけを置きます。
+- サーバの初期設定は `infra/vps-bootstrap.sh` が行います（Docker、`deploy` ユーザー、デプロイ用の鍵の登録、
   `.env` のランダムな値、毎日のバックアップの cron）。
 - 前のリリースに戻すときは、Actions の release を、戻したいタグを選んで手で実行します。
 
@@ -57,10 +57,10 @@ flowchart TD
 「更新して再起動」で更新できます。設定の「このアプリについて」からも確かめられます。
 配布物は [GitHub のリリース（kanotown/taylis）](https://github.com/kanotown/taylis/releases/latest) にあります。
 
-ブラウザ版は、サーバーを更新すると新しい版になります。スマートフォンのアプリは、ストアから更新します（準備中）。
+ブラウザ版は、サーバを更新すると新しい版になります。スマートフォンのアプリは、ストアから更新します（準備中）。
 
-## サーバーとアプリの版
+## サーバとアプリの版
 
-アプリとサーバーは同じ API の仕様（[openapi/openapi.json](https://github.com/kanotown/taylis/blob/main/openapi/openapi.json)）
+アプリとサーバは同じ API の仕様（[openapi/openapi.json](https://github.com/kanotown/taylis/blob/main/openapi/openapi.json)）
 でやり取りします。新しい機能は、古いアプリが動かなくならないように（知らない項目は無視されるように）追加しています。
-それでも、サーバーとアプリはなるべく新しい版にそろえてください。
+それでも、サーバとアプリはなるべく新しい版にそろえてください。

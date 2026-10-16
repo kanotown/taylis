@@ -164,7 +164,7 @@ const manual = await api("POST", "/wiki/pages", {
     "",
     "- [x] Taylis にログインする",
     "- [ ] プロフィールに学年と研究テーマを書く",
-    "- [ ] GPU サーバーのアカウントを申請する",
+    "- [ ] GPU サーバのアカウントを申請する",
     "- [ ] 研究ミーティングで自己紹介する",
     "",
     "::: toggle 研究室の鍵の借り方",
@@ -174,7 +174,7 @@ const manual = await api("POST", "/wiki/pages", {
 });
 for (const [title, icon, body] of [
   ["新しく来た人へ", "👋", "ようこそ。最初の 1 週間で、研究室の道具と決まりに慣れてください。\n\n## 連絡\n\n- 全体の連絡は #お知らせ\n- 雑談と質問は #雑談\n- 毎週の進み具合は #週報"],
-  ["機材の使い方", "🖥️", "## GPU サーバー\n\n`gpu01`〜`gpu03` を使えます。長時間のジョブは Taylis の「予約」で枠を取ってから流してください。"],
+  ["機材の使い方", "🖥️", "## GPU サーバ\n\n`gpu01`〜`gpu03` を使えます。長時間のジョブは Taylis の「予約」で枠を取ってから流してください。"],
 ]) {
   await api("POST", "/wiki/pages", { client_save_id: uuid(), parent_id: manual.id, title, icon, body });
 }

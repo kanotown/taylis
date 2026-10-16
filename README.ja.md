@@ -2,10 +2,10 @@
 
 [English](README.md)
 
-Taylis（テイリス）は、研究室や小さなチームのためのセルフホスト型チャットです。サーバーを自分たちで用意して動かし、
+Taylis（テイリス）は、研究室や小さなチームのためのセルフホスト型チャットです。サーバを自分たちで用意して動かし、
 Windows・macOS・iOS・Android のアプリと、ブラウザから使います。Slack に近い使い心地を目指しています。
 
-**ドキュメント：<https://kanotown.github.io/taylis/>**（使い方ガイド・管理者ガイド・サーバーの立て方・仕組み）。
+**ドキュメント：<https://kanotown.github.io/taylis/>**（使い方ガイド・管理者ガイド・サーバの立て方・仕組み）。
 サイトの原稿は [website/](website/) にあります。
 
 （旧名は「ChikuwaChat」です。バンドル ID・パッケージ名・`chikuwachat://` の URL スキームなど、内部の識別子には古い名前が残っています。）
@@ -22,7 +22,7 @@ Windows・macOS・iOS・Android のアプリと、ブラウザから使います
 
 - 公開・非公開のチャンネル、DM、グループ DM
 - スレッド、リアクション、メンション、編集と削除。未読の位置は端末の間で同期します
-- 確実な配送：サーバーでの順序付け、再送しても重複しない送信、再接続後の取りこぼしの回収（WebSocket + REST、
+- 確実な配送：サーバでの順序付け、再送しても重複しない送信、再接続後の取りこぼしの回収（WebSocket + REST、
   [docs/SYNC_PROTOCOL.md](docs/SYNC_PROTOCOL.md)）
 - APNs（iOS）と FCM（Android）によるプッシュ通知。トランザクショナル・アウトボックスから送ります
 - 日本語と英語の全文検索（PostgreSQL + PGroonga）
@@ -30,7 +30,7 @@ Windows・macOS・iOS・Android のアプリと、ブラウザから使います
 - Canvas（共有の文書）、繰り返しの予定と iCal に対応したカレンダー、タスク、ワークフロー、カスタム絵文字とスタンプ
 - 共有の機材やアカウントの順番待ち（予約）
 - Google でのログイン（組織のドメインに限定できます）、招待、ゲスト
-- 1 つのアプリで複数のサーバーを切り替え
+- 1 つのアプリで複数のサーバを切り替え
 - Mattermost と Slack のエクスポートの取り込み
 - 必要に応じて AI のボット（メンションへの返答、要約、過去のメッセージへの質問。[docs/AI.md](docs/AI.md)）
 - バックアップと復元のスクリプト、リリースのタグからの自動デプロイ
@@ -41,9 +41,9 @@ Windows・macOS・iOS・Android のアプリと、ブラウザから使います
 オブジェクトストレージ）を Docker Compose で動かし、Caddy（または既存のリバースプロキシ）の後ろに置きます。
 Redis・Kafka・Kubernetes は使いません。詳しくは [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) をご覧ください。
 
-## サーバーを立てる
+## サーバを立てる
 
-Docker Engine と compose プラグインの入った Linux サーバー（2 vCPU / メモリ 4 GB 以上）と、そのサーバーを指す
+Docker Engine と compose プラグインの入った Linux サーバ（2 vCPU / メモリ 4 GB 以上）と、そのサーバを指す
 ドメイン名（ポート 80 と 443 を開けたもの）が必要です。
 
 ```sh
@@ -65,12 +65,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python 
 
 | アプリ | 技術 | 備考 |
 | --- | --- | --- |
-| ブラウザ | React（サーバーが配信） | `https://<CHAT_DOMAIN>/` |
+| ブラウザ | React（サーバが配信） | `https://<CHAT_DOMAIN>/` |
 | デスクトップ | Tauri 2 + React | Windows と macOS。公式のリリースからアプリ内で更新 |
 | iOS | SwiftUI | APNs でプッシュ。Xcode でビルド（[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)） |
 | Android | Jetpack Compose | FCM でプッシュ。Gradle でビルド |
 
-どのアプリも、同じ API（[openapi/openapi.json](openapi/openapi.json)）でサーバーとやり取りします。
+どのアプリも、同じ API（[openapi/openapi.json](openapi/openapi.json)）でサーバとやり取りします。
 
 ## 開発
 
@@ -78,9 +78,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python 
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)：マイルストーン。残りは [docs/BACKLOG.md](docs/BACKLOG.md)
 - 設計の文書は、ほとんど日本語で `docs/` にあります
 
-**管理者に見えるもの**：メンバーでない管理者は、アプリから非公開チャンネルや DM を読めません。ただし、サーバー・
+**管理者に見えるもの**：メンバーでない管理者は、アプリから非公開チャンネルや DM を読めません。ただし、サーバ・
 データベース・バックアップにアクセスできる人は、技術的にはすべてのメッセージを読めます。利用者にそのことを伝え、
-管理者やサーバーの担当を誰にするかを考えてください（[docs/LAB.md](docs/LAB.md) J）。
+管理者やサーバの担当を誰にするかを考えてください（[docs/LAB.md](docs/LAB.md) J）。
 
 ## セキュリティ
 

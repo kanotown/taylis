@@ -68,8 +68,8 @@ docker compose -p taylis-demo -f docker-compose.yml -f docker-compose.prod.yml -
 
 !!! note "本物のワークスペースには書き込みません"
     `seed-demo` は、メッセージがすでにあるデータベースには（`WORKSPACE_NAME` がデモの名前でない限り）書き込みを
-    断ります。本番のサーバーで誤って実行しても、架空の人が混ざることはありません。
+    断ります。本番のサーバで誤って実行しても、架空の人が混ざることはありません。
 
-デモをサーバーに置いて人に見せる（毎晩リセットする）手順は、リポジトリの
+デモをサーバに置いて人に見せる（毎晩リセットする）手順は、リポジトリの
 [infra/demo/DEPLOY_VPS.md](https://github.com/kanotown/taylis/blob/main/infra/demo/DEPLOY_VPS.md) にあります。
 自分のチームで使い始めるときは [クイックスタート](quickstart.md) へ。

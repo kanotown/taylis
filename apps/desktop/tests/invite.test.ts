@@ -26,8 +26,8 @@ describe("invite links (M12h)", () => {
     expect(inviteErrorText(new ApiError(410, "invite_expired", "Invite is expired"))).toBe("この招待リンクは期限切れです");
     expect(inviteErrorText(new ApiError(409, "username_taken", "taken"))).toBe("このユーザー名はすでに使われています");
     // Anything else: the shared Japanese text (ARCHITECTURE.md §9), never the server's English message.
-    expect(inviteErrorText(new ApiError(500, "server_error", "boom"))).toBe("サーバーで問題が発生しました。しばらくしてからお試しください");
-    expect(inviteErrorText(new ApiError(503, "http_503", "Request failed"))).toBe("サーバーで問題が発生しました。しばらくしてからお試しください");
-    expect(inviteErrorText(new NetworkError(new TypeError("Failed to fetch")))).toBe("サーバーに接続できません。ネットワークを確認してください");
+    expect(inviteErrorText(new ApiError(500, "server_error", "boom"))).toBe("サーバで問題が発生しました。しばらくしてからお試しください");
+    expect(inviteErrorText(new ApiError(503, "http_503", "Request failed"))).toBe("サーバで問題が発生しました。しばらくしてからお試しください");
+    expect(inviteErrorText(new NetworkError(new TypeError("Failed to fetch")))).toBe("サーバに接続できません。ネットワークを確認してください");
   });
 });

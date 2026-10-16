@@ -3,7 +3,7 @@
  *
  * In the macOS app (WKWebView) a File picked through an input could no longer be read once the input's value was
  * reset: the upload body broke off part way, the server answered 400 (multipart could not be parsed) and WebKit
- * reported a network error (「サーバーに接続できません」, the workspace icon on 2026-10-04). Profile pictures were
+ * reported a network error (「サーバに接続できません」, the workspace icon on 2026-10-04). Profile pictures were
  * fine because the crop dialog turns them into a new Blob first.
  *
  * So a picked file is copied into memory (a new File, readable whatever happens to the input) before it is used, and

@@ -26,7 +26,7 @@ export const ERROR_MESSAGES_BY_LOCALE: Readonly<Record<ErrorLocale, Readonly<Rec
     ai_daily_limit: "今日の AI の利用回数の上限に達しました。明日またお試しください",
     ai_private_not_allowed: "この AI のボットは公開チャンネルでだけ使えます（非公開チャンネルと DM には参加・要約できません）",
     ai_run_not_found: "AI の結果が見つかりません",
-    ai_unavailable: "このサーバーでは AI を使えません",
+    ai_unavailable: "このサーバでは AI を使えません",
     already_authenticated: "すでにログインしています",
     attachment_empty: "空のファイルは添付できません",
     attachment_invalid: "添付ファイルが無効です。アップロードし直してください",
@@ -226,7 +226,7 @@ export const ERROR_MESSAGES_BY_LOCALE: Readonly<Record<ErrorLocale, Readonly<Rec
     section_not_found: "セクションが見つかりません",
     send_at_too_far: "予約送信は 1 年以内で設定してください",
     send_at_too_soon: "予約送信は 1 分以上先に設定してください",
-    server_error: "サーバーで問題が発生しました。しばらくしてからお試しください",
+    server_error: "サーバで問題が発生しました。しばらくしてからお試しください",
     session_expired: "ログインの有効期限が切れました。もう一度ログインしてください",
     session_not_found: "セッションが見つかりません",
     session_revoked: "ログアウトされました。もう一度ログインしてください",
@@ -957,7 +957,7 @@ export const STATUS_MESSAGES_BY_LOCALE: Readonly<Record<ErrorLocale, Readonly<Re
     "413": "ファイルが大きすぎます",
     "422": "入力内容を確認してください",
     "429": "操作が多すぎます。少し待ってからお試しください",
-    "5xx": "サーバーで問題が発生しました。しばらくしてからお試しください",
+    "5xx": "サーバで問題が発生しました。しばらくしてからお試しください",
   },
   "en": {
     "400": "Check what you entered.",
@@ -983,7 +983,7 @@ export const STATUS_MESSAGES_BY_LOCALE: Readonly<Record<ErrorLocale, Readonly<Re
   },
 };
 
-export const NETWORK_ERROR_MESSAGE_BY_LOCALE: Readonly<Record<ErrorLocale, string>> = {"ja": "サーバーに接続できません。ネットワークを確認してください", "en": "Can't reach the server. Check your network.", "zh-Hans": "无法连接服务器。请检查网络。"};
+export const NETWORK_ERROR_MESSAGE_BY_LOCALE: Readonly<Record<ErrorLocale, string>> = {"ja": "サーバに接続できません。ネットワークを確認してください", "en": "Can't reach the server. Check your network.", "zh-Hans": "无法连接服务器。请检查网络。"};
 export const UNKNOWN_ERROR_MESSAGE_BY_LOCALE: Readonly<Record<ErrorLocale, string>> = {"ja": "エラーが発生しました", "en": "An error occurred.", "zh-Hans": "发生错误。"};
 
 /** The Japanese tables (tests). The app reads the UI language's through api/errors.ts (errorMessageFor, describeError). */

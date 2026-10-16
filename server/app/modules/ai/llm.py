@@ -206,7 +206,7 @@ class AnthropicProvider:
             raise LlmError("API の利用が混み合っています", retryable=True) from exc
         except anthropic.APIStatusError as exc:
             if exc.status_code >= 500:
-                raise LlmError(f"API のサーバーエラー ({exc.status_code})", retryable=True) from exc
+                raise LlmError(f"API のサーバエラー ({exc.status_code})", retryable=True) from exc
             raise LlmError(f"API のエラー ({exc.status_code})", retryable=False) from exc
         except anthropic.APIConnectionError as exc:  # includes timeouts
             raise LlmError("API に接続できませんでした", retryable=True) from exc
@@ -332,7 +332,7 @@ class OpenAIProvider:
             raise LlmError("API の利用が混み合っています", retryable=True) from exc
         except openai.APIStatusError as exc:
             if exc.status_code >= 500:
-                raise LlmError(f"API のサーバーエラー ({exc.status_code})", retryable=True) from exc
+                raise LlmError(f"API のサーバエラー ({exc.status_code})", retryable=True) from exc
             raise LlmError(f"API のエラー ({exc.status_code})", retryable=False) from exc
         except openai.APIConnectionError as exc:  # includes timeouts
             raise LlmError("API に接続できませんでした", retryable=True) from exc
