@@ -33,12 +33,13 @@ export function RemindersView({ controller, onOpen }: { controller: AppControlle
                 <div className="mt-0.5 line-clamp-2 text-sm text-muted">{row.preview}</div>
               </button>
               <Button size="sm" variant={action === "done" ? "secondary" : "ghost"} onClick={() => void controller.closeReminder(row)}>
-                {action === "done" ? <><Check size={14} /> {t("table.done")}</> : <><X size={14} /> {t("drafts.cancel")}</>}
+                {action === "done" ? <><Check size={14} /> {t("table.done")}</> : <><X size={14} /> {t("reminders.cancel")}</>}
               </Button>
             </li>
           );
         })}
       </ul>
+      {action === "done" && <div className="mt-1.5 text-xs text-muted">{t("reminders.doneHint")}</div>}
     </div>
   );
   return (

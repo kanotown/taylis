@@ -2589,6 +2589,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "reminders.none": "没有提醒。可通过消息的“提醒”设置。",
   "reminders.firedHeading": "已到的提醒",
   "reminders.pendingHeading": "即将到来",
+  "reminders.cancel": "取消",
+  "reminders.doneHint": "点击“完成”即可将提醒从此列表和角标中移除。",
   "dmList.search": "搜索私信",
   "dmList.filter": "按名字筛选私信",
   "dmList.noMatch": "没有符合的私信",

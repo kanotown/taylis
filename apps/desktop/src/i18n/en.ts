@@ -2589,6 +2589,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "reminders.none": "No reminders. Set one with a message's “Remind me”.",
   "reminders.firedHeading": "Due reminders",
   "reminders.pendingHeading": "Upcoming",
+  "reminders.cancel": "Cancel",
+  "reminders.doneHint": "Click “Done” to remove a reminder from this list and the badge.",
   "dmList.search": "Search DMs",
   "dmList.filter": "Filter DMs by name",
   "dmList.noMatch": "No matching DMs",
