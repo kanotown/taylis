@@ -933,15 +933,21 @@ export class AppController {
     }
   }
 
-  /** Cancels a pending reminder or marks a fired one done. */
+  /**
+   * Cancels a pending reminder or marks a fired one done. A 404 means it is already closed (on another device, or done by
+   * the server when I acknowledged or replied): it leaves the list all the same.
+   */
   async closeReminder(row: ReminderOut): Promise<void> {
     if (!this.api) return;
     try {
       await this.api.closeReminder(row.id);
-      this.store.applyReminder({ ...row, status: row.status === "fired" ? "done" : "cancelled" });
     } catch (error) {
-      this.setError(error);
+      if (!(error instanceof ApiError && error.code === "reminder_not_found")) {
+        this.setError(error);
+        return;
+      }
     }
+    this.store.applyReminder({ ...row, status: row.status === "fired" ? "done" : "cancelled" });
   }
 
   /**

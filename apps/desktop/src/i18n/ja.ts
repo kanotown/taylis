@@ -2588,6 +2588,8 @@ export const ja = {
   "reminders.none": "リマインダーはありません。メッセージの「リマインド」から設定できます。",
   "reminders.firedHeading": "届いたリマインド",
   "reminders.pendingHeading": "予定",
+  "reminders.cancel": "取り消し",
+  "reminders.doneHint": "「完了」を押すと一覧とバッジから消えます。",
   "dmList.search": "DM を検索",
   "dmList.filter": "DM を名前で絞り込む",
   "dmList.noMatch": "一致する DM はありません",

@@ -141,6 +141,49 @@ describe("確認のお願い in the reminders (L4)", () => {
     expect(within(ask).getByText("確認のお願い")).toBeTruthy();
     expect(within(mine).queryByText("確認のお願い")).toBeNull();
   });
+
+  it("finishes a fired one and cancels a pending one from the row's button; one already closed elsewhere leaves too", async () => {
+    const server = new FakeServer();
+    const bob = server.addUser("bob");
+    const channel = server.createChannel("general", bob.id);
+    const store = new Store();
+    store.upsertChannel(server.channels.get(channel.id)!.channel, { isMember: true });
+    const closed: string[] = [];
+    const controller = controllerFor(bob, {
+      closeReminder: async (id: string) => {
+        closed.push(id);
+        if (id === "r2") throw new ApiError(404, "reminder_not_found", "No such reminder"); // acknowledged: done by the server
+      },
+    }, store);
+    const base = { message_id: "m1", channel_id: channel.id, preview: "本文", remind_at: "2026-09-29T01:00:00Z", fired_at: "2026-09-29T01:00:00Z", created_at: "2026-09-29T00:00:00Z", kind: "personal" } as const;
+    store.replaceReminders([
+      { ...base, id: "r1", status: "fired", note: "一つ目" },
+      { ...base, id: "r2", status: "fired", kind: "ack", note: "Alice さんから確認のお願い" },
+      { ...base, id: "r3", status: "pending", remind_at: "2099-01-01T00:00:00Z", fired_at: null, note: "予定のもの" },
+    ] as ReminderOut[]);
+    const view = () => render(<RemindersView controller={controller} onOpen={() => {}} />);
+    view();
+    expect(screen.getByText("「完了」を押すと一覧とバッジから消えます。")).toBeTruthy();
+    const row = (note: string) => screen.getAllByRole("listitem").find((r) => r.textContent?.includes(note))!;
+    expect(within(row("予定のもの")).getByRole("button", { name: /取り消し/ })).toBeTruthy();
+    expect(store.firedReminderCount()).toBe(2);
+
+    fireEvent.click(within(row("一つ目")).getByRole("button", { name: /完了/ }));
+    await flush();
+    expect(store.firedReminderCount()).toBe(1);
+    cleanup();
+    view();
+    fireEvent.click(within(row("確認のお願い")).getByRole("button", { name: /完了/ }));
+    await flush();
+    expect(store.firedReminderCount()).toBe(0);
+    expect(controller.error).toBeFalsy();
+    cleanup();
+    view();
+    fireEvent.click(within(row("予定のもの")).getByRole("button", { name: /取り消し/ }));
+    await flush();
+    expect(closed).toEqual(["r1", "r2", "r3"]);
+    expect(store.listReminders()).toEqual([]);
+  });
 });
 
 /** Opens a member row's ⋯ menu from the keyboard. */
