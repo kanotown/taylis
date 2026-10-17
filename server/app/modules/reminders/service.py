@@ -105,23 +105,30 @@ async def create(
     return to_out(row, message.body or "")
 
 
-async def list_mine(db: AsyncSession, actor: User) -> list[ReminderOut]:
-    """Reminders whose message is gone (or whose channel I left) are left out; the worker
-    cancels them when they come due. A request to acknowledge that I have since acknowledged
-    is left out too (L4), and a request to submit once I have replied in the thread (L6)."""
-    rows = await repo.list_open_for_user(db, actor.id)
+async def _shown(
+    db: AsyncSession, user_id: uuid.UUID, rows: list[Reminder]
+) -> list[tuple[Reminder, str]]:
+    """The open rows the owner's list shows. Reminders whose message is gone (or whose channel
+    they left) are left out; the worker cancels them when they come due. A request to
+    acknowledge that they have since acknowledged is left out too (L4), and a request to submit
+    once they have replied in the thread (L6)."""
     bodies = await _visible_bodies(db, rows)
-    acked = {
+    answered = {
         row.message_id
         for row in rows
-        if (row.kind == "ack" and await messages.has_acked(db, row.message_id, actor.id))
-        or (row.kind == "collect" and await messages.has_live_reply(db, row.message_id, actor.id))
+        if (row.kind == "ack" and await messages.has_acked(db, row.message_id, user_id))
+        or (row.kind == "collect" and await messages.has_live_reply(db, row.message_id, user_id))
     }
     return [
-        to_out(row, bodies[row.message_id])
+        (row, bodies[row.message_id])
         for row in rows
-        if row.message_id in bodies and row.message_id not in acked
+        if row.message_id in bodies and row.message_id not in answered
     ]
+
+
+async def list_mine(db: AsyncSession, actor: User) -> list[ReminderOut]:
+    rows = await repo.list_open_for_user(db, actor.id)
+    return [to_out(row, body) for row, body in await _shown(db, actor.id, rows)]
 
 
 async def remind_unacknowledged(
@@ -233,4 +240,26 @@ async def fire_due(db: AsyncSession, *, now: datetime | None = None, limit: int 
 
 
 async def fired_count(db: AsyncSession, user_id: uuid.UUID) -> int:
-    return await repo.fired_count(db, user_id)
+    """The fired reminders the owner's list shows (the push badge's share): one they can no
+    longer see or open in the list must not hold the badge up for good."""
+    if await repo.fired_count(db, user_id) == 0:
+        return 0
+    return len(await _shown(db, user_id, await repo.list_fired_for_user(db, user_id)))
+
+
+async def close_answered(
+    db: AsyncSession, user_id: uuid.UUID, message_id: uuid.UUID, kind: str
+) -> None:
+    """The owner did what a system reminder asked (acknowledged the message, L4, or replied in
+    its thread, L6): their open reminder of that kind on it is done, and reminder.updated takes
+    it off their devices' lists and badges at once."""
+    rows = await repo.open_for_message(db, user_id, message_id, kind)
+    if not rows:
+        return
+    now = utcnow()
+    bodies = await _visible_bodies(db, rows)
+    for row in rows:
+        row.status = "done"
+        row.updated_at = now
+        await _emit(db, row, bodies.get(row.message_id))
+    await db.commit()

@@ -491,7 +491,9 @@ CREATE INDEX reminders_message_kind_idx ON reminders (message_id, kind, created_
 - 個人データ。時刻になるとワーカー (予約送信と同じループ) が `fired` にして `reminder.updated` (audience=user)
   を書き、PushPlanner がその行から本人の端末へ `kind = reminder` のプッシュを作る (DND 中は出さない)。
 - 一覧 `GET /reminders` は fired (新しい順) → pending (時刻順)。`DELETE /reminders/{id}` は pending なら
-  `cancelled`、fired なら `done`。fired の件数はアプリのバッジに足す。
+  `cancelled`、fired なら `done`。fired の件数はアプリのバッジに足す。バッジに数えるのは一覧に出る fired だけ
+  （メッセージが消えた・チャンネルを抜けた・確認済み・提出済みの行は一覧から開けず完了もできないので、数えると
+  バッジが消えなくなる。2026-10-17）。
 - 1 人あたり pending + fired は 200 件まで (`409 too_many_reminders`、M28a)。一覧はこの上限で抑えられるので
   ページングは持たない (done / cancelled は一覧にも上限にも数えない)。
 - **確認のお願い (`kind = ack`、L4、LAB.md H)**: 確認を求めた投稿 (M15e) の投稿者か admin が
@@ -499,7 +501,9 @@ CREATE INDEX reminders_message_kind_idx ON reminders (message_id, kind, created_
   (`reminders.create_system_in_tx`。一覧・プッシュ・バッジは本人が設定したものと同じ経路。プッシュの題は「確認のお願い」、
   note は「(投稿者名) さんから確認のお願い」)。同じ投稿へのお願いは 1 時間に 1 回まで (`429 ack_remind_too_soon`、
   `details.retry_after_seconds`)。前のお願いが開いたままの人には重ねない。応答は `{ reminded: 人数 }`。確認した後の
-  お願いは `GET /reminders` に出さない (端末は `done` にしてよい)。
+  お願いは `GET /reminders` に出さない。`PUT /messages/{id}/ack` で確認すると、その投稿への本人の `ack` リマインダーを
+  サーバが `done` にして `reminder.updated` を出す（端末の一覧とバッジからすぐ消える）。回収の催促（`collect`、L6）も、
+  そのスレッドへ返信した時点で同じく `done` になる。
 - **未確認の人**: `GET /messages/{id}/ack/pending` → `{ user_ids }` (表示名順)。チャンネルのメンバーから、投稿者・bot・
   無効化された人・確認済みの人を除いたもの。メンバーなら誰でも見られる (確認した人の一覧が見えるのと同じ)。
   確認を求めていない投稿は `409 ack_not_requested`。

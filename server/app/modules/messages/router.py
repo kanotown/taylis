@@ -21,6 +21,7 @@ from app.modules.messages.schemas import (
     PollAnswersIn,
     PollDecideIn,
 )
+from app.modules.reminders import service as reminders
 
 router = APIRouter(tags=["messages"])
 
@@ -42,7 +43,11 @@ async def create_message(
         raise rate_limited(limiter.retry_after_seconds(key))
     message, created = await service.create_message(db, user, channel_id, body)
     response.status_code = 201 if created else 200
-    return await service.message_out(db, message, user.id)
+    out = await service.message_out(db, message, user.id)
+    if created and message.parent_id is not None:
+        # L6: a reply in a recurring post's thread answers my 「提出のお願い」 on it.
+        await reminders.close_answered(db, user.id, message.parent_id, "collect")
+    return out
 
 
 @router.get("/channels/{channel_id}/messages", response_model=HistoryOut)
@@ -157,7 +162,10 @@ async def unvote(message_id: UUID, index: int, user: CurrentUser, db: Db) -> Mes
 @router.put("/messages/{message_id}/ack", response_model=MessageOut)
 async def acknowledge(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
     """M15e: 「確認しました」 on a message that asks for it (not your own); idempotent."""
-    return await service.set_ack(db, user, message_id, present=True)
+    out = await service.set_ack(db, user, message_id, present=True)
+    # L4: acknowledging answers my 「確認のお願い」 on it.
+    await reminders.close_answered(db, user.id, message_id, "ack")
+    return out
 
 
 @router.get("/messages/{message_id}/ack/pending", response_model=AckPendingOut)

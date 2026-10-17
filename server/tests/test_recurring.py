@@ -28,6 +28,7 @@ from app.modules.recurring.schedule import (
     expand_template,
     next_run_after,
 )
+from app.modules.reminders import service as reminder_service
 from app.modules.reminders.models import Reminder
 from app.modules.users.models import User
 from tests.helpers import make_user
@@ -589,6 +590,28 @@ async def test_nudges_once_for_the_missing_only(
     assert [(r["kind"], r["note"]) for r in listed] == [("collect", note)]
     await _reply(client, cid, str(message.id))
     assert (await client.get("/api/v1/reminders")).json() == []
+    # Submitting finishes the nudge: done on the server, reminder.updated tells her devices
+    # (their lists and badges), and the push badge no longer counts it.
+    mine = (await db.execute(select(Reminder).where(Reminder.user_id == carol.id))).scalar_one()
+    await db.refresh(mine)
+    assert mine.status == "done"
+    updates = (
+        (
+            await db.execute(
+                select(OutboxEvent)
+                .where(
+                    OutboxEvent.event_type == "reminder.updated",
+                    OutboxEvent.audience_id == carol.id,
+                )
+                .order_by(OutboxEvent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [e.payload["reminder"]["status"] for e in updates] == ["fired", "done"]
+    assert await reminder_service.fired_count(db, carol.id) == 0
+    assert await reminder_service.fired_count(db, alice.id) == 1
 
 
 async def test_no_nudges_for_a_deleted_post_or_an_archived_channel(
