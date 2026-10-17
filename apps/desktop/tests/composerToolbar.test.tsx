@@ -155,6 +155,28 @@ describe("the composer's rows (tester, 2026-09-30)", () => {
     expect(right!.contains(screen.getByRole("button", { name: "書式の書き方" }))).toBe(true);
   });
 
+  it("the bottom row is the query container: the upload line and the attachment tiles come in outside any", () => {
+    // WebKit lays out a query container whose content changed before it styles what was just put inside it: a tile
+    // inside one came into a composer a moment shorter, and the list above lost its bottom (user report 2026-10-17).
+    const w = world();
+    const row = w.view.container.querySelector("[data-composer-actions]")!;
+    const containers = () => [...w.view.container.querySelectorAll("[class]")].filter((el) => el.classList.contains("@container"));
+    expect(containers()).toEqual([row]);
+    // What folds by the composer's width is in it (16rem of the row is 17rem of the composer: the row has px-2).
+    const folding = [...w.view.container.querySelectorAll("[class*='@[']")];
+    expect(folding.length).toBeGreaterThan(0);
+    for (const el of folding) {
+      expect(row.contains(el)).toBe(true);
+      expect(el.className).toMatch(/@\[16rem\]:/);
+    }
+    expect(row.className).toContain("px-2");
+    act(() => w.store.trackUpload(w.channel.id, null, 1));
+    const uploading = screen.getAllByRole("status");
+    expect(uploading.length).toBe(2); // the line 「アップロード中」 and the tile
+    for (const el of uploading) expect(el.closest("[class~='@container']")).toBeNull();
+    expect(containers()).toEqual([row]);
+  });
+
   it("the syntax help shows the table example on its own lines and scrolls inside the window", async () => {
     world();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "書式の書き方" })); });

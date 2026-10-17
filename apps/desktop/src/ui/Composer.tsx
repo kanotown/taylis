@@ -714,8 +714,7 @@ export function Composer({
           ))}
         </ul>
       )}
-      {/* Sized by the composer, not the window: a thread pane or a narrow window folds what does not fit; no row wraps. */}
-      <div className="@container rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+      <div className="rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
         {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. The tools
             that fit the composer show and the rest fold into 「…」 (OverflowToolbar, measured: 2026-10-08), the mode
             switch always at the end. */}
@@ -849,7 +848,14 @@ export function Composer({
             {preview ? <EyeOff size={15} /> : <Eye size={15} />}
           </IconButton>}
         </div>
-        <div className="flex flex-nowrap items-center gap-2 px-2 pb-2" data-composer-actions>
+        {/* Sized by the composer, not the window: a thread pane or a narrow window folds what does not fit; no row wraps.
+            The query container is this row, not the whole composer: WebKit (the macOS app, Safari) lays out a container
+            whose content changed before it styles what was just put inside it, so an attachment tile, the upload line or
+            the priority line came into a composer laid out without it, a moment shorter. The list above grew by as much,
+            the browser clamped its scrollTop to its new end, and with the composer back at its height the list stayed up
+            (user report 2026-10-17: a dropped file moved it). The row has px-2 (1rem), so 16rem here is 17rem of the
+            composer. */}
+        <div className="@container flex flex-nowrap items-center gap-2 px-2 pb-2" data-composer-actions>
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
             {/* 「＋」: attachments, a poll and the templates (Slack). The template list opens from it. */}
             <PopoverRoot open={templatesOpen} onOpenChange={setTemplatesOpen}>
@@ -908,20 +914,20 @@ export function Composer({
             </IconButton>
             <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverAnchor virtualRef={emojiAnchor.anchor} />
-              <button ref={emojiButton} type="button" title={t("composer.emoji")} aria-label={t("composer.emoji")} aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen((open) => !open)} className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:flex">
+              <button ref={emojiButton} type="button" title={t("composer.emoji")} aria-label={t("composer.emoji")} aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen((open) => !open)} className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[16rem]:flex">
                 <Smile size={15} />
               </button>
               <PopoverContent align="start" side="top" className="w-auto p-3" onInteractOutside={emojiAnchor.keepOpenOnButton}>
                 <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
               </PopoverContent>
             </PopoverRoot>
-            <IconButton label={t("composer.addMention")} className="hidden h-7 w-7 shrink-0 text-muted hover:text-ink @[17rem]:inline-flex" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={startMention}>
+            <IconButton label={t("composer.addMention")} className="hidden h-7 w-7 shrink-0 text-muted hover:text-ink @[16rem]:inline-flex" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={startMention}>
               <AtSign size={15} />
             </IconButton>
             {!parentId && (
               <PopoverRoot open={priorityOpen} onOpenChange={setPriorityOpen}>
                 <PopoverAnchor virtualRef={priorityAnchor.anchor} />
-                <button ref={priorityButton} type="button" title={t("composer.priority")} aria-label={t("composer.priority")} aria-haspopup="dialog" aria-expanded={priorityOpen} onClick={() => setPriorityOpen((open) => !open)} className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[17rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
+                <button ref={priorityButton} type="button" title={t("composer.priority")} aria-label={t("composer.priority")} aria-haspopup="dialog" aria-expanded={priorityOpen} onClick={() => setPriorityOpen((open) => !open)} className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[16rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
                   <Flag size={15} />
                 </button>
                 <PopoverContent align="start" side="top" className="w-60 p-2" onInteractOutside={priorityAnchor.keepOpenOnButton}>
@@ -941,7 +947,7 @@ export function Composer({
             )}
             <Menu>
               <MenuTrigger asChild>
-                <button ref={moreButton} type="button" title={t("composer.more")} aria-label={t("composer.moreActions")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:hidden">
+                <button ref={moreButton} type="button" title={t("composer.more")} aria-label={t("composer.moreActions")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[16rem]:hidden">
                   <Ellipsis size={15} />
                 </button>
               </MenuTrigger>
