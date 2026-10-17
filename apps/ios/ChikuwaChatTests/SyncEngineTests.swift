@@ -865,6 +865,34 @@ final class SyncEngineTests: XCTestCase {
         engine.stop()
     }
 
+    /// The reminders load after the bootstrap's badge: the icon badge must follow them then, and drop once one is done.
+    func testFiredRemindersLoadedAfterTheBootstrapReachTheIconBadge() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let general = server.createChannel("general", ownerId: alice.id)
+        let (message, _) = try server.post(channelId: general.id, senderId: alice.id, body: "remember me")
+        let row = server.remind(alice.id, channelId: general.id, messageId: message.id, remindAt: "2026-10-02T00:00:00Z")
+        let fired = ReminderOut(id: row.id, messageId: row.messageId, channelId: row.channelId, note: nil, preview: row.preview,
+                                remindAt: row.remindAt, status: "fired", firedAt: "2026-10-02T00:00:00Z", createdAt: row.createdAt)
+        server.reminders[alice.id] = [fired]
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: alice.id), connect: server.connector(for: alice.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        var badges: [Int] = []
+        engine.onBadge = { badges.append($0) }
+        await engine.start()
+        await settle(engine)
+        XCTAssertEqual(store.firedReminderCount, 1)
+        XCTAssertEqual(badges.last, 1)
+        server.emitReminder(alice.id, ReminderOut(id: row.id, messageId: row.messageId, channelId: row.channelId, note: nil, preview: "", remindAt: row.remindAt,
+                                                  status: "done", firedAt: nil, createdAt: row.createdAt))
+        await settle(engine)
+        XCTAssertEqual(badges.last, 0)
+        engine.stop()
+    }
+
     func testScheduledRowsLoadAfterBootstrapAndFollowEvents() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

@@ -1168,7 +1168,9 @@ final class SyncEngine {
 
     /// M12e: open reminders; refreshed after every bootstrap.
     func loadReminders() async {
-        if let rows = try? await api.listReminders() { store.replaceReminders(rows) }
+        guard let rows = try? await api.listReminders() else { return }
+        store.replaceReminders(rows)
+        onBadge?(store.badgeCount)  // it lands after the bootstrap's badge: the icon follows the fired count here too
     }
 
     /// M12e: a reminder just fired while the app is open (the push covers the background case).
