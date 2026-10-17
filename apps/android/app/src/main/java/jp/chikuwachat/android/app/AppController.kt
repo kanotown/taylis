@@ -2000,13 +2000,18 @@ class AppController(private val app: Application) {
         } catch (e: Exception) { report(e); false }
     }
 
-    /** Cancels a pending reminder or marks a fired one done. */
+    /**
+     * Cancels a pending reminder or marks a fired one done. A 404 means it is already closed (on another device, or done
+     * by the server when I acknowledged or replied): it leaves the list all the same.
+     */
     suspend fun closeReminder(row: ReminderOut) {
         val api = api ?: return
         try {
             api.closeReminder(row.id)
-            store.applyReminder(row.copy(status = if (row.status == "fired") "done" else "cancelled"))
-        } catch (e: Exception) { report(e) }
+        } catch (e: ApiException.Api) {
+            if (e.code != "reminder_not_found") { report(e); return }
+        } catch (e: Exception) { report(e); return }
+        store.applyReminder(row.copy(status = if (row.status == "fired") "done" else "cancelled"))
     }
 
     // --- scheduled messages (M12d) ----------------------------------------------------------------

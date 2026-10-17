@@ -1071,6 +1071,7 @@
     <string name="reminder_dialog_note_optional">メモ（任意）</string>
     <string name="reminder_dialog_remind_me">リマインド</string>
     <string name="reminders_pane_delivered_reminders">届いたリマインド</string>
+    <string name="reminders_pane_done_hint">「完了」を押すと一覧とバッジから消えます。長押しでも操作できます。</string>
     <string name="reminders_pane_long_press_a_message_and_choose">メッセージを長押しして「リマインド」を選ぶと、ここに集まります。</string>
     <string name="reminders_pane_no_reminders">リマインダーはありません</string>
     <string name="report_problem_category">種類</string>
