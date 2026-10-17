@@ -1071,6 +1071,7 @@
     <string name="reminder_dialog_note_optional">备注 (可选)</string>
     <string name="reminder_dialog_remind_me">提醒</string>
     <string name="reminders_pane_delivered_reminders">已送达的提醒</string>
+    <string name="reminders_pane_done_hint">点按\"完成\"即可将提醒从此列表和角标中移除。也可以长按操作。</string>
     <string name="reminders_pane_long_press_a_message_and_choose">长按消息并选择\"提醒\"，即会集中显示在这里。</string>
     <string name="reminders_pane_no_reminders">没有提醒</string>
     <string name="report_problem_category">类别</string>

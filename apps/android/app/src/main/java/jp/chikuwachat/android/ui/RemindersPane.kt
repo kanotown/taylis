@@ -1,7 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,12 +11,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -46,34 +62,73 @@ fun RemindersPane(controller: AppController, version: Int, onOpen: (ReminderOut)
         }
         if (fired.isNotEmpty()) {
             item { Text(stringResource(R.string.reminders_pane_delivered_reminders), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            items(fired, key = { "f:" + it.id }) { row -> ReminderRow(row, controller, stringResource(R.string.common_done_2), onOpen) }
+            items(fired, key = { "f:" + it.id }) { row -> ReminderRow(row, controller, onOpen) }
+            item { Text(stringResource(R.string.reminders_pane_done_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         }
         if (pending.isNotEmpty()) {
             item { Text(stringResource(R.string.common_event), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            items(pending, key = { "p:" + it.id }) { row -> ReminderRow(row, controller, stringResource(R.string.common_cancel_2), onOpen) }
+            items(pending, key = { "p:" + it.id }) { row -> ReminderRow(row, controller, onOpen) }
         }
     }
 }
 
+/**
+ * The row opens the message; 完了 (fired) / 取り消し (pending) sits at its trailing edge, and a long press offers the same
+ * (2026-10-17: the action read as part of the text below it, and the badge seemed impossible to clear).
+ */
 @Composable
-private fun ReminderRow(row: ReminderOut, controller: AppController, action: String, onOpen: (ReminderOut) -> Unit) {
+private fun ReminderRow(row: ReminderOut, controller: AppController, onOpen: (ReminderOut) -> Unit) {
     val store = controller.store
-    Column(Modifier.fillMaxWidth().clickable { onOpen(row) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        // L4 (M31): the author asked me to acknowledge the message (not a reminder I set); L6 (M60): a recurring post's
-        // due time passed without my reply in its thread (提出のお願い; the note names it and the due time).
-        Recurring.reminderBadge(row.kind)?.let { badge ->
-            Text(
-                badge, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+    val fired = row.status == "fired"
+    val action = stringResource(if (fired) R.string.common_done_2 else R.string.common_cancel_2)
+    val close = { controller.scope.launch { controller.closeReminder(row) }; Unit }
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth()
+                .combinedClickable(onClick = { onOpen(row) }, onLongClick = { menuOpen = true }, onLongClickLabel = action)
+                .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                // L4 (M31): the author asked me to acknowledge the message (not a reminder I set); L6 (M60): a recurring post's
+                // due time passed without my reply in its thread (提出のお願い; the note names it and the due time).
+                Recurring.reminderBadge(row.kind)?.let { badge ->
+                    Text(
+                        badge, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(store.channel(row.channelId)?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(if (fired) R.string.reminders_pane_reminded_at else R.string.reminders_pane_reminds_at, Schedule.label(row.remindAt)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                row.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 2.dp)) }
+                Text(row.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            if (fired) {
+                OutlinedButton(onClick = close, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(action)
+                }
+            } else {
+                TextButton(onClick = close, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(action, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.task_form_screen_open_message)) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                onClick = { menuOpen = false; onOpen(row) },
+            )
+            DropdownMenuItem(
+                text = { Text(action) },
+                leadingIcon = { Icon(if (fired) Icons.Default.Check else Icons.Default.Close, contentDescription = null) },
+                onClick = { menuOpen = false; close() },
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(store.channel(row.channelId)?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            Text(stringResource(if (row.status == "fired") R.string.reminders_pane_reminded_at else R.string.reminders_pane_reminds_at, Schedule.label(row.remindAt)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        row.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 2.dp)) }
-        Text(row.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-        Row { TextButton(onClick = { controller.scope.launch { controller.closeReminder(row) } }) { Text(action) } }
     }
     HorizontalDivider()
 }

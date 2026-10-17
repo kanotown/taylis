@@ -1076,6 +1076,7 @@
     <string name="reminder_dialog_note_optional">Note (optional)</string>
     <string name="reminder_dialog_remind_me">Remind me</string>
     <string name="reminders_pane_delivered_reminders">Delivered reminders</string>
+    <string name="reminders_pane_done_hint">Tap \"Done\" to remove a reminder from this list and the badge. A long press works too.</string>
     <string name="reminders_pane_long_press_a_message_and_choose">Long-press a message and choose \"Remind me\" to collect it here.</string>
     <string name="reminders_pane_no_reminders">No reminders</string>
     <string name="report_problem_category">Category</string>
