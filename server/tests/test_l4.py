@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
 from app.events.models import OutboxEvent
+from app.modules.reminders import service as reminders
 from app.modules.reminders.models import Reminder
 from app.modules.users.models import User
 from app.realtime.hub import RealtimeHub
@@ -97,8 +98,28 @@ async def test_unacknowledged_members_and_reminding_them(
     listed = (await client.get("/api/v1/reminders")).json()
     assert [(r["kind"], r["note"]) for r in listed] == [("ack", "Alice さんから確認のお願い")]
     assert (await client.put(f"/api/v1/messages/{message['id']}/ack")).status_code == 200
-    # Acknowledged: the request leaves her list.
+    # Acknowledged: the request leaves her list, is done, and no longer holds up her badge
+    # (reminder.updated takes it off her devices at once).
     assert (await client.get("/api/v1/reminders")).json() == []
+    [nudge] = (await db.execute(select(Reminder).where(Reminder.user_id == carol.id))).scalars()
+    await db.refresh(nudge)
+    assert nudge.status == "done"
+    updates = (
+        (
+            await db.execute(
+                select(OutboxEvent)
+                .where(
+                    OutboxEvent.event_type == "reminder.updated",
+                    OutboxEvent.audience_id == carol.id,
+                )
+                .order_by(OutboxEvent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [e.payload["reminder"]["status"] for e in updates] == ["fired", "done"]
+    assert await reminders.fired_count(db, carol.id) == 0
 
 
 async def test_channel_owners(

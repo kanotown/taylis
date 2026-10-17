@@ -44,6 +44,23 @@ async def fired_count(db: AsyncSession, user_id: uuid.UUID) -> int:
     return int((await db.execute(stmt)).scalar_one())
 
 
+async def list_fired_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Reminder]:
+    stmt = select(Reminder).where(Reminder.user_id == user_id, Reminder.status == "fired")
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def open_for_message(
+    db: AsyncSession, user_id: uuid.UUID, message_id: uuid.UUID, kind: str
+) -> list[Reminder]:
+    stmt = select(Reminder).where(
+        Reminder.user_id == user_id,
+        Reminder.message_id == message_id,
+        Reminder.kind == kind,
+        Reminder.status.in_(("pending", "fired")),
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def due(db: AsyncSession, now: datetime, limit: int) -> list[Reminder]:
     stmt = (
         select(Reminder)

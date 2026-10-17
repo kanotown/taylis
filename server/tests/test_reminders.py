@@ -127,3 +127,35 @@ async def test_due_reminders_fire_once_and_nudge_the_owner(
     assert (await client.delete(f"/api/v1/reminders/{row['id']}")).status_code == 204
     assert (await client.get("/api/v1/reminders")).json() == []
     assert await reminders.fired_count(db, bob.id) == 0
+
+
+async def test_a_fired_reminder_no_longer_shown_leaves_the_badge(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """The push badge counts the fired reminders the list shows: one whose message was deleted
+    cannot be opened or finished from the list, so it must not hold the badge up for good."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    general = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    as_user(bob)
+    await client.post(f"/api/v1/channels/{general['id']}/join")
+    as_user(alice)
+    kept = await _post(client, general["id"], "残るメッセージ")
+    gone = await _post(client, general["id"], "消えるメッセージ")
+    as_user(bob)
+    later = utcnow() + timedelta(hours=1)
+    for message in (kept, gone):
+        created = await client.post(
+            f"/api/v1/messages/{message['id']}/reminders", json={"remind_at": later.isoformat()}
+        )
+        assert created.status_code == 201
+    async with app.state.db.session_factory() as worker_db:
+        assert await reminders.fire_due(worker_db, now=later + timedelta(minutes=1)) == 2
+    assert await reminders.fired_count(db, bob.id) == 2
+
+    as_user(alice)
+    assert (await client.delete(f"/api/v1/messages/{gone['id']}")).status_code == 200
+    as_user(bob)
+    assert [r["message_id"] for r in (await client.get("/api/v1/reminders")).json()] == [kept["id"]]
+    assert await reminders.fired_count(db, bob.id) == 1
