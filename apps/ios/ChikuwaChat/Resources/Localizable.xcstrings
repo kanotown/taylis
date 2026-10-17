@@ -22244,6 +22244,22 @@
         }
       }
     },
+    "「完了」を押すと一覧とバッジから消えます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap “Done” to remove a reminder from this list and the badge."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点按“完成”即可将提醒从此列表和角标中移除。"
+          }
+        }
+      }
+    },
     "展開中" : {
       "localizations" : {
         "en" : {

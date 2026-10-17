@@ -1121,13 +1121,17 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
-    /// Cancels a pending reminder or marks a fired one done.
+    /// Cancels a pending reminder or marks a fired one done. The icon badge and the widget follow at once, not only when
+    /// reminder.updated comes back over the socket. A 404 means it is already closed (on another device, or done by the
+    /// server when I acknowledged or replied): it leaves the list all the same.
     func closeReminder(_ row: ReminderOut) async {
         guard let api else { return }
         do {
             try await api.closeReminder(id: row.id)
-            store.reminders.removeValue(forKey: row.id)
-        } catch { self.error = describe(error) }
+        } catch let error as ApiError where error.code == "reminder_not_found" {
+        } catch { self.error = describe(error); return }
+        store.reminders.removeValue(forKey: row.id)
+        engine?.onBadge?(store.badgeCount)
     }
 
     // MARK: scheduled messages (M12d)
