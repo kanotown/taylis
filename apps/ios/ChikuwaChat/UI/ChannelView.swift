@@ -1715,6 +1715,10 @@ struct ComposerView: View {
     /// height in one frame as the keyboard came and went (27–36 pt on the iOS 26.5 simulator), before the keyboard's own
     /// motion: a jolt at the start of every keyboard show and hide (testers on iOS 18, 2026-10-09).
     @State private var typing = false
+    /// Bumped as the text changes, so an open 「＋」 or 書式 menu closes once the user types: the keyboard is a window of
+    /// its own, so a key is no tap outside the menu, and the menu stayed over the conversation (a tester, 2026-10-17).
+    /// SwiftUI's `Menu` has no way to close it; a menu whose view is replaced goes with it.
+    @State private var menuEpoch = 0
 
     @ViewBuilder
     private var inputField: some View {
@@ -1763,6 +1767,7 @@ struct ComposerView: View {
         }
         .disabled(uploading > 0)
         .accessibilityLabel("添付")
+        .id(menuEpoch)
     }
 
     /// Under the input while typing: attach, mention, emoji, formatting, send later, photos; send on the right.
@@ -1779,6 +1784,7 @@ struct ComposerView: View {
                 Image(systemName: "textformat").font(.system(size: 20)).frame(width: 36, height: 36)
             }
             .accessibilityLabel("書式")
+            .id(menuEpoch)
             toolButton("clock", label: tr("後で送信")) { showSchedule = true }.disabled(!canSend)
             // The photo library at the row's end (2026-10-16: used far more than the templates, which stay in 「＋」).
             toolButton("photo.on.rectangle", label: tr("写真ライブラリ")) { showPhotoPicker = true }.disabled(uploading > 0)
@@ -1976,6 +1982,7 @@ struct ComposerView: View {
             guard typing != now else { return }
             withAnimation(.easeOut(duration: 0.25)) { typing = now }
         }
+        .onChange(of: text) { menuEpoch &+= 1 }
         .background(Color(.systemBackground))
         // Sized before the conversation above it: a VStack offers its flexible children equal shares, so with the
         // keyboard up the composer got half of what was left and the input shrank to fit it — to ~1.2 lines once the
