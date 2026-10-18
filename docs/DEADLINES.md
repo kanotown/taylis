@@ -58,6 +58,7 @@ CHECK: 締切は `channel_id` と `due_on` を持つ。索引 `tasks_deadline_id
 | message_id | ボットが投稿したメッセージ |
 
 `system_bots` (`key` → `user_id`): サーバが自分で投稿するボット。今は `deadlines` (表示名「締切」) だけ。
+(のちに `actions`「操作ボタン」、`moderation`「モデレーション」、`calendar`「予定」(CALENDAR.md §11) が加わった。)
 
 ## 4. 通知の計画と投稿
 
