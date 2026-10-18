@@ -24,7 +24,7 @@ struct RemindersView: View {
                 } header: {
                     Text("届いたリマインド")
                 } footer: {
-                    Text("「完了」を押すと一覧とバッジから消えます。")
+                    Text("「完了」を押すと一覧とバッジから消えます。").font(.footnote).foregroundStyle(.secondary)
                 }
             }
             if !pending.isEmpty {
@@ -64,6 +64,7 @@ struct RemindersView: View {
             .buttonStyle(.plain)
             Button { close() } label: {
                 Label(fired ? tr("完了") : tr("取り消し"), systemImage: fired ? "checkmark" : "xmark").font(.footnote)
+                    .labelStyle(.titleAndIcon)  // a list row shows a Label's icon alone otherwise
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
