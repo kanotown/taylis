@@ -97,6 +97,34 @@ describe("the repeat picker", () => {
   });
 });
 
+describe("「チャンネルに知らせる」 (CALENDAR.md §11)", () => {
+  it("is offered for a new event in a channel's calendar, on by default", async () => {
+    const { controller, hub } = setup();
+    render(<CalendarEventDialog controller={controller} event={null} initial={{ ...newDraft("2026-10-13"), title: "ゼミ", calendar: "c1" }} onClose={() => {}} />);
+    const toggle = screen.getByLabelText("チャンネルに知らせる") as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "追加" })); });
+    expect(hub.create.mock.calls[0]).toMatchObject([{ channel_id: "c1", announce: true }]);
+  });
+
+  it("sends announce false when turned off", async () => {
+    const { controller, hub } = setup();
+    render(<CalendarEventDialog controller={controller} event={null} initial={{ ...newDraft("2026-10-13"), title: "ゼミ", calendar: "c1" }} onClose={() => {}} />);
+    fireEvent.click(screen.getByLabelText("チャンネルに知らせる"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "追加" })); });
+    expect(hub.create.mock.calls[0]).toMatchObject([{ channel_id: "c1", announce: false }]);
+  });
+
+  it("is not offered for my own calendar or when editing", () => {
+    const { controller } = setup();
+    const { unmount } = render(<CalendarEventDialog controller={controller} event={null} initial={{ ...newDraft("2026-10-13"), title: "ゼミ" }} onClose={() => {}} />);
+    expect(screen.queryByLabelText("チャンネルに知らせる")).toBeNull();
+    unmount();
+    render(<CalendarEventDialog controller={controller} event={timed("ゼミ", "2026-10-13T05:00:00Z", "2026-10-13T06:00:00Z", { channel_id: "c1" })} onClose={() => {}} />);
+    expect(screen.queryByLabelText("チャンネルに知らせる")).toBeNull();
+  });
+});
+
 describe("an occurrence of a recurring event", () => {
   it("asks which ones a change is for and sends only what changed", async () => {
     const { controller, hub } = setup();
@@ -238,7 +266,7 @@ describe("the hub and series", () => {
     expect(api.deleteCalendarOccurrence).toHaveBeenCalledWith("s1", "2026-10-13T05:00:00Z", "following");
     expect(hub.window("view")!.events.map((e) => e.id)).toEqual(["s1"]);
     // A series made here is read, not put in by hand.
-    await hub.create({ title: "x", all_day: false });
+    await hub.create({ title: "x", all_day: false, announce: false });
     expect(api.calendarEvents).toHaveBeenCalledTimes(3);
   });
 });

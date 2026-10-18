@@ -242,7 +242,9 @@ export class AppController {
   private entryCanvas: string | null = null;
   /** M121: a `/p/<id>` Docs page opened in the browser. */
   private entryPage: string | null = null;
-  /** The browser opened this page at a link (/m/, /c/, /p/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
+  /** CALENDAR.md §11: an `/e/<id>` event link opened in the browser. */
+  private entryEvent: string | null = null;
+  /** The browser opened this page at a link (/m/, /c/, /p/, /e/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
   openedAtLink = false;
 
   private takeEntryPath(): void {
@@ -252,6 +254,7 @@ export class AppController {
     if (entry.kind === "invite") this.entryInvite = entry.token;
     else if (entry.kind === "canvas") this.entryCanvas = entry.id;
     else if (entry.kind === "page") this.entryPage = entry.id;
+    else if (entry.kind === "event") this.entryEvent = entry.id;
     else this.entryMessage = entry.id;
     history.replaceState(null, "", "/");
   }
@@ -263,6 +266,9 @@ export class AppController {
     const pageId = this.entryPage;
     this.entryPage = null;
     if (pageId) this.requestOpenPage(pageId);
+    const eventId = this.entryEvent;
+    this.entryEvent = null;
+    if (eventId) this.requestOpenEvent(eventId);
     const id = this.entryMessage;
     if (!id) return;
     this.entryMessage = null;
@@ -2239,7 +2245,7 @@ export class AppController {
     }
     void engine.start();
     this.reportDeviceOnce(session, engine);
-    if (this.active === session && (this.entryMessage || this.entryCanvas || this.entryPage)) {
+    if (this.active === session && (this.entryMessage || this.entryCanvas || this.entryPage || this.entryEvent)) {
       // M12j: the browser has no local store; reveal once the first sync has brought the channels.
       const unsubscribe = engine.subscribe(() => {
         if (engine.status !== "online" || store.channels.size === 0) return;
@@ -3016,6 +3022,14 @@ export class AppController {
       this.setError(error);
       return false;
     }
+  }
+
+  /** CALENDAR.md §11: an event the main screen should open (an event link `<server>/e/<id>` in a message or the browser's address). */
+  openEventRequest: { eventId: string } | null = null;
+
+  requestOpenEvent(eventId: string): void {
+    this.openEventRequest = { eventId: eventId.toLowerCase() };
+    this.emit();
   }
 
   /** The event a decision made (the card's 「予定を開く」); null when it is gone or cannot be seen (the toast says so). */

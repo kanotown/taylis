@@ -1348,6 +1348,7 @@ export const ja = {
   "calendar.endDate": "終了日",
   "calendar.endTime": "終了時刻",
   "calendar.meOnly": "自分（自分だけに表示）",
+  "calendar.announce": "チャンネルに知らせる",
   "calendar.location": "場所",
   "calendar.locationPlaceholder": "5 号館 501 / https://…",
   "calendar.alarm": "通知",

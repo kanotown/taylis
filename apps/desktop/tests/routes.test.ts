@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attachmentRefId, pageLink, pageRefId, parsePageLink } from "../src/ui/permalink";
+import { attachmentRefId, eventLink, pageLink, pageRefId, parseEventLink, parsePageLink } from "../src/ui/permalink";
 import { parseEntryPath } from "../src/ui/routes";
 
 describe("browser entry routes (M12j)", () => {
@@ -14,6 +14,16 @@ describe("browser entry routes (M12j)", () => {
     expect(parseEntryPath("/c/not-an-id")).toBeNull();
     expect(parseEntryPath(`/p/${id.toUpperCase()}`)).toEqual({ kind: "page", id }); // M121
     expect(parseEntryPath("/p/not-an-id")).toBeNull();
+    expect(parseEntryPath(`/e/${id.toUpperCase()}`)).toEqual({ kind: "event", id }); // CALENDAR.md §11
+    expect(parseEntryPath("/e/not-an-id")).toBeNull();
+  });
+
+  it("CALENDAR.md §11: event links `<server>/e/<id>` on this server only", () => {
+    expect(parseEventLink("https://chat.example.com/", `https://CHAT.example.com/e/${id.toUpperCase()}#x`)).toBe(id);
+    expect(parseEventLink("https://chat.example.com", `https://other.example.com/e/${id}`)).toBeNull();
+    expect(parseEventLink("https://chat.example.com", `https://chat.example.com/e/nope`)).toBeNull();
+    expect(parseEventLink("https://chat.example.com", `https://chat.example.com/m/${id}`)).toBeNull();
+    expect(eventLink("https://chat.example.com/", id)).toBe(`https://chat.example.com/e/${id}`);
   });
 
   it("M121: Docs links — `<server>/p/<id>`, `page:<id>` and a page's file `attachment:<id>`", () => {

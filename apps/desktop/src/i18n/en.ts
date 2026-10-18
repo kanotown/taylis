@@ -1349,6 +1349,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "calendar.endDate": "End date",
   "calendar.endTime": "End time",
   "calendar.meOnly": "Me (only you see it)",
+  "calendar.announce": "Let the channel know",
   "calendar.location": "Location",
   "calendar.locationPlaceholder": "Building 5, room 501 / https://…",
   "calendar.alarm": "Notification",

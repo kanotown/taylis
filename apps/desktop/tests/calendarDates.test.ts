@@ -139,9 +139,12 @@ describe("the event form", () => {
       alarm_minutes: 10,
       tz: "Asia/Tokyo",
       client_event_id: "k1",
+      announce: true,
     });
+    // CALENDAR.md §11: 「チャンネルに知らせる」 off, and never for my own calendar.
+    expect(draftToCreate({ ...base, calendar: "c1" }, "Asia/Tokyo", "k3", false).announce).toBe(false);
     const dayBody = draftToCreate({ ...base, allDay: true, endDay: "2026-10-03", alarm: -480 }, "Asia/Tokyo", "k2");
-    expect(dayBody).toMatchObject({ channel_id: null, all_day: true, starts_at: null, ends_at: null, start_date: "2026-10-01", end_date: "2026-10-03", alarm_minutes: -480 });
+    expect(dayBody).toMatchObject({ channel_id: null, all_day: true, starts_at: null, ends_at: null, start_date: "2026-10-01", end_date: "2026-10-03", alarm_minutes: -480, announce: false });
     expect(draftToPatch({ ...base, allDay: true })).toMatchObject({ all_day: true, start_date: "2026-10-01", end_date: "2026-10-01", starts_at: null });
   });
 

@@ -1349,6 +1349,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "calendar.endDate": "结束日期",
   "calendar.endTime": "结束时间",
   "calendar.meOnly": "我（仅自己可见）",
+  "calendar.announce": "告知频道",
   "calendar.location": "地点",
   "calendar.locationPlaceholder": "5 号楼 501 / https://…",
   "calendar.alarm": "通知",
