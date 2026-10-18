@@ -394,7 +394,7 @@ object CalendarDates {
             tz = tz,
             clientEventId = clientEventId,
             rrule = CalendarRecurrence.repeatToRrule(draft.repeat, draft.startDay),
-            announce = if (draft.calendar != null) announce else null,
+            announce = if (draft.calendar != null && !announce) false else null, // on is the default; an older server refuses the field (422)
         )
     }
 

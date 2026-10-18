@@ -154,7 +154,7 @@ class CalendarDatesTest {
         assertEquals(
             CalendarEventCreate(
                 channelId = "c1", title = "ゼミ", allDay = false, startsAt = "2026-10-01T05:00:00Z", endsAt = "2026-10-01T06:30:00Z",
-                location = "5 号館", description = null, alarmMinutes = 10, tz = "Asia/Tokyo", clientEventId = "k1", announce = true,
+                location = "5 号館", description = null, alarmMinutes = 10, tz = "Asia/Tokyo", clientEventId = "k1",
             ),
             timedBody,
         )
@@ -182,8 +182,9 @@ class CalendarDatesTest {
 
     @Test
     fun aChannelEventSaysWhetherToAnnounceItAndMyOwnSaysNothing() {
+        // On is the server's default and is left out: a server older than the field refuses a body that has it (422).
         val on = Codec.snake.encodeToJsonElement(CalendarEventCreate.serializer(), CalendarDates.draftToCreate(base.copy(calendar = "c1"), "Asia/Tokyo", "k")).jsonObject
-        assertEquals("true", on["announce"]!!.jsonPrimitive.content)
+        assertFalse("announce" in on)
         val off = Codec.snake.encodeToJsonElement(CalendarEventCreate.serializer(), CalendarDates.draftToCreate(base.copy(calendar = "c1"), "Asia/Tokyo", "k", announce = false)).jsonObject
         assertEquals("false", off["announce"]!!.jsonPrimitive.content)
         // My own calendar: left out whatever the switch says (the server ignores it there).

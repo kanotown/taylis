@@ -540,7 +540,8 @@ export type TaskCanvasSource = components["schemas"]["TaskCanvasSourceOut"];
  * and my alarm travels on calendar.alarm.updated (openapi/ws-events.json).
  */
 export type CalendarEventOut = components["schemas"]["CalendarEventOut"];
-export type CalendarEventCreate = components["schemas"]["CalendarEventCreate"];
+/** `announce` defaults to true on the server and is sent only when false (calendarDates.draftToCreate). */
+export type CalendarEventCreate = Omit<components["schemas"]["CalendarEventCreate"], "announce"> & { announce?: boolean };
 export type CalendarEventUpdate = components["schemas"]["CalendarEventUpdate"];
 export type CalendarAlarmOut = components["schemas"]["CalendarAlarmOut"];
 /** M68 (CALENDAR.md §10): a change or delete of a recurring event's occurrence and which ones it touches. */
