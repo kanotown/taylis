@@ -697,6 +697,7 @@ fun MessageRow(
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
                         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
+                        onOpenEvent = { id -> controller.scope.launch { controller.openEventLink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                         canvasCard = { canvasId -> CanvasLinkCard(controller, canvasId, version) },  // M58
                         jumbo = true,  // M101
@@ -708,8 +709,8 @@ fun MessageRow(
                 if (message.collection != null) CollectionChip(message, store, version)  // L6 (M60)
                 if (message.tasks.isNotEmpty()) MessageTaskChips(message, controller, version)  // L9 (M64)
                 AttachmentList(message.attachments, controller)
-                // Not for this server's /m/ and /c/ links: a message shows in place, a canvas as its card (M58).
-                if (!message.pending && call == null) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) ?: Permalink.pageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { link ->
+                // Not for this server's /m/, /p/, /e/ and /c/ links: a message shows in place, a canvas as its card (M58).
+                if (!message.pending && call == null) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) ?: Permalink.pageId(it, link) ?: Permalink.eventId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { link ->
                     // Review v0.1.18 #5: an AI bot's link is not previewed until tapped (decided by the sender, here).
                     LinkPreviewCard(controller, link, message.id, auto = LinkPreviewPolicy.autoLoads(message.senderId, store.users[message.senderId]?.role, controller.aiStatus, store.users[message.senderId]?.botKind))
                 }

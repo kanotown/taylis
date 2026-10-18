@@ -21,4 +21,17 @@ class PermalinkTest {
         assertNull(Permalink.messageId("https://chat.example.com", "https://other.example.com/m/$id"))
         assertNull(Permalink.messageId("https://chat.example.com", "https://chat.example.com/files/$id"))
     }
+
+    @Test fun recognisesEventLinksTheSameWay() {
+        assertEquals("https://chat.example.com/e/$id", Permalink.eventUrl("https://chat.example.com/", id))
+        assertEquals(id, Permalink.eventId("https://chat.example.com", "https://chat.example.com/e/$id"))
+        assertEquals(id, Permalink.eventId("https://chat.example.com/", "HTTPS://CHAT.EXAMPLE.COM/e/${id.uppercase()}?x=1#y"))
+        assertEquals(id, Permalink.eventId("https://chat.example.com", "https://chat.example.com/e/$id#top"))
+        assertNull(Permalink.eventId("https://chat.example.com", "https://chat.example.com/e/not-an-id"))
+        assertNull(Permalink.eventId("https://chat.example.com", "https://other.example.com/e/$id"))
+        // Each kind of link is only its own.
+        assertNull(Permalink.eventId("https://chat.example.com", "https://chat.example.com/m/$id"))
+        assertNull(Permalink.messageId("https://chat.example.com", "https://chat.example.com/e/$id"))
+        assertNull(Permalink.canvasId("https://chat.example.com", "https://chat.example.com/e/$id"))
+    }
 }

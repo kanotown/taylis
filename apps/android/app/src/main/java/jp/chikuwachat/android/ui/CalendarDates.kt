@@ -374,8 +374,11 @@ object CalendarDates {
 
     private fun utc(at: ZonedDateTime): String = at.toInstant().toString()
 
-    /** POST /calendar/events: local times become UTC instants, all-day days stay dates. */
-    fun draftToCreate(draft: EventDraft, tz: String, clientEventId: String): CalendarEventCreate {
+    /**
+     * POST /calendar/events: local times become UTC instants, all-day days stay dates. `announce`: 「チャンネルに知らせる」,
+     * sent for a channel's event only.
+     */
+    fun draftToCreate(draft: EventDraft, tz: String, clientEventId: String, announce: Boolean = true): CalendarEventCreate {
         val timed = !draft.allDay
         return CalendarEventCreate(
             channelId = draft.calendar,
@@ -391,6 +394,7 @@ object CalendarDates {
             tz = tz,
             clientEventId = clientEventId,
             rrule = CalendarRecurrence.repeatToRrule(draft.repeat, draft.startDay),
+            announce = if (draft.calendar != null) announce else null,
         )
     }
 

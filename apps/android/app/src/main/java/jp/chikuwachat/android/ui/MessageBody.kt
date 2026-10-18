@@ -100,6 +100,8 @@ fun MessageBody(
     jumbo: Boolean = false,
     /** A tap on a mention of someone known (2026-10-06): their profile. Null: mentions are plain text. */
     onOpenUser: ((String) -> Unit)? = null,
+    /** Event links on this server (`<base>/e/<id>`, the 「予定」 bot's) open the event in place. */
+    onOpenEvent: ((String) -> Unit)? = null,
 ) {
     if (jumbo) {
         val only = remember(text, version, customEmoji) { EmojiOnly.parse(text, customEmoji) }
@@ -108,7 +110,7 @@ fun MessageBody(
             return
         }
     }
-    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations, onOpenUser)
+    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations, onOpenUser, onOpenEvent)
     // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
     // row on screen again).
     val blocks = remember(text) { parseBlocks(text) }
@@ -202,6 +204,8 @@ fun bodyInline(
     citations: Boolean = false,
     /** A tap on a known user's mention; a group, @channel and an unknown user stay plain. */
     onOpenUser: ((String) -> Unit)? = null,
+    /** Event links on this server (`<base>/e/<id>`) open the event in place. */
+    onOpenEvent: ((String) -> Unit)? = null,
 ): BodyInline {
     // The Store's maps change in place, so `version` is read here on purpose: the Compose compiler leaves a parameter the
     // body never reads out of the skip check, and the body was never drawn again when only the maps had changed (custom
@@ -256,6 +260,7 @@ fun bodyInline(
                 is BodyToken.Link -> {
                     val internal = internalBase?.let { Permalink.messageId(it, token.url) }
                     val canvas = internalBase?.let { Permalink.canvasId(it, token.url) }
+                    val event = internalBase?.let { Permalink.eventId(it, token.url) }
                     // M122: `page:<id>` (the canvas dialect) or this server's `/p/<id>`; `attachment:<id>` a file.
                     val page = jp.chikuwachat.android.sync.WikiLinks.idOf(token.url) ?: internalBase?.let { Permalink.pageId(it, token.url) }
                     val file = jp.chikuwachat.android.sync.WikiLinks.attachmentOf(token.url)
@@ -281,6 +286,10 @@ fun bodyInline(
                     } else if (canvas != null && onOpenCanvas != null) {
                         withLink(LinkAnnotation.Clickable("canvas:$canvas", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenCanvas(canvas) }) {
                             append("📄 " + (token.label?.takeIf { it != token.url } ?: L10n.str(R.string.common_open_canvas)))
+                        }
+                    } else if (event != null && onOpenEvent != null) {
+                        withLink(LinkAnnotation.Clickable("event:$event", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenEvent(event) }) {
+                            append("📅 " + (token.label?.takeIf { it != token.url } ?: L10n.str(R.string.common_open_event)))
                         }
                     } else withLink(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),

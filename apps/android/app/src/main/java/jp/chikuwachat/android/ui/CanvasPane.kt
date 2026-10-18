@@ -578,6 +578,7 @@ private fun CanvasReader(
         store.users, internalBase = controller.serverBase,
         onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
+        onOpenEvent = { id -> controller.scope.launch { controller.openEventLink(id) } },
         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
         onNeedEmojiImage = { controller.loadEmojiImage(it) }, groups = store.groups, version = version,
     )

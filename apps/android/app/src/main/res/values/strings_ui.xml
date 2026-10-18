@@ -133,6 +133,7 @@
     <string name="calendar_event_form_delete_this_event">予定を削除しますか？</string>
     <string name="calendar_event_form_edit_event">予定を編集</string>
     <string name="calendar_event_form_end">終了</string>
+    <string name="calendar_event_form_let_the_channel_know">チャンネルに知らせる</string>
     <string name="calendar_event_form_end_date">終了日</string>
     <string name="calendar_event_form_every">間隔</string>
     <string name="calendar_event_form_every_suffix">ごと</string>
@@ -609,6 +610,7 @@
     <string name="common_online">オンライン</string>
     <string name="common_open">開く</string>
     <string name="common_open_canvas">キャンバスを開く</string>
+    <string name="common_open_event">予定を開く</string>
     <string name="common_open_in_another_app">他のアプリで開く</string>
     <string name="common_open_profile">プロフィールを開く</string>
     <string name="common_open_thread">スレッドを開く</string>
