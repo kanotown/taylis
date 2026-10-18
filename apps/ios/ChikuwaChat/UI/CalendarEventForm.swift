@@ -21,6 +21,8 @@ struct CalendarEventForm: View {
     @State private var askScope: ScopeAsk?
     /// The creation's idempotency key: a retry after a failure never makes a second event (§4).
     @State private var clientEventId = UUID().uuidString.lowercased()
+    /// A new channel event: the 「予定」 bot posts it in the channel (on each time the form opens).
+    @State private var announce = true
     @Environment(\.dismiss) private var dismiss
     /// The event as opened (what 「変えた項目」 are measured against).
     private let opened: EventDraft?
@@ -149,6 +151,9 @@ struct CalendarEventForm: View {
                 }
             }
             .disabled(event != nil)
+            if event == nil && draft.channelId != nil {
+                Toggle("チャンネルに知らせる", isOn: $announce)
+            }
         } footer: {
             if event != nil { Text("予定のカレンダーはあとから変えられません。") }
         }
@@ -216,7 +221,7 @@ struct CalendarEventForm: View {
                     try await hub.setAlarm(event.series, minutes: draft.alarm)
                 }
             } else {
-                _ = try await hub.create(draft.create(tz: CalendarDates.zoneId, clientEventId: clientEventId))
+                _ = try await hub.create(draft.create(tz: CalendarDates.zoneId, clientEventId: clientEventId, announce: announce))
             }
             dismiss()
         } catch {

@@ -1011,6 +1011,12 @@ struct MessageBodyView: View {
                 attributed.link = CanvasLink.internalLink(canvasId: id)
                 return Text(attributed)
             }
+            if let id = EventLink.eventId(base: internalBase, url: url) {
+                // A calendar event of this server (the 「予定」 bot's announcement) opens in the app.
+                var attributed = AttributedString("📅 " + ((label != nil && label != url) ? label! : tr("予定を開く")))
+                attributed.link = EventLink.internalLink(eventId: id)
+                return Text(attributed)
+            }
             if let id = Permalink.messageId(base: internalBase, url: url) {
                 if citations, let label, !label.isEmpty, label.allSatisfy(\.isASCII), Int(label) != nil {
                     // M71: an AI answer's [n], a link to the cited message (AskRules.linkCitations).

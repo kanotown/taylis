@@ -27,6 +27,8 @@ final class AppController {
     var focusLeftByPost: String?
     /// M45: a canvas link (`<server>/c/<id>`) tapped in a message: its screen shows over everything (MainView).
     var canvasLink: CanvasLinkTarget?
+    /// An event link (`<server>/e/<id>`) tapped in a message or a canvas: its form shows over everything (MainView).
+    var eventLink: CalendarFormTarget?
     /// M73: a canvas to show in its conversation's 「キャンバス」 tab (a canvas mention's notification, a task's 元のキャンバス).
     var canvasOpen: CanvasOpen?
     /// M73: the notice on screen opens this canvas when tapped (an in-app canvas mention); kept with its text.
@@ -2125,6 +2127,11 @@ final class AppController {
             guard let api else { return nil }
             return try await api.calendarEvent(id: eventId)
         } catch { self.error = describe(error); return nil }
+    }
+
+    /// An event link tapped: the event over everything; gone or hidden shows the usual error (the toast).
+    func openEventLink(_ eventId: String) async {
+        if let event = await loadCalendarEvent(eventId) { eventLink = .event(event) }
     }
 
     // MARK: slash commands (M13b)

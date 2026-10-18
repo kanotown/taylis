@@ -13772,6 +13772,22 @@
         }
       }
     },
+    "チャンネルに知らせる" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Let the channel know"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告知频道"
+          }
+        }
+      }
+    },
     "チャンネルのカレンダーに予定を作り、スレッドで回答した人に知らせます。" : {
       "localizations" : {
         "en" : {

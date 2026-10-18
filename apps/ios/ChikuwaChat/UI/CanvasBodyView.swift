@@ -52,6 +52,10 @@ struct CanvasBodyView: View {
                 Task { await controller.openPermalink(id) }
                 return .handled
             }
+            if url.scheme == EventLink.scheme, let id = url.host {
+                Task { await controller.openEventLink(id) }
+                return .handled
+            }
             // M122: a wiki page (`page:` or `/p/`): the screen that shows this body may open it itself (a page's own
             // links stay on its stack), else over everything.
             if url.scheme == PageLink.scheme, let id = url.host {

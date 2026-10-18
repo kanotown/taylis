@@ -191,6 +191,10 @@ struct MainView: View {
         .sheet(item: $controller.canvasLink) { target in
             CanvasLinkSheet(controller: controller, canvasId: target.id)
         }
+        // An event link (`<server>/e/<id>`) tapped in a message or a canvas.
+        .fullScreenCover(item: $controller.eventLink) { target in
+            CalendarEventForm(controller: controller, hub: controller.calendarHub, target: target)
+        }
         // M122: a wiki page link tapped outside the wiki (a message, a canvas, a notice).
         .sheet(item: $controller.pageLink) { target in
             PageLinkSheet(controller: controller, pageId: target.id)
