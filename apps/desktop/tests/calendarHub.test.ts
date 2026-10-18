@@ -143,7 +143,7 @@ describe("the calendar hub", () => {
     await hub.setAlarm(zemi.id, null);
     expect(api.clearCalendarAlarm).toHaveBeenCalledWith(zemi.id);
     expect(hub.find(zemi.id)!.alarm).toBeNull();
-    await hub.create({ title: "新しい予定", all_day: false, starts_at: "2026-10-07T05:00:00Z", ends_at: "2026-10-07T06:00:00Z" });
+    await hub.create({ title: "新しい予定", all_day: false, announce: false, starts_at: "2026-10-07T05:00:00Z", ends_at: "2026-10-07T06:00:00Z" });
     expect(hub.window("view")!.events.map((e) => e.title)).toEqual(["ゼミ", "新しい予定"]);
     await hub.remove(zemi.id);
     expect(hub.window("view")!.events.map((e) => e.title)).toEqual(["新しい予定"]);

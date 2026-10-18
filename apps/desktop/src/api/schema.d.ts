@@ -1781,7 +1781,9 @@ export interface paths {
         put?: never;
         /**
          * Create Event
-         * @description A new event in my calendar or a channel's (a member who may post there).
+         * @description A new event in my calendar or a channel's (a member who may post there). A channel's new
+         *     event is announced in the channel by the 「予定」 bot with its link `<server>/e/<id>`, unless
+         *     `announce` is false (CALENDAR.md §11); a retry never announces again.
          */
         post: operations["create_event_api_v1_calendar_events_post"];
         delete?: never;
@@ -7751,6 +7753,11 @@ export interface components {
              * @default false
              */
             all_day: boolean;
+            /**
+             * Announce
+             * @default true
+             */
+            announce: boolean;
             /** Channel Id */
             channel_id?: string | null;
             /** Client Event Id */

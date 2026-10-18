@@ -37,11 +37,20 @@ export function attachmentRefId(url: string): string | null {
   return match && UUID.test(match[1]!) ? match[1]!.toLowerCase() : null;
 }
 
+/** CALENDAR.md §11: the event id when `url` is an event link `<server>/e/<id>` on `baseUrl` (the 「予定」 bot's line). */
+export function parseEventLink(baseUrl: string, url: string): string | null {
+  return parseLink(baseUrl, url, "/e/");
+}
+
+export function eventLink(baseUrl: string, eventId: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/e/${eventId}`;
+}
+
 export function canvasLink(baseUrl: string, canvasId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/c/${canvasId}`;
 }
 
-function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/"): string | null {
+function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/" | "/e/"): string | null {
   const base = baseUrl.replace(/\/+$/, "");
   if (url.slice(0, base.length + 3).toLowerCase() !== (base + prefix).toLowerCase()) return null;
   const id = url.slice(base.length + 3).replace(/[/?#].*$/, "");

@@ -383,9 +383,11 @@ export function timing(draft: EventDraft): Pick<CalendarEventCreate, "all_day" |
 }
 
 /** POST /calendar/events: local times become UTC instants, all-day days stay dates. */
-export function draftToCreate(draft: EventDraft, tz: string, clientEventId: string): CalendarEventCreate {
+/** `announce` (CALENDAR.md §11): the 「予定」 bot tells the channel about it; never for my own calendar. */
+export function draftToCreate(draft: EventDraft, tz: string, clientEventId: string, announce = true): CalendarEventCreate {
   return {
     channel_id: draft.calendar === "me" ? null : draft.calendar,
+    announce: draft.calendar !== "me" && announce,
     title: draft.title.trim(),
     ...timing(draft),
     location: draft.location.trim() || null,

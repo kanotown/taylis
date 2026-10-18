@@ -34,7 +34,8 @@ import { MyTasksView } from "./MyTasksView";
 import { DeadlineChip, DeadlinesView, newDeadlineInit } from "./DeadlinesView";
 import { TaskDialog } from "./TaskDialog";
 import { canEditBoard, type TaskCreateInit } from "./tasks";
-import type { TaskOut } from "../api/types";
+import type { CalendarEventOut, TaskOut } from "../api/types";
+import { CalendarEventDialog } from "./CalendarEventDialog";
 import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
 import { DraftsView } from "./DraftsView";
@@ -683,6 +684,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   /** M55: the task a notification asked for, in its dialog over its board's tab (a personal one over 「タスク」). */
   const [taskDialog, setTaskDialog] = useState<TaskOut | null>(null);
+  /** CALENDAR.md §11: an event opened from its link (a message's `<server>/e/<id>`, or the browser's address). */
+  const [eventDialog, setEventDialog] = useState<CalendarEventOut | null>(null);
   /** M85: ⋯ 「締切を追加…」 (a new deadline on the open channel's board). */
   const [deadlineInit, setDeadlineInit] = useState<TaskCreateInit | null>(null);
   /**
@@ -711,6 +714,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
     openDocsPage(request.pageId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.openPageRequest]);
+  useEffect(() => {
+    const request = controller.openEventRequest;
+    if (!request) return;
+    controller.openEventRequest = null;
+    void controller.loadCalendarEvent(request.eventId).then((found) => { if (found) setEventDialog(found); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openEventRequest]);
   // M112: a reservation notification (or activity item) asked for 「予約」.
   const reservationsAsked = useRef(controller.openReservationsRequest);
   useEffect(() => {
@@ -2093,6 +2103,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "recurring" && current && <RecurringPostsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "feeds" && current && <FeedsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "workflows" && current && <ChannelWorkflowsDialog controller={controller} channel={current} manage onClose={() => setDialog(null)} />}
+      {eventDialog && <CalendarEventDialog controller={controller} event={eventDialog} onClose={() => setEventDialog(null)} />}
       {taskDialog && <TaskDialog controller={controller} task={controller.engine?.tasks?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} onOpenMessage={openTaskMessage} />}
       {deadlineInit && <TaskDialog controller={controller} task={null} init={deadlineInit} onClose={() => setDeadlineInit(null)} onOpenMessage={openTaskMessage} />}
     </>

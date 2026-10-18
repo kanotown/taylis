@@ -88,6 +88,8 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [askScope, setAskScope] = useState<ScopeAsk | null>(null);
+  /** CALENDAR.md §11: a new event in a channel's calendar is announced there unless this is turned off. */
+  const [announce, setAnnounce] = useState(true);
   const clientId = useRef(crypto.randomUUID());
   const opened = useRef<typeof draft | null>(event ? draftFromEvent(event) : null);
   const recurring = !!event?.recurring;
@@ -135,7 +137,7 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
     setBusy(true);
     try {
       if (!event) {
-        await hub.create(draftToCreate(draft, localZone(), clientId.current));
+        await hub.create(draftToCreate(draft, localZone(), clientId.current, announce));
       } else {
         if (editable && !recurring) {
           const rrule = repeatToRrule(draft.repeat, draft.startDay);
@@ -246,6 +248,12 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
                 ))}
               </select>
             </Field>
+            {!event && draft.calendar !== "me" && (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={announce} onChange={(e) => setAnnounce(e.target.checked)} />
+                {t("calendar.announce")}
+              </label>
+            )}
             <Field label={t("calendar.location")}>
               <Input value={draft.location} maxLength={MAX_LOCATION} placeholder={t("calendar.locationPlaceholder")} onChange={(e) => set({ location: e.target.value })} />
             </Field>

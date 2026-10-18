@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { MessageSquareText } from "lucide-react";
+import { CalendarDays, MessageSquareText } from "lucide-react";
 import type { CustomEmojiOut, GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { type Block, type ListItem, paragraphLayout, parseBlocks, type Token } from "./markdown";
@@ -7,7 +7,7 @@ import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
 import { CanvasLinkCard } from "./CanvasLinkCard";
-import { attachmentRefId, pageRefId, parseCanvasLink, parsePageLink, parsePermalink } from "./permalink";
+import { attachmentRefId, pageRefId, parseCanvasLink, parseEventLink, parsePageLink, parsePermalink } from "./permalink";
 import { FileLinkChip, PageLinkChip } from "./PageLinkChip";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
@@ -289,6 +289,25 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
         // M44: a canvas link on this server is a card (title, conversation, progress) that opens the canvas.
         const canvasId = internalBase && controller ? parseCanvasLink(internalBase, token.url) : null;
         if (canvasId && controller) return <CanvasLinkCard key={i} controller={controller} canvasId={canvasId} url={token.url} />;
+        // CALENDAR.md §11: an event link on this server (the 「予定」 bot's line) opens the event.
+        const eventId = internalBase && controller ? parseEventLink(internalBase, token.url) : null;
+        if (eventId && controller) {
+          return (
+            <button
+              key={i}
+              type="button"
+              data-event-link={eventId}
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 align-baseline text-[13px] leading-5 text-accent hover:bg-accent-soft/40"
+              title={token.url}
+              onClick={(event) => {
+                event.stopPropagation();
+                controller.requestOpenEvent(eventId);
+              }}
+            >
+              <CalendarDays size={13} /> {token.label && token.label !== token.url ? token.label : t("schedule.openEvent")}
+            </button>
+          );
+        }
         const open = onOpenMessage;
         const internal = internalBase && open ? parsePermalink(internalBase, token.url) : null;
         if (internal && open) {
