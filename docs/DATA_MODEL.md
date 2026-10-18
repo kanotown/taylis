@@ -1668,7 +1668,8 @@ CREATE TABLE task_deadline_notices (
 );
 CREATE INDEX task_deadline_notices_due_idx ON task_deadline_notices (fire_at) WHERE status = 'pending';
 
--- M85: bot accounts the server posts as by itself (key "deadlines": 「締切」, made the first time it is needed).
+-- M85: bot accounts the server posts as by itself (key "deadlines": 「締切」, made the first time it is needed;
+-- also "actions", "moderation" and "calendar": 「予定」, the new channel events' line, CALENDAR.md §11).
 CREATE TABLE system_bots (
   key         varchar(32) PRIMARY KEY,
   user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
