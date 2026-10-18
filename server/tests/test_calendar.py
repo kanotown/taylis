@@ -384,8 +384,17 @@ async def test_events_and_their_audiences(
     start = datetime(2030, 1, 10, 5, 0, tzinfo=UTC)
 
     as_user(bob)
+    # Not announced: the 「予定」 bot (§11) would join the channel and its audience.
     shared = await _create(
-        client, timed("ゼミ", start, channel_id=general["id"], alarm_minutes=30, tz="Asia/Tokyo")
+        client,
+        timed(
+            "ゼミ",
+            start,
+            channel_id=general["id"],
+            alarm_minutes=30,
+            tz="Asia/Tokyo",
+            announce=False,
+        ),
     )
     personal = await _create(client, timed("mine", start))
     await client.patch(f"{EVENTS}/{shared['id']}", json={"title": "ゼミ!"})
