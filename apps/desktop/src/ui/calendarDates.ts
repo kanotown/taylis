@@ -383,11 +383,12 @@ export function timing(draft: EventDraft): Pick<CalendarEventCreate, "all_day" |
 }
 
 /** POST /calendar/events: local times become UTC instants, all-day days stay dates. */
-/** `announce` (CALENDAR.md §11): the 「予定」 bot tells the channel about it; never for my own calendar. */
+/** `announce` (CALENDAR.md §11): the 「予定」 bot tells the channel about it; never for my own calendar. Sent only when
+ * off: the server's default is on, and a server older than the field refuses a body that has it (extra fields are 422). */
 export function draftToCreate(draft: EventDraft, tz: string, clientEventId: string, announce = true): CalendarEventCreate {
   return {
     channel_id: draft.calendar === "me" ? null : draft.calendar,
-    announce: draft.calendar !== "me" && announce,
+    ...(draft.calendar !== "me" && !announce ? { announce: false } : {}),
     title: draft.title.trim(),
     ...timing(draft),
     location: draft.location.trim() || null,

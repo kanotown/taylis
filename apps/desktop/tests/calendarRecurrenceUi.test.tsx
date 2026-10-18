@@ -104,7 +104,8 @@ describe("「チャンネルに知らせる」 (CALENDAR.md §11)", () => {
     const toggle = screen.getByLabelText("チャンネルに知らせる") as HTMLInputElement;
     expect(toggle.checked).toBe(true);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "追加" })); });
-    expect(hub.create.mock.calls[0]).toMatchObject([{ channel_id: "c1", announce: true }]);
+    expect(hub.create.mock.calls[0]).toMatchObject([{ channel_id: "c1" }]);
+    expect((hub.create.mock.calls as unknown[][])[0]?.[0]).not.toHaveProperty("announce"); // on is the server's default
   });
 
   it("sends announce false when turned off", async () => {
