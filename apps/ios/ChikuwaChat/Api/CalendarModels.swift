@@ -144,10 +144,13 @@ struct CalendarEventCreate: Equatable {
     var clientEventId: String
     /// M69: the rule of a recurring event (nil: one-off; left out of the body then, as a server before M68 expects).
     var rrule: String? = nil
+    /// Whether the 「予定」 bot announces a channel event in its channel (nil: left out, the server's default, on).
+    var announce: Bool? = nil
 
     var json: JSONValue {
         var fields = timing.fields
         fields["channel_id"] = channelId.map(JSONValue.string) ?? .null
+        if let announce { fields["announce"] = .bool(announce) }
         fields["title"] = .string(title)
         fields["location"] = location.map(JSONValue.string) ?? .null
         fields["description"] = description.map(JSONValue.string) ?? .null

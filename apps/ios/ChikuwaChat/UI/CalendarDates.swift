@@ -459,10 +459,11 @@ struct EventDraft: Equatable {
     }
 
     /// POST /calendar/events: local times become UTC instants, all-day days stay dates.
-    func create(tz: String, clientEventId: String) -> CalendarEventCreate {
+    /// `announce` goes out only for a channel's event (a personal one has nobody to tell).
+    func create(tz: String, clientEventId: String, announce: Bool? = nil) -> CalendarEventCreate {
         CalendarEventCreate(channelId: channelId, title: title.trimmingCharacters(in: .whitespacesAndNewlines), timing: timing,
                             location: Self.optional(location), description: Self.optional(description), alarmMinutes: alarm, tz: tz,
-                            clientEventId: clientEventId, rrule: rrule)
+                            clientEventId: clientEventId, rrule: rrule, announce: channelId == nil ? nil : announce)
     }
 
     /// M69: the rule the picker says (nil: しない).

@@ -348,6 +348,12 @@ final class CalendarFormTests: XCTestCase {
         XCTAssertEqual(dayBody.json["starts_at"], .null)
         XCTAssertEqual(dayBody.json["alarm_minutes"], .number(-480))
 
+        // 「チャンネルに知らせる」: sent only for a channel's event, and only when the form says.
+        XCTAssertNil(body.json["announce"])
+        XCTAssertEqual(timed.create(tz: "Asia/Tokyo", clientEventId: "k1", announce: false).json["announce"], .bool(false))
+        XCTAssertEqual(timed.create(tz: "Asia/Tokyo", clientEventId: "k1", announce: true).json["announce"], .bool(true))
+        XCTAssertNil(day.create(tz: "Asia/Tokyo", clientEventId: "k2", announce: false).json["announce"])
+
         // PATCH: the whole form with the other pair nulled; no calendar, no alarm.
         var patch = base
         patch.allDay = true

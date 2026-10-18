@@ -19,4 +19,17 @@ final class PermalinkTests: XCTestCase {
         XCTAssertNil(Permalink.messageId(base: base, url: "https://chat.example.com/files/\(id)"))
         XCTAssertNil(Permalink.messageId(base: nil, url: "https://chat.example.com/m/\(id)"))
     }
+
+    func testEventLinksOfThisServer() {
+        let base = URL(string: "https://chat.example.com")!
+        XCTAssertEqual(EventLink.eventId(base: base, url: "https://chat.example.com/e/\(id)"), id)
+        XCTAssertEqual(EventLink.eventId(base: URL(string: "https://chat.example.com/")!, url: "HTTPS://CHAT.EXAMPLE.COM/e/\(id.uppercased())?x=1#y"), id)
+        XCTAssertEqual(EventLink.eventId(base: base, url: "https://chat.example.com/e/\(id)/extra"), id)
+        XCTAssertNil(EventLink.eventId(base: base, url: "https://chat.example.com/e/not-an-id"))
+        XCTAssertNil(EventLink.eventId(base: base, url: "https://other.example.com/e/\(id)"))
+        XCTAssertNil(EventLink.eventId(base: base, url: "https://chat.example.com/m/\(id)"))
+        XCTAssertNil(Permalink.messageId(base: base, url: "https://chat.example.com/e/\(id)"))
+        XCTAssertNil(EventLink.eventId(base: nil, url: "https://chat.example.com/e/\(id)"))
+        XCTAssertEqual(EventLink.internalLink(eventId: id)?.host, id)
+    }
 }

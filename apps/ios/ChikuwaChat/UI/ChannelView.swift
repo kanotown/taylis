@@ -1048,11 +1048,12 @@ struct MessageRow: View {
         onOpenThread?()
     }
 
-    /// The link a preview card is shown for (M11g): the body's first, unless it opens a message or a canvas here.
+    /// The link a preview card is shown for (M11g): the body's first, unless it opens a message, a canvas or an event here.
     private var previewLink: String? {
         // M117: a call's link is its card, without a preview.
         guard !message.pending, message.call == nil, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
               CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil,
+              EventLink.eventId(base: controller.api?.baseUrl, url: link) == nil,
               PageLink.pageId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
         return link
     }
@@ -1165,6 +1166,10 @@ struct MessageRow: View {
                         .environment(\.openURL, OpenURLAction { url in
                             if url.scheme == CanvasLink.scheme, let id = url.host {  // M45
                                 controller.canvasLink = CanvasLinkTarget(id: id)
+                                return .handled
+                            }
+                            if url.scheme == EventLink.scheme, let id = url.host {  // a calendar event
+                                Task { await controller.openEventLink(id) }
                                 return .handled
                             }
                             if url.scheme == PageLink.scheme, let id = url.host {  // M122: a wiki page
