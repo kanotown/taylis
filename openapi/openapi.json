@@ -5412,6 +5412,11 @@
             "title": "All Day",
             "type": "boolean"
           },
+          "announce": {
+            "default": true,
+            "title": "Announce",
+            "type": "boolean"
+          },
           "channel_id": {
             "anyOf": [
               {
@@ -27005,7 +27010,7 @@
         ]
       },
       "post": {
-        "description": "A new event in my calendar or a channel's (a member who may post there).",
+        "description": "A new event in my calendar or a channel's (a member who may post there). A channel's new\nevent is announced in the channel by the 「予定」 bot with its link `<server>/e/<id>`, unless\n`announce` is false (CALENDAR.md §11); a retry never announces again.",
         "operationId": "create_event_api_v1_calendar_events_post",
         "requestBody": {
           "content": {

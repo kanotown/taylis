@@ -668,10 +668,12 @@ def _first_day_of(
 
 
 async def create(
-    db: AsyncSession, actor: User, data: CalendarEventCreate
+    db: AsyncSession, actor: User, data: CalendarEventCreate, *, base_url: str = ""
 ) -> tuple[CalendarEventOut, bool]:
     """A new event (and my alarm on it). A retry with the same client_event_id returns the event
-    the first request made (False)."""
+    the first request made (False). An event in a channel's calendar is announced there by the
+    「予定」 bot in the same transaction unless `data.announce` is off or a bot adds it (§11;
+    `base_url`: the server's address for the event's link)."""
     actor_id = actor.id  # instances expire on rollback
     if data.client_event_id is not None:
         existing = await repo.by_client_id(db, actor_id, data.client_event_id)
@@ -717,6 +719,10 @@ async def create(
     await _emit_updated(db, event, channel)
     if alarm is not None:
         await _emit_alarm(db, event, actor_id, alarm)
+    if channel is not None and data.announce and actor.role != "bot":
+        from app.modules.calendar import announce  # it posts through messages, which imports us
+
+        await announce.post(db, actor, event, channel, tz=tz, base_url=base_url)
     await db.commit()
     return to_out(_Seen(event, channel, None), actor, alarm), True  # the creator may edit
 

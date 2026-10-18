@@ -19,6 +19,7 @@ from app.modules.calendar.schemas import (
     CalendarOccurrenceUpdate,
     OccurrenceScope,
 )
+from app.modules.messages.router import public_base_url
 from app.modules.users.dnd import valid_zone
 
 router = APIRouter(tags=["calendar"])
@@ -65,10 +66,12 @@ async def upcoming(
     responses={200: {"model": CalendarEventOut, "description": "A retry: the event made before"}},
 )
 async def create_event(
-    body: CalendarEventCreate, user: CurrentUser, db: Db, response: Response
+    body: CalendarEventCreate, user: CurrentUser, db: Db, request: Request, response: Response
 ) -> CalendarEventOut:
-    """A new event in my calendar or a channel's (a member who may post there)."""
-    out, created = await service.create(db, user, body)
+    """A new event in my calendar or a channel's (a member who may post there). A channel's new
+    event is announced in the channel by the 「予定」 bot with its link `<server>/e/<id>`, unless
+    `announce` is false (CALENDAR.md §11); a retry never announces again."""
+    out, created = await service.create(db, user, body, base_url=public_base_url(request))
     response.status_code = 201 if created else 200
     return out
 

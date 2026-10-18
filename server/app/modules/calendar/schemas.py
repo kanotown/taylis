@@ -125,6 +125,10 @@ class CalendarEventCreate(BaseModel):
     client_event_id: UUID | None = None
     # M68: makes it recurring (CALENDAR.md §10.1); `tz` is then also the zone it repeats in.
     rrule: str | None = Field(default=None, max_length=MAX_RRULE_LENGTH)
+    # CALENDAR.md §11: an event added to a channel's calendar is announced there by the 「予定」
+    # bot (one line with the event's link). False: no line (「チャンネルに知らせる」 off).
+    # Ignored for my own calendar, which is never announced.
+    announce: bool = True
 
     _title = field_validator("title")(_clean_title)
     _location = field_validator("location")(_clean_text)
