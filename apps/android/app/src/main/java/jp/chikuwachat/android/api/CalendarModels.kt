@@ -96,6 +96,11 @@ data class CalendarEventCreate(
     val clientEventId: String? = null,
     /** M69: the rule (CALENDAR.md §10.1); null (left out): a one-off event. */
     val rrule: String? = null,
+    /**
+     * A channel's event is announced there by the 「予定」 bot unless false (「チャンネルに知らせる」 off); null (left out,
+     * the server's default true) for my own calendar, where it means nothing.
+     */
+    val announce: Boolean? = null,
 )
 
 /**

@@ -3535,7 +3535,14 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** The card's 「予定を開く」: the event the decision made, in the M52 event form (read from the server: it may be outside every range). */
-    suspend fun openDecidedEvent(eventId: String) {
+    suspend fun openDecidedEvent(eventId: String) = openEventLink(eventId)
+
+    /**
+     * An event by its id in the M52 event form: a `<server>/e/<id>` link (the 「予定」 bot's announcement) or a decided
+     * schedule poll's. Read from the server: it may be outside every range held, and the answer says when it is gone or
+     * not mine to see.
+     */
+    suspend fun openEventLink(eventId: String) {
         val hub = calendar ?: return
         attempt { hub.get(eventId) }
             .onSuccess { calendarForm = jp.chikuwachat.android.ui.CalendarForm(it, null) }

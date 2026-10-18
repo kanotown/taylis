@@ -2,7 +2,8 @@ package jp.chikuwachat.android.ui
 
 /**
  * Message permalinks (M12b): `<server>/m/<message_id>`, recognised only for the server we are logged into. M46: canvas
- * links (`<server>/c/<canvas_id>`, CANVAS.md §4.13) the same way.
+ * links (`<server>/c/<canvas_id>`, CANVAS.md §4.13) the same way, and calendar events (`<server>/e/<event_id>`, the
+ * 「予定」 bot's announcement of a new channel event).
  */
 object Permalink {
     private val UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
@@ -22,6 +23,12 @@ object Permalink {
 
     /** M122: the page id when `url` is a page link on `baseUrl`. */
     fun pageId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/p/")
+
+    /** A calendar event, `<server>/e/<event_id>`. */
+    fun eventUrl(baseUrl: String, eventId: String): String = baseUrl.trimEnd('/') + "/e/" + eventId
+
+    /** The event id when `url` is an event link on `baseUrl`. */
+    fun eventId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/e/")
 
     private fun idAfter(baseUrl: String, url: String, path: String): String? {
         val prefix = baseUrl.trimEnd('/') + path

@@ -154,7 +154,7 @@ class CalendarDatesTest {
         assertEquals(
             CalendarEventCreate(
                 channelId = "c1", title = "ゼミ", allDay = false, startsAt = "2026-10-01T05:00:00Z", endsAt = "2026-10-01T06:30:00Z",
-                location = "5 号館", description = null, alarmMinutes = 10, tz = "Asia/Tokyo", clientEventId = "k1",
+                location = "5 号館", description = null, alarmMinutes = 10, tz = "Asia/Tokyo", clientEventId = "k1", announce = true,
             ),
             timedBody,
         )
@@ -178,6 +178,17 @@ class CalendarDatesTest {
         assertEquals("2026-10-01", patch["end_date"]!!.jsonPrimitive.content)
         assertEquals(JsonNull, patch["starts_at"])
         assertEquals(JsonNull, patch["location"])
+    }
+
+    @Test
+    fun aChannelEventSaysWhetherToAnnounceItAndMyOwnSaysNothing() {
+        val on = Codec.snake.encodeToJsonElement(CalendarEventCreate.serializer(), CalendarDates.draftToCreate(base.copy(calendar = "c1"), "Asia/Tokyo", "k")).jsonObject
+        assertEquals("true", on["announce"]!!.jsonPrimitive.content)
+        val off = Codec.snake.encodeToJsonElement(CalendarEventCreate.serializer(), CalendarDates.draftToCreate(base.copy(calendar = "c1"), "Asia/Tokyo", "k", announce = false)).jsonObject
+        assertEquals("false", off["announce"]!!.jsonPrimitive.content)
+        // My own calendar: left out whatever the switch says (the server ignores it there).
+        val mine = Codec.snake.encodeToJsonElement(CalendarEventCreate.serializer(), CalendarDates.draftToCreate(base.copy(calendar = null), "Asia/Tokyo", "k", announce = false)).jsonObject
+        assertFalse("announce" in mine)
     }
 
     @Test

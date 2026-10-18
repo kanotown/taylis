@@ -134,6 +134,7 @@
     <string name="calendar_event_form_delete_this_event">Delete this event?</string>
     <string name="calendar_event_form_edit_event">Edit event</string>
     <string name="calendar_event_form_end">End</string>
+    <string name="calendar_event_form_let_the_channel_know">Let the channel know</string>
     <string name="calendar_event_form_end_date">End date</string>
     <string name="calendar_event_form_every">Every</string>
     <string name="calendar_event_form_every_suffix">" "</string>
@@ -611,6 +612,7 @@
     <string name="common_online">Online</string>
     <string name="common_open">Open</string>
     <string name="common_open_canvas">Open canvas</string>
+    <string name="common_open_event">Open event</string>
     <string name="common_open_in_another_app">Open in another app</string>
     <string name="common_open_profile">Open profile</string>
     <string name="common_open_thread">Open thread</string>

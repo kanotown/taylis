@@ -133,6 +133,7 @@
     <string name="calendar_event_form_delete_this_event">删除此日程？</string>
     <string name="calendar_event_form_edit_event">编辑日程</string>
     <string name="calendar_event_form_end">结束</string>
+    <string name="calendar_event_form_let_the_channel_know">告知频道</string>
     <string name="calendar_event_form_end_date">结束日期</string>
     <string name="calendar_event_form_every">间隔</string>
     <string name="calendar_event_form_every_suffix"></string>
@@ -609,6 +610,7 @@
     <string name="common_online">在线</string>
     <string name="common_open">打开</string>
     <string name="common_open_canvas">打开画布</string>
+    <string name="common_open_event">打开日程</string>
     <string name="common_open_in_another_app">用其他应用打开</string>
     <string name="common_open_profile">打开个人资料</string>
     <string name="common_open_thread">打开话题</string>

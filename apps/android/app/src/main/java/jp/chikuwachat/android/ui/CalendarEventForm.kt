@@ -122,6 +122,8 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
     var picker by rememberSaveable(form) { mutableStateOf<FormPicker?>(null) }
     // The idempotency key of this form's create (CALENDAR.md §9 4.): a retry after a lost answer returns the same event.
     val clientId = rememberSaveable(form) { UUID.randomUUID().toString() }
+    // 「チャンネルに知らせる」 (a new channel event only): on for every new form.
+    var announce by rememberSaveable(form) { mutableStateOf(true) }
     val editable = event == null || event.canEdit
     val recurring = event?.recurring == true
     var askScope by remember(form) { mutableStateOf<ScopeAsk?>(null) }
@@ -163,7 +165,7 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
         }
         attempt {
             if (event == null) {
-                hub.create(CalendarDates.draftToCreate(draft, ZoneId.systemDefault().id, clientId))
+                hub.create(CalendarDates.draftToCreate(draft, ZoneId.systemDefault().id, clientId, announce))
             } else {
                 if (editable && !recurring) hub.update(event.id, CalendarDates.draftToPatch(draft, ZoneId.systemDefault().id))
                 // The server remaps the alarm when the event turns all-day (or back); what was chosen here wins. A series'
@@ -247,6 +249,16 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                                 options = listOf<Pair<String?, String>>(null to stringResource(R.string.common_you)) + calendars.map { it.id to "#" + (it.channel.name ?: "") },
                                 onPick = { change(draft.copy(calendar = it)) },
                             )
+                            // A new event in a channel's calendar is announced there by the 「予定」 bot unless this is off.
+                            if (draft.calendar != null) {
+                                Row(
+                                    Modifier.fillMaxWidth().toggleable(value = announce, role = Role.Switch, onValueChange = { announce = it }),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(stringResource(R.string.calendar_event_form_let_the_channel_know), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                    Switch(checked = announce, onCheckedChange = null)
+                                }
+                            }
                         } else {
                             // An event cannot move to another calendar (PATCH has no channel_id).
                             ChoiceField<String?>(stringResource(R.string.common_calendar), calendarName, dot = draft.calendar ?: OWN, options = emptyList(), enabled = false, onPick = {})
