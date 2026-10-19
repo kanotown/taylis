@@ -144,9 +144,11 @@ ready でなければどちらも `404 preview_not_found`。元のファイル�
     macOS (WKWebView) はフレームの PDF 表示が当てにならず、Linux (WebKitGTK) は表示できず、Tauri と Caddy の CSP に
     `blob:` のフレームを足す必要もある。PDF.js はどこでも同じに描け、今の CSP (`'self'` のワーカー) のまま動く。
     legacy ビルドなのは、新しいビルドが Safari 17.4 以降の API を要り、古い macOS の Mac アプリは古い WebKit で動くため。
-    CMap・標準フォント・wasm のデコーダは読み込まない (converter の PDF はフォントを埋め込み、JPEG / Flate の画像
-    だけなので要らない。埋め込みの無い和文フォントや JPEG 2000 の画像を含むアップロードの PDF は、その部分が
-    空白になりうる。ダウンロードすれば OS のビューアで見られる)。
+    CMap と標準フォントは同梱する (2026-10-19: 和文フォントを埋め込まない PDF (Windows の Word など) は
+    UniJIS-UCS2-H などの CMap で文字を指し、無いと日本語がすべて空白になった)。ハッシュ付きの資産として出し、PDF が
+    求めたものだけを `fetch` する (`pdfLoader.ts` の BinaryDataFactory。CSP の `connect-src` が `data:` を断るので
+    インライン化しない)。wasm のデコーダは読み込まないので、JPEG 2000 の画像は空白になりうる (ダウンロードすれば
+    OS のビューアで見られる)。
   - iOS: PDFKit の `PDFView` (連続スクロール、ピンチで拡大)、閉じる、共有 (「<元の名前>.pdf」)。カードの「開く」は
     今までどおり元のファイルの Quick Look / 共有。
   - Android: `PdfRenderer` で 1 ページずつ描いて `LazyColumn` に並べる (見える近くのページだけ、画面の幅で)。
