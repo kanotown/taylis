@@ -20,8 +20,9 @@ hide:
 
 </div>
 
-Taylis is a team chat for research labs, seminars and small organisations. Like Slack, it has channels, threads,
-direct messages, reactions, search and file sharing.
+Taylis is a workspace for university research labs. Next to channels, threads, direct messages, search and file
+sharing, it has the tools a lab uses every day: who is in the lab now, weekly reports and who has handed them in,
+students' work logs, announcements that ask for acknowledgement, deadlines, tasks and calendars.
 
 You run the server yourself. Messages and files are stored on that server, and your organisation manages the
 conversation history. There are apps for Windows, macOS, iOS and Android, and a browser client.
