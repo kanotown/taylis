@@ -2,8 +2,10 @@
 
 [日本語](README.ja.md)
 
-Taylis is a self-hosted, Slack-like team chat for small organisations such as research labs: one server you run
-yourself, and native clients for Windows, macOS, iOS and Android plus a browser client.
+Taylis is a self-hosted workspace for university research labs: one server the lab runs itself, and native clients
+for Windows, macOS, iOS and Android plus a browser client. Next to channels, threads and direct messages it has the
+tools a lab uses every day: who is in the lab now, weekly reports and who has handed them in, students' work logs,
+announcements that ask for acknowledgement, deadlines, tasks and calendars.
 
 **Documentation: <https://kanotown.github.io/taylis/>** (user guide, admin guide, self-hosting; mostly in Japanese,
 with an English top page and self-hosting quick start). Its source is in [website/](website/).
@@ -21,6 +23,21 @@ keep the old name.)
 
 ## Features
 
+For research labs:
+
+- Attendance board: in the lab, on campus, off campus or gone home with one tap; who is in the lab at a glance, also
+  from a Home Screen widget
+- Weekly reports: a thread every week that shows who has handed in their report before the deadline
+- Times: each student's work log channel, all in one feed, followed by their supervisor
+- Acknowledgement requests: important announcements with a confirm button, and who has not read them yet
+- Deadlines with countdowns, tasks, and a calendar with recurring events and iCal; a new channel event is announced
+  in the channel
+- A queue for shared equipment and software seats
+- A roster with years and supervisors (mentions such as `@m1`)
+- Home Screen widgets (iOS and Android) for attendance, unread messages and today's events and deadlines
+
+Chat and workspace:
+
 - Public and private channels, direct messages and group DMs
 - Threads, reactions, mentions, editing and deletion, unread state synchronised across devices
 - Reliable delivery: server-side ordering, idempotent sends, catch-up after reconnects (WebSocket + REST,
@@ -28,7 +45,7 @@ keep the old name.)
 - Push notifications through APNs (iOS) and FCM (Android), sent from a transactional outbox
 - Japanese and English full-text search (PostgreSQL + PGroonga)
 - File attachments in S3-compatible object storage (versitygw by default)
-- Canvas documents, calendar with recurring events and iCal, tasks, workflows, custom emoji
+- Canvas documents, a wiki, workflows, custom emoji and stickers
 - Optional sign-in with Google (SSO), invitations, guest accounts
 - Several workspaces (servers) in one client
 - Importers for Mattermost and Slack exports
