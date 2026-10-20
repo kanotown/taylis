@@ -36,6 +36,10 @@ For research labs:
 - A roster with years and supervisors (mentions such as `@m1`)
 - Home Screen widgets (iOS and Android) for attendance, unread messages and today's events and deadlines
 
+| Attendance board | Weekly reports | Times (work logs) | Acknowledgements | Home Screen widgets |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="docs/images/lab/attendance.jpg" alt="Attendance board: who is in the lab, on campus, off campus or gone home (demo data)" width="160"> | <img src="docs/images/lab/weekly-report.jpg" alt="A weekly-report thread with the submission count and deadline (demo data)" width="160"> | <img src="docs/images/lab/times.jpg" alt="The Times feed: students' work logs in one list (demo data)" width="160"> | <img src="docs/images/lab/acknowledge.jpg" alt="Announcements with an acknowledge button and the count of members who confirmed (demo data)" width="160"> | <img src="docs/images/lab/widgets.jpg" alt="Home Screen widgets: today's events and deadlines, unread messages, attendance (demo data)" width="160"> |
+
 Chat and workspace:
 
 - Public and private channels, direct messages and group DMs
