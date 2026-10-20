@@ -35,6 +35,10 @@ Taylis（テイリス）は、大学の研究室のためのセルフホスト�
 - 学年・指導教員つきの名簿（`@m1` のようなメンション）
 - ホーム画面のウィジェット（iOS・Android）：在室状況、未読・メンション、今日の予定・締切
 
+| 在室状況 | 週報 | Times（作業メモ） | 確認依頼 | ホーム画面のウィジェット |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="docs/images/lab/attendance.jpg" alt="在室状況：在室・学内・学外・帰宅の人（デモのデータ）" width="160"> | <img src="docs/images/lab/weekly-report.jpg" alt="週報のスレッド：提出数と締切（デモのデータ）" width="160"> | <img src="docs/images/lab/times.jpg" alt="Times のフィード：学生の作業メモの一覧（デモのデータ）" width="160"> | <img src="docs/images/lab/acknowledge.jpg" alt="確認ボタン付きのお知らせと、確認した人数（デモのデータ）" width="160"> | <img src="docs/images/lab/widgets.jpg" alt="ホーム画面のウィジェット：今日の予定・締切、未読、在室状況（デモのデータ）" width="160"> |
+
 チャットとワークスペース：
 
 - 公開・非公開のチャンネル、DM、グループ DM
