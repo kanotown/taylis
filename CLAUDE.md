@@ -1,6 +1,6 @@
 # Project Overview
 
-This project is a self-hosted Slack-like chat system.
+This project is a self-hosted chat and workspace system for university research labs.
 
 Initial usage will be small, but the architecture must support future use by several dozen users without fundamental redesign.
 
@@ -18,7 +18,7 @@ The main priorities are:
 4. Long-term searchable message history
 5. Japanese and English full-text search
 6. File attachments
-7. Simple Slack-like user experience
+7. Simple, familiar team-chat user experience
 8. Easy backup and restore
 9. Future support for AI search / RAG
 10. Maintainable architecture without unnecessary complexity
@@ -122,7 +122,7 @@ Support:
 
 Use native desktop notifications where practical.
 
-The UI should be simple and Slack-like.
+The UI should be simple and familiar to people who use team chat apps.
 
 Typical layout:
 
@@ -668,7 +668,7 @@ Do not leave known build failures behind unless clearly documented.
 
 Work in small milestones.
 
-Do not attempt to implement the complete Slack-like system in one task.
+Do not attempt to implement the complete system in one task.
 
 Preferred milestone sequence:
 
