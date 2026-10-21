@@ -90,9 +90,8 @@ enum Mentions {
         return speakers
     }
 
-    /// The composer's context: the loaded messages' senders (in a thread, its own first) and a DM's participants. A
-    /// channel's members are not held on the device (GET /channels/{id}/members is read by the member screens only),
-    /// so a channel has no members tier.
+    /// The composer's context: the loaded messages' senders (in a thread, its own first) and the members: a DM's
+    /// participants, a channel's as read for the @ list (`readMembers`; none until they come).
     @MainActor static func context(store: Store, channelId: String, parentId: String?) -> Context {
         let spoken = { (message: MessageState) in Spoken(senderId: message.senderId, deleted: message.deleted, type: message.type) }
         var thread: [Spoken] = []
@@ -104,9 +103,51 @@ enum Mentions {
         return context
     }
 
-    /// A canvas (MOBILE_UI.md §23): no conversation, only the participants of the DM it belongs to, and me last.
+    /// A canvas (MOBILE_UI.md §23): no conversation, only the members of its channel or DM, and me last.
     @MainActor static func documentContext(store: Store, channelId: String?) -> Context {
-        Context(members: channelId.flatMap { store.channel($0)?.channel.dmUserIds } ?? [], me: store.me?.id)
+        guard let channelId else { return Context(me: store.me?.id) }
+        let members = store.channel(channelId)?.channel.dmUserIds ?? store.mentionMembers[channelId]?.ids ?? []
+        return Context(members: members, me: store.me?.id)
+    }
+
+    /// MOBILE_UI.md §23: a channel's member ids as read for the @ list (GET /channels/{id}/members), in memory only.
+    struct Members: Equatable {
+        /// The ids last read (kept while a newer read runs or after a failed one); nil while none was read.
+        var ids: [String]?
+        /// `Store.memberListVersion` the read was for: a member added, removed or changed reads again.
+        var version: Int
+        var at: Date
+        var failed = false
+        var loading = false
+    }
+
+    /// A read older than this is done again (a missed event); a failed one is tried again after `membersRetry`.
+    static let membersMaxAge: TimeInterval = 5 * 60
+    static let membersRetry: TimeInterval = 30
+
+    /// The @ list opened in this channel (or for its canvas): read its members unless a fresh read is held or running.
+    /// Only public and private channels (a DM has its participants). A failure keeps what was there: the list ranks
+    /// as without members (not shown: the list works anyway).
+    @MainActor static func readMembers(store: Store, channelId: String?, now: Date = Date(),
+                                       load: @escaping (String) async throws -> [String]) async {
+        guard let channelId, let type = store.channel(channelId)?.channel.type, type == "public" || type == "private" else { return }
+        let version = store.memberListVersion[channelId, default: 0]
+        let held = store.mentionMembers[channelId]
+        if let held {
+            if held.loading { return }
+            if held.version == version, now.timeIntervalSince(held.at) < (held.failed ? membersRetry : membersMaxAge) { return }
+        }
+        let started = Members(ids: held?.ids, version: version, at: now, loading: true)
+        store.mentionMembers[channelId] = started
+        var done = started
+        done.loading = false
+        do {
+            done.ids = try await load(channelId)
+        } catch {
+            done.failed = true
+        }
+        guard store.mentionMembers[channelId] == started else { return }
+        store.mentionMembers[channelId] = done
     }
 
     private static let japanese = Locale(identifier: "ja")

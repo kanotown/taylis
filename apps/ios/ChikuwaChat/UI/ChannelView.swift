@@ -1569,6 +1569,11 @@ struct ComposerView: View {
         if !rest.isEmpty { value += "\n" + rest }
         setText(value, selecting: value.count..<value.count)
     }
+    /// MOBILE_UI.md §23: while the @ list is open, the channel's members are read for it (once; again when they change).
+    private var mentionMembersKey: String? {
+        guard Mentions.query(text) != nil, let controller else { return nil }
+        return "\(channelId):\(controller.store.memberListVersion[channelId, default: 0])"
+    }
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
         // MOBILE_UI.md §23: the people of this conversation first (the thread's, then the channel's), me last.
@@ -1872,6 +1877,14 @@ struct ComposerView: View {
     }
 
     var body: some View {
+        composerBody
+            .task(id: mentionMembersKey) {
+                guard mentionMembersKey != nil, let controller else { return }
+                await controller.readMentionMembers(channelId)
+            }
+    }
+
+    @ViewBuilder private var composerBody: some View {
         VStack(spacing: 0) {
             Divider()
             if let accessory { accessory }

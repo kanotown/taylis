@@ -1483,8 +1483,11 @@ final class Store {
         }
     }
 
-    /// L4: bumped when a channel's members change their role, so an open member list loads again.
+    /// L4: bumped when a channel's members change (their role; since 2026-10-21 also one added or removed), so an open
+    /// member list loads again, and the @ list's members (below) are read again.
     var memberListVersion: [String: Int] = [:]
+    /// MOBILE_UI.md §23: channels' member ids for the @ list's members tier (`Mentions.readMembers`), in memory only.
+    var mentionMembers: [String: Mentions.Members] = [:]
 
     /// L4: my role in a channel changed (owner-only actions appear or go).
     func setMembershipRole(_ channelId: String, role: String) {

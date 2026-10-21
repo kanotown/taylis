@@ -768,12 +768,14 @@ final class SyncEngine {
             // M11h: keep the intro's member count current; the member list itself is loaded on demand.
             if let id = frame.data["channel_id"]?.stringValue {
                 store.updateChannel(id) { state in if let count = state.channel.memberCount { state.channel.memberCount = count + 1 } }
+                store.memberListVersion[id, default: 0] += 1
             }
         case "channel.member_removed":
             if let me = store.me, frame.data["user_id"]?.stringValue == me.id, let id = frame.data["channel_id"]?.stringValue {
                 store.removeChannel(id)
             } else if let id = frame.data["channel_id"]?.stringValue {
                 store.updateChannel(id) { state in if let count = state.channel.memberCount { state.channel.memberCount = max(0, count - 1) } }
+                store.memberListVersion[id, default: 0] += 1
             }
         case "channel.member_updated":  // L4: an owner added or taken back
             if let me = store.me, frame.data["user_id"]?.stringValue == me.id, let id = frame.data["channel_id"]?.stringValue,
