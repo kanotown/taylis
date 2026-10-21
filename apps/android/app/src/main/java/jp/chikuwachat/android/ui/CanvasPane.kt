@@ -907,7 +907,8 @@ internal fun CanvasEditorField(
     val caret = field.selection.start
     val query = if (field.selection.collapsed) Mentions.query(field.text.substring(0, caret.coerceIn(0, field.text.length))) else null
     // `<!channel>` notifies nobody in a canvas (§4.2): @channel / @here are not offered.
-    val candidates = query?.let { q -> Mentions.candidates(q, store.users.values, store.groups.values, limit = 8, aiBotIds = controller.aiBotIdsRead).filter { it.kind != "all" } } ?: emptyList()
+    // MOBILE_UI.md §23: the participants first in a DM's canvas, me last.
+    val candidates = query?.let { q -> Mentions.candidates(q, store.users.values, store.groups.values, limit = 8, aiBotIds = controller.aiBotIdsRead, context = Mentions.documentContext(store, saver.channelId)).filter { it.kind != "all" } } ?: emptyList()
 
     Column(modifier) {
         EditorToolbar(
