@@ -15,7 +15,8 @@ FILES=(docker-compose.yml docker-compose.prod.yml docker-compose.release.yml doc
        backup.sh restore.sh deploy.sh)
 # In-app calls (docs/CALLS.md §8.6, M131): taken when the archive has them. Releases before M131 do not, and servers
 # with an older copy of this script ignore them, so the workflow and the servers need not change at the same time.
-OPTIONAL_FILES=(docker-compose.livekit.yml livekit.yaml)
+# offsite-backup.sh (M164, restic off the server) likewise: a server gets it once this script is installed again.
+OPTIONAL_FILES=(docker-compose.livekit.yml livekit.yaml offsite-backup.sh)
 
 read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
 if [ "${#argv[@]}" -ne 2 ] || ! [[ "${argv[1]}" =~ $TAG_RE ]]; then
