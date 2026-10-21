@@ -725,6 +725,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
     void controller.loadCalendarEvent(request.eventId).then((found) => { if (found) setEventDialog(found); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.openEventRequest]);
+  // M165: a `/d/<id>` card or link asked for 「ドライブ」 at a folder.
+  useEffect(() => {
+    const request = controller.openDriveRequest;
+    if (!request) return;
+    controller.openDriveRequest = null;
+    showInDrive(request);
+    openView("drive");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openDriveRequest]);
   // M112: a reservation notification (or activity item) asked for 「予約」.
   const reservationsAsked = useRef(controller.openReservationsRequest);
   useEffect(() => {

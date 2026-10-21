@@ -679,6 +679,9 @@ export type DriveShareSettingsPatch = components["schemas"]["DriveShareSettingsP
 export type SharedItemOut = components["schemas"]["SharedItemOut"];
 export type ShareInfoOut = components["schemas"]["ShareInfoOut"];
 export type SharedChildrenOut = components["schemas"]["SharedChildrenOut"];
+/** M165 (docs/DRIVE.md §13): the drive and the conversations. */
+export type DriveReachOut = components["schemas"]["DriveReachOut"];
+export type DriveSaveAttachmentIn = components["schemas"]["DriveSaveAttachmentIn"];
 /** drive.changed (SYNC_PROTOCOL.md §18): re-read these folders (and the trash) of the location. No names travel. */
 export interface DriveChanged {
   location_id: string;

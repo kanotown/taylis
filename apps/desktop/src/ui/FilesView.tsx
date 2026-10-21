@@ -1,4 +1,4 @@
-import { Download, FileText, Files, Search } from "lucide-react";
+import { Download, FileText, Files, HardDriveDownload, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { FileItem, MessageOut } from "../api/types";
@@ -11,6 +11,7 @@ import { BackButton } from "./compact";
 import { Button, cn, IconButton, Input } from "./primitives";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
+import { SaveToDriveDialog } from "./DriveConversation";
 
 /** Attachments in my channels (or one channel), newest first, filtered by file name; pages of 50. */
 function useFileItems(controller: AppController, channelId: string | null, query: string) {
@@ -139,6 +140,7 @@ export function FileRow({ item, controller, onOpen }: { item: FileItem; controll
   const url = useAttachmentUrl(controller, attachment, "thumbnail", attachment.has_thumbnail || attachment.has_poster === true);
   const channel = store.getChannel(item.channel_id);
   const uploader = store.users.get(item.uploader_id)?.display_name ?? "?";
+  const [saving, setSaving] = useState(false);
   const reveal = () => onOpen({ id: item.message_id, channel_id: item.channel_id, parent_id: item.parent_id ?? null } as MessageOut);
   return (
     <li data-row-key={attachment.id} className="flex items-center gap-3 px-3 py-2.5">
@@ -153,9 +155,14 @@ export function FileRow({ item, controller, onOpen }: { item: FileItem; controll
           </span>
         </span>
       </button>
+      {/* M165 (docs/DRIVE.md §13.2): 「ドライブに保存」, its conversation's drive first. */}
+      <IconButton label={t("driveSave.title")} onClick={() => setSaving(true)}>
+        <HardDriveDownload size={16} />
+      </IconButton>
       <IconButton label={t("attach.download")} onClick={() => void controller.downloadAttachment(attachment)}>
         <Download size={16} />
       </IconButton>
+      {saving && <SaveToDriveDialog controller={controller} attachments={[attachment]} channel={channel ?? null} onClose={() => setSaving(false)} />}
     </li>
   );
 }

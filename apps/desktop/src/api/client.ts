@@ -9,7 +9,8 @@ import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
-import type { DriveItemLinksOut, DriveShareEventListOut, DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
+import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
+import type { DriveItemLinksOut, DriveShareEventListOut,DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
@@ -2061,7 +2062,24 @@ export class ApiClient {
     return this.request("PATCH", `/api/v1/admin/drive/locations/${locationId}`, { quota_bytes: quotaBytes });
   }
 
-  // --- external share links (M163, docs/DRIVE.md §5.4, §9) ----------------------------------------------------------
+  // --- the drive and the conversations (M165, docs/DRIVE.md §13) ---------------------------------------------------
+
+  /** The file's current version copied into a pending attachment of mine (sent like an upload). */
+  attachDriveCopy(itemId: string): Promise<AttachmentOut> {
+    return this.request("POST", `/api/v1/drive/items/${itemId}/attach-copy`);
+  }
+
+  /** An attachment I can read copied into a drive folder I can write, as a new file. */
+  saveAttachmentToDrive(body: DriveSaveAttachmentIn): Promise<DriveItemOut> {
+    return this.request("POST", "/api/v1/drive/save-attachment", body);
+  }
+
+  /** How many of a conversation's members can and cannot read the item (the composer's warning on a link). */
+  driveReach(itemId: string, channelId: string): Promise<DriveReachOut> {
+    return this.request("GET", `/api/v1/drive/items/${itemId}/reach?channel_id=${encodeURIComponent(channelId)}`);
+  }
+
+  // --- external share links (M163, docs/DRIVE.md §5.4, §9)----------------------------------------------------------
 
   /** The item's links that are not revoked (mine; every one for those who manage the location's links) and what the
    *  share dialog may offer (the switches, the longest expiry, whether a password is required). */

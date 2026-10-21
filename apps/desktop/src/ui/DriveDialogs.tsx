@@ -3,7 +3,7 @@
  * locations I can write, deleting for good from the trash, and the name-conflict question of an upload.
  */
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import type { DriveCrumb, DriveItemOut, DriveLocationOut } from "../api/types";
 import { ApiError, describeError } from "../api/errors";
@@ -13,7 +13,7 @@ import type { ConflictChoice, ConflictQuestion } from "../drive/uploads";
 import { Button, cn, Input, Modal } from "./primitives";
 import { t } from "../i18n";
 
-function newOpId(): string {
+export function newOpId(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
@@ -101,6 +101,177 @@ export function RenameDialog({ controller, item, onClose, onDone }: { controller
 }
 
 /**
+ * The locations listed in a drive dialog (M165: shared by 「移動」 / 「コピー」, 「ドライブに保存」 and the composer's
+ * 「ドライブから」): read once, in the location list's order, filtered (`can_write` for a target).
+ */
+export function useDriveLocations(controller: AppController, keep: (location: DriveLocationOut) => boolean, initial: DriveLocationOut[] = []): DriveLocationOut[] | null {
+  const [locations, setLocations] = useState<DriveLocationOut[] | null>(initial.length > 0 ? initial : null);
+  const keepRef = useRef(keep);
+  keepRef.current = keep;
+  useEffect(() => {
+    const api = controller.api;
+    if (!api) return;
+    let cancelled = false;
+    void api.driveLocations().then(
+      (out) => { if (!cancelled) setLocations(orderLocations(out.locations.filter((loc) => keepRef.current(loc)))); },
+      () => { if (!cancelled) setLocations((held) => held ?? []); },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [controller.api]);
+  return locations;
+}
+
+/**
+ * A folder's rows for a drive dialog: its folders (read until a file shows up, they come first), and with `files` its
+ * files too (up to 1,000 rows), and the path from the root. Null while it is being read.
+ */
+export function useFolderRows(controller: AppController, folderId: string | null, files = false): { rows: DriveItemOut[] | null; path: DriveCrumb[]; error: string | null } {
+  const [rows, setRows] = useState<DriveItemOut[] | null>(null);
+  const [path, setPath] = useState<DriveCrumb[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const api = controller.api;
+    if (!api || !folderId) return;
+    let cancelled = false;
+    setRows(null);
+    setError(null);
+    void (async () => {
+      try {
+        let cursor: string | null = null;
+        const found: DriveItemOut[] = [];
+        let crumbs: DriveCrumb[] = [];
+        for (let page = 0; page < (files ? 5 : 20); page++) {
+          const out = await api.driveChildren(folderId, { cursor, limit: 200 });
+          crumbs = out.path;
+          const kept = files ? out.items : out.items.filter((item) => item.kind === "folder");
+          found.push(...kept);
+          if (!out.next_cursor || kept.length < out.items.length) break;
+          cursor = out.next_cursor;
+        }
+        if (!cancelled) {
+          setRows(found);
+          setPath(crumbs);
+        }
+      } catch (failure) {
+        if (!cancelled) {
+          setRows([]);
+          setError(describeError(failure));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [controller, folderId, files]);
+  return { rows, path, error };
+}
+
+/** The dialogs' list of locations on the left. */
+export function DialogLocations({ locations, current, onPick }: { locations: readonly DriveLocationOut[]; current: DriveLocationOut | null; onPick: (location: DriveLocationOut) => void }) {
+  return (
+    <ul aria-label={t("drive.locations")} className="w-44 shrink-0 space-y-0.5 max-sm:w-full">
+      {locations.map((loc) => (
+        <li key={loc.id}>
+          <button
+            type="button"
+            onClick={() => onPick(loc)}
+            className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm", loc.id === current?.id ? "bg-accent-soft text-accent" : "hover:bg-ink/6")}
+          >
+            <HardDrive size={14} className="shrink-0" />
+            <span className="truncate">{locationName(loc)}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The dialogs' breadcrumbs over a folder's rows (the root named after the location). */
+export function DialogCrumbs({ path, location, onPick }: { path: readonly DriveCrumb[]; location: DriveLocationOut | null; onPick: (folderId: string) => void }) {
+  return (
+    <nav aria-label={t("drive.breadcrumbs")} className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1.5 text-xs">
+      {path.map((crumb, index) => (
+        <span key={crumb.id} className="flex items-center gap-0.5">
+          {index > 0 && <ChevronRight size={12} className="text-muted" />}
+          <button type="button" className="rounded px-1 py-0.5 hover:bg-ink/6" onClick={() => onPick(crumb.id)}>
+            {index === 0 && location ? locationName(location) : crumb.name}
+          </button>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+/** A folder row of the dialogs: a press opens it. */
+export function DialogFolderRow({ folder, disabled = false, onOpen }: { folder: DriveItemOut; disabled?: boolean; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onOpen}
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-ink/6 disabled:opacity-40"
+    >
+      <Folder size={15} className="shrink-0 text-muted" />
+      <span className="flex-1 truncate">{folder.name}</span>
+      <ChevronRight size={14} className="text-muted" />
+    </button>
+  );
+}
+
+/**
+ * A folder to put things in (M165: 「移動」 / 「コピー」 and 「ドライブに保存」): the locations I can write on the left,
+ * the folder's subfolders on the right. `start` null: the location `pickStart` chooses once the list is read.
+ */
+export function FolderPicker({ controller, start, pickStart, disabledIds, onChange }: {
+  controller: AppController;
+  start: { location: DriveLocationOut; folderId: string } | null;
+  pickStart?: (locations: readonly DriveLocationOut[]) => DriveLocationOut | null;
+  disabledIds?: ReadonlySet<string>;
+  onChange: (place: { location: DriveLocationOut; folderId: string; path: DriveCrumb[] }) => void;
+}) {
+  const locations = useDriveLocations(controller, (loc) => loc.can_write, start ? [start.location] : []);
+  const [place, setPlace] = useState(start);
+  useEffect(() => {
+    if (place || !locations) return;
+    const first = pickStart?.(locations) ?? locations[0] ?? null;
+    if (first) setPlace({ location: first, folderId: first.root_id });
+  }, [place, locations, pickStart]);
+  const { rows: folders, path, error } = useFolderRows(controller, place?.folderId ?? null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useEffect(() => {
+    if (place && folders !== null) onChangeRef.current({ location: place.location, folderId: place.folderId, path });
+  }, [place, folders, path]);
+  const location = place?.location ?? null;
+  return (
+    <>
+      <div className="mt-4 flex gap-3 max-sm:flex-col">
+        <DialogLocations locations={locations ?? []} current={location} onPick={(loc) => setPlace({ location: loc, folderId: loc.root_id })} />
+        <div className="min-w-0 flex-1 rounded-xl border border-line">
+          <DialogCrumbs path={path} location={location} onPick={(folderId) => location && setPlace({ location, folderId })} />
+          <ul className="h-64 overflow-y-auto p-1" aria-label={t("drive.folders")}>
+            {folders === null ? (
+              <li className="flex h-full items-center justify-center text-muted"><Loader2 size={18} className="animate-spin" /></li>
+            ) : folders.length === 0 ? (
+              <li className="px-2 py-6 text-center text-sm text-muted">{locations && locations.length === 0 ? t("driveSave.noLocations") : t("drive.noSubfolders")}</li>
+            ) : (
+              folders.map((folder) => (
+                <li key={folder.id}>
+                  <DialogFolderRow folder={folder} disabled={disabledIds?.has(folder.id)} onOpen={() => location && setPlace({ location, folderId: folder.id })} />
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </div>
+      {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
+    </>
+  );
+}
+
+/**
  * 「移動」 and (M162) 「コピー」: a folder picked in any location I can write (moving across locations needs writing in
  * both; the server says so). The items themselves and their folders below cannot be the target (the server refuses
  * with drive_cycle). A copy may go into the items' own folder: the copy is numbered 「名前 (1)」. The same op id is sent
@@ -116,55 +287,12 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
   mode?: "move" | "copy";
 }) {
   const [opId] = useState(newOpId);
-  const [locations, setLocations] = useState<DriveLocationOut[]>([startLocation]);
-  const [location, setLocation] = useState(startLocation);
-  const [folderId, setFolderId] = useState(startFolderId);
-  const [path, setPath] = useState<DriveCrumb[]>([]);
-  const [folders, setFolders] = useState<DriveItemOut[] | null>(null);
+  const [start] = useState(() => ({ location: startLocation, folderId: startFolderId }));
+  const [place, setPlace] = useState<{ location: DriveLocationOut; folderId: string; path: DriveCrumb[] }>({ ...start, path: [] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const moving = useMemo(() => new Set(items.map((item) => item.id)), [items]);
-
-  useEffect(() => {
-    const api = controller.api;
-    if (!api) return;
-    void api.driveLocations().then((out) => setLocations(orderLocations(out.locations.filter((loc) => loc.can_write))), () => undefined);
-  }, [controller.api]);
-
-  useEffect(() => {
-    const api = controller.api;
-    if (!api) return;
-    let cancelled = false;
-    setFolders(null);
-    void (async () => {
-      try {
-        let cursor: string | null = null;
-        const found: DriveItemOut[] = [];
-        let crumbs: DriveCrumb[] = [];
-        // Folders come first: read until a file shows up (or the end).
-        for (let page = 0; page < 20; page++) {
-          const out = await api.driveChildren(folderId, { cursor, limit: 200 });
-          crumbs = out.path;
-          const pageFolders = out.items.filter((item) => item.kind === "folder");
-          found.push(...pageFolders);
-          if (!out.next_cursor || pageFolders.length < out.items.length) break;
-          cursor = out.next_cursor;
-        }
-        if (!cancelled) {
-          setFolders(found);
-          setPath(crumbs);
-        }
-      } catch (failure) {
-        if (!cancelled) {
-          setFolders([]);
-          setError(describeError(failure));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [controller, folderId]);
+  const folderId = place.folderId;
 
   const copying = mode === "copy";
   const here = !copying && items.every((item) => item.parent_id === folderId);
@@ -194,60 +322,8 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
     : items.length === 1 ? t("drive.moveOne", { name: items[0]!.name }) : t("drive.moveMany", { count: items.length });
   return (
     <Modal onClose={onClose} title={title} growsDown className="w-[520px]">
-      <div className="mt-4 flex gap-3 max-sm:flex-col">
-        <ul aria-label={t("drive.locations")} className="w-44 shrink-0 space-y-0.5 max-sm:w-full">
-          {locations.map((loc) => (
-            <li key={loc.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setLocation(loc);
-                  setFolderId(loc.root_id);
-                }}
-                className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm", loc.id === location.id ? "bg-accent-soft text-accent" : "hover:bg-ink/6")}
-              >
-                <HardDrive size={14} className="shrink-0" />
-                <span className="truncate">{locationName(loc)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="min-w-0 flex-1 rounded-xl border border-line">
-          <nav aria-label={t("drive.breadcrumbs")} className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1.5 text-xs">
-            {path.map((crumb, index) => (
-              <span key={crumb.id} className="flex items-center gap-0.5">
-                {index > 0 && <ChevronRight size={12} className="text-muted" />}
-                <button type="button" className="rounded px-1 py-0.5 hover:bg-ink/6" onClick={() => setFolderId(crumb.id)}>
-                  {index === 0 ? locationName(location) : crumb.name}
-                </button>
-              </span>
-            ))}
-          </nav>
-          <ul className="h-64 overflow-y-auto p-1" aria-label={t("drive.folders")}>
-            {folders === null ? (
-              <li className="flex h-full items-center justify-center text-muted"><Loader2 size={18} className="animate-spin" /></li>
-            ) : folders.length === 0 ? (
-              <li className="px-2 py-6 text-center text-sm text-muted">{t("drive.noSubfolders")}</li>
-            ) : (
-              folders.map((folder) => (
-                <li key={folder.id}>
-                  <button
-                    type="button"
-                    disabled={moving.has(folder.id)}
-                    onClick={() => setFolderId(folder.id)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-ink/6 disabled:opacity-40"
-                  >
-                    <Folder size={15} className="shrink-0 text-muted" />
-                    <span className="flex-1 truncate">{folder.name}</span>
-                    <ChevronRight size={14} className="text-muted" />
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      </div>
-      <p className="mt-2 truncate text-xs text-muted">{t(copying ? "drive.copyTo" : "drive.moveTo", { path: pathLine(path, locationName(location)) })}</p>
+      <FolderPicker controller={controller} start={start} disabledIds={moving} onChange={setPlace} />
+      <p className="mt-2 truncate text-xs text-muted">{t(copying ? "drive.copyTo" : "drive.moveTo", { path: pathLine(place.path, locationName(place.location)) })}</p>
       {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>

@@ -50,7 +50,28 @@ export function canvasLink(baseUrl: string, canvasId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/c/${canvasId}`;
 }
 
-function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/" | "/e/"): string | null {
+/** M165 (docs/DRIVE.md §13.1): the item id when `url` is a drive link `<server>/d/<id>` (a file or a folder) on `baseUrl`. */
+export function parseDriveLink(baseUrl: string, url: string): string | null {
+  return parseLink(baseUrl, url, "/d/");
+}
+
+export function driveLink(baseUrl: string, itemId: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/d/${itemId}`;
+}
+
+/** M165: every drive item linked on `baseUrl` in a text (a draft), each once, in order. */
+export function driveLinksIn(baseUrl: string, text: string): string[] {
+  const prefix = `${baseUrl.replace(/\/+$/, "")}/d/`.toLowerCase();
+  const lower = text.toLowerCase();
+  const found = new Set<string>();
+  for (let at = lower.indexOf(prefix); at >= 0; at = lower.indexOf(prefix, at + prefix.length)) {
+    const id = lower.slice(at + prefix.length, at + prefix.length + 36);
+    if (UUID.test(id)) found.add(id);
+  }
+  return [...found];
+}
+
+function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/" | "/e/" | "/d/"): string | null {
   const base = baseUrl.replace(/\/+$/, "");
   if (url.slice(0, base.length + 3).toLowerCase() !== (base + prefix).toLowerCase()) return null;
   const id = url.slice(base.length + 3).replace(/[/?#].*$/, "");
