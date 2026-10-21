@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Download, FileText, Loader2, MoveHorizontal, ZoomIn, ZoomOut } from "lucide-react";
-import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -137,8 +137,19 @@ const prefersReducedMotion = () => typeof window !== "undefined" && !!window.mat
  * viewer while it is open). 「n / N」 follows the scroll; ← / → (also PageUp / PageDown when the pages are not focused,
  * Home / End) go a page back / on, smoothly; Esc, the × and a click on the dark space around the pages close. The
  * strip above the card and the header move the window in the desktop app.
+ *
+ * M163: the public page of a share link (src/share) shows a shared PDF with the same viewer, without a session: it
+ * passes how to read the bytes (`load`), its own buttons and its download instead of the controller.
  */
-export function PdfViewer({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
+export type PdfSource = Pick<AttachmentOut, "id" | "filename" | "size_bytes" | "preview">;
+type PdfViewerProps =
+  | { attachment: AttachmentOut; controller: AppController; onClose: () => void }
+  | { attachment: PdfSource; load: () => Promise<ArrayBuffer>; buttons: ReactNode; onDownload: () => void; onClose: () => void };
+
+export function PdfViewer(props: PdfViewerProps) {
+  const { attachment, onClose } = props;
+  const controller = "controller" in props ? props.controller : null;
+  const load = "load" in props ? props.load : null;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -150,20 +161,18 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
   // Where the view was (as a share of the pages' height) before a zoom: the same place is shown after it.
   const keepAt = useRef<number | null>(null);
 
+  const api = controller?.api ?? null;
   useEffect(() => {
-    const api = controller.api;
     let cancelled = false;
     let loaded: PDFDocumentProxy | null = null;
     setDoc(null);
     setFailed(false);
     void (async () => {
       try {
-        if (!api) throw new Error("No session");
-        const [blob, { openPdf }] = await Promise.all([
-          api.fetchBlob(`/api/v1/attachments/${attachment.id}/preview/pdf`),
-          import("./pdfLoader"),
-        ]);
-        const opened = await openPdf(await blob.arrayBuffer());
+        const read = load ?? (api ? async () => (await api.fetchBlob(`/api/v1/attachments/${attachment.id}/preview/pdf`)).arrayBuffer() : null);
+        if (!read) throw new Error("No session");
+        const [bytes, { openPdf }] = await Promise.all([read(), import("./pdfLoader")]);
+        const opened = await openPdf(bytes);
         if (cancelled) {
           void opened.loadingTask.destroy();
           return;
@@ -183,7 +192,7 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
       cancelled = true;
       if (loaded) void loaded.loadingTask.destroy();
     };
-  }, [attachment.id, controller.api, attempt]);
+  }, [attachment.id, api, load, attempt]);
 
   // The scroller mounts with the dialog's content (a portal): follow it by callback, not by a one-time effect.
   const observer = useRef<ResizeObserver | null>(null);
@@ -302,7 +311,7 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
             <MoveHorizontal size={18} />
           </button>
           <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
-          <ViewerFileButtons attachment={attachment} controller={controller} />
+          {"controller" in props ? <ViewerFileButtons attachment={props.attachment} controller={props.controller} /> : props.buttons}
           <ViewerCloseButton />
         </>
       }
@@ -319,7 +328,7 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
             <p role="status">{t("docPreview.failed")}</p>
             <div className="flex gap-2">
               <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => setAttempt((n) => n + 1)}>{t("common.retry")}</button>
-              <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>{t("attach.download")}</button>
+              <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => ("controller" in props ? void props.controller.downloadAttachment(props.attachment) : props.onDownload())}>{t("attach.download")}</button>
             </div>
           </div>
         ) : (

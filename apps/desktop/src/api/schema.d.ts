@@ -725,6 +725,46 @@ export interface paths {
         patch: operations["admin_update_canvas_template_api_v1_admin_canvas_templates__template_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/drive/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Links
+         * @description Every link that is not revoked, in every location (§3.4): names, never contents.
+         */
+        get: operations["admin_links_api_v1_admin_drive_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/drive/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Revoke Link
+         * @description Audited as drive.link_revoked with by_admin.
+         */
+        delete: operations["admin_revoke_link_api_v1_admin_drive_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/drive/locations/{location_id}": {
         parameters: {
             query?: never;
@@ -743,6 +783,28 @@ export interface paths {
          * @description A location's own quota in bytes (null: none), audited as drive.quota_changed.
          */
         patch: operations["set_location_quota_api_v1_admin_drive_locations__location_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/drive/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Share Settings */
+        get: operations["get_share_settings_api_v1_admin_drive_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Share Settings
+         * @description The workspace's switch for external links, the longest expiry (null: none required) and
+         *     whether a password is required; audited as workspace.settings_updated.
+         */
+        patch: operations["patch_share_settings_api_v1_admin_drive_settings_patch"];
         trace?: never;
     };
     "/api/v1/admin/drive/usage": {
@@ -3136,6 +3198,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/items/{item_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Item Links
+         * @description The item's links that are not revoked (mine; every one for those who manage the
+         *     location's links) and what the share dialog may offer.
+         */
+        get: operations["item_links_api_v1_drive_items__item_id__links_get"];
+        put?: never;
+        /**
+         * Create Link
+         * @description A link to a file or a folder (§9). Its address is in this answer only. 403
+         *     drive_links_disabled / guest_restricted / drive_read_only, 409 drive_root_immutable, 422
+         *     share_link_expiry_too_long / share_link_password_required.
+         */
+        post: operations["create_link_api_v1_drive_items__item_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/items/{item_id}/restore": {
         parameters: {
             query?: never;
@@ -3213,6 +3302,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Links
+         * @description The links I made that are not revoked, newest first.
+         */
+        get: operations["my_links_api_v1_drive_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Link
+         * @description Its creator, the location's managers or an administrator; for good.
+         */
+        delete: operations["revoke_link_api_v1_drive_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Link
+         * @description Its creator only. `password: null` removes the password.
+         */
+        patch: operations["update_link_api_v1_drive_links__link_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/drive/links/{link_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Link Events
+         * @description How the link was used (§9.5), newest first: its creator and the administrators.
+         */
+        get: operations["link_events_api_v1_drive_links__link_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/locations": {
         parameters: {
             query?: never;
@@ -3248,6 +3401,27 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/locations/{location_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Location
+         * @description The location's switch for external links (§3.2: who manages the location). Off stops its
+         *     links; none is removed.
+         */
+        patch: operations["patch_location_api_v1_drive_locations__location_id__patch"];
         trace?: never;
     };
     "/api/v1/drive/locations/{location_id}/trash": {
@@ -4762,6 +4936,163 @@ export interface paths {
          *     workspace_icon_not_found when there is none.
          */
         get: operations["server_icon_api_v1_server_icon_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Share Info
+         * @description What the link shares. 404 share_link_not_found (unknown), 410 share_link_unavailable
+         *     (revoked, expired, used up or stopped); a password link tells nothing more until unlocked.
+         */
+        get: operations["share_info_api_v1_shares__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/folders/{folder_id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Share Children
+         * @description A folder under the link (folders first, by name): names, sizes, times, previews only.
+         */
+        get: operations["share_children_api_v1_shares__token__folders__folder_id__children_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/items/{item_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Share Content
+         * @description A file's bytes (Range; counted against the link's limit).
+         */
+        get: operations["share_content_api_v1_shares__token__items__item_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Share Content
+         * @description A file's bytes (Range; counted against the link's limit).
+         */
+        head: operations["share_content_api_v1_shares__token__items__item_id__content_get"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/items/{item_id}/preview/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Share Preview Pdf */
+        get: operations["share_preview_pdf_api_v1_shares__token__items__item_id__preview_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/items/{item_id}/preview/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Share Preview Thumbnail */
+        get: operations["share_preview_thumbnail_api_v1_shares__token__items__item_id__preview_thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/items/{item_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Share Thumbnail */
+        get: operations["share_thumbnail_api_v1_shares__token__items__item_id__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share Unlock
+         * @description The password: 204 with the unlock cookie (12 hours), 401 share_password_invalid, 429 after
+         *     10 tries in 10 minutes for the link or 20 a minute from one address.
+         */
+        post: operations["share_unlock_api_v1_shares__token__unlock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Share Zip
+         * @description The shared folder (or a folder under it) as one ZIP: one download.
+         */
+        get: operations["share_zip_api_v1_shares__token__zip_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9489,6 +9820,11 @@ export interface components {
             next_cursor: string | null;
             /** Path */
             path: components["schemas"]["DriveCrumb"][];
+            /**
+             * Shared Above
+             * @default 0
+             */
+            shared_above: number;
         };
         /** DriveCopyIn */
         DriveCopyIn: {
@@ -9596,6 +9932,12 @@ export interface components {
             /** Path */
             path: components["schemas"]["DriveCrumb"][];
         };
+        /** DriveItemLinksOut */
+        DriveItemLinksOut: {
+            /** Links */
+            links: components["schemas"]["DriveShareLinkOut"][];
+            policy: components["schemas"]["DriveLinkPolicyOut"];
+        };
         /** DriveItemOut */
         DriveItemOut: {
             /** Content Modified At */
@@ -9664,6 +10006,27 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /**
+         * DriveLinkPolicyOut
+         * @description What the share dialog may offer for an item: the workspace's switch and the location's,
+         *     whether the reader may make a link here (a person who can write, not a guest), the longest
+         *     expiry in days (null: links without an expiry are allowed), the default, and whether a
+         *     password is required.
+         */
+        DriveLinkPolicyOut: {
+            /** Can Share */
+            can_share: boolean;
+            /** Default Days */
+            default_days: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Location Enabled */
+            location_enabled: boolean;
+            /** Max Days */
+            max_days: number | null;
+            /** Password Required */
+            password_required: boolean;
+        };
         /** DriveLocationListOut */
         DriveLocationListOut: {
             /** Locations */
@@ -9706,6 +10069,14 @@ export interface components {
             used_bytes: number;
             /** User Id */
             user_id: string | null;
+        };
+        /**
+         * DriveLocationPatch
+         * @description PATCH /drive/locations/{id}: who manages the location (§3.2).
+         */
+        DriveLocationPatch: {
+            /** External Links */
+            external_links: boolean;
         };
         /** DriveLocationResolve */
         DriveLocationResolve: {
@@ -9821,6 +10192,189 @@ export interface components {
             items: components["schemas"]["DriveSearchHitOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** DriveShareEventListOut */
+        DriveShareEventListOut: {
+            /** Events */
+            events: components["schemas"]["DriveShareEventOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** DriveShareEventOut */
+        DriveShareEventOut: {
+            /** Bytes */
+            bytes: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Ip */
+            ip: string | null;
+            /** Item Id */
+            item_id: string | null;
+            /** Item Name */
+            item_name: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "open" | "download" | "zip" | "password_failed" | "refused";
+            /** User Agent */
+            user_agent: string | null;
+        };
+        /**
+         * DriveShareLinkCreate
+         * @description POST /drive/items/{id}/links. `expires_at` left out: DRIVE_SHARE_DEFAULT_DAYS (7) from now;
+         *     null: no expiry (only when the workspace allows it, drive_link_max_days null).
+         */
+        DriveShareLinkCreate: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Max Downloads */
+            max_downloads?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Password */
+            password?: string | null;
+        };
+        /**
+         * DriveShareLinkCreatedOut
+         * @description The only time the link's address is shown (only its SHA-256 is kept, §19 Q4). `url` is
+         *     absolute when the server knows its address (PUBLIC_BASE_URL), else the same as `path`
+         *     (the client puts its server's origin in front).
+         */
+        DriveShareLinkCreatedOut: {
+            link: components["schemas"]["DriveShareLinkOut"];
+            /** Path */
+            path: string;
+            /** Url */
+            url: string;
+        };
+        /** DriveShareLinkListOut */
+        DriveShareLinkListOut: {
+            /** Links */
+            links: components["schemas"]["DriveShareLinkOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /**
+         * DriveShareLinkOut
+         * @description A link as its creator, the location's managers and the administrators see it. `state`:
+         *     active; expired; exhausted (its download limit is used up); revoked; paused (works again by
+         *     itself: its creator cannot read the item now or is no longer a person who may share, the
+         *     item is in the trash or moved to another location, the channel is archived, or the location
+         *     or the workspace turned external links off).
+         */
+        DriveShareLinkOut: {
+            /**
+             * Can Edit
+             * @default false
+             */
+            can_edit: boolean;
+            /**
+             * Can Revoke
+             * @default false
+             */
+            can_revoke: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Created By Name */
+            created_by_name: string;
+            /** Download Count */
+            download_count: number;
+            /** Expires At */
+            expires_at: string | null;
+            /** Has Password */
+            has_password: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Item Kind
+             * @enum {string}
+             */
+            item_kind: "folder" | "file";
+            /** Item Name */
+            item_name: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /**
+             * Location Kind
+             * @enum {string}
+             */
+            location_kind: "workspace" | "channel" | "user";
+            /** Location Name */
+            location_name: string;
+            /** Max Downloads */
+            max_downloads: number | null;
+            /** Note */
+            note: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "expired" | "exhausted" | "revoked" | "paused";
+        };
+        /**
+         * DriveShareLinkPatch
+         * @description PATCH /drive/links/{id}: only the fields sent change. `password: null` removes the
+         *     password; any change of the password ends the unlocked browsers' cookies.
+         */
+        DriveShareLinkPatch: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Max Downloads */
+            max_downloads?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Password */
+            password?: string | null;
+        };
+        /**
+         * DriveShareSettingsOut
+         * @description The workspace's switches for external links (workspace_settings, §4.2).
+         */
+        DriveShareSettingsOut: {
+            /** Default Days */
+            default_days: number;
+            /** External Links Enabled */
+            external_links_enabled: boolean;
+            /** Link Max Days */
+            link_max_days: number | null;
+            /** Link Password Required */
+            link_password_required: boolean;
+        };
+        /** DriveShareSettingsPatch */
+        DriveShareSettingsPatch: {
+            /** External Links Enabled */
+            external_links_enabled?: boolean | null;
+            /** Link Max Days */
+            link_max_days?: number | null;
+            /** Link Password Required */
+            link_password_required?: boolean | null;
         };
         /** DriveTakeoverIn */
         DriveTakeoverIn: {
@@ -13540,6 +14094,86 @@ export interface components {
             last_used_at: string;
         };
         /**
+         * ShareInfoOut
+         * @description GET /shares/{token}. Before a password link is unlocked only `password_required` (and the
+         *     workspace's name) is told: `kind`, `item` and `root_id` are null.
+         */
+        ShareInfoOut: {
+            /** Downloads Left */
+            downloads_left: number | null;
+            /** Expires At */
+            expires_at: string | null;
+            item: components["schemas"]["SharedItemOut"] | null;
+            /** Kind */
+            kind: ("folder" | "file") | null;
+            /** Password Required */
+            password_required: boolean;
+            /** Root Id */
+            root_id: string | null;
+            /**
+             * State
+             * @default active
+             * @constant
+             */
+            state: "active";
+            /** Unlocked */
+            unlocked: boolean;
+            /** Workspace Name */
+            workspace_name: string;
+        };
+        /** ShareUnlockIn */
+        ShareUnlockIn: {
+            /** Password */
+            password: string;
+        };
+        /** SharedChildrenOut */
+        SharedChildrenOut: {
+            folder: components["schemas"]["SharedItemOut"];
+            /** Items */
+            items: components["schemas"]["SharedItemOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Path */
+            path: components["schemas"]["DriveCrumb"][];
+        };
+        /**
+         * SharedItemOut
+         * @description An item as the public side shows it: never who made or changed it, nor its location.
+         */
+        SharedItemOut: {
+            /** Content Type */
+            content_type: string | null;
+            /**
+             * Has Thumbnail
+             * @default false
+             */
+            has_thumbnail: boolean;
+            /** Height */
+            height?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "folder" | "file";
+            /**
+             * Modified At
+             * Format: date-time
+             */
+            modified_at: string;
+            /** Name */
+            name: string;
+            preview?: components["schemas"]["AttachmentPreviewOut"] | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
          * SidebarDefaultOut
          * @description The sort of a default section (お気に入り / チャンネル / ダイレクトメッセージ); always
          *     all three.
@@ -16464,6 +17098,67 @@ export interface operations {
             };
         };
     };
+    admin_links_api_v1_admin_drive_links_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareLinkListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_revoke_link_api_v1_admin_drive_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_location_quota_api_v1_admin_drive_locations__location_id__patch: {
         parameters: {
             query?: never;
@@ -16486,6 +17181,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveLocationUsageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_share_settings_api_v1_admin_drive_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareSettingsOut"];
+                };
+            };
+        };
+    };
+    patch_share_settings_api_v1_admin_drive_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveShareSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareSettingsOut"];
                 };
             };
             /** @description Validation Error */
@@ -21308,6 +22056,72 @@ export interface operations {
             };
         };
     };
+    item_links_api_v1_drive_items__item_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemLinksOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_link_api_v1_drive_items__item_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveShareLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareLinkCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     restore_item_api_v1_drive_items__item_id__restore_post: {
         parameters: {
             query?: never;
@@ -21436,6 +22250,136 @@ export interface operations {
             };
         };
     };
+    my_links_api_v1_drive_links_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareLinkListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_link_api_v1_drive_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_link_api_v1_drive_links__link_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveShareLinkPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_events_api_v1_drive_links__link_id__events_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveShareEventListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_locations_api_v1_drive_locations_get: {
         parameters: {
             query?: never;
@@ -21466,6 +22410,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DriveLocationResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLocationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_location_api_v1_drive_locations__location_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveLocationPatch"];
             };
         };
         responses: {
@@ -24492,6 +25471,302 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    share_info_api_v1_shares__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareInfoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_children_api_v1_shares__token__folders__folder_id__children_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                token: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedChildrenOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_content_api_v1_shares__token__items__item_id__content_get: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                token: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_content_api_v1_shares__token__items__item_id__content_get: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                token: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_preview_pdf_api_v1_shares__token__items__item_id__preview_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_preview_thumbnail_api_v1_shares__token__items__item_id__preview_thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_thumbnail_api_v1_shares__token__items__item_id__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_unlock_api_v1_shares__token__unlock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareUnlockIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_zip_api_v1_shares__token__zip_get: {
+        parameters: {
+            query?: {
+                folder_id?: string | null;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

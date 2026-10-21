@@ -9,6 +9,7 @@ import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
+import type { DriveItemLinksOut, DriveShareEventListOut, DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
@@ -2058,6 +2059,59 @@ export class ApiClient {
   /** A location's own quota in bytes (null: none). */
   setDriveQuota(locationId: string, quotaBytes: number | null): Promise<DriveLocationUsageOut> {
     return this.request("PATCH", `/api/v1/admin/drive/locations/${locationId}`, { quota_bytes: quotaBytes });
+  }
+
+  // --- external share links (M163, docs/DRIVE.md §5.4, §9) ----------------------------------------------------------
+
+  /** The item's links that are not revoked (mine; every one for those who manage the location's links) and what the
+   *  share dialog may offer (the switches, the longest expiry, whether a password is required). */
+  driveItemLinks(itemId: string): Promise<DriveItemLinksOut> {
+    return this.request("GET", `/api/v1/drive/items/${itemId}/links`);
+  }
+
+  /** A new link. Its address is in this answer only (only its hash is kept). `expires_at` left out: the default
+   *  (7 days); null: none (only when the workspace allows it). */
+  createDriveLink(itemId: string, body: DriveShareLinkCreate): Promise<DriveShareLinkCreatedOut> {
+    return this.request("POST", `/api/v1/drive/items/${itemId}/links`, body);
+  }
+
+  updateDriveLink(linkId: string, body: DriveShareLinkPatch): Promise<DriveShareLinkOut> {
+    return this.request("PATCH", `/api/v1/drive/links/${linkId}`, body);
+  }
+
+  revokeDriveLink(linkId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/drive/links/${linkId}`);
+  }
+
+  /** The links I made that are not revoked, newest first. */
+  myDriveLinks(cursor: string | null = null): Promise<DriveShareLinkListOut> {
+    return this.request("GET", `/api/v1/drive/links${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+  }
+
+  /** How a link was used (its creator; administrators see the whole addresses). */
+  driveLinkEvents(linkId: string, cursor: string | null = null): Promise<DriveShareEventListOut> {
+    return this.request("GET", `/api/v1/drive/links/${linkId}/events${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+  }
+
+  /** The location's switch for external links (who manages the location). */
+  setDriveLocationLinks(locationId: string, externalLinks: boolean): Promise<DriveLocationOut> {
+    return this.request("PATCH", `/api/v1/drive/locations/${locationId}`, { external_links: externalLinks });
+  }
+
+  adminDriveLinks(cursor: string | null = null): Promise<DriveShareLinkListOut> {
+    return this.request("GET", `/api/v1/admin/drive/links${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+  }
+
+  adminRevokeDriveLink(linkId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/drive/links/${linkId}`);
+  }
+
+  adminDriveShareSettings(): Promise<DriveShareSettingsOut> {
+    return this.request("GET", "/api/v1/admin/drive/settings");
+  }
+
+  updateAdminDriveShareSettings(body: DriveShareSettingsPatch): Promise<DriveShareSettingsOut> {
+    return this.request("PATCH", "/api/v1/admin/drive/settings", body);
   }
 
   /** §12: names of files and folders in the drives I can read (`location_id`: one of them). */

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- M163 (docs/DRIVE.md §9.1): a share link's page is never indexed, followed or archived, and sends no Referer. -->
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="referrer" content="no-referrer" />
+    <title>共有されたファイル</title>
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="padding: 2rem; font-family: sans-serif">
+        このページを開くには JavaScript を有効にしてください。 / Turn on JavaScript to open this page.
+      </p>
+    </noscript>
+    <script type="module" src="/src/share/main.tsx"></script>
+  </body>
+</html>

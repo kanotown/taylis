@@ -15,7 +15,7 @@
  *   who may (§3.2).
  * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
  */
-import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderPlus, FolderUp, History, Info, LayoutGrid, List, Loader2, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderPlus, FolderUp, History, Info, LayoutGrid, Link2, List, Loader2, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -32,6 +32,7 @@ import { isTauri } from "../platform/env";
 import { DeleteForeverDialog, MoveDialog, NewFolderDialog, RenameDialog } from "./DriveDialogs";
 import { DriveViewer } from "./DriveViewer";
 import { VersionsDialog } from "./DriveVersions";
+import { SharedMark, ShareLinksDialog } from "./DriveShareDialog";
 import { DropOverlay, useFileDropZone } from "./FileDropZone";
 import { FileName } from "./FileName";
 import { sinceLabel } from "./format";
@@ -99,9 +100,11 @@ interface Listing {
   cursor: string | null;
   loading: boolean;
   error: string | null;
+  /** M163: external links on the open folder or a folder above it (what is put here is shared outside). */
+  sharedAbove: number;
 }
 
-const EMPTY_LISTING: Listing = { folder: null, path: [], items: [], cursor: null, loading: true, error: null };
+const EMPTY_LISTING: Listing = { folder: null, path: [], items: [], cursor: null, loading: true, error: null, sharedAbove: 0 };
 
 export type DriveMode = "folder" | "trash";
 
@@ -128,7 +131,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<DriveSearchHitOut[] | null>(null);
   const [details, setDetails] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | null>(null);
   const [viewing, setViewing] = useState<DriveItemOut | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const filesInput = useRef<HTMLInputElement>(null);
@@ -147,7 +150,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       const held = options.keep ? listing.items.length : 0;
       const out = await api.driveChildren(folderId, { sort: sort.sort, order: sort.order, limit: Math.min(200, Math.max(PAGE, held)) });
       if (run !== generation.current) return;
-      setListing({ folder: out.folder, path: out.path, items: out.items, cursor: out.next_cursor, loading: false, error: null });
+      setListing({ folder: out.folder, path: out.path, items: out.items, cursor: out.next_cursor, loading: false, error: null, sharedAbove: out.shared_above ?? 0 });
     } catch (error) {
       if (run !== generation.current) return;
       if (error instanceof ApiError && error.code === "drive_item_not_found") {
@@ -481,6 +484,9 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         {!many && item.kind === "file" && mode === "folder" && (
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "versions", item })}><History size={14} /> {t("drive.versions.open")}</ContextMenu.Item>
         )}
+        {!many && mode === "folder" && item.parent_id && (location.can_share || item.link_count > 0) && (
+          <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "share", item })}><Link2 size={14} /> {t("drive.share.open")}</ContextMenu.Item>
+        )}
         {hits && !many && item.parent_id && (
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => { setQuery(""); onFolder(item.parent_id!); }}><FolderInput size={14} /> {t("drive.showInFolder")}</ContextMenu.Item>
         )}
@@ -609,6 +615,12 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     </div>
   );
 
+  const sharedBanner = mode === "folder" && !hits && listing.sharedAbove > 0 ? (
+    <p data-drive-shared-banner="" className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-1.5 text-[12.5px] text-muted">
+      <Link2 size={13} className="shrink-0 text-accent" /> {t("drive.share.banner")}
+    </p>
+  ) : null;
+
   const listingBody = mode === "trash" ? (
     <TrashList
       controller={controller}
@@ -670,7 +682,10 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                     <div className="flex min-w-0 items-center gap-2.5">
                       <Thumb controller={controller} item={item} className="h-7 w-7 rounded" />
                       <div className="min-w-0">
-                        <FileName name={item.name} className="font-medium" />
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <FileName name={item.name} className="min-w-0 font-medium" />
+                          <SharedMark count={item.link_count} />
+                        </span>
                         {hit && <div className="truncate text-[11px] text-muted">{pathLine(hit.path, locationName(location))}</div>}
                       </div>
                     </div>
@@ -709,6 +724,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
               <div className="flex items-center gap-1.5 px-2 py-1.5">
                 <DriveIcon item={item} size={14} />
                 <FileName name={item.name} className="min-w-0 flex-1 text-[12.5px] font-medium" />
+                <SharedMark count={item.link_count} />
               </div>
             </li>
           </ContextMenu.Trigger>
@@ -725,6 +741,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-drive-browser={mode}>
       {toolbar}
+      {sharedBanner}
       <div className="flex min-h-0 flex-1">
         <div
           ref={listRef}
@@ -751,6 +768,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
             path={here}
             onClose={() => setDetails(false)}
             onVersions={(item) => setDialog({ kind: "versions", item })}
+            onShare={(item) => setDialog({ kind: "share", item })}
+            canShare={location.can_share}
             onDownload={() => download(chosen.length > 0 ? chosen : listing.folder ? [listing.folder] : [])}
           />
         )}
@@ -776,6 +795,9 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         setSelected(new Set());
         void load({ keep: true });
       }} />}
+      {dialog?.kind === "share" && (
+        <ShareLinksDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} onChanged={() => void load({ keep: true })} />
+      )}
       {dialog?.kind === "versions" && (
         <VersionsDialog
           controller={controller}
@@ -895,13 +917,16 @@ function TrashList({ controller, location, trash, onMore, onRestore, onDelete }:
   );
 }
 
-function DetailsPane({ controller, item, count, path, onClose, onVersions, onDownload }: {
+function DetailsPane({ controller, item, count, path, onClose, onVersions, onShare, canShare, onDownload }: {
   controller: AppController;
   item: DriveItemOut | null;
   count: number;
   path: string;
   onClose: () => void;
   onVersions: (item: DriveItemOut) => void;
+  /** M163: the item's 「共有リンク」 (not the top folder). */
+  onShare: (item: DriveItemOut) => void;
+  canShare: boolean;
   /** The selection (or the open folder) downloaded: a file as it is, else a ZIP. */
   onDownload: () => void;
 }) {
@@ -950,6 +975,16 @@ function DetailsPane({ controller, item, count, path, onClose, onVersions, onDow
             )}
             <dt className="text-muted">{t("drive.detail.where")}</dt>
             <dd className="break-words">{path}</dd>
+            {item.parent_id && (canShare || item.link_count > 0) && (
+              <>
+                <dt className="text-muted">{t("drive.share.detail")}</dt>
+                <dd>
+                  <button type="button" className="text-accent hover:underline" onClick={() => onShare(item)}>
+                    {item.link_count > 0 ? t("drive.share.sharedCount", { count: item.link_count }) : t("drive.share.notShared")}
+                  </button>
+                </dd>
+              </>
+            )}
           </dl>
           <div className="flex flex-wrap gap-2">
             {item.kind === "file" ? (

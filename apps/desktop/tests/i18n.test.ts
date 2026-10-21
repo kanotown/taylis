@@ -83,7 +83,7 @@ describe("t and format", () => {
 describe("no lookups while modules load", () => {
   it("importing every module of the app calls t() nowhere", async () => {
     const before = importTimeCalls.length;
-    await Promise.all(Object.values(import.meta.glob(["../src/**/*.{ts,tsx}", "!../src/main.tsx", "!../src/**/*.d.ts"])).map((load) => load()));
+    await Promise.all(Object.values(import.meta.glob(["../src/**/*.{ts,tsx}", "!../src/main.tsx", "!../src/share/main.tsx", "!../src/**/*.d.ts"])).map((load) => load()));
     expect(importTimeCalls.slice(before)).toEqual([]);
     markStarted();
   }, 60_000);
