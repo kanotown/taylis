@@ -2922,6 +2922,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/download/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download By Ticket
+         * @description The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and
+         *     for a person who can no longer read the file.
+         */
+        get: operations["download_by_ticket_api_v1_drive_download__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/folders": {
         parameters: {
             query?: never;
@@ -3021,12 +3042,33 @@ export interface paths {
         };
         /**
          * Download
-         * @description The file under its current name (§7.1): Range (one range, 206), If-Range on the version's
-         *     ETag; always an attachment except an image with ?inline=1.
+         * @description The file under its current name (§7.1), with the bearer token (the desktop app).
          */
         get: operations["download_api_v1_drive_items__item_id__content_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/download-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download Ticket
+         * @description Phase D2 (§7.3): a URL for the browser's own download or a video's source, without the
+         *     bearer token (the Web keeps it in memory only). Valid while used within `expires_in`
+         *     seconds (at most 12 hours); each use checks the access again.
+         */
+        post: operations["download_ticket_api_v1_drive_items__item_id__download_ticket_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4455,6 +4497,28 @@ export interface paths {
          *     plain-text excerpt around the first match.
          */
         get: operations["search_canvases_api_v1_search_canvases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/drive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Drive
+         * @description Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,
+         *     partial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my
+         *     channels' drives), never in the trash; each with its path. `location_id`: one drive only.
+         */
+        get: operations["search_drive_api_v1_search_drive_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9273,6 +9337,17 @@ export interface components {
             name: string;
         };
         /**
+         * DriveDownloadTicketOut
+         * @description A URL the browser's own download (or a video's source) can follow without the bearer
+         *     token (§7.3): relative to the server, valid `expires_in` seconds after its last use.
+         */
+        DriveDownloadTicketOut: {
+            /** Expires In */
+            expires_in: number;
+            /** Url */
+            url: string;
+        };
+        /**
          * DriveFileOut
          * @description The current version's attachment (the shape of AttachmentOut's media fields): its
          *     thumbnail, poster and preview are served by /attachments/{attachment_id}/…
@@ -9471,6 +9546,24 @@ export interface components {
             /** Results */
             results: components["schemas"]["DriveItemResult"][];
         };
+        /** DriveSearchHitOut */
+        DriveSearchHitOut: {
+            item: components["schemas"]["DriveItemOut"];
+            /**
+             * Location Kind
+             * @enum {string}
+             */
+            location_kind: "workspace" | "channel" | "user";
+            /** Path */
+            path: components["schemas"]["DriveCrumb"][];
+        };
+        /** DriveSearchOut */
+        DriveSearchOut: {
+            /** Items */
+            items: components["schemas"]["DriveSearchHitOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** DriveTakeoverIn */
         DriveTakeoverIn: {
             /** Target Folder Name */
@@ -9562,6 +9655,8 @@ export interface components {
              * Format: uuid
              */
             client_upload_id: string;
+            /** Content Modified At */
+            content_modified_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -20432,6 +20527,39 @@ export interface operations {
             };
         };
     };
+    download_by_ticket_api_v1_drive_download__token__get: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_folder_api_v1_drive_folders_post: {
         parameters: {
             query?: never;
@@ -20692,6 +20820,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_ticket_api_v1_drive_items__item_id__download_ticket_post: {
+        parameters: {
+            query?: {
+                version_id?: string | null;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveDownloadTicketOut"];
                 };
             };
             /** @description Validation Error */
@@ -23561,6 +23722,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanvasSearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_drive_api_v1_search_drive_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                location_id?: string | null;
+                kind?: ("folder" | "file") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveSearchOut"];
                 };
             };
             /** @description Validation Error */

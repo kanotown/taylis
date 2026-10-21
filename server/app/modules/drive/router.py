@@ -14,9 +14,10 @@ from app.modules.attachments.models import Attachment
 from app.modules.auth.deps import CurrentUser, require_capability
 from app.modules.drive import names, service, uploads
 from app.modules.drive.access import item_not_found
-from app.modules.drive.models import DriveFileVersion
+from app.modules.drive.models import DriveFileVersion, DriveItem
 from app.modules.drive.schemas import (
     DriveChildrenOut,
+    DriveDownloadTicketOut,
     DriveFolderCreate,
     DriveItemDetailOut,
     DriveItemOut,
@@ -38,6 +39,7 @@ from app.modules.drive.schemas import (
     DriveUploadPartOut,
     DriveUploadPatch,
 )
+from app.modules.drive.uploads import DriveRuntime
 from app.modules.users.models import User
 
 router = APIRouter(tags=["drive"])
@@ -147,18 +149,17 @@ async def delete_item(item_id: UUID, user: CurrentUser, db: Db) -> Response:
     return Response(status_code=204)
 
 
-@router.get("/drive/items/{item_id}/content")
-async def download(
-    item_id: UUID,
+async def _content(
     request: Request,
-    user: CurrentUser,
     db: Db,
-    version_id: UUID | None = Query(default=None),
-    inline: bool = Query(default=False),
+    item: DriveItem,
+    version_id: UUID | None,
+    inline: bool,
+    *,
+    cache: str = "private, max-age=3600",
 ) -> StreamingResponse:
-    """The file under its current name (§7.1): Range (one range, 206), If-Range on the version's
-    ETag; always an attachment except an image with ?inline=1."""
-    item, _ = await service.readable_item(db, user, item_id)
+    """A file's bytes under its current name (§7.1): Range (one range, 206), If-Range on the
+    version's ETag; always an attachment except an image with ?inline=1."""
     if item.kind != "file":
         raise item_not_found()
     version = await db.get(DriveFileVersion, version_id or item.current_version_id)
@@ -176,7 +177,7 @@ async def download(
         "Content-Length": str(attachment.size_bytes),
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "sandbox",
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": cache,
         "Accept-Ranges": "bytes",
         "ETag": f'"{version.id}"',
         "Last-Modified": format_datetime(version.created_at, usegmt=True),
@@ -189,6 +190,64 @@ async def download(
         range_header=request.headers.get("range"),
         if_range=request.headers.get("if-range"),
     )
+
+
+@router.get("/drive/items/{item_id}/content")
+async def download(
+    item_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    version_id: UUID | None = Query(default=None),
+    inline: bool = Query(default=False),
+) -> StreamingResponse:
+    """The file under its current name (§7.1), with the bearer token (the desktop app)."""
+    item, _ = await service.readable_item(db, user, item_id)
+    return await _content(request, db, item, version_id, inline)
+
+
+@router.post("/drive/items/{item_id}/download-ticket", response_model=DriveDownloadTicketOut)
+async def download_ticket(
+    item_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    version_id: UUID | None = Query(default=None),
+) -> DriveDownloadTicketOut:
+    """Phase D2 (§7.3): a URL for the browser's own download or a video's source, without the
+    bearer token (the Web keeps it in memory only). Valid while used within `expires_in`
+    seconds (at most 12 hours); each use checks the access again."""
+    item, _ = await service.readable_item(db, user, item_id)
+    if item.kind != "file":
+        raise item_not_found()
+    version = await db.get(DriveFileVersion, version_id or item.current_version_id)
+    if version is None or version.item_id != item.id:
+        raise item_not_found()
+    runtime: DriveRuntime = request.app.state.drive
+    token = runtime.tickets.issue(user.id, item.id, version.id)
+    return DriveDownloadTicketOut(
+        url=f"/api/v1/drive/download/{token}", expires_in=int(runtime.tickets.idle_seconds)
+    )
+
+
+@router.get("/drive/download/{token}")
+async def download_by_ticket(
+    token: str,
+    request: Request,
+    db: Db,
+    inline: bool = Query(default=False),
+) -> StreamingResponse:
+    """The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and
+    for a person who can no longer read the file."""
+    runtime: DriveRuntime = request.app.state.drive
+    ticket = runtime.tickets.use(token) if len(token) <= 100 else None
+    if ticket is None:
+        raise item_not_found()
+    user = await db.get(User, ticket.user_id)
+    if user is None or not user.is_active:
+        raise item_not_found()
+    item, _ = await service.readable_item(db, user, ticket.item_id)
+    return await _content(request, db, item, ticket.version_id, inline, cache="private, no-store")
 
 
 # --- uploads (§6) ------------------------------------------------------------------------------

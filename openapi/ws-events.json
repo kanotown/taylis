@@ -2959,6 +2959,19 @@
                 "title": "Client Upload Id",
                 "type": "string"
               },
+              "content_modified_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Content Modified At"
+              },
               "created_at": {
                 "format": "date-time",
                 "title": "Created At",
