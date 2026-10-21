@@ -741,6 +741,44 @@ export class AppController {
     }
   }
 
+  /**
+   * M162 (docs/DRIVE.md §7.2): folders and several items as one ZIP. The server fixes what it holds and hands out a
+   * one-time URL; the desktop app streams it into the file chunk by chunk (its exact length known: the toast's
+   * progress), the browser follows it with its own download.
+   */
+  async downloadDriveZip(itemIds: string[]): Promise<void> {
+    const api = this.api;
+    if (!api || itemIds.length === 0) return;
+    let zip: Awaited<ReturnType<typeof api.createDriveZip>>;
+    try {
+      zip = await api.createDriveZip(itemIds);
+    } catch (error) {
+      this.setError(error);
+      return;
+    }
+    if (downloadRoute(isTauri()) === "browser") {
+      browserDownload(ticketUrl(api.baseUrl, zip.url), zip.filename);
+      return;
+    }
+    const entry = this.startDownload(zip.filename, zip.zip_bytes);
+    let last = 0;
+    try {
+      const response = await api.fetchStream(zip.url);
+      const total = Number(response.headers.get("Content-Length")) || zip.zip_bytes;
+      const saved = await saveStreamToFile(zip.filename, response, (loaded) => {
+        const now = Date.now();
+        if (now - last < 150 && loaded < total) return;
+        last = now;
+        this.updateDownload(entry.id, { loaded, total });
+      });
+      if (!saved) return this.dismissDownload(entry.id);
+      this.finishDownload(entry.id, saved.path, saved.inDownloads);
+    } catch (error) {
+      this.dismissDownload(entry.id);
+      this.setError(error);
+    }
+  }
+
   private startDownload(filename: string, total: number): DownloadItem {
     const item: DownloadItem = { id: this.nextDownloadId++, filename, loaded: 0, total, state: "downloading", path: null, openable: false };
     // At most three toasts: the oldest finished ones go first.
