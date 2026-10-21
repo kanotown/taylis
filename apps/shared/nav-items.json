@@ -1,5 +1,5 @@
 {
-  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). On the desktop 下書き and リマインダー show where they are placed even while empty (2026-10-12); the phones unchanged. M121: 「ドキュメント」 (docs, WIKI.md §9.1) is desktop / Web only until the phones' M122. M140: 「在室状況」 (attendance, docs/PRESENCE.md) on both platforms, implemented by a client only while the workspace has the board turned on. M143: 「操作」 (actions, docs/ACTIONS.md §9) on both platforms (the phones' tile since the iOS / Android pages), implemented by a client only while the workspace has the buttons on and I may press at least one. 2026-10-12 (MOBILE_UI.md §18.2): on the desktop / Web wide layout each item stands in the places rail, as a sidebar row or only under 「その他」 by UserMe.desktop_places, not by `visible`: `visible` is the phones' tiles only (a hidden tile is not drawn); the order here stays shared. M161: 「ドライブ」 (drive, docs/DRIVE.md §17.1) is desktop / Web only until the phones' D7 (M166).",
+  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). On the desktop 下書き and リマインダー show where they are placed even while empty (2026-10-12); the phones unchanged. M121: 「ドキュメント」 (docs, WIKI.md §9.1) is desktop / Web only until the phones' M122. M140: 「在室状況」 (attendance, docs/PRESENCE.md) on both platforms, implemented by a client only while the workspace has the board turned on. M143: 「操作」 (actions, docs/ACTIONS.md §9) on both platforms (the phones' tile since the iOS / Android pages), implemented by a client only while the workspace has the buttons on and I may press at least one. 2026-10-12 (MOBILE_UI.md §18.2): on the desktop / Web wide layout each item stands in the places rail, as a sidebar row or only under 「その他」 by UserMe.desktop_places, not by `visible`: `visible` is the phones' tiles only (a hidden tile is not drawn); the order here stays shared. M161: 「ドライブ」 (drive, docs/DRIVE.md §17.1) on the desktop / Web; M166 (the phones' D7, DRIVE.md §26): on both platforms, the phones' tile after ファイル, implemented by a phone only while the server has the drive.",
   "items": [
     {
       "key": "threads",
@@ -68,7 +68,8 @@
       "label": "ドライブ",
       "visible": true,
       "platforms": [
-        "desktop"
+        "desktop",
+        "mobile"
       ]
     },
     {
@@ -174,12 +175,12 @@
       "deadlines",
       "reservations",
       "files",
+      "drive",
       "canvases",
       "docs",
       "activity",
       "attendance",
-      "actions",
-      "drive"
+      "actions"
     ]
   },
   "cases": [
@@ -366,6 +367,10 @@
           "visible": true
         },
         {
+          "key": "drive",
+          "visible": true
+        },
+        {
           "key": "canvases",
           "visible": true
         },
@@ -383,10 +388,6 @@
         },
         {
           "key": "actions",
-          "visible": true
-        },
-        {
-          "key": "drive",
           "visible": true
         }
       ],
@@ -492,6 +493,10 @@
           "visible": true
         },
         {
+          "key": "drive",
+          "visible": true
+        },
+        {
           "key": "canvases",
           "visible": true
         },
@@ -509,10 +514,6 @@
         },
         {
           "key": "actions",
-          "visible": true
-        },
-        {
-          "key": "drive",
           "visible": true
         }
       ],
@@ -934,6 +935,10 @@
           "visible": true
         },
         {
+          "key": "drive",
+          "visible": true
+        },
+        {
           "key": "docs",
           "visible": true
         },
@@ -943,10 +948,6 @@
         },
         {
           "key": "actions",
-          "visible": true
-        },
-        {
-          "key": "drive",
           "visible": true
         }
       ],
@@ -1051,6 +1052,10 @@
           "visible": true
         },
         {
+          "key": "drive",
+          "visible": true
+        },
+        {
           "key": "canvases",
           "visible": true
         },
@@ -1068,10 +1073,6 @@
         },
         {
           "key": "actions",
-          "visible": true
-        },
-        {
-          "key": "drive",
           "visible": true
         }
       ],
@@ -1326,6 +1327,10 @@
           "visible": true
         },
         {
+          "key": "drive",
+          "visible": true
+        },
+        {
           "key": "canvases",
           "visible": true
         },
@@ -1339,10 +1344,6 @@
         },
         {
           "key": "attendance",
-          "visible": true
-        },
-        {
-          "key": "drive",
           "visible": true
         }
       ],
@@ -1393,6 +1394,275 @@
         },
         {
           "key": "attendance",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "M166: drive (「ドライブ」) shows on the phones once implemented, after ファイル",
+      "stored": null,
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "drive",
+        "canvases"
+      ],
+      "full": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "drive",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "drive",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "M166: a list saved before the drive gets it among the items never saved, in the phones' default order",
+      "stored": [
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        }
+      ],
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "drive",
+        "canvases"
+      ],
+      "full": [
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "drive",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "attendance",
+          "visible": true
+        },
+        {
+          "key": "actions",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "drive",
+          "visible": true
+        },
+        {
+          "key": "canvases",
           "visible": true
         }
       ]
@@ -1498,6 +1768,10 @@
           "visible": true
         },
         {
+          "key": "drive",
+          "visible": true
+        },
+        {
           "key": "canvases",
           "visible": true
         },
@@ -1511,10 +1785,6 @@
         },
         {
           "key": "actions",
-          "visible": true
-        },
-        {
-          "key": "drive",
           "visible": true
         }
       ]

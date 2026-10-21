@@ -21,8 +21,8 @@ enum NavItems {
         Entry(key: "saved", label: tr("保存済み"), mobileLabel: tr("保存"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "reminders", label: tr("リマインダー"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "files", label: tr("ファイル"), visible: true, platforms: [.desktop, .mobile]),
-        // M161 (docs/DRIVE.md §17.1): Desktop / Web only until the phones' D7 (never drawn here).
-        Entry(key: "drive", label: "ドライブ", visible: true, platforms: [.desktop]),
+        // M161 (docs/DRIVE.md §17.1); M166 (the phones' D7): the home tile too, after ファイル.
+        Entry(key: "drive", label: "ドライブ", visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "canvases", label: tr("キャンバス"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "docs", label: tr("ドキュメント"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "calendar", label: tr("カレンダー"), visible: true, platforms: [.desktop, .mobile]),
@@ -38,8 +38,8 @@ enum NavItems {
     static let order: [Platform: [String]] = [
         .desktop: ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved",
                    "times-feed", "attendance", "actions"],
-        .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs",
-                  "activity", "attendance", "actions", "drive"],
+        .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "drive", "canvases",
+                  "docs", "activity", "attendance", "actions"],
     ]
 
     /// The tiles this app has (「予約」 joins when its page exists). アクティビティ is the phone's tab and the iPad
