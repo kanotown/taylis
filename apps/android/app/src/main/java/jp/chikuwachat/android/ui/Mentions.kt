@@ -4,6 +4,10 @@ import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
+import jp.chikuwachat.android.sync.MessageState
+import jp.chikuwachat.android.sync.Store
+import java.text.Collator
+import java.util.Locale
 
 /**
  * The composer shows `@username`; the wire format is `<@uuid>` / `<!channel>` (DATA_MODEL.md).
@@ -62,12 +66,73 @@ object Mentions {
         else -> user.botKind == "ai"
     }
 
-    /** `aiBotIds`: as [suggests]; the AI bots are marked `ai`. */
-    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 6, aiBotIds: Set<String>? = null): List<Candidate> {
+    /** How many of the newest messages of a thread and of the channel count as recent (apps/shared/mention-rank.json). */
+    const val RECENT_MESSAGES = 50
+
+    /** What [recentSpeakers] reads of a message. */
+    data class Spoken(val senderId: String, val deleted: Boolean = false, val type: String = "user")
+
+    /**
+     * Whom the list puts first (MOBILE_UI.md §23): what the device holds about the conversation being written in.
+     * `recent`: [recentSpeakers], newest first; `members`: the conversation's members as known locally (a DM / group DM:
+     * its participants); `me`: offered last.
+     */
+    data class Context(val recent: List<String> = emptyList(), val members: List<String> = emptyList(), val me: String? = null)
+
+    /**
+     * Who spoke recently, newest first, each once (MOBILE_UI.md §23, mention-rank.json `recent`): the thread's senders
+     * (its parent and replies, oldest first as given) before the channel's (the loaded timeline). Deleted and system
+     * messages do not count; only the newest [cap] counting messages of each list.
+     */
+    fun recentSpeakers(channel: List<Spoken>, thread: List<Spoken> = emptyList(), cap: Int = RECENT_MESSAGES): List<String> {
+        val speakers = LinkedHashSet<String>()
+        for (list in listOf(thread, channel)) {
+            list.filter { !it.deleted && it.type != "system" }.takeLast(cap).asReversed().forEach { speakers.add(it.senderId) }
+        }
+        return speakers.toList()
+    }
+
+    private fun MessageState.spoken() = Spoken(senderId, deleted, type)
+
+    /**
+     * The composer's context: the loaded messages' senders (in a thread, its own first) and a DM's participants. A
+     * channel's members are not held on the device (GET /channels/{id}/members is read by the member screens only), so
+     * a channel has no members tier.
+     */
+    fun context(store: Store, channelId: String, parentId: String?): Context {
+        val thread = if (parentId == null) emptyList() else listOfNotNull(store.message(channelId, parentId)?.spoken()) + store.replies(channelId, parentId).map { it.spoken() }
+        return documentContext(store, channelId).copy(recent = recentSpeakers(store.messages(channelId).map { it.spoken() }, thread))
+    }
+
+    /** A canvas (MOBILE_UI.md §23): no conversation, only the participants of the DM it belongs to, and me last. */
+    fun documentContext(store: Store, channelId: String?): Context =
+        Context(members = channelId?.let { store.channel(it)?.channel?.dmUserIds }.orEmpty(), me = store.me?.id)
+
+    /**
+     * `aiBotIds`: as [suggests]; the AI bots are marked `ai`. People are ranked by [context] (MOBILE_UI.md §23): a prefix
+     * match first, then recent speakers, members, everybody else and me, then by display name; the groups and
+     * @channel / @here follow as before.
+     */
+    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 8, aiBotIds: Set<String>? = null, context: Context = Context()): List<Candidate> {
         val q = query.lowercase()
+        val recent = HashMap<String, Int>()
+        context.recent.forEach { recent.putIfAbsent(it, recent.size) }
+        val members = context.members.toSet()
+        fun tier(id: String) = when {
+            id == context.me -> 3
+            id in recent -> 0
+            id in members -> 1
+            else -> 2
+        }
+        fun match(user: UserPublic) = if (q.isEmpty() || user.username.lowercase().startsWith(q) || user.displayName.lowercase().startsWith(q)) 0 else 1
+        val collator = Collator.getInstance(Locale.JAPANESE)
         val people = users.filter { suggests(it, aiBotIds) }
             .filter { it.username.lowercase().startsWith(q) || it.displayName.lowercase().contains(q) }
-            .sortedBy { it.username }
+            .sortedWith(
+                compareBy<UserPublic>({ match(it) }, { tier(it.id) }, { if (tier(it.id) == 0) recent.getValue(it.id) else 0 })
+                    .thenComparator { a, b -> collator.compare(a.displayName, b.displayName) }
+                    .thenBy { it.username },
+            )
             .map { Candidate(it.username, it.displayName, ai = it.role == "bot") }
         val teams = groups.filter { it.name.lowercase().startsWith(q) || (it.description ?: "").lowercase().contains(q) }
             .sortedBy { it.name }

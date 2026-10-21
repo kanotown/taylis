@@ -376,14 +376,14 @@ class AiTest {
             UserPublic("u9", "admin1", "Admin", "admin", null, "t", "t"),
         )
         fun users(found: List<Mentions.Candidate>) = found.filter { it.kind == "user" }.map { it.username to it.ai }
-        // Before /ai/status: by bot_kind.
+        // Before /ai/status: by bot_kind (sorted by display name, MOBILE_UI.md §23).
         assertEquals(
-            listOf("admin1" to false, "ai-chikuwa" to true, "ai-old" to true, "alice" to false, "guest1" to false),
+            listOf("admin1" to false, "alice" to false, "guest1" to false, "ai-chikuwa" to true, "ai-old" to true),
             users(Mentions.candidates("", users, limit = 20)),
         )
         // Once read: only the AI bots it lists (a stopped or deleted one is left out).
         assertEquals(
-            listOf("admin1" to false, "ai-chikuwa" to true, "alice" to false, "guest1" to false),
+            listOf("admin1" to false, "alice" to false, "guest1" to false, "ai-chikuwa" to true),
             users(Mentions.candidates("", users, limit = 20, aiBotIds = setOf("u1"))),
         )
         // A server without AI (an empty status): no bot at all.
