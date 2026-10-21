@@ -718,10 +718,11 @@ class FakeNextcloud:
                     offset = int(request.headers["X-NC-Paginate-Offset"])
                 count = int(request.headers.get("X-NC-Paginate-Count", "0"))
                 page = listing[offset : offset + min(count, self.page)]
-                headers = {
-                    "X-NC-Paginate-Total": str(len(listing)),
-                    "X-NC-Paginate-Token": f"tok-{quote(rel)}",
-                }
+                # As Nextcloud 31 answers: the token and the total on the first page only.
+                headers = {"X-NC-Paginate": "true"}
+                if token is None:
+                    headers["X-NC-Paginate-Total"] = str(len(listing))
+                    headers["X-NC-Paginate-Token"] = f"tok-{quote(rel)}"
             else:
                 page = listing
             body = (
