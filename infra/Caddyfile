@@ -57,6 +57,31 @@
 		reverse_proxy app:8000
 	}
 
+	# The drive's external share links (M163, docs/DRIVE.md §9.3, §9.6). The token is in the path: this Caddyfile has
+	# no `log` directive, so Caddy writes no access log at all (keep it that way, or mask /s/* and /api/v1/shares/*);
+	# the app masks it in its own log. The public API: the app sets noindex, no-referrer, nosniff, no framing and
+	# no-store on every answer, its errors too (app/modules/drive/public.py), so they are not repeated here.
+	@shareapi path /api/v1/shares/*
+	handle @shareapi {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy app:8000
+	}
+
+	# The public page /s/<token>: the web bundle's second entry (share.html), never cached, indexed, framed or referred.
+	@sharepage path /s/*
+	handle @sharepage {
+		root * /srv/web
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		header Referrer-Policy no-referrer
+		header X-Frame-Options DENY
+		header X-Robots-Tag "noindex, nofollow, noarchive"
+		header Cache-Control no-store
+		rewrite * /share.html
+		file_server
+	}
+
 	handle /api/* {
 		request_body {
 			max_size 1MB
