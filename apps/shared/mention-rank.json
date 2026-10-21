@@ -1,0 +1,159 @@
+{
+  "_comment": "MOBILE_UI.md §23 (2026-10-21): the order of the @ suggestions (the composer, the canvas and the page editors), the same on every client. recent: who spoke recently, from the messages held locally. Each list is oldest first (thread: the thread's parent and replies; channel: the loaded timeline); a message counts unless deleted or of type system; only the newest `cap` counting messages of each list (default recent_messages); the thread's senders first, newest first, then the channel's, each id once. rank: filtering as before (a username starting with the query or a display name containing it, case-insensitive; not deactivated; a bot only when it is an AI bot). People sorted by match (a non-empty query: a username or display name starting with it before one only containing it), then tier (0 recent, in that order; 1 members of the conversation, a DM's participants; 2 everybody else; 3 me, even when recent), then the display name (collation for ja), then the username (code points). Then the groups (by name) and @channel / @here as before. expected: usernames (groups and channel / here by name), at most `limit`. users: ai = an AI bot (role bot, bot_kind ai); bot = another bot (role bot); deactivated = deactivated.",
+  "recent_messages": 50,
+  "recent": [
+    {
+      "name": "channel: newest first, each once, no deleted or system messages",
+      "thread": [],
+      "channel": [
+        { "sender_id": "u2" },
+        { "sender_id": "u3" },
+        { "sender_id": "u2" },
+        { "sender_id": "u4", "deleted": true },
+        { "sender_id": "u5", "type": "system" }
+      ],
+      "speakers": ["u2", "u3"]
+    },
+    {
+      "name": "thread: its senders first (the parent included), then the channel's",
+      "thread": [
+        { "sender_id": "u6" },
+        { "sender_id": "u2" },
+        { "sender_id": "u6" }
+      ],
+      "channel": [
+        { "sender_id": "u3" },
+        { "sender_id": "u4" },
+        { "sender_id": "u2" }
+      ],
+      "speakers": ["u6", "u2", "u4", "u3"]
+    },
+    {
+      "name": "cap: only the newest counting messages of each list",
+      "cap": 2,
+      "thread": [
+        { "sender_id": "u7" },
+        { "sender_id": "u8" },
+        { "sender_id": "u9" }
+      ],
+      "channel": [
+        { "sender_id": "u2" },
+        { "sender_id": "u3" },
+        { "sender_id": "u4", "deleted": true },
+        { "sender_id": "u5" }
+      ],
+      "speakers": ["u9", "u8", "u5", "u3"]
+    },
+    {
+      "name": "nothing loaded",
+      "thread": [],
+      "channel": [],
+      "speakers": []
+    }
+  ],
+  "rank": {
+    "users": [
+      { "id": "u1", "username": "kano", "display_name": "加納 透" },
+      { "id": "u2", "username": "sato", "display_name": "佐藤 花子" },
+      { "id": "u3", "username": "suzuki", "display_name": "鈴木 一郎" },
+      { "id": "u4", "username": "tanaka", "display_name": "田中 次郎" },
+      { "id": "u5", "username": "alice", "display_name": "Alice Smith" },
+      { "id": "u6", "username": "bob", "display_name": "Bob Jones" },
+      { "id": "u7", "username": "ai-chikuwa", "display_name": "ちくわ", "ai": true },
+      { "id": "u8", "username": "hook", "display_name": "Webhook", "bot": true },
+      { "id": "u9", "username": "gone", "display_name": "退職者", "deactivated": true },
+      { "id": "u10", "username": "akira", "display_name": "あきら" },
+      { "id": "u11", "username": "kaori", "display_name": "かおり" },
+      { "id": "u12", "username": "yamada", "display_name": "Yamada Kana" },
+      { "id": "u13", "username": "t.mori", "display_name": "Mori Takeshi" },
+      { "id": "u14", "username": "hashimoto", "display_name": "Hashimoto Ken" }
+    ],
+    "groups": [
+      { "id": "g1", "name": "m1", "description": "修士1年", "member_ids": ["u2", "u3"] },
+      { "id": "g2", "name": "design", "description": "デザイン", "member_ids": ["u5"] }
+    ],
+    "cases": [
+      {
+        "name": "empty query: recent speakers (not me), members, everybody else, me; then the groups and @channel / @here",
+        "query": "",
+        "me": "u1",
+        "recent": ["u4", "u2", "u4", "u1"],
+        "members": ["u1", "u2", "u3", "u4", "u10"],
+        "limit": 30,
+        "expected": ["tanaka", "sato", "akira", "suzuki", "alice", "bob", "hashimoto", "t.mori", "yamada", "kaori", "ai-chikuwa", "kano", "design", "m1", "channel", "here"]
+      },
+      {
+        "name": "the limit cuts the same order",
+        "query": "",
+        "me": "u1",
+        "recent": ["u4", "u2", "u4", "u1"],
+        "members": ["u1", "u2", "u3", "u4", "u10"],
+        "limit": 8,
+        "expected": ["tanaka", "sato", "akira", "suzuki", "alice", "bob", "hashimoto", "t.mori"]
+      },
+      {
+        "name": "no context: by display name, me last",
+        "query": "",
+        "me": "u1",
+        "recent": [],
+        "members": [],
+        "limit": 30,
+        "expected": ["alice", "bob", "hashimoto", "t.mori", "yamada", "akira", "kaori", "ai-chikuwa", "sato", "tanaka", "suzuki", "kano", "design", "m1", "channel", "here"]
+      },
+      {
+        "name": "a prefix match before a substring-only one, even a recent speaker; me last among the prefix matches",
+        "query": "ka",
+        "me": "u1",
+        "recent": ["u12", "u2"],
+        "members": [],
+        "limit": 8,
+        "expected": ["kaori", "kano", "yamada"]
+      },
+      {
+        "name": "within a match quality: recent, then members, then everybody else",
+        "query": "s",
+        "me": "u1",
+        "recent": ["u6", "u3"],
+        "members": ["u2"],
+        "limit": 8,
+        "expected": ["suzuki", "sato", "bob", "alice", "hashimoto", "t.mori"]
+      },
+      {
+        "name": "a display name starting with the query is a prefix match (case-insensitive)",
+        "query": "MO",
+        "me": "u1",
+        "recent": ["u14"],
+        "members": [],
+        "limit": 8,
+        "expected": ["t.mori", "hashimoto"]
+      },
+      {
+        "name": "username and display-name prefixes alike, by display name; no plain bot, no deactivated user",
+        "query": "a",
+        "me": null,
+        "recent": [],
+        "members": [],
+        "limit": 8,
+        "expected": ["alice", "akira", "ai-chikuwa", "hashimoto", "t.mori", "yamada"]
+      },
+      {
+        "name": "the groups and @channel after the people",
+        "query": "c",
+        "me": "u1",
+        "recent": [],
+        "members": [],
+        "limit": 8,
+        "expected": ["alice", "channel"]
+      },
+      {
+        "name": "a Japanese query",
+        "query": "田",
+        "me": "u1",
+        "recent": ["u12"],
+        "members": [],
+        "limit": 8,
+        "expected": ["tanaka"]
+      }
+    ]
+  }
+}
