@@ -174,7 +174,16 @@ async def share_children(
     return await public.children(request, db, token, folder_id, cursor=cursor, limit=limit)
 
 
-@public_router.api_route("/shares/{token}/items/{item_id}/content", methods=["GET", "HEAD"])
+# GET and HEAD as two routes with their own operation ids: one api_route for both took its id from
+# whichever method a set yielded first, so the generated OpenAPI changed between runs (2026-10-22).
+@public_router.get(
+    "/shares/{token}/items/{item_id}/content",
+    operation_id="share_content_api_v1_shares__token__items__item_id__content_get",
+)
+@public_router.head(
+    "/shares/{token}/items/{item_id}/content",
+    operation_id="share_content_api_v1_shares__token__items__item_id__content_head",
+)
 async def share_content(
     token: str, item_id: UUID, request: Request, db: Db, inline: bool = Query(default=False)
 ) -> Response:

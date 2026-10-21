@@ -5005,7 +5005,7 @@ export interface paths {
          * Share Content
          * @description A file's bytes (Range; counted against the link's limit).
          */
-        head: operations["share_content_api_v1_shares__token__items__item_id__content_get"];
+        head: operations["share_content_api_v1_shares__token__items__item_id__content_head"];
         patch?: never;
         trace?: never;
     };
@@ -25575,7 +25575,7 @@ export interface operations {
             };
         };
     };
-    share_content_api_v1_shares__token__items__item_id__content_get: {
+    share_content_api_v1_shares__token__items__item_id__content_head: {
         parameters: {
             query?: {
                 inline?: boolean;

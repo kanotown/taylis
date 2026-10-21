@@ -40918,7 +40918,7 @@
       },
       "head": {
         "description": "A file's bytes (Range; counted against the link's limit).",
-        "operationId": "share_content_api_v1_shares__token__items__item_id__content_get",
+        "operationId": "share_content_api_v1_shares__token__items__item_id__content_head",
         "parameters": [
           {
             "in": "path",
