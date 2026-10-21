@@ -1571,8 +1571,10 @@ struct ComposerView: View {
     }
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
+        // MOBILE_UI.md §23: the people of this conversation first (the thread's, then the channel's), me last.
         return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [],
-                                   aiBotIds: controller?.aiHub?.knownBotUserIds)
+                                   aiBotIds: controller?.aiHub?.knownBotUserIds,
+                                   context: controller.map { Mentions.context(store: $0.store, channelId: channelId, parentId: parentId) } ?? .init())
     }
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {

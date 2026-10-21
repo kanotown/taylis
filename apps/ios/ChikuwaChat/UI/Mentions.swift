@@ -56,14 +56,86 @@ enum Mentions {
         return aiBotIds.map { $0.contains(user.id) } ?? (user.botKind == "ai")
     }
 
+    /// How many of the newest messages of a thread and of the channel count as recent (apps/shared/mention-rank.json).
+    static let recentMessages = 50
+
+    /// What `recentSpeakers` reads of a message.
+    struct Spoken: Equatable {
+        let senderId: String
+        var deleted = false
+        var type = "user"
+    }
+
+    /// Whom the list puts first (MOBILE_UI.md §23): what the device holds about the conversation being written in.
+    struct Context: Equatable {
+        /// `recentSpeakers` of the conversation (a thread's first), newest first.
+        var recent: [String] = []
+        /// The conversation's members as known locally (a DM / group DM: its participants).
+        var members: [String] = []
+        /// My user id: offered last.
+        var me: String?
+    }
+
+    /// Who spoke recently, newest first, each once (MOBILE_UI.md §23, mention-rank.json `recent`): the thread's senders
+    /// (its parent and replies, oldest first as given) before the channel's (the loaded timeline). Deleted and system
+    /// messages do not count; only the newest `cap` counting messages of each list.
+    static func recentSpeakers(channel: [Spoken], thread: [Spoken] = [], cap: Int = recentMessages) -> [String] {
+        var seen = Set<String>()
+        var speakers: [String] = []
+        for list in [thread, channel] {
+            for message in list.filter({ !$0.deleted && $0.type != "system" }).suffix(cap).reversed() where seen.insert(message.senderId).inserted {
+                speakers.append(message.senderId)
+            }
+        }
+        return speakers
+    }
+
+    /// The composer's context: the loaded messages' senders (in a thread, its own first) and a DM's participants. A
+    /// channel's members are not held on the device (GET /channels/{id}/members is read by the member screens only),
+    /// so a channel has no members tier.
+    @MainActor static func context(store: Store, channelId: String, parentId: String?) -> Context {
+        let spoken = { (message: MessageState) in Spoken(senderId: message.senderId, deleted: message.deleted, type: message.type) }
+        var thread: [Spoken] = []
+        if let parentId {
+            thread = (store.message(channelId, parentId).map { [spoken($0)] } ?? []) + store.replies(channelId, parentId: parentId).map(spoken)
+        }
+        var context = documentContext(store: store, channelId: channelId)
+        context.recent = recentSpeakers(channel: store.messages(channelId).map(spoken), thread: thread)
+        return context
+    }
+
+    /// A canvas (MOBILE_UI.md §23): no conversation, only the participants of the DM it belongs to, and me last.
+    @MainActor static func documentContext(store: Store, channelId: String?) -> Context {
+        Context(members: channelId.flatMap { store.channel($0)?.channel.dmUserIds } ?? [], me: store.me?.id)
+    }
+
+    private static let japanese = Locale(identifier: "ja")
+
+    /// People ranked by `context` (MOBILE_UI.md §23): a prefix match first, then recent speakers, members, everybody
+    /// else and me, then by display name; the groups and @channel / @here follow as before.
     static func candidates(_ query: String, users: some Collection<UserPublic>, groups: [GroupOut] = [], aiBotIds: Set<String>? = nil,
-                           limit: Int = 6) -> [Candidate] {
+                           limit: Int = 8, context: Context = Context()) -> [Candidate] {
         let q = query.lowercased()
+        var recent: [String: Int] = [:]
+        for id in context.recent where recent[id] == nil { recent[id] = recent.count }
+        let members = Set(context.members)
+        func tier(_ id: String) -> Int { id == context.me ? 3 : recent[id] != nil ? 0 : members.contains(id) ? 1 : 2 }
+        func match(_ user: UserPublic) -> Int {
+            q.isEmpty || user.username.lowercased().hasPrefix(q) || user.displayName.lowercased().hasPrefix(q) ? 0 : 1
+        }
         let people = users
             .filter { offered($0, aiBotIds: aiBotIds) }
             .filter { $0.username.lowercased().hasPrefix(q) || $0.displayName.lowercased().contains(q) }
-            .sorted { $0.username < $1.username }
-            .map { Candidate(username: $0.username, label: $0.displayName, kind: $0.role == "bot" ? "ai" : "user") }
+            .map { (user: $0, match: match($0), tier: tier($0.id), recent: recent[$0.id] ?? 0) }
+            .sorted { a, b in
+                if a.match != b.match { return a.match < b.match }
+                if a.tier != b.tier { return a.tier < b.tier }
+                if a.tier == 0, a.recent != b.recent { return a.recent < b.recent }
+                let byName = a.user.displayName.compare(b.user.displayName, locale: japanese)
+                if byName != .orderedSame { return byName == .orderedAscending }
+                return a.user.username < b.user.username
+            }
+            .map { Candidate(username: $0.user.username, label: $0.user.displayName, kind: $0.user.role == "bot" ? "ai" : "user") }
         let teams = groups
             .filter { $0.name.lowercased().hasPrefix(q) || ($0.description ?? "").lowercased().contains(q) }
             .sorted { $0.name < $1.name }
