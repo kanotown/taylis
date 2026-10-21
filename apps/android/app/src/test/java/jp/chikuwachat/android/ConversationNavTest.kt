@@ -34,8 +34,8 @@ class ConversationNavTest {
     fun theTabsAreInTheSpecsOrder() {
         // M46: 「キャンバス」 second (CANVAS.md §4.1, as the desktop's phone width).
         // M52: 「予定」 after it, as the desktop's 「メッセージ | キャンバス | 予定」.
-        // M56: 「タスク」 after 「予定」 (TASKS.md §6).
-        assertEquals(listOf("メッセージ", "キャンバス", "予定", "タスク", "ピン留め", "ファイル"), ConversationTab.entries.map { it.label })
+        // M56: 「タスク」 after 「予定」 (TASKS.md §6). M166: 「ドライブ」 after it (DRIVE.md §13.3, as the desktop).
+        assertEquals(listOf("メッセージ", "キャンバス", "予定", "タスク", "ドライブ", "ピン留め", "ファイル"), ConversationTab.entries.map { it.label })
     }
 
     @Test

@@ -73,7 +73,7 @@ class ApiClient(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
-    jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi {
+    jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -1192,6 +1192,72 @@ class ApiClient(
 
     /** DELETE /messages/{id}/poll/decide: answering reopens (the event stays). */
     suspend fun undecidePoll(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId/poll/decide")
+
+    // --- the drive (M166, docs/DRIVE.md §5, §26: read only on the phone) ------------------------------------
+
+    override suspend fun driveLocations(): DriveLocationListOut = request("GET", "/api/v1/drive/locations")
+
+    /** POST /drive/locations/resolve: マイドライブ (`channelId` null) or a channel's drive, made when missing (idempotent). */
+    override suspend fun resolveDriveLocation(channelId: String?): DriveLocationOut =
+        request("POST", "/api/v1/drive/locations/resolve", buildJsonObject {
+            if (channelId == null) put("kind", "me") else { put("kind", "channel"); put("channel_id", channelId) }
+        })
+
+    override suspend fun driveChildren(folderId: String, sort: String, order: String, cursor: String?, limit: Int): DriveChildrenOut {
+        val query = "sort=$sort&order=$order&limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "")
+        return request("GET", "/api/v1/drive/folders/$folderId/children?$query")
+    }
+
+    override suspend fun driveItem(itemId: String): DriveItemDetailOut = request("GET", "/api/v1/drive/items/$itemId")
+
+    override suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int): DriveSearchOut {
+        val query = "q=" + Enc.encode(q, "UTF-8") + "&limit=$limit" + (locationId?.let { "&location_id=$it" } ?: "") +
+            (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "")
+        return request("GET", "/api/v1/search/drive?$query")
+    }
+
+    /** §21.2: a URL for the file without the bearer token (Range; the video player and the streamed downloads). */
+    override suspend fun driveDownloadTicket(itemId: String): DriveDownloadTicketOut =
+        request("POST", "/api/v1/drive/items/$itemId/download-ticket", buildJsonObject {})
+
+    /** §22: a folder's ZIP, streamed once from the returned URL. */
+    override suspend fun driveZip(itemIds: List<String>): DriveZipOut =
+        request("POST", "/api/v1/drive/zip", buildJsonObject { put("item_ids", buildJsonArray { itemIds.forEach { add(JsonPrimitive(it)) } }) })
+
+    /**
+     * M166 (DRIVE.md §26): a GET whose body is handed to [read] as a stream (never whole in memory: the 300 MB file)
+     * with its Content-Length (−1 unknown). `path` is relative to the server (a ticket's URL needs no token: `auth`
+     * false). A failure is the structured error; cancelling the coroutine cancels the call, so [read] stops with an
+     * IOException, passed on as the cancellation.
+     */
+    suspend fun <T> streamGet(path: String, auth: Boolean, read: (body: java.io.InputStream, length: Long) -> T): T {
+        if (auth && accessToken == null && refreshToken != null) ensureAccessToken()
+        val builder = Request.Builder().url(baseUrl.trimEnd('/') + path)
+        if (auth) accessToken?.let { builder.header("Authorization", "Bearer $it") }
+        val outcome: Pair<T?, ApiException.Api?> = withContext(Dispatchers.IO) {
+            val call = http.newCall(builder.build())
+            val job = coroutineContext[kotlinx.coroutines.Job]
+            val watch = job?.invokeOnCompletion { if (job.isCancelled) call.cancel() }
+            try {
+                call.execute().use { response ->
+                    if (response.code !in 200..299) null to decodeError(response.code, response.body.string())
+                    else read(response.body.byteStream(), response.body.contentLength()) to null
+                }
+            } catch (e: IOException) {
+                if (job?.isCancelled == true) throw CancellationException("download cancelled")
+                throw ApiException.Network(e)
+            } finally {
+                watch?.dispose()
+            }
+        }
+        val error = outcome.second
+        if (error != null) {
+            if (auth && error.status == 401 && error.code == "token_expired") { refresh(); return streamGet(path, auth, read) }
+            throw error
+        }
+        @Suppress("UNCHECKED_CAST")
+        return outcome.first as T
+    }
 
     // --- workspaces (M16c) -------------------------------------------------------------------
 

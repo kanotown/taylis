@@ -663,6 +663,7 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
     val implemented = NavItems.implemented(
         attendance = AttendanceRules.shown(controller.store.attendance, me.role),
         actions = ActionRules.shown(controller.store.actions, me.role), // M143
+        drive = driveAvailable(controller), // M166
     )
     val shown = NavItems.shown(full, implemented = implemented)
     var saving by remember { mutableStateOf(false) }

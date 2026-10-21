@@ -2767,6 +2767,134 @@ class AppController(private val app: Application) {
         if (serverUrl == activeKey && engine != null && message.channelId in store.channels) engine?.postedFromHere(message)
     }
 
+    // --- the drive (M166, docs/DRIVE.md §26: read only on the phone) ------------------------------------
+
+    /** The engine's drive (null: signed out): availability, locations, the /d/ cards, the open folder's signals. */
+    val drive: jp.chikuwachat.android.sync.DriveHub? get() = engine?.drive
+    val driveApi: jp.chikuwachat.android.sync.DriveApi? get() = api
+
+    /** A drive folder to show once the main screen sees it (a /d/ link tapped in a body): over what is on screen. */
+    data class PendingDrive(val locationId: String, val folderId: String, val itemId: String?)
+    var pendingDrive by mutableStateOf<PendingDrive?>(null)
+
+    /**
+     * A `/d/<id>` link (§13.1): a folder opens in 「ドライブ」, a file at its folder with its details. Whoever cannot read
+     * it (404, the trash too) is told so without its name; a failure says why.
+     */
+    suspend fun openDriveLink(itemId: String, force: Boolean = true): Boolean {
+        val hub = drive ?: return false
+        return when (val state = hub.link(itemId, force)) {
+            is jp.chikuwachat.android.sync.DriveLinkState.Ok -> {
+                val item = state.detail.item
+                val folder = if (item.isFolder) item.id else item.parentId ?: state.detail.path.lastOrNull()?.id ?: return false
+                pendingDrive = PendingDrive(item.locationId, folder, item.id.takeUnless { item.isFolder })
+                true
+            }
+            jp.chikuwachat.android.sync.DriveLinkState.Unreadable -> { error = L10n.str(R.string.drive_card_unavailable_toast); false }
+            jp.chikuwachat.android.sync.DriveLinkState.Failed -> { error = L10n.str(R.string.drive_card_failed); false }
+        }
+    }
+
+    /** What a finished download becomes (§26): the share sheet, another app, or a file in the public Downloads. */
+    enum class DriveAction { SHARE, OPEN, SAVE }
+
+    /**
+     * One download on screen (its dialog: progress, 「キャンセル」). `total` from the item (or the ZIP's exact length);
+     * [savePending] is a finished file waiting for the system's dialog (Android 8–9's 「ダウンロードに保存」).
+     */
+    class DriveTransfer(val name: String, val total: Long?, val action: DriveAction, val zip: Boolean) {
+        var received by androidx.compose.runtime.mutableLongStateOf(0L)
+        var error by mutableStateOf<String?>(null)
+        var savePending by mutableStateOf<java.io.File?>(null)
+        @Volatile var cancelled = false
+        internal var job: kotlinx.coroutines.Job? = null
+    }
+
+    var driveTransfer by mutableStateOf<DriveTransfer?>(null)
+
+    /**
+     * Downloads a file (its download ticket, §21.2) or a folder as a ZIP (§22's one-shot ticket) to disk, streamed, then
+     * [DriveAction]. One at a time: a new one cancels the one before. Runs in the app's scope, so it survives a rotation.
+     */
+    fun downloadDrive(item: jp.chikuwachat.android.api.DriveItemOut, action: DriveAction) {
+        val api = api ?: return
+        driveTransfer?.let { cancelDriveTransfer() }
+        val zip = item.isFolder
+        val transfer = DriveTransfer(if (zip) item.name + ".zip" else item.name, item.sizeBytes.takeUnless { zip }, action, zip)
+        driveTransfer = transfer
+        val context = app as Context
+        transfer.job = scope.launch {
+            try {
+                val mime = if (zip) "application/zip" else item.contentType ?: "application/octet-stream"
+                val (path, expected, name) = if (zip) {
+                    val out = api.driveZip(listOf(item.id))
+                    Triple(out.url, out.zipBytes, out.filename)
+                } else Triple(api.driveDownloadTicket(item.id).url, item.sizeBytes, item.name)
+                val path0 = path.removePrefix(api.baseUrl.trimEnd('/'))
+                if (action == DriveAction.SAVE && Build.VERSION.SDK_INT >= 29) {
+                    // Straight into Downloads: no second copy of a large file in the cache.
+                    api.streamGet(path0, auth = false) { input, _ ->
+                        jp.chikuwachat.android.platform.DriveFiles.streamToDownloads(context, name, mime, input, expected, { transfer.cancelled }) { transfer.received = it }
+                    }
+                    if (driveTransfer === transfer) driveTransfer = null
+                    notice = L10n.str(R.string.drive_saved_to_downloads, name)
+                    return@launch
+                }
+                val key = if (zip) "zip-" + System.currentTimeMillis() else item.file?.versionId?.takeIf { it.isNotEmpty() } ?: item.id
+                val file = jp.chikuwachat.android.platform.DriveFiles.cacheFile(context, key, name)
+                withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveFiles.prune(context, file) }
+                val cached = !zip && expected != null && withContext(Dispatchers.IO) { file.isFile && file.length() == expected }
+                if (!cached) {
+                    api.streamGet(path0, auth = false) { input, _ ->
+                        jp.chikuwachat.android.platform.DriveFiles.streamToFile(input, file, expected, { transfer.cancelled }) { transfer.received = it }
+                    }
+                } else transfer.received = expected ?: 0
+                if (transfer.cancelled) return@launch
+                when (action) {
+                    DriveAction.SHARE -> jp.chikuwachat.android.platform.DriveFiles.share(context, file, mime, name)
+                    DriveAction.OPEN -> jp.chikuwachat.android.platform.DriveFiles.open(context, file, mime, name)
+                    DriveAction.SAVE -> { transfer.savePending = file; return@launch } // the dialog asks where (Android 8–9)
+                }
+                if (driveTransfer === transfer) driveTransfer = null
+            } catch (e: CancellationException) {
+                if (driveTransfer === transfer) driveTransfer = null
+                throw e
+            } catch (e: Exception) {
+                if (transfer.cancelled) { if (driveTransfer === transfer) driveTransfer = null; return@launch }
+                transfer.error = when (e) {
+                    is java.io.IOException, is SecurityException, is IllegalStateException -> L10n.str(R.string.drive_download_failed)
+                    else -> describe(e)
+                }
+            }
+        }
+    }
+
+    /** Android 8–9: the place picked in the system's dialog for a finished 「ダウンロードに保存」 (null: not picked). */
+    fun finishDriveSave(transfer: DriveTransfer, uri: Uri?) {
+        val file = transfer.savePending ?: return
+        if (uri == null) { if (driveTransfer === transfer) driveTransfer = null; return }
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveFiles.copyTo(app, file, uri) } }
+                .onSuccess { notice = L10n.str(R.string.drive_saved_to_downloads, transfer.name) }
+                .onFailure { error = L10n.str(R.string.drive_download_failed) }
+            if (driveTransfer === transfer) driveTransfer = null
+        }
+    }
+
+    fun cancelDriveTransfer() {
+        val transfer = driveTransfer ?: return
+        transfer.cancelled = true
+        transfer.job?.cancel()
+        driveTransfer = null
+    }
+
+    /** §21.2: a URL of the file that needs no token (the video player streams it with Range, seeking without the whole file). */
+    suspend fun driveStreamUrl(itemId: String): String {
+        val api = api ?: throw ApiException.Network(java.io.IOException("signed out"))
+        val url = api.driveDownloadTicket(itemId).url
+        return if (url.startsWith("http")) url else api.baseUrl.trimEnd('/') + url
+    }
+
     // --- attachments (M9a) ---------------------------------------------------------------------------
 
     suspend fun fetchBytes(path: String): ByteArray = api!!.fetchBytes(path)

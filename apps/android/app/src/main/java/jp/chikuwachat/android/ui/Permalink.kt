@@ -32,6 +32,12 @@ object Permalink {
     /** The event id when `url` is an event link on `baseUrl`. */
     fun eventId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/e/")
 
+    /** M165 / M166 (docs/DRIVE.md §13.1, §26): a drive file or folder, `<server>/d/<item_id>`. */
+    fun driveUrl(baseUrl: String, itemId: String): String = baseUrl.trimEnd('/') + "/d/" + itemId
+
+    /** The drive item id when `url` is a drive link on `baseUrl` (another server's /d/ is a plain link). */
+    fun driveId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/d/")
+
     private fun idAfter(baseUrl: String, url: String, path: String): String? {
         val prefix = baseUrl.trimEnd('/') + path
         if (!url.startsWith(prefix, ignoreCase = true)) return null

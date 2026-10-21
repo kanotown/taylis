@@ -609,6 +609,19 @@ fun MainScreen(controller: AppController) {
         focusManager.clearFocus()
         tabs = MainTabs.landPage(tabs, pageId)
     }
+    // M166 (docs/DRIVE.md §26): a /d/ link tapped (its card or its inline label): the folder over what is on screen.
+    LaunchedEffect(controller.pendingDrive) {
+        val target = controller.pendingDrive ?: return@LaunchedEffect
+        controller.pendingDrive = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        stack = MainNav.openDriveFolder(stack, target.locationId, target.folderId, target.itemId)
+    }
+    val driveHub = controller.drive
+    val driveVersion = driveHub?.version?.collectAsState()?.value ?: 0
+    val driveLinks = remember(driveHub, driveVersion) {
+        driveHub?.let { hub -> DriveLinkLabels(state = { hub.peekLink(it) }, open = { id -> scope.launch { controller.openDriveLink(id) } }, version = driveVersion) }
+    }
     // M122: links to pages (`page:` and `/p/`) and files in every body on this screen (DocLinks.kt).
     val wikiHub = controller.wiki
     val wikiVersion = wikiHub?.version?.collectAsState()?.value ?: 0
@@ -705,6 +718,7 @@ fun MainScreen(controller: AppController) {
     controller.taskForm?.let { form -> TaskFormScreen(controller, form, version, onDismiss = { controller.taskForm = null }) }
     // M95 (WORKFLOWS.md §8 4.): a workflow's form, from the ＋ menu, channel details, `/name` or a 「⚡ name」 label.
     controller.workflowForm?.let { session -> WorkflowFormScreen(controller, session, version, onDismiss = { controller.workflowForm = null }) }
+    DriveTransferDialog(controller) // M166: a drive download's progress and 「キャンセル」 (DRIVE.md §26)
     AiSheets(controller) // M66: the 「要約」 choices and the summary sheet (docs/AI.md §6)
     val openChannel = selectedChannel
 
@@ -808,6 +822,7 @@ fun MainScreen(controller: AppController) {
                         pane == Route.Canvases -> Text(stringResource(R.string.common_canvas))
                         pane == Route.Docs -> Text(stringResource(R.string.docs_title))
                         pane is Route.DocPage -> DocPageBarTitle(controller, pane.id)
+                        pane is Route.Drive -> DriveBarTitle(controller, pane)
                         pane == Route.Reminders -> Text(stringResource(R.string.common_reminders))
                         pane == Route.Calendar -> Text(stringResource(R.string.common_calendar))
                         pane == Route.Tasks -> Text(stringResource(R.string.common_tasks))
@@ -1010,7 +1025,7 @@ fun MainScreen(controller: AppController) {
     @Composable
     fun Page(view: List<Route>, modifier: Modifier, banner: Boolean = true, open: ChannelState? = openChannel) {
         val (top, searching, _, _, pane, selectedChannel, threadId, detailsOpen, _, previewing, backToSearch, conversationTab) = pageView(view, open)
-        CompositionLocalProvider(LocalPageLinks provides pageLinks) {
+        CompositionLocalProvider(LocalPageLinks provides pageLinks, LocalDriveLinks provides driveLinks) {
         Column(modifier) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
@@ -1074,6 +1089,14 @@ fun MainScreen(controller: AppController) {
                             onOpenCrumb = { id -> focusManager.clearFocus(); stack = MainNav.openCrumb(stack, id) },
                         )
                     }
+                } else if (pane is Route.Drive) {
+                    // M166 (docs/DRIVE.md §26): the locations, or a folder; each folder is a route (back goes up them).
+                    DrivePane(
+                        controller, pane,
+                        onOpenFolder = { locationId, folderId, itemId -> focusManager.clearFocus(); stack = MainNav.openDriveFolder(stack, locationId, folderId, itemId) },
+                        onCrumb = { locationId, folderId -> focusManager.clearFocus(); stack = MainNav.openDriveCrumb(stack, locationId, folderId) },
+                        onGone = { locationId, rootId -> stack = MainNav.driveFolderGone(stack, locationId, rootId) },
+                    )
                 } else if (pane is Route.Files) {
                     FilesPane(controller, version, channelId = pane.channelId, onScopeChange = { stack = MainNav.scopeFiles(stack, it) }) { messageId, channelId, parentId ->
                         scope.launch {
@@ -1122,6 +1145,13 @@ fun MainScreen(controller: AppController) {
                             conversationTab == ConversationTab.EVENTS -> CoveringPage { ChannelEventsPane(controller, selectedChannel, version) }
                             // M56 (TASKS.md §6): the channel's board, a column at a time.
                             conversationTab == ConversationTab.TASKS -> CoveringPage { ChannelTasksPane(controller, selectedChannel, version) }
+                            // M166 (DRIVE.md §13.3): the channel's drive, read only; a folder opens over the conversation.
+                            conversationTab == ConversationTab.DRIVE -> CoveringPage {
+                                ChannelDriveTab(controller, selectedChannel, onOpenFolder = { locationId, folderId, itemId ->
+                                    focusManager.clearFocus()
+                                    stack = MainNav.openDriveFolder(stack, locationId, folderId, itemId)
+                                })
+                            }
                             conversationTab == ConversationTab.FILES -> CoveringPage {
                                 FilesPane(controller, version, channelId = selectedChannel.id, onScopeChange = null) { messageId, channelId, parentId ->
                                     scope.launch {
@@ -1273,6 +1303,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.ATTENDANCE -> Route.Attendance
                                     HomeTile.ACTIONS -> Route.Actions
                                     HomeTile.FILES -> Route.Files()
+                                    HomeTile.DRIVE -> Route.Drive() // M166
                                     HomeTile.DOCS -> Route.Docs
                                     HomeTile.CANVASES -> {
                                         // Afresh from the tile (back from a canvas keeps the pages and the place).
@@ -1515,7 +1546,8 @@ private data class PageView(
 private fun pageView(view: List<Route>, open: ChannelState?): PageView {
     val top = MainNav.top(view)
     // M122: a page of 「ドキュメント」 opened over a conversation (a /p/ link) is its own page, not the conversation's.
-    val conversation = if (top is Route.Docs || top is Route.DocPage) null else MainNav.conversation(view)
+    // M166: so is a drive folder opened over it (the channel's 「ドライブ」 tab, a /d/ card).
+    val conversation = if (top is Route.Docs || top is Route.DocPage || top is Route.Drive) null else MainNav.conversation(view)
     val channel = open?.takeIf { conversation?.id == it.id }
     return PageView(
         top = top,

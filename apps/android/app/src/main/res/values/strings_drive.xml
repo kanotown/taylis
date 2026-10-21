@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M166 (docs/DRIVE.md §26): 「ドライブ」 on the phone, read only. The desktop's drive.* / driveCard.* wording where it fits. -->
+<resources>
+    <string name="drive_title">ドライブ</string>
+    <string name="drive_location_workspace">研究室ドライブ</string>
+    <string name="drive_location_mine">マイドライブ</string>
+    <string name="drive_channels">チャンネル</string>
+    <string name="drive_no_locations">開けるドライブがありません</string>
+    <string name="drive_usage_of">%1$s（上限 %2$s）</string>
+    <string name="drive_location_line">%1$s · %2$d 件</string>
+    <string name="drive_read_only">このドライブは読むだけです</string>
+    <string name="drive_read_only_short">読むだけ</string>
+    <string name="drive_breadcrumbs">フォルダの場所</string>
+    <string name="drive_search">このドライブを検索</string>
+    <string name="drive_search_in">%1$s を検索</string>
+    <string name="drive_clear_search">検索を消す</string>
+    <string name="drive_no_results">「%1$s」に一致するファイルやフォルダはありません</string>
+    <string name="drive_sort_by">並べ替え：%1$s</string>
+    <string name="drive_sort_name">名前</string>
+    <string name="drive_sort_modified">更新日時</string>
+    <string name="drive_sort_size">大きさ</string>
+    <string name="drive_folder">フォルダ</string>
+    <string name="drive_detail_kind">種類</string>
+    <string name="drive_detail_created_by">作った人</string>
+    <string name="drive_detail_versions">版</string>
+    <string name="drive_detail_where">場所</string>
+    <string name="drive_column_modified">更新日時</string>
+    <string name="drive_column_by">更新した人</string>
+    <string name="drive_column_size">大きさ</string>
+    <string name="drive_versions_count">%1$d 版</string>
+    <string name="drive_details_of">「%1$s」の詳細</string>
+    <string name="drive_someone">だれか</string>
+    <string name="drive_open">開く</string>
+    <string name="drive_preview">プレビュー</string>
+    <string name="drive_empty_folder">このフォルダは空です</string>
+    <string name="drive_show_more">さらに表示</string>
+    <string name="drive_share">共有</string>
+    <string name="drive_save_to_downloads">ダウンロードに保存</string>
+    <string name="drive_share_zip">ZIP でダウンロードして共有</string>
+    <string name="drive_save_zip">ZIP でダウンロードに保存</string>
+    <string name="drive_downloading">ダウンロード中</string>
+    <string name="drive_zip_preparing">ZIP でダウンロード中</string>
+    <string name="drive_progress">%1$s / %2$s</string>
+    <string name="drive_cancel">キャンセル</string>
+    <string name="drive_download_failed">ダウンロードできませんでした</string>
+    <string name="drive_saved_to_downloads">「%1$s」をダウンロードに保存しました</string>
+    <string name="drive_link_unknown">ドライブのファイル</string>
+    <string name="drive_card_loading">ファイルを読み込み中…</string>
+    <string name="drive_card_named">ドライブ：%1$s</string>
+    <string name="drive_card_unavailable">表示できないファイル</string>
+    <string name="drive_card_unavailable_note">このファイルを見る権限が無いか、ゴミ箱に移されたか削除されました。</string>
+    <string name="drive_card_unavailable_toast">このファイルは表示できません（見る権限が無いか、削除されました）</string>
+    <string name="drive_card_failed">ファイルを読み込めませんでした</string>
+    <string name="drive_card_retry">タップでもう一度試します。</string>
+    <string name="drive_card_show_in_drive">ドライブで表示</string>
+</resources>

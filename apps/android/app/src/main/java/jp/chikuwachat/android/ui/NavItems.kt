@@ -24,7 +24,7 @@ object NavItems {
         Entry("reminders", L10n.str(R.string.common_reminders), visible = true, platforms = BOTH),
         Entry("files", L10n.str(R.string.common_files), visible = true, platforms = BOTH),
         // M161 (docs/DRIVE.md §17.1); M166 (the phones' D7): the home tile too, after ファイル.
-        Entry("drive", "ドライブ", visible = true, platforms = BOTH),
+        Entry("drive", L10n.str(R.string.drive_title), visible = true, platforms = BOTH),
         Entry("canvases", L10n.str(R.string.common_canvas), visible = true, platforms = BOTH),
         Entry("docs", L10n.str(R.string.docs_title), visible = true, platforms = BOTH),
         Entry("calendar", L10n.str(R.string.common_calendar), visible = true, platforms = BOTH),
@@ -49,8 +49,11 @@ object NavItems {
      */
     val implemented: List<String> get() = implemented(attendance = false)
 
-    fun implemented(attendance: Boolean, actions: Boolean = false): List<String> =
-        HomeTile.entries.filter { (attendance || it != HomeTile.ATTENDANCE) && (actions || it != HomeTile.ACTIONS) }.map { it.navKey }
+    /** M166 (docs/DRIVE.md §26): 「ドライブ」 only once the server answered GET /drive/locations (it has the drive). */
+    fun implemented(attendance: Boolean, actions: Boolean = false, drive: Boolean = false): List<String> =
+        HomeTile.entries.filter {
+            (attendance || it != HomeTile.ATTENDANCE) && (actions || it != HomeTile.ACTIONS) && (drive || it != HomeTile.DRIVE)
+        }.map { it.navKey }
 
     private val byKey = catalogue.associateBy { it.key }
 

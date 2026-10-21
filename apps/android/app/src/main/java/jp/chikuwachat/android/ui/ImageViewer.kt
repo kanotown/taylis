@@ -92,7 +92,11 @@ internal object ImageDismiss {
  * ([PullToClose]); ✕, back and TalkBack's dismiss close it too.
  */
 @Composable
-fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit) {
+fun ImageViewer(
+    attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit,
+    /** M166 (docs/DRIVE.md §26): a drive file goes to another app the drive's way (streamed to disk); null: the attachment's. */
+    onOpenElsewhere: (() -> Unit)? = null,
+) {
     var image by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
     var error by remember(attachment.id) { mutableStateOf<String?>(null) }
     var attempt by remember(attachment.id) { mutableIntStateOf(0) }
@@ -162,7 +166,7 @@ fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss:
                 ) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.image_viewer_close_image)) }
                     FileNameText(attachment.filename, Modifier.weight(1f))
-                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
+                    IconButton(onClick = { onOpenElsewhere?.invoke() ?: controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val bitmap = image

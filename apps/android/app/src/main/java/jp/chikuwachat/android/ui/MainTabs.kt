@@ -155,6 +155,13 @@ object MainTabs {
     fun landPage(state: TabStacks, pageId: String): TabStacks =
         withStack(state, MainTab.HOME, MainNav.landPage(rootStack(MainTab.HOME), pageId)).copy(selected = MainTab.HOME)
 
+    /**
+     * M166 (docs/DRIVE.md §26): a /d/ link opened from outside the screen it was on (an incoming link): the home tab shows
+     * the folder over 「ドライブ」's list — back goes to the list, then the home.
+     */
+    fun landDrive(state: TabStacks, locationId: String, folderId: String, itemId: String?): TabStacks =
+        withStack(state, MainTab.HOME, rootStack(MainTab.HOME) + Route.Drive() + Route.Drive(locationId, folderId, itemId)).copy(selected = MainTab.HOME)
+
     /** M56: a personal task's notification: the home tab shows 「タスク」 over its list. */
     fun landMyTasks(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openMyTasks(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)

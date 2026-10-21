@@ -54,8 +54,17 @@ import jp.chikuwachat.android.L10n
  * available from the toolbar, as in the image viewer. `poster`: the one the tile already has, else fetched here.
  */
 @Composable
-fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: ImageBitmap?, onDismiss: () -> Unit) {
+fun VideoViewer(
+    attachment: AttachmentOut, controller: AppController, poster: ImageBitmap?, onDismiss: () -> Unit,
+    /**
+     * M166 (docs/DRIVE.md §7.1, §26): a URL to stream from instead of fetching the clip to the cache (a drive file's
+     * download ticket: the player reads it with Range, so it seeks without the whole file); null: the attachment's file.
+     */
+    stream: (suspend () -> String)? = null,
+    onOpenElsewhere: (() -> Unit)? = null,
+) {
     var file by remember(attachment.id) { mutableStateOf<File?>(null) }
+    var url by remember(attachment.id) { mutableStateOf<String?>(null) }
     var error by remember(attachment.id) { mutableStateOf<String?>(null) }
     var attempt by remember(attachment.id) { mutableIntStateOf(0) }
     var playing by remember(attachment.id) { mutableStateOf(false) }
@@ -65,7 +74,7 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
     LaunchedEffect(attachment.id, attempt) {
         error = null
         try {
-            file = controller.videoFile(attachment)
+            if (stream != null) url = stream() else file = controller.videoFile(attachment)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -78,12 +87,13 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.video_viewer_close_video), tint = Color.White) }
                     FileNameText(attachment.filename, Modifier.weight(1f), color = Color.White)
-                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app), tint = Color.White) }
+                    IconButton(onClick = { onOpenElsewhere?.invoke() ?: controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app), tint = Color.White) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val clip = file
+                    val remote = url
                     val frame = Modifier.aspectRatio(ratio)
-                    if (clip != null && error == null) {
+                    if ((clip != null || remote != null) && error == null) {
                         AndroidView(
                             factory = { context ->
                                 VideoView(context).apply {
@@ -99,7 +109,7 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
                                         false
                                     }
                                     setOnErrorListener { _, _, _ -> error = L10n.str(R.string.video_viewer_couldnt_play_this_video); true }
-                                    setVideoPath(clip.path)
+                                    if (remote != null) setVideoURI(android.net.Uri.parse(remote)) else setVideoPath(clip!!.path)
                                 }
                             },
                             onRelease = { it.stopPlayback() },
@@ -110,7 +120,7 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
                         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(stringResource(R.string.video_viewer_couldnt_load_the_video), color = Color.White, style = MaterialTheme.typography.titleMedium)
                             Text(error!!, Modifier.padding(vertical = 12.dp), color = Color.White)
-                            Button(onClick = { file = null; playing = false; attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
+                            Button(onClick = { file = null; url = null; playing = false; attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
                         }
                     } else if (!playing) {
                         // The poster over the player until its first frame (M79 spec item 5).

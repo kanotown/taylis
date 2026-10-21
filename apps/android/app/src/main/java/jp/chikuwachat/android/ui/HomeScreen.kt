@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderShared
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -160,7 +161,9 @@ fun HomeScreen(
     val selfPlaceholder = remember(version, meId, dmsFolded) {
         MainTabs.showsSelfNotesInDmSection(store.channels.values, meId, myName, collapsed = dmsFolded)
     }
-    val tiles = remember(version) {
+    // M166 (docs/DRIVE.md §26): 「ドライブ」 once the server answered its locations.
+    val driveOn = driveAvailable(controller)
+    val tiles = remember(version, driveOn) {
         HomeTiles.tiles(store.threadSummary, drafts = store.listDrafts().size + store.scheduled.size, saved = store.bookmarks.size, firedReminders = store.firedReminderCount(),
             navItems = store.me?.navItems,
             reservations = store.reservationPools?.let { pools ->
@@ -168,7 +171,8 @@ fun HomeScreen(
             },
             attendance = AttendanceRules.shown(store.attendance, store.me?.role),
             actions = ActionRules.shown(store.actions, store.me?.role),
-            timesUnread = TimesFeed.hasUnread(store.channels.values))
+            timesUnread = TimesFeed.hasUnread(store.channels.values),
+            drive = driveOn)
     }
     // M24: offer to make my times until I have one (joined or not: a times I left is in the channel browser).
     val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }
@@ -377,6 +381,7 @@ private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.ATTENDANCE -> Icons.Outlined.MeetingRoom
     HomeTile.ACTIONS -> Icons.Outlined.TouchApp
     HomeTile.FILES -> Icons.Outlined.Folder
+    HomeTile.DRIVE -> Icons.Outlined.FolderShared
     HomeTile.CANVASES -> Icons.AutoMirrored.Outlined.Article
     HomeTile.DOCS -> Icons.AutoMirrored.Outlined.MenuBook
 }
