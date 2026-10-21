@@ -23,8 +23,8 @@ object NavItems {
         Entry("saved", L10n.str(R.string.common_saved), mobileLabel = L10n.str(R.string.common_save), visible = true, platforms = BOTH),
         Entry("reminders", L10n.str(R.string.common_reminders), visible = true, platforms = BOTH),
         Entry("files", L10n.str(R.string.common_files), visible = true, platforms = BOTH),
-        // M161 (docs/DRIVE.md §17.1): Desktop / Web only until the phones' D7 (never drawn here).
-        Entry("drive", "ドライブ", visible = true, platforms = listOf(Platform.DESKTOP)),
+        // M161 (docs/DRIVE.md §17.1); M166 (the phones' D7): the home tile too, after ファイル.
+        Entry("drive", "ドライブ", visible = true, platforms = BOTH),
         Entry("canvases", L10n.str(R.string.common_canvas), visible = true, platforms = BOTH),
         Entry("docs", L10n.str(R.string.docs_title), visible = true, platforms = BOTH),
         Entry("calendar", L10n.str(R.string.common_calendar), visible = true, platforms = BOTH),
@@ -39,7 +39,7 @@ object NavItems {
 
     val order: Map<Platform, List<String>> = mapOf(
         Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"),
-        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance", "actions", "drive"),
+        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "drive", "canvases", "docs", "activity", "attendance", "actions"),
     )
 
     /**
