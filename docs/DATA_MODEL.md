@@ -2168,6 +2168,32 @@ odt / ods / odp / rtf) のアップロードは `preview_status = 'pending'` で
 (`none` は null)。送信 (bind) は自分の pending の添付を `FOR UPDATE` で読む (プレビューの記録と順序をそろえる、
 PREVIEWS.md §3)。
 
+### drive_*（ドライブ、M160、docs/DRIVE.md §4、移行 0118）
+
+段階 D1 の表。定義は DRIVE.md §4.2 のとおりで、D1 で足した・変えたものは次のとおり（外部共有リンクの `drive_share_links`・
+`drive_share_events` と `workspace_settings` の 3 列は段階 D4 の移行で足す）。
+
+- `drive_locations`：研究室ドライブ（1 行、移行 0118 が根のフォルダと一緒に作る。古いバックアップを戻して無ければ最初の読み出しで
+  作り直す）、チャンネルのドライブ・マイドライブ（初めて `POST /drive/locations/resolve` したとき）。`root_id` と
+  `drive_items.current_version_id` の外部キーは `DEFERRABLE INITIALLY DEFERRED`。**足した列** `deleted_at`：匿名化した人のマイドライブ
+  （周期ジョブがゴミ箱を経ずに中身と行を消す）。`used_bytes`（今の版・古い版・ゴミ箱）と `item_count`（根を除くファイルとフォルダ、
+  ゴミ箱を含む）は版・項目を足す・消すトランザクションで場所の行を `FOR UPDATE` で取って増減する。
+- `drive_items`：根は `parent_id` NULL・名前が空（表示は場所の名前）。`name_key` = NFC + casefold（同じフォルダで重複しない、部分一意索引
+  `WHERE trashed_at IS NULL`）、`name_sort` = サイドバーの名前順のキー（`core/collation`）をバイト列にしたもの（memcmp の順がキーの順と
+  一致、`drive/names.py`）。一覧の索引は `(parent_id, kind DESC, name_sort, id)`（フォルダが先）。**足した列** `client_op_id`
+  （`POST /drive/folders {name, client_op_id}` の再送で同じフォルダを返す、`(created_by, client_op_id)` の部分一意索引）と、ゴミ箱を
+  含む部分木をたどる `drive_items_parent_idx`。ゴミ箱は部分木の行すべてに `trashed_at`・`trash_root_id`（まとまりの根）、根に
+  `trash_parent_id`。
+- `drive_file_versions`：版 1 つ = `attachments` の行 1 つ。**足した列** `process_next_at`・`process_attempts`（media loop のリースと
+  試行回数、3 回まで）。`processed_at` が入れば SHA-256・サムネイル・ポスターの処理は済み。
+- `drive_uploads` / `drive_upload_parts`：アップロードのセッション（§6）。`(user_id, client_upload_id)` で 1 つ、`status` は
+  `active` → `completing` → `completed`（取りやめ `aborted`、期限切れ `expired`）。完了できなかった理由は `error`（コード）に残り、
+  状態は `active` に戻る。空のファイルは `s3_upload_id` が空（マルチパートを作らない）。`parent_id`・`target_item_id` は CASCADE
+  （フォルダの完全削除でセッションも消え、S3 側は孤児の掃除が拾う）。終わったセッションは 7 日で消す。
+- `attachments.drive_item_id`（`ON DELETE SET NULL`、部分索引）：ドライブの版の行は `status = 'attached'`、`message_id`・`channel_id`・
+  `canvas_id`・`page_id` は NULL。版を消すときは `deleted` にしてから項目の行を消す（今の GC がバイト列・サムネイル・プレビューを消す）。
+- 順序：`drive_change_seq`（項目のメタデータの変更ごと、`drive.changed` の `seq`）。
+
 ### outbox_events
 
 ```sql
@@ -2176,7 +2202,7 @@ CREATE TABLE outbox_events (
   event_type     text NOT NULL,        -- 'message.created' など (SYNC_PROTOCOL.md §6)
   channel_id     uuid,                 -- チャンネル系イベント
   seq            bigint,               -- seq を消費したイベントのみ
-  audience_type  text NOT NULL,        -- 'channel' | 'user' | 'session' | 'all' | 'page' (M120: ページを読める人、送る時点で解決)
+  audience_type  text NOT NULL,        -- 'channel' | 'user' | 'session' | 'all' | 'page' (M120: ページを読める人、送る時点で解決) | 'action' (M143) | 'drive' (M160: audience_id の場所を読める人、送る時点で解決)
   audience_id    uuid,                 -- user / session の場合
   payload        jsonb NOT NULL,       -- クライアントに送る data そのもの
   created_at     timestamptz NOT NULL DEFAULT now(),

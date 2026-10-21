@@ -50,7 +50,7 @@ CLAUDE.md を優先し、本書を更新する。
 | ユーザー数 | 数十人 |
 | 同時 WebSocket 接続 | 数百 (1 人あたり複数端末) |
 | メッセージ | 数千件 / 日、累計数十万〜数百万件。無期限保存 |
-| 添付ファイル | 合計数十 GB |
+| 添付ファイルとドライブ | 合計 100〜200 GB（チャットの添付が数十 GB、ドライブ（M160〜、docs/DRIVE.md）が研究室の Nextcloud の約 100 GB と版・ゴミ箱。行は数十万、バイト列は app を通すだけなので単一プロセスのままで足りる） |
 | サーバ | 1 台 (2〜4 vCPU、4〜8 GB RAM) |
 
 この範囲では単一プロセスと PostgreSQL のみで十分であり、設計はそれに最適化する。
@@ -174,13 +174,13 @@ server/
       templates/         # 投稿テンプレート (共通と個人、template.updated。置き換えは端末) (M30)
       canvases/          # キャンバス (会話に属する Markdown 文書、版、サーバ側の 3-way マージ (M120 から core/doctext)、テンプレート templates.py、canvas.*) (M41)
       wiki/              # ドキュメント (ページの木、版、受け継ぐ権限 access.py と実効の表、ゴミ箱、変更のフィード、wiki.*) (M120、WIKI.md、D27)
-      drive/             # ドライブ (研究室・チャンネル・マイドライブの場所、フォルダ、マルチパートのアップロード、版、ゴミ箱、外部共有リンク、drive.*。バイト列は attachments の行) (設計のみ、M160〜M166、docs/DRIVE.md)
+      drive/             # ドライブ (研究室・チャンネル・マイドライブの場所と権限 access.py、フォルダ・名前 names.py、移動、ゴミ箱、再開できるマルチパートのアップロード uploads.py、完了の後の処理 media.py、周期ジョブ housekeeping.py、drive.*。バイト列と派生物は attachments の行) (M160 = 段階 D1 のサーバ、版・ZIP・外部リンクなどは M161〜M166、docs/DRIVE.md)
       calendar/          # カレンダー (自分用とチャンネルの予定、人ごとの通知と fire_due、calendar.*、抜けた人の通知を消す outbox ハンドラ) (M51)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync
       reads/             # read_states, 未読数
-      attachments/       # upload/bind/download, thumbnail, GC, BlobStore (S3 API)
+      attachments/       # upload/bind/download (Range、M160), thumbnail, GC, BlobStore (S3 API。M160 からマルチパート・範囲の読み出し・head)
       search/            # PGroonga 検索 (messages / attachments / canvases / wiki の読み取り専用アクセスを許可。canvases は M42、wiki は M120)
       notifications/     # notification_preferences, PushPlanner, PushSender, PushProvider 実装
       sync/              # GET /api/v1/sync/bootstrap (各モジュールの read-only 集約)
@@ -217,6 +217,7 @@ server/
    `change_seq`）。添付の読み出しの判定は `main.py` が `attachments.set_page_access_check(wiki.can_read)` で注入する
    （attachments は wiki に依存しない）。outbox の audience `page` は `main.py` が `wiki.events.audience_resolver(channels の解決)`
    で組み立てる。
+   M160（DRIVE.md、段階 D1）：`drive → channels, attachments, audit, users`（チャンネルのメンバーシップとアーカイブ・投稿の制限の読み取り、版のバイト列は attachments の行（作成・`deleted` にする）、完全削除・引き取りの監査）。`admin → drive`（匿名化でマイドライブを消す印 `drive.forget_user_in_tx`）。添付の読み出しの判定は `main.py` が `attachments.set_drive_access_check(drive.access.can_read_item)` で、プレビューの完了の知らせは `previews.set_drive_change_hook(drive.events.media_changed_in_tx)` で注入する（attachments は drive に依存しない）。outbox の audience `drive` は `main.py` が `drive.events.audience_resolver(…)` で組み立てる。完了の処理（`DriveRuntime`、`app.state.drive`）・media loop・周期ジョブは `main.py` が起動する。
    M88: `channels → workspace` (設定の読み取り: プレビューの可否と参加・退出の表示)。参加・退出の一言を書くのは `messages`
    で、`messages` が import 時に `channels.set_membership_writer(post_membership_in_tx)` で登録する (channels は messages に
    依存しない、docs/MEMBERSHIP.md §1)。`workspace → audit` (設定の変更の監査)。
