@@ -100,9 +100,9 @@ To try Taylis with fictional data first, [infra/demo/README.md](infra/demo/READM
 | Client | Stack | Notes |
 | --- | --- | --- |
 | Browser | React (served by the server) | `https://<CHAT_DOMAIN>/` |
-| Desktop | Tauri 2 + React | Windows and macOS; in-app updates from the official releases |
+| Desktop | Tauri 2 + React | Windows and macOS from [the releases](https://github.com/kanotown/taylis/releases/latest); in-app updates |
 | iOS | SwiftUI | Push via APNs; build with Xcode ([docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)) |
-| Android | Jetpack Compose | Push via FCM; build with Gradle |
+| Android | Jetpack Compose | [Google Play](https://play.google.com/store/apps/details?id=jp.chikuwachat.android); push via FCM; build with Gradle |
 
 Every client talks to the server through the same API ([openapi/openapi.json](openapi/openapi.json)).
 

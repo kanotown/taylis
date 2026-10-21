@@ -13,7 +13,7 @@ Taylis はパソコンでもスマートフォンでも使えます。どのア�
 | Windows / macOS（デスクトップ版） | [GitHub のリリース](https://github.com/kanotown/taylis/releases/latest) からインストーラをダウンロード | 毎日使うパソコン。通知がいちばん確実です |
 | ブラウザ版 | インストールは不要。サーバの URL をブラウザで開く | 共用のパソコン、ちょっと見るとき |
 | iPhone / iPad | 準備中（App Store での配信を準備しています） | 外出先、プッシュ通知 |
-| Android | 準備中（Google Play での配信を準備しています） | 外出先、プッシュ通知 |
+| Android | [Google Play](https://play.google.com/store/apps/details?id=jp.chikuwachat.android) | 外出先、プッシュ通知 |
 
 ## デスクトップ版（Windows / macOS）
 
