@@ -125,6 +125,28 @@ async def workspace_location(db: AsyncSession) -> DriveLocation:
     return created
 
 
+async def ensure_location(
+    db: AsyncSession,
+    kind: str,
+    *,
+    channel_id: uuid.UUID | None = None,
+    user_id: uuid.UUID | None = None,
+) -> DriveLocation:
+    """Phase D5 (§15.2): the import's way to a channel's drive or a person's My Drive, made when
+    missing, in the caller's transaction (no permission check: the caller is an administrator's
+    command)."""
+    if kind == "workspace":
+        found = await repo.workspace_location(db)
+    elif channel_id is not None:
+        found = await repo.location_of_channel(db, channel_id)
+    else:
+        assert user_id is not None
+        found = await repo.location_of_user(db, user_id)
+    if found is not None:
+        return found
+    return await _create_location(db, kind, channel_id=channel_id, user_id=user_id)
+
+
 async def location_out(db: AsyncSession, actor: User, location: DriveLocation) -> DriveLocationOut:
     rights = await acl.access(db, actor, location)
     return DriveLocationOut(

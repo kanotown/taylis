@@ -31,6 +31,7 @@ Reliability (SECURITY.md §4 「文書のプレビュー」):
   recorded and carries it, or the loop sees the row bound and announces it.
 """
 
+import asyncio
 import json
 import logging
 import sys
@@ -43,7 +44,7 @@ from pathlib import Path
 from typing import Protocol
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app as app_package
@@ -520,9 +521,25 @@ class BackfillResult:
     failed: int = 0
     retrying: int = 0  # left pending for the preview loop (a temporary failure)
     remaining: bool = False
+    waited_seconds: float = 0.0  # M164 --drive: time given to the chat's previews first
 
 
 BATCH = 50
+
+
+# M164 (docs/DRIVE.md §8): the current version of a drive file outside the trash (only the
+# current version gets a preview). Plain SQL: attachments does not import the drive.
+_CURRENT_DRIVE_VERSION = text(
+    "EXISTS (SELECT 1 FROM drive_file_versions v JOIN drive_items i "
+    "ON i.current_version_id = v.id AND i.trashed_at IS NULL "
+    "WHERE v.attachment_id = attachments.id)"
+)
+# The chat's previews waiting for the loop (not those it is working on: they are leased).
+_CHAT_WAITING = text(
+    "SELECT count(*) FROM attachments WHERE preview_status = 'pending' "
+    "AND drive_item_id IS NULL AND (preview_next_at IS NULL OR preview_next_at <= now())"
+)
+CHAT_POLL_SECONDS = 2.0
 
 
 async def _candidates(
@@ -530,6 +547,8 @@ async def _candidates(
     settings: Settings,
     statuses: tuple[str, ...],
     after: uuid.UUID | None,
+    *,
+    drive: bool = False,
 ) -> tuple[list[uuid.UUID], uuid.UUID | None]:
     """(ids that want a preview, the last id looked at) of the next batch in id order."""
     stmt = (
@@ -538,8 +557,8 @@ async def _candidates(
             Attachment.preview_status.in_(statuses),
             Attachment.status != "deleted",
             # M160 (docs/DRIVE.md §8): drive files get theirs from the loop when uploaded; the
-            # imported ones from `generate-previews --drive` (phase D5).
-            Attachment.drive_item_id.is_(None),
+            # imported ones from `generate-previews --drive` (M164), current versions only.
+            Attachment.drive_item_id.is_not(None) if drive else Attachment.drive_item_id.is_(None),
             Attachment.size_bytes <= settings.preview_max_input_bytes,
             or_(
                 Attachment.content_type.in_(PREVIEW_TYPES),
@@ -551,6 +570,8 @@ async def _candidates(
     )
     if after is not None:
         stmt = stmt.where(Attachment.id > after)
+    if drive:
+        stmt = stmt.where(_CURRENT_DRIVE_VERSION)
     rows = list((await db.execute(stmt)).scalars().all())
     last = rows[-1].id if rows else None
     ids = [row.id for row in rows if wants(row, settings)]
@@ -566,18 +587,26 @@ async def generate_stored(
     *,
     limit: int = 200,
     retry_failed: bool = False,
+    drive: bool = False,
+    chat_wait_seconds: float = 600.0,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> BackfillResult:
     """`app.cli generate-previews`: previews of files stored before M108 (or while previews were
     off), at most `limit` a run, one at a time, each committed on its own (resumable, and a run
     again only does what is left). A row is leased like the loop's claim, so the two never work
-    on the same file; a temporary failure leaves it to the loop's retries."""
+    on the same file; a temporary failure leaves it to the loop's retries.
+
+    M164 (`--drive`, docs/DRIVE.md §8): the current versions of drive files instead (the ones a
+    Nextcloud import stored without a preview). Before each one it waits while chat attachments
+    wait for the server's preview loop (at most `chat_wait_seconds` a file), so a night's
+    backfill of thousands of documents never holds up the previews of what people post."""
     if not settings.previews_enabled:
         raise RuntimeError("previews are off (PREVIEWS_ENABLED=false)")
     statuses = ("none", "failed") if retry_failed else ("none",)
     result = BackfillResult()
     after: uuid.UUID | None = None
     while result.tried < limit:
-        ids, last = await _candidates(db, settings, statuses, after)
+        ids, last = await _candidates(db, settings, statuses, after, drive=drive)
         if last is None:
             return result
         after = last
@@ -585,6 +614,8 @@ async def generate_stored(
             if result.tried >= limit:
                 result.remaining = True
                 return result
+            if drive:
+                result.waited_seconds += await _let_the_chat_go_first(db, chat_wait_seconds, sleep)
             row = (
                 await db.execute(
                     select(Attachment)
@@ -612,6 +643,22 @@ async def generate_stored(
                 result.failed += 1
             elif status == "pending":
                 result.retrying += 1
-    ids, last = await _candidates(db, settings, statuses, after)
+    ids, last = await _candidates(db, settings, statuses, after, drive=drive)
     result.remaining = last is not None
     return result
+
+
+async def _let_the_chat_go_first(
+    db: AsyncSession, most: float, sleep: Callable[[float], Awaitable[None]]
+) -> float:
+    """Waits (at most `most` seconds) while chat attachments wait for their preview."""
+    waited = 0.0
+    while waited < most:
+        count = int((await db.execute(_CHAT_WAITING)).scalar_one())
+        await db.rollback()
+        if count == 0:
+            break
+        step = min(CHAT_POLL_SECONDS, most - waited)
+        await sleep(step)
+        waited += step
+    return waited

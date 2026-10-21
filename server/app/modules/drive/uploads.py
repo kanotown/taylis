@@ -704,36 +704,87 @@ async def _place_in_tx(
                 change_seq=0,
             )
             service.set_name(item, name)
-    locked_location = await service.lock_location(db, location.id)
+    version = await add_version_in_tx(
+        db,
+        settings,
+        user.id,
+        item,
+        location_id=location.id,
+        new_item=new_item_needed(item),
+        folders_made=folders_made,
+        attachment_id=upload.attachment_id,
+        size=upload.size_bytes,
+        content_type=content_type,
+        content_modified_at=upload.content_modified_at,
+        source="upload",
+        with_reservations=False,
+    )
+    return item, version, folders
+
+
+def new_item_needed(item: DriveItem) -> bool:
+    """A file item not inserted yet (no version): add_version_in_tx adds the row."""
+    return item.current_version_id is None
+
+
+async def add_version_in_tx(
+    db: AsyncSession,
+    settings: Settings,
+    user_id: uuid.UUID,
+    item: DriveItem,
+    *,
+    location_id: uuid.UUID,
+    new_item: bool,
+    folders_made: int,
+    attachment_id: uuid.UUID,
+    size: int,
+    content_type: str,
+    content_modified_at: datetime | None,
+    source: str,
+    with_reservations: bool,
+    sha256: bytes | None = None,
+    preview: bool = True,
+    media_done: bool = False,
+) -> DriveFileVersion:
+    """A new version of `item` (a locked file, or a new one not added yet: `new_item`) from the
+    object attachments/{attachment_id} of `size` bytes, after the item's folders were locked:
+    the location is locked, its quota checked, then the attachment row, the version and the
+    location's counters (§6.1). Phase D5 (§15.4): the Nextcloud import calls it too, with
+    `source="import"`, the SHA-256 it computed while streaming, no preview (`generate-previews
+    --drive` makes them later) and `media_done` for a file the media loop has nothing to do
+    for (neither an image nor a video)."""
+    now = utcnow()
+    locked_location = await service.lock_location(db, location_id)
     await service.check_quota_in_tx(
-        db, settings, locked_location, upload.size_bytes, with_reservations=False
+        db, settings, locked_location, size, with_reservations=with_reservations
     )
     version_id = uuid7()
-    new_item = item.current_version_id is None
     item.current_version_id = version_id
-    item.size_bytes = upload.size_bytes
+    item.size_bytes = size
     item.content_type = content_type
-    item.content_modified_at = upload.content_modified_at
-    item.updated_by = user.id
+    item.content_modified_at = content_modified_at
+    item.updated_by = user_id
     item.updated_at = now
     item.change_seq = await events.next_seq(db)
     if new_item:
         db.add(item)
     await db.flush()
     attachment = Attachment(
-        id=upload.attachment_id,
-        uploader_id=user.id,
+        id=attachment_id,
+        uploader_id=user_id,
         drive_item_id=item.id,
         status="attached",
         filename=item.name,
         content_type=content_type,
-        size_bytes=upload.size_bytes,
-        storage_key=attachments.storage_key(upload.attachment_id),
+        size_bytes=size,
+        storage_key=attachments.storage_key(attachment_id),
+        sha256=sha256,
         created_at=now,
         attached_at=now,
     )
-    # §8: the preview of the current version (PDF and Office files within the preview limit).
-    queue_on_upload(attachment, settings)
+    if preview:
+        # §8: the preview of the current version (PDF and Office files within the preview limit).
+        queue_on_upload(attachment, settings)
     db.add(attachment)
     await db.flush()
     version = DriveFileVersion(
@@ -741,20 +792,109 @@ async def _place_in_tx(
         item_id=item.id,
         number=await repo.next_version_number(db, item.id),
         attachment_id=attachment.id,
-        size_bytes=upload.size_bytes,
-        content_modified_at=upload.content_modified_at,
-        uploaded_by=user.id,
+        size_bytes=size,
+        sha256=sha256,
+        content_modified_at=content_modified_at,
+        uploaded_by=user_id,
         created_at=now,
-        source="upload",
-        process_next_at=now,
+        source=source,
+        process_next_at=None if media_done else now,
+        processed_at=now if media_done else None,
     )
     db.add(version)
     await db.flush()
-    locked_location.used_bytes += upload.size_bytes
+    locked_location.used_bytes += size
     locked_location.item_count += folders_made + (1 if new_item else 0)
     locked_location.updated_at = now
     await db.flush()
-    return item, version, folders
+    return version
+
+
+async def store_stream(
+    blobs: BlobStore,
+    key: str,
+    chunks: AsyncIterator[bytes],
+    *,
+    size: int,
+    part_size: int,
+) -> tuple[bytes, bytes]:
+    """Phase D5 (§15.4): an object written from a stream of unknown chunking without holding it
+    in memory: the bytes go to a spooled temporary file one part (DRIVE_PART_BYTES) at a time,
+    each part to the S3 multipart upload of `key` (a file of one part or less: one put). Returns
+    (SHA-256, the first SNIFF_BYTES for the type). The stream must give exactly `size` bytes,
+    else ValueError (the source changed while it was read); on any failure nothing is left in the
+    store (the multipart upload is aborted)."""
+    digest = hashlib.sha256()
+    head = bytearray()
+    received = 0
+    if size <= part_size:
+        with tempfile.SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES) as spool:
+            async for chunk in chunks:
+                received += len(chunk)
+                if received > size:
+                    raise ValueError(f"more than the {size} bytes expected")
+                digest.update(chunk)
+                if len(head) < SNIFF_BYTES:
+                    head += chunk[: SNIFF_BYTES - len(head)]
+                spool.write(chunk)
+            if received != size:
+                raise ValueError(f"{received} bytes instead of {size}")
+            spool.seek(0)
+            await blobs.put(key, spool, "application/octet-stream")
+        return digest.digest(), bytes(head)
+    upload_id = await blobs.create_multipart(key, "application/octet-stream")
+    parts: list[tuple[int, str]] = []
+    try:
+        spool = tempfile.SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES)
+        try:
+            filled = 0
+
+            async def flush() -> None:
+                nonlocal spool, filled
+                spool.seek(0)
+                number = len(parts) + 1
+                parts.append(
+                    (number, await blobs.upload_part(key, upload_id, number, spool, filled))
+                )
+                spool.close()
+                spool = tempfile.SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES)
+                filled = 0
+
+            async for chunk in chunks:
+                received += len(chunk)
+                if received > size:
+                    raise ValueError(f"more than the {size} bytes expected")
+                digest.update(chunk)
+                if len(head) < SNIFF_BYTES:
+                    head += chunk[: SNIFF_BYTES - len(head)]
+                view = memoryview(chunk)
+                while view:
+                    take = min(len(view), part_size - filled)
+                    spool.write(view[:take])
+                    filled += take
+                    view = view[take:]
+                    if filled == part_size:
+                        await flush()
+            if received != size:
+                raise ValueError(f"{received} bytes instead of {size}")
+            if filled:
+                await flush()
+        finally:
+            spool.close()
+        await blobs.complete_multipart(key, upload_id, parts)
+    except BaseException:
+        try:
+            await blobs.abort_multipart(key, upload_id)
+        except Exception:
+            log.warning("could not abort the multipart upload of %s", key, exc_info=True)
+        raise
+    return digest.digest(), bytes(head)
+
+
+def sniffed_type(head: bytes) -> str:
+    """The content type of a file from its first bytes (the uploads' `_sniff`)."""
+    kind = filetype.guess(head[:SNIFF_BYTES]) if head else None
+    return kind.mime if kind is not None else "application/octet-stream"
 
 
 async def abort(db: AsyncSession, actor: User, blobs: BlobStore, upload_id: uuid.UUID) -> None:
