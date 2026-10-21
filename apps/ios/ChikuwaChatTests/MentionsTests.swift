@@ -97,3 +97,65 @@ final class MentionsTests: XCTestCase {
         XCTAssertEqual(Mentions.candidates("hook", users: everyone, aiBotIds: ["u-hook"]).map(\.kind), ["ai"])
     }
 }
+
+/// MOBILE_UI.md §23: the order of the @ suggestions against apps/shared/mention-rank.json (the desktop and Android read
+/// the same file).
+final class MentionRankTests: XCTestCase {
+    private struct Vectors: Decodable {
+        struct Spoken: Decodable {
+            let senderId: String, deleted: Bool?, type: String?
+            enum CodingKeys: String, CodingKey { case senderId = "sender_id", deleted, type }
+        }
+        struct Recent: Decodable { let name: String; let cap: Int?; let thread: [Spoken]; let channel: [Spoken]; let speakers: [String] }
+        struct User: Decodable {
+            let id: String, username: String, displayName: String, ai: Bool?, bot: Bool?, deactivated: Bool?
+            enum CodingKeys: String, CodingKey { case id, username, displayName = "display_name", ai, bot, deactivated }
+        }
+        struct Group: Decodable {
+            let id: String, name: String, description: String?, memberIds: [String]
+            enum CodingKeys: String, CodingKey { case id, name, description, memberIds = "member_ids" }
+        }
+        struct Case: Decodable { let name: String; let query: String; let me: String?; let recent: [String]; let members: [String]; let limit: Int; let expected: [String] }
+        struct Rank: Decodable { let users: [User]; let groups: [Group]; let cases: [Case] }
+        let recentMessages: Int
+        let recent: [Recent]
+        let rank: Rank
+        enum CodingKeys: String, CodingKey { case recentMessages = "recent_messages", recent, rank }
+    }
+
+    private func vectors() throws -> Vectors {
+        // The repository's own file (the simulator reads the Mac's disk).
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/mention-rank.json")
+        return try JSONDecoder().decode(Vectors.self, from: Data(contentsOf: url))
+    }
+
+    func testSharedRecentVectors() throws {
+        let vectors = try vectors()
+        XCTAssertEqual(Mentions.recentMessages, vectors.recentMessages)
+        XCTAssertFalse(vectors.recent.isEmpty)
+        let spoken = { (m: Vectors.Spoken) in Mentions.Spoken(senderId: m.senderId, deleted: m.deleted ?? false, type: m.type ?? "user") }
+        for c in vectors.recent {
+            XCTAssertEqual(Mentions.recentSpeakers(channel: c.channel.map(spoken), thread: c.thread.map(spoken), cap: c.cap ?? vectors.recentMessages),
+                           c.speakers, c.name)
+        }
+    }
+
+    func testSharedRankVectors() throws {
+        let rank = try vectors().rank
+        let users = rank.users.map { u in
+            var user = UserPublic(id: u.id, username: u.username, displayName: u.displayName, role: u.ai == true || u.bot == true ? "bot" : "member",
+                                  deactivatedAt: u.deactivated == true ? "2026-01-01T00:00:00Z" : nil, createdAt: "", updatedAt: "")
+            user.botKind = u.ai == true ? "ai" : nil
+            return user
+        }
+        let groups = rank.groups.map {
+            GroupOut(id: $0.id, name: $0.name, description: $0.description, memberIds: $0.memberIds, createdBy: "u1", createdAt: "", updatedAt: "")
+        }
+        XCTAssertFalse(rank.cases.isEmpty)
+        for c in rank.cases {
+            let context = Mentions.Context(recent: c.recent, members: c.members, me: c.me)
+            XCTAssertEqual(Mentions.candidates(c.query, users: users, groups: groups, limit: c.limit, context: context).map(\.username), c.expected, c.name)
+        }
+    }
+}
