@@ -1,0 +1,32 @@
+# infra/offsite.conf (copy of this file, mode 600, not in git): where infra/offsite-backup.sh sends the backups.
+# The values here are examples; nothing in the repository names a real target.
+
+# A machine reached over SSH (the university NAS, another server): sftp:USER@HOST:/path
+RESTIC_REPOSITORY=sftp:taylis-backup@nas.example.ac.jp:/volume1/taylis-restic
+# … or a disk or NAS share mounted on this server (an absolute path):
+# RESTIC_REPOSITORY=/mnt/offsite/taylis-restic
+
+# The repository's password (make it with: openssl rand -base64 32 > infra/secrets/restic-password).
+# Keep a copy OFF the server (a password manager): without it the backups cannot be read.
+RESTIC_PASSWORD_FILE=/srv/chikuwachat/infra/secrets/restic-password
+
+# SFTP only: a key made for this (ssh-keygen -t ed25519 -f /root/.ssh/taylis_offsite -N '') and the target's
+# host key (ssh-keyscan -p PORT HOST >> /root/.ssh/known_hosts, then compare the fingerprint).
+OFFSITE_SSH_KEY=/root/.ssh/taylis_offsite
+OFFSITE_SSH_KNOWN_HOSTS=/root/.ssh/known_hosts
+OFFSITE_SSH_PORT=22
+
+# Where backup.sh writes (the cron line's argument).
+OFFSITE_BACKUP_ROOT=/srv/backups
+
+# Snapshots kept: 14 daily, 8 weekly, 12 monthly.
+OFFSITE_KEEP_DAILY=14
+OFFSITE_KEEP_WEEKLY=8
+OFFSITE_KEEP_MONTHLY=12
+
+# 1: also infra/.env and infra/secrets/ (APNs / FCM keys), encrypted with the password above. Then the password
+# must never be stored next to the repository.
+OFFSITE_INCLUDE_SECRETS=0
+
+# What `maintain` (weekly) reads back from the repository to prove it can be read.
+OFFSITE_CHECK_SUBSET=5%

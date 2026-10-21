@@ -57,6 +57,7 @@ server/.env
 
 # production server state written by infra/deploy.sh / the administrator (never committed)
 infra/deploy.conf
+infra/offsite.conf
 infra/.release
 infra/.release.previous
 infra/releases/
