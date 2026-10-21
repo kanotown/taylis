@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, ArrowUp, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
+import { AlarmClock, ArrowDown, ArrowUp, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, HardDrive, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
@@ -60,6 +60,9 @@ interface Props {
   /** M11i: files in my channels. */
   onFiles?: () => void;
   filesActive?: boolean;
+  /** M161: 「ドライブ」 (docs/DRIVE.md §17.1). */
+  onDrive?: () => void;
+  driveActive?: boolean;
   /** M44: the canvases of all my conversations. */
   onCanvases?: () => void;
   canvasesActive?: boolean;
@@ -103,7 +106,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction, onOpenInNewTab, onPlaceInNewTab }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onDrive, driveActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction, onOpenInNewTab, onPlaceInNewTab }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -178,7 +181,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     if (next) void controller.setNavItems(next);
   } : undefined;
   // My own conversation is highlighted in the rail only while no page covers it.
-  const pageOpen = threadsActive || activityActive || draftsActive || savedActive || filesActive || canvasesActive || docsActive || calendarActive || tasksActive || deadlinesActive || reservationsActive || attendanceActive || actionsActive || remindersActive || timesFeedActive;
+  const pageOpen = threadsActive || activityActive || draftsActive || savedActive || filesActive || driveActive || canvasesActive || docsActive || calendarActive || tasksActive || deadlinesActive || reservationsActive || attendanceActive || actionsActive || remindersActive || timesFeedActive;
   const icon = (Icon: typeof Bell) => <Icon size={20} strokeWidth={1.9} />;
   const count = (n: number) => (n > 99 ? "99+" : String(n));
   const place = (key: string): Place | null => {
@@ -210,6 +213,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         } : null;
       case "files":
         return onFiles ? { key, label: t("nav.files"), icon: icon(Files), onSelect: onFiles, active: filesActive, hint: t("sidebar.filesTitle") } : null;
+      case "drive":
+        return onDrive ? { key, label: t("nav.drive"), icon: icon(HardDrive), onSelect: onDrive, active: driveActive, hint: t("sidebar.driveTitle") } : null;
       case "canvases":
         return onCanvases ? { key, label: t("nav.canvases"), icon: icon(NotebookText), onSelect: onCanvases, active: canvasesActive, hint: t("sidebar.canvasesTitle") } : null;
       case "docs":

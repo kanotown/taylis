@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowLeft, ArrowRight, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, ChevronDown, DoorOpen, FileText, Files, Hash, Keyboard, ListTodo, Lock, Megaphone, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Pin, Search, Star, Ticket, Timer, Users, Zap } from "lucide-react";
+import { AlarmClock, ArrowLeft, ArrowRight, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, ChevronDown, DoorOpen, FileText, Files, HardDrive, Hash, Keyboard, ListTodo, Lock, Megaphone, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Pin, Search, Star, Ticket, Timer, Users, Zap } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -56,6 +56,9 @@ import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from 
 import { customTitleBar, isWeb, overlayTitleBar, TITLE_ROW_HEIGHT, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
+import { ChannelDrive, DriveView } from "./DriveView";
+import { showInDrive } from "./DriveSearch";
+import { DriveUploadPanel } from "./DriveUploadPanel";
 import { JumpView } from "./JumpView";
 import { NewMessageView } from "./NewMessageView";
 import { pushRecentConversation, readGatherUnread, readRecentConversations, recentConversationsKey, writeGatherUnread } from "./home";
@@ -100,9 +103,10 @@ import { canManageChannelByRight } from "./roles";
 // "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
 // "docs" (M121): 「ドキュメント」, the Docs tree and a page (WIKI.md §9.1).
 // "attendance" (M140): 「在室状況」, the workspace's board (docs/PRESENCE.md §7).
-const CENTRE_VIEWS = ["channel", "threads", "saved", "activity", "drafts", "files", "reminders", "search", "canvases", "calendar", "tasks", "deadlines", "times", "reservations", "docs", "attendance", "actions"] as const;
+// "drive" (M161): 「ドライブ」, the locations and their folders (docs/DRIVE.md §17).
+const CENTRE_VIEWS = ["channel", "threads", "saved", "activity", "drafts", "files", "reminders", "search", "canvases", "calendar", "tasks", "deadlines", "times", "reservations", "docs", "attendance", "actions", "drive"] as const;
 type CentreView = (typeof CENTRE_VIEWS)[number];
-const CONVERSATION_TABS: readonly ConversationTab[] = ["messages", "canvas", "events", "tasks", "pins", "files"];
+const CONVERSATION_TABS: readonly ConversationTab[] = ["messages", "canvas", "events", "tasks", "drive", "pins", "files"];
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -861,7 +865,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions" | "drive") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -1292,6 +1296,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       case "saved": return viewItem(t("nav.saved"), Bookmark);
       case "drafts": return viewItem(t("nav.drafts"), FileText);
       case "files": return viewItem(t("nav.files"), Files);
+      case "drive": return viewItem(t("nav.drive"), HardDrive);
       case "reminders": return viewItem(t("nav.reminders"), AlarmClock);
       case "search": return viewItem(target.search?.q ? t("tabs.search", { q: target.search.q }) : t("tabs.searchEmpty"), Search);
       case "canvases": return viewItem(t("nav.canvases"), NotebookText);
@@ -1530,6 +1535,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       draftsActive={view === "drafts"}
       onFiles={() => (view === "files" && !compact ? setView("channel") : openFiles(null))}
       filesActive={view === "files"}
+      onDrive={() => openView("drive")}
+      driveActive={view === "drive"}
       onCanvases={() => openView("canvases")}
       canvasesActive={view === "canvases"}
       onDocs={engine?.wiki?.available ? () => openView("docs") : undefined}
@@ -1602,13 +1609,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const headerTabs: ReadonlyArray<readonly [ConversationTab, string]> = [
     ["messages", t("main.tab.messages")],
     ["canvas", t("main.tab.canvas")],
-    ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", t("main.tab.tasks")] as const] : []),
+    ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", t("main.tab.tasks")] as const, ["drive", t("nav.drive")] as const] : []),
   ];
   // Too narrow a header moves pins, files, members and the shortcuts button into ⋯ (headerFit).
   const tightHeader = !compact && fit === "tight";
   const shownTab: ConversationTab = tabbed
-    ? (tab === "events" || tab === "tasks") && !isChannel ? "messages" : tab
-    : canvasTab && (tab === "canvas" || ((tab === "events" || tab === "tasks") && isChannel)) ? tab : "messages";
+    ? (tab === "events" || tab === "tasks" || tab === "drive") && !isChannel ? "messages" : tab
+    : canvasTab && (tab === "canvas" || ((tab === "events" || tab === "tasks" || tab === "drive") && isChannel)) ? tab : "messages";
   // Nothing of the conversation counts as seen while another tab or a page covers it (SYNC_PROTOCOL.md §10.1 2.).
   const conversationOnScreen = shownTab === "messages" && (!compact || (!showDetails && !sidePane));
   const openDetails = () => {
@@ -1642,6 +1649,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onOpen={openSearchResult}
           onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id, { fromSearch: true })}
           onOpenPage={engine?.wiki?.available ? (page) => openDocsPage(page.id) : undefined}
+          onShowInDrive={(target) => {
+            showInDrive(target);
+            openView("drive");
+          }}
           onClose={() => {
             setView("channel");
             if (compact) setPane("list");
@@ -1688,6 +1699,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
             setSearchTab("docs");
           }}
         />
+      ) : view === "drive" ? (
+        <DriveView controller={controller} compact={compact} />
       ) : view === "calendar" ? (
         <CalendarView controller={controller} />
       ) : view === "tasks" ? (
@@ -1995,6 +2008,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 <ChannelTasks controller={controller} channel={current} onOpenMessage={openTaskMessage} />
               </div>
             )}
+            {shownTab === "drive" && (
+              <div role="tabpanel" aria-label={t("nav.drive")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+                <ChannelDrive controller={controller} channel={current} />
+              </div>
+            )}
             {shownTab === "pins" && (
               <div role="tabpanel" aria-label={t("main.pins")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelPins controller={controller} channel={current} onOpen={revealFromList} />
@@ -2024,7 +2042,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <Toast controller={controller} />
       <SummaryDialog controller={controller} />
       <NoticeToast controller={controller} />
-      <DownloadToasts controller={controller} />
+      {/* M161: downloads stack above the drive's upload panel, bottom right. */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex flex-col items-end gap-2 [&>*]:pointer-events-auto">
+        <DownloadToasts controller={controller} stacked />
+        <DriveUploadPanel controller={controller} />
+      </div>
       {switcher && (switcherForTab && tabsOn ? (
         <QuickSwitcher controller={controller} placeholder={t("tabs.pickerPlaceholder")} onOpen={(id) => pickInNewTab(id)} onOpenCanvas={(canvas) => pickInNewTab(canvas.channel_id, canvas.id)} onClose={() => { setSwitcher(false); setSwitcherForTab(false); }} />
       ) : (

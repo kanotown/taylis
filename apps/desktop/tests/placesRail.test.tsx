@@ -78,16 +78,16 @@ describe("the rules", () => {
     const keys = (list: NavItem[] | null) => list?.map((item) => item.key);
     // Before 「アクティビティ」: the phones' times-feed and the items this client does not draw keep their slots.
     const moved = navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "saved", "activity", false);
-    expect(keys(moved)).toEqual(["threads", "saved", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "times-feed", "attendance", "actions"]);
+    expect(keys(moved)).toEqual(["threads", "saved", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "times-feed", "attendance", "actions"]);
     expect(moved!.every((item) => item.visible)).toBe(true);
     // After a target; the phones' visibility and an unknown key are kept.
     const stored: NavItem[] = [{ key: "future", visible: true }, ...fullNavItems(null).map((item) => (item.key === "files" ? { ...item, visible: false } : item))];
     const after = navItemsAfterPlaceDrop(stored, DESKTOP_NAV_KEYS, "threads", "docs", true)!;
-    expect(keys(after)!.slice(0, 9)).toEqual(["future", "activity", "drafts", "reminders", "files", "canvases", "docs", "threads", "calendar"]);
+    expect(keys(after)!.slice(0, 10)).toEqual(["future", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "threads", "calendar"]);
     expect(after.find((item) => item.key === "files")!.visible).toBe(false);
     // Nothing moves: onto itself, onto its own spot, an unknown or undrawn key.
     expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "files", false)).toBeNull();
-    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "canvases", false)).toBeNull();
+    expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "drive", false)).toBeNull();
     expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "files", "reminders", true)).toBeNull();
     expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "attendance", "files", false)).toBeNull();
     expect(navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "times-feed", "files", false)).toBeNull();
@@ -262,11 +262,11 @@ function controllerWith(navItems: NavItem[] | null | undefined, places: DesktopP
 describe("the sidebar with the rail", () => {
   const noop = () => {};
   const handlers = () => ({
-    onThreads: vi.fn(), onActivity: vi.fn(), onDrafts: vi.fn(), onReminders: vi.fn(), onFiles: vi.fn(), onCanvases: vi.fn(), onDocs: vi.fn(),
+    onThreads: vi.fn(), onActivity: vi.fn(), onDrafts: vi.fn(), onReminders: vi.fn(), onFiles: vi.fn(), onDrive: vi.fn(), onCanvases: vi.fn(), onDocs: vi.fn(),
     onCalendar: vi.fn(), onTasks: vi.fn(), onDeadlines: vi.fn(), onReservations: vi.fn(), onSaved: vi.fn(),
   });
   const handlerOf: Record<string, keyof ReturnType<typeof handlers>> = {
-    threads: "onThreads", activity: "onActivity", drafts: "onDrafts", reminders: "onReminders", files: "onFiles", canvases: "onCanvases", docs: "onDocs",
+    threads: "onThreads", activity: "onActivity", drafts: "onDrafts", reminders: "onReminders", files: "onFiles", drive: "onDrive", canvases: "onCanvases", docs: "onDocs",
     calendar: "onCalendar", tasks: "onTasks", deadlines: "onDeadlines", reservations: "onReservations", saved: "onSaved",
   };
   const draw = (controller: AppController, h: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
@@ -281,7 +281,7 @@ describe("the sidebar with the rail", () => {
     draw(controller, h);
     const inRail = [...railOf().querySelectorAll<HTMLElement>("button[data-nav-item]")];
     // 2026-10-12: 下書き / リマインダー stand where they are put even while empty; スレッド and 下書き are rows by default.
-    expect(inRail.map((b) => b.dataset.navItem)).toEqual(["activity", "reminders", "canvases", "calendar", "tasks", "deadlines", "reservations"]);
+    expect(inRail.map((b) => b.dataset.navItem)).toEqual(["activity", "reminders", "drive", "canvases", "calendar", "tasks", "deadlines", "reservations"]);
     expect(rowKeys()).toEqual(["threads", "drafts", "saved"]);
     for (const button of inRail) fireEvent.click(button);
     const rows = [...document.querySelectorAll<HTMLElement>("[data-sidebar-places] button[data-nav-item]")];
@@ -372,7 +372,7 @@ describe("the sidebar with the rail", () => {
   it("dragging a rail icon onto another saves nav_items' order (shared with the phones), not desktop_places", () => {
     const { controller, setNavItems, setDesktopPlaces } = controllerWith(null);
     draw(controller, handlers());
-    expect(railKeys()).toEqual(["activity", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"]);
+    expect(railKeys()).toEqual(["activity", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"]);
     const icon = (key: string) => railOf().querySelector<HTMLElement>(`[data-nav-item="${key}"]`)!;
     fireEvent.dragStart(icon("saved"));
     fireEvent.dragOver(icon("activity"));
@@ -383,7 +383,7 @@ describe("the sidebar with the rail", () => {
     expect(setDesktopPlaces).not.toHaveBeenCalled();
     cleanup();
     draw(controller, handlers());
-    expect(railKeys()).toEqual(["saved", "activity", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations"]);
+    expect(railKeys()).toEqual(["saved", "activity", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations"]);
   });
 
   it("dragging a sidebar row onto another reorders the rows; a rail icon dropped on a row does nothing", () => {
