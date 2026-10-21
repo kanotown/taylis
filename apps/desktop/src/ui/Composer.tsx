@@ -12,6 +12,7 @@ import { holdUntilFrame, keepLineInView, settle, textAreaCaretLine } from "./com
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, linkFromPaste, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { AiBadge } from "./ai";
+import { requestChannelMembers } from "../sync/channelMembers";
 import { aiBotIds, conversationContext, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
 import { canPostTopLevel } from "./channels";
@@ -132,6 +133,11 @@ export function Composer({
   const listKey = query ? `@${query.start}:${query.query}` : emojiAt ? `:${emojiAt.start}:${emojiAt.query}` : `/${text}`;
   const [dismissed, setDismissed] = useState<string | null>(null);
   const listShown = dismissed !== listKey;
+  // MOBILE_UI.md §23: the channel's members for the list, read when it first opens here (it re-ranks when they come).
+  const mentionOpen = !!query && listShown;
+  useEffect(() => {
+    if (mentionOpen) requestChannelMembers(store, controller.api, channel.id);
+  }, [mentionOpen, channel.id, store.membersRevision(channel.id)]); // eslint-disable-line react-hooks/exhaustive-deps
   const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store), conversationContext(store, channel.id, parentId)) : [];
   const emojiHits = emojiAt && listShown ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
