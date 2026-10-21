@@ -719,6 +719,13 @@ async def test_every_public_request_is_rate_limited_per_address(
             assert (await pub(v, token)).status_code == 200
         assert (await pub(v, token)).status_code == 429
 
+    # Downloads of one link, from any address: 60 a minute by default (here 2).
+    app.state.limiters["share_download"] = RateLimiter(2)
+    for n in range(3):
+        async with visitor_client(app, f"198.51.100.{60 + n}") as v:
+            got = await pub(v, token, f"/items/{data['id']}/content")
+            assert got.status_code == (200 if n < 2 else 429), got.text
+
 
 # --- the download limit --------------------------------------------------------------------------
 
