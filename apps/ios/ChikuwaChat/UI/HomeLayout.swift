@@ -301,7 +301,7 @@ enum SidebarOrder {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
-        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases, docs, attendance, actions
+        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, drive, canvases, docs, attendance, actions
 
         /// M111: the key in apps/shared/nav-items.json (UserMe.nav_items).
         var navKey: String { self == .times ? "times-feed" : rawValue }
@@ -330,6 +330,7 @@ struct HomeTile: Identifiable, Equatable {
         case .deadlines: tr("締切")
         case .reservations: tr("予約")
         case .files: tr("ファイル")
+        case .drive: tr("ドライブ")
         case .canvases: tr("キャンバス")
         case .docs: tr("ドキュメント")
         case .attendance: tr("在室状況")
@@ -349,6 +350,7 @@ struct HomeTile: Identifiable, Equatable {
         case .deadlines: "calendar.badge.exclamationmark"
         case .reservations: "ticket"
         case .files: "doc.on.doc"
+        case .drive: "externaldrive"
         case .canvases: "doc.text"
         case .docs: "book.closed"
         case .attendance: "door.left.hand.open"
@@ -369,6 +371,7 @@ struct HomeTile: Identifiable, Equatable {
         case .deadlines: DeadlinesView.selectionId
         case .reservations: ReservationsView.selectionId
         case .files: FilesView.selectionId
+        case .drive: DriveLocationsView.selectionId
         case .canvases: CanvasesView.selectionId
         case .docs: DocsView.selectionId
         case .attendance: AttendanceView.selectionId
@@ -400,13 +403,15 @@ struct HomeTile: Identifiable, Equatable {
     /// 「在室 n 人」 number, never red; nil = off, a guest, an older server).
     /// M143 (docs/ACTIONS.md §9.2): 操作 (key "actions", after 在室状況) only while the buttons are on and I may press one
     /// (`actions`): no number.
+    /// M166 (docs/DRIVE.md §26): ドライブ (key "drive", after ファイル) while the server has the drive (`drive`): no number.
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?,
                       reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false,
-                      timesUnread: Bool = true) -> [HomeTile] {
+                      drive: Bool = false, timesUnread: Bool = true) -> [HomeTile] {
         let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations, docs: docs,
-                        attendance: attendance, actions: actions, timesUnread: timesUnread)
+                        attendance: attendance, actions: actions, drive: drive, timesUnread: timesUnread)
         let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
-        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil, actions: actions)).compactMap { byKey[$0] }
+        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil, actions: actions, drive: drive))
+            .compactMap { byKey[$0] }
     }
 
     struct ReservationTile: Equatable {
@@ -416,8 +421,11 @@ struct HomeTile: Identifiable, Equatable {
 
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
                       reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false,
-                      timesUnread: Bool = true) -> [HomeTile] {
+                      drive: Bool = false, timesUnread: Bool = true) -> [HomeTile] {
         var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, timesUnread: timesUnread)
+        if drive, let at = row.firstIndex(where: { $0.kind == .files }) {
+            row.insert(HomeTile(kind: .drive, count: nil, alert: false), at: at + 1)
+        }
         if docs, let at = row.firstIndex(where: { $0.kind == .canvases }) {
             row.insert(HomeTile(kind: .docs, count: nil, alert: false), at: at + 1)
         }

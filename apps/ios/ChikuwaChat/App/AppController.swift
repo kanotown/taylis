@@ -49,6 +49,11 @@ final class AppController {
     /// M122: a wiki page link (`page:<id>`, `<server>/p/<id>`) tapped outside the wiki's screens: the page over
     /// everything (MainView).
     var pageLink: PageLinkTarget?
+    /// M166 (docs/DRIVE.md §26): a drive link (`<server>/d/<id>`) tapped in a message: the folder, or the file's details,
+    /// in a sheet over everything (MainView).
+    var driveLink: DriveLinkTarget?
+    /// M166: a drive file's viewer opened from a message's card (photo, video, PDF / Office), over everything.
+    var driveViewer: DriveViewing?
     /// M122: the notice on screen opens this page when tapped (an in-app page mention or share); kept with its text.
     var noticePage: (notice: String, pageId: String)?
     /// L8: the Times feed's rows while the app runs (TIMES_FEED.md §5), one per open workspace.
@@ -370,6 +375,8 @@ final class AppController {
         noticeCanvas = nil
         pageLink = nil
         noticePage = nil
+        driveLink = nil
+        driveViewer = nil
         workflowRun = nil
         workflowLists = [:]
         timesFeed = TimesFeedModel()

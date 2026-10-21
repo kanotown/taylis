@@ -644,6 +644,8 @@ struct ChannelView: View {
                             ChannelEventsPane(controller: controller, channel: channel)  // M52
                         } else if tab == .tasks, let channel {
                             ChannelTasksPane(controller: controller, channel: channel)  // M56
+                        } else if tab == .drive, let channel {
+                            DriveChannelPane(controller: controller, channel: channel)  // M166 (DRIVE.md §13.3), read only
                         } else if tab == .pins {
                             PinsView(controller: controller, channelId: channelId) { message in
                                 Task { if await controller.revealMessage(message) { showMessage(parentId: message.parentId) } }
@@ -1061,7 +1063,8 @@ struct MessageRow: View {
         guard !message.pending, message.call == nil, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
               CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil,
               EventLink.eventId(base: controller.api?.baseUrl, url: link) == nil,
-              PageLink.pageId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
+              PageLink.pageId(base: controller.api?.baseUrl, url: link) == nil,
+              DriveLink.itemId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
         return link
     }
 
@@ -1169,8 +1172,13 @@ struct MessageRow: View {
                     MessageBodyView(text: body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
                                     onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [], jumbo: true,
-                                    userLinks: present != nil && !message.pending)
+                                    userLinks: present != nil && !message.pending,
+                                    driveLabel: controller.drive.map { hub in { hub.linkState($0) } })
                         .environment(\.openURL, OpenURLAction { url in
+                            if url.scheme == DriveLink.scheme, let id = url.host {  // M166: a drive file or folder
+                                Task { await controller.openDriveLink(id) }
+                                return .handled
+                            }
                             if url.scheme == CanvasLink.scheme, let id = url.host {  // M45
                                 controller.canvasLink = CanvasLinkTarget(id: id)
                                 return .handled
@@ -1201,6 +1209,14 @@ struct MessageRow: View {
                 if !message.attachments.isEmpty {
                     AttachmentsView(attachments: message.attachments, controller: controller,
                                     present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
+                }
+                // M166 (docs/DRIVE.md §26): the cards of its drive links (at most three), where a link's preview goes.
+                if !message.pending, !message.deleted, controller.drive?.available == true {
+                    let driveIds = DriveLink.ids(in: message.body, base: controller.api?.baseUrl, limit: 20)
+                    if !driveIds.isEmpty {
+                        DriveLinkCards(controller: controller, ids: Array(driveIds.prefix(DriveLink.cardLimit)),
+                                       inlineOnly: Array(driveIds.dropFirst(DriveLink.cardLimit)))
+                    }
                 }
                 if let link = previewLink {
                     if loadsPreview {

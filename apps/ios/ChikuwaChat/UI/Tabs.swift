@@ -14,6 +14,8 @@ enum MainRoute: Hashable {
     case thread(channelId: String, parentId: String)
     /// M122: a wiki page (docs/WIKI.md §9.2), over 「ドキュメント」 or wherever it was opened.
     case page(String)
+    /// M166 (docs/DRIVE.md §26): a drive's folder, over 「ドライブ」 (each folder opened goes on the stack: Back is up).
+    case drive(String)
 }
 
 /// The tab badges (the same rules on the three clients, IMPLEMENTATION_PLAN.md M34 (6)). Pure over the store's

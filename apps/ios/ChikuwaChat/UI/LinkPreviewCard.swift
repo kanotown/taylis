@@ -7,16 +7,20 @@ enum Links {
     private static let url = try! NSRegularExpression(pattern: "https?://[^\\s<>)\\]]+")
     private static let trailing = CharacterSet(charactersIn: ".,!?;:。、」』）")  // i18n-ignore
 
-    static func first(in body: String) -> String? {
+    static func first(in body: String) -> String? { all(in: body).first }
+
+    /// M166: every http(s) link outside code, in order (a body's drive links, DriveLink.ids).
+    static func all(in body: String) -> [String] {
         var text = body
         for regex in [fence, code] {
             text = regex.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: " ")
         }
         let ns = text as NSString
-        guard let match = url.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
-        var found = ns.substring(with: match.range)
-        while let last = found.unicodeScalars.last, trailing.contains(last) { found.removeLast() }
-        return found
+        return url.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { match in
+            var found = ns.substring(with: match.range)
+            while let last = found.unicodeScalars.last, trailing.contains(last) { found.removeLast() }
+            return found
+        }
     }
 }
 

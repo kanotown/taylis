@@ -683,6 +683,10 @@ struct MessageBodyView: View {
     /// M122 (docs/WIKI.md §3.3): what a wiki page link (`page:<id>`, `<server>/p/<id>`) shows — the page's icon and title
     /// now, 「表示できないページ」, or (nil) its own label while not known.
     var pageLabel: ((String) -> WikiHub.LinkState?)? = nil
+    /// M166 (docs/DRIVE.md §26): what a drive link (`<server>/d/<id>`) of this server reads as — the item's current name,
+    /// 「表示できないファイル」, or 「ドライブのファイル」 while not known — and an in-app link the row opens. nil (a
+    /// screen that does not open drive links): the plain link.
+    var driveLabel: ((String) -> DriveHub.LinkState?)? = nil
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -997,6 +1001,12 @@ struct MessageBodyView: View {
                 // M122: a wiki page opens in the app (its screen, or 「ページが見つかりません」).
                 var attributed = AttributedString(Self.pageLinkText(pageLabel?(id), label: label != url ? label : nil))
                 attributed.link = PageLink.internalLink(pageId: id)
+                return Text(attributed)
+            }
+            if let driveLabel, let id = DriveLink.itemId(base: internalBase, url: url) {
+                // M166: never the label the sender wrote (a reader who cannot open the item must not learn its name).
+                var attributed = AttributedString(DriveLink.inlineText(driveLabel(id)))
+                attributed.link = DriveLink.internalLink(itemId: id)
                 return Text(attributed)
             }
             if let id = FileLink.attachmentId(url) {

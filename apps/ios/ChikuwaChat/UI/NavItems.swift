@@ -22,7 +22,7 @@ enum NavItems {
         Entry(key: "reminders", label: tr("リマインダー"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "files", label: tr("ファイル"), visible: true, platforms: [.desktop, .mobile]),
         // M161 (docs/DRIVE.md §17.1); M166 (the phones' D7): the home tile too, after ファイル.
-        Entry(key: "drive", label: "ドライブ", visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "drive", label: tr("ドライブ"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "canvases", label: tr("キャンバス"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "docs", label: tr("ドキュメント"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "calendar", label: tr("カレンダー"), visible: true, platforms: [.desktop, .mobile]),
@@ -47,8 +47,9 @@ enum NavItems {
     /// 「操作」 (M143) only while the buttons are on and I may press one.
     static var implemented: [String] { implemented(attendance: false) }
 
-    static func implemented(attendance: Bool, actions: Bool = false) -> [String] {
-        HomeTile.Kind.allCases.filter { (attendance || $0 != .attendance) && (actions || $0 != .actions) }.map(\.navKey)
+    /// M166: 「ドライブ」 only while the server has the drive (GET /drive/locations answered).
+    static func implemented(attendance: Bool, actions: Bool = false, drive: Bool = false) -> [String] {
+        HomeTile.Kind.allCases.filter { (attendance || $0 != .attendance) && (actions || $0 != .actions) && (drive || $0 != .drive) }.map(\.navKey)
     }
 
     private static let byKey = Dictionary(uniqueKeysWithValues: catalogue.map { ($0.key, $0) })
@@ -108,7 +109,8 @@ struct HomeTilesSettingsView: View {
     /// M140: 「在室状況」 has its switch only while the board is on for me; M143: 「操作」 while I may press a button.
     private var implemented: [String] {
         NavItems.implemented(attendance: controller.store.attendance != nil && !controller.isGuest,
-                             actions: ActionRules.visible(controller.store.actions, role: (controller.store.me ?? controller.me)?.role))
+                             actions: ActionRules.visible(controller.store.actions, role: (controller.store.me ?? controller.me)?.role),
+                             drive: controller.drive?.available == true)
     }
 
     var body: some View {

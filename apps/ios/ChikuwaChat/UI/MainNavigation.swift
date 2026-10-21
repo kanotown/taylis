@@ -188,6 +188,18 @@ struct MainNavigation: Equatable {
         if layout == .split { split = path } else { paths[tab] = path }
     }
 
+    /// M166: a drive folder opened from a folder (a row, a step of its path): back to it when it is on the stack already
+    /// (the path's steps above are a way back, like a page's breadcrumbs), else pushed over the one in front.
+    mutating func openDriveFolder(_ folderId: String, on tab: MainTab) {
+        var path = layout == .split ? split : paths[tab] ?? []
+        if let index = path.lastIndex(of: .drive(folderId)) {
+            path = Array(path[...index])
+        } else {
+            path.append(.drive(folderId))
+        }
+        if layout == .split { split = path } else { paths[tab] = path }
+    }
+
     /// ⌘[ : one screen back (not past the detail column's first screen or a tab's root).
     mutating func back() {
         if layout == .split {
@@ -203,7 +215,7 @@ struct MainNavigation: Equatable {
             guard let index = path.firstIndex(where: {
                 switch $0 {
                 case .channel(let id), .thread(let id, _): gone(id)
-                case .list, .page: false
+                case .list, .page, .drive: false
                 }
             }) else { return path }
             return Array(path[..<index])

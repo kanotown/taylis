@@ -88,11 +88,14 @@ struct ImageViewer: View {
     @State private var files: [String: URL] = [:]
     /// 0…1 while a photo is dragged away: the header goes first, the background with the distance.
     @State private var dragged: CGFloat = 0
+    /// M166: where a photo's original comes from (a drive file's ticket, DriveFiles.viewFile); nil: the attachment's.
+    private let load: ((AttachmentOut) async -> URL?)?
 
-    init(attachments: [AttachmentOut], start: Int = 0, controller: AppController) {
+    init(attachments: [AttachmentOut], start: Int = 0, controller: AppController, load: ((AttachmentOut) async -> URL?)? = nil) {
         let start = min(max(start, 0), max(attachments.count - 1, 0))
         self.attachments = attachments
         self.start = start
+        self.load = load
         _controller = Bindable(controller)
         _index = State(initialValue: start)
     }
@@ -106,7 +109,10 @@ struct ImageViewer: View {
     var body: some View {
         ZStack(alignment: .top) {
             ImagePager(items: attachments, start: start, reduceMotion: reduceMotion,
-                       load: { await controller.downloadAttachment($0) },
+                       load: { attachment in
+                           if let load { return await load(attachment) }
+                           return await controller.downloadAttachment(attachment)
+                       },
                        onPage: { index = $0 },
                        onFile: { files[$0] = $1 },
                        onDrag: { progress in

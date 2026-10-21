@@ -83,7 +83,8 @@ struct ChannelLinkChips: View {
 enum ChannelTab: Hashable, CaseIterable {
     /// M45: the canvas second, as the desktop's phone width (CANVAS.md §4.1). M52: 「予定」 third (CALENDAR.md §7). M56:
     /// 「タスク」 after 「予定」 (TASKS.md §6).
-    case messages, canvas, events, tasks, pins, files
+    /// M166 (docs/DRIVE.md §13.3): 「ドライブ」 after 「タスク」, as on the desktop.
+    case messages, canvas, events, tasks, drive, pins, files
 
     var title: String {
         switch self {
@@ -91,16 +92,24 @@ enum ChannelTab: Hashable, CaseIterable {
         case .canvas: tr("キャンバス")
         case .events: tr("予定")
         case .tasks: tr("タスク")
+        case .drive: tr("ドライブ")
         case .pins: tr("ピン留め")
         case .files: tr("ファイル")
         }
     }
 
     /// The conversation's tabs: 「予定」 and 「タスク」 only in public and private channels (a DM has no shared calendar,
-    /// CALENDAR.md §9 5., and no board, TASKS.md §2).
-    static func tabs(for channel: ChannelState) -> [ChannelTab] {
-        allCases.filter { ($0 != .events || AppController.hasCalendar(channel)) && ($0 != .tasks || TaskRules.hasBoard(channel)) }
+    /// CALENDAR.md §9 5., and no board, TASKS.md §2); 「ドライブ」 likewise (a DM has no drive, DRIVE.md §3.1), and only
+    /// while the server has the drive (`drive`).
+    static func tabs(for channel: ChannelState, drive: Bool = false) -> [ChannelTab] {
+        allCases.filter {
+            ($0 != .events || AppController.hasCalendar(channel)) && ($0 != .tasks || TaskRules.hasBoard(channel))
+                && ($0 != .drive || (drive && hasDrive(channel)))
+        }
     }
+
+    /// Public and private channels have a drive; DMs and group DMs do not.
+    static func hasDrive(_ channel: ChannelState) -> Bool { channel.channel.type == "public" || channel.channel.type == "private" }
 
     /// The tab's name: 「予定 2」 while the channel has events today or tomorrow.
     func label(upcoming: Int) -> String { self == .events ? CalendarDates.eventsTabLabel(upcoming) : title }
@@ -122,7 +131,7 @@ struct ChannelTabsRow: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(ChannelTab.tabs(for: channel), id: \.self) { item in
+                    ForEach(ChannelTab.tabs(for: channel, drive: controller.drive?.available == true), id: \.self) { item in
                         Button { tab = item } label: {
                             Text(item.label(upcoming: upcoming))
                                 .font(.subheadline.weight(tab == item ? .semibold : .regular))
