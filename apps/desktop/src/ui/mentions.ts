@@ -132,12 +132,13 @@ interface ConversationSource {
   messages(channelId: string): readonly SpokenMessage[];
   replies(channelId: string, parentId: string): readonly SpokenMessage[];
   message(channelId: string, id: string): SpokenMessage | undefined;
+  /** A channel's members once read (sync/channelMembers.ts); absent in stand-ins. */
+  channelMembers?: { ids(channelId: string): readonly string[] | undefined };
 }
 
 /**
- * The composer's context (MOBILE_UI.md §23): the loaded messages' senders (in a thread, its own first) and, for a DM or
- * group DM, its participants. A channel's members are not held locally (GET /channels/{id}/members is read only by the
- * member dialogs), so a channel has no members tier here.
+ * The composer's context (MOBILE_UI.md §23): the loaded messages' senders (in a thread, its own first) and the members:
+ * a DM's or group DM's participants, a channel's as read for the @ list (requestChannelMembers; none until they come).
  */
 export function conversationContext(store: ConversationSource, channelId: string, parentId: string | null = null): MentionContext {
   const parent = parentId ? store.message(channelId, parentId) : undefined;
@@ -145,10 +146,11 @@ export function conversationContext(store: ConversationSource, channelId: string
   return { recent: recentSpeakers(store.messages(channelId), thread), ...documentContext(store, channelId) };
 }
 
-/** A canvas or page (MOBILE_UI.md §23): no conversation, only the members of the DM it belongs to (and me last). */
-export function documentContext(store: Pick<ConversationSource, "me" | "channels">, channelId: string | null | undefined): MentionContext {
+/** A canvas (MOBILE_UI.md §23): no conversation, only the members of its channel or DM (and me last). */
+export function documentContext(store: Pick<ConversationSource, "me" | "channels" | "channelMembers">, channelId: string | null | undefined): MentionContext {
   const channel = channelId ? store.channels.get(channelId) : undefined;
-  return { members: channel?.dm_user_ids ?? [], me: store.me?.id ?? null };
+  const members = channel?.dm_user_ids ?? (channelId ? store.channelMembers?.ids(channelId) : undefined) ?? [];
+  return { members, me: store.me?.id ?? null };
 }
 
 const collator = new Intl.Collator("ja");

@@ -24,6 +24,7 @@ import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
 import { continueStructure, type EditState, indentListLine, insertLink, linkFromPaste, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
+import { requestChannelMembers } from "../sync/channelMembers";
 import { aiBotIds, decodeMentions, documentContext, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, modKey } from "./primitives";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
@@ -349,6 +350,11 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   const slashCandidates = slashQ && dismissed !== slashListKey ? slashItems(slashQ.query) : [];
   const query = linkQ || slashQ ? null : mentionQuery(text, caret);
   const listKey = query ? `${query.start}:${query.query}` : linkQ ? linkListKey : slashListKey;
+  // MOBILE_UI.md §23: a channel canvas's members for the @ list, read when it first opens.
+  const mentionOpen = !!query && dismissed !== listKey && !doc;
+  useEffect(() => {
+    if (mentionOpen) requestChannelMembers(store, controller.api, saver.channelId);
+  }, [mentionOpen, saver.channelId, store.membersRevision(saver.channelId)]); // eslint-disable-line react-hooks/exhaustive-deps
   const candidates: MentionCandidate[] = query && dismissed !== listKey
     ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store), documentContext(store, saver.channelId)).filter((c) => c.kind !== "all") // `<!channel>` notifies nobody in a canvas
     : [];

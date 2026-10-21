@@ -6,6 +6,7 @@ import { statusKey } from "../ui/actions";
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
 import type { CanvasPendingState } from "./canvasSave";
+import { ChannelMembers } from "./channelMembers";
 import { restoredDmPins } from "./dmCloses";
 import { ownNotification } from "./notifications";
 import { isIndefiniteDnd } from "../ui/dnd";
@@ -357,6 +358,8 @@ export class Store {
     this.memberRevisions.set(channelId, this.membersRevision(channelId) + 1);
     this.emit();
   }
+  /** MOBILE_UI.md §23: channels' member ids for the @ list (sync/channelMembers.ts); in memory only. */
+  readonly channelMembers = new ChannelMembers(() => this.emit());
   /**
    * M11c: bumped per conversation when a message's pin may have moved where pinned() cannot see it: a held row pinned,
    * unpinned or deleted (a deleted row leaves the store, its pin with it), or an update / tombstone of a row not held
