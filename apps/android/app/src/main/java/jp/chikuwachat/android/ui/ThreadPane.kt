@@ -29,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +89,16 @@ object ThreadRows {
         if (focus >= 0) return OpenPosition.Center(focus + header)
         val first = lastReadSeq?.let { ReadGate.firstUnreadRow(replies, it, meId) } ?: return OpenPosition.Bottom
         return OpenPosition.Top(replies.indexOf(first) + header)
+    }
+
+    /**
+     * The list index of a message linked from the thread: its parent (the first row, when shown) or one of its replies;
+     * null when it is not among them (yet).
+     */
+    fun focusIndex(replies: List<MessageState>, header: Int, parentId: String, messageId: String): Int? {
+        if (messageId == parentId) return if (header == 2) 0 else null
+        val index = replies.indexOfFirst { it.id == messageId }
+        return if (index >= 0) index + header else null
     }
 
     /**
@@ -188,6 +199,8 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     val grouping = controller.groupPosts
     val compactKeys = remember(replies, firstUnreadId, grouping) { ThreadRows.compactKeys(replies, firstUnreadId, grouping) }
     val focusId = controller.messageFocus?.takeIf { it.parentId == parentId }?.messageId
+    // Changes with every reveal into this thread, also of the message already in focus (a link tapped again).
+    val focusRequest = controller.messageFocus?.takeIf { it.parentId == parentId }?.request
     // §10.2: the whole thread was fetched in this open (the engine drops it with the channel's rows) and my read
     // position is known; before that the held replies may be only the new ones that arrived live.
     val complete = shown.complete
@@ -266,6 +279,15 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             scrollTo(ThreadRows.openPosition(replies, header, focusId, null, me))
         }
     }
+    // A link in this thread to another of its messages (PermalinkJump.Thread), or a reveal into it while it is open: the
+    // thread is placed already, so the placement above does nothing more; it scrolls to the message here (the parent is
+    // the first row). The highlight is the row's (the focus). User report 2026-10-21.
+    LaunchedEffect(parentId, focusRequest) {
+        if (focusRequest == null || !positioned) return@LaunchedEffect
+        val id = focusId ?: return@LaunchedEffect
+        val index = ThreadRows.focusIndex(replies, header, parentId, id) ?: return@LaunchedEffect
+        listState.centerOn(index)
+    }
     suspend fun load() {
         try {
             if (controller.engine?.loadReplies(channelId, parentId) == true) {
@@ -320,28 +342,30 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // The channel's 8 dp above and below (ChannelPane): the newest reply sits as far above the input as a channel's
             // newest message (2026-10-02: the thread had none).
-            LazyColumn(
-                Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState,
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                if (parent != null) {
-                    item(key = "parent") { ThreadMessage(parent, store, controller, version, isRoot = true) }
-                    item(key = "divider") {
-                        Text(
-                            if (replies.isEmpty()) stringResource(R.string.common_no_replies_yet) else pluralStringResource(R.plurals.common_replies_count, replies.size, replies.size),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
-                        HorizontalDivider()
+            CompositionLocalProvider(LocalMessageLinkContext provides MessageLinkContext.Thread(channelId, parentId)) {
+                LazyColumn(
+                    Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState,
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    if (parent != null) {
+                        item(key = "parent") { ThreadMessage(parent, store, controller, version, isRoot = true) }
+                        item(key = "divider") {
+                            Text(
+                                if (replies.isEmpty()) stringResource(R.string.common_no_replies_yet) else pluralStringResource(R.plurals.common_replies_count, replies.size, replies.size),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            )
+                            HorizontalDivider()
+                        }
+                    } else {
+                        item { Text(stringResource(R.string.thread_pane_message_not_found), modifier = Modifier.padding(16.dp)) }
                     }
-                } else {
-                    item { Text(stringResource(R.string.thread_pane_message_not_found), modifier = Modifier.padding(16.dp)) }
-                }
-                items(replies, key = { it.rowKey }) { reply ->
-                    Column {
-                        if (reply.id == firstUnreadId) NewRepliesDivider()
-                        ThreadMessage(reply, store, controller, version, compact = reply.rowKey in compactKeys)
+                    items(replies, key = { it.rowKey }) { reply ->
+                        Column {
+                            if (reply.id == firstUnreadId) NewRepliesDivider()
+                            ThreadMessage(reply, store, controller, version, compact = reply.rowKey in compactKeys)
+                        }
                     }
                 }
             }

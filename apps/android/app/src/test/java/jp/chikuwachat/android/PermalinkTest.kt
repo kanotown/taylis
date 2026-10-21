@@ -1,6 +1,8 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.ui.MessageLinkContext
 import jp.chikuwachat.android.ui.Permalink
+import jp.chikuwachat.android.ui.PermalinkJump
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -33,5 +35,23 @@ class PermalinkTest {
         assertNull(Permalink.eventId("https://chat.example.com", "https://chat.example.com/m/$id"))
         assertNull(Permalink.messageId("https://chat.example.com", "https://chat.example.com/e/$id"))
         assertNull(Permalink.canvasId("https://chat.example.com", "https://chat.example.com/e/$id"))
+    }
+
+    /** User report 2026-10-21: a link to another message of the open thread scrolls the thread there. */
+    @Test fun aLinkInsideTheOpenThreadStaysInIt() {
+        val thread = MessageLinkContext.Thread("c1", "p1")
+        assertEquals(PermalinkJump.Thread("p1"), PermalinkJump.of("c1", "r9", "p1", thread)) // an older or newer reply
+        assertEquals(PermalinkJump.Thread("p1"), PermalinkJump.of("c1", "p1", null, thread)) // its parent
+        assertEquals(PermalinkJump.Open, PermalinkJump.of("c1", "r2", "p2", thread)) // another thread
+        assertEquals(PermalinkJump.Open, PermalinkJump.of("c1", "m1", null, thread)) // a top-level message
+        assertEquals(PermalinkJump.Open, PermalinkJump.of("c2", "r9", "p1", thread)) // another conversation
+    }
+
+    @Test fun aLinkInsideTheTimelineStaysInIt() {
+        val timeline = MessageLinkContext.Timeline("c1")
+        assertEquals(PermalinkJump.Timeline, PermalinkJump.of("c1", "m1", null, timeline))
+        assertEquals(PermalinkJump.Open, PermalinkJump.of("c1", "r1", "p1", timeline)) // a reply opens its thread
+        assertEquals(PermalinkJump.Open, PermalinkJump.of("c2", "m1", null, timeline))
+        assertEquals(PermalinkJump.Open, PermalinkJump.of("c1", "m1", null, null)) // a canvas, the search
     }
 }

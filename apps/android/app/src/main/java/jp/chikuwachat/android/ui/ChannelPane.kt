@@ -68,6 +68,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -124,7 +125,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     val store = controller.store
     val channel = store.channel(channelId) ?: return
     val me = store.me?.id
-    val focus = controller.messageFocus?.takeIf { it.channelId == channelId }
+    // Not a focus shown in this conversation's open thread only (a link between its replies): the timeline stays as it is.
+    val focus = controller.messageFocus?.takeIf { it.channelId == channelId && !it.threadOnly }
     // The same list instance while the rows are unchanged (M28c): every version bump (a typing frame, a presence
     // change) otherwise built the timeline again and restarted the read effect below.
     val messages = rememberUnchanged(version, channelId, focus) {
@@ -143,19 +145,19 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     var olderAttempt by remember(channelId) { mutableIntStateOf(0) }
     // The position, the divider, the anchor and the seen seq are saveable (M28c): across an activity recreation (a
     // rotation) the list keeps its scroll position, so the open positioning must not run again (the divider jumped).
-    var positioned by rememberSaveable(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
+    var positioned by rememberSaveable(channelId, focus?.request, reloadGen) { mutableStateOf(false) }
     // §10.1 rule 4: a drag before the view is positioned (it may wait for a catch-up) leaves the list where it is.
-    var userScrolled by rememberSaveable(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
+    var userScrolled by rememberSaveable(channelId, focus?.request, reloadGen) { mutableStateOf(false) }
     // The 「新着メッセージ」 divider stays where it was when the channel was opened (「最初の未読へ」 moves it). Leaving the
     // search view, however it is left, captures it again like a fresh open (§10.1 rule 4).
     // Left by a post of mine (AppController.postedFromHere): no divider to land on, the newest row (where the post is).
-    var capturedMark by rememberSaveable(channelId, reloadGen, focus?.messageId) {
+    var capturedMark by rememberSaveable(channelId, reloadGen, focus?.request) {
         mutableStateOf(if (focus == null && controller.focusLeftByPost == channelId) null else ReadGate.openMark(shown))
     }
-    LaunchedEffect(channelId, focus?.messageId) { if (focus == null && controller.focusLeftByPost == channelId) controller.focusLeftByPost = null }
+    LaunchedEffect(channelId, focus?.request) { if (focus == null && controller.focusLeftByPost == channelId) controller.focusLeftByPost = null }
     val heldUnread = controller.engine?.heldUnread(channelId)
     // §10.1 rule 2: visible rows are read only after the first unread row was on screen with every unread row held.
-    var anchor by rememberSaveable(channelId, focus?.messageId, reloadGen, stateSaver = ReadAnchorSaver) { mutableStateOf(ReadAnchor.opened(shown, heldUnread)) }
+    var anchor by rememberSaveable(channelId, focus?.request, reloadGen, stateSaver = ReadAnchorSaver) { mutableStateOf(ReadAnchor.opened(shown, heldUnread)) }
     var jumping by remember(channelId) { mutableStateOf(false) }
     val shownChannelId by rememberUpdatedState(channelId)
     // Drawn only where the loaded range reaches (§10.1 rule 3): above the oldest loaded row it would be a lie.
@@ -189,7 +191,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     SideEffect { followed.value = items }
     // §10.1 rule 7: the divider's position when positioned there, else the newest seq seen at the bottom; later rows
     // from others are 「新着」. Keyed like the divider: the search view moves it to its own (old) rows.
-    var seenSeq by rememberSaveable(channelId, reloadGen, focus?.messageId) { mutableIntStateOf(shown.lastReadSeq) }
+    var seenSeq by rememberSaveable(channelId, reloadGen, focus?.request) { mutableIntStateOf(shown.lastReadSeq) }
     val maxSeq = messages.maxOfOrNull { it.seq ?: 0 } ?: 0
     // M29: rows that reach the bottom while a tab covers the timeline were not seen there.
     LaunchedEffect(atBottom, maxSeq, positioned, anchor.landing, onScreen) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned && !anchor.landing, atBottom && onScreen, maxSeq) }
@@ -205,10 +207,10 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
         if (anchor.landing) anchor = anchor.landed()
         listState.scrollToItem(0)
     }
-    LaunchedEffect(listState, channelId, focus?.messageId, reloadGen) {
+    LaunchedEffect(listState, channelId, focus?.request, reloadGen) {
         listState.interactionSource.interactions.collect { if (it is DragInteraction.Start && !positioned) userScrolled = true }
     }
-    LaunchedEffect(channelId, focus?.messageId, items.isEmpty(), reloadGen) {
+    LaunchedEffect(channelId, focus?.request, items.isEmpty(), reloadGen) {
         if (items.isEmpty() || positioned) return@LaunchedEffect
         // §10.1 rule 4: opened while a catch-up is on its way (it may bring the first unread row), the position waits
         // for it, at most 3 s; offline nothing comes. A drag meanwhile keeps the list where the reader put it.
@@ -239,7 +241,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     }
     // Keyed on the read state too: a read.updated, a hold, a catch-up or a §7.3 reload must re-check the range.
     LaunchedEffect(
-        channelId, focus?.messageId, positioned, controller.engineStatus, controller.appForeground, items,
+        channelId, focus?.request, positioned, controller.engineStatus, controller.appForeground, items,
         shown.lastReadSeq, shown.unreadCount, shown.oldestLoadedSeq, shown.syncedSeq, shown.lastSeq, heldUnread, onScreen,
     ) {
         if (!positioned || focus != null) return@LaunchedEffect
@@ -324,69 +326,71 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // Laid out from the bottom: the newest message stays above the input when the keyboard comes up. A tap on the
             // list closes the keyboard (KeyboardBehavior.kt).
-            LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), contentPadding = PaddingValues(vertical = 8.dp)) {
-                items(items, key = { it.key }) { item ->
-                    when (item) {
-                        is TimelineItem.DateSeparator -> DaySeparator(item.label)
-                        is TimelineItem.UnreadSeparator -> UnreadSeparator()
-                        is TimelineItem.Message -> {
-                            val message = item.message
-                            MessageRow(
-                                message, store, controller, version, compact = item.compact,
-                                canEdit = !message.pending && message.senderId == store.me?.id,
-                                canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
-                                onRetry = { message.clientMsgId?.let { key -> scope.launch { controller.engine?.retryFailed(key) } } },
-                                onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
-                                onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
-                                onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
-                                onDelete = { scope.launch { controller.deleteMessage(message.id) } },
-                                onOpenThread = { onOpenThread(message.parentId ?: message.id) },
-                                // Not offered where it would read unread rows this device never loaded (§10.1).
-                                // Through the controller (M28c): offline it says so instead of silently doing nothing.
-                                onMarkUnread = message.seq?.takeIf { !message.pending && ReadGate.markUnreadOffered(shown, it) }?.let { seq ->
-                                    { controller.markUnread(channelId, seq)?.let { capturedMark = it } }
-                                },
-                            )
-                        }
-                    }
-                }
-                if (focus == null && channel.hasOlder && channel.syncedSeq != null) {
-                    item(key = "older") {
-                        LaunchedEffect(messages.size, controller.engineStatus, olderAttempt) {
-                            if (controller.engineStatus != EngineStatus.ONLINE || loadingOlder || olderFailed) return@LaunchedEffect
-                            loadingOlder = true
-                            try { controller.engine?.loadOlder(channelId); olderFailed = false }
-                            catch (e: Exception) { controller.report(e); olderFailed = true }
-                            finally { loadingOlder = false }
-                        }
-                        if (olderFailed) LoadFailedRow(L10n.str(R.string.common_couldnt_load_earlier_messages)) { olderFailed = false; olderAttempt += 1 }
-                        else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
-                    }
-                } else if (messages.isEmpty()) {
-                    item(key = "empty") {
-                        // M28c: a channel never loaded here shows its first page on its way (or that it is offline), not
-                        // 「まだメッセージはありません」.
-                        when (Timeline.firstPage(channel.syncedSeq, controller.engineStatus)) {
-                            Timeline.FirstPage.LOADING -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(24.dp), strokeWidth = 2.dp) }
-                            Timeline.FirstPage.OFFLINE -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(L10n.str(R.string.channel_pane_cant_load_while_offline), style = MaterialTheme.typography.titleMedium)
-                                Text(L10n.str(R.string.common_it_will_load_when_the_connection), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CompositionLocalProvider(LocalMessageLinkContext provides MessageLinkContext.Timeline(channelId)) {
+                LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    items(items, key = { it.key }) { item ->
+                        when (item) {
+                            is TimelineItem.DateSeparator -> DaySeparator(item.label)
+                            is TimelineItem.UnreadSeparator -> UnreadSeparator()
+                            is TimelineItem.Message -> {
+                                val message = item.message
+                                MessageRow(
+                                    message, store, controller, version, compact = item.compact,
+                                    canEdit = !message.pending && message.senderId == store.me?.id,
+                                    canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
+                                    onRetry = { message.clientMsgId?.let { key -> scope.launch { controller.engine?.retryFailed(key) } } },
+                                    onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
+                                    onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
+                                    onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
+                                    onDelete = { scope.launch { controller.deleteMessage(message.id) } },
+                                    onOpenThread = { onOpenThread(message.parentId ?: message.id) },
+                                    // Not offered where it would read unread rows this device never loaded (§10.1).
+                                    // Through the controller (M28c): offline it says so instead of silently doing nothing.
+                                    onMarkUnread = message.seq?.takeIf { !message.pending && ReadGate.markUnreadOffered(shown, it) }?.let { seq ->
+                                        { controller.markUnread(channelId, seq)?.let { capturedMark = it } }
+                                    },
+                                )
                             }
-                            Timeline.FirstPage.EMPTY -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                // My own DM (a DM with only me) says what it is for, under my name.
-                                if (MainTabs.isSelfNotes(channel, store.me?.id)) {
-                                    Text(myDisplayName(store), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                                    Text(MainTabs.SELF_NOTES_INTRO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                                } else {
-                                    Text(L10n.str(R.string.common_no_messages_yet), style = MaterialTheme.typography.titleMedium)
-                                    Text(L10n.str(R.string.channel_pane_send_the_first_message), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (focus == null && channel.hasOlder && channel.syncedSeq != null) {
+                        item(key = "older") {
+                            LaunchedEffect(messages.size, controller.engineStatus, olderAttempt) {
+                                if (controller.engineStatus != EngineStatus.ONLINE || loadingOlder || olderFailed) return@LaunchedEffect
+                                loadingOlder = true
+                                try { controller.engine?.loadOlder(channelId); olderFailed = false }
+                                catch (e: Exception) { controller.report(e); olderFailed = true }
+                                finally { loadingOlder = false }
+                            }
+                            if (olderFailed) LoadFailedRow(L10n.str(R.string.common_couldnt_load_earlier_messages)) { olderFailed = false; olderAttempt += 1 }
+                            else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
+                        }
+                    } else if (messages.isEmpty()) {
+                        item(key = "empty") {
+                            // M28c: a channel never loaded here shows its first page on its way (or that it is offline), not
+                            // 「まだメッセージはありません」.
+                            when (Timeline.firstPage(channel.syncedSeq, controller.engineStatus)) {
+                                Timeline.FirstPage.LOADING -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(24.dp), strokeWidth = 2.dp) }
+                                Timeline.FirstPage.OFFLINE -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(L10n.str(R.string.channel_pane_cant_load_while_offline), style = MaterialTheme.typography.titleMedium)
+                                    Text(L10n.str(R.string.common_it_will_load_when_the_connection), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Timeline.FirstPage.EMPTY -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    // My own DM (a DM with only me) says what it is for, under my name.
+                                    if (MainTabs.isSelfNotes(channel, store.me?.id)) {
+                                        Text(myDisplayName(store), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                                        Text(MainTabs.SELF_NOTES_INTRO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                    } else {
+                                        Text(L10n.str(R.string.common_no_messages_yet), style = MaterialTheme.typography.titleMedium)
+                                        Text(L10n.str(R.string.channel_pane_send_the_first_message), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }
-                    }
-                } else if (focus == null) {
-                    item(key = "start") {
-                        controller.store.channel(channelId)?.let { ChannelIntro(it, controller.store, version) }
+                    } else if (focus == null) {
+                        item(key = "start") {
+                            controller.store.channel(channelId)?.let { ChannelIntro(it, controller.store, version) }
+                        }
                     }
                 }
             }
@@ -608,6 +612,8 @@ fun MessageRow(
         },
     )
     val highlighted = controller.messageFocus?.messageId == message.id
+    // Where the row is shown: a link to a message on the same screen scrolls there (PermalinkJump).
+    val linkContext = LocalMessageLinkContext.current
     Box(Modifier.fillMaxWidth().background(if (highlighted) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (newDot != null) {
@@ -695,7 +701,7 @@ fun MessageRow(
                 if (call != null) CallCard(call, store.users, onJoin = { controller.openCall(call.url) })
                 else if (message.body.isNotEmpty() && !pollHidesBody(message.body, message.poll)) {
                     MessageBody(
-                        message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
+                        message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id, linkContext) } },
                         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
                         onOpenEvent = { id -> controller.scope.launch { controller.openEventLink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,

@@ -366,6 +366,17 @@ class ReadGateTest {
         assertEquals(OpenPosition.Bottom, Timeline.openPosition(focusItems, rows, "missing", null, bob))
     }
 
+    /** User report 2026-10-21: a link inside a thread scrolls to the reply's list index, or the parent's (the first row). */
+    @Test fun aLinkInsideTheThreadFindsItsRow() {
+        val replies = (501..530).map { row(it, parentId = "id-500") }
+        val header = ThreadRows.header(hasParent = true)
+        assertEquals(0, ThreadRows.focusIndex(replies, header, "id-500", "id-500"))
+        assertEquals(header + 2, ThreadRows.focusIndex(replies, header, "id-500", "id-503"))
+        assertEquals(header + 29, ThreadRows.focusIndex(replies, header, "id-500", "id-530"))
+        assertNull(ThreadRows.focusIndex(replies, header, "id-500", "id-999")) // not held (yet)
+        assertNull(ThreadRows.focusIndex(replies, ThreadRows.header(hasParent = false), "id-500", "id-500")) // no parent row
+    }
+
     @Test fun v24_v26_v30_threadRowsResolveByIndexAndOpenAtTheFirstUnreadReply() { // §10.3 regression (thread)
         val replies = (501..530).map { row(it, parentId = "id-500") }
         val header = ThreadRows.header(hasParent = true)
