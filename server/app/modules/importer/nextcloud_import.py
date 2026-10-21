@@ -624,6 +624,11 @@ class NextcloudImport:
         rule, rest = found
         target = rule.target
         assert target is not None
+        # What the mapping covers in Nextcloud: after the move, a dry run that finds all of it
+        # unchanged is the comparison of counts and sizes (infra/README.md).
+        if entry.kind == "file":
+            self.report.counts["nextcloud: files in the mapping"] += 1
+            self.report.bytes["nextcloud: files in the mapping"] += entry.size
         place = self.places.get(target.place)
         if place is None:  # a missing target (reported)
             return
