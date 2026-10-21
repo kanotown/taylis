@@ -1,5 +1,5 @@
-import { Download, ExternalLink, FileText, Film, Loader2, Play, X } from "lucide-react";
-import { type FocusEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Download, ExternalLink, FileText, Film, HardDriveDownload, Loader2, Play, X } from "lucide-react";
+import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -12,6 +12,9 @@ import { t } from "../i18n";
 import { FileName } from "./FileName";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
 import { isTauri } from "../platform/env";
+import { driveFileOf } from "../drive/listing";
+// Loaded when asked for: the viewers are in the share page's bundle too (share.html), which has no drive dialogs.
+const SaveToDriveDialog = lazy(() => import("./DriveConversation").then((module) => ({ default: module.SaveToDriveDialog })));
 
 export function formatSize(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
@@ -265,8 +268,21 @@ function ViewerShell({ attachment, description, shape, controller, onClose, fill
  * it; docs/PREVIEWS.md §9). The browser has no way to hand a file to another app, so there it is download only.
  */
 export function ViewerFileButtons({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
+  // M165 (docs/DRIVE.md §13.2): 「ドライブに保存」 for a conversation's file (not a drive file's own, nor one being sent).
+  const [saving, setSaving] = useState(false);
+  const savable = attachment.status === "attached" && !driveFileOf(attachment);
   return (
     <>
+      {savable && (
+        <button type="button" className={VIEWER_BUTTON} title={t("driveSave.title")} aria-label={t("driveSave.title")} onClick={() => setSaving(true)}>
+          <HardDriveDownload size={18} />
+        </button>
+      )}
+      {saving && (
+        <Suspense fallback={null}>
+          <SaveToDriveDialog controller={controller} attachments={[attachment]} channel={null} onClose={() => setSaving(false)} />
+        </Suspense>
+      )}
       {isTauri() && (
         <button type="button" className={VIEWER_BUTTON} title={t("attach.openInApp")} aria-label={t("attach.openInApp")} onClick={() => void controller.downloadAttachment(attachment, { open: true })}>
           <ExternalLink size={18} />

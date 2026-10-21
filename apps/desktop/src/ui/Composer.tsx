@@ -1,5 +1,5 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
-import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
+import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, HardDrive, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut, WorkflowOut } from "../api/types";
@@ -8,6 +8,9 @@ import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
+import { DriveLinkWarning, DrivePickerDialog } from "./DriveConversation";
+import { driveLink } from "./permalink";
+import { withoutDriveLink } from "../drive/conversation";
 import { holdUntilFrame, keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, linkFromPaste, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
@@ -160,6 +163,8 @@ export function Composer({
 
   // The poll form, and the scheduling poll's form with what it starts with (M53: `/日程 …` fills it in).
   const [pollForm, setPollForm] = useState<{ question?: string; options?: string[]; multiple?: boolean } | null>(null);
+  // M165 (docs/DRIVE.md §13.1): 「ドライブから」.
+  const [drivePicker, setDrivePicker] = useState(false);
   const [scheduleForm, setScheduleForm] = useState<ScheduleFormInitial | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const send = () => {
@@ -359,6 +364,43 @@ export function Composer({
     const rich = editor();
     if (rich) return rich.insertText(entry.glyph);
     edit((s) => ({ text: s.text.slice(0, s.start) + entry.glyph + s.text.slice(s.end), start: s.start + entry.glyph.length, end: s.start + entry.glyph.length }));
+  };
+
+  /** M165: a drive item's link `<server>/d/<id>` at the caret (a space before it when it would touch a word, one after). */
+  const insertDriveLink = (itemId: string) => {
+    setDrivePicker(false);
+    const base = controller.api?.baseUrl;
+    if (!base) return;
+    const url = driveLink(base, itemId);
+    const rich = editor();
+    if (rich) return rich.insertText(`${url} `);
+    edit((s) => {
+      const before = s.start > 0 && !/\s/.test(s.text[s.start - 1]!) ? " " : "";
+      const piece = `${before}${url} `;
+      return { text: s.text.slice(0, s.start) + piece + s.text.slice(s.end), start: s.start + piece.length, end: s.start + piece.length };
+    });
+  };
+
+  /** M165: a drive file's copy as an attachment (the picker's 「コピーを添付」, the draft warning's 「コピーとして送る」). */
+  const addDriveCopy = (attachment: AttachmentOut): boolean => {
+    if (store.draft(channel.id, parentId).attachments.length + uploading >= ATTACHMENT_MAX_COUNT) {
+      controller.setError(t("composer.tooLong"));
+      return false;
+    }
+    setPending((items) => [...items, attachment]);
+    return true;
+  };
+
+  /** The draft warning's 「コピーとして送る」: the copy attached, the link taken out of the draft. */
+  const sendDriveCopy = async (itemId: string) => {
+    const api = controller.api;
+    if (!api) return;
+    try {
+      if (!addDriveCopy(await api.attachDriveCopy(itemId))) return;
+      putText(withoutDriveLink(store.draft(channel.id, parentId).text, api.baseUrl, itemId));
+    } catch (error) {
+      controller.setError(error);
+    }
   };
 
   const syncCaret = (element: HTMLTextAreaElement) => setCaret(element.selectionStart ?? element.value.length);
@@ -645,6 +687,7 @@ export function Composer({
   return (
     <div className="composer relative px-4 pb-1 pt-1">
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
+      {drivePicker && <DrivePickerDialog controller={controller} channel={channel} onClose={() => setDrivePicker(false)} onLink={(item) => insertDriveLink(item.id)} onCopy={(attachment) => void addDriveCopy(attachment)} />}
       {pollForm && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} initial={pollForm} onClose={() => setPollForm(null)} />}
       {workflowRun && <WorkflowRunDialog key={workflowRun.id} controller={controller} workflow={workflowRun} here={channel.id} onClose={() => setWorkflowRun(null)} />}
       {workflowMenu && <ChannelWorkflowsDialog controller={controller} channel={channel} onClose={() => setWorkflowMenu(false)} />}
@@ -785,6 +828,7 @@ export function Composer({
             <Loader2 size={12} className="animate-spin" /> {t("composer.uploading")}
           </div>
         )}
+        <DriveLinkWarning controller={controller} channel={channel} text={text} onSendCopy={sendDriveCopy} />
         <div className={cn((pending.length > 0 || uploading > 0) && "px-2 pt-2")}>
           <PendingAttachments items={pending} uploading={uploading} controller={controller} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
         </div>
@@ -879,6 +923,9 @@ export function Composer({
                   </MenuItem>
                   <MenuItem disabled={uploading > 0} onSelect={() => openPicker(fileInput.current)}>
                     <Paperclip size={14} className="text-muted" /> {t("composer.file")} <Kbd className="ml-auto">{modKey()}+U</Kbd>
+                  </MenuItem>
+                  <MenuItem onSelect={() => { afterMenu.current = () => setDrivePicker(true); }}>
+                    <HardDrive size={14} className="text-muted" /> {t("composer.fromDrive")}
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setPollForm({}); }}>
                     <Vote size={14} className="text-muted" /> {t("composer.poll")}

@@ -3156,6 +3156,27 @@ export interface paths {
         patch: operations["rename_item_api_v1_drive_items__item_id__patch"];
         trace?: never;
     };
+    "/api/v1/drive/items/{item_id}/attach-copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Copy
+         * @description The file's current version as a pending attachment of mine (copied inside the store), to
+         *     send with a message like an upload. 413 attachment_too_large past ATTACHMENT_MAX_BYTES.
+         */
+        post: operations["attach_copy_api_v1_drive_items__item_id__attach_copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/items/{item_id}/content": {
         parameters: {
             query?: never;
@@ -3219,6 +3240,27 @@ export interface paths {
          *     share_link_expiry_too_long / share_link_password_required.
          */
         post: operations["create_link_api_v1_drive_items__item_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/reach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Item Reach
+         * @description How many of the conversation's members can and cannot read the item (the composer's
+         *     warning before a `/d/<id>` link is sent).
+         */
+        get: operations["item_reach_api_v1_drive_items__item_id__reach_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3435,6 +3477,27 @@ export interface paths {
         get: operations["list_trash_api_v1_drive_locations__location_id__trash_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/save-attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Attachment
+         * @description An attachment I can read copied into a folder I can write, as a new file. 404
+         *     attachment_not_found for an attachment I cannot read (or a pending one, or a drive file's).
+         */
+        post: operations["save_attachment_api_v1_drive_save_attachment_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9929,6 +9992,8 @@ export interface components {
         /** DriveItemDetailOut */
         DriveItemDetailOut: {
             item: components["schemas"]["DriveItemOut"];
+            /** Location Kind */
+            location_kind?: ("workspace" | "channel" | "user") | null;
             /** Path */
             path: components["schemas"]["DriveCrumb"][];
         };
@@ -10161,6 +10226,18 @@ export interface components {
             /** Quota Bytes */
             quota_bytes: number | null;
         };
+        /**
+         * DriveReachOut
+         * @description Of a conversation's members (people and guests who can sign in, not bots), how many can
+         *     read a drive item and how many cannot (§13.1: the composer's warning before a link is
+         *     sent).
+         */
+        DriveReachOut: {
+            /** Readable */
+            readable: number;
+            /** Unreadable */
+            unreadable: number;
+        };
         /** DriveRestoreIn */
         DriveRestoreIn: {
             /**
@@ -10174,6 +10251,32 @@ export interface components {
         DriveResultsOut: {
             /** Results */
             results: components["schemas"]["DriveItemResult"][];
+        };
+        /**
+         * DriveSaveAttachmentIn
+         * @description A conversation's attachment copied into a drive folder (§13.2).
+         */
+        DriveSaveAttachmentIn: {
+            /**
+             * Attachment Id
+             * Format: uuid
+             */
+            attachment_id: string;
+            /** Client Op Id */
+            client_op_id?: string | null;
+            /**
+             * Folder Id
+             * Format: uuid
+             */
+            folder_id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * On Conflict
+             * @default rename
+             * @enum {string}
+             */
+            on_conflict: "fail" | "rename";
         };
         /** DriveSearchHitOut */
         DriveSearchHitOut: {
@@ -21989,6 +22092,37 @@ export interface operations {
             };
         };
     };
+    attach_copy_api_v1_drive_items__item_id__attach_copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_api_v1_drive_items__item_id__content_get: {
         parameters: {
             query?: {
@@ -22109,6 +22243,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveShareLinkCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    item_reach_api_v1_drive_items__item_id__reach_get: {
+        parameters: {
+            query: {
+                channel_id: string;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveReachOut"];
                 };
             };
             /** @description Validation Error */
@@ -22489,6 +22656,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveTrashOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_attachment_api_v1_drive_save_attachment_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveSaveAttachmentIn"];
+            };
+        };
+        responses: {
+            /** @description This client_op_id's file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
                 };
             };
             /** @description Validation Error */

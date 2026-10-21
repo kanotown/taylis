@@ -30,6 +30,7 @@ import { WorkflowLabel } from "./WorkflowViews";
 import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
+import { SaveToDriveDialog, savableAttachments } from "./DriveConversation";
 import { ReportDialog } from "./ModerationDialogs";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { isImeKey, LazyRichEditor, type RichEditorApi } from "./richEditorApi";
@@ -44,7 +45,7 @@ import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, QuickReactionGlyph, quickReactions } from "./MessageActionsSheet";
 import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
-import { parsePermalink } from "./permalink";
+import { parseDriveLink, parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, jumpToLatestShown, ListAnchor, stillAtBottom, unseenBelow as countUnseen } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
@@ -915,6 +916,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // M165 (docs/DRIVE.md §13.2): 「ドライブに保存」.
+  const [saveToDriveOpen, setSaveToDriveOpen] = useState(false);
+  const savable = message.pending || message.failed || message.deleted ? [] : savableAttachments(message.attachments ?? []);
   const [reportOpen, setReportOpen] = useState(false); // M104
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [chipPicker, setChipPicker] = useState(false);
@@ -965,12 +969,13 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const size = thread ? 30 : 36;
   const rawLink = message.body ? firstLink(message.body) : null;
   // Our own permalinks get no card, nor a call's room (M117: its card has 「参加する」).
-  const link = (rawLink && api && parsePermalink(api.baseUrl, rawLink)) || message.call ? null : rawLink;
+  // M165: nor a drive link (its own card, not the landing page's preview).
+  const link = (rawLink && api && (parsePermalink(api.baseUrl, rawLink) || parseDriveLink(api.baseUrl, rawLink))) || message.call ? null : rawLink;
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   const threadId = message.parent_id ?? message.id;
   // The same actions as the long-press sheet (messageActions.ts): the bar shows a few, ⋯ the rest.
   const editable = mine && feedChannel === undefined;
-  const actions = messageActions({ message, mine, isAdmin, saved, thread: !!onOpenThread, editable, showReactions: true, canMakeTask, canRequestReview, unreadOffered });
+  const actions = messageActions({ message, mine, isAdmin, saved, thread: !!onOpenThread, editable, showReactions: true, canMakeTask, canRequestReview, unreadOffered, canSaveToDrive: savable.length > 0 });
   const offered = new Set(actions.map((action) => action.key));
   const afterClose = (work: () => void) => () => { afterMenu.current = work; };
   const menuRun: Record<MessageActionKey, () => void> = {
@@ -985,6 +990,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
     unread: () => engine?.markUnread(message.channel_id, message.seq!),
     copyLink: () => void controller.copyPermalink(message.id),
     share: afterClose(() => setShareOpen(true)),
+    saveToDrive: afterClose(() => setSaveToDriveOpen(true)),
     pin: () => void controller.togglePin(message),
     report: afterClose(() => setReportOpen(true)),
     delete: afterClose(() => setConfirmDelete(true)),
@@ -1310,6 +1316,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         </div>
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
+      {saveToDriveOpen && <SaveToDriveDialog controller={controller} attachments={savable} channel={store.getChannel(message.channel_id) ?? null} onClose={() => setSaveToDriveOpen(false)} />}
       {reportOpen && <ReportDialog controller={controller} message={message} onClose={() => setReportOpen(false)} />}
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
       {reactionsOpen && <ReactionsDialog controller={controller} message={message} onClose={() => setReactionsOpen(false)} />}
@@ -1338,6 +1345,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onClose={() => setSheet(null)}
           onOpenThread={onOpenThread}
           onShare={() => setShareOpen(true)}
+          onSaveToDrive={savable.length > 0 ? () => setSaveToDriveOpen(true) : undefined}
           onReport={() => setReportOpen(true)}
           onShowReactions={() => setReactionsOpen(true)}
           onMakeTask={canMakeTask ? () => setTaskOpen(true) : undefined}

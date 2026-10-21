@@ -1,4 +1,4 @@
-import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, Forward, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
+import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, Forward, HardDriveDownload, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
 
 import type { MessageState } from "../sync/types";
 import { t } from "../i18n";
@@ -8,7 +8,7 @@ import { t } from "../i18n";
  * (MessageActionsSheet.tsx), so both offer the same things under the same conditions. Each surface runs them itself.
  */
 export type MessageActionKey =
-  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "pin" | "report" | "delete";
+  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "saveToDrive" | "pin" | "report" | "delete";
 
 export interface MessageActionContext {
   message: MessageState;
@@ -25,6 +25,8 @@ export interface MessageActionContext {
   canMakeTask: boolean;
   canRequestReview: boolean;
   unreadOffered: boolean;
+  /** M165 (docs/DRIVE.md §13.2): 「ドライブに保存」, while the message has stored attachments (not offered when left out). */
+  canSaveToDrive?: boolean;
 }
 
 export interface MessageAction {
@@ -49,6 +51,7 @@ export function messageActions(ctx: MessageActionContext): MessageAction[] {
     ctx.unreadOffered && { key: "unread", label: t("actions.markUnread"), icon: Mail },
     { key: "copyLink", label: t("canvas.copyLink"), icon: Link },
     { key: "share", label: t("actions.share"), icon: Forward },
+    !!ctx.canSaveToDrive && { key: "saveToDrive", label: t("driveSave.title"), icon: HardDriveDownload },
     { key: "pin", label: message.pinned_at ? t("actions.unpin") : t("actions.pin"), icon: message.pinned_at ? PinOff : Pin },
     // M104 (docs/MODERATION.md §3): someone else's message, once it is stored.
     !ctx.mine && !message.pending && !message.deleted && message.seq !== null && { key: "report", label: t("report.send"), icon: Flag },
@@ -62,7 +65,7 @@ export const HOVER_BAR_ACTIONS: readonly MessageActionKey[] = ["thread", "save",
 
 /** The hover bar's 「その他」 menu, in groups (a separator between them); 「削除」 last. */
 export const HOVER_MENU_GROUPS: readonly (readonly MessageActionKey[])[] = [
-  ["copyLink", "share", "remind"],
+  ["copyLink", "share", "saveToDrive", "remind"],
   ["task", "review"],
   ["reactions", "pin", "unread"],
   ["report", "delete"],

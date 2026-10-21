@@ -51,7 +51,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit, thread = false }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onSaveToDrive, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit, thread = false }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -59,6 +59,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   onClose: () => void;
   onOpenThread?: (id: string) => void;
   onShare: () => void;
+  /** M165: 「ドライブに保存」 (offered only when given). */
+  onSaveToDrive?: () => void;
   /** M104 「報告する」: the report dialog. */
   onReport?: () => void;
   /** M27 「リアクションした人」: offered while the message has reactions (a phone has no hover names). */
@@ -100,7 +102,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   // The same list as the hover bar and its 「その他」 menu (messageActions.ts), in the phone apps' order.
   const actions = messageActions({
     message, mine, isAdmin, saved, thread: !!onOpenThread, editable: canEdit ?? mine, showReactions: !!onShowReactions,
-    canMakeTask: !!onMakeTask, canRequestReview: !!onRequestReview, unreadOffered,
+    canMakeTask: !!onMakeTask, canRequestReview: !!onRequestReview, unreadOffered, canSaveToDrive: !!onSaveToDrive,
   });
   const run: Record<MessageActionKey, () => void> = {
     reactions: then(() => onShowReactions?.()),
@@ -114,6 +116,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
     unread: then(() => controller.engine?.markUnread(message.channel_id, message.seq!)),
     copyLink: then(() => void controller.copyPermalink(message.id)),
     share: then(onShare),
+    saveToDrive: then(() => onSaveToDrive?.()),
     pin: then(() => void controller.togglePin(message)),
     report: then(() => onReport?.()),
     delete: () => { if (settled()) setView("delete"); },

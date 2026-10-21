@@ -7,7 +7,8 @@ import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
 import { CanvasLinkCard } from "./CanvasLinkCard";
-import { attachmentRefId, pageRefId, parseCanvasLink, parseEventLink, parsePageLink, parsePermalink } from "./permalink";
+import { attachmentRefId, pageRefId, parseCanvasLink, parseDriveLink, parseEventLink, parsePageLink, parsePermalink } from "./permalink";
+import { DriveLinkCard } from "./DriveLinkCard";
 import { FileLinkChip, PageLinkChip } from "./PageLinkChip";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
@@ -289,6 +290,9 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
         // M44: a canvas link on this server is a card (title, conversation, progress) that opens the canvas.
         const canvasId = internalBase && controller ? parseCanvasLink(internalBase, token.url) : null;
         if (canvasId && controller) return <CanvasLinkCard key={i} controller={controller} canvasId={canvasId} url={token.url} />;
+        // M165 (docs/DRIVE.md §13.1): a drive file or folder on this server is a card (「表示できないファイル」 for whoever cannot read it).
+        const driveId = internalBase && controller ? parseDriveLink(internalBase, token.url) : null;
+        if (driveId && controller) return <DriveLinkCard key={i} controller={controller} itemId={driveId} url={token.url} />;
         // CALENDAR.md §11: an event link on this server (the 「予定」 bot's line) opens the event.
         const eventId = internalBase && controller ? parseEventLink(internalBase, token.url) : null;
         if (eventId && controller) {

@@ -15,7 +15,7 @@
  *   who may (§3.2).
  * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
  */
-import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderPlus, FolderUp, History, Info, LayoutGrid, Link2, List, Loader2, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderPlus, FolderUp, History, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -30,6 +30,8 @@ import { dropEntries, emptyFolders, type PickedTree, pickFilesNative, pickFolder
 import { isFileDrag } from "../platform/fileDrops";
 import { isTauri } from "../platform/env";
 import { DeleteForeverDialog, MoveDialog, NewFolderDialog, RenameDialog } from "./DriveDialogs";
+import { SendToConversationDialog } from "./DriveConversation";
+import { driveLink } from "./permalink";
 import { DriveViewer } from "./DriveViewer";
 import { VersionsDialog } from "./DriveVersions";
 import { SharedMark, ShareLinksDialog } from "./DriveShareDialog";
@@ -62,7 +64,7 @@ export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind"
 }
 
 /** A thumbnail fetched with the bearer token (an object URL, revoked when gone); null while none. */
-function useThumbnail(controller: AppController, path: string | null): string | null {
+export function useThumbnail(controller: AppController, path: string | null): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     const api = controller.api;
@@ -131,7 +133,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<DriveSearchHitOut[] | null>(null);
   const [details, setDetails] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | { kind: "send"; item: DriveItemOut } | null>(null);
   const [viewing, setViewing] = useState<DriveItemOut | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const filesInput = useRef<HTMLInputElement>(null);
@@ -487,6 +489,13 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         {!many && mode === "folder" && item.parent_id && (location.can_share || item.link_count > 0) && (
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "share", item })}><Link2 size={14} /> {t("drive.share.open")}</ContextMenu.Item>
         )}
+        {!many && mode === "folder" && item.parent_id && (
+          // M165 (docs/DRIVE.md §13.1): the item's link `<server>/d/<id>` for a conversation (a card there for whoever can read it).
+          <>
+            <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "send", item })}><MessageSquareShare size={14} /> {t("driveLink.send")}</ContextMenu.Item>
+            <ContextMenu.Item className={MENU_ITEM} onSelect={() => { const base = controller.api?.baseUrl; if (base) void controller.copyToClipboard(driveLink(base, item.id), t("driveLink.copied")); }}><LinkIcon size={14} /> {t("driveLink.copy")}</ContextMenu.Item>
+          </>
+        )}
         {hits && !many && item.parent_id && (
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => { setQuery(""); onFolder(item.parent_id!); }}><FolderInput size={14} /> {t("drive.showInFolder")}</ContextMenu.Item>
         )}
@@ -795,6 +804,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         setSelected(new Set());
         void load({ keep: true });
       }} />}
+      {dialog?.kind === "send" && <SendToConversationDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} />}
       {dialog?.kind === "share" && (
         <ShareLinksDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} onChanged={() => void load({ keep: true })} />
       )}

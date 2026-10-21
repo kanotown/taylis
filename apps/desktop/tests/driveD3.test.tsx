@@ -88,7 +88,7 @@ describe("copy and paste", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /ZIP でダウンロード/ }));
     expect(controller.downloadDriveZip).toHaveBeenCalledWith(["f1"]);
     fireEvent.contextMenu(document.querySelector('[data-drive-item="f1"]')!);
-    fireEvent.click(await screen.findByRole("menuitem", { name: /コピー/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^コピー$/ }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getAllByText("「ゼミ資料」をコピー").length).toBeGreaterThan(0);
     expect(within(dialog).getByRole("button", { name: "ここにコピー" })).toBeTruthy();

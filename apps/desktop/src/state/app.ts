@@ -22,6 +22,7 @@ import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
+import type { DriveItemDetailOut, DriveReachOut } from "../api/types";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate, PresenceUpdate } from "../api/types";
 import { canOpenDownloaded, openDownloaded, revealDownloaded, saveDownload } from "../platform/download";
 import { browserDownload, downloadRoute, saveStreamToFile, ticketUrl } from "../drive/download";
@@ -59,6 +60,13 @@ export type CanvasLinkState =
   | { state: "ok"; canvas: CanvasMeta }
   | { state: "forbidden" }
   | { state: "missing" }
+  | { state: "error" };
+
+/** M165 (docs/DRIVE.md §13.1): what a `/d/<id>` link stands for (its card): the item and its path, or nothing to show
+ *  (cannot be read, in the trash, gone: one state, so a reader learns nothing of it), or a failure to ask. */
+export type DriveLinkState =
+  | { state: "ok"; detail: DriveItemDetailOut }
+  | { state: "unreadable" }
   | { state: "error" };
 
 /** The browser build before workspaces (M16c) remembered only the user name. */
@@ -246,7 +254,9 @@ export class AppController {
   private entryPage: string | null = null;
   /** CALENDAR.md §11: an `/e/<id>` event link opened in the browser. */
   private entryEvent: string | null = null;
-  /** The browser opened this page at a link (/m/, /c/, /p/, /e/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
+  /** M165: a `/d/<id>` drive link opened in the browser. */
+  private entryDrive: string | null = null;
+  /** The browser opened this page at a link (/m/, /c/, /p/, /e/, /d/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
   openedAtLink = false;
 
   private takeEntryPath(): void {
@@ -257,6 +267,7 @@ export class AppController {
     else if (entry.kind === "canvas") this.entryCanvas = entry.id;
     else if (entry.kind === "page") this.entryPage = entry.id;
     else if (entry.kind === "event") this.entryEvent = entry.id;
+    else if (entry.kind === "drive") this.entryDrive = entry.id;
     else this.entryMessage = entry.id;
     history.replaceState(null, "", "/");
   }
@@ -271,6 +282,9 @@ export class AppController {
     const eventId = this.entryEvent;
     this.entryEvent = null;
     if (eventId) this.requestOpenEvent(eventId);
+    const driveId = this.entryDrive;
+    this.entryDrive = null;
+    if (driveId) await this.openDriveLink(driveId);
     const id = this.entryMessage;
     if (!id) return;
     this.entryMessage = null;
@@ -2809,6 +2823,75 @@ export class AppController {
     }
     this.setError(link.state === "forbidden" ? t("app.canvasForbidden") : link.state === "missing" ? t("app.canvasMissing") : t("app.canvasOpenFailed"));
     return false;
+  }
+
+  // --- drive links in conversations (M165, docs/DRIVE.md §13) -------------------------------------------------------
+
+  /** Where 「ドライブ」 should open next (a `/d/<id>` card or link): the main screen takes it once. */
+  openDriveRequest: { locationId: string; folderId: string } | null = null;
+
+  requestShowInDrive(target: { locationId: string; folderId: string }): void {
+    this.openDriveRequest = target;
+    this.emit();
+  }
+
+  private readonly driveLinks = new Map<string, { at: number; pending: Promise<DriveLinkState> }>();
+
+  /**
+   * What a `/d/<id>` link stands for, for its card: GET /drive/items/{id} (the item now: its current name and size,
+   * wherever it moved). 404 (not readable by me, deleted) and an item in the trash are the same 「表示できないファイル」.
+   * Asked once a minute per item at most; a failure to ask is asked again next time.
+   */
+  driveLink(itemId: string, fresh = false): Promise<DriveLinkState> {
+    const api = this.api;
+    if (!api) return Promise.resolve({ state: "error" });
+    const held = this.driveLinks.get(itemId);
+    if (held && !fresh && Date.now() - held.at < 60_000) return held.pending;
+    const pending = api.driveItem(itemId).then(
+      (detail): DriveLinkState => (detail.item.trashed_at ? { state: "unreadable" } : { state: "ok", detail }),
+      (error: unknown): DriveLinkState => {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return { state: "unreadable" };
+        this.driveLinks.delete(itemId);
+        return { state: "error" };
+      },
+    );
+    this.driveLinks.set(itemId, { at: Date.now(), pending });
+    return pending;
+  }
+
+  /** A `/d/<id>` link opened (the card's 「ドライブで表示」, a browser URL): its folder in 「ドライブ」 (a folder: itself). */
+  async openDriveLink(itemId: string): Promise<boolean> {
+    const link = await this.driveLink(itemId, true);
+    if (link.state !== "ok") {
+      this.setError(link.state === "unreadable" ? t("driveCard.unavailableToast") : t("driveCard.failed"));
+      return false;
+    }
+    const item = link.detail.item;
+    this.requestShowInDrive({ locationId: item.location_id, folderId: item.kind === "folder" ? item.id : (item.parent_id ?? item.id) });
+    return true;
+  }
+
+  private readonly driveReaches = new Map<string, { at: number; pending: Promise<DriveReachOut | null> }>();
+
+  /**
+   * §13.1: how many of a conversation's members can and cannot read a linked item (the composer's warning). Null when it
+   * cannot be told: an item I cannot read myself (someone else's link), a failure. Asked once a minute per pair at most.
+   */
+  driveReach(itemId: string, channelId: string): Promise<DriveReachOut | null> {
+    const api = this.api;
+    if (!api) return Promise.resolve(null);
+    const key = `${itemId}|${channelId}`;
+    const held = this.driveReaches.get(key);
+    if (held && Date.now() - held.at < 60_000) return held.pending;
+    const pending = api.driveReach(itemId, channelId).then(
+      (reach) => reach,
+      () => {
+        this.driveReaches.delete(key);
+        return null;
+      },
+    );
+    this.driveReaches.set(key, { at: Date.now(), pending });
+    return pending;
   }
 
   /** The canvases of all my conversations (the sidebar's 「キャンバス」, ⌘K), most recently updated first. */
