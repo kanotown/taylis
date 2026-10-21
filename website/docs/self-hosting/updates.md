@@ -57,7 +57,7 @@ flowchart TD
 「更新して再起動」で更新できます。設定の「このアプリについて」からも確かめられます。
 配布物は [GitHub のリリース（kanotown/taylis）](https://github.com/kanotown/taylis/releases/latest) にあります。
 
-ブラウザ版は、サーバを更新すると新しい版になります。スマートフォンのアプリは、ストアから更新します（準備中）。
+ブラウザ版は、サーバを更新すると新しい版になります。スマートフォンのアプリは、ストアから更新します（Android は Google Play。iOS は準備中）。
 
 ## サーバとアプリの版
 

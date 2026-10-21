@@ -95,7 +95,7 @@ public sign-up in the apps.
 | --- | --- |
 | Windows / macOS | Download the installer from [the GitHub releases](https://github.com/kanotown/taylis/releases/latest). New versions can be installed from within the app ([Install the apps](start/install.md)). |
 | iOS / iPadOS | Coming soon (App Store) |
-| Android | Coming soon (Google Play) |
+| Android | Install it from [Google Play](https://play.google.com/store/apps/details?id=jp.chikuwachat.android). |
 | Browser | Nothing to install: open your server's URL (for example `https://chat.example.com/`). |
 
 To run your own server, see the [self-hosting quick start](self-hosting/quickstart.md). The source code is on
