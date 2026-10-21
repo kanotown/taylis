@@ -14,6 +14,9 @@
 | `livekit.yaml` | 本番の LiveKit の設定 (秘密もサーバごとの値も入れない。鍵は `secrets/livekit.env`、ほかは `.env` から) |
 | `livekit.dev.yaml` | 開発の LiveKit の設定 (`calls` プロファイル、`--dev` の `devkey` / `secret`、TURN なし) |
 | `nginx-livekit.conf.example` | 共用の VPS の nginx で `livekit.<domain>` のシグナリングを 127.0.0.1:7880 へ渡すサイトの例 (`/twirp/` は断る) |
+| `backup.sh` / `restore.sh` / `restore-rehearsal.sh` | 毎日のバックアップ (変わらないオブジェクトはハードリンクで SHA-256 も引き継ぐ、M164)・復元・同じサーバの中での復元のリハーサル (下の「デプロイ手順」) |
+| `offsite-backup.sh` / `offsite.conf.example` | サーバの外へのバックアップ (restic、M164)。送り先は `offsite.conf` (git に入れない) に書く (下の「サーバの外へのバックアップ」) |
+| `offsite-rehearsal.sh` | 別の機械で、サーバの外のリポジトリから使い捨ての compose に戻して件数を比べるリハーサル (M164) |
 
 ## 使い方
 
@@ -234,12 +237,16 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    30 3 * * * CHIKUWA_PROD=1 /srv/chikuwachat/infra/backup.sh /srv/backups >> /var/log/chikuwachat-backup.log 2>&1
    ```
 
-   `/srv/backups/<UTC 時刻>/{db.dump,objects/,objects.sha256,SHA256SUMS}` ができる。世代は 14 個保持
-   (デプロイ直前のバックアップも 1 世代に数える)。`objects/` は増分で、前回から変わっていないファイルは前回の
-   バックアップへのハードリンクになる。添付が 7 GB あっても 14 世代で 7 GB と各日の増えた分で済む
-   (以前の `objects.tgz` 形式は毎回全体を写していた。`restore.sh` はどちらの形式も戻せる)。バックアップの
-   置き場所は 1 つのファイルシステムの中に置く。別のマシンや外部ストレージへは `rsync -aH` (ハードリンクを保つ) /
-   `restic` で転送する。`.env` と `secrets/` は別経路で保管する (バックアップには含めない)。
+   `/srv/backups/<UTC 時刻>/{db.dump,counts.txt,objects/,objects.sha256,objects.list,SHA256SUMS}` ができる。世代は 14 個保持
+   (デプロイ直前のバックアップも 1 世代に数える)。`objects/` は増分で、前回から変わっていないファイル (大きさ・更新日時・inode が
+   前回の `objects.list` と同じもの) は前回のバックアップへのハードリンクになり、SHA-256 も前回の `objects.sha256` から引き継ぐ
+   (M164、docs/DRIVE.md §16.2)。写して SHA-256 を取るのは新しい・変わったファイルだけなので、ドライブが 100 GB あっても変わらない
+   夜はオブジェクトの一覧とハードリンクだけで済み、14 世代で 100 GB と各日の増えた分になる。`BACKUP_VERIFY=1` を付けると全部を
+   読み直して引き継いだ SHA-256 と比べる (週 1 回など)。`counts.txt` は件数 (人・メッセージ・添付・ドライブ) で、別の機械での
+   復元と比べるもの (以前の `objects.tgz` 形式は毎回全体を写していた。`restore.sh` はどちらの形式も戻せる)。バックアップの
+   置き場所は 1 つのファイルシステムの中に置く。**サーバの外へは `offsite-backup.sh` (restic) で毎晩送る** (下の「サーバの外への
+   バックアップ」。ドライブを使うなら必須)。`.env` と `secrets/` は別経路で保管する (`OFFSITE_INCLUDE_SECRETS=1` なら restic の
+   暗号化の中に入れられる)。
 
 5. **復元** (`infra/restore.sh <backup dir>`: DB → バケット → app 起動 → `verify-attachments`)
 
@@ -252,7 +259,9 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
 
 6. **復元リハーサル** (`infra/restore-rehearsal.sh`): 稼働中のスタックからバックアップを取り、別の compose
    プロジェクト (`chikuwa-rehearsal`、ポート非公開) に復元して users / messages / attachments の件数を比較し、
-   片付ける。四半期に一度は実行する。2026-09-26 に開発スタックで成功を確認。
+   片付ける。四半期に一度は実行する。2026-09-26 に開発スタックで成功を確認。同じディスクにもう 1 組を作るので、
+   ドライブが大きくなったら、サーバの外のリポジトリから別の機械で戻す `offsite-rehearsal.sh` (下の「サーバの外へのバックアップ」)
+   に替える。
 
 7. **更新**
 
@@ -272,6 +281,9 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    | `verify-attachments` | 添付のバイト列欠損を報告 |
    | `probe-videos [--limit 1000]` | M79 より前 (または ffmpeg の無いサーバ) の動画の縦横・長さ・ポスターを埋める。1 本ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more videos are left」と出たらもう一度流す。メッセージに付いた動画はそのメッセージを差分で端末に届け直す |
    | `generate-previews [--limit 200] [--retry-failed]` | M108 より前 (またはプレビューが切れていた間) の PDF と Office の文書のプレビューを作る (docs/PREVIEWS.md §6)。1 件ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more files are left」と出たらもう一度流す。`--retry-failed` は失敗したものもやり直す。一時的に失敗したものはサーバが後で再試行する。メッセージに付いたファイルはそのメッセージを差分で端末に届け直す |
+   | `generate-previews --drive [--limit 500] [--chat-wait-seconds 600]` | ドライブのファイル (今の版) のうち、プレビューの無い PDF と Office (Nextcloud から移したもの) のプレビューを作る (M164)。各ファイルの前に、チャットの添付がプレビューを待っていれば先に通す |
+   | `import-nextcloud …` | Nextcloud のファイルをドライブへ移す (M164、下の「Nextcloud からの移行」)。`--list-shares`・`--dry-run`・`--limit-bytes` |
+   | `drive-usage --verify / --rebuild` | ドライブの場所ごとの使用量と件数を版と項目から数え直して比べる (M162) |
    | `anonymize-user --username <name>` | 退会: 氏名・メール・資格情報・端末を消し、履歴は「退会したユーザー」名義で残す |
    | `export-channel --channel <name|id> --out <file.jsonl>` | チャンネルの履歴を JSONL で書き出す (添付はメタデータのみ) |
 
@@ -906,6 +918,180 @@ rm -rf /srv/chikuwachat/import
 ことが多い）・カレンダーのビューを足したか・列と型）、`written another way`（引用にしたコールアウトなど）、`links that do not
 lead …`（取り込んでいないページへのリンク：Notion の URL のまま、またはリンクの文字だけになる）、`files not brought over`
 （空・`ATTACHMENT_MAX_BYTES` を超える・画素数が多すぎる画像）。
+
+## サーバの外へのバックアップ (restic、M164)
+
+`backup.sh` の世代（`/srv/backups`）は同じサーバの中なので、ディスクの故障・サーバの喪失には効かない。ドライブ（研究室のファイルの
+正本）を置く以上、**サーバの外の 1 組を毎晩取る**（docs/DRIVE.md §16）。`infra/offsite-backup.sh` が、一番新しい完全なバックアップ
+（`db.dump`・`objects/`・チェックサム・`counts.txt`）を [restic](https://restic.net/)（BSD-2-Clause）のリポジトリへ送る：暗号化・重複排除・増分。
+restic は公式イメージ（`restic/restic:0.17.3`）を Docker で動かすので、サーバに新しいものは入れない。
+
+**送り先**（どれか 1 つ。リポジトリにも本書にも実際の送り先は書かない。`infra/offsite.conf` に書く）：
+
+| 種類 | `RESTIC_REPOSITORY` | 要るもの |
+| --- | --- | --- |
+| 別の機械（大学の NAS・別のサーバ）に SSH | `sftp:USER@HOST:/path` | その機械のアカウント（この用途だけの）、サーバの root の鍵（`OFFSITE_SSH_KEY`）、相手のホスト鍵（`OFFSITE_SSH_KNOWN_HOSTS`） |
+| サーバにマウントしたディスク・NAS の共有（NFS / SMB） | `/mnt/offsite/taylis-restic`（絶対パス） | マウント（`/etc/fstab`）。同じディスクの別のフォルダでは意味が無い |
+
+**初回の準備**（サーバで root）：
+
+```sh
+cd /srv/chikuwachat/infra
+cp offsite.conf.example offsite.conf && chmod 600 offsite.conf      # 送り先・保持・鍵の場所を書く
+install -d -m 700 secrets && openssl rand -base64 32 > secrets/restic-password && chmod 600 secrets/restic-password
+cat secrets/restic-password    # パスワード管理ソフトなど「サーバの外」に控える。無いとバックアップは読めない
+# SFTP のとき: 鍵を作り、公開鍵を送り先のアカウントの authorized_keys に入れ、ホスト鍵を控えて指紋を確かめる
+ssh-keygen -t ed25519 -f /root/.ssh/taylis_offsite -N ''
+ssh-keyscan -p 22 <送り先のホスト> >> /root/.ssh/known_hosts
+./offsite-backup.sh init
+CHIKUWA_PROD=1 ./backup.sh /srv/backups && ./offsite-backup.sh backup     # 1 回目は全部を送る (100 GB なら回線次第で数時間)
+./offsite-backup.sh snapshots
+```
+
+`offsite-backup.sh` はリリースのたびに infra/ に置かれる任意のファイル。M164 より前に入れた `chikuwa-deploy`（`deploy-ssh.sh`）の
+サーバでは受け取らないので、`sudo install -m 755 infra/deploy-ssh.sh /usr/local/bin/chikuwa-deploy` で入れ直すか、一度だけ手で置く。
+
+**毎晩と毎週**（root の crontab。`backup.sh` の後に）：
+
+```sh
+30 3 * * * CHIKUWA_PROD=1 /srv/chikuwachat/infra/backup.sh /srv/backups >> /var/log/chikuwachat-backup.log 2>&1
+30 4 * * * /srv/chikuwachat/infra/offsite-backup.sh backup >> /var/log/chikuwachat-offsite.log 2>&1
+30 5 * * 0 /srv/chikuwachat/infra/offsite-backup.sh maintain >> /var/log/chikuwachat-offsite.log 2>&1
+0 2 * * 0 BACKUP_VERIFY=1 CHIKUWA_PROD=1 /srv/chikuwachat/infra/backup.sh /srv/backups >> /var/log/chikuwachat-backup.log 2>&1
+```
+
+- 送るもの：データベースのダンプ、オブジェクト（添付とドライブのすべての版・サムネイル・プレビュー）、`objects.sha256`・`objects.list`・
+  `SHA256SUMS`・`counts.txt`。`OFFSITE_INCLUDE_SECRETS=1` なら `.env` と `secrets/` も（restic の暗号化の中に入る。そのときパスワードは
+  リポジトリと同じ所に置かない）。送る前に `SHA256SUMS` を確かめ、合わなければ送らない。
+- 増分：毎晩同じパス（`/backup`）につないで送るので、restic は前のスナップショットを親にし、ハードリンクで変わらないオブジェクトを読み直さない。
+  手元の試しでは 1.3 GB のうち変わったのはダンプなど 5 ファイル・588 KiB だけだった（docs/DRIVE.md §24.3）。
+- 保持：14 日・8 週・12 か月（`OFFSITE_KEEP_*`）。`backup` は `forget` だけ、`maintain`（週 1 回）が `prune` とデータの 5% の読み戻し
+  （`restic check --read-data-subset`）。全部を読み戻すなら `./offsite-backup.sh check all`（年に一度など、時間がかかる）。
+- `BACKUP_VERIFY=1` の `backup.sh`（週 1 回）は、サーバの中のバックアップの全オブジェクトを読み直し、引き継いだ SHA-256 と違うものがあれば失敗する。
+
+**別の機械での復元のリハーサル**（Nextcloud を止める前に必ず 1 回。その後は半年に 1 回）：サーバとは別の機械（手元の Mac・研究室の PC）で、
+サーバの外のリポジトリから戻せることを確かめる。サーバの中の `restore-rehearsal.sh` と違い、サーバのディスクを使わない。
+
+```sh
+git clone <repo> taylis && cd taylis/infra
+cp .env.example .env               # パスワードは何でもよい (使い捨ての compose)。WORKSPACE_NAME は "…" で囲む
+cp offsite.conf.example offsite.conf   # サーバと同じ RESTIC_REPOSITORY。パスワードは控えから、この機械のファイルに
+#   SFTP なら、この機械の鍵も送り先に入れる (OFFSITE_SSH_KEY / OFFSITE_SSH_KNOWN_HOSTS をこの機械のものに)
+#   ディスクなら、そのディスクをこの機械につなぐ
+./offsite-backup.sh snapshots
+REHEARSAL_DIR=/Volumes/大きなディスク/rehearsal ./offsite-rehearsal.sh latest
+```
+
+`offsite-rehearsal.sh` は、スナップショットを戻し（すべてのチェックサムを確かめる）、使い捨ての compose（`taylis-offsite-rehearsal`、ポートを出さない）に
+`restore.sh` で入れ、`verify-attachments`（欠けたオブジェクト 0）・`drive-usage --verify`（ずれ 0）を通し、件数（人・メッセージ・添付・ドライブの項目と
+ファイルと大きさ）をバックアップの `counts.txt` と比べて `REHEARSAL OK` を出し、片付ける（`KEEP=1` で残す）。ディスクはバックアップ 1 つ分の
+2 倍（戻した写しと compose のボリューム）要る。かかった時間も出るので控えておく。
+
+**時間の目安**：手元の Mac（SSD）で 1.3 GB の restic の戻しが 6 秒、`restore.sh` が 13 秒。100 GB なら、読み書きの速さが 100〜200 MB/s の
+ディスクで戻しと `restore.sh` がそれぞれ 10〜20 分、SFTP の送り先から戻すなら回線の速さ（1 Gbps で 15 分ほど、100 Mbps で 2.5 時間ほど）で決まる。
+サーバの中の `backup.sh` は、変わらない夜ならオブジェクトの一覧とハードリンクだけ（20,020 ファイルで 1 秒。前の版は 16 秒）。
+
+## Nextcloud からの移行 (M164)
+
+研究室の Nextcloud のファイルを「ドライブ」へ移す（docs/DRIVE.md §15、§24）。`import-nextcloud` は Nextcloud を読むだけで、Nextcloud には
+何も書かない。何度でも実行でき、2 回目からは変わったものだけを移す（変わったファイルは新しい版になる）ので、Nextcloud を使い続けながら
+リハーサル・本番・切り替えの日の差分、と分けて流せる。
+
+**利用者に用意してもらうもの**：
+
+1. Nextcloud の URL と、移すファイルを持っている（または共有されている）Nextcloud のアカウント。そのアカウントで「設定 → セキュリティ →
+   アプリパスワード」を作ってもらう（ログインのパスワードではない。移行が終われば消せる）。**または** Nextcloud のサーバの
+   `data/<user>/files` の写し（Nextcloud のサーバに入れる人が `rsync -a` で取る。共有されたフォルダは入らない）。
+2. サーバの外のバックアップ先（前の節）：SFTP の機械のホスト・アカウント・パス、またはマウントするディスクの場所。
+3. 対応表を一緒に決める時間（`--list-shares` と `--dry-run` の表を見ながら）。
+
+**0. 先に Taylis で作るもの**：移す先のチャンネル（教員だけ・M2 だけなどは非公開チャンネル）とメンバー、マイドライブに移す人のアカウント。
+無いチャンネル・人を対応表に書くと、実行は何も書かずに止まる。容量の上限（`DRIVE_TOTAL_QUOTA_BYTES`）はディスクの空きを見て決めておく。
+
+**1. 共有の一覧と対応表**（サーバで root。compose の組み合わせは「Notion からの移行」と同じく、動いている版に合わせる）：
+
+```sh
+cd /srv/chikuwachat/infra
+install -d -m 700 /srv/chikuwachat/import
+read -rs P && printf '%s\n' "$P" > /srv/chikuwachat/import/nextcloud-app-password && unset P   # アプリパスワードを貼って Enter
+chmod 600 /srv/chikuwachat/import/nextcloud-app-password
+export CHIKUWA_SERVER_IMAGE=$(docker inspect chikuwachat-app-1 --format '{{.Config.Image}}')
+export CHIKUWA_WEB_IMAGE=$(docker inspect chikuwachat-caddy-1 --format '{{.Config.Image}}')
+NC=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy
+    run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app
+    python -m app.cli import-nextcloud --webdav https://<nextcloud>/remote.php/dav/files/<user>/ --webdav-user <user>
+    --webdav-password-file /import/nextcloud-app-password)
+"${NC[@]}" --list-shares | tee /srv/chikuwachat/import/nextcloud-shares.txt
+```
+
+（パスワードはコマンドの引数に書かない：シェルの履歴と `ps` に残る。`import-nextcloud` はファイルか環境変数からだけ読み、ログに出さない。）
+表の「by me」は共有したもの、「with me」は共有されたもの（WebDAV の木に出るので、要るなら対応表に書く）。公開リンクは引き継げない：
+要るものだけ、移した後に Taylis で作り直して相手に新しい URL を送る。表を見ながら `/srv/chikuwachat/import/nextcloud-map.toml` を書く
+（形は docs/DRIVE.md §15.2、`infra/` の外に置く）：
+
+```toml
+[[map]]
+source = "/研究室共有"
+target = "workspace:/"
+
+[[map]]
+source = "/研究室共有/教員"
+target = "channel:faculty:/"
+
+[[skip]]
+source = "/研究室共有/古いバックアップ"
+```
+
+**2. 試し読み**（何も書かない）：
+
+```sh
+"${NC[@]}" --map /import/nextcloud-map.toml --actor admin --user <nextcloud の人>=<taylis の人> --dry-run \
+  | tee /srv/chikuwachat/import/nextcloud-dry-run.txt
+```
+
+表の見方：`counts`（`files new`・`files new version`・`files unchanged`・`folders new`・`folders linked`（Taylis にある同じ名前のフォルダに入れる））、
+`sizes`、`per location`（場所ごとの今の使用量・足す量・上限。超えるものは `OVER QUOTA`）、`names that change`（大文字小文字だけ違う名前・
+使えない名前 →「名前 (1)」）、`not in the mapping`（対応の無いフォルダとファイル、大きさつき：**黙って捨てない**。要るなら対応表に足す）、
+`skipped`（`[[skip]]`・大きすぎる・Taylis で消したもの）、`Nextcloud owners without --user`。**この表を利用者と見て、対応表を決める。**
+
+**3. リハーサル（写しで）**：本番のサーバに入れる前に、使い捨ての compose（別の機械、またはサーバでも `-p` を変えてポートを出さないもの）に
+同じコマンドを `--dry-run` 無しで流し、Desktop / Web で中身・名前・更新日時を確かめ、かかった時間を測る（100 GB の目安を出すため）。
+Nextcloud のデータディレクトリの写しで試すなら `--webdav …` の代わりに `--data-dir /import/nextcloud-data/<user>/files`
+（`/srv/chikuwachat/import` を Taylis のディスクとは別のディスクに置く。同じディスクだと Nextcloud・写し・ドライブで 3 倍になる、§15.4）。
+
+**4. 本番の移行**（夜に、Nextcloud は使い続けたまま）：
+
+```sh
+"${NC[@]}" --map /import/nextcloud-map.toml --actor admin --user <nextcloud の人>=<taylis の人> \
+  | tee /srv/chikuwachat/import/nextcloud-run-1.txt
+# 大きいときは --limit-bytes 200G を付けて毎晩分けて流す (止まったら同じコマンドで続きから。Ctrl-C でも続きから)
+```
+
+- 1 ファイルごとに確定するので、止まっても（Ctrl-C・接続の切れ・サーバの再起動）同じコマンドで続きから。途中のマルチパートは Ctrl-C なら
+  取りやめ、強制終了なら drive の周期ジョブが 24 時間後に片付ける。読めなかったファイルは `failed` に出て、次の実行でもう一度試す。
+- プレビューはまだ作らない（チャットのプレビューを待たせないため）。移した後の夜に少しずつ作る：
+  `… app python -m app.cli generate-previews --drive --limit 500`（「more files are left」ならまた。チャットの添付が待っていれば先に通す）。
+- 画像のサムネイルと動画のポスターは、サーバの media loop が 1 件ずつ作る（数千枚なら数時間）。
+
+**5. 切り替えの日**：
+
+1. 利用者に「この時刻から Nextcloud は読むだけ」と知らせ、Nextcloud の共有を読むだけにする（または保守モード：`occ maintenance:mode --on` は
+   WebDAV も止めるので、差分を流した後に）。
+2. 差分を流す：4. と同じコマンド（変わったファイルは版、増えたものは新しく、Nextcloud で消したものは Taylis に残して表に出す）。
+3. **件数と大きさを比べる**：もう一度 `--dry-run` を流し、`files new` 0・`files new version` 0・`failed` 無しで、`files unchanged` が
+   `nextcloud: files in the mapping` と同じなら、対応表が覆う Nextcloud のファイルはすべて同じ大きさ・更新日時で Taylis にある。合計の大きさは
+   `sizes` の `nextcloud: files in the mapping`。Taylis 側は管理 →「ドライブ」の使用量（古い版・ゴミ箱を含む）と、
+   `drive-usage --verify`（ずれ 0）。Nextcloud 側の合計は Nextcloud の「設定 → 使用量」か `occ files:scan` の件数と比べる。
+4. Nextcloud のアプリパスワードを消し、`/srv/chikuwachat/import` を消す（`rm -rf`。パスワードと表にファイル名が入っている）。
+
+**6. Nextcloud を止める条件**：次の 3 つがそろうまで **Nextcloud を止めない（消さない）**。
+
+- 移した後の `backup.sh` と `offsite-backup.sh backup` が成功している（ドライブの中身がサーバの外に 1 組ある）。
+- そのスナップショットを、**別の機械で** `offsite-rehearsal.sh` で戻して `REHEARSAL OK` になった（前の節）。
+- 3. の比べ方で、件数と大きさが合っている。
+
+止めた後も、Nextcloud のデータ（と版・ゴミ箱）はしばらく（例：3 か月）読むだけで残し、版の履歴が要ったときに取り出せるようにする
+（版とゴミ箱は移さない、§15.3）。
 
 ## 実機での動作確認 (iPhone)
 

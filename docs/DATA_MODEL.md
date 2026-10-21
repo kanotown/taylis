@@ -2406,8 +2406,8 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 
 ```sql
 CREATE TABLE import_refs (
-  source      varchar(32) NOT NULL,   -- 'mattermost' | 'slack' | 'notion'
-  kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji' | 'bot_as_person'
+  source      varchar(32) NOT NULL,   -- 'mattermost' | 'slack' | 'notion' | 'nextcloud' (M164)
+  kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji' | 'bot_as_person' | 'drive_item' (M164) …
   source_id   varchar(64) NOT NULL,   -- 移行元の id (Mattermost の 26 文字の id、Slack は下記)
   target_id   uuid NOT NULL,          -- 作った行 (users / channels / messages / attachments / custom_emoji) の id
   created_at  timestamptz NOT NULL DEFAULT now(),
@@ -2437,6 +2437,10 @@ CREATE TABLE import_refs (
   ドメインのふつうのメンバー (ゲスト・bot・削除済みでない) は**有効**でパスワード無しのアカウント (Google でログインが
   アドレスで結び付ける。投稿が無くても読み込むチャンネルのメンバーなら作る)、Slack のゲスト (`is_restricted` /
   `is_ultra_restricted`) は `role = 'guest'` の無効化済み。新しい人のユーザー名はアドレスの @ の前 (学籍番号)。
+
+Nextcloud (M164、`app.cli import-nextcloud`、docs/DRIVE.md §15・§24) は `source = 'nextcloud'`、`kind = 'drive_item'`、
+`source_id` は「Nextcloud の人・Nextcloud のパス全体・対応表の規則の target」の SHA-256 (16 進 64 文字)、`target_id` は
+`drive_items.id` (フォルダとファイル)。取り込んだ版は `drive_file_versions.source = 'import'`。
 
 Slack (M87、`app.cli import-slack`、infra/README.md「Slack からの移行」) も同じ表と同じ規則で、`source = 'slack'`。
 Slack のメッセージには全体で一意の id が無いので、`source_id` は次の形にする (スキーマは変えない):
