@@ -71,7 +71,9 @@ access_log = logging.getLogger("app.access")
 # feed URLs (M68), drive download tickets (docs/DRIVE.md §7.3) and ZIP tickets (§7.2).
 _SECRET_PATH = re.compile(
     r"^(/api/v1/hooks/|/invite/|/api/v1/invites/|/api/v1/calendar/ical/"
-    r"|/api/v1/drive/download/|/api/v1/drive/zip/)"
+    r"|/api/v1/drive/download/|/api/v1/drive/zip/"
+    # M163 (docs/DRIVE.md §9.5): the drive's external share links (the page and its API).
+    r"|/api/v1/shares/|/s/)"
     r"[^/]+"
 )
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.attachments.schemas import AttachmentPreviewOut
 
@@ -24,7 +24,8 @@ class DriveLocationOut(BaseModel):
     name: str
     can_write: bool
     can_manage: bool
-    # External links (phase D4): false until then.
+    # Phase D4: whether I may make external links here (a person who can write, not a guest; the
+    # location's and the workspace's switches on).
     can_share: bool
     external_links: bool
     quota_bytes: int | None
@@ -76,7 +77,8 @@ class DriveItemOut(BaseModel):
     updated_at: datetime
     version_count: int
     file: DriveFileOut | None
-    # Active external links I can see (phase D4): 0 until then.
+    # Phase D4: the item's links that have not been revoked, expired or used up (shown to everyone
+    # who can read the item: what is shared outside should be known to those who put files here).
     link_count: int
     # Set for an item in the trash (with the one who put it there).
     trashed_at: datetime | None = None
@@ -100,6 +102,9 @@ class DriveChildrenOut(BaseModel):
     path: list[DriveCrumb]
     items: list[DriveItemOut]
     next_cursor: str | None
+    # Phase D4: working external links on this folder or a folder above it (what is put here is
+    # shared outside; the listing says so).
+    shared_above: int = 0
 
 
 class DriveFolderCreate(BaseModel):
@@ -385,3 +390,187 @@ class DriveLocationUpdatedData(BaseModel):
     (what a location shows depends on who reads it)."""
 
     location_id: UUID
+
+
+# --- external share links (phase D4, §5.4, §9) --------------------------------------------------
+
+ShareLinkState = Literal["active", "expired", "exhausted", "revoked", "paused"]
+
+
+class DriveShareLinkOut(BaseModel):
+    """A link as its creator, the location's managers and the administrators see it. `state`:
+    active; expired; exhausted (its download limit is used up); revoked; paused (works again by
+    itself: its creator cannot read the item now or is no longer a person who may share, the
+    item is in the trash or moved to another location, the channel is archived, or the location
+    or the workspace turned external links off)."""
+
+    id: UUID
+    item_id: UUID
+    item_name: str
+    item_kind: Literal["folder", "file"]
+    location_id: UUID
+    location_kind: LocationKind
+    location_name: str
+    created_by: UUID
+    created_by_name: str
+    created_at: datetime
+    expires_at: datetime | None
+    has_password: bool
+    max_downloads: int | None
+    download_count: int
+    note: str | None
+    last_used_at: datetime | None
+    state: ShareLinkState
+    # Whether the reader may change it (its creator) and revoke it (its creator, the location's
+    # managers, the administrators).
+    can_edit: bool = False
+    can_revoke: bool = False
+
+
+class DriveShareLinkCreate(BaseModel):
+    """POST /drive/items/{id}/links. `expires_at` left out: DRIVE_SHARE_DEFAULT_DAYS (7) from now;
+    null: no expiry (only when the workspace allows it, drive_link_max_days null)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expires_at: datetime | None = None
+    password: str | None = Field(default=None, min_length=4, max_length=128)
+    max_downloads: int | None = Field(default=None, ge=1, le=100_000)
+    note: str | None = Field(default=None, max_length=80)
+
+
+class DriveShareLinkPatch(BaseModel):
+    """PATCH /drive/links/{id}: only the fields sent change. `password: null` removes the
+    password; any change of the password ends the unlocked browsers' cookies."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expires_at: datetime | None = None
+    password: str | None = Field(default=None, min_length=4, max_length=128)
+    max_downloads: int | None = Field(default=None, ge=1, le=100_000)
+    note: str | None = Field(default=None, max_length=80)
+
+
+class DriveShareLinkCreatedOut(BaseModel):
+    """The only time the link's address is shown (only its SHA-256 is kept, §19 Q4). `url` is
+    absolute when the server knows its address (PUBLIC_BASE_URL), else the same as `path`
+    (the client puts its server's origin in front)."""
+
+    link: DriveShareLinkOut
+    url: str
+    path: str
+
+
+class DriveLinkPolicyOut(BaseModel):
+    """What the share dialog may offer for an item: the workspace's switch and the location's,
+    whether the reader may make a link here (a person who can write, not a guest), the longest
+    expiry in days (null: links without an expiry are allowed), the default, and whether a
+    password is required."""
+
+    enabled: bool
+    location_enabled: bool
+    can_share: bool
+    max_days: int | None
+    default_days: int
+    password_required: bool
+
+
+class DriveItemLinksOut(BaseModel):
+    links: list[DriveShareLinkOut]
+    policy: DriveLinkPolicyOut
+
+
+class DriveShareLinkListOut(BaseModel):
+    links: list[DriveShareLinkOut]
+    next_cursor: str | None = None
+
+
+class DriveShareEventOut(BaseModel):
+    id: int
+    kind: Literal["open", "download", "zip", "password_failed", "refused"]
+    item_id: UUID | None
+    item_name: str | None
+    bytes: int | None
+    # The creator sees the first two parts only (203.0.x.x); administrators the whole address.
+    ip: str | None
+    user_agent: str | None
+    created_at: datetime
+
+
+class DriveShareEventListOut(BaseModel):
+    events: list[DriveShareEventOut]
+    next_cursor: str | None = None
+
+
+class DriveLocationPatch(BaseModel):
+    """PATCH /drive/locations/{id}: who manages the location (§3.2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    external_links: bool
+
+
+class DriveShareSettingsOut(BaseModel):
+    """The workspace's switches for external links (workspace_settings, §4.2)."""
+
+    external_links_enabled: bool
+    link_max_days: int | None
+    link_password_required: bool
+    default_days: int
+
+
+class DriveShareSettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    external_links_enabled: bool | None = None
+    # null: links without an expiry are allowed.
+    link_max_days: int | None = Field(default=None, ge=1, le=3650)
+    link_password_required: bool | None = None
+
+
+# --- the public side (/shares/{token}, no sign-in) ---------------------------------------------
+
+
+class SharedItemOut(BaseModel):
+    """An item as the public side shows it: never who made or changed it, nor its location."""
+
+    id: UUID
+    kind: Literal["folder", "file"]
+    name: str
+    size_bytes: int | None
+    content_type: str | None
+    modified_at: datetime
+    has_thumbnail: bool = False
+    width: int | None = None
+    height: int | None = None
+    preview: AttachmentPreviewOut | None = None
+
+
+class ShareInfoOut(BaseModel):
+    """GET /shares/{token}. Before a password link is unlocked only `password_required` (and the
+    workspace's name) is told: `kind`, `item` and `root_id` are null."""
+
+    state: Literal["active"] = "active"
+    kind: Literal["folder", "file"] | None
+    password_required: bool
+    unlocked: bool
+    expires_at: datetime | None
+    # null: no download limit.
+    downloads_left: int | None
+    root_id: UUID | None
+    item: SharedItemOut | None
+    workspace_name: str
+
+
+class SharedChildrenOut(BaseModel):
+    folder: SharedItemOut
+    # From the shared folder (never above it) down to this folder.
+    path: list[DriveCrumb]
+    items: list[SharedItemOut]
+    next_cursor: str | None
+
+
+class ShareUnlockIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=1, max_length=128)

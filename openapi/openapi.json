@@ -8802,6 +8802,11 @@
             },
             "title": "Path",
             "type": "array"
+          },
+          "shared_above": {
+            "default": 0,
+            "title": "Shared Above",
+            "type": "integer"
           }
         },
         "required": [
@@ -9103,6 +9108,26 @@
         "title": "DriveItemDetailOut",
         "type": "object"
       },
+      "DriveItemLinksOut": {
+        "properties": {
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/DriveShareLinkOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/DriveLinkPolicyOut"
+          }
+        },
+        "required": [
+          "links",
+          "policy"
+        ],
+        "title": "DriveItemLinksOut",
+        "type": "object"
+      },
       "DriveItemOut": {
         "properties": {
           "content_modified_at": {
@@ -9314,6 +9339,52 @@
         "title": "DriveItemResult",
         "type": "object"
       },
+      "DriveLinkPolicyOut": {
+        "description": "What the share dialog may offer for an item: the workspace's switch and the location's,\nwhether the reader may make a link here (a person who can write, not a guest), the longest\nexpiry in days (null: links without an expiry are allowed), the default, and whether a\npassword is required.",
+        "properties": {
+          "can_share": {
+            "title": "Can Share",
+            "type": "boolean"
+          },
+          "default_days": {
+            "title": "Default Days",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "location_enabled": {
+            "title": "Location Enabled",
+            "type": "boolean"
+          },
+          "max_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Days"
+          },
+          "password_required": {
+            "title": "Password Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "location_enabled",
+          "can_share",
+          "max_days",
+          "default_days",
+          "password_required"
+        ],
+        "title": "DriveLinkPolicyOut",
+        "type": "object"
+      },
       "DriveLocationListOut": {
         "properties": {
           "locations": {
@@ -9431,6 +9502,21 @@
           "item_count"
         ],
         "title": "DriveLocationOut",
+        "type": "object"
+      },
+      "DriveLocationPatch": {
+        "additionalProperties": false,
+        "description": "PATCH /drive/locations/{id}: who manages the location (§3.2).",
+        "properties": {
+          "external_links": {
+            "title": "External Links",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "external_links"
+        ],
+        "title": "DriveLocationPatch",
         "type": "object"
       },
       "DriveLocationResolve": {
@@ -9743,6 +9829,524 @@
           "next_cursor"
         ],
         "title": "DriveSearchOut",
+        "type": "object"
+      },
+      "DriveShareEventListOut": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/DriveShareEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "DriveShareEventListOut",
+        "type": "object"
+      },
+      "DriveShareEventOut": {
+        "properties": {
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "item_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Name"
+          },
+          "kind": {
+            "enum": [
+              "open",
+              "download",
+              "zip",
+              "password_failed",
+              "refused"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "item_id",
+          "item_name",
+          "bytes",
+          "ip",
+          "user_agent",
+          "created_at"
+        ],
+        "title": "DriveShareEventOut",
+        "type": "object"
+      },
+      "DriveShareLinkCreate": {
+        "additionalProperties": false,
+        "description": "POST /drive/items/{id}/links. `expires_at` left out: DRIVE_SHARE_DEFAULT_DAYS (7) from now;\nnull: no expiry (only when the workspace allows it, drive_link_max_days null).",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "max_downloads": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Downloads"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 4,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "title": "DriveShareLinkCreate",
+        "type": "object"
+      },
+      "DriveShareLinkCreatedOut": {
+        "description": "The only time the link's address is shown (only its SHA-256 is kept, §19 Q4). `url` is\nabsolute when the server knows its address (PUBLIC_BASE_URL), else the same as `path`\n(the client puts its server's origin in front).",
+        "properties": {
+          "link": {
+            "$ref": "#/components/schemas/DriveShareLinkOut"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link",
+          "url",
+          "path"
+        ],
+        "title": "DriveShareLinkCreatedOut",
+        "type": "object"
+      },
+      "DriveShareLinkListOut": {
+        "properties": {
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/DriveShareLinkOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "links"
+        ],
+        "title": "DriveShareLinkListOut",
+        "type": "object"
+      },
+      "DriveShareLinkOut": {
+        "description": "A link as its creator, the location's managers and the administrators see it. `state`:\nactive; expired; exhausted (its download limit is used up); revoked; paused (works again by\nitself: its creator cannot read the item now or is no longer a person who may share, the\nitem is in the trash or moved to another location, the channel is archived, or the location\nor the workspace turned external links off).",
+        "properties": {
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_revoke": {
+            "default": false,
+            "title": "Can Revoke",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "created_by_name": {
+            "title": "Created By Name",
+            "type": "string"
+          },
+          "download_count": {
+            "title": "Download Count",
+            "type": "integer"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "has_password": {
+            "title": "Has Password",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_kind": {
+            "enum": [
+              "folder",
+              "file"
+            ],
+            "title": "Item Kind",
+            "type": "string"
+          },
+          "item_name": {
+            "title": "Item Name",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "location_kind": {
+            "enum": [
+              "workspace",
+              "channel",
+              "user"
+            ],
+            "title": "Location Kind",
+            "type": "string"
+          },
+          "location_name": {
+            "title": "Location Name",
+            "type": "string"
+          },
+          "max_downloads": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Downloads"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "expired",
+              "exhausted",
+              "revoked",
+              "paused"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "item_name",
+          "item_kind",
+          "location_id",
+          "location_kind",
+          "location_name",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "expires_at",
+          "has_password",
+          "max_downloads",
+          "download_count",
+          "note",
+          "last_used_at",
+          "state"
+        ],
+        "title": "DriveShareLinkOut",
+        "type": "object"
+      },
+      "DriveShareLinkPatch": {
+        "additionalProperties": false,
+        "description": "PATCH /drive/links/{id}: only the fields sent change. `password: null` removes the\npassword; any change of the password ends the unlocked browsers' cookies.",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "max_downloads": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Downloads"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 4,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "title": "DriveShareLinkPatch",
+        "type": "object"
+      },
+      "DriveShareSettingsOut": {
+        "description": "The workspace's switches for external links (workspace_settings, §4.2).",
+        "properties": {
+          "default_days": {
+            "title": "Default Days",
+            "type": "integer"
+          },
+          "external_links_enabled": {
+            "title": "External Links Enabled",
+            "type": "boolean"
+          },
+          "link_max_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Max Days"
+          },
+          "link_password_required": {
+            "title": "Link Password Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "external_links_enabled",
+          "link_max_days",
+          "link_password_required",
+          "default_days"
+        ],
+        "title": "DriveShareSettingsOut",
+        "type": "object"
+      },
+      "DriveShareSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "external_links_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Links Enabled"
+          },
+          "link_max_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Max Days"
+          },
+          "link_password_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Password Required"
+          }
+        },
+        "title": "DriveShareSettingsPatch",
         "type": "object"
       },
       "DriveTakeoverIn": {
@@ -19267,6 +19871,253 @@
         "title": "SessionOut",
         "type": "object"
       },
+      "ShareInfoOut": {
+        "description": "GET /shares/{token}. Before a password link is unlocked only `password_required` (and the\nworkspace's name) is told: `kind`, `item` and `root_id` are null.",
+        "properties": {
+          "downloads_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloads Left"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedItemOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "folder",
+                  "file"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "password_required": {
+            "title": "Password Required",
+            "type": "boolean"
+          },
+          "root_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Id"
+          },
+          "state": {
+            "const": "active",
+            "default": "active",
+            "title": "State",
+            "type": "string"
+          },
+          "unlocked": {
+            "title": "Unlocked",
+            "type": "boolean"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "password_required",
+          "unlocked",
+          "expires_at",
+          "downloads_left",
+          "root_id",
+          "item",
+          "workspace_name"
+        ],
+        "title": "ShareInfoOut",
+        "type": "object"
+      },
+      "ShareUnlockIn": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "ShareUnlockIn",
+        "type": "object"
+      },
+      "SharedChildrenOut": {
+        "properties": {
+          "folder": {
+            "$ref": "#/components/schemas/SharedItemOut"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SharedItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCrumb"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder",
+          "path",
+          "items",
+          "next_cursor"
+        ],
+        "title": "SharedChildrenOut",
+        "type": "object"
+      },
+      "SharedItemOut": {
+        "description": "An item as the public side shows it: never who made or changed it, nor its location.",
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "has_thumbnail": {
+            "default": false,
+            "title": "Has Thumbnail",
+            "type": "boolean"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "folder",
+              "file"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "modified_at": {
+            "format": "date-time",
+            "title": "Modified At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentPreviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "size_bytes",
+          "content_type",
+          "modified_at"
+        ],
+        "title": "SharedItemOut",
+        "type": "object"
+      },
       "SidebarDefaultOut": {
         "description": "The sort of a default section (お気に入り / チャンネル / ダイレクトメッセージ); always\nall three.",
         "properties": {
@@ -25863,6 +26714,116 @@
         ]
       }
     },
+    "/api/v1/admin/drive/links": {
+      "get": {
+        "description": "Every link that is not revoked, in every location (§3.4): names, never contents.",
+        "operationId": "admin_links_api_v1_admin_drive_links_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareLinkListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Links",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/admin/drive/links/{link_id}": {
+      "delete": {
+        "description": "Audited as drive.link_revoked with by_admin.",
+        "operationId": "admin_revoke_link_api_v1_admin_drive_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Revoke Link",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/admin/drive/locations/{location_id}": {
       "patch": {
         "description": "A location's own quota in bytes (null: none), audited as drive.quota_changed.",
@@ -25917,6 +26878,77 @@
           }
         ],
         "summary": "Set Location Quota",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/admin/drive/settings": {
+      "get": {
+        "operationId": "get_share_settings_api_v1_admin_drive_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Share Settings",
+        "tags": [
+          "drive"
+        ]
+      },
+      "patch": {
+        "description": "The workspace's switch for external links, the longest expiry (null: none required) and\nwhether a password is required; audited as workspace.settings_updated.",
+        "operationId": "patch_share_settings_api_v1_admin_drive_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveShareSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Share Settings",
         "tags": [
           "drive"
         ]
@@ -33753,6 +34785,112 @@
         ]
       }
     },
+    "/api/v1/drive/items/{item_id}/links": {
+      "get": {
+        "description": "The item's links that are not revoked (mine; every one for those who manage the\nlocation's links) and what the share dialog may offer.",
+        "operationId": "item_links_api_v1_drive_items__item_id__links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemLinksOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Item Links",
+        "tags": [
+          "drive"
+        ]
+      },
+      "post": {
+        "description": "A link to a file or a folder (§9). Its address is in this answer only. 403\ndrive_links_disabled / guest_restricted / drive_read_only, 409 drive_root_immutable, 422\nshare_link_expiry_too_long / share_link_password_required.",
+        "operationId": "create_link_api_v1_drive_items__item_id__links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveShareLinkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareLinkCreatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Link",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/items/{item_id}/restore": {
       "post": {
         "operationId": "restore_item_api_v1_drive_items__item_id__restore_post",
@@ -33978,6 +35116,251 @@
         ]
       }
     },
+    "/api/v1/drive/links": {
+      "get": {
+        "description": "The links I made that are not revoked, newest first.",
+        "operationId": "my_links_api_v1_drive_links_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareLinkListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Links",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/links/{link_id}": {
+      "delete": {
+        "description": "Its creator, the location's managers or an administrator; for good.",
+        "operationId": "revoke_link_api_v1_drive_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Link",
+        "tags": [
+          "drive"
+        ]
+      },
+      "patch": {
+        "description": "Its creator only. `password: null` removes the password.",
+        "operationId": "update_link_api_v1_drive_links__link_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveShareLinkPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Link",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/links/{link_id}/events": {
+      "get": {
+        "description": "How the link was used (§9.5), newest first: its creator and the administrators.",
+        "operationId": "link_events_api_v1_drive_links__link_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveShareEventListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Link Events",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/locations": {
       "get": {
         "operationId": "list_locations_api_v1_drive_locations_get",
@@ -34046,6 +35429,65 @@
           }
         ],
         "summary": "Resolve Location",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/locations/{location_id}": {
+      "patch": {
+        "description": "The location's switch for external links (§3.2: who manages the location). Off stops its\nlinks; none is removed.",
+        "operationId": "patch_location_api_v1_drive_locations__location_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveLocationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveLocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Location",
         "tags": [
           "drive"
         ]
@@ -39286,6 +40728,505 @@
         "summary": "Server Icon",
         "tags": [
           "server"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}": {
+      "get": {
+        "description": "What the link shares. 404 share_link_not_found (unknown), 410 share_link_unavailable\n(revoked, expired, used up or stopped); a password link tells nothing more until unlocked.",
+        "operationId": "share_info_api_v1_shares__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareInfoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Info",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/folders/{folder_id}/children": {
+      "get": {
+        "description": "A folder under the link (folders first, by name): names, sizes, times, previews only.",
+        "operationId": "share_children_api_v1_shares__token__folders__folder_id__children_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedChildrenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Children",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/items/{item_id}/content": {
+      "get": {
+        "description": "A file's bytes (Range; counted against the link's limit).",
+        "operationId": "share_content_api_v1_shares__token__items__item_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Content",
+        "tags": [
+          "shares"
+        ]
+      },
+      "head": {
+        "description": "A file's bytes (Range; counted against the link's limit).",
+        "operationId": "share_content_api_v1_shares__token__items__item_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Content",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/items/{item_id}/preview/pdf": {
+      "get": {
+        "operationId": "share_preview_pdf_api_v1_shares__token__items__item_id__preview_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Preview Pdf",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/items/{item_id}/preview/thumbnail": {
+      "get": {
+        "operationId": "share_preview_thumbnail_api_v1_shares__token__items__item_id__preview_thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Preview Thumbnail",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/items/{item_id}/thumbnail": {
+      "get": {
+        "operationId": "share_thumbnail_api_v1_shares__token__items__item_id__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Thumbnail",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/unlock": {
+      "post": {
+        "description": "The password: 204 with the unlock cookie (12 hours), 401 share_password_invalid, 429 after\n10 tries in 10 minutes for the link or 20 a minute from one address.",
+        "operationId": "share_unlock_api_v1_shares__token__unlock_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareUnlockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Unlock",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/zip": {
+      "get": {
+        "description": "The shared folder (or a folder under it) as one ZIP: one download.",
+        "operationId": "share_zip_api_v1_shares__token__zip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "folder_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Folder Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Zip",
+        "tags": [
+          "shares"
         ]
       }
     },

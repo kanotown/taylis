@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Text, Uuid, func, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Text,
+    Uuid,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,6 +62,18 @@ class WorkspaceSettings(Base):
     # server with LiveKit configured.
     in_app_calls_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
+    )
+    # M163 (docs/DRIVE.md §9): the drive's external share links. Off: every link stops (none is
+    # removed, so they work again when it is turned back on). The longest expiry a new link may
+    # have, in days (NULL: links without an expiry are allowed). Whether a password is required.
+    drive_external_links_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    drive_link_max_days: Mapped[int | None] = mapped_column(
+        Integer, default=90, server_default=text("90")
+    )
+    drive_link_password_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

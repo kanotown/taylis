@@ -309,6 +309,21 @@ class Settings(BaseSettings):
     drive_zip_max_bytes: int = 20 * 1024 * 1024 * 1024
     drive_zip_per_user: int = 2
     drive_zip_total: int = 4
+    # M163 (docs/DRIVE.md §9, phase D4): external share links. A new link's expiry when none is
+    # chosen (the longest is the workspace's setting), how long an unlocked password stays
+    # unlocked in one browser, how long the public side's events are kept, and the rate limits
+    # of §9.4 (per IP per minute: every public request, and unknown or stopped links; per link
+    # per minute: downloads; passwords: per link in 10 minutes and per IP per minute; per person
+    # per minute: new links).
+    drive_share_default_days: int = 7
+    drive_share_unlock_hours: int = 12
+    drive_share_events_days: int = 180
+    drive_share_rate_limit_per_ip: int = 120
+    drive_share_bad_rate_limit_per_ip: int = 20
+    drive_share_download_rate_limit_per_link: int = 60
+    drive_share_password_attempts_per_link: int = 10
+    drive_share_password_rate_limit_per_ip: int = 20
+    drive_link_create_rate_limit_per_user: int = 30
     # Outbox relay (ARCHITECTURE.md §6)
     outbox_poll_interval_seconds: float = 1.0
     outbox_batch_size: int = 100

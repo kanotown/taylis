@@ -27,7 +27,7 @@ from app.modules.attachments.schemas import to_attachment_out
 from app.modules.audit import service as audit
 from app.modules.channels import service as channels
 from app.modules.drive import access as acl
-from app.modules.drive import events, names
+from app.modules.drive import events, names, shares
 from app.modules.drive import repository as repo
 from app.modules.drive.access import Access, item_not_found
 from app.modules.drive.models import (
@@ -136,7 +136,7 @@ async def location_out(db: AsyncSession, actor: User, location: DriveLocation) -
         name=await acl.location_name(db, location),
         can_write=rights.can_write,
         can_manage=rights.can_manage,
-        can_share=False,
+        can_share=shares.may_share(await shares.policy(db), location, actor, rights),
         external_links=location.external_links,
         quota_bytes=location.quota_bytes,
         used_bytes=location.used_bytes,
@@ -216,6 +216,7 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
         db, [r.current_version_id for r in rows if r.current_version_id is not None]
     )
     counts = await repo.version_counts(db, [r.id for r in rows if r.kind == "file"])
+    links = await shares.link_counts(db, [r.id for r in rows])
     out: list[DriveItemOut] = []
     for row in rows:
         file: DriveFileOut | None = None
@@ -249,7 +250,7 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
                 updated_at=row.updated_at,
                 version_count=counts.get(row.id, 0),
                 file=file,
-                link_count=0,
+                link_count=links.get(row.id, 0),
                 trashed_at=row.trashed_at,
                 trashed_by=row.trashed_by,
             )
@@ -409,6 +410,7 @@ async def list_children(
         path=await crumbs(db, chain, rights.location),
         items=await items_out(db, rows),
         next_cursor=_encode_cursor(rows[-1], sort) if more and rows else None,
+        shared_above=await shares.shared_above(db, chain),
     )
 
 
@@ -1104,7 +1106,9 @@ async def takeover(
 
 async def forget_user_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
     """Anonymisation (M104, admin.anonymize_in_tx): the person's My Drive goes for good (the
-    housekeeping purges it, no trash) and their unfinished uploads are dropped."""
+    housekeeping purges it, no trash), their unfinished uploads are dropped and their external
+    links revoked (phase D4, §3.3)."""
+    await shares.revoke_created_by_in_tx(db, user_id)
     location = await repo.location_of_user(db, user_id)
     if location is not None and location.deleted_at is None:
         location.deleted_at = utcnow()
