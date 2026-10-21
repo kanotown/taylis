@@ -159,3 +159,64 @@ final class MentionRankTests: XCTestCase {
         }
     }
 }
+
+/// MOBILE_UI.md §23: a channel's members, read for the @ list, rank before the others; a failed read keeps the order.
+@MainActor
+final class MentionMembersTests: XCTestCase {
+    private struct Offline: Error {}
+    private func person(_ id: String, _ username: String) -> UserPublic {
+        UserPublic(id: id, username: username, displayName: username, role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "")
+    }
+
+    private func store(type: String = "public") -> Store {
+        let store = Store()
+        for user in [person("u1", "alice"), person("u2", "bob"), person("u3", "carol")] { store.upsertUser(user) }
+        let out = ChannelOut(id: "c1", type: type, name: "general", topic: nil, purpose: nil, archived: false, createdBy: nil, lastSeq: 0,
+                             lastMessageAt: nil, createdAt: "2026-01-01T00:00:00Z", updatedAt: "", membership: nil, dmUserIds: type == "public" ? nil : ["u1", "u3"])
+        _ = store.upsertChannel(out, isMember: true)
+        return store
+    }
+
+    private func names(_ store: Store) -> [String] {
+        Mentions.candidates("", users: store.users.values, context: Mentions.context(store: store, channelId: "c1", parentId: nil)).map(\.username)
+    }
+
+    func testMembersComeBeforeTheOthersOnceRead() async {
+        let store = store()
+        XCTAssertEqual(names(store), ["alice", "bob", "carol", "channel", "here"])
+        var reads = 0
+        await Mentions.readMembers(store: store, channelId: "c1") { _ in reads += 1; return ["u3"] }
+        XCTAssertEqual(names(store), ["carol", "alice", "bob", "channel", "here"])
+        XCTAssertEqual(Mentions.documentContext(store: store, channelId: "c1").members, ["u3"]) // a channel canvas too
+        // Held: not read again, until the members change or the read is old.
+        await Mentions.readMembers(store: store, channelId: "c1") { _ in reads += 1; return [] }
+        XCTAssertEqual(reads, 1)
+        store.memberListVersion["c1", default: 0] += 1
+        await Mentions.readMembers(store: store, channelId: "c1") { _ in reads += 1; return ["u2", "u3"] }
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(names(store), ["bob", "carol", "alice", "channel", "here"])
+        await Mentions.readMembers(store: store, channelId: "c1", now: Date().addingTimeInterval(Mentions.membersMaxAge + 1)) { _ in reads += 1; return ["u2"] }
+        XCTAssertEqual(reads, 3)
+    }
+
+    func testAFailedReadKeepsTheOrder() async {
+        let store = store()
+        var reads = 0
+        await Mentions.readMembers(store: store, channelId: "c1") { _ in reads += 1; throw Offline() }
+        XCTAssertNil(store.mentionMembers["c1"]?.ids)
+        XCTAssertEqual(names(store), ["alice", "bob", "carol", "channel", "here"])
+        await Mentions.readMembers(store: store, channelId: "c1") { _ in reads += 1; throw Offline() }
+        XCTAssertEqual(reads, 1, "not tried again at once")
+        // Members held, then a failed read again: what was there stays.
+        await Mentions.readMembers(store: store, channelId: "c1", now: Date().addingTimeInterval(Mentions.membersRetry + 1)) { _ in ["u3"] }
+        store.memberListVersion["c1", default: 0] += 1
+        await Mentions.readMembers(store: store, channelId: "c1", now: Date().addingTimeInterval(Mentions.membersRetry + 2)) { _ in throw Offline() }
+        XCTAssertEqual(names(store), ["carol", "alice", "bob", "channel", "here"])
+    }
+
+    func testADmIsNotRead() async {
+        let store = store(type: "dm")
+        await Mentions.readMembers(store: store, channelId: "c1") { _ in XCTFail("read"); return [] }
+        XCTAssertEqual(names(store), ["alice", "carol", "bob", "channel", "here"])
+    }
+}

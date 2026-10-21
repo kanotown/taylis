@@ -1585,6 +1585,12 @@ final class AppController {
         return true
     }
 
+    /// MOBILE_UI.md §23: the @ list opened in this channel (or its canvas): its members for the list, if not held.
+    func readMentionMembers(_ channelId: String?) async {
+        guard let api else { return }
+        await Mentions.readMembers(store: store, channelId: channelId) { id in try await api.members(channelId: id).map(\.userId) }
+    }
+
     /// Leaving drops the channel locally at once; the server's member_removed confirms it.
     func leaveChannel(_ channelId: String) async -> Bool {
         guard let api else { return false }

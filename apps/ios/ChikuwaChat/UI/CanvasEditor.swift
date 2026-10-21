@@ -82,6 +82,14 @@ struct CanvasEditor: View {
             model.attach(saver: saver, store: controller.store, sectionLine: sectionLine)
             model.onCaretLine = onCaretLine
             if isPage { return }
+            // MOBILE_UI.md §23: the @ list reads the canvas's channel's members, and ranks again once they come.
+            let membersChannel = saver.channelId
+            model.onMentionOpen = { [weak app = controller, weak model] in
+                Task { @MainActor in
+                    await app?.readMentionMembers(membersChannel)
+                    model?.refreshCandidates()
+                }
+            }
             // M73 (§18.2): 「編集中」 for the others while the text view has the focus.
             let canvasId = saver.id
             model.onPresence = { [weak app = controller] editing, section in
@@ -229,6 +237,9 @@ final class CanvasEditorModel {
     @ObservationIgnored var onPresence: ((Bool, String?) -> Void)?
     /// M73 (§18.3): 「タスクにする」 on an open checklist item: the stored body and the item's line in it.
     @ObservationIgnored var onMakeTask: ((String, Int) -> Void)?
+    /// MOBILE_UI.md §23: the @ list is open (the canvas's channel's members are read for it).
+    @ObservationIgnored var onMentionOpen: (() -> Void)?
+    @ObservationIgnored private var mentionOpen = false
     /// M153a: the body line the caret is on, as it moves (the whole-body editor; a section's lines start at its heading).
     @ObservationIgnored var onCaretLine: ((Int) -> Void)?
     /// The text view has the focus (and the app is in front).
@@ -495,15 +506,23 @@ final class CanvasEditorModel {
     }
 
     /// `@prefix` before the caret: the people and groups it may name (not @channel: a canvas notifies nobody).
+    func refreshCandidates() { updateCandidates() }
+
     private func updateCandidates() {
         guard let tv = textView, let store, tv.selectedRange.length == 0 else {
+            mentionOpen = false
             if !candidates.isEmpty { candidates = [] }
             return
         }
         let before = (tv.text as NSString).substring(to: min(tv.selectedRange.location, (tv.text as NSString).length))
         guard let query = Mentions.query(before) else {
+            mentionOpen = false
             if !candidates.isEmpty { candidates = [] }
             return
+        }
+        if !mentionOpen {
+            mentionOpen = true
+            onMentionOpen?()
         }
         // The people and the AI bots by their `bot_kind` (AI.md §2.1; the model holds no AI status).
         // MOBILE_UI.md §23: the participants first in a DM's canvas, me last.
