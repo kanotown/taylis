@@ -1072,3 +1072,20 @@ async def test_purging_an_item_takes_its_links_and_events(
     assert await db.get(DriveItem, uuid.UUID(data["id"])) is None
     async with visitor_client(app) as v:
         assert (await pub(v, token_of(made))).status_code == 404
+
+
+async def test_an_odd_client_address_is_recorded_as_none(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """What a proxy passes as the address is stored only when it is one (never a 500)."""
+    drive_settings(app)
+    member = await make_user(db, "mia")
+    as_user(member)
+    data = await upload(client, await workspace_root(client), "a.txt", b"a")
+    made = await share(client, data["id"])
+    async with visitor_client(app, "not-an-address") as v:
+        got = await pub(v, token_of(made), f"/items/{data['id']}/content")
+        assert got.status_code == 200
+    db.expire_all()
+    ips = (await db.execute(select(DriveShareEvent.ip))).scalars().all()
+    assert ips == [None]
