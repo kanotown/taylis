@@ -1,7 +1,8 @@
 """The drive's periodic jobs (docs/DRIVE.md §6.2, §10.1, §3.3), run by main.py every
 DRIVE_HOUSEKEEPING_INTERVAL_SECONDS: expired upload sessions, completions a restart cut off, S3
 multipart uploads nobody knows (once a day), the trash after DRIVE_TRASH_DAYS, the My Drives of
-anonymised people, finished sessions after a week."""
+anonymised people, finished sessions after a week, and (phase D3) older versions past
+DRIVE_VERSIONS_MAX / DRIVE_VERSIONS_DAYS."""
 
 import logging
 from dataclasses import dataclass
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.drive import service, uploads
+from app.modules.drive import service, uploads, versions
 from app.modules.drive.uploads import DriveRuntime
 
 log = logging.getLogger("app.drive")
@@ -26,6 +27,7 @@ class Done:
     purged_trash: int = 0
     purged_locations: int = 0
     finished: int = 0
+    versions_pruned: int = 0
 
     def __bool__(self) -> bool:
         return any(vars(self).values())
@@ -53,4 +55,6 @@ async def run(
         done.purged_locations = await service.purge_deleted_locations(db)
     async with factory() as db:
         done.finished = await uploads.purge_finished(db, now=now)
+    async with factory() as db:
+        done.versions_pruned = await versions.prune(db, settings, now=now)
     return done

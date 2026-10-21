@@ -452,7 +452,7 @@ async def free_name(db: AsyncSession, parent_id: uuid.UUID, name: str, *, is_fil
     raise conflict("drive_folder_full", f"A folder holds at most {names.MAX_CHILDREN} items")
 
 
-def _set_name(item: DriveItem, name: str) -> None:
+def set_name(item: DriveItem, name: str) -> None:
     item.name = name
     item.name_key = names.key(name)
     item.name_sort = names.sort_key(name)
@@ -488,7 +488,7 @@ async def new_folder_in_tx(
         change_seq=await events.next_seq(db),
         client_op_id=client_op_id,
     )
-    _set_name(folder, name)
+    set_name(folder, name)
     db.add(folder)
     await db.flush()
     return folder
@@ -599,7 +599,7 @@ async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) ->
     existing = await repo.child_by_key(db, item.parent_id, names.key(name))  # type: ignore[arg-type]
     if existing is not None and existing.id != item.id:
         raise name_taken(existing)
-    _set_name(item, name)
+    set_name(item, name)
     item.updated_by = actor.id
     item.updated_at = utcnow()
     item.change_seq = await events.next_seq(db)
@@ -756,7 +756,7 @@ async def _move_one(
         )
     item.parent_id = target.id
     if name != item.name:
-        _set_name(item, name)
+        set_name(item, name)
     item.updated_by = actor.id
     item.updated_at = utcnow()
     item.change_seq = await events.next_seq(db)
@@ -902,7 +902,7 @@ async def restore(
     item.trash_parent_id = None
     item.parent_id = target.id
     if name != item.name:
-        _set_name(item, name)
+        set_name(item, name)
     item.updated_by = actor.id
     item.updated_at = utcnow()
     item.change_seq = await events.next_seq(db)

@@ -725,6 +725,46 @@ export interface paths {
         patch: operations["admin_update_canvas_template_api_v1_admin_canvas_templates__template_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/drive/locations/{location_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Location Quota
+         * @description A location's own quota in bytes (null: none), audited as drive.quota_changed.
+         */
+        patch: operations["set_location_quota_api_v1_admin_drive_locations__location_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/drive/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Drive Usage
+         * @description The whole drive and each location: sizes and counts only (§11.2).
+         */
+        get: operations["drive_usage_api_v1_admin_drive_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/drive/users/{user_id}/takeover": {
         parameters: {
             query?: never;
@@ -2977,6 +3017,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/items/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy Items
+         * @description Files and folders into a folder (§10.3): one result per item, `new_id` for its copy.
+         *     413 drive_copy_too_large past DRIVE_COPY_MAX_ITEMS / DRIVE_COPY_MAX_BYTES.
+         */
+        post: operations["copy_items_api_v1_drive_items_copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/items/move": {
         parameters: {
             query?: never;
@@ -3086,6 +3147,66 @@ export interface paths {
         put?: never;
         /** Restore Item */
         post: operations["restore_item_api_v1_drive_items__item_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Versions
+         * @description Newest first (§10.2).
+         */
+        get: operations["list_versions_api_v1_drive_items__item_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Version
+         * @description An older version for good (who may delete for good, §3.2); the current one: 409.
+         */
+        delete: operations["delete_version_api_v1_drive_items__item_id__versions__version_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/versions/{version_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Version
+         * @description The version copied as the file's new current version (the versions in between stay).
+         */
+        post: operations["restore_version_api_v1_drive_items__item_id__versions__version_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3220,6 +3341,49 @@ export interface paths {
          *     Sending a number again replaces that part.
          */
         put: operations["put_part_api_v1_drive_uploads__upload_id__parts__part_number__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Zip
+         * @description A ZIP of folders and files (§7.2): what it holds is fixed now; `url` streams it once
+         *     within `expires_in` seconds. 413 drive_zip_too_large past the limits.
+         */
+        post: operations["create_zip_api_v1_drive_zip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/zip/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Zip
+         * @description The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,
+         *     Content-Length exact. 404 for an unknown or used ticket or a person who can no longer read
+         *     the items; 429 while too many ZIPs stream (the ticket stays valid).
+         */
+        get: operations["download_zip_api_v1_drive_zip__token__get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -9326,6 +9490,43 @@ export interface components {
             /** Path */
             path: components["schemas"]["DriveCrumb"][];
         };
+        /** DriveCopyIn */
+        DriveCopyIn: {
+            /** Client Op Id */
+            client_op_id?: string | null;
+            /** Item Ids */
+            item_ids: string[];
+            /**
+             * On Conflict
+             * @default rename
+             * @enum {string}
+             */
+            on_conflict: "fail" | "rename";
+            /**
+             * Target Folder Id
+             * Format: uuid
+             */
+            target_folder_id: string;
+        };
+        /** DriveCopyResult */
+        DriveCopyResult: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Id */
+            new_id?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** DriveCopyResultsOut */
+        DriveCopyResultsOut: {
+            /** Results */
+            results: components["schemas"]["DriveCopyResult"][];
+        };
         /** DriveCrumb */
         DriveCrumb: {
             /**
@@ -9516,6 +9717,46 @@ export interface components {
              */
             kind: "channel" | "me";
         };
+        /** DriveLocationUsageOut */
+        DriveLocationUsageOut: {
+            /** Archived */
+            archived: boolean;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Current Bytes */
+            current_bytes: number;
+            /** Effective Quota Bytes */
+            effective_quota_bytes: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Count */
+            item_count: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workspace" | "channel" | "user";
+            /** Name */
+            name: string;
+            /** Old Versions Bytes */
+            old_versions_bytes: number;
+            /** Quota Bytes */
+            quota_bytes: number | null;
+            /** Trash Bytes */
+            trash_bytes: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Used Bytes */
+            used_bytes: number;
+            /** User Id */
+            user_id: string | null;
+        };
         /** DriveMoveIn */
         DriveMoveIn: {
             /** Item Ids */
@@ -9531,6 +9772,23 @@ export interface components {
              * Format: uuid
              */
             target_folder_id: string;
+        };
+        /** DrivePersonUsageOut */
+        DrivePersonUsageOut: {
+            /** Bytes */
+            bytes: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Versions */
+            versions: number;
+        };
+        /** DriveQuotaIn */
+        DriveQuotaIn: {
+            /** Quota Bytes */
+            quota_bytes: number | null;
         };
         /** DriveRestoreIn */
         DriveRestoreIn: {
@@ -9726,6 +9984,102 @@ export interface components {
             name?: string | null;
             /** On Conflict */
             on_conflict?: ("version" | "rename" | "fail") | null;
+        };
+        /** DriveUsageOut */
+        DriveUsageOut: {
+            /** Locations */
+            locations: components["schemas"]["DriveLocationUsageOut"][];
+            /** People */
+            people: components["schemas"]["DrivePersonUsageOut"][];
+            total: components["schemas"]["DriveUsageTotalOut"];
+        };
+        /** DriveUsageTotalOut */
+        DriveUsageTotalOut: {
+            /** Chat Attachment Count */
+            chat_attachment_count: number;
+            /** Chat Attachments Bytes */
+            chat_attachments_bytes: number;
+            /** Current Bytes */
+            current_bytes: number;
+            /** Item Count */
+            item_count: number;
+            /** Location Count */
+            location_count: number;
+            /** Old Versions Bytes */
+            old_versions_bytes: number;
+            /** Total Quota Bytes */
+            total_quota_bytes: number | null;
+            /** Trash Bytes */
+            trash_bytes: number;
+            /** Used Bytes */
+            used_bytes: number;
+            /** User Default Quota Bytes */
+            user_default_quota_bytes: number | null;
+        };
+        /**
+         * DriveVersionListOut
+         * @description Newest first. Older versions are kept DRIVE_VERSIONS_MAX at most, each at most
+         *     DRIVE_VERSIONS_DAYS after it was replaced (`keep_versions`, `keep_days`).
+         */
+        DriveVersionListOut: {
+            /** Keep Days */
+            keep_days: number;
+            /** Keep Versions */
+            keep_versions: number;
+            /** Versions */
+            versions: components["schemas"]["DriveVersionOut"][];
+        };
+        /** DriveVersionOut */
+        DriveVersionOut: {
+            /** Content Modified At */
+            content_modified_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current */
+            current: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Number */
+            number: number;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Source */
+            source: string;
+            /** Uploaded By */
+            uploaded_by: string | null;
+        };
+        /** DriveZipIn */
+        DriveZipIn: {
+            /** Item Ids */
+            item_ids: string[];
+        };
+        /**
+         * DriveZipOut
+         * @description `url` (relative to the server) streams the ZIP once, within `expires_in` seconds, without
+         *     the bearer token: an uncompressed ZIP (ZIP64 when needed) of `entries` entries, exactly
+         *     `zip_bytes` long (its Content-Length), holding `size_bytes` of files.
+         */
+        DriveZipOut: {
+            /** Entries */
+            entries: number;
+            /** Expires In */
+            expires_in: number;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Url */
+            url: string;
+            /** Zip Bytes */
+            zip_bytes: number;
         };
         /**
          * EffectiveOut
@@ -16110,6 +16464,61 @@ export interface operations {
             };
         };
     };
+    set_location_quota_api_v1_admin_drive_locations__location_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveQuotaIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLocationUsageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drive_usage_api_v1_admin_drive_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUsageOut"];
+                };
+            };
+        };
+    };
     takeover_api_v1_admin_drive_users__user_id__takeover_post: {
         parameters: {
             query?: never;
@@ -20638,6 +21047,39 @@ export interface operations {
             };
         };
     };
+    copy_items_api_v1_drive_items_copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveCopyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveCopyResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     move_items_api_v1_drive_items_move_post: {
         parameters: {
             query?: never;
@@ -20880,6 +21322,99 @@ export interface operations {
                 "application/json": components["schemas"]["DriveRestoreIn"] | null;
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_drive_items__item_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveVersionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_version_api_v1_drive_items__item_id__versions__version_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_version_api_v1_drive_items__item_id__versions__version_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -21215,6 +21750,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveUploadPartOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_zip_api_v1_drive_zip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveZipIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveZipOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_zip_api_v1_drive_zip__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

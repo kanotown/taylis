@@ -44,6 +44,19 @@ _SUBTREE = text(
     """
 )
 
+_LIVE_SUBTREE = text(
+    """
+    WITH RECURSIVE down(id, steps) AS (
+        SELECT id, 0 FROM drive_items WHERE id = :id AND trashed_at IS NULL
+        UNION ALL
+        SELECT i.id, down.steps + 1
+        FROM drive_items i JOIN down ON i.parent_id = down.id
+        WHERE i.trashed_at IS NULL AND down.steps < :limit
+    )
+    SELECT id, steps FROM down LIMIT :cap
+    """
+)
+
 
 async def location(
     db: AsyncSession, location_id: uuid.UUID, *, for_update: bool = False
@@ -125,6 +138,15 @@ async def subtree(db: AsyncSession, item_id: uuid.UUID) -> list[tuple[uuid.UUID,
     return [(row[0], int(row[1])) for row in rows.all()]
 
 
+async def live_subtree(
+    db: AsyncSession, item_id: uuid.UUID, *, cap: int
+) -> list[tuple[uuid.UUID, int]]:
+    """(id, steps below the item) of the item and what is under it outside the trash, at most
+    `cap` rows (a copy or a ZIP asks for one more than its limit to tell it is too large)."""
+    rows = await db.execute(_LIVE_SUBTREE, {"id": item_id, "limit": _WALK_LIMIT, "cap": cap})
+    return [(row[0], int(row[1])) for row in rows.all()]
+
+
 async def child_by_key(db: AsyncSession, parent_id: uuid.UUID, name_key: str) -> DriveItem | None:
     stmt = select(DriveItem).where(
         DriveItem.parent_id == parent_id,
@@ -177,6 +199,25 @@ async def versions_of(db: AsyncSession, item_ids: Sequence[uuid.UUID]) -> list[D
     if not item_ids:
         return []
     stmt = select(DriveFileVersion).where(DriveFileVersion.item_id.in_(list(item_ids)))
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def versions_by_id(db: AsyncSession, ids: Sequence[uuid.UUID]) -> list[DriveFileVersion]:
+    """Read again (populate_existing): after a lock, the rows as they are now."""
+    if not ids:
+        return []
+    stmt = (
+        select(DriveFileVersion)
+        .where(DriveFileVersion.id.in_(list(ids)))
+        .execution_options(populate_existing=True)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def version_item_ids(db: AsyncSession, ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+    if not ids:
+        return []
+    stmt = select(DriveFileVersion.item_id).where(DriveFileVersion.id.in_(list(ids))).distinct()
     return list((await db.execute(stmt)).scalars().all())
 
 

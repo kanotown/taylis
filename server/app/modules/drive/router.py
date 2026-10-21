@@ -1,5 +1,6 @@
-"""The drive's HTTP API (docs/DRIVE.md §5, phase D1)."""
+"""The drive's HTTP API (docs/DRIVE.md §5: phases D1 to D3)."""
 
+from collections.abc import AsyncIterator
 from email.utils import format_datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -12,11 +13,13 @@ from app.core.errors import rate_limited
 from app.modules.attachments import service as attachments
 from app.modules.attachments.models import Attachment
 from app.modules.auth.deps import CurrentUser, require_capability
-from app.modules.drive import names, service, uploads
+from app.modules.drive import copying, names, service, uploads, usage, versions, zips, zipstream
 from app.modules.drive.access import item_not_found
 from app.modules.drive.models import DriveFileVersion, DriveItem
 from app.modules.drive.schemas import (
     DriveChildrenOut,
+    DriveCopyIn,
+    DriveCopyResultsOut,
     DriveDownloadTicketOut,
     DriveFolderCreate,
     DriveItemDetailOut,
@@ -25,7 +28,9 @@ from app.modules.drive.schemas import (
     DriveLocationListOut,
     DriveLocationOut,
     DriveLocationResolve,
+    DriveLocationUsageOut,
     DriveMoveIn,
+    DriveQuotaIn,
     DriveRestoreIn,
     DriveResultsOut,
     DriveTakeoverIn,
@@ -38,8 +43,13 @@ from app.modules.drive.schemas import (
     DriveUploadOut,
     DriveUploadPartOut,
     DriveUploadPatch,
+    DriveUsageOut,
+    DriveVersionListOut,
+    DriveZipIn,
+    DriveZipOut,
 )
 from app.modules.drive.uploads import DriveRuntime
+from app.modules.drive.zips import ZipJob
 from app.modules.users.models import User
 
 router = APIRouter(tags=["drive"])
@@ -250,6 +260,117 @@ async def download_by_ticket(
     return await _content(request, db, item, ticket.version_id, inline, cache="private, no-store")
 
 
+# --- versions, copies, ZIPs (phase D3) --------------------------------------------------------
+
+
+def _wake(request: Request) -> None:
+    """New versions to read (SHA-256, thumbnails) and previews to make."""
+    runtime: DriveRuntime = request.app.state.drive
+    runtime.media_wake.set()
+    if runtime.preview_wake is not None:
+        runtime.preview_wake.set()
+
+
+@router.get("/drive/items/{item_id}/versions", response_model=DriveVersionListOut)
+async def list_versions(
+    item_id: UUID, request: Request, user: CurrentUser, db: Db
+) -> DriveVersionListOut:
+    """Newest first (§10.2)."""
+    return await versions.list_versions(db, user, request.app.state.settings, item_id)
+
+
+@router.post("/drive/items/{item_id}/versions/{version_id}/restore", response_model=DriveItemOut)
+async def restore_version(
+    item_id: UUID, version_id: UUID, request: Request, user: CurrentUser, db: Db
+) -> DriveItemOut:
+    """The version copied as the file's new current version (the versions in between stay)."""
+    out = await versions.restore_version(
+        db, user, request.app.state.settings, request.app.state.blobs, item_id, version_id
+    )
+    _wake(request)
+    return out
+
+
+@router.delete("/drive/items/{item_id}/versions/{version_id}", status_code=204)
+async def delete_version(item_id: UUID, version_id: UUID, user: CurrentUser, db: Db) -> Response:
+    """An older version for good (who may delete for good, §3.2); the current one: 409."""
+    await versions.delete_version(db, user, item_id, version_id)
+    return Response(status_code=204)
+
+
+@router.post("/drive/items/copy", response_model=DriveCopyResultsOut)
+async def copy_items(
+    data: DriveCopyIn, request: Request, user: CurrentUser, db: Db
+) -> DriveCopyResultsOut:
+    """Files and folders into a folder (§10.3): one result per item, `new_id` for its copy.
+    413 drive_copy_too_large past DRIVE_COPY_MAX_ITEMS / DRIVE_COPY_MAX_BYTES."""
+    out, woke = await copying.copy(
+        db, user, request.app.state.settings, request.app.state.blobs, data
+    )
+    if woke:
+        _wake(request)
+    return out
+
+
+@router.post("/drive/zip", response_model=DriveZipOut)
+async def create_zip(data: DriveZipIn, request: Request, user: CurrentUser, db: Db) -> DriveZipOut:
+    """A ZIP of folders and files (§7.2): what it holds is fixed now; `url` streams it once
+    within `expires_in` seconds. 413 drive_zip_too_large past the limits."""
+    job = await zips.prepare(db, user, request.app.state.settings, data.item_ids)
+    await db.commit()
+    runtime: DriveRuntime = request.app.state.drive
+    token = runtime.zip_tickets.issue(user.id, job)
+    return DriveZipOut(
+        url=f"/api/v1/drive/zip/{token}",
+        expires_in=int(runtime.zip_tickets.seconds),
+        entries=len(job.plan.entries),
+        size_bytes=job.plan.bytes_total,
+        zip_bytes=job.plan.length,
+        filename=job.filename,
+    )
+
+
+@router.get("/drive/zip/{token}")
+async def download_zip(token: str, request: Request, db: Db) -> StreamingResponse:
+    """The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,
+    Content-Length exact. 404 for an unknown or used ticket or a person who can no longer read
+    the items; 429 while too many ZIPs stream (the ticket stays valid)."""
+    runtime: DriveRuntime = request.app.state.drive
+    settings = request.app.state.settings
+    ticket = runtime.zip_tickets.peek(token) if len(token) <= 100 else None
+    if ticket is None or not isinstance(ticket.job, ZipJob):
+        raise item_not_found()
+    job = ticket.job
+    if not await zips.still_readable(db, job):
+        runtime.zip_tickets.take(token)
+        raise item_not_found()
+    await db.commit()
+    if not runtime.zip_slots.try_acquire(
+        job.user_id, per_user=settings.drive_zip_per_user, total=settings.drive_zip_total
+    ):
+        raise rate_limited(10)
+    if runtime.zip_tickets.take(token) is None:
+        runtime.zip_slots.release(job.user_id)
+        raise item_not_found()
+    blobs = request.app.state.blobs
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            async for chunk in zipstream.stream(job.plan, lambda key: blobs.stream(key)):
+                yield chunk
+        finally:
+            runtime.zip_slots.release(job.user_id)
+
+    headers = {
+        "Content-Disposition": attachments.disposition(job.filename, inline=False),
+        "Content-Length": str(job.plan.length),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+        "Cache-Control": "private, no-store",
+    }
+    return StreamingResponse(body(), media_type="application/zip", headers=headers)
+
+
 # --- uploads (§6) ------------------------------------------------------------------------------
 
 
@@ -339,6 +460,22 @@ async def abort_upload(upload_id: UUID, request: Request, user: CurrentUser, db:
 
 
 # --- administrators (§5.5) ---------------------------------------------------------------------
+
+
+@router.get("/admin/drive/usage", response_model=DriveUsageOut)
+async def drive_usage(request: Request, admin: DriveAdmin, db: Db) -> DriveUsageOut:
+    """The whole drive and each location: sizes and counts only (§11.2)."""
+    return await usage.usage(db, request.app.state.settings)
+
+
+@router.patch("/admin/drive/locations/{location_id}", response_model=DriveLocationUsageOut)
+async def set_location_quota(
+    location_id: UUID, data: DriveQuotaIn, request: Request, admin: DriveAdmin, db: Db
+) -> DriveLocationUsageOut:
+    """A location's own quota in bytes (null: none), audited as drive.quota_changed."""
+    return await usage.set_quota(
+        db, admin, request.app.state.settings, location_id, data.quota_bytes
+    )
 
 
 @router.post("/admin/drive/users/{user_id}/takeover", response_model=DriveTakeoverOut)

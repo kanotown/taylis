@@ -240,6 +240,123 @@ class DriveSearchOut(BaseModel):
     next_cursor: str | None
 
 
+# --- versions, copies, ZIPs (phase D3) ---------------------------------------------------------
+
+
+class DriveVersionOut(BaseModel):
+    id: UUID
+    number: int
+    size_bytes: int
+    # What made it: upload, copy, restore (an older version brought back), attachment, import.
+    source: str
+    uploaded_by: UUID | None
+    created_at: datetime
+    content_modified_at: datetime | None
+    current: bool
+    # Hex, once the media loop has read the bytes (§6.4).
+    sha256: str | None = None
+
+
+class DriveVersionListOut(BaseModel):
+    """Newest first. Older versions are kept DRIVE_VERSIONS_MAX at most, each at most
+    DRIVE_VERSIONS_DAYS after it was replaced (`keep_versions`, `keep_days`)."""
+
+    versions: list[DriveVersionOut]
+    keep_versions: int
+    keep_days: int
+
+
+class DriveCopyIn(BaseModel):
+    item_ids: list[UUID] = Field(min_length=1, max_length=MAX_BATCH)
+    target_folder_id: UUID
+    on_conflict: Literal["fail", "rename"] = "rename"
+    # The same request sent again answers the copies it made (per item).
+    client_op_id: UUID | None = None
+
+
+class DriveCopyResult(DriveItemResult):
+    # The new item made from `id`.
+    new_id: UUID | None = None
+
+
+class DriveCopyResultsOut(BaseModel):
+    results: list[DriveCopyResult]
+
+
+class DriveZipIn(BaseModel):
+    item_ids: list[UUID] = Field(min_length=1, max_length=MAX_BATCH)
+
+
+class DriveZipOut(BaseModel):
+    """`url` (relative to the server) streams the ZIP once, within `expires_in` seconds, without
+    the bearer token: an uncompressed ZIP (ZIP64 when needed) of `entries` entries, exactly
+    `zip_bytes` long (its Content-Length), holding `size_bytes` of files."""
+
+    url: str
+    expires_in: int
+    entries: int
+    size_bytes: int
+    zip_bytes: int
+    filename: str
+
+
+# --- administrators: usage and quotas (§11) -----------------------------------------------------
+
+
+class DriveUsageParts(BaseModel):
+    """Bytes of the current versions (outside the trash), of older versions, and of the trash."""
+
+    current_bytes: int
+    old_versions_bytes: int
+    trash_bytes: int
+
+
+class DriveLocationUsageOut(DriveUsageParts):
+    id: UUID
+    kind: LocationKind
+    channel_id: UUID | None
+    user_id: UUID | None
+    # The channel's name or the person's display name (never anything inside).
+    name: str
+    archived: bool
+    used_bytes: int
+    item_count: int
+    quota_bytes: int | None
+    # The quota that applies: its own, else DRIVE_USER_DEFAULT_QUOTA_BYTES for a My Drive.
+    effective_quota_bytes: int | None
+    updated_at: datetime
+
+
+class DrivePersonUsageOut(BaseModel):
+    user_id: UUID
+    # The versions this person put in any drive (uploads, copies, restores).
+    bytes: int
+    versions: int
+
+
+class DriveUsageTotalOut(DriveUsageParts):
+    used_bytes: int
+    item_count: int
+    location_count: int
+    # DRIVE_TOTAL_QUOTA_BYTES / DRIVE_USER_DEFAULT_QUOTA_BYTES (null: none).
+    total_quota_bytes: int | None
+    user_default_quota_bytes: int | None
+    # The chat's attachments (messages, canvases, pages), not counted by any quota.
+    chat_attachments_bytes: int
+    chat_attachment_count: int
+
+
+class DriveUsageOut(BaseModel):
+    total: DriveUsageTotalOut
+    locations: list[DriveLocationUsageOut]
+    people: list[DrivePersonUsageOut]
+
+
+class DriveQuotaIn(BaseModel):
+    # Bytes; null removes the location's own quota.
+    quota_bytes: int | None = Field(ge=0)
+
+
 class DriveTakeoverIn(BaseModel):
     target_folder_name: str | None = Field(default=None, max_length=255)
 
@@ -261,3 +378,10 @@ class DriveChangedData(BaseModel):
 
 class DriveUploadUpdatedData(BaseModel):
     upload: DriveUploadOut
+
+
+class DriveLocationUpdatedData(BaseModel):
+    """The location's settings changed (its quota): read the locations again. Only the id travels
+    (what a location shows depends on who reads it)."""
+
+    location_id: UUID

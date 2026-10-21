@@ -4,6 +4,7 @@ drive.changed carries ids and a number only (no names): the clients re-read the 
 open. Its audience `drive` is the location's id, resolved when the relay sends it from who can read
 the location then (研究室ドライブ: the people who are not guests or bots; a channel's drive: its
 members; My Drive: its owner), so someone who just lost access never gets it.
+drive.location.updated (phase D3: a quota changed) goes to the same audience, with the id only.
 drive.upload.updated goes to the uploader (a completion that finished in the background, an
 expired session).
 """
@@ -19,15 +20,23 @@ from app.events.models import OutboxEvent
 from app.events.outbox import AudienceResolver, write_outbox
 from app.modules.drive import access
 from app.modules.drive.models import DriveItem, DriveLocation
-from app.modules.drive.schemas import DriveChangedData, DriveUploadOut, DriveUploadUpdatedData
+from app.modules.drive.schemas import (
+    DriveChangedData,
+    DriveLocationUpdatedData,
+    DriveUploadOut,
+    DriveUploadUpdatedData,
+)
 
 DRIVE_CHANGED = "drive.changed"
 DRIVE_UPLOAD_UPDATED = "drive.upload.updated"
+DRIVE_LOCATION_UPDATED = "drive.location.updated"
 
 __all__ = [
     "DRIVE_CHANGED",
+    "DRIVE_LOCATION_UPDATED",
     "DRIVE_UPLOAD_UPDATED",
     "DriveChangedData",
+    "DriveLocationUpdatedData",
     "DriveUploadUpdatedData",
 ]
 
@@ -48,6 +57,17 @@ async def emit_changed(
         payload=DriveChangedData(
             location_id=location_id, folder_ids=ids, seq=await next_seq(db)
         ).model_dump(mode="json"),
+    )
+
+
+async def emit_location_updated(db: AsyncSession, location_id: uuid.UUID) -> None:
+    """Phase D3: the location's quota changed (its readers read the locations again)."""
+    await write_outbox(
+        db,
+        event_type=DRIVE_LOCATION_UPDATED,
+        audience_type="drive",
+        audience_id=location_id,
+        payload=DriveLocationUpdatedData(location_id=location_id).model_dump(mode="json"),
     )
 
 

@@ -52,7 +52,7 @@ from app.modules.drive.schemas import (
     DriveUploadPartOut,
     DriveUploadPatch,
 )
-from app.modules.drive.tickets import DownloadTickets
+from app.modules.drive.tickets import DownloadTickets, ZipSlots, ZipTickets
 from app.modules.users.models import User
 
 log = logging.getLogger("app.drive.uploads")
@@ -88,6 +88,9 @@ class DriveRuntime:
     last_orphan_sweep: datetime | None = None
     # Phase D2 (§7.3): the Web's download URLs.
     tickets: DownloadTickets = field(default_factory=DownloadTickets)
+    # Phase D3 (§7.2): the ZIPs' one-time URLs and the ZIPs streaming now.
+    zip_tickets: ZipTickets = field(default_factory=ZipTickets)
+    zip_slots: ZipSlots = field(default_factory=ZipSlots)
 
     def finalize(
         self, settings: Settings, blobs: BlobStore, upload_id: uuid.UUID
@@ -700,7 +703,7 @@ async def _place_in_tx(
                 created_at=now,
                 change_seq=0,
             )
-            service._set_name(item, name)
+            service.set_name(item, name)
     locked_location = await service.lock_location(db, location.id)
     await service.check_quota_in_tx(
         db, settings, locked_location, upload.size_bytes, with_reservations=False

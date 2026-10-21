@@ -2947,6 +2947,25 @@
         "type": "object"
       }
     },
+    "drive.location.updated": {
+      "audience": "drive (who can read the location when sent)",
+      "consumes_seq": false,
+      "data": {
+        "description": "The location's settings changed (its quota): read the locations again. Only the id travels\n(what a location shows depends on who reads it).",
+        "properties": {
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location_id"
+        ],
+        "title": "DriveLocationUpdatedData",
+        "type": "object"
+      }
+    },
     "drive.upload.updated": {
       "audience": "user (the uploader)",
       "consumes_seq": false,
