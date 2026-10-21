@@ -907,7 +907,10 @@ internal fun CanvasEditorField(
     val caret = field.selection.start
     val query = if (field.selection.collapsed) Mentions.query(field.text.substring(0, caret.coerceIn(0, field.text.length))) else null
     // `<!channel>` notifies nobody in a canvas (§4.2): @channel / @here are not offered.
-    // MOBILE_UI.md §23: the participants first in a DM's canvas, me last.
+    // MOBILE_UI.md §23: the members first (a DM's participants, a channel's as read when the list opens), me last.
+    val mentionOpen = query != null
+    val memberEpoch = store.memberEpoch(saver.channelId)
+    LaunchedEffect(mentionOpen, saver.channelId, memberEpoch) { if (mentionOpen) controller.readMentionMembers(saver.channelId) }
     val candidates = query?.let { q -> Mentions.candidates(q, store.users.values, store.groups.values, limit = 8, aiBotIds = controller.aiBotIdsRead, context = Mentions.documentContext(store, saver.channelId)).filter { it.kind != "all" } } ?: emptyList()
 
     Column(modifier) {

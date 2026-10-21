@@ -992,6 +992,15 @@ class Store(private val persistence: Persistence? = null) {
     private val memberEpochs = HashMap<String, Int>()
     fun memberEpoch(channelId: String): Int = memberEpochs[channelId] ?: 0
 
+    /** A member added or removed (2026-10-21): open member lists and the @ list's members are read again. */
+    fun membersChanged(channelId: String) {
+        memberEpochs[channelId] = memberEpoch(channelId) + 1
+        emit()
+    }
+
+    /** MOBILE_UI.md §23: channels' member ids for the @ list (`Mentions.Members`), in memory only. */
+    val mentionMembers = jp.chikuwachat.android.ui.Mentions.Members { emit() }
+
     /**
      * channel.member_updated (SYNC_PROTOCOL.md, M31): someone became an owner or a member again. When it is me, my
      * membership role changes (owner-only actions appear or go); either way an open member list is loaded again.

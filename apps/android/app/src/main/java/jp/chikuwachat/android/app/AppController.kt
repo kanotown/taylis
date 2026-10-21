@@ -2790,6 +2790,12 @@ class AppController(private val app: Application) {
 
     suspend fun members(channelId: String): Result<List<String>> = attempt { api!!.members(channelId).map { it.userId } }
 
+    /** MOBILE_UI.md §23: the @ list opened in this channel (or its canvas): its members for the list, if not held. */
+    suspend fun readMentionMembers(channelId: String?) {
+        if (api == null) return
+        jp.chikuwachat.android.ui.Mentions.readMembers(store, channelId) { members(it) }
+    }
+
     suspend fun memberList(channelId: String): Result<List<MemberOut>> = attempt { api!!.members(channelId) }
 
     // --- recurring posts (L6, M60, RECURRING.md §5) ---------------------------------------------------

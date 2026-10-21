@@ -227,6 +227,10 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     val hasCamera = openCamera != null
     Column {
         val query = Mentions.query(draft)
+        // MOBILE_UI.md §23: while the @ list is open, the channel's members are read for it (once; again when they change).
+        val mentionOpen = query != null
+        val memberEpoch = store.memberEpoch(channelId)
+        LaunchedEffect(mentionOpen, channelId, memberEpoch) { if (mentionOpen) controller.readMentionMembers(channelId) }
         // MOBILE_UI.md §23: the people of this conversation first (the thread's, then the channel's), me last.
         val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values, aiBotIds = controller.aiBotIdsRead, context = Mentions.context(store, channelId, parentId)) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
