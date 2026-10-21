@@ -166,7 +166,7 @@ it("the 「AI」 badge on the AI bot's posts (BOT for the others) and in the men
 
 it("the members dialog says an AI bot is in the conversation (§4)", async () => {
   await setup();
-  fireEvent.click(screen.getByRole("button", { name: "メンバー" }));
+  fireEvent.click(screen.getByRole("button", { name: /^メンバー/ }));
   await settle();
   expect(within(dialog()).getByRole("note").textContent).toBe("AI（ちくわ）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます");
 });
@@ -179,7 +179,7 @@ it("a server without AI (404): no 「要約」, no badge, no notice", async () =
   await settle();
   const aiRow = screen.getByText("AI の返事").closest("article")!;
   expect(within(aiRow).getByText("BOT")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "メンバー" }));
+  fireEvent.click(screen.getByRole("button", { name: /^メンバー/ }));
   await settle();
   expect(within(dialog()).queryByRole("note")).toBeNull();
 });

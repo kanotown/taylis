@@ -1850,8 +1850,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </>
               )}
               {isChannel && current.isMember && !compact && !tightHeader && (
-                <IconButton label={t("channel.members")} onClick={() => setDialog("members")}>
+                // The member count beside the icon (2026-10-21), kept current by channel.member_added / _removed.
+                <IconButton
+                  label={current.member_count ? `${t("channel.members")} · ${t("common.people", { count: current.member_count })}` : t("channel.members")}
+                  onClick={() => setDialog("members")}
+                  className={current.member_count ? "w-auto gap-1 px-2" : undefined}
+                >
                   <Users size={18} />
+                  {!!current.member_count && <span className="text-xs font-semibold tabular-nums">{current.member_count}</span>}
                 </IconButton>
               )}
               {current.isMember && (

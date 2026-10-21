@@ -5,7 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { Avatar, presenceLabel } from "./Avatar";
+import { Avatar, boardDotSize, presenceLabel } from "./Avatar";
 import { myName, selfNotesHint } from "./channels";
 import { pickerPeople } from "./home";
 import { StatusEmoji, UserPopover } from "./UserPopover";
@@ -309,7 +309,7 @@ export function MemberList({ controller, channel, members, onChange, className }
                 return (
                 <li key={member.user_id} data-member-row={member.user_id} className="group/member flex items-center gap-2 px-3 py-2 text-sm">
                   <UserPopover controller={controller} userId={member.user_id} className="flex min-w-0 flex-1 items-center gap-2.5">
-                    <Avatar id={member.user_id} name={name} size={28} presence={controller.store.users.get(member.user_id)?.role === "bot" ? undefined : presence} />
+                    <Avatar id={member.user_id} name={name} size={32} dotSize={boardDotSize(32)} presence={controller.store.users.get(member.user_id)?.role === "bot" ? undefined : presence} />
                     {/* The name takes the room left; the whole line is the tooltip when it is cut. */}
                     <span className="min-w-0 flex-1 truncate" title={[`${name} @${user?.username ?? ""}`, extra].filter(Boolean).join(" · ")}>
                       {name} <span className="text-muted">@{user?.username ?? ""}</span>
