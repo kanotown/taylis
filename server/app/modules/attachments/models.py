@@ -39,6 +39,11 @@ class Attachment(Base):
     page_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("wiki_pages.id", ondelete="SET NULL")
     )
+    # M160 (docs/DRIVE.md §4.1): one version of a drive file. message_id, channel_id, canvas_id
+    # and page_id stay NULL; whoever can read the drive item reads it (status 'attached').
+    drive_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="SET NULL")
+    )
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     filename: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
@@ -90,6 +95,11 @@ class Attachment(Base):
             "attachments_page_idx",
             "page_id",
             postgresql_where=text("page_id IS NOT NULL"),
+        ),
+        Index(
+            "attachments_drive_item_idx",
+            "drive_item_id",
+            postgresql_where=text("drive_item_id IS NOT NULL"),
         ),
         Index(
             "attachments_preview_queue_idx",

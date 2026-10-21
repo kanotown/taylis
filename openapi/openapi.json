@@ -8773,6 +8773,1097 @@
         "title": "DraftPut",
         "type": "object"
       },
+      "DriveChildrenOut": {
+        "properties": {
+          "folder": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DriveItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCrumb"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder",
+          "path",
+          "items",
+          "next_cursor"
+        ],
+        "title": "DriveChildrenOut",
+        "type": "object"
+      },
+      "DriveCrumb": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DriveCrumb",
+        "type": "object"
+      },
+      "DriveFileOut": {
+        "description": "The current version's attachment (the shape of AttachmentOut's media fields): its\nthumbnail, poster and preview are served by /attachments/{attachment_id}/…",
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "has_poster": {
+            "title": "Has Poster",
+            "type": "boolean"
+          },
+          "has_thumbnail": {
+            "title": "Has Thumbnail",
+            "type": "boolean"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentPreviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "version_id",
+          "width",
+          "height",
+          "has_thumbnail",
+          "has_poster",
+          "duration_ms",
+          "preview"
+        ],
+        "title": "DriveFileOut",
+        "type": "object"
+      },
+      "DriveFolderCreate": {
+        "properties": {
+          "client_op_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Op Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "parent_id": {
+            "format": "uuid",
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "parent_id"
+        ],
+        "title": "DriveFolderCreate",
+        "type": "object"
+      },
+      "DriveItemDetailOut": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCrumb"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "path"
+        ],
+        "title": "DriveItemDetailOut",
+        "type": "object"
+      },
+      "DriveItemOut": {
+        "properties": {
+          "content_modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Modified At"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveFileOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "folder",
+              "file"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "link_count": {
+            "title": "Link Count",
+            "type": "integer"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "trashed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trashed At"
+          },
+          "trashed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trashed By"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "version_count": {
+            "title": "Version Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "location_id",
+          "parent_id",
+          "kind",
+          "name",
+          "size_bytes",
+          "content_type",
+          "content_modified_at",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at",
+          "version_count",
+          "file",
+          "link_count"
+        ],
+        "title": "DriveItemOut",
+        "type": "object"
+      },
+      "DriveItemRename": {
+        "properties": {
+          "name": {
+            "maxLength": 1000,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DriveItemRename",
+        "type": "object"
+      },
+      "DriveItemResult": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "ok"
+        ],
+        "title": "DriveItemResult",
+        "type": "object"
+      },
+      "DriveLocationListOut": {
+        "properties": {
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/DriveLocationOut"
+            },
+            "title": "Locations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "locations"
+        ],
+        "title": "DriveLocationListOut",
+        "type": "object"
+      },
+      "DriveLocationOut": {
+        "properties": {
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "can_share": {
+            "title": "Can Share",
+            "type": "boolean"
+          },
+          "can_write": {
+            "title": "Can Write",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "external_links": {
+            "title": "External Links",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "workspace",
+              "channel",
+              "user"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quota_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Bytes"
+          },
+          "root_id": {
+            "format": "uuid",
+            "title": "Root Id",
+            "type": "string"
+          },
+          "used_bytes": {
+            "title": "Used Bytes",
+            "type": "integer"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "channel_id",
+          "user_id",
+          "root_id",
+          "name",
+          "can_write",
+          "can_manage",
+          "can_share",
+          "external_links",
+          "quota_bytes",
+          "used_bytes",
+          "item_count"
+        ],
+        "title": "DriveLocationOut",
+        "type": "object"
+      },
+      "DriveLocationResolve": {
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "kind": {
+            "enum": [
+              "channel",
+              "me"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "DriveLocationResolve",
+        "type": "object"
+      },
+      "DriveMoveIn": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "on_conflict": {
+            "default": "fail",
+            "enum": [
+              "fail",
+              "rename"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          },
+          "target_folder_id": {
+            "format": "uuid",
+            "title": "Target Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_ids",
+          "target_folder_id"
+        ],
+        "title": "DriveMoveIn",
+        "type": "object"
+      },
+      "DriveRestoreIn": {
+        "properties": {
+          "on_conflict": {
+            "default": "rename",
+            "enum": [
+              "rename",
+              "fail"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          }
+        },
+        "title": "DriveRestoreIn",
+        "type": "object"
+      },
+      "DriveResultsOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/DriveItemResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "DriveResultsOut",
+        "type": "object"
+      },
+      "DriveTakeoverIn": {
+        "properties": {
+          "target_folder_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Folder Name"
+          }
+        },
+        "title": "DriveTakeoverIn",
+        "type": "object"
+      },
+      "DriveTakeoverOut": {
+        "properties": {
+          "folder": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          }
+        },
+        "required": [
+          "folder"
+        ],
+        "title": "DriveTakeoverOut",
+        "type": "object"
+      },
+      "DriveTrashEntryOut": {
+        "description": "One group in a location's trash (what was put there together).",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "trashed_at": {
+            "format": "date-time",
+            "title": "Trashed At",
+            "type": "string"
+          },
+          "trashed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trashed By"
+          }
+        },
+        "required": [
+          "item",
+          "trashed_at",
+          "trashed_by",
+          "item_count",
+          "size_bytes"
+        ],
+        "title": "DriveTrashEntryOut",
+        "type": "object"
+      },
+      "DriveTrashIn": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "DriveTrashIn",
+        "type": "object"
+      },
+      "DriveTrashOut": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DriveTrashEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "entries",
+          "next_cursor"
+        ],
+        "title": "DriveTrashOut",
+        "type": "object"
+      },
+      "DriveUploadCompleteOut": {
+        "properties": {
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveItemOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "completing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DriveUploadCompleteOut",
+        "type": "object"
+      },
+      "DriveUploadCreate": {
+        "properties": {
+          "client_upload_id": {
+            "format": "uuid",
+            "title": "Client Upload Id",
+            "type": "string"
+          },
+          "content_modified_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Modified Ms"
+          },
+          "name": {
+            "maxLength": 1000,
+            "title": "Name",
+            "type": "string"
+          },
+          "on_conflict": {
+            "default": "fail",
+            "enum": [
+              "version",
+              "rename",
+              "fail"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          },
+          "parent_id": {
+            "format": "uuid",
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "relative_dir": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Dir"
+          },
+          "size_bytes": {
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "target_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Item Id"
+          }
+        },
+        "required": [
+          "client_upload_id",
+          "parent_id",
+          "name",
+          "size_bytes"
+        ],
+        "title": "DriveUploadCreate",
+        "type": "object"
+      },
+      "DriveUploadListOut": {
+        "properties": {
+          "uploads": {
+            "items": {
+              "$ref": "#/components/schemas/DriveUploadOut"
+            },
+            "title": "Uploads",
+            "type": "array"
+          }
+        },
+        "required": [
+          "uploads"
+        ],
+        "title": "DriveUploadListOut",
+        "type": "object"
+      },
+      "DriveUploadOut": {
+        "properties": {
+          "client_upload_id": {
+            "format": "uuid",
+            "title": "Client Upload Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "on_conflict": {
+            "enum": [
+              "version",
+              "rename",
+              "fail"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          },
+          "parent_id": {
+            "format": "uuid",
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "part_size": {
+            "title": "Part Size",
+            "type": "integer"
+          },
+          "parts_total": {
+            "title": "Parts Total",
+            "type": "integer"
+          },
+          "received_parts": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Received Parts",
+            "type": "array"
+          },
+          "relative_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Dir"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "completing",
+              "completed",
+              "aborted",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Item Id"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "id",
+          "client_upload_id",
+          "status",
+          "location_id",
+          "parent_id",
+          "relative_dir",
+          "name",
+          "on_conflict",
+          "target_item_id",
+          "part_size",
+          "parts_total",
+          "received_parts",
+          "size_bytes",
+          "expires_at",
+          "created_at",
+          "item_id",
+          "version_id",
+          "error"
+        ],
+        "title": "DriveUploadOut",
+        "type": "object"
+      },
+      "DriveUploadPartOut": {
+        "properties": {
+          "part_number": {
+            "title": "Part Number",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "part_number",
+          "size_bytes"
+        ],
+        "title": "DriveUploadPartOut",
+        "type": "object"
+      },
+      "DriveUploadPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "on_conflict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "version",
+                  "rename",
+                  "fail"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Conflict"
+          }
+        },
+        "title": "DriveUploadPatch",
+        "type": "object"
+      },
       "EffectiveOut": {
         "description": "An entry of the page's effective access.",
         "properties": {
@@ -24157,6 +25248,72 @@
         ]
       }
     },
+    "/api/v1/admin/drive/users/{user_id}/takeover": {
+      "post": {
+        "description": "A deactivated person's My Drive into 研究室ドライブ (§3.3), audited.",
+        "operationId": "takeover_api_v1_admin_drive_users__user_id__takeover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DriveTakeoverIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveTakeoverOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Takeover",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/admin/groups": {
       "post": {
         "operationId": "create_group_api_v1_admin_groups_post",
@@ -25827,6 +26984,7 @@
     },
     "/api/v1/attachments/{attachment_id}/content": {
       "get": {
+        "description": "The file (M160: one byte range with Range, 206; a resumed download, a video's seek).",
         "operationId": "download_api_v1_attachments__attachment_id__content_get",
         "parameters": [
           {
@@ -31255,6 +32413,1069 @@
         "summary": "Save Draft",
         "tags": [
           "drafts"
+        ]
+      }
+    },
+    "/api/v1/drive/folders": {
+      "post": {
+        "operationId": "create_folder_api_v1_drive_folders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveFolderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "The folder already existed"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Folder",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/folders/{folder_id}/children": {
+      "get": {
+        "operationId": "list_children_api_v1_drive_folders__folder_id__children_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "modified",
+                "size"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveChildrenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Children",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/move": {
+      "post": {
+        "operationId": "move_items_api_v1_drive_items_move_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveMoveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move Items",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/trash": {
+      "post": {
+        "operationId": "trash_items_api_v1_drive_items_trash_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveTrashIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trash Items",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}": {
+      "delete": {
+        "description": "For good: only a group in the trash (§3.2).",
+        "operationId": "delete_item_api_v1_drive_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Item",
+        "tags": [
+          "drive"
+        ]
+      },
+      "get": {
+        "operationId": "get_item_api_v1_drive_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Item",
+        "tags": [
+          "drive"
+        ]
+      },
+      "patch": {
+        "operationId": "rename_item_api_v1_drive_items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveItemRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Item",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/content": {
+      "get": {
+        "description": "The file under its current name (§7.1): Range (one range, 206), If-Range on the version's\nETag; always an attachment except an image with ?inline=1.",
+        "operationId": "download_api_v1_drive_items__item_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/restore": {
+      "post": {
+        "operationId": "restore_item_api_v1_drive_items__item_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DriveRestoreIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Item",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/locations": {
+      "get": {
+        "operationId": "list_locations_api_v1_drive_locations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveLocationListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Locations",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/locations/resolve": {
+      "post": {
+        "description": "A channel's drive or my My Drive, made on first use.",
+        "operationId": "resolve_location_api_v1_drive_locations_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveLocationResolve"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveLocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Location",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/locations/{location_id}/trash": {
+      "get": {
+        "operationId": "list_trash_api_v1_drive_locations__location_id__trash_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveTrashOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Trash",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/uploads": {
+      "get": {
+        "description": "My sessions (?status=active: the ones to resume after reopening the app).",
+        "operationId": "list_uploads_api_v1_drive_uploads_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "completing",
+                    "completed",
+                    "aborted",
+                    "expired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Uploads",
+        "tags": [
+          "drive"
+        ]
+      },
+      "post": {
+        "operationId": "create_upload_api_v1_drive_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveUploadCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadOut"
+                }
+              }
+            },
+            "description": "This client_upload_id's session"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Upload",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/uploads/{upload_id}": {
+      "delete": {
+        "operationId": "abort_upload_api_v1_drive_uploads__upload_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abort Upload",
+        "tags": [
+          "drive"
+        ]
+      },
+      "get": {
+        "operationId": "get_upload_api_v1_drive_uploads__upload_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Upload",
+        "tags": [
+          "drive"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_upload_api_v1_drive_uploads__upload_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveUploadPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Upload",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/uploads/{upload_id}/complete": {
+      "post": {
+        "description": "200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again).",
+        "operationId": "complete_upload_api_v1_drive_uploads__upload_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadCompleteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadCompleteOut"
+                }
+              }
+            },
+            "description": "Still joining the parts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Complete Upload",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/uploads/{upload_id}/parts/{part_number}": {
+      "put": {
+        "description": "The part's bytes as the body (application/octet-stream) with X-Content-SHA256 (hex).\nSending a number again replaces that part.",
+        "operationId": "put_part_api_v1_drive_uploads__upload_id__parts__part_number__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part_number",
+            "required": true,
+            "schema": {
+              "title": "Part Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUploadPartOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Part",
+        "tags": [
+          "drive"
         ]
       }
     },

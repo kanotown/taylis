@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 import filetype
 from fastapi import UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -54,6 +55,17 @@ _page_readable: PageReadable | None = None
 def set_page_access_check(check: PageReadable | None) -> None:
     global _page_readable
     _page_readable = check
+
+
+# M160 (docs/DRIVE.md §4.1): whether someone can read a drive item (drive.access.can_read_item,
+# handed over by main.py: the drive depends on attachments). Unset: a drive file is never served.
+DriveReadable = Callable[[AsyncSession, User, uuid.UUID], Awaitable[bool]]
+_drive_readable: DriveReadable | None = None
+
+
+def set_drive_access_check(check: DriveReadable | None) -> None:
+    global _drive_readable
+    _drive_readable = check
 
 
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
@@ -497,13 +509,22 @@ async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID
     """SECURITY.md §4: attached → channel members (and in a public channel anyone but a guest,
     who reads it before joining: M27), pending → uploader only, deleted → 404. A canvas's image
     (M42) → the conversation's members only, like the canvas itself (CANVAS.md §4.7). A wiki page's
-    file (M120) → whoever can read the page."""
+    file (M120) → whoever can read the page. A drive file's version (M160) → whoever can read the
+    drive item."""
     attachment = await repo.get(db, attachment_id)
     if attachment is None or attachment.status == "deleted":
         raise not_found("attachment_not_found", "Attachment not found")
     if attachment.status == "pending":
         if attachment.uploader_id != actor.id:
             raise forbidden("not_uploader", "Only the uploader can access a pending attachment")
+        return attachment
+    if attachment.drive_item_id is not None:
+        # M160 (docs/DRIVE.md §4.1): a drive file's version, an old one too: whoever can read the
+        # item (not in the trash); for anyone else it does not exist.
+        if _drive_readable is None or not await _drive_readable(
+            db, actor, attachment.drive_item_id
+        ):
+            raise not_found("attachment_not_found", "Attachment not found")
         return attachment
     if attachment.page_id is not None:
         # M120 (docs/WIKI.md §4.7): whoever can read the page (and it is not in the trash); for
@@ -530,7 +551,86 @@ def content_headers(attachment: Attachment, *, inline: bool) -> dict[str, str]:
         "Content-Length": str(attachment.size_bytes),
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, max-age=3600",
+        # M160: an attachment's bytes never change, so its id is its ETag (If-Range).
+        "Accept-Ranges": "bytes",
+        "ETag": f'"{attachment.id}"',
     }
+
+
+def disposition(name: str, *, inline: bool) -> str:
+    """Content-Disposition for a name someone chose (M160: a drive file's current name)."""
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "download"
+    kind = "inline" if inline else "attachment"
+    return f"{kind}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
+
+
+def requested_range(
+    range_header: str | None, if_range: str | None, etag: str, size: int
+) -> tuple[int, int] | None:
+    """M160 (docs/DRIVE.md §7.1): the one byte range a request asks for, (first, last) both
+    inclusive, or None for the whole body: no Range, several ranges, a malformed one, or an
+    If-Range that is not this ETag. A range that starts past the end is 416."""
+    if not range_header or size <= 0:
+        return None
+    if if_range is not None and if_range.strip() != etag:
+        return None
+    unit, _, spec = range_header.partition("=")
+    if unit.strip().lower() != "bytes" or "," in spec:
+        return None
+    first_raw, dash, last_raw = spec.strip().partition("-")
+    if not dash:
+        return None
+    try:
+        if first_raw == "":
+            suffix = int(last_raw)
+            if suffix <= 0:
+                return None
+            return max(size - suffix, 0), size - 1
+        first = int(first_raw)
+        last = int(last_raw) if last_raw else size - 1
+    except ValueError:
+        return None
+    if first < 0 or last < first:
+        return None if first < size else _unsatisfiable(size)
+    if first >= size:
+        raise AppError(
+            416,
+            "range_not_satisfiable",
+            "The requested range is outside the file",
+            headers={"Content-Range": f"bytes */{size}"},
+        )
+    return first, min(last, size - 1)
+
+
+def _unsatisfiable(size: int) -> tuple[int, int]:
+    raise AppError(
+        416,
+        "range_not_satisfiable",
+        "The requested range is outside the file",
+        headers={"Content-Range": f"bytes */{size}"},
+    )
+
+
+def ranged_response(
+    blobs: BlobStore,
+    key: str,
+    size: int,
+    headers: dict[str, str],
+    *,
+    range_header: str | None,
+    if_range: str | None,
+) -> StreamingResponse:
+    """The whole object (200) or the one range asked for (206 with Content-Range)."""
+    span = requested_range(range_header, if_range, headers.get("ETag", ""), size)
+    if span is None:
+        return StreamingResponse(blobs.stream(key), headers=headers)
+    first, last = span
+    partial = {
+        **headers,
+        "Content-Length": str(last - first + 1),
+        "Content-Range": f"bytes {first}-{last}/{size}",
+    }
+    return StreamingResponse(blobs.stream(key, first, last), status_code=206, headers=partial)
 
 
 def preview_pdf_headers(attachment: Attachment) -> dict[str, str]:

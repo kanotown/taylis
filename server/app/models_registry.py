@@ -16,6 +16,7 @@ from app.modules.channels import models as _channel_models
 from app.modules.dm_closes import models as _dm_close_models
 from app.modules.dm_pins import models as _dm_pin_models
 from app.modules.drafts import models as _draft_models
+from app.modules.drive import models as _drive_models
 from app.modules.emoji import models as _emoji_models
 from app.modules.feeds import models as _feed_models
 from app.modules.groups import models as _group_models
@@ -52,6 +53,7 @@ __all__ = [
     "_dm_close_models",
     "_dm_pin_models",
     "_draft_models",
+    "_drive_models",
     "_emoji_models",
     "_event_models",
     "_feed_models",

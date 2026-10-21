@@ -28,7 +28,8 @@ log = logging.getLogger("app.outbox")
 NOTIFY_CHANNEL = "outbox"
 # "page" (M120, docs/WIKI.md §10): the people who can read a wiki page when the relay sends it.
 # "action" (M143, docs/ACTIONS.md §12): who may press a button of a status button's group.
-AudienceType = Literal["channel", "user", "session", "all", "page", "action"]
+# "drive" (M160, docs/DRIVE.md §14): who can read a drive location (audience_id) when it is sent.
+AudienceType = Literal["channel", "user", "session", "all", "page", "action", "drive"]
 
 
 async def write_outbox(

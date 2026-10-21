@@ -54,10 +54,15 @@ async def download(
     db: Db,
     inline: bool = Query(default=False),
 ) -> StreamingResponse:
+    """The file (M160: one byte range with Range, 206; a resumed download, a video's seek)."""
     attachment = await service.get_for_access(db, user, attachment_id)
-    return StreamingResponse(
-        service.stream(request.app.state.blobs, attachment.storage_key),
-        headers=service.content_headers(attachment, inline=inline),
+    return service.ranged_response(
+        request.app.state.blobs,
+        attachment.storage_key,
+        attachment.size_bytes,
+        service.content_headers(attachment, inline=inline),
+        range_header=request.headers.get("range"),
+        if_range=request.headers.get("if-range"),
     )
 
 

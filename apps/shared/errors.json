@@ -1560,6 +1560,116 @@
       "ja": "画像が大きすぎます",
       "en": "The image is too large.",
       "zh-Hans": "图片太大。"
+    },
+    "drive_item_not_found": {
+      "ja": "ファイルまたはフォルダが見つかりません（消されたか、見る権限がありません）",
+      "en": "File or folder not found (it was deleted, or you can't see it).",
+      "zh-Hans": "找不到文件或文件夹（已被删除，或你无权查看）。"
+    },
+    "drive_read_only": {
+      "ja": "このドライブは読むだけです（アーカイブしたチャンネル、またはオーナーだけが書けるチャンネル）",
+      "en": "This drive is read-only for you (an archived channel, or one where only owners can post).",
+      "zh-Hans": "此云盘对你只读（已归档的频道，或仅所有者可发布的频道）。"
+    },
+    "drive_manage_restricted": {
+      "ja": "この操作はドライブの管理者（研究室ドライブは管理者、チャンネルはオーナー）だけが行えます",
+      "en": "Only the drive's managers can do this (admins for the lab drive, owners for a channel).",
+      "zh-Hans": "只有云盘的管理者可以执行此操作（实验室云盘为管理员，频道为所有者）。"
+    },
+    "drive_name_taken": {
+      "ja": "同じ名前のファイルまたはフォルダがあります",
+      "en": "A file or folder with this name already exists here.",
+      "zh-Hans": "此处已有同名的文件或文件夹。"
+    },
+    "drive_name_invalid": {
+      "ja": "この名前は使えません（空、255 文字を超える、「/」や制御文字を含む、「.」「..」）",
+      "en": "This name can't be used (empty, over 255 characters, contains \"/\" or control characters, or is \".\" / \"..\").",
+      "zh-Hans": "无法使用此名称（为空、超过 255 个字符、包含“/”或控制字符，或为“.”“..”）。"
+    },
+    "drive_depth_exceeded": {
+      "ja": "フォルダは 32 段までしか重ねられません",
+      "en": "Folders can only be nested 32 levels deep.",
+      "zh-Hans": "文件夹最多只能嵌套 32 层。"
+    },
+    "drive_folder_full": {
+      "ja": "1 つのフォルダに置けるのは 10,000 件までです",
+      "en": "A folder can hold at most 10,000 items.",
+      "zh-Hans": "一个文件夹最多可存放 10,000 项。"
+    },
+    "drive_cycle": {
+      "ja": "フォルダをその中に移すことはできません",
+      "en": "A folder can't be moved into itself.",
+      "zh-Hans": "不能将文件夹移动到其自身内部。"
+    },
+    "drive_not_in_trash": {
+      "ja": "ゴミ箱に入れたまとまりだけを戻す・完全に削除できます",
+      "en": "Only an item put in the trash (as a whole) can be restored or deleted for good.",
+      "zh-Hans": "只能恢复或永久删除整体放入回收站的项目。"
+    },
+    "drive_root_immutable": {
+      "ja": "ドライブのいちばん上のフォルダは変更できません",
+      "en": "The top folder of a drive can't be changed.",
+      "zh-Hans": "无法更改云盘的顶层文件夹。"
+    },
+    "drive_file_too_large": {
+      "ja": "ファイルが大きすぎます（ドライブの上限を超えています）",
+      "en": "The file is larger than the drive allows.",
+      "zh-Hans": "文件超过了云盘允许的大小。"
+    },
+    "drive_quota_exceeded": {
+      "ja": "ドライブの容量の上限を超えます。不要なファイルを完全に削除するか、管理者に相談してください",
+      "en": "The drive is full. Delete files for good, or ask an admin.",
+      "zh-Hans": "云盘空间已满。请永久删除不需要的文件，或联系管理员。"
+    },
+    "drive_upload_expired": {
+      "ja": "アップロードの期限が切れたか、取りやめられました。もう一度アップロードしてください",
+      "en": "The upload expired or was cancelled. Upload the file again.",
+      "zh-Hans": "上传已过期或已取消。请重新上传文件。"
+    },
+    "drive_upload_incomplete": {
+      "ja": "まだ届いていない部分があります。続きを送ってください",
+      "en": "Some parts of the file haven't arrived yet. Send the rest.",
+      "zh-Hans": "文件的部分内容尚未送达。请继续发送。"
+    },
+    "drive_upload_not_found": {
+      "ja": "アップロードが見つかりません",
+      "en": "Upload not found.",
+      "zh-Hans": "找不到上传。"
+    },
+    "drive_upload_not_active": {
+      "ja": "このアップロードは完了処理中か、完了しています",
+      "en": "This upload is being completed or is already complete.",
+      "zh-Hans": "此上传正在完成或已完成。"
+    },
+    "drive_upload_failed": {
+      "ja": "アップロードを完了できませんでした。もう一度お試しください",
+      "en": "The upload couldn't be completed. Try again.",
+      "zh-Hans": "无法完成上传。请重试。"
+    },
+    "drive_part_invalid": {
+      "ja": "送ったデータが壊れているか、大きさが合いません。もう一度送ってください",
+      "en": "A part of the file was damaged or had the wrong size. Send it again.",
+      "zh-Hans": "文件的一部分已损坏或大小不符。请重新发送。"
+    },
+    "drive_not_available": {
+      "ja": "ダイレクトメッセージにはドライブがありません",
+      "en": "Direct messages have no drive.",
+      "zh-Hans": "私信没有云盘。"
+    },
+    "drive_too_many_uploads": {
+      "ja": "進行中のアップロードが多すぎます。いくつか終わってからお試しください",
+      "en": "Too many uploads under way. Wait for some to finish.",
+      "zh-Hans": "进行中的上传过多。请等待部分上传完成。"
+    },
+    "drive_takeover_active_user": {
+      "ja": "引き取れるのは無効化した人のマイドライブだけです",
+      "en": "Only a deactivated person's My Drive can be taken over.",
+      "zh-Hans": "只能接管已停用用户的我的云盘。"
+    },
+    "range_not_satisfiable": {
+      "ja": "要求した範囲がファイルの外です。ダウンロードをやり直してください",
+      "en": "The requested range is outside the file. Start the download again.",
+      "zh-Hans": "请求的范围超出了文件。请重新开始下载。"
     }
   },
   "status": {

@@ -36,7 +36,7 @@ import logging
 import sys
 import tempfile
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -74,6 +74,16 @@ RENDER_MAX_OUTPUT = 4 * 1024  # the child's JSON line
 CHUNK = 256 * 1024
 # Where `python -m app.modules...` finds the app package (the child's working directory).
 SERVER_DIR = str(Path(app_package.__file__).resolve().parent.parent)
+
+# M160 (docs/DRIVE.md §14): a drive file's preview changed (drive.events, handed over by main.py:
+# the drive depends on attachments). Called in the transaction that records it.
+DriveChanged = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
+_drive_changed: DriveChanged | None = None
+
+
+def set_drive_change_hook(hook: DriveChanged | None) -> None:
+    global _drive_changed
+    _drive_changed = hook
 
 
 class PreviewError(Exception):
@@ -315,7 +325,10 @@ async def _finish(
             continue
         if _in_message(row):  # bound meanwhile: go round and take the channel first
             continue
-        apply(row)
+        changed = apply(row)
+        if changed and row.drive_item_id is not None and _drive_changed is not None:
+            await db.flush()
+            await _drive_changed(db, row.drive_item_id)
         status = row.preview_status
         await db.commit()
         return status
@@ -524,6 +537,9 @@ async def _candidates(
         .where(
             Attachment.preview_status.in_(statuses),
             Attachment.status != "deleted",
+            # M160 (docs/DRIVE.md §8): drive files get theirs from the loop when uploaded; the
+            # imported ones from `generate-previews --drive` (phase D5).
+            Attachment.drive_item_id.is_(None),
             Attachment.size_bytes <= settings.preview_max_input_bytes,
             or_(
                 Attachment.content_type.in_(PREVIEW_TYPES),
