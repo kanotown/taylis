@@ -4,7 +4,7 @@
  * against its quota when it has one), beside the open location's folders (DriveBrowser). A channel's own 「ドライブ」 tab
  * is ChannelDrive below: the same browser on that channel's drive.
  */
-import { ArrowLeft, Hash, HardDrive, Loader2, Lock, Plus, User } from "lucide-react";
+import { ArrowLeft, Hash, HardDrive, Link2, Loader2, Lock, MoreHorizontal, Plus, User } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
@@ -15,7 +15,8 @@ import { formatBytes, locationName, orderLocations } from "../drive/listing";
 import { coalesce } from "../sync/drive";
 import { DriveBrowser, type DriveMode } from "./DriveBrowser";
 import { onDriveTarget, takeDriveTarget } from "./DriveSearch";
-import { Button, cn, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "./primitives";
+import { MyLinksDialog } from "./DriveShareDialog";
+import { Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "./primitives";
 import { t } from "../i18n";
 
 /** Where 「ドライブ」 was left in this window (a page visited again opens there). */
@@ -49,6 +50,7 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
   const [current, setCurrent] = useState<{ locationId: string; folderId: string } | null>(() => takeDriveTarget() ?? lastPlace);
   const [mode, setMode] = useState<DriveMode>("folder");
   const [listOpen, setListOpen] = useState(compact && !lastPlace);
+  const [myLinks, setMyLinks] = useState(false);
 
   const load = useCallback(async () => {
     if (!api) return;
@@ -108,6 +110,18 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
     lastPlace = current;
   }, [current]);
 
+  // M163 (docs/DRIVE.md §3.2): the location's switch for external links, by those who manage it.
+  const setLinks = async (loc: DriveLocationOut, on: boolean) => {
+    if (!api) return;
+    try {
+      const changed = await api.setDriveLocationLinks(loc.id, on);
+      setLocations((held) => (held ?? []).map((entry) => (entry.id === changed.id ? changed : entry)));
+      controller.setNotice(on ? t("drive.share.locationOn", { name: locationName(loc) }) : t("drive.share.locationOff", { name: locationName(loc) }));
+    } catch (failure) {
+      controller.setError(failure);
+    }
+  };
+
   const choose = (loc: DriveLocationOut) => {
     setCurrent({ locationId: loc.id, folderId: loc.root_id });
     setMode("folder");
@@ -144,8 +158,23 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
             {locations.map((loc, index) => {
               const firstChannel = loc.kind === "channel" && locations[index - 1]?.kind !== "channel";
               return (
-                <li key={loc.id}>
+                <li key={loc.id} className="group relative">
                   {firstChannel && <div className="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("drive.channels")}</div>}
+                  {loc.can_manage && (
+                    <Menu>
+                      <MenuTrigger asChild>
+                        <button type="button" aria-label={t("drive.share.locationSettings", { name: locationName(loc) })} className="absolute bottom-1.5 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-md text-muted opacity-0 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100">
+                          <MoreHorizontal size={14} />
+                        </button>
+                      </MenuTrigger>
+                      <MenuContent align="end">
+                        <MenuLabel>{locationName(loc)}</MenuLabel>
+                        <MenuCheckboxItem checked={loc.external_links} onCheckedChange={(on) => void setLinks(loc, on === true)}>
+                          {t("drive.share.allowHere")}
+                        </MenuCheckboxItem>
+                      </MenuContent>
+                    </Menu>
+                  )}
                   <button
                     type="button"
                     data-drive-location={loc.kind}
@@ -158,6 +187,7 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
                       <span className="flex items-center gap-1">
                         <span className="truncate font-medium">{locationName(loc)}</span>
                         {!loc.can_write && <Lock size={11} className="shrink-0 text-muted" aria-label={t("drive.readOnlyShort")} />}
+                        {!loc.external_links && <span className="shrink-0 text-[10.5px] text-muted">{t("drive.share.offShort")}</span>}
                       </span>
                       <Usage location={loc} />
                     </span>
@@ -186,6 +216,14 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
         )}
         {error && <p role="alert" className="mt-3 px-2 text-xs text-danger">{error}</p>}
       </div>
+      {!controller.isGuest && (
+        <div className="shrink-0 border-t border-line p-2">
+          <button type="button" data-drive-my-links="" onClick={() => setMyLinks(true)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-muted hover:bg-ink/6 hover:text-ink">
+            <Link2 size={15} /> {t("drive.share.mine")}
+          </button>
+        </div>
+      )}
+      {myLinks && <MyLinksDialog controller={controller} onClose={() => setMyLinks(false)} />}
     </aside>
   );
 

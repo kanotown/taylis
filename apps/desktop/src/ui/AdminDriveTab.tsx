@@ -2,7 +2,8 @@
  * 「管理 → ドライブ」 (M162, docs/DRIVE.md §11.2): how much the drive holds, never what. The whole drive (current
  * versions, older versions, the trash; the chat's attachments apart, which no quota counts), every location by name
  * with its use, its count and its quota (changed here, in GB; empty removes it), and how much each person put there.
- * The server's own free disk space is not visible to the app: the screen says where to look.
+ * The server's own free disk space is not visible to the app: the screen says where to look. M163: the external links'
+ * switches and every link (AdminDriveLinks).
  */
 import { HardDrive, Hash, Loader2, User as UserIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import { parseQuotaGb, quotaGbText, usageRatio } from "../drive/actions";
 import { formatBytes } from "../drive/listing";
 import type { AppController } from "../state/app";
 import { group3, sinceLabel } from "./format";
+import { AdminDriveLinks } from "./AdminDriveLinks";
 import { Badge, Button, cn, Input } from "./primitives";
 import { t } from "../i18n";
 
@@ -114,6 +116,8 @@ export function AdminDriveTab({ controller }: { controller: AppController }) {
         </p>
         <p className="mt-1 text-xs text-muted">{t("admin.drive.disk")}</p>
       </section>
+
+      <AdminDriveLinks controller={controller} />
 
       <section aria-label={t("admin.drive.locations")}>
         <h3 className="mb-2 text-sm font-semibold">{t("admin.drive.locations")}</h3>

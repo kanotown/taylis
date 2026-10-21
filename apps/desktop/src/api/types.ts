@@ -664,6 +664,21 @@ export type DriveZipOut = components["schemas"]["DriveZipOut"];
 export type DriveUsageOut = components["schemas"]["DriveUsageOut"];
 export type DriveLocationUsageOut = components["schemas"]["DriveLocationUsageOut"];
 export type DrivePersonUsageOut = components["schemas"]["DrivePersonUsageOut"];
+// M163 (docs/DRIVE.md §5.4): external share links.
+export type DriveShareLinkOut = components["schemas"]["DriveShareLinkOut"];
+export type DriveShareLinkCreate = components["schemas"]["DriveShareLinkCreate"];
+export type DriveShareLinkPatch = components["schemas"]["DriveShareLinkPatch"];
+export type DriveShareLinkCreatedOut = components["schemas"]["DriveShareLinkCreatedOut"];
+export type DriveShareLinkListOut = components["schemas"]["DriveShareLinkListOut"];
+export type DriveItemLinksOut = components["schemas"]["DriveItemLinksOut"];
+export type DriveLinkPolicyOut = components["schemas"]["DriveLinkPolicyOut"];
+export type DriveShareEventOut = components["schemas"]["DriveShareEventOut"];
+export type DriveShareEventListOut = components["schemas"]["DriveShareEventListOut"];
+export type DriveShareSettingsOut = components["schemas"]["DriveShareSettingsOut"];
+export type DriveShareSettingsPatch = components["schemas"]["DriveShareSettingsPatch"];
+export type SharedItemOut = components["schemas"]["SharedItemOut"];
+export type ShareInfoOut = components["schemas"]["ShareInfoOut"];
+export type SharedChildrenOut = components["schemas"]["SharedChildrenOut"];
 /** drive.changed (SYNC_PROTOCOL.md §18): re-read these folders (and the trash) of the location. No names travel. */
 export interface DriveChanged {
   location_id: string;

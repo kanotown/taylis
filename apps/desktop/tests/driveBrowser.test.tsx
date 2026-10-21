@@ -59,7 +59,7 @@ afterEach(() => {
 
 describe("DriveBrowser", () => {
   it("lists a folder page by page, folders first, with breadcrumbs named after the location", async () => {
-    const first: DriveChildrenOut = { folder: ROOT, path: [{ id: "root", name: "研究室ドライブ" }], items: [FOLDER, row("a", "file", "a.txt")], next_cursor: "c1" };
+    const first: DriveChildrenOut = { folder: ROOT, path: [{ id: "root", name: "研究室ドライブ" }], items: [FOLDER, row("a", "file", "a.txt")], next_cursor: "c1", shared_above: 0 };
     const second: DriveChildrenOut = { ...first, items: [row("a", "file", "a.txt"), row("b", "file", "b.txt")], next_cursor: null };
     const driveChildren = vi.fn(async (_id: string, query: { cursor?: string | null }) => (query.cursor ? second : first));
     const onFolder = vi.fn();

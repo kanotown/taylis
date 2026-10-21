@@ -1,0 +1,4 @@
+# Taylis (docs/DRIVE.md §9.1): the drive's share links and the API are not for search engines.
+User-agent: *
+Disallow: /s/
+Disallow: /api/
