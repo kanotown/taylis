@@ -149,6 +149,7 @@ nav:
       - 予約の枠: admin/reservations.md
       - 在室状況と操作ボタン: admin/attendance.md
       - ドキュメントの管理: admin/docs.md
+      - ドライブの管理: admin/drive.md
       - AI: admin/ai.md
       - ワークスペースの設定: admin/workspace.md
   - セルフホスト:
