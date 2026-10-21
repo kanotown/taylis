@@ -94,6 +94,9 @@ class DriveItemDetailOut(BaseModel):
     item: DriveItemOut
     # From the location's root (named after the location) down to the item's parent.
     path: list[DriveCrumb]
+    # Phase D6: the location's kind, so a client names the root in its own language (the card
+    # of a `/d/<id>` link in a message).
+    location_kind: LocationKind | None = None
 
 
 class DriveChildrenOut(BaseModel):
@@ -574,3 +577,27 @@ class ShareUnlockIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     password: str = Field(min_length=1, max_length=128)
+
+
+# --- conversations (phase D6, §13) -------------------------------------------------------------
+
+
+class DriveSaveAttachmentIn(BaseModel):
+    """A conversation's attachment copied into a drive folder (§13.2)."""
+
+    attachment_id: UUID
+    folder_id: UUID
+    # The new file's name; the attachment's file name when left out.
+    name: str | None = Field(default=None, max_length=1000)
+    on_conflict: Literal["fail", "rename"] = "rename"
+    # The same request sent again answers the file it made.
+    client_op_id: UUID | None = None
+
+
+class DriveReachOut(BaseModel):
+    """Of a conversation's members (people and guests who can sign in, not bots), how many can
+    read a drive item and how many cannot (§13.1: the composer's warning before a link is
+    sent)."""
+
+    readable: int
+    unreadable: int

@@ -304,7 +304,9 @@ async def get_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> DriveIt
     item, rights = await readable_item(db, actor, item_id, trashed_ok=True)
     chain = await repo.ancestor_ids(db, item.id)
     return DriveItemDetailOut(
-        item=await item_out(db, item), path=await crumbs(db, chain[:-1], rights.location)
+        item=await item_out(db, item),
+        path=await crumbs(db, chain[:-1], rights.location),
+        location_kind=rights.location.kind,  # type: ignore[arg-type]
     )
 
 
