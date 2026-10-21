@@ -1621,6 +1621,21 @@
       "en": "The drive is full. Delete files for good, or ask an admin.",
       "zh-Hans": "云盘空间已满。请永久删除不需要的文件，或联系管理员。"
     },
+    "drive_version_current": {
+      "ja": "今の版です。古い版だけを戻したり削除したりできます",
+      "en": "This is the current version. Only older versions can be restored or deleted.",
+      "zh-Hans": "这是当前版本。只能恢复或删除旧版本。"
+    },
+    "drive_copy_too_large": {
+      "ja": "一度にコピーできるのは 500 件・1 GB までです。分けてコピーしてください",
+      "en": "A copy is limited to 500 items and 1 GB at a time. Copy in smaller parts.",
+      "zh-Hans": "一次最多复制 500 项、1 GB。请分批复制。"
+    },
+    "drive_zip_too_large": {
+      "ja": "ZIP にまとめられる量を超えています（10,000 件・20 GB まで）。フォルダを分けてダウンロードしてください",
+      "en": "This is too much for one ZIP (up to 10,000 items and 20 GB). Download the folders separately.",
+      "zh-Hans": "超出了一个 ZIP 可容纳的量（最多 10,000 项、20 GB）。请分开下载各文件夹。"
+    },
     "drive_upload_expired": {
       "ja": "アップロードの期限が切れたか、取りやめられました。もう一度アップロードしてください",
       "en": "The upload expired or was cancelled. Upload the file again.",

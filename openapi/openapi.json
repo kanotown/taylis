@@ -8813,6 +8813,110 @@
         "title": "DriveChildrenOut",
         "type": "object"
       },
+      "DriveCopyIn": {
+        "properties": {
+          "client_op_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Op Id"
+          },
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "on_conflict": {
+            "default": "rename",
+            "enum": [
+              "fail",
+              "rename"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          },
+          "target_folder_id": {
+            "format": "uuid",
+            "title": "Target Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_ids",
+          "target_folder_id"
+        ],
+        "title": "DriveCopyIn",
+        "type": "object"
+      },
+      "DriveCopyResult": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "new_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Id"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "ok"
+        ],
+        "title": "DriveCopyResult",
+        "type": "object"
+      },
+      "DriveCopyResultsOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCopyResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "DriveCopyResultsOut",
+        "type": "object"
+      },
       "DriveCrumb": {
         "properties": {
           "id": {
@@ -9358,6 +9462,121 @@
         "title": "DriveLocationResolve",
         "type": "object"
       },
+      "DriveLocationUsageOut": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "current_bytes": {
+            "title": "Current Bytes",
+            "type": "integer"
+          },
+          "effective_quota_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Quota Bytes"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "workspace",
+              "channel",
+              "user"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "old_versions_bytes": {
+            "title": "Old Versions Bytes",
+            "type": "integer"
+          },
+          "quota_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Bytes"
+          },
+          "trash_bytes": {
+            "title": "Trash Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "used_bytes": {
+            "title": "Used Bytes",
+            "type": "integer"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "current_bytes",
+          "old_versions_bytes",
+          "trash_bytes",
+          "id",
+          "kind",
+          "channel_id",
+          "user_id",
+          "name",
+          "archived",
+          "used_bytes",
+          "item_count",
+          "quota_bytes",
+          "effective_quota_bytes",
+          "updated_at"
+        ],
+        "title": "DriveLocationUsageOut",
+        "type": "object"
+      },
       "DriveMoveIn": {
         "properties": {
           "item_ids": {
@@ -9390,6 +9609,51 @@
           "target_folder_id"
         ],
         "title": "DriveMoveIn",
+        "type": "object"
+      },
+      "DrivePersonUsageOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "versions": {
+            "title": "Versions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "bytes",
+          "versions"
+        ],
+        "title": "DrivePersonUsageOut",
+        "type": "object"
+      },
+      "DriveQuotaIn": {
+        "properties": {
+          "quota_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Bytes"
+          }
+        },
+        "required": [
+          "quota_bytes"
+        ],
+        "title": "DriveQuotaIn",
         "type": "object"
       },
       "DriveRestoreIn": {
@@ -9951,6 +10215,268 @@
           }
         },
         "title": "DriveUploadPatch",
+        "type": "object"
+      },
+      "DriveUsageOut": {
+        "properties": {
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/DriveLocationUsageOut"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/DrivePersonUsageOut"
+            },
+            "title": "People",
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/DriveUsageTotalOut"
+          }
+        },
+        "required": [
+          "total",
+          "locations",
+          "people"
+        ],
+        "title": "DriveUsageOut",
+        "type": "object"
+      },
+      "DriveUsageTotalOut": {
+        "properties": {
+          "chat_attachment_count": {
+            "title": "Chat Attachment Count",
+            "type": "integer"
+          },
+          "chat_attachments_bytes": {
+            "title": "Chat Attachments Bytes",
+            "type": "integer"
+          },
+          "current_bytes": {
+            "title": "Current Bytes",
+            "type": "integer"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "location_count": {
+            "title": "Location Count",
+            "type": "integer"
+          },
+          "old_versions_bytes": {
+            "title": "Old Versions Bytes",
+            "type": "integer"
+          },
+          "total_quota_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Quota Bytes"
+          },
+          "trash_bytes": {
+            "title": "Trash Bytes",
+            "type": "integer"
+          },
+          "used_bytes": {
+            "title": "Used Bytes",
+            "type": "integer"
+          },
+          "user_default_quota_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Default Quota Bytes"
+          }
+        },
+        "required": [
+          "current_bytes",
+          "old_versions_bytes",
+          "trash_bytes",
+          "used_bytes",
+          "item_count",
+          "location_count",
+          "total_quota_bytes",
+          "user_default_quota_bytes",
+          "chat_attachments_bytes",
+          "chat_attachment_count"
+        ],
+        "title": "DriveUsageTotalOut",
+        "type": "object"
+      },
+      "DriveVersionListOut": {
+        "description": "Newest first. Older versions are kept DRIVE_VERSIONS_MAX at most, each at most\nDRIVE_VERSIONS_DAYS after it was replaced (`keep_versions`, `keep_days`).",
+        "properties": {
+          "keep_days": {
+            "title": "Keep Days",
+            "type": "integer"
+          },
+          "keep_versions": {
+            "title": "Keep Versions",
+            "type": "integer"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/DriveVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions",
+          "keep_versions",
+          "keep_days"
+        ],
+        "title": "DriveVersionListOut",
+        "type": "object"
+      },
+      "DriveVersionOut": {
+        "properties": {
+          "content_modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Modified At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "uploaded_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded By"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "size_bytes",
+          "source",
+          "uploaded_by",
+          "created_at",
+          "content_modified_at",
+          "current"
+        ],
+        "title": "DriveVersionOut",
+        "type": "object"
+      },
+      "DriveZipIn": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "DriveZipIn",
+        "type": "object"
+      },
+      "DriveZipOut": {
+        "description": "`url` (relative to the server) streams the ZIP once, within `expires_in` seconds, without\nthe bearer token: an uncompressed ZIP (ZIP64 when needed) of `entries` entries, exactly\n`zip_bytes` long (its Content-Length), holding `size_bytes` of files.",
+        "properties": {
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "zip_bytes": {
+            "title": "Zip Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "url",
+          "expires_in",
+          "entries",
+          "size_bytes",
+          "zip_bytes",
+          "filename"
+        ],
+        "title": "DriveZipOut",
         "type": "object"
       },
       "EffectiveOut": {
@@ -25337,6 +25863,92 @@
         ]
       }
     },
+    "/api/v1/admin/drive/locations/{location_id}": {
+      "patch": {
+        "description": "A location's own quota in bytes (null: none), audited as drive.quota_changed.",
+        "operationId": "set_location_quota_api_v1_admin_drive_locations__location_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveQuotaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveLocationUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Location Quota",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/admin/drive/usage": {
+      "get": {
+        "description": "The whole drive and each location: sizes and counts only (§11.2).",
+        "operationId": "drive_usage_api_v1_admin_drive_usage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Drive Usage",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/admin/drive/users/{user_id}/takeover": {
       "post": {
         "description": "A deactivated person's My Drive into 研究室ドライブ (§3.3), audited.",
@@ -32718,6 +33330,53 @@
         ]
       }
     },
+    "/api/v1/drive/items/copy": {
+      "post": {
+        "description": "Files and folders into a folder (§10.3): one result per item, `new_id` for its copy.\n413 drive_copy_too_large past DRIVE_COPY_MAX_ITEMS / DRIVE_COPY_MAX_BYTES.",
+        "operationId": "copy_items_api_v1_drive_items_copy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveCopyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveCopyResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Copy Items",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/items/move": {
       "post": {
         "operationId": "move_items_api_v1_drive_items_move_post",
@@ -33154,6 +33813,166 @@
           }
         ],
         "summary": "Restore Item",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/versions": {
+      "get": {
+        "description": "Newest first (§10.2).",
+        "operationId": "list_versions_api_v1_drive_items__item_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveVersionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Versions",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/versions/{version_id}": {
+      "delete": {
+        "description": "An older version for good (who may delete for good, §3.2); the current one: 409.",
+        "operationId": "delete_version_api_v1_drive_items__item_id__versions__version_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Version",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/versions/{version_id}/restore": {
+      "post": {
+        "description": "The version copied as the file's new current version (the versions in between stay).",
+        "operationId": "restore_version_api_v1_drive_items__item_id__versions__version_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Version",
         "tags": [
           "drive"
         ]
@@ -33680,6 +34499,94 @@
           }
         ],
         "summary": "Put Part",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/zip": {
+      "post": {
+        "description": "A ZIP of folders and files (§7.2): what it holds is fixed now; `url` streams it once\nwithin `expires_in` seconds. 413 drive_zip_too_large past the limits.",
+        "operationId": "create_zip_api_v1_drive_zip_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveZipIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveZipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Zip",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/zip/{token}": {
+      "get": {
+        "description": "The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,\nContent-Length exact. 404 for an unknown or used ticket or a person who can no longer read\nthe items; 429 while too many ZIPs stream (the ticket stays valid).",
+        "operationId": "download_zip_api_v1_drive_zip__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Zip",
         "tags": [
           "drive"
         ]

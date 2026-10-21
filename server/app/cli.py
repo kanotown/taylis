@@ -1054,6 +1054,36 @@ def cmd_wiki_acl(args: argparse.Namespace) -> int:
     return asyncio.run(_wiki_acl(args.rebuild))
 
 
+async def _drive_usage(rebuild: bool) -> int:
+    """M162 (docs/DRIVE.md §11.2): compare each drive location's used_bytes and item_count with
+    its versions and items; --rebuild sets the counters that differ first."""
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.drive import usage
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            if rebuild:
+                changed = await usage.rebuild(session)
+                await session.commit()
+                print(f"rebuilt the counters of {changed} location(s)")
+            problems = await usage.verify(session)
+        for problem in problems[:100]:
+            print(problem)
+        if len(problems) > 100:
+            print(f"… and {len(problems) - 100} more")
+        print(f"{len(problems)} difference(s)")
+        return 1 if problems else 0
+    finally:
+        await db.dispose()
+
+
+def cmd_drive_usage(args: argparse.Namespace) -> int:
+    return asyncio.run(_drive_usage(args.rebuild))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1303,6 +1333,18 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--verify", action="store_true", help="report differences (exit 1 if any)")
     mode.add_argument("--rebuild", action="store_true", help="recompute everything, then verify")
     acl.set_defaults(func=cmd_wiki_acl)
+
+    drive_usage = sub.add_parser(
+        "drive-usage", help="check the drive locations' used bytes and item counts"
+    )
+    drive_mode = drive_usage.add_mutually_exclusive_group(required=True)
+    drive_mode.add_argument(
+        "--verify", action="store_true", help="report differences (exit 1 if any)"
+    )
+    drive_mode.add_argument(
+        "--rebuild", action="store_true", help="recompute what differs, then verify"
+    )
+    drive_usage.set_defaults(func=cmd_drive_usage)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

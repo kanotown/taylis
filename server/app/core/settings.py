@@ -296,6 +296,19 @@ class Settings(BaseSettings):
     drive_complete_timeout_seconds: float = 600.0
     drive_complete_wait_seconds: float = 20.0
     drive_completing_stale_minutes: int = 10
+    # M162 (docs/DRIVE.md §10.2): older versions kept, the newest DRIVE_VERSIONS_MAX per file and
+    # each at most DRIVE_VERSIONS_DAYS after a newer one replaced it (the current one always).
+    drive_versions_max: int = 10
+    drive_versions_days: int = 30
+    # §10.3: a copy made inside the request (bytes of the current versions, files and folders).
+    drive_copy_max_bytes: int = 1024 * 1024 * 1024
+    drive_copy_max_items: int = 500
+    # §7.2: one ZIP holds at most this many entries and bytes; ZIPs streaming at once per person and
+    # in the whole process (more: 429).
+    drive_zip_max_entries: int = 10_000
+    drive_zip_max_bytes: int = 20 * 1024 * 1024 * 1024
+    drive_zip_per_user: int = 2
+    drive_zip_total: int = 4
     # Outbox relay (ARCHITECTURE.md §6)
     outbox_poll_interval_seconds: float = 1.0
     outbox_batch_size: int = 100

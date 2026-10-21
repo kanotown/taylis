@@ -129,6 +129,12 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "user (the uploader)",
         False,
     ),
+    # M162 (docs/DRIVE.md §14): a location's quota changed; only its id travels.
+    drive_events.DRIVE_LOCATION_UPDATED: (
+        drive_events.DriveLocationUpdatedData,
+        "drive (who can read the location when sent)",
+        False,
+    ),
     calendar_events.CALENDAR_EVENT_UPDATED: (
         calendar_events.CalendarEventUpdatedData,
         "channel (a personal event: user)",
