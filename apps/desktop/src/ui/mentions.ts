@@ -84,14 +84,108 @@ export function aiBotIds(store: { aiStatus: AiStatusOut | null }): ReadonlySet<s
   return store.aiStatus ? new Set(store.aiStatus.agents.map((agent) => agent.bot_user_id)) : null;
 }
 
-/** `aiBotIds` (M65): the bot users of the AI agents (GET /ai/status), marked `ai`; null while it was not read. */
-export function mentionCandidates(query: string, users: UserPublic[], groups: GroupOut[] = [], limit = 6, aiBotIds: ReadonlySet<string> | null = null): MentionCandidate[] {
+/** How many of the newest messages of a thread and of the channel count as recent (apps/shared/mention-rank.json). */
+export const RECENT_MESSAGES = 50;
+
+/** What a message tells `recentSpeakers` (MessageState and MessageOut both fit). */
+export interface SpokenMessage {
+  sender_id: string;
+  deleted?: boolean;
+  type?: string;
+}
+
+/**
+ * Who spoke recently here, newest first, each once (MOBILE_UI.md §23, apps/shared/mention-rank.json `recent`): the
+ * thread's senders (its parent and replies, oldest first as given) before the channel's (the loaded timeline). Deleted
+ * and system messages do not count; only the newest `cap` counting messages of each list.
+ */
+export function recentSpeakers(channel: readonly SpokenMessage[], thread: readonly SpokenMessage[] = [], cap = RECENT_MESSAGES): string[] {
+  const seen = new Set<string>();
+  const speakers: string[] = [];
+  for (const list of [thread, channel]) {
+    const counted = list.filter((m) => !m.deleted && m.type !== "system").slice(-cap);
+    for (let i = counted.length - 1; i >= 0; i--) {
+      const id = counted[i]!.sender_id;
+      if (!seen.has(id)) {
+        seen.add(id);
+        speakers.push(id);
+      }
+    }
+  }
+  return speakers;
+}
+
+/** Whom the @ list puts first (MOBILE_UI.md §23): what the client holds about the conversation being written in. */
+export interface MentionContext {
+  /** recentSpeakers of the conversation (a thread's first), newest first. */
+  recent?: readonly string[];
+  /** The conversation's members as known locally (a DM / group DM: its participants). */
+  members?: readonly string[];
+  /** My user id: offered last. */
+  me?: string | null;
+}
+
+/** What `conversationContext` reads from the store. */
+interface ConversationSource {
+  me: { id: string } | null;
+  channels: ReadonlyMap<string, { dm_user_ids?: string[] | null }>;
+  messages(channelId: string): readonly SpokenMessage[];
+  replies(channelId: string, parentId: string): readonly SpokenMessage[];
+  message(channelId: string, id: string): SpokenMessage | undefined;
+}
+
+/**
+ * The composer's context (MOBILE_UI.md §23): the loaded messages' senders (in a thread, its own first) and, for a DM or
+ * group DM, its participants. A channel's members are not held locally (GET /channels/{id}/members is read only by the
+ * member dialogs), so a channel has no members tier here.
+ */
+export function conversationContext(store: ConversationSource, channelId: string, parentId: string | null = null): MentionContext {
+  const parent = parentId ? store.message(channelId, parentId) : undefined;
+  const thread = parentId ? [...(parent ? [parent] : []), ...store.replies(channelId, parentId)] : [];
+  return { recent: recentSpeakers(store.messages(channelId), thread), ...documentContext(store, channelId) };
+}
+
+/** A canvas or page (MOBILE_UI.md §23): no conversation, only the members of the DM it belongs to (and me last). */
+export function documentContext(store: Pick<ConversationSource, "me" | "channels">, channelId: string | null | undefined): MentionContext {
+  const channel = channelId ? store.channels.get(channelId) : undefined;
+  return { members: channel?.dm_user_ids ?? [], me: store.me?.id ?? null };
+}
+
+const collator = new Intl.Collator("ja");
+
+/**
+ * `aiBotIds` (M65): the bot users of the AI agents (GET /ai/status), marked `ai`; null while it was not read. People
+ * are ranked by `context` (MOBILE_UI.md §23): a prefix match first, then recent speakers, members, everybody else and
+ * me, then by display name; the groups and @channel / @here follow as before.
+ */
+export function mentionCandidates(
+  query: string,
+  users: UserPublic[],
+  groups: GroupOut[] = [],
+  limit = 8,
+  aiBotIds: ReadonlySet<string> | null = null,
+  context: MentionContext = {},
+): MentionCandidate[] {
   const q = query.toLowerCase();
+  const recent = new Map<string, number>();
+  for (const id of context.recent ?? []) if (!recent.has(id)) recent.set(id, recent.size);
+  const members = new Set(context.members ?? []);
+  const me = context.me ?? null;
+  const tier = (id: string) => (id === me ? 3 : recent.has(id) ? 0 : members.has(id) ? 1 : 2);
+  const match = (u: UserPublic) => (q && !u.username.toLowerCase().startsWith(q) && !u.display_name.toLowerCase().startsWith(q) ? 1 : 0);
   const people: MentionCandidate[] = users
     .filter((u) => mentionable(u, aiBotIds))
     .filter((u) => u.username.toLowerCase().startsWith(q) || u.display_name.toLowerCase().includes(q))
-    .sort((a, b) => a.username.localeCompare(b.username))
-    .map((u) => ({ username: u.username, label: u.display_name, kind: "user", ...(u.role === "bot" ? { ai: true } : {}) }));
+    .map((u) => ({ user: u, match: match(u), tier: tier(u.id), recent: recent.get(u.id) ?? 0 }))
+    .sort(
+      (a, b) =>
+        a.match - b.match ||
+        a.tier - b.tier ||
+        (a.tier === 0 ? a.recent - b.recent : 0) ||
+        collator.compare(a.user.display_name, b.user.display_name) ||
+        (a.user.username < b.user.username ? -1 : a.user.username > b.user.username ? 1 : 0),
+    )
+    .map(({ user: u }) => ({ username: u.username, label: u.display_name, kind: "user", ...(u.role === "bot" ? { ai: true } : {}) }));
   const teams: MentionCandidate[] = groups
     .filter((g) => g.name.toLowerCase().startsWith(q) || (g.description ?? "").toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name))

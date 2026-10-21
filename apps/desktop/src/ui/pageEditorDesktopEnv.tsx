@@ -23,7 +23,7 @@ export function desktopPageEditorEnv(controller: AppController): PageEditorEnv {
     subscribe: (listener) => store.subscribe(listener),
     version: () => store.version,
     isCustomEmoji: (name) => store.customEmoji.has(name),
-    people: () => ({ users: store.users, groups: store.groups, aiBotIds: aiBotIds(store) }),
+    people: () => ({ users: store.users, groups: store.groups, aiBotIds: aiBotIds(store), me: store.me?.id ?? null }),
     render: {
       pageLink: (id, label) => <PageLinkChip controller={controller} pageId={id} label={label || undefined} />,
       emoji: (md) => {

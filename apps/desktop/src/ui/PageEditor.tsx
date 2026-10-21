@@ -429,7 +429,7 @@ export default function PageEditor({ env, saver, links, initialLine = null, hand
   const people = env.people();
   const mentionList: MentionRow[] = open && menu.kind === "mention"
     ? [
-        ...mentionCandidates(menu.query, [...people.users.values()], [...people.groups.values()], 8, people.aiBotIds).filter((c) => c.kind !== "all").map((candidate): MentionRow => ({ kind: "mention", candidate })),
+        ...mentionCandidates(menu.query, [...people.users.values()], [...people.groups.values()], 8, people.aiBotIds, { me: people.me }).filter((c) => c.kind !== "all").map((candidate): MentionRow => ({ kind: "mention", candidate })),
         ...(linkResults?.key === menuKey ? linkResults.pages.slice(0, 3) : []).map((page): MentionRow => ({ kind: "page", page })),
       ]
     : [];
