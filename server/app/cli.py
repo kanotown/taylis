@@ -310,11 +310,15 @@ def cmd_probe_videos(args: argparse.Namespace) -> int:
     return asyncio.run(_probe_videos(args.limit))
 
 
-async def _generate_previews(limit: int, retry_failed: bool) -> int:
+async def _generate_previews(
+    limit: int, retry_failed: bool, drive: bool = False, chat_wait_seconds: float = 600.0
+) -> int:
     from app.core.db import Database
     from app.core.settings import get_settings
+    from app.modules.attachments import previews
     from app.modules.attachments.blobstore import build_blobstore
     from app.modules.attachments.previews import build_converter, generate_stored
+    from app.modules.drive import events as drive_events
 
     settings = get_settings()
     db = Database(settings.database_url)
@@ -322,11 +326,20 @@ async def _generate_previews(limit: int, retry_failed: bool) -> int:
     converter = build_converter(settings)
     if converter is None:
         print("PREVIEW_CONVERTER_URL is not set: only PDFs get previews", file=sys.stderr)
+    # M164: a drive file's new preview tells the open folders (drive.changed), as the loop does.
+    previews.set_drive_change_hook(drive_events.media_changed_in_tx)
     try:
         async with db.session_factory() as session:
             try:
                 result = await generate_stored(
-                    session, blobs, converter, settings, limit=limit, retry_failed=retry_failed
+                    session,
+                    blobs,
+                    converter,
+                    settings,
+                    limit=limit,
+                    retry_failed=retry_failed,
+                    drive=drive,
+                    chat_wait_seconds=chat_wait_seconds,
                 )
             except RuntimeError as exc:
                 raise SystemExit(f"error: {exc}") from exc
@@ -334,6 +347,8 @@ async def _generate_previews(limit: int, retry_failed: bool) -> int:
             f"tried {result.tried} file(s): {result.ready} ready, {result.failed} failed, "
             f"{result.retrying} left to the server's retries"
         )
+        if drive and result.waited_seconds:
+            print(f"waited {result.waited_seconds:.0f} s for the chat's previews")
         if result.remaining:
             print("more files are left: run it again")
         return 0
@@ -345,7 +360,11 @@ def cmd_generate_previews(args: argparse.Namespace) -> int:
     """M108: previews of the PDFs and Office files stored before previews (resumable)."""
     if args.limit < 1:
         raise SystemExit("error: --limit must be at least 1")
-    return asyncio.run(_generate_previews(args.limit, args.retry_failed))
+    if args.chat_wait_seconds < 0:
+        raise SystemExit("error: --chat-wait-seconds must be 0 or more")
+    return asyncio.run(
+        _generate_previews(args.limit, args.retry_failed, args.drive, args.chat_wait_seconds)
+    )
 
 
 def cmd_push_test(args: argparse.Namespace) -> int:
@@ -1084,6 +1103,269 @@ def cmd_drive_usage(args: argparse.Namespace) -> int:
     return asyncio.run(_drive_usage(args.rebuild))
 
 
+def parse_size(value: str) -> int:
+    """1234, 500M, 20G, 1.5T (powers of 1024)."""
+    text = value.strip().upper().removesuffix("B").removesuffix("I")
+    factor = 1
+    for suffix, power in (("K", 1), ("M", 2), ("G", 3), ("T", 4)):
+        if text.endswith(suffix):
+            factor, text = 1024**power, text[:-1]
+            break
+    try:
+        size = int(float(text) * factor)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value}: a size such as 500M, 20G or 1T") from None
+    if size < 1:
+        raise argparse.ArgumentTypeError(f"{value}: must be positive")
+    return size
+
+
+def human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024:
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.2f} TiB"
+
+
+def nextcloud_source(args: argparse.Namespace) -> Any:
+    """The WebDAV or data-directory source of import-nextcloud (the app password from a file
+    or $NEXTCLOUD_APP_PASSWORD, never from the command line)."""
+    from app.modules.importer.nextcloud_source import DataDirSource, WebDavSource
+
+    webdav = args.webdav or os.environ.get("NEXTCLOUD_WEBDAV_URL")
+    if bool(webdav) == bool(args.data_dir):
+        raise ValueError("give --webdav URL (or $NEXTCLOUD_WEBDAV_URL) or --data-dir DIR")
+    if args.data_dir:
+        return DataDirSource(Path(args.data_dir), label=args.nextcloud_user)
+    user = args.webdav_user or os.environ.get("NEXTCLOUD_USER")
+    password_file = args.webdav_password_file or os.environ.get("NEXTCLOUD_APP_PASSWORD_FILE")
+    password = read_secret_file(password_file) or os.environ.get("NEXTCLOUD_APP_PASSWORD")
+    if not user or not password:
+        raise ValueError(
+            "WebDAV needs --webdav-user (or $NEXTCLOUD_USER) and --webdav-password-file "
+            "(or $NEXTCLOUD_APP_PASSWORD_FILE / $NEXTCLOUD_APP_PASSWORD)"
+        )
+    return WebDavSource(str(webdav), user, password, label=args.nextcloud_user)
+
+
+def _table(headers: Sequence[str], rows: Sequence[Sequence[str]], caps: Sequence[int]) -> None:
+    widths = [
+        min(cap, max([_width(h)] + [_width(r[i]) for r in rows]))
+        for i, (h, cap) in enumerate(zip(headers, caps, strict=True))
+    ]
+    print("  " + "  ".join(_fit(h, w) for h, w in zip(headers, widths, strict=True)).rstrip())
+    print("  " + "  ".join("-" * w for w in widths))
+    for row in rows:
+        print("  " + "  ".join(_fit(c, w) for c, w in zip(row, widths, strict=True)).rstrip())
+
+
+def _cap(rows: Sequence[Any], limit: int = 500) -> tuple[Sequence[Any], int]:
+    return rows[:limit], max(len(rows) - limit, 0)
+
+
+def print_nextcloud_report(report: Any) -> None:
+    """The summary of import-nextcloud (M164): what was (or would be) done, the sizes per
+    location against their quotas, the names that change, what is not imported."""
+    print(
+        ("dry run: nothing was written" if report.dry_run else "imported")
+        + f" (Nextcloud user {report.label})"
+    )
+    print("counts:")
+    for key, value in sorted(report.counts.items()):
+        print(f"  {key}: {value}")
+    print("sizes:")
+    for key, value in sorted(report.bytes.items()):
+        print(f"  {key}: {human_size(value)} ({value} bytes)")
+    if report.places:
+        print("per location (used before, adding, quota):")
+        rows = [
+            (
+                use.label,
+                str(use.files),
+                human_size(use.used),
+                human_size(use.adding),
+                human_size(use.quota) if use.quota is not None else "-",
+            )
+            for use in report.places.values()
+        ]
+        _table(("location", "new files", "used", "adding", "quota"), rows, (40, 10, 12, 12, 12))
+    if report.total_quota is not None:
+        print(
+            f"whole drive: {human_size(report.total_used)} used, "
+            f"DRIVE_TOTAL_QUOTA_BYTES {human_size(report.total_quota)}"
+        )
+    for problem in report.over_quota:
+        print(f"OVER QUOTA: {problem}")
+    if report.missing_targets:
+        print(f"targets that cannot be used ({len(report.missing_targets)}):")
+        for line in report.missing_targets:
+            print(f"  {line}")
+    if report.renamed:
+        shown, more = _cap(report.renamed)
+        print(f"names that change ({len(report.renamed)}):")
+        _table(("Nextcloud", "Taylis", "why"), shown, (60, 60, 60))
+        if more:
+            print(f"  … and {more} more")
+    if report.unmapped:
+        shown, more = _cap(report.unmapped)
+        print(f"not in the mapping, not imported ({len(report.unmapped)}):")
+        _table(
+            ("Nextcloud", "size", "files"),
+            [(p, human_size(s), "?" if f is None else str(f)) for p, s, f in shown],
+            (80, 12, 8),
+        )
+        if more:
+            print(f"  … and {more} more")
+    if report.skipped:
+        shown, more = _cap(report.skipped)
+        print(f"skipped ({len(report.skipped)}):")
+        _table(
+            ("Nextcloud", "why", "size"),
+            [(p, why, human_size(s)) for p, why, s in shown],
+            (70, 60, 12),
+        )
+        if more:
+            print(f"  … and {more} more")
+    if report.gone:
+        print("imported before, no longer in this Nextcloud tree (kept in Taylis):")
+        for line in report.gone:
+            print(f"  {line}")
+    if report.owners:
+        print("Nextcloud owners without --user (their files are the --actor's):")
+        for owner, count in report.owners.most_common():
+            print(f"  {owner}: {count}")
+    if report.failed:
+        shown, more = _cap(report.failed)
+        print(f"failed ({len(report.failed)}; run again to retry):")
+        for path, why in shown:
+            print(f"  {path}: {why}")
+        if more:
+            print(f"  … and {more} more")
+    if not report.dry_run:
+        speed = report.transferred / max(report.seconds, 0.001) / 1e6
+        print(
+            f"transferred {human_size(report.transferred)} in {report.seconds:.0f} s "
+            f"({speed:.1f} MB/s)"
+        )
+    if report.stopped:
+        print(f"stopped: {report.stopped}")
+
+
+def _read_text(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def print_shares(shares: Sequence[dict[str, Any]]) -> None:
+    print(f"Nextcloud shares ({len(shares)}): nothing was written")
+    rows = [
+        (
+            s["direction"],
+            s["path"],
+            s["type"],
+            s["with"],
+            s["owner"],
+            s["permissions"],
+            s["expires"] or "-",
+            "yes" if s["password"] else "",
+        )
+        for s in sorted(shares, key=lambda s: (s["direction"], s["path"], s["type"]))
+    ]
+    _table(
+        ("", "path", "type", "with", "owner", "rights", "expires", "password"),
+        rows,
+        (7, 60, 12, 30, 16, 6, 10, 8),
+    )
+    print("(public links cannot be carried over: make the ones still needed again in Taylis)")
+
+
+async def _import_nextcloud(args: argparse.Namespace) -> int:
+    import logging
+
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.importer.core import ImportFailed
+    from app.modules.importer.nextcloud_import import Options, import_nextcloud, parse_mapping
+    from app.modules.importer.nextcloud_source import SourceError, WebDavSource
+
+    # httpx logs every request at INFO; nothing of WebDAV goes to the logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    try:
+        source = nextcloud_source(args)
+    except (OSError, ValueError, SourceError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    try:
+        if args.list_shares:
+            if not isinstance(source, WebDavSource):
+                print("Error: --list-shares reads the OCS API: give --webdav", file=sys.stderr)
+                return 2
+            try:
+                print_shares(await source.list_shares())
+            except SourceError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            return 0
+        if not args.map or not args.actor:
+            print("Error: --map and --actor are needed (or --list-shares)", file=sys.stderr)
+            return 2
+        try:
+            mapping = parse_mapping(_read_text(args.map), args.map)
+            user_map = parse_user_map(args.user or [], "NEXTCLOUD")
+        except (OSError, ValueError, ImportFailed) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        settings = get_settings()
+        db = Database(settings.database_url)
+        options = Options(
+            previews=args.previews,
+            limit_bytes=args.limit_bytes,
+            progress=lambda line: print(line, file=sys.stderr, flush=True),
+        )
+        try:
+            async with db.session_factory() as session:
+                try:
+                    report = await import_nextcloud(
+                        session,
+                        source,
+                        mapping,
+                        actor_username=args.actor,
+                        user_map=user_map,
+                        blobs=build_blobstore(settings),
+                        settings=settings,
+                        options=options,
+                        dry_run=args.dry_run,
+                    )
+                except ImportFailed as exc:
+                    print(f"Error: {exc}", file=sys.stderr)
+                    return 1
+        finally:
+            await db.dispose()
+        print_nextcloud_report(report)
+        if report.missing_targets:
+            return 1
+        return 0
+    finally:
+        await source.close()
+
+
+def cmd_import_nextcloud(args: argparse.Namespace) -> int:
+    """Import Nextcloud's files into the drive (M164). Safe to run again: unchanged files are
+    skipped, changed ones become new versions."""
+    try:
+        return asyncio.run(_import_nextcloud(args))
+    except KeyboardInterrupt:
+        print(
+            "interrupted: every file before the one under way is in the drive; run the same "
+            "command again to go on",
+            file=sys.stderr,
+        )
+        return 130
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1122,7 +1404,67 @@ def build_parser() -> argparse.ArgumentParser:
     gen_previews.add_argument(
         "--retry-failed", action="store_true", help="also try again the ones that failed"
     )
+    gen_previews.add_argument(
+        "--drive",
+        action="store_true",
+        help="the drive's files instead (current versions; those an import stored without one)",
+    )
+    gen_previews.add_argument(
+        "--chat-wait-seconds",
+        type=float,
+        default=600.0,
+        help="--drive: before each file, wait up to this long while chat files wait for theirs",
+    )
     gen_previews.set_defaults(func=cmd_generate_previews)
+
+    nc = sub.add_parser(
+        "import-nextcloud",
+        help="import Nextcloud's files into the drive (WebDAV or a data directory; docs/DRIVE.md)",
+    )
+    nc.add_argument(
+        "--webdav",
+        metavar="URL",
+        help="https://…/remote.php/dav/files/<user>/ (or $NEXTCLOUD_WEBDAV_URL)",
+    )
+    nc.add_argument("--webdav-user", help="the Nextcloud login (or $NEXTCLOUD_USER)")
+    nc.add_argument(
+        "--webdav-password-file",
+        help="a file holding an app password (or $NEXTCLOUD_APP_PASSWORD_FILE)",
+    )
+    nc.add_argument("--data-dir", help="a copy of Nextcloud's data/<user>/files instead of WebDAV")
+    nc.add_argument(
+        "--nextcloud-user",
+        help="whose files these are, part of what a run again recognises (default: the user of "
+        "the WebDAV URL, or the folder above files/)",
+    )
+    nc.add_argument("--map", help="the TOML mapping: Nextcloud folders → drive locations")
+    nc.add_argument("--actor", help="the administrator running the import")
+    nc.add_argument(
+        "--user",
+        action="append",
+        metavar="NEXTCLOUD=USERNAME",
+        help="the account that uploaded a Nextcloud owner's files (repeatable; else --actor)",
+    )
+    nc.add_argument("--dry-run", action="store_true", help="read everything, write nothing")
+    nc.add_argument(
+        "--list-shares",
+        action="store_true",
+        help="list the Nextcloud shares (OCS API, WebDAV only) to help write the mapping",
+    )
+    nc.add_argument(
+        "--previews",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="queue the PDF and Office previews now (default: no; run generate-previews "
+        "--drive afterwards)",
+    )
+    nc.add_argument(
+        "--limit-bytes",
+        type=parse_size,
+        metavar="SIZE",
+        help="stop after about this much (500G, 1T): the next run goes on",
+    )
+    nc.set_defaults(func=cmd_import_nextcloud)
 
     anonymize = sub.add_parser("anonymize-user", help="erase a user's identity, keep the history")
     anonymize.add_argument("--username", required=True)
