@@ -53,6 +53,16 @@ certbot --nginx -d chat.example.com --redirect
   取り込み（ZIP かフォルダーで合計 64 MB まで）もこの上限の内側に入ります。パスごとの正確な上限（添付 110 MB、
   絵文字セット 70 MB、プロフィール画像 6 MB、それ以外の API は 1 MB）は、後ろの Caddy が受け持ちます。
 
+### アクセスログ { #access-log }
+
+ドライブの外部共有リンク（`/s/<トークン>`、`/api/v1/shares/<トークン>/…`）・招待リンク・カレンダーの購読 URL などは、URL の
+パスに鍵が入っています。nginx の既定のアクセスログはそれをそのまま何週間も残すので、設定例では **伏せた形式のログ** を使っています：
+`map $uri $chikuwachat_log_uri { … }` と `log_format chikuwachat_masked …` を `server` の外に、
+`access_log /var/log/nginx/access.log chikuwachat_masked;` を `server` の中に置きます。ログには `GET /s/*** …` のように残り、
+クエリ文字列は書きません。すでに動いているサーバでは、この 3 か所を今のサイトの設定に足して `nginx -t && systemctl reload nginx`
+してください。`error_log` は上流のエラーのときにリクエストの行を書くことがあるので、`/var/log/nginx` は root と adm だけが
+読めるままにします。
+
 ## TLS について
 
 本番では TLS が必須です。Caddy を表に出す構成（[クイックスタート](quickstart.md)）では、Caddy が Let's Encrypt

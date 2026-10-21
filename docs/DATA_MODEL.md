@@ -2171,7 +2171,7 @@ PREVIEWS.md §3)。
 ### drive_*（ドライブ、M160、docs/DRIVE.md §4、移行 0118）
 
 段階 D1 の表。定義は DRIVE.md §4.2 のとおりで、D1 で足した・変えたものは次のとおり（外部共有リンクの `drive_share_links`・
-`drive_share_events` と `workspace_settings` の 3 列は段階 D4 の移行で足す）。
+`drive_share_events` と `workspace_settings` の 3 列は段階 D4 の移行 0119 で足した。下の「drive_share_*」）。
 
 - `drive_locations`：研究室ドライブ（1 行、移行 0118 が根のフォルダと一緒に作る。古いバックアップを戻して無ければ最初の読み出しで
   作り直す）、チャンネルのドライブ・マイドライブ（初めて `POST /drive/locations/resolve` したとき）。`root_id` と
@@ -2193,6 +2193,18 @@ PREVIEWS.md §3)。
 - `attachments.drive_item_id`（`ON DELETE SET NULL`、部分索引）：ドライブの版の行は `status = 'attached'`、`message_id`・`channel_id`・
   `canvas_id`・`page_id` は NULL。版を消すときは `deleted` にしてから項目の行を消す（今の GC がバイト列・サムネイル・プレビューを消す）。
 - 順序：`drive_change_seq`（項目のメタデータの変更ごと、`drive.changed` の `seq`）。
+
+### drive_share_*（外部共有リンク、M163、docs/DRIVE.md §9・§23、移行 0119）
+
+- `drive_share_links`：リンク 1 本。`token_hash`（トークンの SHA-256、一意。トークン自体は持たない）、`password_hash`（Argon2id、NULL = なし）と
+  `password_version`（変えるたびに +1、解錠の cookie を無効にする）、`expires_at`（NULL = 期限なし、ワークスペースが許すときだけ）、
+  `max_downloads`（NULL = 上限なし、`> 0` の CHECK）と `download_count`（条件付きの UPDATE で数える）、`note`（80 文字）、`revoked_at` /
+  `revoked_by`、`last_used_at`。`item_id` と `location_id`（作った時の場所。項目が別の場所へ移れば止まる）は `ON DELETE CASCADE`
+  （完全削除・匿名化した人のマイドライブの削除で消える）。索引：取り消していないものの `item_id`・`location_id`（部分索引）、`created_by`。
+- `drive_share_events`：公開側の使われ方（`open`・`download`・`zip`・`password_failed`・`refused`、項目、バイト数、IP（`inet`）、User-Agent
+  200 文字）。リンクと一緒に消え（CASCADE）、drive の周期ジョブが 180 日（`DRIVE_SHARE_EVENTS_DAYS`）で消す。
+- `workspace_settings`：`drive_external_links_enabled`（既定 true、切ると既存のリンクもすべて止まる）、`drive_link_max_days`（既定 90、
+  NULL = 期限なしを許す）、`drive_link_password_required`（既定 false）。
 
 ### outbox_events
 

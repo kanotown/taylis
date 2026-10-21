@@ -1,6 +1,6 @@
 # DRIVE（ドライブ：研究室の Nextcloud の置き換え）
 
-2026-10-21 の設計。**段階 D1（M160、サーバの土台）・D2（M161、Desktop / Web の画面）・D3（M162、版・コピー・ZIP・容量）を実装（2026-10-21、§20〜§22）**、D4〜D7 は未実装。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
+2026-10-21 の設計。**段階 D1（M160、サーバの土台）・D2（M161、Desktop / Web の画面）・D3（M162、版・コピー・ZIP・容量）・D4（M163、外部共有リンク）を実装（2026-10-21、§20〜§23）**、D5〜D7 は未実装。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
 
 利用者（研究室の教員）の要望：研究室で自前で動かしている Nextcloud を、Taylis の中の「ドライブ」に置き換えたい。
 
@@ -88,7 +88,7 @@
 | `GET /attachments/{id}/content`：Range に対応していない | 5 GB のダウンロードを途中から再開できない。ブラウザの動画のシークもできない | ドライブのダウンロードは Range に対応する（§7.1）。同じ関数を添付の `/content` にも使う（害は無く、大きな動画のシークが効くようになる） |
 | Desktop のダウンロード（`fetchBlob`）：本文を全部メモリに読んでから保存する | 数 GB のファイル・ZIP でメモリが足りない | Desktop は塊ごとにファイルへ書く（fs プラグインの `open` と `write`、今の `fs:scope-download-recursive` の範囲。新しい依存なし）。Web はブラウザ自身のダウンロード（§7.3） |
 | Caddy：`/api/*` の本文は 1 MB、`/api/v1/attachments*` は 110 MB。nginx：`client_max_body_size 110m` | 部品の PUT（16 MiB）が 1 MB で断られる | Caddy に `/api/v1/drive/uploads/*/parts/*` の 17 MB の枠を足す。nginx は 110 MB のままでよい（部品は 16 MiB）。公開ページの `/s/*` と `/api/v1/shares/*` の経路も足す（§9.6） |
-| アクセスログ（`core/logging.py` の `_SECRET_PATH`） | 共有リンクのトークンが URL のパスに入る | `/s/` と `/api/v1/shares/` を伏せる対象に足す。ホストの nginx のアクセスログにも残るので、`/s/` と `/api/v1/shares/` の `access_log` を伏せる設定例を `nginx-site.conf.example` に足す（§9.5） |
+| アクセスログ（`core/logging.py` の `_SECRET_PATH`） | 共有リンクのトークンが URL のパスに入る | `/s/` と `/api/v1/shares/` を伏せる対象に足す。ホストの nginx のアクセスログにも残るので、`/s/` と `/api/v1/shares/` の `access_log` を伏せる設定例を `nginx-site.conf.example` に足す（§9.5）。**D4 で実装（§23）**：伏せた形式のログ（`map` と `log_format`） |
 | `attachments` を読むすべての問い合わせ | ドライブの行（`message_id`・`channel_id` が NULL、`drive_item_id` あり）が混ざる | D1 で attachments を読む所を全部確かめる：GC（pending の 24 時間・deleted）、`verify-attachments`、`GET /files`、メッセージ検索のファイル名の枝、`export-channel`、匿名化、キャンバスとページの整理の周期ジョブ、デモのデータ。`GET /files` と検索は messages と結合するのでドライブの行は出ない（確かめてテストに固定する） |
 | プレビューの loop：1 件ずつ、古い順、チャットの添付と共有 | 移行で数千件の Office ファイルが積まれるとチャットのプレビューが何時間も遅れる | 移行のファイルはプレビューを `none` で入れ、`generate-previews --drive` で夜に少しずつ作る（§8・§15） |
 | SECURITY.md §4「未対応：ストレージのクォータ」 | ドライブで初めて容量を数える | 場所ごとの上限とワークスペース全体の上限（§11）。チャットの添付は今までどおり数えない |
@@ -1089,7 +1089,7 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 | **D1** サーバの土台（**実装 2026-10-21、§20**） | M160 | 移行（表・`attachments.drive_item_id`・研究室ドライブの行）、`drive` モジュール、場所と権限（§3）、フォルダ・名前・移動・ゴミ箱（戻す・完全削除・30 日のジョブ）、マルチパートのアップロード（§6、`BlobStore` の拡張、期限と孤児の掃除、`completing` の回収）、media loop（§6.4）、Range のダウンロード（添付の `/content` にも）、`drive.changed`、`get_for_access` の注入、attachments を読む問い合わせの確認（§2）、Caddy の部品の枠、`drive.admin` の権限、エラーの文言。最初に versitygw のマルチパートの一時の領域と完了の時間を実物で確かめる | pytest：権限の表（3 つの場所 × admin / manager / member / guest / チャンネルのオーナー / 抜けた人 / アーカイブ）を総当たり、アップロードの冪等（同じ `client_upload_id`・部品の送り直し・完了の送り直し・完了の途中で落ちる）、名前の衝突 3 種、輪の移動、ゴミ箱のまとまり、容量の同時の予約。compose の上で 1 GB のファイルを途中で止めて再開し、SHA-256 が合う。ARCHITECTURE.md §2・§5、DATA_MODEL.md、SECURITY.md §4・§5、SYNC_PROTOCOL.md に節を足す |
 | **D2** Desktop / Web の画面（**実装 2026-10-21、§21**） | M161 | 場所のレールの「ドライブ」、場所の列、一覧（リスト / グリッド、パンくず、並べ替え、カーソル）、アップロードの欄（ファイル・フォルダ・ドロップ・再開・衝突の質問）、ダウンロード（Desktop は塊ごとに保存、Web はブラウザ）、ビューア、名前・移動・ゴミ箱、ファイル名の検索（`/search/drive` を含む）、チャンネルのタブ | tsc・テスト（アップロードの状態機械、衝突の質問、パンくず）。macOS と Windows のアプリと Web で、フォルダのドロップ・2 GB のファイルの再開・ZIP でない 1 ファイルの 2 GB のダウンロードを手で確かめる |
 | **D3** 版・コピー・ZIP・容量（**実装 2026-10-21、§22**） | M162 | 版（上書き・一覧・戻す・消す・整理のジョブ）、コピー（上限つき）、ZIP（§7.2）、場所と全体の上限、管理者の使用量の画面、`drive-usage --verify / --rebuild` | pytest：版の数と日数の整理、ZIP の中身（名前・UTF-8・ZIP64・空のフォルダ・Content-Length が実際の長さと一致）、容量の超過と減らす操作。5,000 ファイル・10 GB のフォルダの ZIP をブラウザで落として展開できる（Windows のエクスプローラーと macOS で） |
-| **D4** 外部共有リンク | M163 | リンクの表と API、公開 API・`share.html`・解錠の cookie、働く条件（§9.2）、速度制限、`drive_share_events` と 180 日の整理、監査、ワークスペースと場所のスイッチ、admin の一覧、Caddy / nginx / ログの伏せ、robots.txt、プライバシーの説明 | pytest：部分木の外の id（兄弟・親・別の場所・ゴミ箱・古い版）がすべて 404、作った人が抜けた・ゲストになった・無効化で止まる、回数の同時の数え方、パスワードの失敗の制限、ヘッダ（noindex・nosniff・sandbox・attachment）。ログインしていないブラウザ（Chrome・Safari・Firefox、スマホ）で、フォルダの一覧・PDF のプレビュー・ZIP を確かめる。SECURITY.md に「外部共有リンク」の節を足し、§12 のようなレビューの一覧で見直す |
+| **D4** 外部共有リンク（**実装 2026-10-21、§23**） | M163 | リンクの表と API、公開 API・`share.html`・解錠の cookie、働く条件（§9.2）、速度制限、`drive_share_events` と 180 日の整理、監査、ワークスペースと場所のスイッチ、admin の一覧、Caddy / nginx / ログの伏せ、robots.txt、プライバシーの説明 | pytest：部分木の外の id（兄弟・親・別の場所・ゴミ箱・古い版）がすべて 404、作った人が抜けた・ゲストになった・無効化で止まる、回数の同時の数え方、パスワードの失敗の制限、ヘッダ（noindex・nosniff・sandbox・attachment）。ログインしていないブラウザ（Chrome・Safari・Firefox、スマホ）で、フォルダの一覧・PDF のプレビュー・ZIP を確かめる。SECURITY.md に「外部共有リンク」の節を足し、§12 のようなレビューの一覧で見直す |
 | **D5** Nextcloud の移行とバックアップ | M164 | `import-nextcloud`（WebDAV・データディレクトリ・対応表・`--list-shares`・`--dry-run`・再実行の差分）、`generate-previews --drive`、backup.sh の SHA-256 の引き継ぎと比較の作り直し、restic でのサーバの外へのバックアップの手順、リハーサルの手順、infra/README.md | pytest：対応表の解決（いちばん長い一致・skip・無い先）、再実行で増えない・変わったファイルが版になる、名前の衝突の表。本番の Nextcloud から `--dry-run` の表を利用者と見て対応表を決める。**サーバの外のバックアップが 1 回取れて、そこから別の機械に戻せることを確かめてから**、本番に移す。移した後に件数と合計の大きさが Nextcloud と合う |
 | **D6** 会話との連携 | M165 | `/d/<id>` のパーマリンクとカード（Desktop / Web）、入力欄の「ドライブから」（リンク / コピー）、`reach` の注意、「ドライブに保存」、`pages.py` の案内ページ | pytest：コピーの添付の権限、保存の権限（読めない添付・書けない先）、`reach` の数。Desktop / Web で、ゲストのいるチャンネルに研究室ドライブのリンクを貼ると注意が出て、ゲストには「表示できないファイル」と出る |
 | **D7** スマホ（読むだけ） | M166 | iOS / Android：ドライブのタイル、一覧・検索・プレビュー・ダウンロード・共有、`/d/` のカード | xcodebuild・Gradle のビルドとテスト。実機で PDF・Office のプレビューと大きなファイルのダウンロード |
@@ -1119,7 +1119,7 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 
 ## 20. 段階 D1 の実装（M160、2026-10-21）
 
-段階 D2 は §21、D3 は §22。
+段階 D2 は §21、D3 は §22、D4 は §23。
 
 サーバだけ（画面は D2）。移行 0118、`app/modules/drive/`（`models`・`names`・`access`・`repository`・`service`・`uploads`・`media`・
 `housekeeping`・`events`・`router`）、`BlobStore` のマルチパート・範囲の読み出し・`head`、添付の `/content` の Range、
@@ -1130,7 +1130,7 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 
 - 場所：`GET /drive/locations`、`POST /drive/locations/resolve`（チャンネル・`me`、冪等）。研究室ドライブは移行が作り、無ければ最初の
   読み出しで作り直す。名前は研究室ドライブ「研究室ドライブ」・マイドライブ「マイドライブ」・チャンネルはチャンネル名（端末は `kind` で
-  自分の言語の名前にしてよい）。`can_share` と `link_count` は D4 まで常に false / 0。
+  自分の言語の名前にしてよい）。`can_share` と `link_count` は D4 まで常に false / 0（D4 で実際の値、§23）。
 - 項目：`GET /drive/folders/{id}/children`（`sort=name|modified|size`・`order`・カーソル。フォルダが先）、`GET /drive/items/{id}`、
   `POST /drive/folders`（`name` + `client_op_id`、`path` の mkdir -p）、`PATCH /drive/items/{id}`（名前。今の版の添付の `filename` も
   変える：プレビューの PDF の名前のため）、`POST /drive/items/move`、`POST /drive/items/trash`、`GET /drive/locations/{id}/trash`、
@@ -1225,7 +1225,7 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
 | §7.3「Web は cookie で認証されるので `<a href download>`」 | サーバに **ダウンロードのチケット**を足した：`POST /drive/items/{id}/download-ticket?version_id=` → `{url, expires_in}`、`GET /drive/download/{token}`（認証なし）。32 バイトの乱数、プロセスのメモリに SHA-256 だけ、1 人・1 項目・1 版。使われるたびに 5 分延び、発行から 12 時間で必ず終わる。1 人 200 枚まで（古いものから消す）。使うたびに本人が有効で項目を読めることを確かめる（チャンネルを抜けた・無効化・ゴミ箱で 404）。応答は `/content` と同じヘッダで `Cache-Control: private, no-store`。トークンはアクセスログで伏せる | Web のアクセストークンはメモリだけで、cookie は更新トークンだけ（`/auth/refresh` の経路）。§7.2 の ZIP のチケットは「1 回だけ」だが、1 ファイルはブラウザの再開（Range）と動画のシークで同じ URL を何度も使うため、短い期限と毎回の権限の確認にした |
 | §5.3 `UploadOut` | `content_modified_at` を足した | 再起動の後に選び直したファイルをセッションと突き合わせる（名前・大きさ・更新日時）ため |
 | §5.6 `GET /search/drive` の `{items: [ItemOut + path]}` | `{items: [{item, path, location_kind}], next_cursor}`。カーソルは件数（スコア順なので）、`kind=file\|folder`。語は `pgroonga_query_escape` してから `&@~`（ファイル名を検索の構文として読まない） | パスの根の名前を端末の言語にするため `location_kind` を付けた |
-| §17.1「共有リンク」の列 | 出さない | D4（外部共有リンク）まで API が無い |
+| §17.1「共有リンク」の列 | 出さない（**D4 で足した**：場所の列の「共有リンク」、§23） | D4（外部共有リンク）まで API が無い |
 | §17.2 右クリックの「コピー」「共有リンク」「会話に送る」「版の履歴」、複数・フォルダの ZIP | 出さない（複数のファイルのダウンロードは 1 つずつ） | D3・D4・D6 |
 | §17.2 ⌘C / ⌘V（コピー） | ⌘X / ⌘V の移動だけ | コピーは D3 |
 | §17.3「同時に 3 ファイル、1 ファイルの部品も 3 本」 | そのとおり。Web の部品の進み具合は 16 MiB ごと（`fetch` に送信の進み具合が無い） | — |
@@ -1302,7 +1302,7 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
 | §14 `drive.location.updated {location: DriveLocationOut}` | `{location_id}` だけ | `DriveLocationOut` は読む人ごとに違う（`can_write` など）。D2 の端末は受け取れば場所の一覧を読み直すので、形を変えても困らない |
 | §5.5 `PATCH /admin/drive/locations/{id}` の応答 | 管理の画面の行（`DriveLocationUsageOut`） | 画面の行をそのまま置き換える |
 | §11.2「人ごと：上げたファイルの合計」 | 版の `uploaded_by` の合計（今の版・古い版・ゴミ箱を含む。コピーと版を戻すはした人の分） | 場所の使用量と同じ数え方 |
-| §17.5 管理画面の「ドライブ」 | 使用量と上限だけ（外部リンクのスイッチ・期限・パスワード、すべてのリンクは D4） | D4 の機能 |
+| §17.5 管理画面の「ドライブ」 | 使用量と上限だけ（外部リンクのスイッチ・期限・パスワード、すべてのリンクは D4。**D4 で足した**、§23） | D4 の機能 |
 | ワークスペースの設定 | D3 で足すものは無い（全体の上限・マイドライブの既定の上限・版の数と日数・コピーと ZIP の上限は環境変数） | §11.1 のとおり。外部リンクの 3 列は D4 |
 
 足したエラー：`drive_version_current`（409）、`drive_copy_too_large`（413、`details.limit_bytes`・`limit_items`）、`drive_zip_too_large`
@@ -1330,3 +1330,129 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
   50 フォルダの ZIP（書き手を直接、日本語の名前）を `ditto` と `unzip` で展開して一致。
 - **確かめていないこと**：Windows のエクスプローラーでの展開、10 GB・5,000 ファイルをブラウザで落とすこと（§18 の D3 の完了条件の一部。
   ZIP64 と件数は上のとおり別々に確かめた）、Tauri のアプリでの ZIP の保存（D2 の 1 ファイルの保存と同じ経路）。
+
+## 23. 段階 D4 の実装（M163、2026-10-21）
+
+外部共有リンク。サーバ（移行 0119、`drive/shares.py`（作る側）・`drive/public.py`（公開側）・`drive/share_router.py`）、Desktop / Web の画面、
+公開ページ（Web のバンドルの 2 つ目の入口 `share.html`、`src/share/`）、Caddy・nginx の設定例。
+
+### 23.1 作ったもの
+
+- **移行 0119**：`drive_share_links`・`drive_share_events`（§4.2 のとおり。下の違いを除く）、`workspace_settings` の 3 列
+  （`drive_external_links_enabled`・`drive_link_max_days`・`drive_link_password_required`）。
+- **作る側**（§5.4）：`POST /drive/items/{id}/links`（32 バイトの乱数のトークン、DB には SHA-256 だけ、URL はこの応答だけ。期限の既定 7 日・
+  最長はワークスペースの設定、パスワードは Argon2id、回数の上限、`note`）、`GET /drive/items/{id}/links`（リンクと、ダイアログが出せるもの
+  `policy`）、`GET /drive/links`（自分のもの）、`PATCH /drive/links/{id}`（作った人）、`DELETE /drive/links/{id}`（作った人・場所を管理する人・
+  admin）、`GET /drive/links/{id}/events`（作った人は IP の上位 2 つだけ、admin は全体）、`PATCH /drive/locations/{id} {external_links}`
+  （場所を管理する人）。`DriveLocationOut.can_share`、`DriveItemOut.link_count`、`DriveChildrenOut.shared_above`（下）。監査
+  `drive.link_created`・`drive.link_updated`・`drive.link_revoked`・`drive.location_links_changed`、ワークスペースのスイッチは
+  `workspace.settings_updated`。トークンとパスワードは監査にも載せない。
+- **管理者**（§5.5）：`GET /admin/drive/links`（取り消していないすべてのリンク。項目と場所の名前・作った人・期限・回数・最後に使われた時刻・
+  状態、中身は出さない）、`DELETE /admin/drive/links/{id}`（`by_admin: true`）、`GET / PATCH /admin/drive/settings`（下の §23.2）。
+- **公開側**（§5.4・§9.3、認証なし）：`GET /shares/{token}`、`POST /shares/{token}/unlock`、`GET /shares/{token}/folders/{id}/children`、
+  `GET|HEAD /shares/{token}/items/{id}/content`、`/thumbnail`・`/preview/thumbnail`・`/preview/pdf`、`GET /shares/{token}/zip?folder_id=`。
+  働く条件（§9.2）は毎回 `shares.link_state` で確かめ、知らないトークンは 404 `share_link_not_found`、ほかはすべて 410
+  `share_link_unavailable`（理由は言わない）。部分木の確かめは `public.shared_item`（項目の祖先の鎖を再帰 CTE でたどり、リンクの項目に
+  届くこと、その間にゴミ箱の項目が無いこと）。すべての応答（エラーも）に `X-Robots-Tag: noindex, nofollow, noarchive`・
+  `Referrer-Policy: no-referrer`・`X-Frame-Options: DENY`・`X-Content-Type-Options: nosniff`・`Cache-Control: no-store` と、
+  ルートが付けなければ `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; sandbox`（`ShareHeadersMiddleware`）。
+- **回数**：本文（Range なし、`bytes=0-…`）と ZIP 1 本ごとに 1 つ。1 つの条件付き `UPDATE … WHERE download_count < max_downloads RETURNING`
+  で数える（同時でも超えない）。一覧・サムネイル・プレビュー・HEAD は数えない。途中から（`bytes=n-`、n > 0）の Range は、同じアドレスが
+  そのリンクでその版を 24 時間以内に落としていれば数えない（ブラウザの再開）、そうでなければ数える（§23.2）。
+- **速度制限**（§9.4）：公開側の全体 IP 120 / 分、知らない・働かないリンク IP 20 / 分（**引く前に**確かめる：使い切ったアドレスには正しい
+  トークンでも 429 を返し、429 がトークンの当否を漏らさない）、本文のダウンロード リンク 60 / 分、パスワード リンク 10 回 / 10 分・
+  IP 20 / 分、作成 ユーザー 30 / 分。設定は `DRIVE_SHARE_*`・`DRIVE_LINK_CREATE_RATE_LIMIT_PER_USER`。
+- **解錠の cookie**：`taylis_share`、値は `link_id.password_version.期限.HMAC-SHA256`（鍵は `SECRET_KEY` から HMAC で作る）、`HttpOnly`・
+  `SameSite=Lax`・`Path=/api/v1/shares/<token>`・12 時間（`DRIVE_SHARE_UNLOCK_HOURS`）、https のときだけ `Secure`（Web のセッションの
+  cookie と同じ判定）。パスワードを変えると（外すのも）それまでの cookie は効かない。
+- **記録**：`drive_share_events`（`open`・`download`・`zip`・`password_failed`・`refused`、IP と User-Agent 200 文字）。drive の周期ジョブが
+  180 日（`DRIVE_SHARE_EVENTS_DAYS`）で消す。アクセスログは `/s/***`・`/api/v1/shares/***/…`（`core/logging.py`）。
+- **人の変化**（§3.3）：抜けた・ゲストになった・無効化は止まる（`paused`、戻れば働く）。匿名化はその人のリンクをすべて取り消す
+  （`forget_user_in_tx`）。完全削除した項目のリンクと記録は CASCADE で消える。
+- **画面**（§17.4・§17.5）：ファイル・フォルダの右クリックと詳細の欄の「共有リンク」（ダイアログ：期限 1 / 7 / 30 / 90 日・日付・「期限なし」
+  （許されるときだけ）、パスワード、回数の上限、誰向けか → 作ると URL とコピー、「今だけ表示する」の注意。下にその項目のリンクの一覧：状態・
+  期限・回数・最後に使われた時刻・記録・取り消し）。一覧の名前の横のリンクのしるし、外に共有されているフォルダの中の注意の帯、場所の列の
+  「共有リンク」（自分が作ったもの）と、場所を管理する人の ⋯ の「この場所で外部共有リンクを許す」。管理 →「ドライブ」の「外部共有リンク」
+  （スイッチ・期限の最長・パスワードの必須・すべてのリンクと取り消し）。
+- **公開ページ** `/s/<token>`（`share.html`、ログインも同期も持たない入口）：パスワードの入力、ファイルのカード（ダウンロード・プレビュー）、
+  フォルダの一覧（リンクのフォルダから下のパンくず、`#f=<id>` で戻るボタンが効く）、「すべてを ZIP でダウンロード」、PDF と Office の
+  プレビュー（アプリと同じ PDF.js のビューア。`PdfViewer` は controller の代わりに読み込みの関数を受け取れるようにした）、画像。ダウンロードは
+  ふつうのリンク（ブラウザ自身のダウンロード）。作った人・場所・ほかのリンク・版は出さない。`<meta name="robots">`・`<meta name="referrer">`、
+  `public/robots.txt`（`Disallow: /s/`・`/api/`）。`vite` と `vite preview` も `/s/*` に share.html を返す（`sharePage` プラグイン）。
+
+### 23.2 本書と違うところ・足したもの
+
+| 本書 | D4 の実装 | 理由 |
+| --- | --- | --- |
+| §5.5 `PATCH /admin/workspace-settings` に 3 つを足す | `GET / PATCH /admin/drive/settings`（`drive.admin`）。値は `workspace_settings` の列のまま、監査も `workspace.settings_updated` | `/admin/workspace-settings` は運営（channels.manage）も開く経路で、ドライブの管理は admin だけ（§3.2）。管理 →「ドライブ」の画面から使う |
+| §5.2 `link_count`「自分に見える有効な外部リンクの数」 | 取り消し・期限切れ・回数切れでないリンクの数を、項目を読めるすべての人に出す（`paused` も数える）。`DriveChildrenOut.shared_above`（開いているフォルダとその上のフォルダのリンクの数）を足し、一覧に「外部に公開されている」帯を出す | ここに置いたものが学外から見えることを、置く人が知っているべき。人ごとに変えると、他人が作ったリンクの下に知らずにファイルを置く |
+| §9.2 回数「`bytes=0-` で始まるものだけ数える」 | 途中からの Range も、そのアドレスがそのリンクでその版を 24 時間以内に落としていなければ数える（プロセスのメモリ、SHA-256 のキー） | 本書のままだと `bytes=1-` と `bytes=0-0` の 2 回で上限の付いたファイルを 1 回分で読み切れる |
+| §9.2 一覧・プレビューは数えない | そのとおり。ただし回数を使い切ったリンクは一覧・プレビューも含めてすべて 410 | 働く条件（§9.2）に回数が入っている。使い切ったリンクの中身の名前を見せ続ける理由が無い |
+| §5.4 `GET /shares/{token}` | `{state, kind, password_required, unlocked, expires_at, downloads_left, root_id, item, workspace_name}`。パスワードのあるリンクは解錠まで `kind`・`item`・`root_id` を null にする | 名前・種類もパスワードの後ろに置く。ページが残りの回数と期限を出す |
+| §5.4 `/content` | `HEAD` も受ける（ヘッダだけ、数えない） | ダウンロードマネージャ・ブラウザの確かめで回数が減らないように |
+| §5.4 `/zip?folder_id=` | チケットを作らず、cookie（パスワード）とトークンだけで流す。同時の本数はリンクごと 2 本・全体 4 本（D3 の枠を共有） | 公開側は Bearer を持たない。`<a href download>` で直接落とせる |
+| §9.3 画像のプレビュー | 回数の上限が無いリンクは元の画像（`?inline=1`、ダウンロードとして数える）、上限のあるリンクはサムネイル（512 px、数えない） | 見るたびに回数が減るのを避けつつ、上限の無いリンクではきれいに見せる |
+| §9.3 `<noscript>` で直接のダウンロードのリンク | 「JavaScript を有効にしてください」だけ | ページは静的なファイル（サーバはトークンを見ない）で、リンクの種類やパスワードの有無を知らない |
+| §3.2 外部リンクを作る | 場所の根（ドライブのいちばん上のフォルダ）は共有できない（409 `drive_root_immutable`） | 研究室ドライブ全体を 1 本のリンクで外に出せないようにする |
+| §9.2 働く条件 | 「項目が作った時の場所にあること」を足した（別の場所へ移されたら `paused`。戻せば働く） | 移った先の場所のスイッチと人がそのリンクを許していない |
+| §4.2 `drive_share_links.location_id` | `ON DELETE CASCADE`、`created_by` に索引、`max_downloads > 0` と `download_count >= 0` の CHECK | 匿名化した人のマイドライブを消すとき（§3.3）に残らないように |
+| §5.4 `GET /drive/links?mine=1` | `GET /drive/links` はいつも自分のもの（全体は `/admin/drive/links`） | 1 つの経路に 2 つの権限を混ぜない |
+| §5.4 `PATCH` | 作った人だけ、その人が今その項目を読めるときだけ。期限・パスワードの必須は作るときと同じ規則 | 読めなくなった人がリンクを延ばせないように |
+| §3.2 取り消し | 作った人・場所を管理する人（`can_manage`）・admin。監査に `by_admin`・`by_creator` | §3.2 の表のとおり（場所の中のすべてのリンクの取り消し） |
+| 入力の上限 | パスワード 4〜128 文字、`note` 80 文字、回数の上限 1〜100,000、期限の最長の設定 1〜3,650 日（null で期限なしを許す）。期限は最長に 1 時間の余裕（端末の時計のずれ） | — |
+| §14 のイベント | リンクの作成・取り消しで項目のフォルダに `drive.changed`（しるしの読み直し）、場所のスイッチで `drive.location.updated`。ワークスペースのスイッチはイベントを出さない（ダイアログを開くたびに `policy` を読む） | — |
+| §9.6 Caddy | `/s/*` の CSP は SPA より狭い（`img-src 'self' data: blob:`、`base-uri 'none'`）。`/api/v1/shares/*` のヘッダは app が付ける（Caddy で重ねない） | 公開ページは外の画像を読まない |
+| §9.6 nginx の `access_log off` | 伏せた形式のアクセスログ（`map $uri` で `/s/`・`/api/v1/shares/` ほか秘密の入るパスの次の部分を `***`、クエリ文字列を書かない）を `nginx-site.conf.example` に足した | ログを全部止めると運用の手がかりが無くなる |
+| §17.1「共有リンク」の列 | 場所の列の下の「共有リンク」がダイアログ（自分が作ったリンク）を開く。場所の設定は場所の行の ⋯ | 一覧の列を増やさない |
+| エラー | 足した：`drive_links_disabled`（403）、`share_link_expiry_too_long`・`share_link_password_required`（422）、`share_link_not_found`（404）、`share_link_unavailable`（410）、`share_password_required`・`share_password_invalid`（401） | §5.7 のとおり（作る側の 2 つを足した） |
+
+### 23.3 脅威モデルのチェックリストと試験
+
+§9.1 の表を、実装の守りと、それを固定した試験で見直した（`server/tests/test_drive_d4.py`、画面は `apps/desktop/tests/driveShares.test.tsx`）。
+
+| # | 脅威 | 守り | 試験 |
+| --- | --- | --- | --- |
+| 1 | トークンの推測・総当たり | 256 ビットの乱数。知らないトークンは 404。IP ごとに知らない・働かないリンク 20 / 分、使い切ったら引く前に 429（正しいトークンでも） | `test_unknown_tokens_are_slowed_down_without_an_oracle`、`test_every_public_request_is_rate_limited_per_address` |
+| 2 | DB の流出 | トークンは SHA-256 だけ、パスワードは Argon2id、監査にトークンを載せない | `test_a_link_is_a_random_token_kept_as_its_hash` |
+| 3 | 期限切れ・取り消し | 毎回 `expires_at`・`revoked_at` を見る。410（理由は言わない） | `test_expired_revoked_and_unknown_links` |
+| 4 | パスワードの誤り・総当たり | Argon2id、リンク 10 回 / 10 分（その後は正しいパスワードも 429）、IP 20 / 分、失敗は `password_failed` に残る | `test_the_password_and_its_unlock_cookie`、`test_passwords_cannot_be_guessed_quickly` |
+| 5 | 解錠の cookie の偽造・使い回し | HMAC（`SECRET_KEY` から）、リンクの id とパスワードの版を含む、Path はそのトークン、HttpOnly。パスワードを変えると無効 | `test_the_password_and_its_unlock_cookie` |
+| 6 | 作った人が読めなくなった | 毎回、作った人が有効な人（ゲスト・bot でない）でその場所を読めるかを見る：抜けた・ゲストになった・無効化で止まり、戻れば働く | `test_a_link_works_only_while_its_creator_can_read_the_item` |
+| 7 | アーカイブしたチャンネル（§19 Q6） | アーカイブの間は止まり、戻せば働く | 同上 |
+| 8 | スイッチ（ワークスペース・場所） | 毎回見る。切ると既存のリンクも止まる、作れない（403 `drive_links_disabled`） | 同上、`test_who_may_make_links_and_the_workspace_policy` |
+| 9 | 部分木の外の id | 公開側は id だけを受け、祖先の鎖がリンクの項目に届くことを確かめる：親・兄弟・場所の根・別の場所・知らない id・ファイルを一覧として、すべて 404 | `test_only_the_shared_subtree_is_reachable` |
+| 10 | 部分木の外へ移された項目 | 移された後は 404、戻せば見える | 同上 |
+| 11 | ゴミ箱の項目 | 項目と祖先の鎖にゴミ箱の項目があれば 404。リンクの項目そのものがゴミ箱なら 410 | 同上、`test_a_link_works_only_while_its_creator_can_read_the_item` |
+| 12 | 古い版 | 公開側は今の版だけ（`version_id` は受けない） | `test_only_the_shared_subtree_is_reachable` |
+| 13 | 回数の上限の同時の要求 | 条件付きの 1 つの `UPDATE` | `test_concurrent_downloads_never_pass_the_limit`（上限 3 に同時に 10 本 → 200 が 3、410 が 7） |
+| 14 | Range・HEAD での上限のすり抜け | `bytes=0-` と途中からの初めての Range は数える。HEAD・一覧・サムネイル・プレビューは数えない。416 は数えない | `test_the_download_limit_counts_downloads_only` |
+| 15 | 悪いファイル（HTML・SVG）の配布 | 本文は常に `attachment`（画像だけ `?inline=1`）、`nosniff`、`CSP: sandbox`、PDF のプレビューも sandbox | `test_a_file_link_downloads_with_safe_headers` |
+| 16 | 検索エンジン・Referer・埋め込み | すべての応答（エラーも）に `X-Robots-Tag`・`no-referrer`・`DENY`・`no-store`。ページの meta、robots.txt、Caddy の `/s/*` のヘッダ | 同上、`driveShares.test.tsx`、compose での確かめ（§23.4） |
+| 17 | ログのトークン | app のアクセスログは `***`。Caddy はアクセスログを書かない。nginx は伏せた形式（infra/README.md） | `test_tokens_never_reach_the_logs`、nginx 1.27 での確かめ（§23.4） |
+| 18 | ZIP の名前でのパスの乗っ取り | ZIP の名前は項目の名前から `names.download_name` で作る（`/`・`\`・先頭の `.` を置き換え）。`../../etc/passwd`・`..\..\evil.bat` のような名前（移行で入りうる）も 1 つの部分になる | `test_a_folder_link_zips_safely_and_counts_once` |
+| 19 | 帯域・ディスクの浪費 | 回数の上限、リンクごとのダウンロード 60 / 分、ZIP の同時の本数（リンク 2・全体 4）、ZIP の上限（10,000 件・20 GB） | `test_every_public_request_is_rate_limited_per_address`、D3 の ZIP の試験 |
+| 20 | 管理者が知らないうちに外へ出る | admin の一覧と取り消し、スイッチ、作成・変更・取り消しの監査、一覧のしるしと帯 | `test_admins_see_every_link_and_events_are_kept_180_days`、`test_a_link_is_a_random_token_kept_as_its_hash` |
+| 21 | ゲスト・読むだけの人がリンクを作る | ゲストは 403 `guest_restricted`、アーカイブは 403 `drive_read_only`、根は 409 | `test_who_may_make_links_and_the_workspace_policy` |
+| 22 | 公開側からの情報の漏れ | 作った人・更新した人・場所・ほかのリンク・版を返さない。パスワードの前は名前も返さない | `test_a_file_link_downloads_with_safe_headers`、`test_the_password_and_its_unlock_cookie`、`driveShares.test.tsx` |
+| 23 | 退会・削除 | 匿名化でリンクを取り消す、完全削除でリンクと記録が消える、記録は 180 日 | `test_admins_see_every_link_and_events_are_kept_180_days`、`test_purging_an_item_takes_its_links_and_events` |
+
+**残るリスク（受け入れたもの）**：PDF のプレビューは数えない（PDF はファイルそのものなので、回数の上限のある PDF もプレビューで全ページ
+読める。§9.2 のとおり「見せる」の範囲）。回数の再開の判定はプロセスのメモリ（再起動の後の再開は 1 回と数える）。IP は Caddy / nginx が
+置き換えた値（SECURITY.md §6）で、大学の NAT の後ろの人は同じアドレスになる。
+
+### 23.4 確かめたこと
+
+- pytest：`tests/test_drive_d4.py`（18 件、上の表）。サーバの全体・ruff・ruff format・mypy。
+- vitest：`tests/driveShares.test.tsx`（期限の選択肢と送る値、URL を 1 回だけ出して写す、状態と取り消し、止まっているときの文、一覧のしるし、
+  管理のスイッチと一覧、公開ページのパスワード・フォルダ・ファイル・止まったリンク、開発のサーバの書き換え）。tsc と vitest の全体。
+  `vite build` に `share.html` と `assets/share-*.js` が入る。
+- 手で（使い捨ての compose：PGroonga・versitygw v1.8.0・この版の app、Vite 1422、ヘッドレスの Chrome を CDP で操作）：ログインしたプロファイルで
+  フォルダ（パスワード・回数 5・誰向け）とファイル（回数 2）のリンクを共有ダイアログから作り、URL のコピーと一覧のしるしを確かめた。
+  ログインしていない別のプロファイルで：パスワードの画面（解錠の前に名前が出ない）、誤ったパスワード、フォルダの一覧、PDF のプレビュー
+  （PDF.js）、画像（回数の上限があるのでサムネイル）、サブフォルダとパンくず、フォルダの ZIP（ブラウザのダウンロードで落とし `ditto` で日本語の
+  名前のまま展開、回数が 1 減る）、ファイルの回数の上限（200・200・410 と「このリンクは使えません」）。ページから cookie が読めないこと。
+  取り消し（ダイアログから）、期限切れ、ワークスペースと場所のスイッチのオン・オフ、兄弟の id の 404、HEAD と Range、ヘッダ。管理 →「ドライブ」
+  の一覧。app のログにトークンが 0 件。この Caddyfile（caddy:2）で `/s/*` が share.html とヘッダを返し、CSP の下で PDF.js のプレビューが
+  動く（コンソールのエラーなし）。nginx 1.27 で `nginx-site.conf.example` が `nginx -t` を通り、アクセスログが `GET /s/*** …` になる。
+- **確かめていないこと**：Safari・Firefox・スマホのブラウザでの公開ページ（§18 の D4 の完了条件の一部）、Tauri のアプリでの共有ダイアログ
+  （Web と同じ部品）、本番の nginx への反映（共用のサーバなので運用者が行う、infra/README.md）。
