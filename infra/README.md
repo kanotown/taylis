@@ -8,7 +8,7 @@
 | `docker-compose.prod.yml` | 本番用の上書き (ホストへのポート公開を打ち消す) |
 | `Dockerfile` | server のイメージ (uv ベース) |
 | `web.Dockerfile` | Caddy + ブラウザクライアント (apps/desktop を `vite build` して `/srv/web` に置く。M12j) |
-| `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限（パスごと。下の「既存の nginx の後ろで動かす」）、それ以外は SPA (index.html) |
+| `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限（パスごと。下の「既存の nginx の後ろで動かす」）、`/s/*`（ドライブの外部共有リンクの公開ページ、M163）は share.html、それ以外は SPA (index.html) |
 | `.env.example` | 必要な環境変数の一覧 (SECRET_KEY、DATABASE_URL、S3_*、PUSH_*)。秘密の実値は置かない |
 | `docker-compose.livekit.yml` | 本番のアプリ内通話 (M130): LiveKit を app の隣に足す上書き (`deploy.conf` の `EXTRA_COMPOSE_FILES`)。docs/CALLS.md §8 |
 | `livekit.yaml` | 本番の LiveKit の設定 (秘密もサーバごとの値も入れない。鍵は `secrets/livekit.env`、ほかは `.env` から) |
@@ -436,6 +436,14 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
   合わせたもので、パスごとの正確な上限は Caddy が持つ：添付 110 MB、プロフィール画像とワークスペースのアイコン 6 MB、
   絵文字セットの取り込み（`/api/v1/emoji/packs/import`、ZIP かフォルダーの合計 64 MiB）70 MB、それ以外の `/api/*` は
   1 MB（レビュー v0.1.37 #8）。
+- **アクセスログのトークン（M163、docs/DRIVE.md §9.5）**：ドライブの外部共有リンクは URL のパスにトークンがある
+  （`/s/<token>`、`/api/v1/shares/<token>/…`）。app のログと Caddy（Caddyfile に `log` が無いのでアクセスログを書かない）は
+  伏せているが、**nginx の既定のアクセスログはそのまま残す**。`nginx-site.conf.example` の `map $uri $chikuwachat_log_uri` と
+  `log_format chikuwachat_masked` を `server` の外に、`access_log /var/log/nginx/access.log chikuwachat_masked;` を `server` の中に
+  置く（招待・iCal・Webhook・ドライブのダウンロードのチケットも `***` になる。クエリ文字列は書かない）。すでに動いている
+  サーバでは、この 3 か所を今のサイトの設定に足して `nginx -t && systemctl reload nginx`。過去のログ（`/var/log/nginx/access.log*`）に
+  残ったリンクは、取り消すか期限切れを待つ。`error_log` は上流のエラーのときにリクエストの行を書くことがあるので、
+  `/var/log/nginx` を root と adm だけが読めるままにする。
 - 手で compose を動かすときも `-f docker-compose.behind-proxy.yml` を付ける (付けずに Caddy を起動すると
   80 / 443 を取りに行き、nginx とぶつかって起動しない)。
 

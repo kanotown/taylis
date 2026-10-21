@@ -10,6 +10,18 @@ map $http_upgrade $chikuwachat_connection {
     ''      close;
 }
 
+# Paths whose next part is a secret (docs/SECURITY.md §7, docs/DRIVE.md §9.5): the drive's external share links
+# (/s/<token>, /api/v1/shares/<token>/…), invite links, iCal feeds, webhooks, the drive's download and ZIP tickets.
+# nginx's default access log would keep them in /var/log/nginx for weeks: this one writes them as ***.
+# (The query string is left out on purpose too.) error_log lines can still name a request on upstream errors: keep
+# /var/log/nginx readable by root / adm only.
+map $uri $chikuwachat_log_uri {
+    ~^(?<chikuwachat_p>/s/|/invite/|/api/v1/(shares|invites|calendar/ical|hooks|drive/download|drive/zip)/)[^/]+(?<chikuwachat_rest>.*)$ $chikuwachat_p***$chikuwachat_rest;
+    default $uri;
+}
+log_format chikuwachat_masked '$remote_addr - $remote_user [$time_local] "$request_method $chikuwachat_log_uri $server_protocol" '
+                              '$status $body_bytes_sent "-" "$http_user_agent"';
+
 server {
     listen 80;
     server_name chat.example.com;
@@ -17,6 +29,10 @@ server {
     # Attachments up to 100 MB (ATTACHMENT_MAX_BYTES); Caddy applies the exact limit per path
     # (emoji pack imports 70 MB, profile pictures 6 MB, the rest of /api/* 1 MB).
     client_max_body_size 110m;
+
+    # The masked access log above instead of the default one (which would keep share-link tokens). The certbot step
+    # leaves this line in place.
+    access_log /var/log/nginx/access.log chikuwachat_masked;
 
     location / {
         proxy_pass http://127.0.0.1:18080;
