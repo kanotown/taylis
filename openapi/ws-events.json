@@ -2914,6 +2914,214 @@
         "type": "object"
       }
     },
+    "drive.changed": {
+      "audience": "drive (who can read the location when sent)",
+      "consumes_seq": false,
+      "data": {
+        "description": "Re-read these folders (and the trash) of the location; no names travel.",
+        "properties": {
+          "folder_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Folder Ids",
+            "type": "array"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "location_id",
+          "folder_ids",
+          "seq"
+        ],
+        "title": "DriveChangedData",
+        "type": "object"
+      }
+    },
+    "drive.upload.updated": {
+      "audience": "user (the uploader)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "DriveUploadOut": {
+            "properties": {
+              "client_upload_id": {
+                "format": "uuid",
+                "title": "Client Upload Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Error"
+              },
+              "expires_at": {
+                "format": "date-time",
+                "title": "Expires At",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "item_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Item Id"
+              },
+              "location_id": {
+                "format": "uuid",
+                "title": "Location Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "on_conflict": {
+                "enum": [
+                  "version",
+                  "rename",
+                  "fail"
+                ],
+                "title": "On Conflict",
+                "type": "string"
+              },
+              "parent_id": {
+                "format": "uuid",
+                "title": "Parent Id",
+                "type": "string"
+              },
+              "part_size": {
+                "title": "Part Size",
+                "type": "integer"
+              },
+              "parts_total": {
+                "title": "Parts Total",
+                "type": "integer"
+              },
+              "received_parts": {
+                "items": {
+                  "type": "integer"
+                },
+                "title": "Received Parts",
+                "type": "array"
+              },
+              "relative_dir": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Relative Dir"
+              },
+              "size_bytes": {
+                "title": "Size Bytes",
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "active",
+                  "completing",
+                  "completed",
+                  "aborted",
+                  "expired"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "target_item_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Target Item Id"
+              },
+              "version_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Id"
+              }
+            },
+            "required": [
+              "id",
+              "client_upload_id",
+              "status",
+              "location_id",
+              "parent_id",
+              "relative_dir",
+              "name",
+              "on_conflict",
+              "target_item_id",
+              "part_size",
+              "parts_total",
+              "received_parts",
+              "size_bytes",
+              "expires_at",
+              "created_at",
+              "item_id",
+              "version_id",
+              "error"
+            ],
+            "title": "DriveUploadOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "upload": {
+            "$ref": "#/$defs/DriveUploadOut"
+          }
+        },
+        "required": [
+          "upload"
+        ],
+        "title": "DriveUploadUpdatedData",
+        "type": "object"
+      }
+    },
     "emoji.updated": {
       "audience": "all",
       "consumes_seq": false,

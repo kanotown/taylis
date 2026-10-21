@@ -20,6 +20,7 @@ from app.modules.attendance import service as attendance
 from app.modules.audit import service as audit
 from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth
+from app.modules.drive import service as drive
 from app.modules.groups import service as groups
 from app.modules.lab import service as lab
 from app.modules.moderation.models import UserBlock
@@ -355,6 +356,9 @@ async def anonymize_in_tx(
     await attendance.forget_in_tx(db, user.id)  # M140: 在室状況 row, log, own states, deliveries
     # M120 (docs/WIKI.md §4.5): pages shared with the person by name no longer name them.
     await wiki.remove_user_grants_in_tx(db, user.id)
+    # M160 (docs/DRIVE.md §3.3): the My Drive goes for good (the drive's housekeeping purges it),
+    # unfinished uploads are dropped. Files put in shared places stay.
+    await drive.forget_user_in_tx(db, user.id)
     # M104: the person's own block list is theirs; blocks of them by others stay (harmless).
     await db.execute(delete(UserBlock).where(UserBlock.blocker_id == user.id))
     await emit_user_event(db, USER_DEACTIVATED, user)

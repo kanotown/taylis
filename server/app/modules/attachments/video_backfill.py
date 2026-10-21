@@ -45,6 +45,8 @@ async def _next_batch(db: AsyncSession, after: uuid.UUID | None, size: int) -> l
             Attachment.content_type.like("video/%"),
             Attachment.status != "deleted",
             Attachment.video_probed_at.is_(None),
+            # M160: the drive's media loop probes drive videos (docs/DRIVE.md §6.4).
+            Attachment.drive_item_id.is_(None),
         )
         .order_by(Attachment.id)
         .limit(size)

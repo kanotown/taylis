@@ -56,6 +56,12 @@ from app.modules.channels.router import router as channels_router
 from app.modules.dm_closes.router import router as dm_closes_router
 from app.modules.dm_pins.router import router as dm_pins_router
 from app.modules.drafts.router import router as drafts_router
+from app.modules.drive import access as drive_access
+from app.modules.drive import events as drive_events
+from app.modules.drive import housekeeping as drive_housekeeping
+from app.modules.drive import media as drive_media
+from app.modules.drive.router import router as drive_router
+from app.modules.drive.uploads import DriveRuntime
 from app.modules.emoji import presets as emoji_presets
 from app.modules.emoji.router import router as emoji_router
 from app.modules.favorites.router import router as favorites_router
@@ -249,6 +255,56 @@ async def _attachment_gc_loop(app: FastAPI, stop: asyncio.Event) -> None:
             log.exception("attachment gc failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=settings.attachment_gc_interval_seconds)
+        except TimeoutError:
+            continue
+
+
+async def _drive_media_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """M160 (docs/DRIVE.md §6.4): a drive file's SHA-256, thumbnail and poster after its upload,
+    one at a time, again at once while there are more; woken by a completion."""
+    settings: Settings = app.state.settings
+    runtime: DriveRuntime = app.state.drive
+    while not stop.is_set():
+        runtime.media_wake.clear()
+        done = 0
+        try:
+            done = await drive_media.process_due(
+                app.state.db.session_factory, settings, app.state.blobs
+            )
+        except Exception:
+            log.exception("drive media worker failed")
+        if done:
+            continue
+        waits = [
+            asyncio.ensure_future(stop.wait()),
+            asyncio.ensure_future(runtime.media_wake.wait()),
+        ]
+        try:
+            await asyncio.wait(
+                waits,
+                timeout=settings.drive_media_interval_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for waiter in waits:
+                waiter.cancel()
+
+
+async def _drive_housekeeping_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """M160 (docs/DRIVE.md §6.2, §10.1): expired uploads, cut-off completions, orphan multipart
+    uploads, the trash after 30 days, the My Drives of anonymised people."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        try:
+            done = await drive_housekeeping.run(app.state.drive, settings, app.state.blobs)
+            if done:
+                log.info("drive housekeeping: %s", done)
+        except Exception:
+            log.exception("drive housekeeping failed")
+        try:
+            await asyncio.wait_for(
+                stop.wait(), timeout=settings.drive_housekeeping_interval_seconds
+            )
         except TimeoutError:
             continue
 
@@ -519,6 +575,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_activity_loop(app, stop), name="activity"))
         if settings.previews_enabled:
             tasks.append(asyncio.create_task(_preview_loop(app, stop), name="previews"))
+        tasks.append(asyncio.create_task(_drive_media_loop(app, stop), name="drive-media"))
+        tasks.append(
+            asyncio.create_task(_drive_housekeeping_loop(app, stop), name="drive-housekeeping")
+        )
         if app.state.calls is not None:
             tasks.append(asyncio.create_task(_calls_loop(app, stop), name="calls"))
     try:
@@ -526,6 +586,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         stop.set()
         app.state.action_status.cancel()
+        # M160: a completion cut off here stays `completing`; the housekeeping finishes it.
+        tasks.extend(app.state.drive.tasks.values())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -581,6 +643,7 @@ def build_api_router() -> APIRouter:
     api.include_router(webhooks_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
+    api.include_router(drive_router)
     api.include_router(search_router)
     api.include_router(ai_router)
     api.include_router(analytics_router)
@@ -625,6 +688,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M120 (docs/WIKI.md §4.7): a wiki page's files are read by whoever can read the page; the
     # wiki depends on attachments, so the check is handed over here.
     attachments_service.set_page_access_check(wiki.can_read)
+    # M160 (docs/DRIVE.md §4.1): a drive file's versions are read by whoever can read the item,
+    # and its preview's progress is announced to the drive (the drive depends on attachments).
+    attachments_service.set_drive_access_check(drive_access.can_read_item)
+    previews.set_drive_change_hook(drive_events.media_changed_in_tx)
     # M65: an AI bot without allow_private stays out of private channels and DMs; channels does
     # not depend on ai, so its router gets the check here.
     app.state.ai_private_guard = ai_service.check_private_allowed
@@ -691,6 +758,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "action_status_refresh": RateLimiter(
             60 / max(settings.action_status_refresh_min_interval_seconds, 0.001), burst=1
         ),
+        # M160 (docs/DRIVE.md §6.2): upload sessions and parts, per person per minute.
+        "drive_upload": RateLimiter(settings.drive_upload_rate_limit_per_user),
+        "drive_part": RateLimiter(settings.drive_part_rate_limit_per_user),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
@@ -699,6 +769,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # and the event an upload sets to wake the preview loop.
     app.state.preview_converter = previews.build_converter(settings)
     app.state.preview_wake = asyncio.Event()
+    # M160 (docs/DRIVE.md §6): the drive's completions under way and its media loop's wake-up.
+    app.state.drive = DriveRuntime(
+        app.state.db.session_factory, preview_wake=app.state.preview_wake
+    )
     app.state.link_fetcher = build_fetcher(
         timeout_seconds=settings.link_preview_timeout_seconds,
         deadline_seconds=settings.link_preview_deadline_seconds,
@@ -744,8 +818,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.bus,
         # M120: the wiki's audience `page` (who can read it when sent), then the channels'.
         # M143: `action` (who may press a button of a status button's group).
-        actions_status.audience_resolver(
-            wiki_events.audience_resolver(channels_service.resolve_event_audience)
+        # M160: `drive` (who can read a drive location when sent).
+        drive_events.audience_resolver(
+            actions_status.audience_resolver(
+                wiki_events.audience_resolver(channels_service.resolve_event_audience)
+            )
         ),
         handlers=[
             planner,
@@ -781,8 +858,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Accept",
                 "X-Request-ID",
                 "X-Requested-With",
+                # M160 (docs/DRIVE.md §6, §7.1): a drive part's SHA-256, resumed downloads.
+                "X-Content-SHA256",
+                "Range",
+                "If-Range",
             ],
-            expose_headers=["X-Request-ID", "Retry-After"],
+            expose_headers=[
+                "X-Request-ID",
+                "Retry-After",
+                "Content-Range",
+                "Accept-Ranges",
+                "ETag",
+                "Content-Disposition",
+            ],
             allow_credentials=False,
             max_age=600,
         )

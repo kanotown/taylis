@@ -35,6 +35,9 @@ Capability = Literal[
     "ai.manage",
     "analytics.view",
     "docs.admin",
+    # M160 (docs/DRIVE.md §3.2): quotas, every external link, the takeover of a My Drive, and the
+    # permanent deletion in 研究室ドライブ.
+    "drive.admin",
 ]
 
 ALL_CAPABILITIES: Final[frozenset[str]] = frozenset(Capability.__args__)  # type: ignore[attr-defined]

@@ -18,6 +18,7 @@ from app.modules.channels import events as channel_events
 from app.modules.dm_closes import events as dm_close_events
 from app.modules.dm_pins import events as dm_pin_events
 from app.modules.drafts import events as draft_events
+from app.modules.drive import events as drive_events
 from app.modules.emoji import events as emoji_events
 from app.modules.favorites import events as favorite_events
 from app.modules.groups import events as group_events
@@ -115,6 +116,17 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     wiki_events.WIKI_ROWS_CHANGED: (
         wiki_events.WikiRowsChangedData,
         "page (who can read the database when sent)",
+        False,
+    ),
+    # M160 (docs/DRIVE.md §14, SYNC_PROTOCOL.md §18): re-read the folders, no names.
+    drive_events.DRIVE_CHANGED: (
+        drive_events.DriveChangedData,
+        "drive (who can read the location when sent)",
+        False,
+    ),
+    drive_events.DRIVE_UPLOAD_UPDATED: (
+        drive_events.DriveUploadUpdatedData,
+        "user (the uploader)",
         False,
     ),
     calendar_events.CALENDAR_EVENT_UPDATED: (

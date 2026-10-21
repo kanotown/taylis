@@ -725,6 +725,26 @@ export interface paths {
         patch: operations["admin_update_canvas_template_api_v1_admin_canvas_templates__template_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/drive/users/{user_id}/takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Takeover
+         * @description A deactivated person's My Drive into 研究室ドライブ (§3.3), audited.
+         */
+        post: operations["takeover_api_v1_admin_drive_users__user_id__takeover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/groups": {
         parameters: {
             query?: never;
@@ -1328,7 +1348,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Download */
+        /**
+         * Download
+         * @description The file (M160: one byte range with Range, 206; a resumed download, a video's seek).
+         */
         get: operations["download_api_v1_attachments__attachment_id__content_get"];
         put?: never;
         post?: never;
@@ -2894,6 +2917,269 @@ export interface paths {
          * @description The composer was emptied or its text sent; a missing draft is not an error.
          */
         delete: operations["delete_draft_api_v1_drafts_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Folder */
+        post: operations["create_folder_api_v1_drive_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/folders/{folder_id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Children */
+        get: operations["list_children_api_v1_drive_folders__folder_id__children_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move Items */
+        post: operations["move_items_api_v1_drive_items_move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trash Items */
+        post: operations["trash_items_api_v1_drive_items_trash_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item */
+        get: operations["get_item_api_v1_drive_items__item_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Item
+         * @description For good: only a group in the trash (§3.2).
+         */
+        delete: operations["delete_item_api_v1_drive_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Item */
+        patch: operations["rename_item_api_v1_drive_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download
+         * @description The file under its current name (§7.1): Range (one range, 206), If-Range on the version's
+         *     ETag; always an attachment except an image with ?inline=1.
+         */
+        get: operations["download_api_v1_drive_items__item_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/items/{item_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Item */
+        post: operations["restore_item_api_v1_drive_items__item_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Locations */
+        get: operations["list_locations_api_v1_drive_locations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/locations/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Location
+         * @description A channel's drive or my My Drive, made on first use.
+         */
+        post: operations["resolve_location_api_v1_drive_locations_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/locations/{location_id}/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Trash */
+        get: operations["list_trash_api_v1_drive_locations__location_id__trash_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Uploads
+         * @description My sessions (?status=active: the ones to resume after reopening the app).
+         */
+        get: operations["list_uploads_api_v1_drive_uploads_get"];
+        put?: never;
+        /** Create Upload */
+        post: operations["create_upload_api_v1_drive_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Upload */
+        get: operations["get_upload_api_v1_drive_uploads__upload_id__get"];
+        put?: never;
+        post?: never;
+        /** Abort Upload */
+        delete: operations["abort_upload_api_v1_drive_uploads__upload_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Upload */
+        patch: operations["patch_upload_api_v1_drive_uploads__upload_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/drive/uploads/{upload_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Upload
+         * @description 200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again).
+         */
+        post: operations["complete_upload_api_v1_drive_uploads__upload_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/uploads/{upload_id}/parts/{part_number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Part
+         * @description The part's bytes as the body (application/octet-stream) with X-Content-SHA256 (hex).
+         *     Sending a number again replaces that part.
+         */
+        put: operations["put_part_api_v1_drive_uploads__upload_id__parts__part_number__put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -8965,6 +9251,386 @@ export interface components {
             channel_id: string;
             /** Parent Id */
             parent_id?: string | null;
+        };
+        /** DriveChildrenOut */
+        DriveChildrenOut: {
+            folder: components["schemas"]["DriveItemOut"];
+            /** Items */
+            items: components["schemas"]["DriveItemOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Path */
+            path: components["schemas"]["DriveCrumb"][];
+        };
+        /** DriveCrumb */
+        DriveCrumb: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * DriveFileOut
+         * @description The current version's attachment (the shape of AttachmentOut's media fields): its
+         *     thumbnail, poster and preview are served by /attachments/{attachment_id}/…
+         */
+        DriveFileOut: {
+            /**
+             * Attachment Id
+             * Format: uuid
+             */
+            attachment_id: string;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Has Poster */
+            has_poster: boolean;
+            /** Has Thumbnail */
+            has_thumbnail: boolean;
+            /** Height */
+            height: number | null;
+            preview: components["schemas"]["AttachmentPreviewOut"] | null;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Width */
+            width: number | null;
+        };
+        /** DriveFolderCreate */
+        DriveFolderCreate: {
+            /** Client Op Id */
+            client_op_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Parent Id
+             * Format: uuid
+             */
+            parent_id: string;
+            /** Path */
+            path?: string | null;
+        };
+        /** DriveItemDetailOut */
+        DriveItemDetailOut: {
+            item: components["schemas"]["DriveItemOut"];
+            /** Path */
+            path: components["schemas"]["DriveCrumb"][];
+        };
+        /** DriveItemOut */
+        DriveItemOut: {
+            /** Content Modified At */
+            content_modified_at: string | null;
+            /** Content Type */
+            content_type: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            file: components["schemas"]["DriveFileOut"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "folder" | "file";
+            /** Link Count */
+            link_count: number;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Trashed At */
+            trashed_at?: string | null;
+            /** Trashed By */
+            trashed_by?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string | null;
+            /** Version Count */
+            version_count: number;
+        };
+        /** DriveItemRename */
+        DriveItemRename: {
+            /** Name */
+            name: string;
+        };
+        /** DriveItemResult */
+        DriveItemResult: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /** DriveLocationListOut */
+        DriveLocationListOut: {
+            /** Locations */
+            locations: components["schemas"]["DriveLocationOut"][];
+        };
+        /** DriveLocationOut */
+        DriveLocationOut: {
+            /** Can Manage */
+            can_manage: boolean;
+            /** Can Share */
+            can_share: boolean;
+            /** Can Write */
+            can_write: boolean;
+            /** Channel Id */
+            channel_id: string | null;
+            /** External Links */
+            external_links: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Count */
+            item_count: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workspace" | "channel" | "user";
+            /** Name */
+            name: string;
+            /** Quota Bytes */
+            quota_bytes: number | null;
+            /**
+             * Root Id
+             * Format: uuid
+             */
+            root_id: string;
+            /** Used Bytes */
+            used_bytes: number;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** DriveLocationResolve */
+        DriveLocationResolve: {
+            /** Channel Id */
+            channel_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "channel" | "me";
+        };
+        /** DriveMoveIn */
+        DriveMoveIn: {
+            /** Item Ids */
+            item_ids: string[];
+            /**
+             * On Conflict
+             * @default fail
+             * @enum {string}
+             */
+            on_conflict: "fail" | "rename";
+            /**
+             * Target Folder Id
+             * Format: uuid
+             */
+            target_folder_id: string;
+        };
+        /** DriveRestoreIn */
+        DriveRestoreIn: {
+            /**
+             * On Conflict
+             * @default rename
+             * @enum {string}
+             */
+            on_conflict: "rename" | "fail";
+        };
+        /** DriveResultsOut */
+        DriveResultsOut: {
+            /** Results */
+            results: components["schemas"]["DriveItemResult"][];
+        };
+        /** DriveTakeoverIn */
+        DriveTakeoverIn: {
+            /** Target Folder Name */
+            target_folder_name?: string | null;
+        };
+        /** DriveTakeoverOut */
+        DriveTakeoverOut: {
+            folder: components["schemas"]["DriveItemOut"];
+        };
+        /**
+         * DriveTrashEntryOut
+         * @description One group in a location's trash (what was put there together).
+         */
+        DriveTrashEntryOut: {
+            item: components["schemas"]["DriveItemOut"];
+            /** Item Count */
+            item_count: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Trashed At
+             * Format: date-time
+             */
+            trashed_at: string;
+            /** Trashed By */
+            trashed_by: string | null;
+        };
+        /** DriveTrashIn */
+        DriveTrashIn: {
+            /** Item Ids */
+            item_ids: string[];
+        };
+        /** DriveTrashOut */
+        DriveTrashOut: {
+            /** Entries */
+            entries: components["schemas"]["DriveTrashEntryOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** DriveUploadCompleteOut */
+        DriveUploadCompleteOut: {
+            item?: components["schemas"]["DriveItemOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "completed" | "completing";
+            /** Version Id */
+            version_id?: string | null;
+        };
+        /** DriveUploadCreate */
+        DriveUploadCreate: {
+            /**
+             * Client Upload Id
+             * Format: uuid
+             */
+            client_upload_id: string;
+            /** Content Modified Ms */
+            content_modified_ms?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * On Conflict
+             * @default fail
+             * @enum {string}
+             */
+            on_conflict: "version" | "rename" | "fail";
+            /**
+             * Parent Id
+             * Format: uuid
+             */
+            parent_id: string;
+            /** Relative Dir */
+            relative_dir?: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Target Item Id */
+            target_item_id?: string | null;
+        };
+        /** DriveUploadListOut */
+        DriveUploadListOut: {
+            /** Uploads */
+            uploads: components["schemas"]["DriveUploadOut"][];
+        };
+        /** DriveUploadOut */
+        DriveUploadOut: {
+            /**
+             * Client Upload Id
+             * Format: uuid
+             */
+            client_upload_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Id */
+            item_id: string | null;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Name */
+            name: string;
+            /**
+             * On Conflict
+             * @enum {string}
+             */
+            on_conflict: "version" | "rename" | "fail";
+            /**
+             * Parent Id
+             * Format: uuid
+             */
+            parent_id: string;
+            /** Part Size */
+            part_size: number;
+            /** Parts Total */
+            parts_total: number;
+            /** Received Parts */
+            received_parts: number[];
+            /** Relative Dir */
+            relative_dir: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "completing" | "completed" | "aborted" | "expired";
+            /** Target Item Id */
+            target_item_id: string | null;
+            /** Version Id */
+            version_id: string | null;
+        };
+        /** DriveUploadPartOut */
+        DriveUploadPartOut: {
+            /** Part Number */
+            part_number: number;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** DriveUploadPatch */
+        DriveUploadPatch: {
+            /** Name */
+            name?: string | null;
+            /** On Conflict */
+            on_conflict?: ("version" | "rename" | "fail") | null;
         };
         /**
          * EffectiveOut
@@ -15349,6 +16015,41 @@ export interface operations {
             };
         };
     };
+    takeover_api_v1_admin_drive_users__user_id__takeover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DriveTakeoverIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveTakeoverOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_group_api_v1_admin_groups_post: {
         parameters: {
             query?: never;
@@ -19719,6 +20420,641 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_folder_api_v1_drive_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description The folder already existed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_children_api_v1_drive_folders__folder_id__children_get: {
+        parameters: {
+            query?: {
+                sort?: "name" | "modified" | "size";
+                order?: "asc" | "desc";
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveChildrenOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_items_api_v1_drive_items_move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveMoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_items_api_v1_drive_items_trash_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveTrashIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_api_v1_drive_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_item_api_v1_drive_items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_item_api_v1_drive_items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveItemRename"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_api_v1_drive_items__item_id__content_get: {
+        parameters: {
+            query?: {
+                version_id?: string | null;
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_item_api_v1_drive_items__item_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DriveRestoreIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_locations_api_v1_drive_locations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLocationListOut"];
+                };
+            };
+        };
+    };
+    resolve_location_api_v1_drive_locations_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveLocationResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLocationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_trash_api_v1_drive_locations__location_id__trash_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveTrashOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_uploads_api_v1_drive_uploads_get: {
+        parameters: {
+            query?: {
+                status?: ("active" | "completing" | "completed" | "aborted" | "expired") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_api_v1_drive_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveUploadCreate"];
+            };
+        };
+        responses: {
+            /** @description This client_upload_id's session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_upload_api_v1_drive_uploads__upload_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abort_upload_api_v1_drive_uploads__upload_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_upload_api_v1_drive_uploads__upload_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveUploadPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_upload_api_v1_drive_uploads__upload_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadCompleteOut"];
+                };
+            };
+            /** @description Still joining the parts */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadCompleteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_part_api_v1_drive_uploads__upload_id__parts__part_number__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+                part_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadPartOut"];
+                };
             };
             /** @description Validation Error */
             422: {

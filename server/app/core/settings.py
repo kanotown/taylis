@@ -267,6 +267,35 @@ class Settings(BaseSettings):
     # typing frames from one connection are relayed at most this often.
     typing_min_interval_seconds: float = 2.0
 
+    # M160 (docs/DRIVE.md): the drive. Files up to DRIVE_MAX_FILE_BYTES, sent in parts of
+    # DRIVE_PART_BYTES (S3 multipart: at least 5 MiB except the last, at most 10,000 parts; Caddy's
+    # body limit for the part route is 17 MB, infra/Caddyfile). An upload session lives
+    # DRIVE_UPLOAD_TTL_HOURS after its last part; the trash keeps items DRIVE_TRASH_DAYS.
+    drive_max_file_bytes: int = 5 * 1024 * 1024 * 1024
+    drive_part_bytes: int = 16 * 1024 * 1024
+    drive_upload_ttl_hours: int = 24
+    drive_trash_days: int = 30
+    # Quotas (§11): the whole drive (all locations, versions and trash; NULL: none) and a My
+    # Drive without a quota of its own. A location's own quota is drive_locations.quota_bytes.
+    drive_total_quota_bytes: int | None = None
+    drive_user_default_quota_bytes: int | None = None
+    # §6.4: the media loop makes thumbnails of images up to this size and posters of videos up to
+    # this size (each is first copied to a temporary file).
+    drive_image_thumb_max_bytes: int = 100 * 1024 * 1024
+    drive_video_probe_max_bytes: int = 2 * 1024 * 1024 * 1024
+    drive_media_interval_seconds: float = 30.0
+    drive_housekeeping_interval_seconds: int = 600
+    # §6.2: per person per minute, upload sessions (a folder upload makes hundreds) and parts
+    # (16 MiB x 4/s), and active sessions at once.
+    drive_upload_rate_limit_per_user: int = 600
+    drive_part_rate_limit_per_user: int = 240
+    drive_max_active_uploads: int = 1000
+    # §2: CompleteMultipartUpload's read timeout (the join copies the object), how long a
+    # complete request waits for it before answering 202 completing, and when the housekeeping
+    # takes over a completion that has not finished.
+    drive_complete_timeout_seconds: float = 600.0
+    drive_complete_wait_seconds: float = 20.0
+    drive_completing_stale_minutes: int = 10
     # Outbox relay (ARCHITECTURE.md §6)
     outbox_poll_interval_seconds: float = 1.0
     outbox_batch_size: int = 100
