@@ -8832,6 +8832,25 @@
         "title": "DriveCrumb",
         "type": "object"
       },
+      "DriveDownloadTicketOut": {
+        "description": "A URL the browser's own download (or a video's source) can follow without the bearer\ntoken (§7.3): relative to the server, valid `expires_in` seconds after its last use.",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_in"
+        ],
+        "title": "DriveDownloadTicketOut",
+        "type": "object"
+      },
       "DriveFileOut": {
         "description": "The current version's attachment (the shape of AttachmentOut's media fields): its\nthumbnail, poster and preview are served by /attachments/{attachment_id}/…",
         "properties": {
@@ -9404,6 +9423,64 @@
         "title": "DriveResultsOut",
         "type": "object"
       },
+      "DriveSearchHitOut": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          },
+          "location_kind": {
+            "enum": [
+              "workspace",
+              "channel",
+              "user"
+            ],
+            "title": "Location Kind",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCrumb"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "path",
+          "location_kind"
+        ],
+        "title": "DriveSearchHitOut",
+        "type": "object"
+      },
+      "DriveSearchOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DriveSearchHitOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "DriveSearchOut",
+        "type": "object"
+      },
       "DriveTakeoverIn": {
         "properties": {
           "target_folder_name": {
@@ -9661,6 +9738,18 @@
             "format": "uuid",
             "title": "Client Upload Id",
             "type": "string"
+          },
+          "content_modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Modified At"
           },
           "created_at": {
             "format": "date-time",
@@ -32416,6 +32505,57 @@
         ]
       }
     },
+    "/api/v1/drive/download/{token}": {
+      "get": {
+        "description": "The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and\nfor a person who can no longer read the file.",
+        "operationId": "download_by_ticket_api_v1_drive_download__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download By Ticket",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/folders": {
       "post": {
         "operationId": "create_folder_api_v1_drive_folders_post",
@@ -32816,7 +32956,7 @@
     },
     "/api/v1/drive/items/{item_id}/content": {
       "get": {
-        "description": "The file under its current name (§7.1): Range (one range, 206), If-Range on the version's\nETag; always an attachment except an image with ?inline=1.",
+        "description": "The file under its current name (§7.1), with the bearer token (the desktop app).",
         "operationId": "download_api_v1_drive_items__item_id__content_get",
         "parameters": [
           {
@@ -32883,6 +33023,72 @@
           }
         ],
         "summary": "Download",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/download-ticket": {
+      "post": {
+        "description": "Phase D2 (§7.3): a URL for the browser's own download or a video's source, without the\nbearer token (the Web keeps it in memory only). Valid while used within `expires_in`\nseconds (at most 12 hours); each use checks the access again.",
+        "operationId": "download_ticket_api_v1_drive_items__item_id__download_ticket_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveDownloadTicketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Ticket",
         "tags": [
           "drive"
         ]
@@ -37599,6 +37805,122 @@
           }
         ],
         "summary": "Search Canvases",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/api/v1/search/drive": {
+      "get": {
+        "description": "Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,\npartial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my\nchannels' drives), never in the trash; each with its path. `location_id`: one drive only.",
+        "operationId": "search_drive_api_v1_search_drive_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "location_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "folder",
+                    "file"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search Drive",
         "tags": [
           "search"
         ]

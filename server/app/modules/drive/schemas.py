@@ -193,6 +193,9 @@ class DriveUploadOut(BaseModel):
     parts_total: int
     received_parts: list[int]
     size_bytes: int
+    # The file's own modification time as sent (display only); the clients match a file picked again
+    # to its session by name, size and this (phase D2).
+    content_modified_at: datetime | None = None
     expires_at: datetime
     created_at: datetime
     item_id: UUID | None
@@ -215,6 +218,26 @@ class DriveUploadCompleteOut(BaseModel):
     status: Literal["completed", "completing"]
     item: DriveItemOut | None = None
     version_id: UUID | None = None
+
+
+class DriveDownloadTicketOut(BaseModel):
+    """A URL the browser's own download (or a video's source) can follow without the bearer
+    token (§7.3): relative to the server, valid `expires_in` seconds after its last use."""
+
+    url: str
+    expires_in: int
+
+
+class DriveSearchHitOut(BaseModel):
+    item: DriveItemOut
+    # The location's name, then the folders down to the item's parent.
+    path: list[DriveCrumb]
+    location_kind: LocationKind
+
+
+class DriveSearchOut(BaseModel):
+    items: list[DriveSearchHitOut]
+    next_cursor: str | None
 
 
 class DriveTakeoverIn(BaseModel):

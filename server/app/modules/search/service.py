@@ -18,6 +18,8 @@ from app.modules.canvases.models import Canvas
 from app.modules.canvases.schemas import to_meta as to_canvas_meta
 from app.modules.channels import service as channels
 from app.modules.channels.schemas import ChannelOut
+from app.modules.drive import service as drive
+from app.modules.drive.schemas import DriveSearchOut
 from app.modules.messages import service as messages
 from app.modules.messages.models import Message
 from app.modules.search import repository as repo
@@ -646,3 +648,63 @@ async def _run(
     keywords = await repo.extract_keywords(db, query, escaped=escaped)
     total = await repo.count(db, query=query, scope=scope, escaped=escaped)
     return [(m, s) for m, s in rows], keywords, total
+
+
+# --- drive file names (phase D2, docs/DRIVE.md §12) -----------------------------------------------
+
+DRIVE_MAX_OFFSET = 10_000
+
+
+def _drive_offset(cursor: str | None) -> int:
+    if cursor is None:
+        return 0
+    try:
+        value = int(cursor)
+    except ValueError as exc:
+        raise bad_request("invalid_cursor", "Malformed cursor") from exc
+    if not 0 <= value <= DRIVE_MAX_OFFSET:
+        raise bad_request("invalid_cursor", "Malformed cursor")
+    return value
+
+
+async def search_drive(
+    db: AsyncSession,
+    actor: User,
+    *,
+    q: str,
+    location_id: uuid.UUID | None,
+    kind: str | None,
+    cursor: str | None,
+    limit: int,
+    timeout_ms: int | None = None,
+    gate: asyncio.Semaphore | None = None,
+) -> DriveSearchOut:
+    """GET /search/drive: file and folder names in the locations the caller can read now (the
+    drive's own rule, drive.service.readable_location_ids), never the trash. `location_id` narrows
+    to one of them (another one, or one I cannot read, finds nothing)."""
+    offset = _drive_offset(cursor)
+    words = q.strip()
+    if not words:
+        return DriveSearchOut(items=[], next_cursor=None)
+
+    async def found() -> DriveSearchOut:
+        await _limit_time(db, timeout_ms)
+        readable = await drive.readable_location_ids(db, actor)
+        if location_id is not None:
+            readable = [loc for loc in readable if loc == location_id]
+        rows = await repo.search_drive(
+            db, query=words, location_ids=readable, kind=kind, limit=limit + 1, offset=offset
+        )
+        more = len(rows) > limit
+        rows = rows[:limit]
+        return DriveSearchOut(
+            items=await drive.search_hits(db, rows),
+            next_cursor=str(offset + limit)
+            if more and offset + limit <= DRIVE_MAX_OFFSET
+            else None,
+        )
+
+    async def run() -> DriveSearchOut:
+        return await _in_time(db, found, timeout_ms)
+
+    return await _gated(run, timeout_ms=timeout_ms, gate=gate)

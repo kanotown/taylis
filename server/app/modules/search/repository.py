@@ -27,6 +27,7 @@ from sqlalchemy.orm import aliased
 from app.core.doctext import blocks as doc_blocks
 from app.modules.attachments.models import Attachment
 from app.modules.canvases.models import Canvas
+from app.modules.drive.models import DriveItem
 from app.modules.messages.models import Message, Reaction
 from app.modules.users.models import User
 from app.modules.wiki.access import readable_ids
@@ -509,3 +510,62 @@ async def count_pages(
     else:
         stmt = _page_within(select(WikiPage.id), scope, WikiPage).limit(TOTAL_CAP + 1)
     return int((await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
+
+
+# --- drive file names (phase D2, docs/DRIVE.md §12): read-only access to drive_items ------------
+
+
+def drive_search_statement(
+    query: str,
+    location_ids: Sequence[uuid.UUID],
+    *,
+    kind: str | None,
+    limit: int,
+    offset: int,
+) -> Select[Any]:
+    """Live items (not a location's root, not in the trash) of these locations whose name matches
+    (PGroonga, drive_items_name_pgroonga_idx; the words are escaped: a file name is not a query),
+    the best first, then the newest. The words alone go through the index (a materialized step),
+    the locations and the rest are applied to what it found, as for canvases."""
+    matched = (
+        select(
+            DriveItem.id.label("id"),
+            func.pgroonga_score(
+                literal_column("drive_items.tableoid"), literal_column("drive_items.ctid")
+            ).label("score"),
+        )
+        .where(DriveItem.name.op("&@~")(_text_needle(query, True)))
+        .cte("drive_hits")
+        .prefix_with("MATERIALIZED")
+    )
+    stmt = (
+        select(DriveItem, matched.c.score)
+        .join(matched, matched.c.id == DriveItem.id)
+        .where(
+            DriveItem.location_id.in_(list(location_ids)),
+            DriveItem.trashed_at.is_(None),
+            DriveItem.parent_id.is_not(None),
+        )
+    )
+    if kind is not None:
+        stmt = stmt.where(DriveItem.kind == kind)
+    return (
+        stmt.order_by(matched.c.score.desc(), DriveItem.updated_at.desc(), DriveItem.id)
+        .limit(limit)
+        .offset(offset)
+    )
+
+
+async def search_drive(
+    db: AsyncSession,
+    *,
+    query: str,
+    location_ids: Sequence[uuid.UUID],
+    kind: str | None,
+    limit: int,
+    offset: int,
+) -> list[DriveItem]:
+    if not location_ids:
+        return []
+    stmt = drive_search_statement(query, location_ids, kind=kind, limit=limit, offset=offset)
+    return [row[0] for row in (await db.execute(stmt)).all()]

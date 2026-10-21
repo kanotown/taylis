@@ -7,6 +7,7 @@ from pydantic import AwareDatetime
 from app.core.db import Db
 from app.core.errors import rate_limited
 from app.modules.auth.deps import CurrentUser
+from app.modules.drive.schemas import DriveSearchOut
 from app.modules.search import service
 from app.modules.search.schemas import (
     MAX_QUERY_LENGTH,
@@ -150,4 +151,33 @@ async def search_pages(
     settings = request.app.state.settings
     return await service.search_pages(
         db, user, params, timeout_ms=settings.search_timeout_ms, gate=request.app.state.search_gate
+    )
+
+
+@router.get("/drive", response_model=DriveSearchOut)
+async def search_drive(
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    q: str = Query(default="", max_length=MAX_QUERY_LENGTH),
+    location_id: UUID | None = None,
+    kind: Literal["folder", "file"] | None = None,
+    cursor: str | None = Query(default=None, max_length=20),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> DriveSearchOut:
+    """Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,
+    partial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my
+    channels' drives), never in the trash; each with its path. `location_id`: one drive only."""
+    _limit(request, user)
+    settings = request.app.state.settings
+    return await service.search_drive(
+        db,
+        user,
+        q=q,
+        location_id=location_id,
+        kind=kind,
+        cursor=cursor,
+        limit=limit,
+        timeout_ms=settings.search_timeout_ms,
+        gate=request.app.state.search_gate,
     )

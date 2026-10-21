@@ -52,6 +52,7 @@ from app.modules.drive.schemas import (
     DriveUploadPartOut,
     DriveUploadPatch,
 )
+from app.modules.drive.tickets import DownloadTickets
 from app.modules.users.models import User
 
 log = logging.getLogger("app.drive.uploads")
@@ -85,6 +86,8 @@ class DriveRuntime:
     preview_wake: asyncio.Event | None = None
     tasks: dict[uuid.UUID, "asyncio.Task[None]"] = field(default_factory=dict)
     last_orphan_sweep: datetime | None = None
+    # Phase D2 (§7.3): the Web's download URLs.
+    tickets: DownloadTickets = field(default_factory=DownloadTickets)
 
     def finalize(
         self, settings: Settings, blobs: BlobStore, upload_id: uuid.UUID
@@ -173,6 +176,7 @@ async def upload_out(db: AsyncSession, upload: DriveUpload) -> DriveUploadOut:
         parts_total=parts_total(upload.size_bytes, upload.part_size),
         received_parts=list(received),
         size_bytes=upload.size_bytes,
+        content_modified_at=upload.content_modified_at,
         expires_at=upload.expires_at,
         created_at=upload.created_at,
         item_id=upload.item_id,

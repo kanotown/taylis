@@ -47,6 +47,7 @@ from app.modules.drive.schemas import (
     DriveLocationOut,
     DriveLocationResolve,
     DriveResultsOut,
+    DriveSearchHitOut,
     DriveTrashEntryOut,
     DriveTrashOut,
 )
@@ -282,6 +283,47 @@ async def get_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> DriveIt
     return DriveItemDetailOut(
         item=await item_out(db, item), path=await crumbs(db, chain[:-1], rights.location)
     )
+
+
+async def readable_location_ids(db: AsyncSession, actor: User) -> list[uuid.UUID]:
+    """The locations the actor can read now, without making any (the search, §12): 研究室ドライブ
+    and my My Drive for people, the drives of my channels."""
+    out: list[uuid.UUID] = []
+    if acl.is_person(actor):
+        workspace = await repo.workspace_location(db)
+        if workspace is not None:
+            out.append(workspace.id)
+        mine = await repo.location_of_user(db, actor.id)
+        if mine is not None and mine.deleted_at is None:
+            out.append(mine.id)
+    member_of = await channels.member_channel_ids(db, actor.id)
+    for location in await repo.channel_locations(db, member_of):
+        if (await acl.access(db, actor, location)).can_read:
+            out.append(location.id)
+    return out
+
+
+async def search_hits(db: AsyncSession, rows: list[DriveItem]) -> list[DriveSearchHitOut]:
+    """Found items with their paths (the location's name, then the folders above each)."""
+    shown = await items_out(db, rows)
+    locations: dict[uuid.UUID, DriveLocation] = {}
+    out: list[DriveSearchHitOut] = []
+    for row, item in zip(rows, shown, strict=True):
+        location = locations.get(row.location_id)
+        if location is None:
+            location = await repo.location(db, row.location_id)
+            if location is None:
+                continue
+            locations[row.location_id] = location
+        chain = await repo.ancestor_ids(db, row.id)
+        out.append(
+            DriveSearchHitOut(
+                item=item,
+                path=await crumbs(db, chain[:-1], location),
+                location_kind=location.kind,  # type: ignore[arg-type]
+            )
+        )
+    return out
 
 
 Sort = Literal["name", "modified", "size"]
