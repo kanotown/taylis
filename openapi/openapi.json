@@ -9093,6 +9093,22 @@
           "item": {
             "$ref": "#/components/schemas/DriveItemOut"
           },
+          "location_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "workspace",
+                  "channel",
+                  "user"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Kind"
+          },
           "path": {
             "items": {
               "$ref": "#/components/schemas/DriveCrumb"
@@ -9742,6 +9758,25 @@
         "title": "DriveQuotaIn",
         "type": "object"
       },
+      "DriveReachOut": {
+        "description": "Of a conversation's members (people and guests who can sign in, not bots), how many can\nread a drive item and how many cannot (§13.1: the composer's warning before a link is\nsent).",
+        "properties": {
+          "readable": {
+            "title": "Readable",
+            "type": "integer"
+          },
+          "unreadable": {
+            "title": "Unreadable",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "readable",
+          "unreadable"
+        ],
+        "title": "DriveReachOut",
+        "type": "object"
+      },
       "DriveRestoreIn": {
         "properties": {
           "on_conflict": {
@@ -9771,6 +9806,60 @@
           "results"
         ],
         "title": "DriveResultsOut",
+        "type": "object"
+      },
+      "DriveSaveAttachmentIn": {
+        "description": "A conversation's attachment copied into a drive folder (§13.2).",
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "client_op_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Op Id"
+          },
+          "folder_id": {
+            "format": "uuid",
+            "title": "Folder Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "on_conflict": {
+            "default": "rename",
+            "enum": [
+              "fail",
+              "rename"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "folder_id"
+        ],
+        "title": "DriveSaveAttachmentIn",
         "type": "object"
       },
       "DriveSearchHitOut": {
@@ -34645,6 +34734,55 @@
         ]
       }
     },
+    "/api/v1/drive/items/{item_id}/attach-copy": {
+      "post": {
+        "description": "The file's current version as a pending attachment of mine (copied inside the store), to\nsend with a message like an upload. 413 attachment_too_large past ATTACHMENT_MAX_BYTES.",
+        "operationId": "attach_copy_api_v1_drive_items__item_id__attach_copy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach Copy",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/items/{item_id}/content": {
       "get": {
         "description": "The file under its current name (§7.1), with the bearer token (the desktop app).",
@@ -34886,6 +35024,65 @@
           }
         ],
         "summary": "Create Link",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/reach": {
+      "get": {
+        "description": "How many of the conversation's members can and cannot read the item (the composer's\nwarning before a `/d/<id>` link is sent).",
+        "operationId": "item_reach_api_v1_drive_items__item_id__reach_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveReachOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Item Reach",
         "tags": [
           "drive"
         ]
@@ -35565,6 +35762,63 @@
           }
         ],
         "summary": "List Trash",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/save-attachment": {
+      "post": {
+        "description": "An attachment I can read copied into a folder I can write, as a new file. 404\nattachment_not_found for an attachment I cannot read (or a pending one, or a drive file's).",
+        "operationId": "save_attachment_api_v1_drive_save_attachment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveSaveAttachmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "This client_op_id's file"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Attachment",
         "tags": [
           "drive"
         ]
@@ -40859,7 +41113,7 @@
     "/api/v1/shares/{token}/items/{item_id}/content": {
       "get": {
         "description": "A file's bytes (Range; counted against the link's limit).",
-        "operationId": "share_content_api_v1_shares__token__items__item_id__content_get",
+        "operationId": "share_content_api_v1_shares__token__items__item_id__content_head",
         "parameters": [
           {
             "in": "path",

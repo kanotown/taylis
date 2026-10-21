@@ -1,4 +1,4 @@
-"""The drive's HTTP API (docs/DRIVE.md §5: phases D1 to D3)."""
+"""The drive's HTTP API (docs/DRIVE.md §5: phases D1 to D3, and D6's conversation side)."""
 
 from collections.abc import AsyncIterator
 from email.utils import format_datetime
@@ -12,8 +12,19 @@ from app.core.db import Db
 from app.core.errors import rate_limited
 from app.modules.attachments import service as attachments
 from app.modules.attachments.models import Attachment
+from app.modules.attachments.schemas import AttachmentOut
 from app.modules.auth.deps import CurrentUser, require_capability
-from app.modules.drive import copying, names, service, uploads, usage, versions, zips, zipstream
+from app.modules.drive import (
+    conversation,
+    copying,
+    names,
+    service,
+    uploads,
+    usage,
+    versions,
+    zips,
+    zipstream,
+)
 from app.modules.drive.access import item_not_found
 from app.modules.drive.models import DriveFileVersion, DriveItem
 from app.modules.drive.schemas import (
@@ -31,8 +42,10 @@ from app.modules.drive.schemas import (
     DriveLocationUsageOut,
     DriveMoveIn,
     DriveQuotaIn,
+    DriveReachOut,
     DriveRestoreIn,
     DriveResultsOut,
+    DriveSaveAttachmentIn,
     DriveTakeoverIn,
     DriveTakeoverOut,
     DriveTrashIn,
@@ -369,6 +382,51 @@ async def download_zip(token: str, request: Request, db: Db) -> StreamingRespons
         "Cache-Control": "private, no-store",
     }
     return StreamingResponse(body(), media_type="application/zip", headers=headers)
+
+
+# --- conversations (phase D6, §13) -------------------------------------------------------------
+
+
+@router.post("/drive/items/{item_id}/attach-copy", response_model=AttachmentOut, status_code=201)
+async def attach_copy(item_id: UUID, request: Request, user: CurrentUser, db: Db) -> AttachmentOut:
+    """The file's current version as a pending attachment of mine (copied inside the store), to
+    send with a message like an upload. 413 attachment_too_large past ATTACHMENT_MAX_BYTES."""
+    _limit(request, "upload", user)
+    out = await conversation.attach_copy(
+        db, user, request.app.state.settings, request.app.state.blobs, item_id
+    )
+    if out.preview is not None and out.preview.status == "pending":
+        request.app.state.preview_wake.set()
+    return out
+
+
+@router.post(
+    "/drive/save-attachment",
+    response_model=DriveItemOut,
+    status_code=201,
+    responses={200: {"model": DriveItemOut, "description": "This client_op_id's file"}},
+)
+async def save_attachment(
+    data: DriveSaveAttachmentIn, request: Request, user: CurrentUser, db: Db
+) -> JSONResponse:
+    """An attachment I can read copied into a folder I can write, as a new file. 404
+    attachment_not_found for an attachment I cannot read (or a pending one, or a drive file's)."""
+    _limit(request, "upload", user)
+    out, created = await conversation.save_attachment(
+        db, user, request.app.state.settings, request.app.state.blobs, data
+    )
+    if created:
+        _wake(request)
+    return JSONResponse(out.model_dump(mode="json"), status_code=201 if created else 200)
+
+
+@router.get("/drive/items/{item_id}/reach", response_model=DriveReachOut)
+async def item_reach(
+    item_id: UUID, user: CurrentUser, db: Db, channel_id: UUID = Query()
+) -> DriveReachOut:
+    """How many of the conversation's members can and cannot read the item (the composer's
+    warning before a `/d/<id>` link is sent)."""
+    return await conversation.reach(db, user, item_id, channel_id)
 
 
 # --- uploads (§6) ------------------------------------------------------------------------------

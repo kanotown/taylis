@@ -1,13 +1,14 @@
-"""Pages outside the API: the permalink landing pages for messages (M12b), canvases (M42) and wiki
-pages (M120), and the invite page (M12h).
+"""Pages outside the API: the permalink landing pages for messages (M12b), canvases (M42), wiki
+pages (M120) and drive items (M165), and the invite page (M12h).
 
-A permalink is `<server>/m/<message_id>`, `<server>/c/<canvas_id>` or `<server>/p/<page_id>`
-(a wiki page: GET /api/v1/wiki/pages/{id}, 404 for whoever cannot read it). The apps recognise it in
-message bodies and open the message or canvas in place, reading it through the API, which checks
-the membership (a canvas: GET /api/v1/canvases/{id}, 403 / 404 for others). A browser lands here
-and learns nothing about the target (no auth, no lookup, not even whether it exists), so a link
-that leaks tells nothing on its own. Behind Caddy these paths load the web client instead, which
-does the same as the apps.
+A permalink is `<server>/m/<message_id>`, `<server>/c/<canvas_id>`, `<server>/p/<page_id>`
+(a wiki page: GET /api/v1/wiki/pages/{id}, 404 for whoever cannot read it) or
+`<server>/d/<item_id>` (a drive file or folder: GET /api/v1/drive/items/{id}, 404 likewise).
+The apps recognise it in message bodies and open the message or canvas in place, reading it
+through the API, which checks the membership (a canvas: GET /api/v1/canvases/{id}, 403 / 404
+for others). A browser lands here and learns nothing about the target (no auth, no lookup, not
+even whether it exists), so a link that leaks tells nothing on its own. Behind Caddy these paths
+load the web client instead, which does the same as the apps.
 
 An invite link is `<server>/invite/<token>`. The apps take the link on their login screen; a
 browser gets a small page that calls the public invite API (preview, accept) and then tells the
@@ -84,6 +85,13 @@ async def page_permalink(page_id: str) -> HTMLResponse:
     """The landing page for a wiki page's permalink (M120, docs/WIKI.md §9.3): nothing about the
     page, not even whether it exists."""
     return _landing(page_id, "ドキュメント", "見られるのは、そのページを共有されている人だけです")
+
+
+@router.get("/d/{item_id}", response_class=HTMLResponse, include_in_schema=False)
+async def drive_permalink(item_id: str) -> HTMLResponse:
+    """The landing page for a drive item's permalink (M165, docs/DRIVE.md §13.1): nothing about
+    the file or folder, not even whether it exists."""
+    return _landing(item_id, "ドライブのファイル", "見られるのは、そのドライブを使える人だけです")
 
 
 _INVITE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
