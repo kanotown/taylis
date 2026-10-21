@@ -174,6 +174,7 @@ server/
       templates/         # 投稿テンプレート (共通と個人、template.updated。置き換えは端末) (M30)
       canvases/          # キャンバス (会話に属する Markdown 文書、版、サーバ側の 3-way マージ (M120 から core/doctext)、テンプレート templates.py、canvas.*) (M41)
       wiki/              # ドキュメント (ページの木、版、受け継ぐ権限 access.py と実効の表、ゴミ箱、変更のフィード、wiki.*) (M120、WIKI.md、D27)
+      drive/             # ドライブ (研究室・チャンネル・マイドライブの場所、フォルダ、マルチパートのアップロード、版、ゴミ箱、外部共有リンク、drive.*。バイト列は attachments の行) (設計のみ、M160〜M166、docs/DRIVE.md)
       calendar/          # カレンダー (自分用とチャンネルの予定、人ごとの通知と fire_due、calendar.*、抜けた人の通知を消す outbox ハンドラ) (M51)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
