@@ -152,9 +152,14 @@ describe("AdminDriveTab", () => {
 
   it("shows the totals and each location, and saves a quota in GB", async () => {
     const setDriveQuota = vi.fn(async (id: string, bytes: number | null) => ({ ...usage.locations[0]!, id, quota_bytes: bytes, effective_quota_bytes: bytes }));
-    const controller = controllerWith({ adminDriveUsage: vi.fn(async () => usage), setDriveQuota });
+    // The share-link section (D4) loads beside the usage; both settle before the field is used (CI 2026-10-22 lost the
+    // typed value once while that section was still loading).
+    const adminDriveLinks = vi.fn(async () => ({ links: [], next_cursor: null }));
+    const adminDriveShareSettings = vi.fn(async () => null);
+    const controller = controllerWith({ adminDriveUsage: vi.fn(async () => usage), setDriveQuota, adminDriveLinks, adminDriveShareSettings });
     render(<AdminDriveTab controller={controller} />);
     await screen.findByText("#m2-seminar");
+    await waitFor(() => expect(adminDriveLinks).toHaveBeenCalled());
     expect(document.body.textContent).toContain("3.0 GB");
     expect(document.body.textContent).toContain("全体の上限 150 GB");
     expect(document.body.textContent).toContain("アーカイブ済み");
@@ -162,10 +167,11 @@ describe("AdminDriveTab", () => {
     expect(screen.getAllByRole("meter").length).toBe(2); // the whole drive and the channel with a quota
     const field = screen.getByRole("textbox", { name: "研究室ドライブ の上限（GB）" });
     fireEvent.change(field, { target: { value: "100" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(await within(field.closest("form")!).findByRole("button", { name: "保存" }));
     await waitFor(() => expect(setDriveQuota).toHaveBeenCalledWith("w", 100 * 1024 ** 3));
     // Invalid: no save button.
     fireEvent.change(screen.getByRole("textbox", { name: "#m2-seminar の上限（GB）" }), { target: { value: "abc" } });
-    expect(screen.queryAllByRole("button", { name: "保存" }).length).toBe(0);
+    const other = screen.getByRole("textbox", { name: "#m2-seminar の上限（GB）" });
+    expect(within(other.closest("form")!).queryAllByRole("button", { name: "保存" }).length).toBe(0);
   });
 });
