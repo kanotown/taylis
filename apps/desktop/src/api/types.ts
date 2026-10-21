@@ -656,6 +656,14 @@ export type DriveDownloadTicketOut = components["schemas"]["DriveDownloadTicketO
 export type DriveSearchOut = components["schemas"]["DriveSearchOut"];
 export type DriveSearchHitOut = components["schemas"]["DriveSearchHitOut"];
 export type DriveConflictMode = NonNullable<DriveUploadCreate["on_conflict"]>;
+// M162 (docs/DRIVE.md §7.2, §10.2, §10.3, §11): versions, copies, ZIPs, the administrators' usage.
+export type DriveVersionOut = components["schemas"]["DriveVersionOut"];
+export type DriveVersionListOut = components["schemas"]["DriveVersionListOut"];
+export type DriveCopyResultsOut = components["schemas"]["DriveCopyResultsOut"];
+export type DriveZipOut = components["schemas"]["DriveZipOut"];
+export type DriveUsageOut = components["schemas"]["DriveUsageOut"];
+export type DriveLocationUsageOut = components["schemas"]["DriveLocationUsageOut"];
+export type DrivePersonUsageOut = components["schemas"]["DrivePersonUsageOut"];
 /** drive.changed (SYNC_PROTOCOL.md §18): re-read these folders (and the trash) of the location. No names travel. */
 export interface DriveChanged {
   location_id: string;

@@ -8,7 +8,7 @@ import type { SendOptions } from "../sync/types";
 import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
-import type { DriveChildrenOut, DriveDownloadTicketOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
+import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
@@ -2023,6 +2023,41 @@ export class ApiClient {
   /** A URL the browser's own download (or a video's source) can follow without the bearer token (§7.3, D2). */
   driveDownloadTicket(itemId: string, versionId: string | null = null): Promise<DriveDownloadTicketOut> {
     return this.request("POST", `/api/v1/drive/items/${itemId}/download-ticket${versionId ? `?version_id=${versionId}` : ""}`);
+  }
+
+  // --- M162 (§7.2, §10.2, §10.3, §11): versions, copies, ZIPs, usage ------------------------------------------------
+
+  /** A file's versions, newest first (and how many / how long older ones are kept). */
+  driveVersions(itemId: string): Promise<DriveVersionListOut> {
+    return this.request("GET", `/api/v1/drive/items/${itemId}/versions`);
+  }
+
+  /** The version copied as the file's new current one. */
+  restoreDriveVersion(itemId: string, versionId: string): Promise<DriveItemOut> {
+    return this.request("POST", `/api/v1/drive/items/${itemId}/versions/${versionId}/restore`);
+  }
+
+  deleteDriveVersion(itemId: string, versionId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/drive/items/${itemId}/versions/${versionId}`);
+  }
+
+  /** Copies into a folder; the same `clientOpId` again answers the same copies. */
+  copyDriveItems(itemIds: string[], targetFolderId: string, onConflict: "fail" | "rename" = "rename", clientOpId: string | null = null): Promise<DriveCopyResultsOut> {
+    return this.request("POST", "/api/v1/drive/items/copy", { item_ids: itemIds, target_folder_id: targetFolderId, on_conflict: onConflict, ...(clientOpId ? { client_op_id: clientOpId } : {}) });
+  }
+
+  /** A ZIP of folders and files: a one-time URL (no bearer token needed) valid `expires_in` seconds. */
+  createDriveZip(itemIds: string[]): Promise<DriveZipOut> {
+    return this.request("POST", "/api/v1/drive/zip", { item_ids: itemIds });
+  }
+
+  adminDriveUsage(): Promise<DriveUsageOut> {
+    return this.request("GET", "/api/v1/admin/drive/usage");
+  }
+
+  /** A location's own quota in bytes (null: none). */
+  setDriveQuota(locationId: string, quotaBytes: number | null): Promise<DriveLocationUsageOut> {
+    return this.request("PATCH", `/api/v1/admin/drive/locations/${locationId}`, { quota_bytes: quotaBytes });
   }
 
   /** §12: names of files and folders in the drives I can read (`location_id`: one of them). */

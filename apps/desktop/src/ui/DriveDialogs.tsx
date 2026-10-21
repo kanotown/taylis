@@ -101,17 +101,21 @@ export function RenameDialog({ controller, item, onClose, onDone }: { controller
 }
 
 /**
- * 「移動」: a folder picked in any location I can write (moving across locations needs writing in both; the server
- * says so). The items themselves and their folders below cannot be the target (the server refuses with drive_cycle).
+ * 「移動」 and (M162) 「コピー」: a folder picked in any location I can write (moving across locations needs writing in
+ * both; the server says so). The items themselves and their folders below cannot be the target (the server refuses
+ * with drive_cycle). A copy may go into the items' own folder: the copy is numbered 「名前 (1)」. The same op id is sent
+ * again when the copy is retried, so a lost answer never copies twice.
  */
-export function MoveDialog({ controller, items, startLocation, startFolderId, onClose, onMoved }: {
+export function MoveDialog({ controller, items, startLocation, startFolderId, onClose, onMoved, mode = "move" }: {
   controller: AppController;
   items: DriveItemOut[];
   startLocation: DriveLocationOut;
   startFolderId: string;
   onClose: () => void;
   onMoved: (targetFolderId: string, failed: number) => void;
+  mode?: "move" | "copy";
 }) {
+  const [opId] = useState(newOpId);
   const [locations, setLocations] = useState<DriveLocationOut[]>([startLocation]);
   const [location, setLocation] = useState(startLocation);
   const [folderId, setFolderId] = useState(startFolderId);
@@ -162,14 +166,16 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
     };
   }, [controller, folderId]);
 
-  const here = items.every((item) => item.parent_id === folderId);
+  const copying = mode === "copy";
+  const here = !copying && items.every((item) => item.parent_id === folderId);
   const submit = async () => {
     const api = controller.api;
     if (!api) return;
     setBusy(true);
     setError(null);
     try {
-      const out = await api.moveDriveItems(items.map((item) => item.id), folderId, "fail");
+      const ids = items.map((item) => item.id);
+      const out = copying ? await api.copyDriveItems(ids, folderId, "rename", opId) : await api.moveDriveItems(ids, folderId, "fail");
       const failed = out.results.filter((result) => !result.ok);
       if (failed.length > 0 && failed.length === items.length) {
         setError(describeError(new ApiError(409, failed[0]!.error ?? "unknown", "")));
@@ -183,7 +189,9 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
       setBusy(false);
     }
   };
-  const title = items.length === 1 ? t("drive.moveOne", { name: items[0]!.name }) : t("drive.moveMany", { count: items.length });
+  const title = copying
+    ? items.length === 1 ? t("drive.copyOne", { name: items[0]!.name }) : t("drive.copyMany", { count: items.length })
+    : items.length === 1 ? t("drive.moveOne", { name: items[0]!.name }) : t("drive.moveMany", { count: items.length });
   return (
     <Modal onClose={onClose} title={title} growsDown className="w-[520px]">
       <div className="mt-4 flex gap-3 max-sm:flex-col">
@@ -239,11 +247,11 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
           </ul>
         </div>
       </div>
-      <p className="mt-2 truncate text-xs text-muted">{t("drive.moveTo", { path: pathLine(path, locationName(location)) })}</p>
+      <p className="mt-2 truncate text-xs text-muted">{t(copying ? "drive.copyTo" : "drive.moveTo", { path: pathLine(path, locationName(location)) })}</p>
       {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
-        <Button onClick={() => void submit()} disabled={busy || here || moving.has(folderId)}>{t("drive.moveHere")}</Button>
+        <Button onClick={() => void submit()} disabled={busy || here || moving.has(folderId)}>{t(copying ? "drive.copyHere" : "drive.moveHere")}</Button>
       </div>
     </Modal>
   );
