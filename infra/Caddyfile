@@ -47,6 +47,16 @@
 		reverse_proxy app:8000
 	}
 
+	# The drive's resumable uploads (M160, docs/DRIVE.md §6, §9.6): one part of 16 MiB (DRIVE_PART_BYTES) per request,
+	# the body checked by the app (size and SHA-256). Everything else of the drive is JSON under the 1 MB below.
+	@driveparts path_regexp ^/api/v1/drive/uploads/[^/]+/parts/[0-9]+$
+	handle @driveparts {
+		request_body {
+			max_size 17MB
+		}
+		reverse_proxy app:8000
+	}
+
 	handle /api/* {
 		request_body {
 			max_size 1MB
