@@ -1,4 +1,48 @@
-import Foundation
+import SwiftUI
+
+/// Where a message link was tapped: a thread (ThreadView) or a conversation's timeline (ChannelView). Elsewhere (a
+/// canvas, the search, a preview) there is none, and a link opens its conversation as before.
+enum MessageLinkContext: Equatable {
+    case timeline(channelId: String)
+    case thread(channelId: String, parentId: String)
+}
+
+/// What a tapped message link does (user report 2026-10-21). A message shown on the same screen is scrolled to and
+/// highlighted there, loading what is missing: a reply of the open thread, or its parent, in the thread (the parent sits
+/// at its top); a top-level message of the open timeline in that timeline. Anything else opens its conversation (and its
+/// thread, for a reply), as before. Landing the same conversation again changed nothing on screen: the open thread had
+/// placed itself once and stayed where it was.
+enum PermalinkJump: Equatable {
+    /// Scroll the open thread `parentId` to the message.
+    case thread(parentId: String)
+    /// Scroll the open timeline to the message (its surroundings, as a search hit).
+    case timeline
+    /// Open the message's conversation (and thread).
+    case open
+
+    static func of(channelId: String, messageId: String, parentId: String?, from context: MessageLinkContext?) -> PermalinkJump {
+        switch context {
+        case .thread(let openChannel, let openParent)? where openChannel == channelId && (parentId == openParent || messageId == openParent):
+            return .thread(parentId: openParent)
+        case .timeline(let openChannel)? where openChannel == channelId && parentId == nil:
+            return .timeline
+        default:
+            return .open
+        }
+    }
+}
+
+private struct MessageLinkContextKey: EnvironmentKey {
+    static let defaultValue: MessageLinkContext? = nil
+}
+
+extension EnvironmentValues {
+    /// Where the message rows under it are shown, for their links (PermalinkJump).
+    var messageLinkContext: MessageLinkContext? {
+        get { self[MessageLinkContextKey.self] }
+        set { self[MessageLinkContextKey.self] = newValue }
+    }
+}
 
 /// Message permalinks (M12b): `<server>/m/<message_id>`, recognised only for the server we are logged into.
 enum Permalink {

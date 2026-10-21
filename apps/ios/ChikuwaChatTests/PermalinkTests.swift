@@ -32,4 +32,27 @@ final class PermalinkTests: XCTestCase {
         XCTAssertNil(EventLink.eventId(base: nil, url: "https://chat.example.com/e/\(id)"))
         XCTAssertEqual(EventLink.internalLink(eventId: id)?.host, id)
     }
+
+    /// User report 2026-10-21: a link to another message of the open thread scrolls the thread there.
+    func testALinkInsideTheOpenThreadStaysInIt() {
+        let thread = MessageLinkContext.thread(channelId: "c1", parentId: "p1")
+        // an older or newer reply of the same thread
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "r9", parentId: "p1", from: thread), .thread(parentId: "p1"))
+        // its parent (at the thread's top)
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "p1", parentId: nil, from: thread), .thread(parentId: "p1"))
+        // a reply of another thread, a top-level message, another conversation: opened as before
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "r2", parentId: "p2", from: thread), .open)
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "m1", parentId: nil, from: thread), .open)
+        XCTAssertEqual(PermalinkJump.of(channelId: "c2", messageId: "r9", parentId: "p1", from: thread), .open)
+    }
+
+    func testALinkInsideTheTimelineStaysInIt() {
+        let timeline = MessageLinkContext.timeline(channelId: "c1")
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "m1", parentId: nil, from: timeline), .timeline)
+        // a reply opens its thread; another conversation opens
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "r1", parentId: "p1", from: timeline), .open)
+        XCTAssertEqual(PermalinkJump.of(channelId: "c2", messageId: "m1", parentId: nil, from: timeline), .open)
+        // tapped elsewhere (a canvas, the search): opened
+        XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "m1", parentId: nil, from: nil), .open)
+    }
 }

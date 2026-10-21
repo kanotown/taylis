@@ -73,7 +73,9 @@ struct ChannelView: View {
     }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
-    private var focus: AppController.MessageFocus? { controller.messageFocus.flatMap { $0.channelId == channelId ? $0 : nil } }
+    /// A message of this conversation to show in the timeline; not one shown in its open thread only (a link between
+    /// replies of that thread, PermalinkJump.thread), which leaves the timeline as it is.
+    private var focus: AppController.MessageFocus? { controller.messageFocus.flatMap { $0.channelId == channelId && !$0.threadOnly ? $0 : nil } }
     private var messages: [MessageState] {
         if let focus {
             return focus.context.map { message in
@@ -488,6 +490,7 @@ struct ChannelView: View {
                                 }
                             }
                             .scrollTargetLayout()
+                            .environment(\.messageLinkContext, .timeline(channelId: channelId))
                             .padding(.vertical, 8) // the side margin is each row's (margin)
                             // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                             // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
@@ -555,8 +558,10 @@ struct ChannelView: View {
                         .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
                         .onChange(of: anchor.landing, initial: true) { _, landing in startLanding(landing, proxy) }
                         .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } } // back after a disappear
-                        .onChange(of: focus?.messageId) { _, id in
-                            if id == nil, let channel {
+                        // focus.request, not the id alone: a link to the message already in focus (tapped again after
+                        // scrolling away) shows it again (PermalinkJump).
+                        .onChange(of: focus?.request) { _, request in
+                            if request == nil, let channel {
                                 if controller.focusLeftByPost == channelId {
                                     // Left by a post of mine (AppController.postedFromHere): at the newest row, where the post
                                     // is, with no divider to land on (§10.1 4., as Slack).
@@ -1025,6 +1030,8 @@ struct MessageRow: View {
     /// L8: a tap on the message does this instead of opening its thread (the Times feed: the message in its channel);
     /// 「N 件の返信」 still opens the thread.
     var onTap: (() -> Void)? = nil
+    /// Where the row is shown: a link to a message on the same screen scrolls there (PermalinkJump).
+    @Environment(\.messageLinkContext) private var linkContext
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -1182,7 +1189,7 @@ struct MessageRow: View {
                                 return .handled
                             }
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
-                            Task { await controller.openPermalink(id) }
+                            Task { await controller.openPermalink(id, from: linkContext) }
                             return .handled
                         })
                         // The text takes its own taps: SwiftUI gives a touch to a control within some 12 pt of it, and a

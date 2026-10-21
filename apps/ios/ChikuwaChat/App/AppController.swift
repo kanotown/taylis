@@ -20,8 +20,21 @@ final class AppController {
         var messageId: String
         var parentId: String?
         var context: [MessageState]
+        /// Shown in its open thread only (a link to a message of the same thread, PermalinkJump.thread): the conversation
+        /// under the thread keeps its rows as they are.
+        var threadOnly = false
+        /// New for every reveal, so a reveal of the message already in focus (the same link tapped again after scrolling
+        /// away) scrolls to it again.
+        var serial = 0
+        /// What the screens watch to scroll to the message again.
+        var request: String { "\(messageId):\(serial)" }
     }
     var messageFocus: MessageFocus?
+    @ObservationIgnored private var focusSerial = 0
+    private func nextFocusSerial() -> Int {
+        focusSerial += 1
+        return focusSerial
+    }
     /// The conversation whose message focus a post sent from this device just left (postedFromHere): ChannelView lands
     /// at its newest row, where the post is, instead of where a fresh open would (the unread divider). Taken once.
     var focusLeftByPost: String?
@@ -81,9 +94,26 @@ final class AppController {
                     store.threadRootDeleted(channelId, parentId)
                 }
             }
-            messageFocus = MessageFocus(channelId: channelId, messageId: id, parentId: parentId, context: context.map(MessageState.init))
+            messageFocus = MessageFocus(channelId: channelId, messageId: id, parentId: parentId, context: context.map(MessageState.init),
+                                        serial: nextFocusSerial())
             return true
         } catch { self.error = describe(error); return false }
+    }
+
+    /// A link to a message of the thread it was tapped in (PermalinkJump.thread): the thread's replies fetched again (a
+    /// reply newer than the ones held), then the message focused there only. Nothing navigates: the open thread scrolls
+    /// to it (ThreadView.jump).
+    func revealInThread(id: String, channelId: String, parentId: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+        } catch let error as ApiError where error.code == "message_not_found" {
+            store.threadRootDeleted(channelId, parentId)
+            return false
+        } catch { self.error = describe(error); return false }
+        messageFocus = MessageFocus(channelId: channelId, messageId: id, parentId: parentId, context: [], threadOnly: true,
+                                    serial: nextFocusSerial())
+        return true
     }
 
     /// 「スレッド」's conversation link: the thread's parent revealed in its conversation's timeline (not the thread);
@@ -1194,7 +1224,11 @@ final class AppController {
     }
 
     /// A permalink tapped in a body: fetch the message (membership is checked there), reveal it and open its conversation.
-    func openPermalink(_ messageId: String) async {
+    ///
+    /// `context`: where the link was tapped (MessageRow's environment). A message of that same thread, or of that same
+    /// timeline, is scrolled to where it is shown (PermalinkJump; user report 2026-10-21): landing the conversation again
+    /// left an open thread as it was, already positioned, so a link to another reply of it did not move it.
+    func openPermalink(_ messageId: String, from context: MessageLinkContext? = nil) async {
         guard let api else { return }
         do {
             let message = try await api.message(id: messageId)
@@ -1203,6 +1237,15 @@ final class AppController {
                 NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil,
                                                 userInfo: ["id": message.channelId, "messageId": messageId])
                 return
+            }
+            switch PermalinkJump.of(channelId: message.channelId, messageId: message.id, parentId: message.parentId, from: context) {
+            case .thread(let parentId):
+                _ = await revealInThread(id: message.id, channelId: message.channelId, parentId: parentId)
+                return
+            case .timeline:
+                _ = await revealMessage(id: message.id, channelId: message.channelId, parentId: nil)
+                return
+            case .open: break
             }
             if await revealMessage(message) {
                 NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil,
