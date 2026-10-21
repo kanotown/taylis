@@ -1,6 +1,6 @@
 # DRIVE（ドライブ：研究室の Nextcloud の置き換え）
 
-2026-10-21 の設計。**未実装**。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
+2026-10-21 の設計。**段階 D1（M160、サーバの土台）を実装（2026-10-21、§20）**、D2〜D7 は未実装。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
 
 利用者（研究室の教員）の要望：研究室で自前で動かしている Nextcloud を、Taylis の中の「ドライブ」に置き換えたい。
 
@@ -83,7 +83,7 @@
 | `infra/backup.sh`：オブジェクトのディレクトリを**同じディスクの** `/srv/backups` に写す（初回は全体、2 回目からは変わらないファイルを前回へのハードリンク） | 初回で +100 GB。空き 217 GB からドライブ 100 GB と初回のバックアップ 100 GB を引くと残りは約 17 GB で、版・ゴミ箱・PostgreSQL の伸び・マルチパートの一時ファイル（下）を吸えない | サーバの外へのバックアップを必須にする。`BACKUP_ROOT` を別のディスクに置けるようにする（§16） |
 | `infra/backup.sh`：毎回 `find … -exec sha256sum` で**全オブジェクト**の SHA-256 を取り、ファイルごとに `stat` を 2 回起動する | 100 GB を毎晩とデプロイのたびに読み直す（数十分。デプロイの前のバックアップが長くなる） | 前回のバックアップから変わっていない（ハードリンクした）ファイルは前回の `objects.sha256` の行を引き継ぎ、写したファイルだけ計算する。ループは 1 回の `find -printf` で比べる（D5） |
 | `infra/restore-rehearsal.sh`：稼働中のスタックからバックアップを取り、別の compose に戻す | 同じディスクにもう 1 組（+100 GB 以上）作る | リハーサルはサーバの外（手元の機械・別のディスク）で行う手順を infra/README.md に書く（D5） |
-| versitygw（posix）のマルチパート：部品をバケットの中の `.sgwtmp` に置き、完了のときに 1 つのファイルにつなぐ | 完了の間、そのファイルの分だけディスクが一時的に 2 倍になる。5 GB のファイルで +5 GB、つなぐのに数十秒 | D1 の最初に実物（今の versitygw のイメージ）で確かめる。完了は app のリクエストの外で行い（§6.4）、boto3 の読み取りの時間切れを完了の呼び出しだけ延ばす（既定 60 秒では足りない） |
+| versitygw（posix）のマルチパート：部品をバケットの中の `.sgwtmp` に置き、完了のときに 1 つのファイルにつなぐ | 完了の間、そのファイルの分だけディスクが一時的に 2 倍になる。5 GB のファイルで +5 GB、つなぐのに数十秒 | **D1 で実物（v1.8.0）で確かめた（§6.6）**：一時の 2 倍は本当（5 GiB で +4.9 GB、完了の間だけ）、つなぐのは手元の SSD で 5 GiB 1.8 秒。完了は app のリクエストの外のタスクで行い（リクエストは 20 秒まで待って 202）、boto3 の読み取りの時間切れを完了の呼び出しだけ 600 秒に延ばした（`DRIVE_COMPLETE_TIMEOUT_SECONDS`） |
 | `BlobStore`：`put` / `stream` / `exists` / `delete` / `copy` だけ | マルチパート、範囲を指定した読み出し、大きさの確認が無い | `BlobStore` に `create_multipart` / `upload_part` / `complete_multipart` / `abort_multipart` / `list_multipart_uploads` / `stream(key, start, end)` / `head` を足す。`MemoryBlobStore` にも同じものを足してテストで使う（§6.5） |
 | `GET /attachments/{id}/content`：Range に対応していない | 5 GB のダウンロードを途中から再開できない。ブラウザの動画のシークもできない | ドライブのダウンロードは Range に対応する（§7.1）。同じ関数を添付の `/content` にも使う（害は無く、大きな動画のシークが効くようになる） |
 | Desktop のダウンロード（`fetchBlob`）：本文を全部メモリに読んでから保存する | 数 GB のファイル・ZIP でメモリが足りない | Desktop は塊ごとにファイルへ書く（fs プラグインの `open` と `write`、今の `fs:scope-download-recursive` の範囲。新しい依存なし）。Web はブラウザ自身のダウンロード（§7.3） |
@@ -580,6 +580,10 @@ ShareLinkOut = {
 
 失敗はアップロードを失敗させない（今の添付と同じ：普通のファイルとして残る）。
 
+D1 の実装（§20）：4 の文書のプレビューの予約は、完了のトランザクションで添付の行を作るときに行う（`queue_on_upload`。media loop を
+待たずにプレビューの loop が始められる）。media loop のリースは `drive_file_versions.process_next_at`（30 分）と `process_attempts`
+（3 回まで）。プレビューの完了は preview loop が `drive.changed` を出す（`main.py` が注入するフック）。
+
 ### 6.5 `BlobStore` に足すもの
 
 ```python
@@ -596,6 +600,25 @@ class BlobStore(Protocol):
 
 `S3BlobStore` は boto3 の同名の呼び出し（スレッドプールで）。完了だけは別の `Config(read_timeout=600)` のクライアントで呼ぶ
 （§2）。`MemoryBlobStore` は部品を dict に持ってつなぐ。
+
+### 6.6 versitygw のマルチパートの実測（D1、2026-10-21）
+
+開発用の compose と同じ `versity/versitygw:v1.8.0`（`posix /data`、ext4 の Docker のボリューム、Mac の SSD）に boto3 で 16 MiB の部品を
+送って確かめた（`scratchpad` の使い捨てのスクリプト。手順は下の数値を取り直すときのために残す）。
+
+| 確かめたこと | 結果 | 決めたこと |
+| --- | --- | --- |
+| 部品の置き場所 | バケットの中の `.sgwtmp/multipart/<キーの SHA-256>/<upload id>/<部品の番号>` に 1 部品 1 ファイル | バックアップ（`infra/backup.sh` のオブジェクトのディレクトリの写し）に進行中の部品も入る。期限切れ・孤児の掃除（§6.2）で消す |
+| 完了の間のディスク | つなぐ間だけ使用量が増え、終わると戻る：1 GiB で +128 MB（0.4 秒の途中の 1 回の測り）、5 GiB で 37,109 → 42,079 MB（+4.9 GB）→ 37,109 MB | §2 のとおり、空きの見積もりに「最大のファイル 1 つ分」を足す。同時に完了するのは 1 プロセスの中の数本だけ |
+| 完了の時間 | 1 GiB 0.4 秒、5 GiB 1.8 秒（約 2.8 GB/秒）。研究室のサーバの遅いディスク・混んでいるときはこの数倍〜数十倍になりうる | 完了の呼び出しだけ read timeout 600 秒（`DRIVE_COMPLETE_TIMEOUT_SECONDS`）、ほかの呼び出しは既定のまま。リクエストは 20 秒（`DRIVE_COMPLETE_WAIT_SECONDS`）待って 202 |
+| 部品の送り直し | 同じ番号を別の中身で送ると置き換わり、元の中身で送り直すと元の ETag に戻る | 部品は番号で置き換え（冪等）。ETag は DB の `drive_upload_parts` に持ち、完了ではそれを渡す |
+| 完了の送り直し | 完了した後に同じ部品で `CompleteMultipartUpload` を呼んでも成功が返る。`AbortMultipartUpload` は `NoSuchUpload` | app はまず `head` でオブジェクトの大きさを確かめ、揃っていれば完了を呼ばない（ほかの S3 互換のストアでも同じに動く）。取りやめの `NoSuchUpload` は成功として扱う |
+| 部品 0 個の完了 | `MalformedXML` | 0 バイトのファイルはマルチパートを作らず空の `put`（`s3_upload_id` は空） |
+| 最後以外の部品が 5 MiB 未満 | `EntityTooSmall`（1 部品だけなら 10 バイトでも通る） | 部品は 16 MiB 固定（テストでは `MemoryBlobStore` と小さな `DRIVE_PART_BYTES`）。設定で 5 MiB 未満にしない |
+| 取りやめの後の部品 | `NoSuchUpload` | 期限切れ・取りやめのセッションへの部品は app が先に 410 で断る |
+| Range・head | `Range: bytes=100-199` に 100 バイトと `Content-Range`、`head` は大きさ | ダウンロードの Range（§7.1）と完了の大きさの確認・型の sniff（先頭 8 KB）に使う |
+| 速さ（参考） | boto3 で 5 GiB を 16 MiB × 320 部品 19 秒、読み出し 16 秒。app と Caddy を通した 1 GiB（64 部品）は送り 7 秒・完了 0.6 秒・ダウンロード 3 秒（§20 の compose の通し） | — |
+
 
 ## 7. ダウンロードと ZIP
 
@@ -1057,7 +1080,7 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 
 | 段階 | M | 中身 | 完了条件 |
 | --- | --- | --- | --- |
-| **D1** サーバの土台 | M160 | 移行（表・`attachments.drive_item_id`・研究室ドライブの行）、`drive` モジュール、場所と権限（§3）、フォルダ・名前・移動・ゴミ箱（戻す・完全削除・30 日のジョブ）、マルチパートのアップロード（§6、`BlobStore` の拡張、期限と孤児の掃除、`completing` の回収）、media loop（§6.4）、Range のダウンロード（添付の `/content` にも）、`drive.changed`、`get_for_access` の注入、attachments を読む問い合わせの確認（§2）、Caddy の部品の枠、`drive.admin` の権限、エラーの文言。最初に versitygw のマルチパートの一時の領域と完了の時間を実物で確かめる | pytest：権限の表（3 つの場所 × admin / manager / member / guest / チャンネルのオーナー / 抜けた人 / アーカイブ）を総当たり、アップロードの冪等（同じ `client_upload_id`・部品の送り直し・完了の送り直し・完了の途中で落ちる）、名前の衝突 3 種、輪の移動、ゴミ箱のまとまり、容量の同時の予約。compose の上で 1 GB のファイルを途中で止めて再開し、SHA-256 が合う。ARCHITECTURE.md §2・§5、DATA_MODEL.md、SECURITY.md §4・§5、SYNC_PROTOCOL.md に節を足す |
+| **D1** サーバの土台（**実装 2026-10-21、§20**） | M160 | 移行（表・`attachments.drive_item_id`・研究室ドライブの行）、`drive` モジュール、場所と権限（§3）、フォルダ・名前・移動・ゴミ箱（戻す・完全削除・30 日のジョブ）、マルチパートのアップロード（§6、`BlobStore` の拡張、期限と孤児の掃除、`completing` の回収）、media loop（§6.4）、Range のダウンロード（添付の `/content` にも）、`drive.changed`、`get_for_access` の注入、attachments を読む問い合わせの確認（§2）、Caddy の部品の枠、`drive.admin` の権限、エラーの文言。最初に versitygw のマルチパートの一時の領域と完了の時間を実物で確かめる | pytest：権限の表（3 つの場所 × admin / manager / member / guest / チャンネルのオーナー / 抜けた人 / アーカイブ）を総当たり、アップロードの冪等（同じ `client_upload_id`・部品の送り直し・完了の送り直し・完了の途中で落ちる）、名前の衝突 3 種、輪の移動、ゴミ箱のまとまり、容量の同時の予約。compose の上で 1 GB のファイルを途中で止めて再開し、SHA-256 が合う。ARCHITECTURE.md §2・§5、DATA_MODEL.md、SECURITY.md §4・§5、SYNC_PROTOCOL.md に節を足す |
 | **D2** Desktop / Web の画面 | M161 | 場所のレールの「ドライブ」、場所の列、一覧（リスト / グリッド、パンくず、並べ替え、カーソル）、アップロードの欄（ファイル・フォルダ・ドロップ・再開・衝突の質問）、ダウンロード（Desktop は塊ごとに保存、Web はブラウザ）、ビューア、名前・移動・ゴミ箱、ファイル名の検索（`/search/drive` を含む）、チャンネルのタブ | tsc・テスト（アップロードの状態機械、衝突の質問、パンくず）。macOS と Windows のアプリと Web で、フォルダのドロップ・2 GB のファイルの再開・ZIP でない 1 ファイルの 2 GB のダウンロードを手で確かめる |
 | **D3** 版・コピー・ZIP・容量 | M162 | 版（上書き・一覧・戻す・消す・整理のジョブ）、コピー（上限つき）、ZIP（§7.2）、場所と全体の上限、管理者の使用量の画面、`drive-usage --verify / --rebuild` | pytest：版の数と日数の整理、ZIP の中身（名前・UTF-8・ZIP64・空のフォルダ・Content-Length が実際の長さと一致）、容量の超過と減らす操作。5,000 ファイル・10 GB のフォルダの ZIP をブラウザで落として展開できる（Windows のエクスプローラーと macOS で） |
 | **D4** 外部共有リンク | M163 | リンクの表と API、公開 API・`share.html`・解錠の cookie、働く条件（§9.2）、速度制限、`drive_share_events` と 180 日の整理、監査、ワークスペースと場所のスイッチ、admin の一覧、Caddy / nginx / ログの伏せ、robots.txt、プライバシーの説明 | pytest：部分木の外の id（兄弟・親・別の場所・ゴミ箱・古い版）がすべて 404、作った人が抜けた・ゲストになった・無効化で止まる、回数の同時の数え方、パスワードの失敗の制限、ヘッダ（noindex・nosniff・sandbox・attachment）。ログインしていないブラウザ（Chrome・Safari・Firefox、スマホ）で、フォルダの一覧・PDF のプレビュー・ZIP を確かめる。SECURITY.md に「外部共有リンク」の節を足し、§12 のようなレビューの一覧で見直す |
@@ -1087,3 +1110,57 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 | Q10 | OS のファイルマネージャ（Finder・エクスプローラー）からつなぎたいか（WebDAV） | v1 は作らない。要れば読むだけの WebDAV から |
 | Q11 | 版の数と日数（既定 10 版・30 日）、ゴミ箱の 30 日、1 ファイル 5 GB、リンクの既定の期限 7 日・最長 90 日でよいか | このまま |
 | Q12 | 研究室ドライブで、他人のファイルを誰でもゴミ箱に入れられてよいか（Nextcloud の共有フォルダと同じ） | よい（30 日は誰でも戻せ、記録が残る）。困れば「上げた人とチャンネルのオーナー・admin だけ」に絞る |
+
+## 20. 段階 D1 の実装（M160、2026-10-21）
+
+サーバだけ（画面は D2）。移行 0118、`app/modules/drive/`（`models`・`names`・`access`・`repository`・`service`・`uploads`・`media`・
+`housekeeping`・`events`・`router`）、`BlobStore` のマルチパート・範囲の読み出し・`head`、添付の `/content` の Range、
+`get_for_access` の注入、`drive.changed` / `drive.upload.updated`、`drive.admin`、Caddy の部品の枠（17 MB）、エラーの文言 22 件
+（`apps/shared/errors.json` と 3 つの端末の表）。versitygw の実測は §6.6。
+
+### 20.1 作ったもの
+
+- 場所：`GET /drive/locations`、`POST /drive/locations/resolve`（チャンネル・`me`、冪等）。研究室ドライブは移行が作り、無ければ最初の
+  読み出しで作り直す。名前は研究室ドライブ「研究室ドライブ」・マイドライブ「マイドライブ」・チャンネルはチャンネル名（端末は `kind` で
+  自分の言語の名前にしてよい）。`can_share` と `link_count` は D4 まで常に false / 0。
+- 項目：`GET /drive/folders/{id}/children`（`sort=name|modified|size`・`order`・カーソル。フォルダが先）、`GET /drive/items/{id}`、
+  `POST /drive/folders`（`name` + `client_op_id`、`path` の mkdir -p）、`PATCH /drive/items/{id}`（名前。今の版の添付の `filename` も
+  変える：プレビューの PDF の名前のため）、`POST /drive/items/move`、`POST /drive/items/trash`、`GET /drive/locations/{id}/trash`、
+  `POST /drive/items/{id}/restore`、`DELETE /drive/items/{id}`、`GET /drive/items/{id}/content?version_id=&inline=`。
+- アップロード：§5.3 の 7 つ。管理者：`POST /admin/drive/users/{id}/takeover`。
+- 周期ジョブ（`DRIVE_HOUSEKEEPING_INTERVAL_SECONDS`、既定 10 分）：期限切れのセッション、10 分を超えた `completing` の回収、孤児の
+  マルチパート（1 日 1 回）、30 日を過ぎたゴミ箱、匿名化した人のマイドライブ、7 日を過ぎた終わったセッション。media loop は完了で起きる。
+
+### 20.2 本書と違うところ（本書の該当の節は直した、または下のとおり読む）
+
+| 本書 | D1 の実装 | 理由 |
+| --- | --- | --- |
+| §4.2 の表をまとめて作る | 0118 は D1 の表だけ（場所・項目・版・セッション・部品）。`drive_share_links`・`drive_share_events`・`workspace_settings` の 3 列は D4 の移行で足す | 使わない表・列を先に置かない（CLAUDE.md）。D4 で定義どおりに足す |
+| §4.2 の列 | 足した：`drive_locations.deleted_at`（匿名化、§3.3 の周期ジョブ）、`drive_items.client_op_id` と部分一意索引（`POST /drive/folders` の冪等）、`drive_file_versions.process_next_at`・`process_attempts`（media loop のリース、§6.4）、索引 `drive_items_parent_idx`（ゴミ箱を含む部分木）。一覧の索引は `kind DESC`（フォルダが先に来る向き） | 本書の動きに要るのに置き場所が無かった |
+| §14 の audience（研究室ドライブは `all`、チャンネルは `channel`） | 新しい audience `drive`（`audience_id` = 場所。送る時点でその場所を読める人：研究室ドライブはゲストと bot を除く、チャンネルは今のメンバー、マイドライブは本人） | ゲストに届かず、抜けた人にも届かない。イベントの枠に `channel_id` を載せない（チャンネルの seq と混ざらない） |
+| §6.4 の 4（文書のプレビューは media loop が予約） | 完了のトランザクションで予約する | 待つ理由が無い。プレビューの完了は preview loop が `drive.changed` を出す |
+| §5.2 `ItemOut` | `trashed_at`・`trashed_by` を足し（ゴミ箱の表示）、`file` に `version_id`。スキーマ名は `Drive*`（`DriveItemOut`・`DriveUploadOut` など。ドキュメントの `Crumb` と OpenAPI で名前がぶつかったため） | — |
+| §5.2 `GET /drive/items/{id}` | ゴミ箱の項目も返す（`trashed_at` つき）。一覧・本文・添付の経路（サムネイル・プレビュー）はゴミ箱の項目を 404 にする | ゴミ箱の画面で名前と場所を出すため。中身はゴミ箱から出すまで見せない |
+| §5.2 move の `results[].error` | エラーのコードの文字列（`drive_cycle`・`drive_name_taken`・`drive_item_not_found`・`drive_quota_exceeded` など） | — |
+| §5.7 のエラー | 足した：`drive_upload_not_found`（404）、`drive_upload_not_active`（409：完了中・完了後の部品・PATCH・取りやめ）、`drive_upload_failed`（完了でオブジェクトが揃わない）、`drive_root_immutable`（409：根の名前・移動・ゴミ箱）、`drive_takeover_active_user`（409）、`drive_too_many_uploads`（§6.2 にあった）、`range_not_satisfiable`（416） | — |
+| §6.1 の完了 | 完了のリクエストは `active` → `completing` を確かめてコミットし、つなぐ・置くのはプロセスのタスク（`DriveRuntime`）。リクエストは最大 20 秒待ち、終われば 200、まだなら 202。部品は advisory lock（共有）を持って `UploadPart` し、`completing` への切り替えは同じ鍵を排他で取る（つないでいる間に部品が置き換わらない） | §2 のとおり完了をリクエストの外にした上で、ほとんどのファイルは 1 回の応答で終わる |
+| §6.2 `fail` | 作成のときに名前が既にあれば 409。完了のときに（その間に）できていれば 409 で、セッションは `active` のまま `error = drive_name_taken`。完了で起きたほかの失敗（容量・権限・フォルダが消えた）も同じく `error` に残る | — |
+| §3.3 の引き取り | ゴミ箱に無い項目だけ移す（ゴミ箱のものはマイドライブに残り、30 日で消える）。先のフォルダの名前が重なれば「(1)」 | ゴミ箱の戻し先（`trash_parent_id`）が場所をまたがない |
+| §3.3 の匿名化 | `admin.anonymize_in_tx` が `drive.forget_user_in_tx` を呼び、場所に `deleted_at` を付け、進行中のセッションを期限切れにする。周期ジョブがセッションの後片付けの後に中身と行を消す（監査 `drive.purge`） | §3.3 の「周期ジョブ」の形 |
+| §2 の「attachments を読むすべての問い合わせ」 | 確かめた：GC（pending の 24 時間はドライブの行が `attached` なので触らない、`deleted` はバイト列ごと消す）、`verify-attachments`（ドライブの版も確かめる）、`GET /files` とメッセージ検索のファイル名の枝（messages と結合、ドライブの行は出ない）、`export-channel`（メッセージの添付だけ）、匿名化（添付を触らない）、キャンバス・ページの整理（`canvas_id` / `page_id` のある行だけ）、デモのデータ（オブジェクトのキーを全部消す。ドライブの版も消えてよい）。足した条件：動画の backfill（`probe-videos`）と `generate-previews` はドライブの行を取らない（media loop と D5 の `--drive` が受け持つ）。テスト `test_drive_rows_stay_out_of_the_chat` で固定 | — |
+| §2 の nginx | 変えない（`client_max_body_size 110m` で 16 MiB の部品が通る） | — |
+| §11 の管理者の画面・`PATCH /admin/drive/locations/{id}`・`drive-usage` | D3 のまま（D1 は上限の判定と予約だけ。テストは列を直接書く） | — |
+
+### 20.3 確かめたこと
+
+- pytest：`tests/test_drive.py`（名前・並び、権限の表を 3 つの場所 × admin / manager / member / guest / チャンネルのオーナー / 抜けた人 で
+  総当たり、投稿がオーナーだけのチャンネル、アーカイブ、DM、抜けた・ゲストになった人の 404、フォルダ・mkdir -p・深さ・名前の衝突・
+  カーソル、輪の移動と場所をまたぐ移動・容量、ゴミ箱のまとまりと戻す・完全削除・30 日のジョブ、イベントの audience、引き取り、
+  匿名化）と `tests/test_drive_uploads.py`（同じ `client_upload_id`・部品の送り直しと検査・完了の送り直し、完了の途中で落ちる 2 通り
+  （つないだ後・つなぐ途中）と周期ジョブの回収、空のファイル、衝突の 3 種と完了のときの `fail`、フォルダのアップロード・
+  `target_item_id`、容量の同時の予約（同時の 2 本のうち 1 本が 409）と完了の再確認と全体の上限、期限切れ・孤児の掃除、Range、
+  media loop のサムネイルと SHA-256、チャットの問い合わせに入らないこと）。テストの利用者は各リクエストのセッションで読み直す
+  （`drive_helpers.act_as`。本番の認証と同じく、リクエストの中の rollback が利用者を期限切れにするのを見逃さない）。
+- compose の通し（使い捨ての compose：PGroonga・versitygw v1.8.0・app のイメージ・この Caddyfile）：1 GiB の乱数のファイルを 16 MiB × 64 で
+  Caddy 越しに送り、32 部品で app を再起動して止め、`received_parts` から続きを送り（1 部品は二度送る）、完了・完了の送り直し、全体と
+  途中からの 2 つの Range（If-Range）のダウンロードがどちらも元の SHA-256 と一致、media loop の SHA-256 も一致。

@@ -483,10 +483,36 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   判定は `main.py` が attachments に注入する。注入が無ければ読めない（404）側に倒す。移動・共有の変更で見える人が変われば
   ファイルも同じに変わる。完全削除と、どの版からも参照されなくなってから（24 時間後）の整理で `deleted` になる。
 
+### ドライブ（M160、docs/DRIVE.md §3・§6・§7）
+
+- **読める人**：研究室ドライブは admin・manager・member（ゲストと bot は除く）、チャンネルのドライブはそのチャンネルの今のメンバー
+  （公開チャンネルでも参加前は読めない。DM・グループ DM にはドライブが無い）、マイドライブは本人だけ（管理者も読めない）。判定は
+  毎回のリクエストで今のロールとメンバーシップから求める（`drive/access.py`）。読めない項目はどの経路でも `404 drive_item_not_found`
+  （存在と名前を隠す）。書けない（アーカイブ・オーナーだけが投稿できるチャンネル）は `403 drive_read_only`、完全削除は研究室ドライブで
+  admin（`drive.admin`）、チャンネルでオーナー、マイドライブで本人（ほかは `403 drive_manage_restricted`）。
+- **版のバイト列**は `attachments` の行（`drive_item_id`）。`/attachments/{id}/thumbnail`・`/preview/*`・`/content` は `main.py` が
+  注入した `drive.access.can_read_item` で判定し（ゴミ箱の項目も 404）、注入が無ければ読めない側に倒す。チャットの添付の
+  経路（bind・ファイル一覧・メッセージ検索・pending の GC・動画の backfill・`generate-previews`）にはドライブの行が入らない
+  （`message_id` が NULL、`status = attached`。テスト `test_drive_rows_stay_out_of_the_chat` で固定）。
+- **アップロード**：バイト列は今までどおり app を通る（バケットは非公開、presigned URL は使わない）。部品は 1 つ 16 MiB
+  （`DRIVE_PART_BYTES`）で、本文を一時ファイルに流しながら大きさと SHA-256（ヘッダ `X-Content-SHA256`、必須）を確かめてから
+  `UploadPart` に渡す（違えば `422 drive_part_invalid`）。型は完了のときに先頭 8 KB を Range で読んで sniff する（端末の申告は使わない）。
+  名前は NFC・前後の空白を除き、空・255 文字超・`/`・制御文字・`.`・`..` を断る。ストレージキーは `attachments/{id}`（名前を含めない）。
+  完了は親のフォルダと場所の行のロックの中で権限・名前の衝突・容量を確かめ直す（抜けた人・アーカイブは完了のときに 404 / 403）。
+- **ダウンロード**：`GET /drive/items/{id}/content` は今の名前（Windows で使えない文字は `_`）で常に `attachment`（`?inline=1` は画像だけ）、
+  `nosniff`、`Content-Security-Policy: sandbox`、`Cache-Control: private`。1 つの範囲の Range に 206（複数の範囲は 200 で全体、外れは 416）。
+  添付の `/content` も同じ関数で Range に対応した（ETag は添付の id）。
+- **容量**：場所ごとの上限（`drive_locations.quota_bytes`、マイドライブの既定 `DRIVE_USER_DEFAULT_QUOTA_BYTES`）とドライブ全体の上限
+  （`DRIVE_TOTAL_QUOTA_BYTES`）。セッションの作成のときに場所の行を `FOR UPDATE`（全体は advisory lock）で取り、使用量 + 進行中の
+  セッションの合計 + 今回で確かめる（同時の予約でも超えない）。完了のときにもう一度確かめる。チャットの添付は数えない。
+- **後片付け**：期限切れのセッション（最後の部品から 24 時間）は S3 のマルチパートを取りやめ、組み立て済みで置けなかったオブジェクトも
+  消す。行の無いマルチパートは 1 日 1 回 `ListMultipartUploads` で拾って取りやめる。ゴミ箱は 30 日で完全削除（版の添付を `deleted`、
+  バイト列は今の GC が消す、監査 `drive.purge`）。匿名化した人のマイドライブはゴミ箱を経ずに消す。
+
 ### 未対応 (認識しているギャップ)
 
 - ウイルススキャン (必要になれば ClamAV を GC と同じ周期ジョブに足す)。
-- ストレージのクォータ (ユーザー / ワークスペース単位)。
+- チャットの添付のストレージのクォータ（ドライブには場所ごと・全体の上限がある。M160）。
 
 ## 5. 入力検証と制限
 
@@ -496,6 +522,7 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 | --- | --- |
 | メッセージ本文 | 20,000 文字。制御文字 (改行・タブ以外) は除去。メンショントークンの user_id は存在確認 |
 | 添付 | 1 メッセージ 10 件、1 キャンバス 100 件 (M42)、1 件 100 MB |
+| ドライブ（M160） | 1 ファイル 5 GiB（`DRIVE_MAX_FILE_BYTES`、`413 drive_file_too_large`）、部品 16 MiB（最後以外はちょうど、Caddy の枠は 17 MB）、名前 255 文字、深さ 32 段（`422 drive_depth_exceeded`）、1 フォルダ 10,000 件（`409 drive_folder_full`）、移動・ゴミ箱は 1 回 500 件、進行中のセッション 1 人 1,000 件（`409 drive_too_many_uploads`） |
 | プロフィール画像 | 5 MB、PNG / JPEG / GIF / WebP。正方形に切って 256px の PNG に作り直す (メタデータは残らない) |
 | チャンネル名 | 1〜80 文字。一意 (大文字小文字無視) |
 | ユーザー名 | 3〜32 文字、`[a-z0-9._-]`。予約語とグループ名は不可。本人の変更は 24 時間に 3 回 (M96、§2.9) |
@@ -518,6 +545,8 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 | 受信 Webhook (`POST /hooks/{token}`) | トークンごと 60 回 / 分 |
 | メッセージ投稿 | ユーザー 60 回 / 分 |
 | 添付アップロード | ユーザー 20 回 / 分 |
+| ドライブのアップロードのセッションの作成（M160） | ユーザー 600 回 / 分（フォルダのアップロードで小さなファイルが数百） |
+| ドライブの部品（M160） | ユーザー 240 回 / 分（16 MiB × 4/秒） |
 | 検索 | ユーザー 30 回 / 分 |
 | WS 接続 | ユーザー 10 接続同時 (超えたら古い接続から閉じる)、接続試行 IP 30 回 / 分 (超過はハンドシェイクで 403) |
 | リンクプレビュー | ユーザー 60 回 / 分 |
@@ -530,7 +559,7 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 (`message_rate_limit_per_user` / `ws_max_connections_per_user` / `ws_connect_rate_limit_per_ip`)。
 
 本文サイズは Caddy で制限する (アップロード以外は 1 MB。プロフィール画像は 6 MB、`AVATAR_MAX_BYTES` 5 MB に合わせる。
-クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。絵文字セットの取り込み
+クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。ドライブの部品の PUT（`/api/v1/drive/uploads/*/parts/*`、M160）は 17 MB（部品 16 MiB）。絵文字セットの取り込み
 （`/api/v1/emoji/packs/import`、管理者のみ）は 70 MB：アプリは ZIP もフォルダーのファイルの合計も 64 MiB
 （`PACK_UPLOAD_MAX_BYTES`）までで、multipart の分を足した値（レビュー v0.1.37 #8。それまでは 1 MB で 413 になっていた）。
 
