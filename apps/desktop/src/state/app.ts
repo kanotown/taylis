@@ -2340,7 +2340,7 @@ export class AppController {
     }
     void engine.start();
     this.reportDeviceOnce(session, engine);
-    if (this.active === session && (this.entryMessage || this.entryCanvas || this.entryPage || this.entryEvent)) {
+    if (this.active === session && (this.entryMessage || this.entryCanvas || this.entryPage || this.entryEvent || this.entryDrive)) {
       // M12j: the browser has no local store; reveal once the first sync has brought the channels.
       const unsubscribe = engine.subscribe(() => {
         if (engine.status !== "online" || store.channels.size === 0) return;
