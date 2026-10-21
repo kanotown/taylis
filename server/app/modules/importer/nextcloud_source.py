@@ -352,6 +352,7 @@ class WebDavSource:
         seen: dict[str, dict[str, Any]] = {}
         offset = 0
         token: str | None = None
+        total = 0
         while True:
             send = dict(headers)
             if token is not None:
@@ -364,13 +365,17 @@ class WebDavSource:
             for row in rows:
                 seen.setdefault(row["href"], row)
             offset += len(rows)
-            # Paged (Nextcloud's PaginatePlugin): the total counts every response of the
-            # listing, the token names the cached listing for the next pages.
-            next_token = response.headers.get("X-NC-Paginate-Token")
-            total = response.headers.get("X-NC-Paginate-Total", "")
-            if not next_token or not total.isdigit() or not rows or offset >= int(total):
+            # Paged (Nextcloud's PaginatePlugin, checked on Nextcloud 31): only the first answer
+            # has the token of the cached listing and the total (every response, the folder's
+            # own included); the next pages are asked for with the token and an offset.
+            if token is None:
+                token = response.headers.get("X-NC-Paginate-Token")
+                count = response.headers.get("X-NC-Paginate-Total", "")
+                if not token or not count.isdigit():
+                    break  # not paged: the whole listing came at once
+                total = int(count)
+            if not rows or offset >= total:
                 break
-            token = next_token
         own = self.base_path + path.lstrip("/")
         own = own.rstrip("/")
         children = []
