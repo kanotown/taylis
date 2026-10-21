@@ -26,6 +26,7 @@ by `ShareHeadersMiddleware`, error answers included.
 
 import hashlib
 import hmac
+import ipaddress
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -170,6 +171,15 @@ def _throttle(request: Request, name: str, key: str) -> None:
         raise rate_limited(limiter.retry_after_seconds(key))
 
 
+def _inet(value: str) -> str | None:
+    """The address as the inet column takes it, or None (a proxy that passed something else must
+    not turn a download into a 500)."""
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return None
+
+
 def _event(
     db: AsyncSession,
     request: Request,
@@ -180,14 +190,13 @@ def _event(
     size: int | None = None,
 ) -> None:
     agent = request.headers.get("user-agent")
-    ip = client_ip(request)
     db.add(
         DriveShareEvent(
             link_id=link.id,
             item_id=item_id,
             kind=kind,
             bytes=size,
-            ip=ip if ip != "unknown" else None,
+            ip=_inet(client_ip(request)),
             user_agent=agent[:200] if agent else None,
         )
     )
