@@ -1442,10 +1442,11 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
 
 ### 23.4 確かめたこと
 
-- pytest：`tests/test_drive_d4.py`（18 件、上の表）。サーバの全体・ruff・ruff format・mypy。
+- pytest：`tests/test_drive_d4.py`（19 件、上の表と、プロキシが渡した IP でないアドレスを NULL で残すこと）。サーバの全体・ruff・ruff format・mypy。
 - vitest：`tests/driveShares.test.tsx`（期限の選択肢と送る値、URL を 1 回だけ出して写す、状態と取り消し、止まっているときの文、一覧のしるし、
   管理のスイッチと一覧、公開ページのパスワード・フォルダ・ファイル・止まったリンク、開発のサーバの書き換え）。tsc と vitest の全体。
-  `vite build` に `share.html` と `assets/share-*.js` が入る。
+  `vite build` に `share.html` と `assets/share-*.js` が入る。エラーの文言の表（`apps/shared/errors.json` から生成）が変わったので、
+  Android の `:app:compileDebugKotlin` と iOS の `xcodebuild build`（汎用のシミュレータ）も通した。
 - 手で（使い捨ての compose：PGroonga・versitygw v1.8.0・この版の app、Vite 1422、ヘッドレスの Chrome を CDP で操作）：ログインしたプロファイルで
   フォルダ（パスワード・回数 5・誰向け）とファイル（回数 2）のリンクを共有ダイアログから作り、URL のコピーと一覧のしるしを確かめた。
   ログインしていない別のプロファイルで：パスワードの画面（解錠の前に名前が出ない）、誤ったパスワード、フォルダの一覧、PDF のプレビュー
