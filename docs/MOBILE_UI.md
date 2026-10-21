@@ -1377,8 +1377,8 @@ PDF や Office のファイルのプレビュー（全ページのビューア�
 ## 23. メンションの候補の並び（4 クライアント、2026-10-21）
 
 利用者の要望：入力欄で `@` を打つと、ワークスペースの全員がユーザー名の順に並ぶだけで、話している相手がなかなか出てこない。
-今の会話にいる人を先に出す。サーバの API は変えず、端末が手元に持っている物（読み込んだメッセージ、DM の参加者）だけで
-決める。規則は 3 端末で同じで、`apps/shared/mention-rank.json` を 3 端末の試験が読む。
+今の会話にいる人とそのチャンネルに入っている人を先に出す。サーバの API は変えず、端末が持っている物（読み込んだ
+メッセージ、DM の参加者）と、今ある `GET /channels/{id}/members` で読んだメンバーで決める。規則は 3 端末で同じで、`apps/shared/mention-rank.json` を 3 端末の試験が読む。
 
 - **絞り込みは今までどおり**：ユーザー名が打った語で始まる人、または表示名が打った語を含む人（大文字小文字を区別しない）。
   無効化した人と AI 以外のボットは出さない（AI.md §2.1）。
@@ -1389,7 +1389,8 @@ PDF や Office のファイルのプレビュー（全ページのビューア�
      - (a) **この会話で最近書いた人**、新しい順。スレッドではスレッドの書き手（親と返信、新しい返信の人から）が先で、
        その後にチャンネルの書き手。チャンネルでは読み込んである時系列の書き手。数えるのはそれぞれ新しい
        **50 件**まで（削除したメッセージ・`type = system` の行は数えない）。
-     - (b) **会話のメンバー**で (a) にいない人。DM・グループ DM は参加者（`ChannelOut.dm_user_ids`）。
+     - (b) **会話のメンバー**で (a) にいない人。DM・グループ DM は参加者（`ChannelOut.dm_user_ids`）、公開・非公開
+       チャンネル（とそのスレッド）は下の「チャンネルのメンバー」。
      - (c) それ以外の全員。
      - (d) **自分**は（最近書いていても）いちばん後。
   3. 同じ段の中は**表示名**（日本語の照合順。Desktop / Web は `Intl.Collator("ja")`、iOS は `compare(_:locale:)`、Android は
@@ -1398,15 +1399,26 @@ PDF や Office のファイルのプレビュー（全ページのビューア�
   何も打っていないときも人が先。
 - **出す数**は 6 → **8**。Desktop / Web の入力欄の一覧（1 行約 32 px、絵文字の候補も同じ場所に 8 件出している）、iOS と
   Android の横に流れる候補の列のどちらにも収まる。キャンバス・ドキュメントの編集は前から 8。
-- **キャンバス・ドキュメント**：会話が無いので (a) は無い。DM のキャンバスは参加者を (b) にし、自分は最後。ドキュメント
+- **キャンバス・ドキュメント**：会話が無いので (a) は無い。キャンバスはそのチャンネルのメンバー（DM は参加者）を (b) に
+  し、自分は最後。ドキュメント
   （Wiki のページ）はチャンネルに属さないので (c) と (d) だけ。スマホのドキュメントの見たまま編集（同梱のエディタ、
   WIKI.md §30）はネイティブが自分の id を渡さないので、表示名の順だけ（自分も他の人と同じ段）。
 
-**手元に無いもの**：公開・非公開チャンネルのメンバーの一覧は 3 端末とも持っていない（`GET /channels/{id}/members` は
-メンバーの画面などで、そのときだけ読む）。そのためチャンネルでは (b) が空で、(a) の後はすぐ (c) になる。DM・グループ DM
-は `dm_user_ids` があるので (b) が効く。スレッドの返信は、スレッドを開いて読み込んだ分だけ数える。
+**チャンネルのメンバー**：公開・非公開チャンネルで `@` の候補が初めて開いたとき（入力欄・スレッドの入力欄・キャンバスの
+編集）、`GET /channels/{id}/members`（ページ分けなし、研究室なら数十人）でメンバーの id を読み、端末のメモリにだけ持つ
+（保存しない。サインアウト・ワークスペースの切り替えで消える）。候補は待たずに出し、届いたら並べ直す。
+- 読み直すのは、メンバーが変わったと分かったとき（`channel.member_added` / `_removed` / `_updated` で会話ごとの番号が進む。
+  開いているメンバーの一覧も読み直す）と、前に読んでから 5 分たった後に候補が開いたとき（落とした WebSocket のイベントの
+  代わり）。読んでいる間は前のメンバーで並べる。
+- 読めなかったとき（オフライン・権限など）は今までの物（無ければ (b) なしの並び）のままで、候補は止めない。知らせは出さない
+  （Desktop / Web はコンソールに警告）。30 秒たつまでは読み直さない。
+- DM・グループ DM は `dm_user_ids` があるので読まない。
 
-実装：Desktop / Web `ui/mentions.ts`（`recentSpeakers`・`conversationContext`・`documentContext`・`mentionCandidates`）、
-iOS `UI/Mentions.swift`（`Mentions.recentSpeakers`・`context`・`documentContext`・`candidates`）、Android
-`ui/Mentions.kt`（同じ名前）。試験：Desktop `tests/mentionRank.test.ts`、iOS `MentionRankTests`（`MentionsTests.swift`）、
-Android `MentionRankTest`。
+スレッドの返信は、スレッドを開いて読み込んだ分だけ数える。
+
+実装：Desktop / Web `ui/mentions.ts`（`recentSpeakers`・`conversationContext`・`documentContext`・`mentionCandidates`）と
+`sync/channelMembers.ts`（`ChannelMembers`・`requestChannelMembers`、`Store.channelMembers`）、iOS `UI/Mentions.swift`
+（`Mentions.recentSpeakers`・`context`・`documentContext`・`candidates`・`readMembers`、`Store.mentionMembers`）、Android
+`ui/Mentions.kt`（同じ名前と `Mentions.Members`、`Store.mentionMembers`）。試験：Desktop `tests/mentionRank.test.ts`・
+`tests/mentionMembers.test.tsx`、iOS `MentionRankTests`・`MentionMembersTests`（`MentionsTests.swift`）、Android
+`MentionRankTest`・`MentionMembersTest`。
