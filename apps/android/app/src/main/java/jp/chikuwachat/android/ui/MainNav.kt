@@ -133,6 +133,16 @@ sealed interface Route {
     @Serializable @SerialName("doc_page")
     data class DocPage(val id: String) : Pane { override val keptUnderConversation get() = true }
 
+    /**
+     * M166 (docs/DRIVE.md §26): 「ドライブ」, read only. No [locationId]: the list of locations (the home's tile); else one
+     * folder of that location. Each folder opened is a route of its own, so back (the system's and the bar's ←) goes up
+     * the folders it came through; [itemId] is a file whose details open over its folder on arrival (a /d/ link).
+     */
+    @Serializable @SerialName("drive")
+    data class Drive(val locationId: String? = null, val folderId: String? = null, val itemId: String? = null) : Pane {
+        override val keptUnderConversation get() = true
+    }
+
     /** 「ファイル」 of every channel, or of the one picked in its scope menu. */
     @Serializable @SerialName("files")
     data class Files(val channelId: String? = null) : Pane { override val keptUnderConversation get() = false }
@@ -320,6 +330,32 @@ object MainNav {
     fun openCrumb(stack: List<Route>, pageId: String): List<Route> {
         val at = stack.indexOfLast { it is Route.DocPage && it.id == pageId }
         return if (at >= 0) stack.take(at + 1) else openPage(stack, pageId)
+    }
+
+    /**
+     * M166 (DRIVE.md §26): a drive folder over what is on screen (a row of the list or the folder above, the channel's
+     * 「ドライブ」 tab, a /d/ card; a search's results stay behind it folded). The same folder on top stays (its details
+     * item replaced).
+     */
+    fun openDriveFolder(stack: List<Route>, locationId: String, folderId: String, itemId: String? = null): List<Route> {
+        val top = top(stack)
+        if (top is Route.Drive && top.folderId == folderId) return replaceTop(stack, top.copy(itemId = itemId))
+        val base = if (top is Route.Search) replaceTop(stack, top.copy(expanded = false)) else stack
+        return base + Route.Drive(locationId, folderId, itemId)
+    }
+
+    /** M166: a breadcrumb — back to that folder when it is under this one on the stack, else it opens over it. */
+    fun openDriveCrumb(stack: List<Route>, locationId: String, folderId: String): List<Route> {
+        val at = stack.indexOfLast { it is Route.Drive && it.folderId == folderId }
+        return if (at >= 0) stack.take(at + 1).let { replaceTop(it, (it.last() as Route.Drive).copy(itemId = null)) }
+        else openDriveFolder(stack, locationId, folderId)
+    }
+
+    /** M166: the folder on top is not there for me any more (404): the location's root, or the list when that is it. */
+    fun driveFolderGone(stack: List<Route>, locationId: String, rootId: String?): List<Route> {
+        val top = top(stack) as? Route.Drive ?: return stack
+        if (rootId == null || top.folderId == rootId) return replaceTop(stack, Route.Drive())
+        return replaceTop(stack, Route.Drive(locationId, rootId))
     }
 
     /** M29: the conversation's details page, over whichever tab. */

@@ -335,6 +335,8 @@ enum class HomeTile(private val labelRes: Int?) {
     /** M112 (RESERVATIONS.md §6): the workspace's reservation pools, after 締切; the to-dos due in the pools I operate. */
     RESERVATIONS(R.string.common_reservations),
     FILES(R.string.common_files),
+    /** M166 (docs/DRIVE.md §26): 「ドライブ」, read only, after ファイル; only while the server has the drive; no number. */
+    DRIVE(R.string.drive_title),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
     CANVASES(R.string.home_tile_canvases),
     /** M122 (docs/WIKI.md §9.2): 「ドキュメント」, the tree of pages, after キャンバス; no number. */
@@ -366,10 +368,10 @@ object HomeTiles {
     /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?, reservations: ReservationTile? = null,
-        attendance: Boolean = false, actions: Boolean = false, timesUnread: Boolean = true,
+        attendance: Boolean = false, actions: Boolean = false, timesUnread: Boolean = true, drive: Boolean = false,
     ): List<TileState> {
-        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions, timesUnread).associateBy { it.tile.navKey }
-        return NavItems.tileKeys(navItems, NavItems.implemented(attendance, actions)).mapNotNull { byKey[it] }
+        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions, timesUnread, drive).associateBy { it.tile.navKey }
+        return NavItems.tileKeys(navItems, NavItems.implemented(attendance, actions, drive)).mapNotNull { byKey[it] }
     }
 
     /** M112: 予約 once the server answered the pools: the to-dos due (shown only for an operator, red when any). */
@@ -377,9 +379,10 @@ object HomeTiles {
 
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null, attendance: Boolean = false,
-        actions: Boolean = false, timesUnread: Boolean = true,
+        actions: Boolean = false, timesUnread: Boolean = true, drive: Boolean = false,
     ): List<TileState> {
         val row = base(threads, drafts, saved, firedReminders, timesUnread).toMutableList()
+        if (drive) row.add(row.indexOfFirst { it.tile == HomeTile.FILES } + 1, TileState(HomeTile.DRIVE, null)) // M166
         if (attendance) row.add(TileState(HomeTile.ATTENDANCE, null)) // M140
         if (actions) row.add(TileState(HomeTile.ACTIONS, null)) // M143
         if (reservations != null) {

@@ -241,6 +241,8 @@ fun bodyInline(
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     // M122: links to pages of 「ドキュメント」 and to files (DocLinks.kt); null outside the main screen.
     val docLinks = LocalPageLinks.current
+    // M166 (docs/DRIVE.md §26): this server's /d/ links read as their item (never the markdown label); null: plain text.
+    val driveLinks = LocalDriveLinks.current
     // TeX math (MathRender.kt): drawn at the body text's size, tinted with the text's colour.
     val context = LocalContext.current
     val mathFontPx = with(LocalDensity.current) { MaterialTheme.typography.bodyLarge.fontSize.toPx() }
@@ -264,6 +266,7 @@ fun bodyInline(
                     // M122: `page:<id>` (the canvas dialect) or this server's `/p/<id>`; `attachment:<id>` a file.
                     val page = jp.chikuwachat.android.sync.WikiLinks.idOf(token.url) ?: internalBase?.let { Permalink.pageId(it, token.url) }
                     val file = jp.chikuwachat.android.sync.WikiLinks.attachmentOf(token.url)
+                    val drive = internalBase?.let { Permalink.driveId(it, token.url) }
                     val written = token.label?.takeIf { it != token.url }
                     if (page != null) {
                         val label = docLinks?.label?.invoke(page)
@@ -277,6 +280,11 @@ fun bodyInline(
                         if (docLinks != null) {
                             withLink(LinkAnnotation.Clickable("file:$file", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { docLinks.openFile(file) }) { append(text) }
                         } else append(text)
+                    } else if (drive != null) {
+                        val text = jp.chikuwachat.android.sync.DriveLinks.label(driveLinks?.state?.invoke(drive))
+                        val style = SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)
+                        if (driveLinks != null) withLink(LinkAnnotation.Clickable("drive:$drive", TextLinkStyles(style)) { driveLinks.open(drive) }) { appendWithEmoji(text) }
+                        else withStyle(style) { appendWithEmoji(text) }
                     } else if (internal != null && onOpenMessage != null) {
                         withLink(LinkAnnotation.Clickable("message:$internal", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenMessage(internal) }) {
                             val label = token.label?.takeIf { it != token.url }

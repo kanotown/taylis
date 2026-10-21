@@ -228,6 +228,9 @@ class SyncEngine(
     /** M66: the AI status (which bots are AI, whether summaries may be asked for) and the open summary (docs/AI.md §5). */
     val ai = AiHub(api as? AiApi, scope)
 
+    /** M166 (docs/DRIVE.md §14, §26): 「ドライブ」 — whether the server has it, its locations, the /d/ cards, the open folder's signals. */
+    val drive = DriveHub(api as? DriveApi, scope, isGuest = { store.me?.role == "guest" })
+
     init {
         wiki.restore() // M122: the tree kept on this device shows until the server answers
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
@@ -504,6 +507,7 @@ class SyncEngine(
         calendar.stop()
         tasks.stop()
         ai.stop()
+        drive.stop()
         cancelReconnect()
         stopHeartbeat()
         threadRefresh?.cancel()
@@ -612,6 +616,7 @@ class SyncEngine(
         calendar.online() // M52: the calendar's ranges on screen and the counts read again (CALENDAR.md §5)
         tasks.online() // M56: the boards, 「自分のタスク」 and the due ranges on screen read again (SYNC_PROTOCOL.md §16)
         ai.online() // M66: the AI status, and the open summary's run read again (docs/AI.md §5)
+        drive.online() // M166: the locations again, the open folder reads again (DRIVE.md §14: events may have been lost)
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         currentChannelId?.let { current -> scope.launch { openChannel(current) } }
@@ -950,6 +955,12 @@ class SyncEngine(
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
             // M122 (SYNC_PROTOCOL.md §17): the tree's feed moved (what changed differs per person: read it), a page changed.
+            // M166 (DRIVE.md §14): a signal without names; the open folder reads again if it is one of them.
+            "drive.changed" -> drive.applyChanged(
+                (frame.data["folder_ids"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
+                frame.data["seq"]?.jsonPrimitive?.longOrNull,
+            )
+            "drive.location.updated" -> drive.reloadLocations()
             "wiki.changed" -> frame.data["seq"]?.jsonPrimitive?.longOrNull?.let { wiki.changed(it) }
             "wiki.page.updated" -> {
                 val page = frame.data["page"]?.let { runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.PageItem.serializer(), it) }.getOrNull() } ?: return
@@ -1067,6 +1078,7 @@ class SyncEngine(
                 store.updateChannel(id) { it.copy(channel = it.channel.copy(archived = true)) }
             }
             "channel.member_added" -> frame.data.str("channel_id")?.let { id ->
+                if (frame.data.str("user_id") == store.me?.id) drive.reloadLocations() // M166: a channel's drive is mine now
                 // M11h: keep the intro's member count current; the member list itself is loaded on demand.
                 store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = it + 1)) } ?: state }
                 store.membersChanged(id)
@@ -1076,6 +1088,7 @@ class SyncEngine(
                 val id = frame.data.str("channel_id") ?: return
                 if (frame.data.str("user_id") == me.id) {
                     dropChannel(id)
+                    drive.reloadLocations() // M166: its drive is not mine any more
                 } else {
                     store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = maxOf(0, it - 1))) } ?: state }
                     store.membersChanged(id)
@@ -1093,7 +1106,7 @@ class SyncEngine(
                 val me = store.me
                 if (frame.event == "user.updated" && me != null && user.id == me.id && isNewer(user.updatedAt, me.updatedAt)) post { refreshMe() }
                 // M122: my role may have changed (a guest reads only what is shared by name): the tree again.
-                if (frame.event == "user.updated" && me != null && user.id == me.id && user.role != me.role) wiki.reloadTree()
+                if (frame.event == "user.updated" && me != null && user.id == me.id && user.role != me.role) { wiki.reloadTree(); drive.reloadLocations() }
             }
             "read.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return

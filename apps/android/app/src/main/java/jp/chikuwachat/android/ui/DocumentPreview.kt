@@ -248,7 +248,11 @@ private class PdfPages(file: File) : Closeable {
  * springs back ([PullToClose]); the back gesture and TalkBack's dismiss close it too.
  */
 @Composable
-internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit) {
+internal fun PdfPreviewViewer(
+    attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit,
+    /** M166 (docs/DRIVE.md §26): a drive file goes to another app the drive's way (streamed to disk); null: the attachment's. */
+    onOpenElsewhere: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     var pages by remember(attachment.id) { mutableStateOf<PdfPages?>(null) }
     var error by remember(attachment.id) { mutableStateOf<String?>(null) }
@@ -302,7 +306,7 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
                         val count = current?.sizes?.size ?: attachment.preview?.pages
                         DocumentCards.pagesLabel(count)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
-                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
+                    IconButton(onClick = { onOpenElsewhere?.invoke() ?: controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
                 Box(
                     Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)
