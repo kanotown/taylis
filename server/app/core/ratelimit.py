@@ -22,6 +22,14 @@ class RateLimiter:
             self._prune(now)
         return allowed
 
+    def has_token(self, key: str, now: float | None = None) -> bool:
+        """Whether try_acquire would succeed now, without taking a token (M163: a share link's
+        caller who already spent its tokens on unknown links is refused before any lookup, so
+        a 429 never tells a valid token from an invalid one)."""
+        now = time.monotonic() if now is None else now
+        tokens, last = self._buckets.get(key, (self.capacity, now))
+        return min(self.capacity, tokens + (now - last) * self.rate) >= 1.0
+
     def retry_after_seconds(self, key: str, now: float | None = None) -> int:
         now = time.monotonic() if now is None else now
         tokens, last = self._buckets.get(key, (self.capacity, now))

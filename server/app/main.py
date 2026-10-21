@@ -60,7 +60,10 @@ from app.modules.drive import access as drive_access
 from app.modules.drive import events as drive_events
 from app.modules.drive import housekeeping as drive_housekeeping
 from app.modules.drive import media as drive_media
+from app.modules.drive import public as drive_public
 from app.modules.drive.router import router as drive_router
+from app.modules.drive.share_router import public_router as drive_public_router
+from app.modules.drive.share_router import router as drive_share_router
 from app.modules.drive.uploads import DriveRuntime
 from app.modules.emoji import presets as emoji_presets
 from app.modules.emoji.router import router as emoji_router
@@ -644,6 +647,8 @@ def build_api_router() -> APIRouter:
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(drive_router)
+    api.include_router(drive_share_router)
+    api.include_router(drive_public_router)
     api.include_router(search_router)
     api.include_router(ai_router)
     api.include_router(analytics_router)
@@ -761,6 +766,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # M160 (docs/DRIVE.md §6.2): upload sessions and parts, per person per minute.
         "drive_upload": RateLimiter(settings.drive_upload_rate_limit_per_user),
         "drive_part": RateLimiter(settings.drive_part_rate_limit_per_user),
+        # M163 (docs/DRIVE.md §9.4): the share links' public side and new links.
+        **drive_public.limiters(settings),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
@@ -773,6 +780,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.drive = DriveRuntime(
         app.state.db.session_factory, preview_wake=app.state.preview_wake
     )
+    # M163 (§9.2): the share links' resumed downloads that are not counted again.
+    app.state.share_resumes = drive_public.ShareResumes()
     app.state.link_fetcher = build_fetcher(
         timeout_seconds=settings.link_preview_timeout_seconds,
         deadline_seconds=settings.link_preview_deadline_seconds,
@@ -843,6 +852,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_attempts=settings.outbox_max_attempts,
     )
 
+    # M163 (docs/DRIVE.md §9.1): noindex, no-referrer, nosniff, no framing, no-store on every
+    # answer of the share links' public API (errors too).
+    app.add_middleware(drive_public.ShareHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
     if settings.cors_origins:
         app.add_middleware(

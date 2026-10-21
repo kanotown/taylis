@@ -14,6 +14,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     LargeBinary,
@@ -23,6 +24,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -263,4 +265,85 @@ class DriveUploadPart(Base):
     etag: Mapped[str] = mapped_column(Text)
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+
+class DriveShareLink(Base):
+    """An external share link (§9, phase D4): a file, or a folder and everything under it, for
+    anyone holding the token. Only the token's SHA-256 is kept (the token is shown once, when the
+    link is made); the password is Argon2id. Whether it works is decided on every request
+    (app.modules.drive.shares.link_state, §9.2)."""
+
+    __tablename__ = "drive_share_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("drive_items.id", ondelete="CASCADE"))
+    # The item's location when the link was made: a link whose item moved to another location
+    # stops (paused), as the new location's switch and people never allowed it.
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("drive_locations.id", ondelete="CASCADE")
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    # +1 on every change of the password: the unlock cookies made before stop working.
+    password_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    max_downloads: Mapped[int | None] = mapped_column(Integer)
+    download_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    note: Mapped[str | None] = mapped_column(String(80))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("max_downloads IS NULL OR max_downloads > 0", name="max_downloads"),
+        CheckConstraint("download_count >= 0", name="download_count"),
+        Index(
+            "drive_share_links_item_idx",
+            "item_id",
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+        Index(
+            "drive_share_links_location_idx",
+            "location_id",
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+        Index("drive_share_links_created_by_idx", "created_by"),
+    )
+
+
+SHARE_EVENT_KINDS = ("open", "download", "zip", "password_failed", "refused")
+
+
+class DriveShareEvent(Base):
+    """How the public side used a link (§9.5), kept DRIVE_SHARE_EVENTS_DAYS (180)."""
+
+    __tablename__ = "drive_share_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    link_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("drive_share_links.id", ondelete="CASCADE")
+    )
+    item_id: Mapped[uuid.UUID | None] = mapped_column()
+    kind: Mapped[str] = mapped_column(String(16))
+    bytes: Mapped[int | None] = mapped_column(BigInteger)
+    ip: Mapped[str | None] = mapped_column(INET)
+    user_agent: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('open', 'download', 'zip', 'password_failed', 'refused')", name="kind_values"
+        ),
+        Index("drive_share_events_link_idx", "link_id", "created_at"),
+        Index("drive_share_events_created_idx", "created_at"),
     )
