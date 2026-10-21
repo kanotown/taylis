@@ -12,7 +12,7 @@ import { holdUntilFrame, keepLineInView, settle, textAreaCaretLine } from "./com
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, linkFromPaste, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { AiBadge } from "./ai";
-import { aiBotIds, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
+import { aiBotIds, conversationContext, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
 import { canPostTopLevel } from "./channels";
 import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
@@ -132,7 +132,7 @@ export function Composer({
   const listKey = query ? `@${query.start}:${query.query}` : emojiAt ? `:${emojiAt.start}:${emojiAt.query}` : `/${text}`;
   const [dismissed, setDismissed] = useState<string | null>(null);
   const listShown = dismissed !== listKey;
-  const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 6, aiBotIds(store)) : [];
+  const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store), conversationContext(store, channel.id, parentId)) : [];
   const emojiHits = emojiAt && listShown ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
   // M30: the templates in the order they are offered here (a times channel puts `suggest_in = times` first).

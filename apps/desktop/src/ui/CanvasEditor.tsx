@@ -24,7 +24,7 @@ import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
 import { continueStructure, type EditState, indentListLine, insertLink, linkFromPaste, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
-import { aiBotIds, decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
+import { aiBotIds, decodeMentions, documentContext, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, modKey } from "./primitives";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
 import { t } from "../i18n";
@@ -350,7 +350,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   const query = linkQ || slashQ ? null : mentionQuery(text, caret);
   const listKey = query ? `${query.start}:${query.query}` : linkQ ? linkListKey : slashListKey;
   const candidates: MentionCandidate[] = query && dismissed !== listKey
-    ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store)).filter((c) => c.kind !== "all") // `<!channel>` notifies nobody in a canvas
+    ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store), documentContext(store, saver.channelId)).filter((c) => c.kind !== "all") // `<!channel>` notifies nobody in a canvas
     : [];
   const listLength = pageCandidates.length || slashCandidates.length || candidates.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));

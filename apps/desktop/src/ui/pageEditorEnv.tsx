@@ -21,6 +21,8 @@ export interface PageEditorPeople {
   groups: ReadonlyMap<string, GroupOut>;
   /** The AI agents' bot users once known (mentions.ts aiBotIds), else null. */
   aiBotIds: ReadonlySet<string> | null;
+  /** MOBILE_UI.md §23: me, offered last (unknown on the phones' bundled editor: native does not say). */
+  me?: string | null;
 }
 
 export interface PageEditorEnv {
