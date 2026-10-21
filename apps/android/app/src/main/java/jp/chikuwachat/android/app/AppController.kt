@@ -282,7 +282,17 @@ class AppController(private val app: Application) {
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
     val serverBase: String? get() = api?.baseUrl
-    data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>) {
+    /**
+     * [threadOnly]: shown in its open thread only (a link between messages of one thread, PermalinkJump.Thread): the
+     * conversation under it keeps its rows as they are. [serial]: new for every reveal, so a reveal of the message already
+     * in focus (the same link tapped again after scrolling away) scrolls to it again; [request] is what the panes watch.
+     */
+    data class MessageFocus(
+        val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>,
+        val threadOnly: Boolean = false, val serial: Int = 0,
+    ) {
+        val request: String get() = "$messageId:$serial"
+
         /**
          * The focus after a top-level post of mine went into `postedIn` (SyncEngine.onPostedHere): a conversation showing
          * a message's surroundings (a pin, a search hit, a permalink) leaves them for its newest rows, as Slack does. The
@@ -292,6 +302,8 @@ class AppController(private val app: Application) {
         fun afterPost(postedIn: String): MessageFocus? = takeIf { channelId != postedIn }
     }
     var messageFocus by mutableStateOf<MessageFocus?>(null)
+    private var focusSerial = 0
+    private fun nextFocusSerial(): Int = ++focusSerial
     /**
      * The conversation whose message focus a post sent from this device just left (postedFromHere): ChannelPane lands at
      * its newest row, where the post is, instead of where a fresh open would (the unread divider). Taken once.
@@ -333,8 +345,25 @@ class AppController(private val app: Application) {
                     store.dropDeletedRoot(channelId, parent)
                 }
             }
-            messageFocus = MessageFocus(channelId, messageId, parentId, context.map { MessageState.from(it) })
+            messageFocus = MessageFocus(channelId, messageId, parentId, context.map { MessageState.from(it) }, serial = nextFocusSerial())
             true
+        } catch (e: Exception) { report(e); false }
+    }
+
+    /**
+     * A link to a message of the thread it was tapped in (PermalinkJump.Thread): the thread's replies fetched again (a
+     * reply newer than the ones held), then the message focused there only. Nothing navigates: the open thread scrolls
+     * to it (ThreadPane).
+     */
+    suspend fun revealInThread(messageId: String, channelId: String, parentId: String): Boolean {
+        val api = api ?: return false
+        return try {
+            api.replies(parentId).forEach { store.upsertMessage(it) }
+            messageFocus = MessageFocus(channelId, messageId, parentId, emptyList(), threadOnly = true, serial = nextFocusSerial())
+            true
+        } catch (e: ApiException.Api) {
+            if (e.isRootGone()) store.dropDeletedRoot(channelId, parentId) else report(e)
+            false
         } catch (e: Exception) { report(e); false }
     }
     /** What the login form starts from: the workspace it signs in to, else the last server and user. */
@@ -2084,10 +2113,18 @@ class AppController(private val app: Application) {
      * A permalink tapped in a body: fetch the message (membership is checked there) and hand it to the screen. M39: also
      * a reaction's notification. Whether it will show.
      */
-    suspend fun openPermalink(messageId: String): Boolean {
+    suspend fun openPermalink(messageId: String, from: jp.chikuwachat.android.ui.MessageLinkContext? = null): Boolean {
         val api = api ?: return false
         return try {
             val message = api.message(messageId)
+            // A message of the thread or timeline the link was tapped in is scrolled to where it is (PermalinkJump; user
+            // report 2026-10-21): landing the conversation again left an open thread where it was, already positioned.
+            val member = store.channel(message.channelId)?.isMember == true
+            when (val jump = jp.chikuwachat.android.ui.PermalinkJump.of(message.channelId, message.id, message.parentId, from)) {
+                is jp.chikuwachat.android.ui.PermalinkJump.Thread -> if (member) return revealInThread(message.id, message.channelId, jump.parentId)
+                jp.chikuwachat.android.ui.PermalinkJump.Timeline -> if (member) return revealMessage(message.id, message.channelId, null)
+                jp.chikuwachat.android.ui.PermalinkJump.Open -> Unit
+            }
             revealMessage(message).also { if (it) pendingReveal = message }
         } catch (e: Exception) { report(e); false }
     }
