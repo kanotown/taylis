@@ -180,6 +180,8 @@ final class SyncEngine {
     @ObservationIgnored private(set) var tasks: TaskHub!
     /// M66: whether the server has AI, its bots, and the summary sheet's run (docs/AI.md §5).
     @ObservationIgnored private(set) var ai: AiHub!
+    /// M166 (docs/DRIVE.md §14, §26): whether the server has the drive, the drives and the open folders' signals.
+    @ObservationIgnored private(set) var drive: DriveHub!
 
     /// error frame codes that mean the auth frame was refused (a close 4001 follows).
     private static let authRefusals: Set<String> = ["auth_required", "token_expired", "invalid_token", "session_revoked", "session_expired",
@@ -206,6 +208,7 @@ final class SyncEngine {
         tasks = TaskHub(api: api as? TaskApi, me: { [weak store] in store?.me?.id })
         tasks.onNotice = { [weak self] notice in self?.onTaskNotice?(notice) }
         ai = AiHub(api: api as? AiApi)
+        drive = DriveHub(api: api as? DriveApi)
         store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
         store.onStalePreview = { [weak self] channelId in Task { await self?.refreshLastMessage(channelId) } }
     }
@@ -683,6 +686,7 @@ final class SyncEngine {
         if store.actions != nil, !store.actionStatuses.isEmpty { Task { try? await self.loadActionStatuses() } }
         let wikiFeed = bootstrap.wiki
         Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
+        Task { await self.drive.bootstrap() }  // M166: the drives again; open folders read again after a gap
         onBadge?(store.badgeCount)
         onWidgetData?()
     }
@@ -693,6 +697,7 @@ final class SyncEngine {
         if currentChannelId == channelId { currentChannelId = nil }
         canvases.removeChannel(channelId)
         calendar.removeChannel(channelId)
+        if drive.locations?.contains(where: { $0.channelId == channelId }) == true { Task { await self.drive.loadLocations() } }  // M166
         tasks.removeChannel(channelId)
         forgetThreads(of: channelId)
         unreadHold[channelId] = nil
@@ -770,6 +775,8 @@ final class SyncEngine {
                 store.updateChannel(id) { state in if let count = state.channel.memberCount { state.channel.memberCount = count + 1 } }
                 store.memberListVersion[id, default: 0] += 1
             }
+            // M166: I joined: that channel's drive may be in my list now.
+            if let me = store.me, frame.data["user_id"]?.stringValue == me.id { Task { await self.drive.loadLocations() } }
         case "channel.member_removed":
             if let me = store.me, frame.data["user_id"]?.stringValue == me.id, let id = frame.data["channel_id"]?.stringValue {
                 store.removeChannel(id)
@@ -791,6 +798,8 @@ final class SyncEngine {
             // the event (it is everyone's), so read them again.
             // M122: my role changed (a guest reads only what is shared with them by name): the tree again.
             if let me = store.me, user.id == me.id, user.role != me.role, wiki.tree != nil { Task { await self.wiki.loadTree() } }
+            // M166: a guest has no 研究室ドライブ nor マイドライブ (DRIVE.md §3.3): the drives again.
+            if let me = store.me, user.id == me.id, user.role != me.role { Task { await self.drive.loadLocations() } }
             if frame.event == "user.updated", let me = store.me, user.id == me.id, isNewer(user.updatedAt, than: me.updatedAt) {
                 Task { await refreshMe() }
             }
@@ -864,6 +873,8 @@ final class SyncEngine {
         case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done", "task.columns.updated":  // M56 (TASKS.md §4), L9, M81
             tasks.applyEvent(frame.event, frame.data)
             onWidgetData?()
+        case "drive.changed", "drive.location.updated":  // M166 (docs/DRIVE.md §14): read the open folders again
+            drive.applyEvent(frame.event, frame.data)
         case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state; M71: my question's
             ai.applyEvent(frame.data)
         case "sidebar.updated":

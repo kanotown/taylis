@@ -199,6 +199,13 @@ struct MainView: View {
         .sheet(item: $controller.pageLink) { target in
             PageLinkSheet(controller: controller, pageId: target.id)
         }
+        // M166: a drive link tapped in a message: the folder or the file's details; a file's viewer straight away.
+        .sheet(item: $controller.driveLink) { target in
+            DriveLinkSheet(controller: controller, itemId: target.id)
+        }
+        .fullScreenCover(item: $controller.driveViewer) { viewing in
+            DriveViewerView(viewing: viewing, controller: controller)
+        }
         // M95: a workflow's form (WORKFLOWS.md §8 4.), from wherever it was opened.
         .fullScreenCover(item: $controller.workflowRun) { target in
             WorkflowFormView(controller: controller, target: target)
@@ -464,6 +471,7 @@ struct MainView: View {
         case .list(let id)?: id
         case .thread(let id, _)?: id
         case .page?: DocsView.selectionId
+        case .drive?: DriveLocationsView.selectionId
         case nil: nil
         }
     }
@@ -715,6 +723,10 @@ struct MainView: View {
             WikiPageScreen(controller: controller, pageId: pageId, onOpenPage: { nav.openPage($0, on: tab) })
                 .id(pageId)
                 .modifier(HidesTabBar())
+        case .drive(let folderId):
+            // M166: a drive's folder; its folders (and the steps of its path) go on this stack.
+            DriveFolderView(controller: controller, folderId: folderId, onOpenFolder: { nav.openDriveFolder($0, on: tab) })
+                .id(folderId)
         case .thread(let channelId, let parentId):
             // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation. From the
             // activity it is pushed alone (MainNavigation.showFromActivity): Back goes to the activity.
@@ -803,6 +815,9 @@ struct MainView: View {
             }
         case DraftsView.selectionId:
             DraftsView(controller: controller) { channelId, parentId in show(channelId, parentId: parentId, on: tab) }
+        case DriveLocationsView.selectionId:
+            // M166 (docs/DRIVE.md §26): the drives; a drive's top folder goes on this stack.
+            DriveLocationsView(controller: controller, onOpenFolder: { nav.openDriveFolder($0, on: tab) })
         case DocsView.selectionId:
             // M122: the wiki's tree; a page goes on this stack.
             DocsView(controller: controller, onOpen: { nav.openPage($0, on: tab) }, onSearch: { params in sheet = .pageSearch(params) })
@@ -829,7 +844,7 @@ private extension String {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
          TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId,
-         DocsView.selectionId, AttendanceView.selectionId, ActionsView.selectionId].contains(self)
+         DocsView.selectionId, AttendanceView.selectionId, ActionsView.selectionId, DriveLocationsView.selectionId].contains(self)
     }
 }
 

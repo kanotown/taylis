@@ -147,6 +147,8 @@ struct VideoViewer: View {
     let url: URL
     /// M82: the tile's poster, over the player until its first frame is ready.
     var poster: UIImage? = nil
+    /// M166: false for a video streamed from the drive (its URL is a ticket, not a file to hand out).
+    var shares = true
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 0…1 while the video is dragged away: the header goes first.
@@ -172,8 +174,10 @@ struct VideoViewer: View {
         HStack {
             Button("閉じる") { dismiss() }
             Spacer()
-            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                .accessibilityLabel("共有")
+            if shares {
+                ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                    .accessibilityLabel("共有")
+            }
         }
         .tint(.white)
         .overlay {

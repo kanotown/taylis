@@ -270,6 +270,7 @@ struct ChannelListView: View {
                                      controller.isGuest ? nil : AttendanceRules.inRoomCount(board, users: store.users.values)
                                  },
                                  actions: ActionRules.visible(store.actions, role: (store.me ?? controller.me)?.role),
+                                 drive: controller.drive?.available == true,
                                  timesUnread: TimesFeedList.hasUnread(store.channels.values))
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
