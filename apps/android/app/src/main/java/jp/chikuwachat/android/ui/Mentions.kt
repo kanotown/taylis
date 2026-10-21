@@ -95,18 +95,57 @@ object Mentions {
     private fun MessageState.spoken() = Spoken(senderId, deleted, type)
 
     /**
-     * The composer's context: the loaded messages' senders (in a thread, its own first) and a DM's participants. A
-     * channel's members are not held on the device (GET /channels/{id}/members is read by the member screens only), so
-     * a channel has no members tier.
+     * The composer's context: the loaded messages' senders (in a thread, its own first) and the members: a DM's
+     * participants, a channel's as read for the @ list ([Members], none until they come).
      */
     fun context(store: Store, channelId: String, parentId: String?): Context {
         val thread = if (parentId == null) emptyList() else listOfNotNull(store.message(channelId, parentId)?.spoken()) + store.replies(channelId, parentId).map { it.spoken() }
         return documentContext(store, channelId).copy(recent = recentSpeakers(store.messages(channelId).map { it.spoken() }, thread))
     }
 
-    /** A canvas (MOBILE_UI.md §23): no conversation, only the participants of the DM it belongs to, and me last. */
-    fun documentContext(store: Store, channelId: String?): Context =
-        Context(members = channelId?.let { store.channel(it)?.channel?.dmUserIds }.orEmpty(), me = store.me?.id)
+    /** A canvas (MOBILE_UI.md §23): no conversation, only the members of its channel or DM, and me last. */
+    fun documentContext(store: Store, channelId: String?): Context {
+        val members = channelId?.let { store.channel(it)?.channel?.dmUserIds ?: store.mentionMembers.ids(it) }.orEmpty()
+        return Context(members = members, me = store.me?.id)
+    }
+
+    /** A read older than this is done again (a missed event); a failed one is tried again after [MEMBERS_RETRY_MS]. */
+    const val MEMBERS_MAX_AGE_MS = 5 * 60_000L
+    const val MEMBERS_RETRY_MS = 30_000L
+
+    /**
+     * MOBILE_UI.md §23: channels' member ids for the @ list's members tier (GET /channels/{id}/members the first time the
+     * list opens there), in memory only. Read again when the members changed (the store's member epoch: added, removed,
+     * a role changed) or after [MEMBERS_MAX_AGE_MS]. A failed read keeps what was there (none: the list ranks as without
+     * members) and is not shown: the list works anyway. Used on the main thread.
+     */
+    class Members(private val onChange: () -> Unit) {
+        private data class Entry(val ids: List<String>?, val epoch: Int, val at: Long, val failed: Boolean = false, val loading: Boolean = false)
+        private val entries = HashMap<String, Entry>()
+
+        /** The ids last read (also while a newer read runs); null while none was read. */
+        fun ids(channelId: String): List<String>? = entries[channelId]?.ids
+
+        /** Reads the members unless a fresh read for this epoch is held or running. */
+        suspend fun read(channelId: String, epoch: Int, now: Long = System.currentTimeMillis(), load: suspend () -> Result<List<String>>) {
+            val held = entries[channelId]
+            if (held != null && (held.loading || (held.epoch == epoch && now - held.at < if (held.failed) MEMBERS_RETRY_MS else MEMBERS_MAX_AGE_MS))) return
+            val started = Entry(held?.ids, epoch, now, loading = true)
+            entries[channelId] = started
+            val result = load()
+            if (entries[channelId] !== started) return
+            entries[channelId] = result.fold({ started.copy(ids = it, loading = false) }, { started.copy(failed = true, loading = false) })
+            if (result.isSuccess) onChange()
+        }
+    }
+
+    /** The @ list opened in this channel (or for its canvas): only public and private channels (a DM has its participants). */
+    suspend fun readMembers(store: Store, channelId: String?, now: Long = System.currentTimeMillis(), load: suspend (String) -> Result<List<String>>) {
+        val id = channelId ?: return
+        val type = store.channel(id)?.channel?.type
+        if (type != "public" && type != "private") return
+        store.mentionMembers.read(id, store.memberEpoch(id), now) { load(id) }
+    }
 
     /**
      * `aiBotIds`: as [suggests]; the AI bots are marked `ai`. People are ranked by [context] (MOBILE_UI.md §23): a prefix

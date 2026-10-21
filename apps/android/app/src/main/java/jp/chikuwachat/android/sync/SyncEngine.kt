@@ -1069,6 +1069,7 @@ class SyncEngine(
             "channel.member_added" -> frame.data.str("channel_id")?.let { id ->
                 // M11h: keep the intro's member count current; the member list itself is loaded on demand.
                 store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = it + 1)) } ?: state }
+                store.membersChanged(id)
             }
             "channel.member_removed" -> {
                 val me = store.me ?: return
@@ -1077,6 +1078,7 @@ class SyncEngine(
                     dropChannel(id)
                 } else {
                     store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = maxOf(0, it - 1))) } ?: state }
+                    store.membersChanged(id)
                 }
             }
             "channel.member_updated" -> {
