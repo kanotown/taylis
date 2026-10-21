@@ -319,6 +319,20 @@ async def test_a_run_again_adds_nothing_and_a_changed_file_becomes_a_version(
     assert await counts(db) == after_first
     assert len(store(app).objects) == objects
     assert again.counts["files unchanged"] == 6 and again.counts["files new"] == 0
+    # The comparison after a move: everything the mapping covers is there, unchanged.
+    assert again.counts["nextcloud: files in the mapping"] == 6
+    imported_bytes = sum(
+        (root / p.lstrip("/")).stat().st_size
+        for p in (
+            "/研究室共有/論文/2024/草稿 v1.pdf",
+            "/研究室共有/論文/2024/図/fig1.png",
+            "/研究室共有/readme.txt",
+            "/研究室共有/教員/会議/議事録.docx",
+            "/M2ゼミ/第1回/資料.pptx",
+            "/kano/個人/メモ.md",
+        )
+    )
+    assert again.bytes["nextcloud: files in the mapping"] == imported_bytes == after_first[3]
     assert again.counts["folders unchanged"] == 6
     assert again.counts.get("done: files", 0) == 0
 
