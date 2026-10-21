@@ -56,13 +56,18 @@ struct ThreadView: View {
     /// The landing on the first unread reply, in a task of its own (ChannelView.landingTask: a `.task` cancelled by the
     /// navigation's disappear and reappear left the landing unfinished).
     @State private var landingTask: Task<Void, Never>?
+    /// The scroll to a message linked from this thread (jumpToFocus).
+    @State private var jumpTask: Task<Void, Never>?
     /// THREADS.md: the root deleted while the thread is shown closes it; opened already deleted, it says so.
     @State private var rootWatch = ThreadRootWatch()
     private var rootDeleted: Bool { controller.store.deletedThreadRoots.contains(parentId) }
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
     /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
     private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
+    /// The reply (or the parent) to show: a search hit, a permalink, a link tapped in this thread (PermalinkJump.thread).
     private var focusReplyId: String? { controller.messageFocus.flatMap { $0.parentId == parentId ? $0.messageId : nil } }
+    /// Changes with every reveal into this thread, also of the message already in focus (a link tapped again).
+    private var focusRequest: String? { controller.messageFocus.flatMap { $0.parentId == parentId ? $0.request : nil } }
     private var parent: MessageState? {
         controller.store.message(channelId, id: parentId)
             ?? entry.map { MessageState($0.parent) }
@@ -172,6 +177,9 @@ struct ThreadView: View {
                 }
                 .onChange(of: anchor.landing, initial: true) { _, landing in startLanding(landing, proxy) }
                 .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } }
+                // A link in this thread to another of its messages (PermalinkJump.thread), or a reveal into it while it is
+                // open: the thread is placed already, so `position` does nothing more; it scrolls to the message here.
+                .onChange(of: focusRequest) { _, request in if request != nil { jumpToFocus(proxy) } }
             }
             if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
                 TypingLine(controller: controller, channelId: channelId, parentId: parentId)
@@ -305,12 +313,14 @@ struct ThreadView: View {
                 rows()
             }
             .scrollTargetLayout()
+            .environment(\.messageLinkContext, .thread(channelId: channelId, parentId: parentId))
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 NewestEdgeMarker(placed: ("threadViewport", viewportHeight)) { atBottom = $0 }.id(UpsideDown.newest)
                 rows()
             }
             .scrollTargetLayout()
+            .environment(\.messageLinkContext, .thread(channelId: channelId, parentId: parentId))
         }
     }
 
@@ -345,6 +355,11 @@ struct ThreadView: View {
             VStack(alignment: .leading, spacing: Self.rowGap) {
                 MessageRow(message: parent, controller: controller, margin: Self.margin, highlighted: highlighted(parent),
                            present: { messageSheet = $0 })
+                    .background(GeometryReader { geometry in
+                        // Where the parent is, for a link to it (jumpToFocus); the read rules look at the replies only.
+                        Color.clear.preference(key: VisibleReplyFrames.self,
+                                               value: [parent.id: geometry.frame(in: .named("threadViewport"))])
+                    })
                 Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
                 Divider().padding(.horizontal, Self.margin)
@@ -360,6 +375,7 @@ struct ThreadView: View {
                 }
             }
             .upsideDown()
+            .id(Self.parentRowId)
         } else {
             Text("メッセージが見つかりません").foregroundStyle(.secondary).padding(.horizontal, Self.margin).upsideDown()
         }
@@ -424,6 +440,39 @@ struct ThreadView: View {
                 guard let rowId, visibleFrames[rowId].map({ $0.maxY > 0 && $0.minY < viewportHeight }) != true else { return }
                 proxy.scrollTo(key, anchor: .center)
             }
+        }
+    }
+
+    /// The scroll target of the parent's block (the parent, the reply count) at the far end.
+    private static let parentRowId = "thread-parent"
+
+    /// The focus changed while the thread is placed: scrolls to its reply (or the parent) and ends the landing on the
+    /// first unread reply if one is under way (the reader asked for this message). Before the thread is placed,
+    /// `position` takes the focus itself. The highlight is the row's (MessageRow, the focus).
+    private func jumpToFocus(_ proxy: ScrollViewProxy) {
+        guard positioned, let id = focusReplyId else { return }
+        let key: String
+        if id == parentId {
+            key = Self.parentRowId
+        } else if let row = replies.first(where: { $0.id == id }) {
+            key = row.rowKey
+        } else {
+            return
+        }
+        landingTask?.cancel()
+        landingTask = nil
+        if anchor.landing != nil { anchor.landed() }
+        jumpTask?.cancel()
+        jumpTask = Task {
+            // Again while LazyVStack's estimates (a long thread) leave it off screen, as the landing does. The kept row is
+            // let go: kept, the list went back to it after a scroll that ended at the newest edge (UpsideDown.scroll).
+            for _ in 0..<4 {
+                UpsideDown.scroll(to: key, anchor: .center, $keptRowId, proxy)
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if Task.isCancelled { return }
+                if visibleFrames[id].map({ $0.maxY > 0 && $0.minY < viewportHeight }) == true { break }
+            }
+            markRead()
         }
     }
 
