@@ -502,9 +502,20 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - **ダウンロード**：`GET /drive/items/{id}/content` は今の名前（Windows で使えない文字は `_`）で常に `attachment`（`?inline=1` は画像だけ）、
   `nosniff`、`Content-Security-Policy: sandbox`、`Cache-Control: private`。1 つの範囲の Range に 206（複数の範囲は 200 で全体、外れは 416）。
   添付の `/content` も同じ関数で Range に対応した（ETag は添付の id）。
+- **ZIP**（M162、DRIVE.md §7.2・§22）：`POST /drive/zip` が読める項目だけ（ゴミ箱を除く）で中身を決め、1 回だけ・5 分のチケット
+  （32 バイトの乱数、プロセスのメモリに SHA-256 だけ）を返す。`GET /drive/zip/{ticket}` は認証なしで、始めるときに本人が有効で
+  頼んだ項目をまだ読めることを確かめる。上限 10,000 件・20 GB（`413 drive_zip_too_large`）、同時に 1 人 2 本・全体 4 本（429）。
+  ZIP の中の名前は Windows で使えない文字を `_` にし、パスは項目の名前からだけ作る（`..` や `/` は名前に入らない、§4.3）。
+  `attachment`・`nosniff`・`sandbox`・`no-store`。トークンはアクセスログで伏せる。
+- **版とコピー**（M162）：版を戻す・コピーはオブジェクトをストアの中で写す（版どうし・項目どうしでオブジェクトを共有しない）。
+  戻すのは書ける人、古い版の削除は完全削除の人。コピーは元を読めて先に書ける人だけ、1 回 500 件・1 GB まで
+  （`413 drive_copy_too_large`）。どちらも場所と全体の容量を確かめる。
 - **容量**：場所ごとの上限（`drive_locations.quota_bytes`、マイドライブの既定 `DRIVE_USER_DEFAULT_QUOTA_BYTES`）とドライブ全体の上限
   （`DRIVE_TOTAL_QUOTA_BYTES`）。セッションの作成のときに場所の行を `FOR UPDATE`（全体は advisory lock）で取り、使用量 + 進行中の
   セッションの合計 + 今回で確かめる（同時の予約でも超えない）。完了のときにもう一度確かめる。チャットの添付は数えない。
+  M162：コピーと版を戻すも同じ（写す前に一度、置くときに場所の行のロックの中でもう一度）。上限は admin が
+  `PATCH /admin/drive/locations/{id}` で変える（監査 `drive.quota_changed`）。使用量の画面（`GET /admin/drive/usage`）は大きさと
+  件数と場所の名前だけで、中身（項目の名前）は出さない。
 - **後片付け**：期限切れのセッション（最後の部品から 24 時間）は S3 のマルチパートを取りやめ、組み立て済みで置けなかったオブジェクトも
   消す。行の無いマルチパートは 1 日 1 回 `ListMultipartUploads` で拾って取りやめる。ゴミ箱は 30 日で完全削除（版の添付を `deleted`、
   バイト列は今の GC が消す、監査 `drive.purge`）。匿名化した人のマイドライブはゴミ箱を経ずに消す。
@@ -522,7 +533,7 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 | --- | --- |
 | メッセージ本文 | 20,000 文字。制御文字 (改行・タブ以外) は除去。メンショントークンの user_id は存在確認 |
 | 添付 | 1 メッセージ 10 件、1 キャンバス 100 件 (M42)、1 件 100 MB |
-| ドライブ（M160） | 1 ファイル 5 GiB（`DRIVE_MAX_FILE_BYTES`、`413 drive_file_too_large`）、部品 16 MiB（最後以外はちょうど、Caddy の枠は 17 MB）、名前 255 文字、深さ 32 段（`422 drive_depth_exceeded`）、1 フォルダ 10,000 件（`409 drive_folder_full`）、移動・ゴミ箱は 1 回 500 件、進行中のセッション 1 人 1,000 件（`409 drive_too_many_uploads`） |
+| ドライブ（M160） | 1 ファイル 5 GiB（`DRIVE_MAX_FILE_BYTES`、`413 drive_file_too_large`）、部品 16 MiB（最後以外はちょうど、Caddy の枠は 17 MB）、名前 255 文字、深さ 32 段（`422 drive_depth_exceeded`）、1 フォルダ 10,000 件（`409 drive_folder_full`）、移動・ゴミ箱は 1 回 500 件、進行中のセッション 1 人 1,000 件（`409 drive_too_many_uploads`）。M162：コピー 1 回 500 件・1 GB（`413 drive_copy_too_large`）、ZIP 1 つ 10,000 件・20 GB（`413 drive_zip_too_large`）、同時の ZIP 1 人 2 本・全体 4 本（429）、古い版は 10 版・置き換えから 30 日 |
 | プロフィール画像 | 5 MB、PNG / JPEG / GIF / WebP。正方形に切って 256px の PNG に作り直す (メタデータは残らない) |
 | チャンネル名 | 1〜80 文字。一意 (大文字小文字無視) |
 | ユーザー名 | 3〜32 文字、`[a-z0-9._-]`。予約語とグループ名は不可。本人の変更は 24 時間に 3 回 (M96、§2.9) |

@@ -1,6 +1,6 @@
 # DRIVE（ドライブ：研究室の Nextcloud の置き換え）
 
-2026-10-21 の設計。**段階 D1（M160、サーバの土台）と D2（M161、Desktop / Web の画面）を実装（2026-10-21、§20・§21）**、D3〜D7 は未実装。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
+2026-10-21 の設計。**段階 D1（M160、サーバの土台）・D2（M161、Desktop / Web の画面）・D3（M162、版・コピー・ZIP・容量）を実装（2026-10-21、§20〜§22）**、D4〜D7 は未実装。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
 
 利用者（研究室の教員）の要望：研究室で自前で動かしている Nextcloud を、Taylis の中の「ドライブ」に置き換えたい。
 
@@ -381,7 +381,7 @@ DriveLocationOut = {
 | POST | `/drive/folders` | `{parent_id, name, client_op_id}` または `{parent_id, path: "a/b/c", client_op_id}`（途中も作る、mkdir -p）→ 201 `ItemOut`。同じ `client_op_id` の再送は 200 で同じ行。同じ名前のフォルダがあれば `path` の形はそれを使い、`name` の形は 409 `drive_name_taken`（`details.existing_id`） |
 | PATCH | `/drive/items/{id}` | `{name}` → `ItemOut`。409 `drive_name_taken` |
 | POST | `/drive/items/move` | `{item_ids: [..≤500], target_folder_id, on_conflict: "fail" \| "rename"}` → `{results: [{id, ok, error?}]}`。場所をまたぐ移動は元と先の両方に書ける人だけ（容量も移る）。409 `drive_cycle` |
-| POST | `/drive/items/copy` | `{item_ids, target_folder_id, on_conflict, client_op_id}` → 202 `{job_id}` か 200 `{results}`（§10.3） |
+| POST | `/drive/items/copy` | `{item_ids, target_folder_id, on_conflict, client_op_id}` → 202 `{job_id}` か 200 `{results}`（§10.3）。**D3**：いつも 200 `{results: [{id, ok, error?, new_id}]}`、上限を超えれば 413（§22.2） |
 | POST | `/drive/items/trash` | `{item_ids}` → `{results}`。部分木ごと |
 | GET | `/drive/locations/{id}/trash?cursor=` | ゴミ箱のまとまりの根の一覧（入れた人・時刻・中の件数と大きさ） |
 | POST | `/drive/items/{id}/restore` | `{on_conflict: "rename" \| "fail"}` → `ItemOut`。元の親がゴミ箱か無ければ場所の根に戻す |
@@ -390,7 +390,7 @@ DriveLocationOut = {
 | POST | `/drive/items/{id}/versions/{version_id}/restore` | その版を新しい今の版として写す（§10.2）→ `ItemOut` |
 | DELETE | `/drive/items/{id}/versions/{version_id}` | 古い版を消す（今の版は 409 `drive_version_current`） |
 | GET | `/drive/items/{id}/content?version_id=` | ダウンロード（Range、§7.1） |
-| POST | `/drive/zip` | `{item_ids: [..]}` → `{url, expires_in, entries, size_bytes}`（§7.2）。`GET /drive/zip/{ticket}` が ZIP を流す |
+| POST | `/drive/zip` | `{item_ids: [..]}` → `{url, expires_in, entries, size_bytes}`（§7.2。**D3** で `zip_bytes`（ZIP の長さ）・`filename` を足した）。`GET /drive/zip/{ticket}` が ZIP を流す |
 
 ```json
 ItemOut = {
@@ -637,7 +637,8 @@ class BlobStore(Protocol):
   メモリに SHA-256 で持つ。単一プロセスなので足りる。再起動で消えれば端末は作り直す）を返す。`GET /drive/zip/{ticket}` が流す。
   チケットにするのは、Web がブラウザ自身のダウンロード（`<a href>` への移動）で受け取れるようにするため（`fetch` だと全体が
   メモリに載る）。
-- 形：**圧縮しない ZIP（stored）+ ZIP64**。標準の `zipfile` をスレッドで回し、書いたそばから応答に流す（一時ファイルを作らない）。
+- 形：**圧縮しない ZIP（stored）+ ZIP64**。書いたそばから応答に流す（一時ファイルを作らない）。**D3 の実装**：標準の `zipfile` ではなく
+  小さな自前の書き手（`drive/zipstream.py`、§22.2）。
   圧縮しないので CPU をほとんど使わず、各ファイルの大きさが分かっているので全体の `Content-Length` を先に出せる（ブラウザに
   進み具合と残り時間が出る）。PDF・画像・Office（中身はもう ZIP）は圧縮しても縮まない。
 - 名前は UTF-8 のフラグ付き（Windows 10 以降・macOS で日本語が化けない）、Windows で使えない文字は置き換え（§4.3）、
@@ -804,6 +805,7 @@ handle @driveparts {
 - 同じ名前で上書き（`on_conflict = version` か `target_item_id`）すると、新しい版を足して `current_version_id` を付け替える。
   前の版は残る。
 - 残すのは新しい順に `DRIVE_VERSIONS_MAX`（既定 10）版、かつ今の版でないものは `DRIVE_VERSIONS_DAYS`（既定 30 日）まで。
+  日数は**次の版に置き換えられた時刻**から数える（D3、§22.2。1 年前に上げて今日上書きしたファイルの前の版も 30 日残る）。
   超えた古い版は周期ジョブが消す（添付を `deleted`、`used_bytes` を引く）。今の版は消さない。
 - 版を戻すと、その版のオブジェクトをサーバの中で写して（`BlobStore.copy`、新しい添付）新しい版にする（`source = 'restore'`）。
   1 つの添付を 2 つの版が指すことを作らない（参照の数を持たずに済む。写す分の領域は要る）。
@@ -901,7 +903,7 @@ handle @driveparts {
   | type | audience | data | 端末 |
   | --- | --- | --- | --- |
   | `drive.changed` | 研究室ドライブ：`all`（ゲストにも届くが id と番号だけ）／チャンネル：`channel`（今のメンバー）／マイドライブ：`user` | `{location_id, folder_ids: [id], seq}`。`folder_ids` は中身が変わったフォルダ（作成・名前・移動の元と先・ゴミ箱・戻す・新しい版・処理の完了・プレビューの完了） | 開いているフォルダが `folder_ids` にあれば 300 ms まとめて読み直す。ゴミ箱の画面を開いていれば読み直す |
-  | `drive.location.updated` | 同上 | `{location: DriveLocationOut}`（外部リンクの可否・上限の変更） | 場所の一覧の行を置き換える |
+  | `drive.location.updated` | 同上 | `{location: DriveLocationOut}`（外部リンクの可否・上限の変更）。**D3 の実装は `{location_id}` だけ**（§22.2） | 場所の一覧の行を置き換える（D2 からの端末は一覧を読み直す） |
   | `drive.upload.updated` | `user`（上げた本人） | `{upload: UploadOut}`（`completing` の完了・期限切れ） | アップロードの欄を更新（別の端末で始めたアップロードも見える） |
 
 - 再接続のあと：開いているフォルダ・ゴミ箱・場所の一覧を読み直す（イベントは失われうる、SYNC_PROTOCOL.md §1）。`channel.*` の
@@ -1086,7 +1088,7 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 | --- | --- | --- | --- |
 | **D1** サーバの土台（**実装 2026-10-21、§20**） | M160 | 移行（表・`attachments.drive_item_id`・研究室ドライブの行）、`drive` モジュール、場所と権限（§3）、フォルダ・名前・移動・ゴミ箱（戻す・完全削除・30 日のジョブ）、マルチパートのアップロード（§6、`BlobStore` の拡張、期限と孤児の掃除、`completing` の回収）、media loop（§6.4）、Range のダウンロード（添付の `/content` にも）、`drive.changed`、`get_for_access` の注入、attachments を読む問い合わせの確認（§2）、Caddy の部品の枠、`drive.admin` の権限、エラーの文言。最初に versitygw のマルチパートの一時の領域と完了の時間を実物で確かめる | pytest：権限の表（3 つの場所 × admin / manager / member / guest / チャンネルのオーナー / 抜けた人 / アーカイブ）を総当たり、アップロードの冪等（同じ `client_upload_id`・部品の送り直し・完了の送り直し・完了の途中で落ちる）、名前の衝突 3 種、輪の移動、ゴミ箱のまとまり、容量の同時の予約。compose の上で 1 GB のファイルを途中で止めて再開し、SHA-256 が合う。ARCHITECTURE.md §2・§5、DATA_MODEL.md、SECURITY.md §4・§5、SYNC_PROTOCOL.md に節を足す |
 | **D2** Desktop / Web の画面（**実装 2026-10-21、§21**） | M161 | 場所のレールの「ドライブ」、場所の列、一覧（リスト / グリッド、パンくず、並べ替え、カーソル）、アップロードの欄（ファイル・フォルダ・ドロップ・再開・衝突の質問）、ダウンロード（Desktop は塊ごとに保存、Web はブラウザ）、ビューア、名前・移動・ゴミ箱、ファイル名の検索（`/search/drive` を含む）、チャンネルのタブ | tsc・テスト（アップロードの状態機械、衝突の質問、パンくず）。macOS と Windows のアプリと Web で、フォルダのドロップ・2 GB のファイルの再開・ZIP でない 1 ファイルの 2 GB のダウンロードを手で確かめる |
-| **D3** 版・コピー・ZIP・容量 | M162 | 版（上書き・一覧・戻す・消す・整理のジョブ）、コピー（上限つき）、ZIP（§7.2）、場所と全体の上限、管理者の使用量の画面、`drive-usage --verify / --rebuild` | pytest：版の数と日数の整理、ZIP の中身（名前・UTF-8・ZIP64・空のフォルダ・Content-Length が実際の長さと一致）、容量の超過と減らす操作。5,000 ファイル・10 GB のフォルダの ZIP をブラウザで落として展開できる（Windows のエクスプローラーと macOS で） |
+| **D3** 版・コピー・ZIP・容量（**実装 2026-10-21、§22**） | M162 | 版（上書き・一覧・戻す・消す・整理のジョブ）、コピー（上限つき）、ZIP（§7.2）、場所と全体の上限、管理者の使用量の画面、`drive-usage --verify / --rebuild` | pytest：版の数と日数の整理、ZIP の中身（名前・UTF-8・ZIP64・空のフォルダ・Content-Length が実際の長さと一致）、容量の超過と減らす操作。5,000 ファイル・10 GB のフォルダの ZIP をブラウザで落として展開できる（Windows のエクスプローラーと macOS で） |
 | **D4** 外部共有リンク | M163 | リンクの表と API、公開 API・`share.html`・解錠の cookie、働く条件（§9.2）、速度制限、`drive_share_events` と 180 日の整理、監査、ワークスペースと場所のスイッチ、admin の一覧、Caddy / nginx / ログの伏せ、robots.txt、プライバシーの説明 | pytest：部分木の外の id（兄弟・親・別の場所・ゴミ箱・古い版）がすべて 404、作った人が抜けた・ゲストになった・無効化で止まる、回数の同時の数え方、パスワードの失敗の制限、ヘッダ（noindex・nosniff・sandbox・attachment）。ログインしていないブラウザ（Chrome・Safari・Firefox、スマホ）で、フォルダの一覧・PDF のプレビュー・ZIP を確かめる。SECURITY.md に「外部共有リンク」の節を足し、§12 のようなレビューの一覧で見直す |
 | **D5** Nextcloud の移行とバックアップ | M164 | `import-nextcloud`（WebDAV・データディレクトリ・対応表・`--list-shares`・`--dry-run`・再実行の差分）、`generate-previews --drive`、backup.sh の SHA-256 の引き継ぎと比較の作り直し、restic でのサーバの外へのバックアップの手順、リハーサルの手順、infra/README.md | pytest：対応表の解決（いちばん長い一致・skip・無い先）、再実行で増えない・変わったファイルが版になる、名前の衝突の表。本番の Nextcloud から `--dry-run` の表を利用者と見て対応表を決める。**サーバの外のバックアップが 1 回取れて、そこから別の機械に戻せることを確かめてから**、本番に移す。移した後に件数と合計の大きさが Nextcloud と合う |
 | **D6** 会話との連携 | M165 | `/d/<id>` のパーマリンクとカード（Desktop / Web）、入力欄の「ドライブから」（リンク / コピー）、`reach` の注意、「ドライブに保存」、`pages.py` の案内ページ | pytest：コピーの添付の権限、保存の権限（読めない添付・書けない先）、`reach` の数。Desktop / Web で、ゲストのいるチャンネルに研究室ドライブのリンクを貼ると注意が出て、ゲストには「表示できないファイル」と出る |
@@ -1117,7 +1119,7 @@ source = "/研究室共有/古いバックアップ"  # 移さない
 
 ## 20. 段階 D1 の実装（M160、2026-10-21）
 
-段階 D2 は §21。
+段階 D2 は §21、D3 は §22。
 
 サーバだけ（画面は D2）。移行 0118、`app/modules/drive/`（`models`・`names`・`access`・`repository`・`service`・`uploads`・`media`・
 `housekeeping`・`events`・`router`）、`BlobStore` のマルチパート・範囲の読み出し・`head`、添付の `/content` の Range、
@@ -1251,3 +1253,80 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
   persisted-scope による再起動の後の自動の再開、ファイルへの塊ごとの書き込み）。`cargo check`（macOS）と権限の設定の検査（tauri-build）は通る。
   WKWebView で、ドロップした File が後から読めなくなる場合（`platform/pickedFiles.ts` の 2026-10-04 の件）は、読めなかったファイルを
   「選び直し」に回すようにしてある。
+
+## 22. 段階 D3 の実装（M162、2026-10-21）
+
+版・コピー・ZIP・容量。サーバ（`drive/versions.py`・`copying.py`・`zips.py`・`zipstream.py`・`usage.py`・`tree.py`）と Desktop / Web の画面。
+移行は無い（表と列は D1 のまま足りた）。バックアップの変更（§16 の SHA-256 の引き継ぎ）は §16.2 のとおり段階 D5 で、D3 では行わない。
+
+### 22.1 作ったもの
+
+- **版**（§10.2）：`GET /drive/items/{id}/versions`（新しい順、`keep_versions`・`keep_days` つき）、
+  `POST /drive/items/{id}/versions/{vid}/restore`、`DELETE /drive/items/{id}/versions/{vid}`。戻すのは書ける人、消すのは完全削除の人（§3.2）、
+  今の版は 409 `drive_version_current`。戻す・消すは監査（`drive.version_restored`・`drive.version_deleted`）。版の整理は周期ジョブ
+  （`DRIVE_HOUSEKEEPING_INTERVAL_SECONDS` ごと、200 版ずつのトランザクション、項目 → 場所の順にロック）。
+- **戻す**：その版のオブジェクトをサーバの中で写し（`BlobStore.copy`）、サムネイルと**できているプレビュー**（PDF と 1 ページ目の WebP）も
+  写す（変換し直さない）。新しい添付と新しい版（`source = 'restore'`、番号は続き）。写すのはトランザクションの外で、その後の
+  1 トランザクションで項目・書く権利・容量をもう一度確かめて置く。失敗すれば写したオブジェクトを消す。
+- **コピー**（§10.3）：`POST /drive/items/copy` → 200 `{results: [{id, ok, error?, new_id}]}`。ゴミ箱を除く部分木を写し、ファイルは今の版だけ
+  （新しい項目の版 1、`source = 'copy'`。オブジェクト・サムネイル・できているプレビューを写す）。読める場所から書ける場所へ（場所をまたいでも）。
+  `on_conflict` は `rename`（既定、「名前 (1)」）か `fail`、自分の中へは `drive_cycle`、根は `drive_root_immutable`。上限は
+  `DRIVE_COPY_MAX_ITEMS`（500）・`DRIVE_COPY_MAX_BYTES`（1 GB）で、超えればリクエスト全体を 413 `drive_copy_too_large`（job は作らない）。
+  容量は写す前に予約込みで一度見て、置くときに項目ごとにもう一度確かめる。`client_op_id` の送り直しは同じコピーを答える。
+- **ZIP**（§7.2）：`POST /drive/zip` → `{url, expires_in, entries, size_bytes, zip_bytes, filename}`、`GET /drive/zip/{ticket}`（認証なし、1 回だけ、5 分）。
+  中身は深さ優先（各フォルダの中はフォルダが先、名前順）、根を選べばその中身を上に並べる。名前は `names.download_name`（Windows で使えない
+  文字を `_`）、同じフォルダの中で大文字小文字を区別せずに重なれば「(1)」。フォルダの項目も入れる（空のフォルダが残る）。日時は DOS の欄を
+  頼んだ人のタイムゾーン（`quiet_hours_tz`、無ければ Asia/Tokyo）で、拡張タイムスタンプ（0x5455）を UTC で。始めるときに本人が有効で
+  頼んだ項目をまだ読めることを確かめる（読めなければ 404）。同時に 1 人 2 本・全体 4 本（`DRIVE_ZIP_PER_USER`・`DRIVE_ZIP_TOTAL`、超えれば 429、
+  チケットは使われずに残る）。トークンはアクセスログで伏せる（`/api/v1/drive/zip/***`）。
+- **容量と使用量**（§11）：`GET /admin/drive/usage`（全体：今の版・古い版・ゴミ箱・件数・全体の上限・マイドライブの既定の上限・チャットの添付の
+  合計と件数。場所ごと：名前（チャンネル名、マイドライブは人の表示名）・アーカイブ / 無効の印・内訳・件数・上限・効いている上限・最終更新。
+  人ごと：上げた版の合計と数）、`PATCH /admin/drive/locations/{id} {quota_bytes}`（監査 `drive.quota_changed`、`drive.location.updated`）、
+  `app.cli drive-usage --verify / --rebuild`。コピーと版を戻すも、アップロードと同じく場所と全体の上限を確かめる。
+- **画面**：ファイルの右クリックと詳細のペインに「版の履歴」（ダイアログ：版ごとのダウンロード・この版に戻す・削除の確認）、右クリックに
+  「コピー」（移動のダイアログのコピーの形。読むだけの場所からも）、⌘C → ⌘V（コピーはクリップボードに残り何度でも貼れる。⌘X は 1 回）、
+  フォルダ・複数の選択・詳細のペインの「ZIP でダウンロード」（アプリは塊ごとにファイルへ、Web はブラウザのダウンロード）、
+  管理 →「ドライブ」（`drive.admin`）。
+
+### 22.2 本書と違うところ・足したもの
+
+| 本書 | D3 の実装 | 理由 |
+| --- | --- | --- |
+| §7.2「標準の `zipfile` をスレッドで回し」 | 自前の小さな書き手 `drive/zipstream.py`（stored、UTF-8 のフラグ、CRC はデータ記述子（フラグの bit 3）、ZIP64 は値が 32 ビットに収まらない所だけ：4 GiB 以上のファイル、4 GiB より後ろの項目・中央ディレクトリ） | 名前と大きさだけで全体の長さが決まり、`Content-Length` を最初に正しく出せる。`zipfile` の流す形は ZIP64 を大きさの推測で選び、欄の長さが変わるので先に長さが分からない。小さな ZIP は ZIP64 を使わない（どの展開ソフトでも読める）。読む側は `zipfile`・`unzip`・macOS の `ditto` で確かめた（§22.3） |
+| §5.2 copy の 202 `{job_id}` | いつも 200 `{results}`、上限を超えれば 413 | §10.3 のとおり D3 は上限で断る。job は要望が出たら |
+| §5.2 copy の `results` | `new_id`（写した先の項目）を足した（`DriveCopyResultsOut`。move の `results` の形は変えない） | 端末が写した項目を開ける・選べるように |
+| §5.2 copy の `client_op_id` | 頼んだ項目ごとに `uuid5(client_op_id, 元の id)` を写した先の根の `drive_items.client_op_id` に入れ、送り直しはそれを答える | 新しい表を作らずに冪等にする（D1 の部分一意索引を使う） |
+| §7.2 `POST /drive/zip` の応答 | `zip_bytes`（ZIP の長さ）と `filename`（1 つなら「名前.zip」、同じフォルダの複数ならそのフォルダ（根なら場所）の名前、ほかは `drive.zip`）を足した | アプリの進み具合の分母と保存の名前 |
+| §10.2 の日数 | 今の版でない版の 30 日は、その版が次の版に置き換えられた時刻から数える | 上げた時刻から数えると、古いファイルを上書きした直後に前の版が消える |
+| §10.2「版を戻すと…新しい添付」 | サムネイルと、できているプレビュー（PDF・WebP）も写す。できていなければ今までどおりプレビューを予約 | 戻すたびに Office を変換し直さない。コピーも同じ |
+| §14 `drive.location.updated {location: DriveLocationOut}` | `{location_id}` だけ | `DriveLocationOut` は読む人ごとに違う（`can_write` など）。D2 の端末は受け取れば場所の一覧を読み直すので、形を変えても困らない |
+| §5.5 `PATCH /admin/drive/locations/{id}` の応答 | 管理の画面の行（`DriveLocationUsageOut`） | 画面の行をそのまま置き換える |
+| §11.2「人ごと：上げたファイルの合計」 | 版の `uploaded_by` の合計（今の版・古い版・ゴミ箱を含む。コピーと版を戻すはした人の分） | 場所の使用量と同じ数え方 |
+| §17.5 管理画面の「ドライブ」 | 使用量と上限だけ（外部リンクのスイッチ・期限・パスワード、すべてのリンクは D4） | D4 の機能 |
+| ワークスペースの設定 | D3 で足すものは無い（全体の上限・マイドライブの既定の上限・版の数と日数・コピーと ZIP の上限は環境変数） | §11.1 のとおり。外部リンクの 3 列は D4 |
+
+足したエラー：`drive_version_current`（409）、`drive_copy_too_large`（413、`details.limit_bytes`・`limit_items`）、`drive_zip_too_large`
+（413、`details.limit_bytes`・`limit_entries`）。設定：`DRIVE_VERSIONS_MAX`・`DRIVE_VERSIONS_DAYS`・`DRIVE_COPY_MAX_ITEMS`・`DRIVE_COPY_MAX_BYTES`・
+`DRIVE_ZIP_MAX_ENTRIES`・`DRIVE_ZIP_MAX_BYTES`・`DRIVE_ZIP_PER_USER`・`DRIVE_ZIP_TOTAL`。
+
+### 22.3 確かめたこと
+
+- pytest（`tests/test_drive_d3.py`）：ZIP の書き手（`zipfile` で読み戻して CRC・UTF-8 のフラグ・stored・フォルダ・空のファイル・DOS の日時、
+  長さが計画と一致、小さな ZIP に ZIP64 が無いこと）、4 GiB + 1 MiB のファイルとその後ろの小さなファイル（疎なファイルに書いて ZIP64 の大きさ・
+  位置・終わりの記録を `zipfile` で確かめ、長さが一致）、元の長さが違えば流すのを切ること、チケット（1 回だけ・期限・ハッシュだけ）と同時の本数、
+  API の ZIP（フォルダ・選択・Windows で使えない名前・ゴミ箱を入れない・`Content-Length` と実際の長さ・2 回目は 404・上限の 413・429 とチケットが
+  残ること・チャンネルを抜けた人は 404）、版（一覧・古い版のダウンロード・戻す・今の版は 409・消すのは管理者だけ・容量の増減・監査）、
+  戻すときの場所と全体の上限（写したオブジェクトが残らない）、版の整理（10 版・置き換えから 30 日・今の版は残る）、コピー（フォルダとファイル・
+  ゴミ箱を写さない・今の版だけ・`client_op_id` の送り直し・rename / fail・輪・根・マイドライブへ）、コピーの上限と権限（読むだけで写せる・
+  アーカイブ先は 403・他人のマイドライブは 404）、**同時の 2 つのコピーで容量に収まるのは 1 つ**（負けた方の写しは消える）、使用量の画面・
+  上限の変更（監査・イベント）・上限を下げても減らす操作はできる・`drive-usage` の検査と作り直し。サーバの全体・ruff・mypy。
+- vitest：`driveActions.test.ts`（選択のダウンロード、貼り付け、版の操作、上限の欄）、`driveD3.test.tsx`（⌘C / ⌘X → ⌘V、フォルダの ZIP と
+  コピーのメニュー、版の履歴の戻す・削除、管理の使用量と上限の保存）。tsc と vitest の全体。
+- 手で（使い捨ての compose：PGroonga・versitygw v1.8.0・この版の app、Vite 1422、ヘッドレスの Chrome を CDP で操作）：3 版のファイルの
+  版 2 を戻して版 4 になる、フォルダを ⌘C → ⌘V で「ゼミ資料 (1)」、ファイルをマイドライブへコピー、フォルダを Web から ZIP で落として
+  macOS の `ditto -x -k` と `unzip` で日本語の名前（全角の空白・括弧・半角カナ・濁点）・入れ子・空のフォルダのまま展開、管理 →「ドライブ」で
+  上限 5 GB を付けると場所の列の棒がすぐ変わる、`drive-usage --verify` が 0。ZIP64：4.1 GiB のファイル（部品ごとに中身が違う）と後ろの小さなファイルを
+  compose に上げて ZIP（4,399,825,618 バイト、`Content-Length` と一致）、`ditto` と `unzip -t` で展開し SHA-256 が元と一致。5,000 ファイル・
+  50 フォルダの ZIP（書き手を直接、日本語の名前）を `ditto` と `unzip` で展開して一致。
+- **確かめていないこと**：Windows のエクスプローラーでの展開、10 GB・5,000 ファイルをブラウザで落とすこと（§18 の D3 の完了条件の一部。
+  ZIP64 と件数は上のとおり別々に確かめた）、Tauri のアプリでの ZIP の保存（D2 の 1 ファイルの保存と同じ経路）。

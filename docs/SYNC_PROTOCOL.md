@@ -279,6 +279,7 @@
 | `wiki.rows.changed` | page（送る時点でデータベースを読める人） | — | `{ database_id, seq, schema_version }`（M123）。行・値・題名・ゴミ箱・スキーマ・ビューが変わった。開いている表を読み直す（§17） |
 | `drive.changed` | drive（送る時点でその場所を読める人） | — | `{ location_id, folder_ids, seq }`（M160、§18）。名前を載せない。`folder_ids` のフォルダを開いていれば 300 ms まとめて読み直す。ゴミ箱を開いていれば読み直す |
 | `drive.upload.updated` | user（上げた本人） | — | `{ upload: DriveUploadOut }`（M160、§18）。バックグラウンドで完了した・完了できなかった（`error`）・期限切れになった |
+| `drive.location.updated` | drive（送る時点でその場所を読める人） | — | `{ location_id }`（M162、§18）。場所の設定（容量の上限）が変わった。場所の一覧を読み直す |
 | `reservation.updated` | all | — | `{ pool_id, deleted }` (M99 → M112、RESERVATIONS.md §7)。ワークスペースの予約の枠が変わった (設定・予約・待ち・利用中、`deleted` なら枠が消えた)。中身は人ごとに違う (自分の予約、担当者だけのアドレスと作業) ので載せない。端末は `GET /reservation-pools` で読み直す (続けて届いたものは 300 ms で 1 回にまとめる)。bootstrap のたびにも読む。M99〜M111 の端末は `channel_id` が無いので読まない (`GET /channels/{id}/reservation-pools` はいつも空) |
 | `reservation.notice` | user | — | `{ item_id, pool_id, reservation_id, text, operator, at }` (M112)。自分あての予約の知らせ (担当者の作業か、自分の予約・利用のこと)。アクティビティの項目 (種類 `reservation`、`include=reservation`) が増えたのでバッジを読み直し、開いている端末はバナー / 通知を出す (プッシュは PUSH_NOTIFICATIONS.md §4)。ほかの担当者が対応して済みになった項目は `activity.updated` の `item_ids` に入る |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
@@ -1313,6 +1314,8 @@ base・送られた本文・head を 3-way マージする。
   （ゴミ箱を読み直す）。`seq` は `drive_change_seq` の値で、古い `seq` の重複・入れ違いは捨ててよい。
 - `drive.upload.updated {upload}` は上げた本人に：`completing` からの完了（`status: completed`、`item_id`）、完了できなかった（`active` に
   戻り `error` にコード）、期限切れ（`expired`）。別の端末で始めたアップロードの欄もこれで更新できる。
+- `drive.location.updated {location_id}`（M162）は場所の設定（容量の上限）が変わったとき、その場所を読める人に。中身は id だけ
+  （場所の見え方は読む人ごとに違う）。端末は場所の一覧を読み直す。
 - **再接続**：開いているフォルダ・ゴミ箱・場所の一覧を読み直す。`channel.*` のメンバーシップの変化と自分のロールの変化（`user.updated`）
   でも場所の一覧を読み直す。開いていた場所が読めなくなれば（404）研究室ドライブの根に戻す。
 - **アップロードの再開**：`GET /drive/uploads?status=active` で続きを見つけ、`GET /drive/uploads/{id}` の `received_parts` に無い部品だけ

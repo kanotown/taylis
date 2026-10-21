@@ -191,7 +191,7 @@ AI のボットと利用量、連携（受信 Webhook・在室状況の連携・
   `lab.rollover`）、グループ（`groups.manage`）、招待（`invites.manage`。ロールの選択肢は `users.manage` が無ければ
   member と guest だけ）、Webhook（`integrations.manage`）、ワークフロー（`channels.moderate`）、AI（`ai.manage`）、
   ワークスペース（`workspace.settings`）、チャンネル（既定のチャンネル。`channels.manage`）、絵文字（`emoji.manage`）、
-  キャンバスのテンプレート（`templates.manage`）、ドキュメント（`docs.admin`）、在室状況（`attendance.manage`。設定の変更は
+  キャンバスのテンプレート（`templates.manage`）、ドキュメント（`docs.admin`）、ドライブ（`drive.admin`、M162：使用量と容量の上限）、在室状況（`attendance.manage`。設定の変更は
   `attendance.configure`、連携は `integrations.manage`）。同じページを使い、運営に使えない部分は出さない。
 - ユーザーのタブ：ロールの選択肢に「運営」。ロール・無効化・パスワード・2 段階認証・セッション・削除・ユーザー名・直接の
   作成は `users.manage` のときだけ。運営には member・guest の行に「表示名・肩書きを変更」だけ出す。ロールのバッジと
