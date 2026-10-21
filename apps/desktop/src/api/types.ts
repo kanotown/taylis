@@ -634,3 +634,35 @@ export interface CalendarAlarmUpdated {
    */
   occurrence?: CalendarEventData | null;
 }
+
+// --- the drive (M160–M161, docs/DRIVE.md) ------------------------------------------------------------------------
+export type DriveLocationOut = components["schemas"]["DriveLocationOut"];
+export type DriveLocationListOut = components["schemas"]["DriveLocationListOut"];
+export type DriveItemOut = components["schemas"]["DriveItemOut"];
+export type DriveFileOut = components["schemas"]["DriveFileOut"];
+export type DriveCrumb = components["schemas"]["DriveCrumb"];
+export type DriveItemDetailOut = components["schemas"]["DriveItemDetailOut"];
+export type DriveChildrenOut = components["schemas"]["DriveChildrenOut"];
+export type DriveResultsOut = components["schemas"]["DriveResultsOut"];
+export type DriveTrashOut = components["schemas"]["DriveTrashOut"];
+export type DriveTrashEntryOut = components["schemas"]["DriveTrashEntryOut"];
+export type DriveUploadOut = components["schemas"]["DriveUploadOut"];
+export type DriveUploadListOut = components["schemas"]["DriveUploadListOut"];
+export type DriveUploadCreate = components["schemas"]["DriveUploadCreate"];
+export type DriveUploadPatch = components["schemas"]["DriveUploadPatch"];
+export type DriveUploadCompleteOut = components["schemas"]["DriveUploadCompleteOut"];
+export type DriveUploadPartOut = components["schemas"]["DriveUploadPartOut"];
+export type DriveDownloadTicketOut = components["schemas"]["DriveDownloadTicketOut"];
+export type DriveSearchOut = components["schemas"]["DriveSearchOut"];
+export type DriveSearchHitOut = components["schemas"]["DriveSearchHitOut"];
+export type DriveConflictMode = NonNullable<DriveUploadCreate["on_conflict"]>;
+/** drive.changed (SYNC_PROTOCOL.md §18): re-read these folders (and the trash) of the location. No names travel. */
+export interface DriveChanged {
+  location_id: string;
+  folder_ids: string[];
+  seq: number;
+}
+/** drive.upload.updated (to the uploader): a completion finished, failed or the session expired. */
+export interface DriveUploadUpdated {
+  upload: DriveUploadOut;
+}

@@ -52,15 +52,20 @@ export interface FileDropOptions {
   /** Why files cannot be dropped here (shown on the overlay), or null when they can. */
   blocked: string | null;
   onFiles: (files: File[]) => void;
+  /**
+   * M161 (the drive): the whole drop instead of its files, called in the drop handler itself (a folder's entries can
+   * only be taken there, DataTransferItem.webkitGetAsEntry).
+   */
+  onData?: (data: DataTransfer) => void;
 }
 
 /** The zone's state and the handlers to put on its element. */
-export function useFileDropZone({ enabled, blocked, onFiles }: FileDropOptions) {
+export function useFileDropZone({ enabled, blocked, onFiles, onData }: FileDropOptions) {
   const [active, setActive] = useState(false);
   const depth = useRef(0);
   const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef({ blocked, onFiles });
-  latest.current = { blocked, onFiles };
+  const latest = useRef({ blocked, onFiles, onData });
+  latest.current = { blocked, onFiles, onData };
 
   const reset = useCallback(() => {
     depth.current = 0;
@@ -118,7 +123,8 @@ export function useFileDropZone({ enabled, blocked, onFiles }: FileDropOptions) 
       const files = Array.from(event.dataTransfer.files ?? []);
       reset();
       if (latest.current.blocked || files.length === 0) return;
-      latest.current.onFiles(files);
+      if (latest.current.onData) latest.current.onData(event.dataTransfer);
+      else latest.current.onFiles(files);
     },
   };
   return { active, handlers };

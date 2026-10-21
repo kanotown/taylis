@@ -8,6 +8,7 @@ import type { SendOptions } from "../sync/types";
 import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
+import type { DriveChildrenOut, DriveDownloadTicketOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
@@ -43,6 +44,8 @@ type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<str
 
 /** A JSON request that has not answered by then fails like a network error (the phones' limit too). */
 export const REQUEST_TIMEOUT_MS = 30_000;
+/** A drive part (16 MiB) on a slow line: 10 minutes before it counts as a network failure. */
+export const PART_TIMEOUT_MS = 600_000;
 /**
  * §7.2: a refresh rotates the token, and the old one used more than this long after fails for good (reuse detection,
  * SECURITY.md §2.3). A refresh that fails on the network is therefore tried again soon, each attempt short, all of
@@ -1898,6 +1901,152 @@ export class ApiClient {
     } catch (err) {
       throw new NetworkError(err);
     }
+  }
+
+  // --- the drive (M160–M161, docs/DRIVE.md §5) -------------------------------------------------------------------
+
+  driveLocations(): Promise<DriveLocationListOut> {
+    return this.request("GET", "/api/v1/drive/locations");
+  }
+
+  /** A channel's drive or my My Drive, made on first use (idempotent). */
+  resolveDriveLocation(body: { kind: "channel"; channel_id: string } | { kind: "me" }): Promise<DriveLocationOut> {
+    return this.request("POST", "/api/v1/drive/locations/resolve", body);
+  }
+
+  driveChildren(folderId: string, query: { sort?: "name" | "modified" | "size"; order?: "asc" | "desc"; cursor?: string | null; limit?: number } = {}): Promise<DriveChildrenOut> {
+    const params = new URLSearchParams();
+    if (query.sort) params.set("sort", query.sort);
+    if (query.order) params.set("order", query.order);
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const tail = params.toString() ? `?${params}` : "";
+    return this.request("GET", `/api/v1/drive/folders/${folderId}/children${tail}`);
+  }
+
+  driveItem(itemId: string): Promise<DriveItemDetailOut> {
+    return this.request("GET", `/api/v1/drive/items/${itemId}`);
+  }
+
+  /** `name` with `client_op_id` (retries answer the same folder), or `path` (mkdir -p: the folders on the way too). */
+  createDriveFolder(body: { parent_id: string; name?: string; path?: string; client_op_id?: string }): Promise<DriveItemOut> {
+    return this.request("POST", "/api/v1/drive/folders", body);
+  }
+
+  renameDriveItem(itemId: string, name: string): Promise<DriveItemOut> {
+    return this.request("PATCH", `/api/v1/drive/items/${itemId}`, { name });
+  }
+
+  moveDriveItems(itemIds: string[], targetFolderId: string, onConflict: "fail" | "rename" = "fail"): Promise<DriveResultsOut> {
+    return this.request("POST", "/api/v1/drive/items/move", { item_ids: itemIds, target_folder_id: targetFolderId, on_conflict: onConflict });
+  }
+
+  trashDriveItems(itemIds: string[]): Promise<DriveResultsOut> {
+    return this.request("POST", "/api/v1/drive/items/trash", { item_ids: itemIds });
+  }
+
+  driveTrash(locationId: string, cursor: string | null = null): Promise<DriveTrashOut> {
+    return this.request("GET", `/api/v1/drive/locations/${locationId}/trash${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+  }
+
+  restoreDriveItem(itemId: string, onConflict: "rename" | "fail" = "rename"): Promise<DriveItemOut> {
+    return this.request("POST", `/api/v1/drive/items/${itemId}/restore`, { on_conflict: onConflict });
+  }
+
+  /** For good: only a group in the trash. */
+  deleteDriveItem(itemId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/drive/items/${itemId}`);
+  }
+
+  /** A session (201), or the one this client_upload_id made before (200). */
+  createDriveUpload(body: DriveUploadCreate): Promise<DriveUploadOut> {
+    return this.request("POST", "/api/v1/drive/uploads", body);
+  }
+
+  driveUpload(uploadId: string): Promise<DriveUploadOut> {
+    return this.request("GET", `/api/v1/drive/uploads/${uploadId}`);
+  }
+
+  driveUploads(status: DriveUploadOut["status"] | null = "active"): Promise<DriveUploadListOut> {
+    return this.request("GET", `/api/v1/drive/uploads${status ? `?status=${status}` : ""}`);
+  }
+
+  patchDriveUpload(uploadId: string, patch: DriveUploadPatch): Promise<DriveUploadOut> {
+    return this.request("PATCH", `/api/v1/drive/uploads/${uploadId}`, patch);
+  }
+
+  /** 200 completed (with the item) or 202 completing (ask driveUpload again). */
+  async completeDriveUpload(uploadId: string): Promise<DriveUploadCompleteOut> {
+    return (await this.requestWithStatus<DriveUploadCompleteOut>("POST", `/api/v1/drive/uploads/${uploadId}/complete`, undefined, { timeoutMs: 60_000 })).data;
+  }
+
+  abortDriveUpload(uploadId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/drive/uploads/${uploadId}`);
+  }
+
+  /**
+   * One part's bytes (§6.2: replaced when sent again). `signal` aborts it (pause); a part may take long on a slow line,
+   * so the limit is generous rather than the JSON requests' 30 s.
+   */
+  async putDrivePart(uploadId: string, number: number, bytes: Uint8Array, sha256Hex: string, signal?: AbortSignal): Promise<DriveUploadPartOut> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const timeout = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = timeout ? setTimeout(() => timeout.abort(), PART_TIMEOUT_MS) : null;
+    const onAbort = () => timeout?.abort();
+    signal?.addEventListener("abort", onAbort);
+    const send = (): Promise<Response> =>
+      this.rawFetch(`${this.baseUrl}/api/v1/drive/uploads/${uploadId}/parts/${number}`, {
+        method: "PUT",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/octet-stream",
+          "X-Content-SHA256": sha256Hex,
+          ...(this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {}),
+        },
+        body: bytes as BodyInit,
+        ...(timeout ? { signal: timeout.signal } : {}),
+      });
+    try {
+      let response = await send();
+      if (response.status === 401) {
+        await this.refresh();
+        response = await send();
+      }
+      if (!response.ok) throw toApiError(response.status, parseJson(await response.text().catch(() => "")));
+      return await readJson<DriveUploadPartOut>(response);
+    } finally {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
+  /** A URL the browser's own download (or a video's source) can follow without the bearer token (§7.3, D2). */
+  driveDownloadTicket(itemId: string, versionId: string | null = null): Promise<DriveDownloadTicketOut> {
+    return this.request("POST", `/api/v1/drive/items/${itemId}/download-ticket${versionId ? `?version_id=${versionId}` : ""}`);
+  }
+
+  /** §12: names of files and folders in the drives I can read (`location_id`: one of them). */
+  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | null; cursor?: string | null; limit?: number }): Promise<DriveSearchOut> {
+    const params = new URLSearchParams({ q: query.q });
+    if (query.location_id) params.set("location_id", query.location_id);
+    if (query.kind) params.set("kind", query.kind);
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    return this.request("GET", `/api/v1/search/drive?${params}`);
+  }
+
+  /** An authenticated GET whose body the caller reads as a stream (the desktop app's drive downloads, §7.3). */
+  async fetchStream(path: string, signal?: AbortSignal): Promise<Response> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const send = (): Promise<Response> =>
+      this.rawFetch(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {}, ...(signal ? { signal } : {}) });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw toApiError(response.status, parseJson(await response.text().catch(() => "")));
+    return response;
   }
 
   /** fetch, with "no response" reported as a NetworkError (retryable, shown as the network text). */

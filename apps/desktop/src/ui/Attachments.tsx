@@ -317,11 +317,13 @@ export function Lightbox({ attachment, controller, onClose }: { attachment: Atta
  * A video's bytes as an object URL, through the same authenticated `fetchBlob` as the photos, shared by its tile and
  * the viewer (videoSource.ts). `enabled` false: nothing is fetched.
  */
-export function useVideoSource(controller: AppController, attachment: AttachmentOut, enabled = true) {
+export function useVideoSource(controller: AppController, attachment: AttachmentOut, enabled = true, stream?: () => Promise<string>) {
   const api = controller.api;
   const [attempt, setAttempt] = useState(0);
   const key = `${attachment.id}/${attempt}`;
   const [state, setState] = useState({ key, api, url: null as string | null, failed: false });
+  const streamRef = useRef(stream);
+  streamRef.current = stream;
   useEffect(() => {
     if (!enabled) return;
     if (!api) {
@@ -330,6 +332,18 @@ export function useVideoSource(controller: AppController, attachment: Attachment
     }
     setState({ key, api, url: null, failed: false });
     let cancelled = false;
+    // M161: a drive video plays from a download ticket's URL on the Web (Range: it starts at once and seeks), not as a
+    // whole blob first.
+    const streaming = streamRef.current;
+    if (streaming) {
+      streaming().then(
+        (url) => { if (!cancelled) setState({ key, api, url, failed: false }); },
+        () => { if (!cancelled) setState({ key, api, url: null, failed: true }); },
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
     const handle = acquireVideo(api, attachment.id);
     handle.promise.then(
       (url) => { if (!cancelled) setState({ key, api, url, failed: false }); },
@@ -440,8 +454,8 @@ function VideoTile({ attachment, controller, downloadable = true }: { attachment
 }
 
 /** The video player (M38): the clip with the platform's controls, in the same viewer as photos, download kept. */
-export function VideoViewer({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
-  const { url, failed, retry } = useVideoSource(controller, attachment);
+export function VideoViewer({ attachment, controller, onClose, stream }: { attachment: AttachmentOut; controller: AppController; onClose: () => void; /** M161: a URL to play from instead of the whole file as a blob. */ stream?: () => Promise<string> }) {
+  const { url, failed, retry } = useVideoSource(controller, attachment, true, stream);
   const [unplayable, setUnplayable] = useState(false);
   const shape = useVideoShape(attachment);
   // M79: the server's poster while the clip downloads and until it plays.

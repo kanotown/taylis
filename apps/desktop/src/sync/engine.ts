@@ -20,6 +20,7 @@ import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, typ
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
+import { DriveHub } from "./drive";
 import { takesDmClose } from "./dmCloses";
 import { caughtUp, countsAfterDelete, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
 
@@ -431,6 +432,8 @@ export class SyncEngine {
   readonly timesFeed: TimesFeedHub;
   /** M65: the AI status and the summary on screen (docs/AI.md §5). */
   readonly ai: AiHub;
+  /** M161: the drive's signals to read the screens again (docs/DRIVE.md §14). */
+  readonly drive = new DriveHub();
 
   /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
   flushDrafts(): Promise<void> {
@@ -566,6 +569,7 @@ export class SyncEngine {
       this.tasks.online(); // M55: the boards and lists on screen read again (TASKS.md §4)
       this.timesFeed.online(); // L8: a feed on screen reads its first page again (TIMES_FEED.md §5)
       this.ai.online(); // M65: the AI status, and an unfinished summary on screen read again (docs/AI.md §5)
+      this.drive.online(); // M161: the open folder, the trash and the locations read again (DRIVE.md §14)
       this.resendReads(); // §10: marks that did not reach the server
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
@@ -917,6 +921,7 @@ export class SyncEngine {
       case "channel.archived": {
         const data = frame.data as { channel_id: string };
         store.updateChannel(data.channel_id, { archived: true });
+        this.drive.accessMayHaveChanged(); // M161: its drive is read-only now
         return;
       }
       case "channel.member_added": {
@@ -925,6 +930,7 @@ export class SyncEngine {
         const channel = store.getChannel(data.channel_id);
         if (channel && channel.member_count != null) store.updateChannel(data.channel_id, { member_count: channel.member_count + 1 });
         store.membersChanged(data.channel_id);
+        if (store.me && data.user_id === store.me.id) this.drive.accessMayHaveChanged(); // M161: its drive is mine now
         return;
       }
       case "channel.member_updated": {
@@ -938,6 +944,7 @@ export class SyncEngine {
         const data = frame.data as { channel_id: string; user_id: string };
         if (store.me && data.user_id === store.me.id) {
           this.removeChannel(data.channel_id);
+          this.drive.accessMayHaveChanged(); // M161: its drive is gone for me
           return;
         }
         const channel = store.getChannel(data.channel_id);
@@ -950,7 +957,10 @@ export class SyncEngine {
       case "user.deactivated": {
         const data = frame.data as { user: UserPublic };
         // M121: my role changed (a guest reads only pages shared with them by name): the Docs tree is read again.
-        if (data.user.id === store.me?.id && data.user.role !== store.me.role) this.wiki.accessMayHaveChanged();
+        if (data.user.id === store.me?.id && data.user.role !== store.me.role) {
+          this.wiki.accessMayHaveChanged();
+          this.drive.accessMayHaveChanged(); // M161: a guest has no 研究室ドライブ (DRIVE.md §3.3)
+        }
         store.upsertUser(data.user);
         // M50: about me and newer than what I hold: another of my devices changed my settings. The event carries only the
         // public fields, so the private ones (quick reactions, notification settings, keywords …) are read again.
@@ -1036,6 +1046,11 @@ export class SyncEngine {
       case "wiki.page.updated":
       case "wiki.rows.changed":
         this.wiki.applyEvent(frame.event, frame.data);
+        return;
+      case "drive.changed":
+      case "drive.upload.updated":
+      case "drive.location.updated":
+        this.drive.applyEvent(frame.event, frame.data);
         return;
       case "wiki.mentioned":
       case "wiki.shared":
