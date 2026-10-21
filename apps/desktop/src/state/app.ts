@@ -24,6 +24,8 @@ import { ApiError, describeError, describeFeatureError, NetworkError, UserMessag
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate, PresenceUpdate } from "../api/types";
 import { canOpenDownloaded, openDownloaded, revealDownloaded, saveDownload } from "../platform/download";
+import { browserDownload, downloadRoute, saveStreamToFile, ticketUrl } from "../drive/download";
+import { driveFileOf } from "../drive/listing";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
 import { listenForDeepLinks } from "../platform/deepLink";
@@ -664,6 +666,9 @@ export class AppController {
    * (the viewers' 「開く」, desktop app only; straight into Downloads, never the dialog).
    */
   async downloadAttachment(attachment: AttachmentOut, options: { open?: boolean } = {}): Promise<void> {
+    // M161: a drive file in the viewers goes the drive's way (streamed to disk, the browser's own download).
+    const driveFile = driveFileOf(attachment);
+    if (driveFile) return this.downloadDriveFile(driveFile, options);
     const api = this.api;
     if (!api) return;
     const item = this.startDownload(attachment.filename, attachment.size_bytes);
@@ -694,6 +699,44 @@ export class AppController {
       this.finishDownload(item.id, saved.path, saved.inDownloads);
     } catch (error) {
       this.dismissDownload(item.id);
+      this.setError(error);
+    }
+  }
+
+  /**
+   * M161 (docs/DRIVE.md §7.3): a drive file of any size. The desktop app streams the body into the file chunk by chunk
+   * (the same toast, names and 「開く」 as attachments); the browser follows a download ticket with its own download
+   * (it shows its own progress and can resume), so no toast there.
+   */
+  async downloadDriveFile(item: { id: string; name: string; size_bytes?: number | null }, options: { open?: boolean; versionId?: string | null } = {}): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    if (downloadRoute(isTauri()) === "browser") {
+      try {
+        const ticket = await api.driveDownloadTicket(item.id, options.versionId ?? null);
+        browserDownload(ticketUrl(api.baseUrl, ticket.url), item.name);
+      } catch (error) {
+        this.setError(error);
+      }
+      return;
+    }
+    const entry = this.startDownload(item.name, item.size_bytes ?? 0);
+    let last = 0;
+    try {
+      const query = options.versionId ? `?version_id=${encodeURIComponent(options.versionId)}` : "";
+      const response = await api.fetchStream(`/api/v1/drive/items/${item.id}/content${query}`);
+      const total = Number(response.headers.get("Content-Length")) || entry.total;
+      const saved = await saveStreamToFile(item.name, response, (loaded) => {
+        const now = Date.now();
+        if (now - last < 150 && loaded < total) return;
+        last = now;
+        this.updateDownload(entry.id, { loaded, total });
+      }, options.open ? { ask: false } : {});
+      if (!saved) return this.dismissDownload(entry.id);
+      this.finishDownload(entry.id, saved.path, saved.inDownloads);
+      if (options.open && saved.path) await this.openDownload(this.downloads.find((d) => d.id === entry.id) ?? null);
+    } catch (error) {
+      this.dismissDownload(entry.id);
       this.setError(error);
     }
   }
