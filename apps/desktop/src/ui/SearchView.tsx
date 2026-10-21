@@ -5,6 +5,7 @@ import type { CanvasMeta, ChannelOut, FileItem, MessageOut, PageItem, SearchHit 
 import { AskPanel } from "./AskPanel";
 import { CanvasResults } from "./CanvasSearch";
 import { PageResults } from "./DocsSearch";
+import { DriveResults } from "./DriveSearch";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
@@ -23,7 +24,7 @@ import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilter
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 
-export type SearchTab = "messages" | "files" | "canvases" | "docs";
+export type SearchTab = "messages" | "files" | "canvases" | "docs" | "drive";
 
 /** What the results looked like, so 「検索結果に戻る」 shows them again without a new request. */
 export interface SearchSnapshot {
@@ -42,7 +43,7 @@ export interface SearchSnapshot {
 const PAGE = 30;
 
 /** M16b: search results in the centre column: count, tabs, filter chips, sort, endless list. */
-export function SearchView({ controller, params, tab, onTabChange, onChange, onOpen, onOpenCanvas, onOpenPage, onClose, snapshot }: {
+export function SearchView({ controller, params, tab, onTabChange, onChange, onOpen, onOpenCanvas, onOpenPage, onShowInDrive, onClose, snapshot }: {
   controller: AppController;
   params: SearchParams;
   tab: SearchTab;
@@ -53,6 +54,8 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
   onOpenCanvas?: (canvas: CanvasMeta) => void;
   /** M121: a hit of the 「ドキュメント」 tab (a server with Docs). */
   onOpenPage?: (page: PageItem) => void;
+  /** M161: the 「ドライブ」 tab's folder (or a file's folder) shown in 「ドライブ」. */
+  onShowInDrive?: (target: { locationId: string; folderId: string }) => void;
   onClose: () => void;
   snapshot: { current: SearchSnapshot | null };
 }) {
@@ -164,7 +167,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           <strong className="text-[15px]">{words ? t("search.resultsFor", { words }) : t("search.results")}</strong>
           {tab === "messages" && loaded && <span className="ml-2 text-sm text-muted">{totalLabel(total, capped)}</span>}
         </div>
-        {tab !== "files" && <SortMenu sort={words ? params.sort : "newest"} disabled={!words} onChange={(sort) => onChange({ ...params, sort })} />}
+        {tab !== "files" && tab !== "drive" && <SortMenu sort={words ? params.sort : "newest"} disabled={!words} onChange={(sort) => onChange({ ...params, sort })} />}
         {!back && (
           <IconButton label={t("search.close")} onClick={onClose}>
             <X size={18} />
@@ -176,9 +179,12 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
         <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>{t("nav.files")}</TabButton>
         {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>{t("nav.canvases")}</TabButton>}
         {onOpenPage && <TabButton active={tab === "docs"} onClick={() => onTabChange("docs")}>{t("nav.docs")}</TabButton>}
+        {onShowInDrive && <TabButton active={tab === "drive"} onClick={() => onTabChange("drive")}>{t("search.tab.drive")}</TabButton>}
       </UnderlineTabRow>
-      <FilterBar controller={controller} params={params} onChange={onChange} mode={tab} />
-      {tab === "files" ? (
+      {tab !== "drive" && <FilterBar controller={controller} params={params} onChange={onChange} mode={tab} />}
+      {tab === "drive" && onShowInDrive ? (
+        <DriveResults controller={controller} q={params.q} onShowInDrive={onShowInDrive} />
+      ) : tab === "files" ? (
         <FileResults controller={controller} params={params} onOpen={onOpen} />
       ) : tab === "canvases" && onOpenCanvas ? (
         <CanvasResults controller={controller} params={params} onOpen={onOpenCanvas} />

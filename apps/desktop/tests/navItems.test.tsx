@@ -118,7 +118,7 @@ describe("the settings", () => {
   it("lists this client's items in my order with where each goes (not the phones' visibility)", () => {
     const { controller } = controllerWith([{ key: "calendar", visible: false }], { rail: true, items: [{ key: "files", place: "hidden" }] });
     render(<NavItemsSettings controller={controller} />);
-    expect(rows()).toEqual(["calendar", "threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "tasks", "deadlines", "reservations", "saved"]);
+    expect(rows()).toEqual(["calendar", "threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "tasks", "deadlines", "reservations", "saved"]);
     expect(where("カレンダー").value).toBe("rail");
     expect(where("スレッド").value).toBe("sidebar");
     expect(where("下書き").value).toBe("sidebar");

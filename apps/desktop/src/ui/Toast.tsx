@@ -69,11 +69,11 @@ export const DOWNLOAD_TOAST_MS = 8000;
  * the desktop app (the browser keeps its own download list, so there it is just the line). Clickable over the viewers
  * (`data-download-toasts`: they keep a click here from closing them).
  */
-export function DownloadToasts({ controller }: { controller: AppController }) {
+export function DownloadToasts({ controller, stacked = false }: { controller: AppController; /** M161: in the bottom-right stack over the drive's upload panel (not fixed itself). */ stacked?: boolean }) {
   const items = controller.downloads;
   if (!items || items.length === 0) return null;
   return (
-    <div data-download-toasts="" className="pointer-events-auto fixed bottom-6 right-6 z-[60] flex w-80 max-w-[calc(100vw-3rem)] flex-col gap-2">
+    <div data-download-toasts="" className={stacked ? "pointer-events-auto flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2" : "pointer-events-auto fixed bottom-6 right-6 z-[60] flex w-80 max-w-[calc(100vw-3rem)] flex-col gap-2"}>
       {items.map((item) => <DownloadToast key={item.id} controller={controller} item={item} />)}
     </div>
   );

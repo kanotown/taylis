@@ -1,0 +1,887 @@
+/**
+ * One drive location's folders (M161, docs/DRIVE.md §17.2), used by 「ドライブ」 and by a channel's 「ドライブ」 tab:
+ *
+ * - The bar: breadcrumbs (a crumb takes dropped items: moved there), the search of this location, 「新しいフォルダ」,
+ *   「アップロード」 (files / a folder), sort, list or grid (remembered on this device), the trash, the details pane.
+ * - The listing reads 100 items a page by cursor as it scrolls (folders first, then by name, time or size), lists them
+ *   (icon or thumbnail, name, time, who changed it, size) or tiles them (thumbnails), and opens a photo, a video, a PDF or
+ *   an Office file in the app's viewers (others download). Select with a click, ⌘ / Ctrl and Shift; ↑ ↓ Enter, Space
+ *   (preview), F2 (rename), Delete (trash), ⌘A, ⌘X then ⌘V (move). A right-click or the row's ⋯ opens its menu.
+ * - Files and folders dragged from the desktop drop onto the listing (into this folder) or onto a folder row (into it);
+ *   rows dragged onto a folder or a crumb move there.
+ * - The trash: what was put there together, restored as a whole (to where it was, else the top) or deleted for good by
+ *   who may (§3.2).
+ * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
+ */
+import { ArrowDown, ArrowUp, ChevronRight, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderPlus, FolderUp, Info, LayoutGrid, List, Loader2, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ContextMenu } from "radix-ui";
+import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { ApiError, describeError } from "../api/errors";
+import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, DriveTrashEntryOut } from "../api/types";
+import type { AppController } from "../state/app";
+import { appendPage, breadcrumbs, clickSelection, type DriveIconKind, type DriveOrder, type DriveSort, type DriveViewMode, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
+import { uploadQueueFor, useUploadsDone } from "../drive/session";
+import { coalesce } from "../sync/drive";
+import { dropEntries, emptyFolders, type PickedTree, pickFilesNative, pickFolderNative, treeFromEntries, treeFromInput } from "../platform/driveFiles";
+import { isFileDrag } from "../platform/fileDrops";
+import { isTauri } from "../platform/env";
+import { DeleteForeverDialog, MoveDialog, NewFolderDialog, RenameDialog } from "./DriveDialogs";
+import { DriveViewer } from "./DriveViewer";
+import { DropOverlay, useFileDropZone } from "./FileDropZone";
+import { FileName } from "./FileName";
+import { sinceLabel } from "./format";
+import { Button, cn, IconButton, Input, Menu, MenuContent, MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
+import { t } from "../i18n";
+
+const PAGE = 100;
+const ROW_DRAG = "application/x-taylis-drive-items";
+const MENU_CONTENT = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
+const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
+
+/** Items cut with ⌘X, pasted (moved) with ⌘V into the open folder: one per window. */
+let cutItems: DriveItemOut[] = [];
+
+const ICONS: Readonly<Record<DriveIconKind, typeof File>> = {
+  folder: Folder, image: FileImage, video: FileVideo, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
+};
+
+export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind" | "name" | "content_type">; size?: number }) {
+  const kind = iconKind(item);
+  const Icon = ICONS[kind];
+  return <Icon size={size} className={cn("shrink-0", kind === "folder" ? "text-accent" : "text-muted")} aria-hidden />;
+}
+
+/** A thumbnail fetched with the bearer token (an object URL, revoked when gone); null while none. */
+function useThumbnail(controller: AppController, path: string | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const api = controller.api;
+    if (!path || !api) {
+      setUrl(null);
+      return;
+    }
+    let made: string | null = null;
+    let cancelled = false;
+    void api.fetchBlob(path).then(
+      (blob) => {
+        if (cancelled) return;
+        made = URL.createObjectURL(blob);
+        setUrl(made);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [controller.api, path]);
+  return url;
+}
+
+function Thumb({ controller, item, className, iconSize = 18 }: { controller: AppController; item: DriveItemOut; className?: string; iconSize?: number }) {
+  const url = useThumbnail(controller, thumbnailPath(item));
+  return url ? <img src={url} alt="" draggable={false} className={cn("object-cover", className)} /> : <span className={cn("flex items-center justify-center", className)}><DriveIcon item={item} size={iconSize} /></span>;
+}
+
+interface Listing {
+  folder: DriveItemOut | null;
+  path: DriveCrumb[];
+  items: DriveItemOut[];
+  cursor: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const EMPTY_LISTING: Listing = { folder: null, path: [], items: [], cursor: null, loading: true, error: null };
+
+export type DriveMode = "folder" | "trash";
+
+export function DriveBrowser({ controller, location, folderId, onFolder, mode = "folder", onMode, onLost, header }: {
+  controller: AppController;
+  location: DriveLocationOut;
+  folderId: string;
+  onFolder: (folderId: string) => void;
+  mode?: DriveMode;
+  onMode?: (mode: DriveMode) => void;
+  /** The folder and the location's root are gone or unreadable (left the channel): the caller picks another place. */
+  onLost?: () => void;
+  /** Drawn before the breadcrumbs (a narrow layout's back button). */
+  header?: ReactNode;
+}) {
+  const api = controller.api;
+  const engine = controller.engine;
+  const [listing, setListing] = useState<Listing>(EMPTY_LISTING);
+  const [sort, setSort] = useState<{ sort: DriveSort; order: DriveOrder }>({ sort: "name", order: "asc" });
+  const [view, setView] = useState<DriveViewMode>(readViewMode);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<DriveSearchHitOut[] | null>(null);
+  const [details, setDetails] = useState(false);
+  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move"; items: DriveItemOut[] } | null>(null);
+  const [viewing, setViewing] = useState<DriveItemOut | null>(null);
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const filesInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const generation = useRef(0);
+  const canWrite = location.can_write;
+
+  // --- reading ----------------------------------------------------------------------------------------------------
+
+  const load = useCallback(async (options: { keep?: boolean } = {}) => {
+    if (!api || mode !== "folder") return;
+    const run = ++generation.current;
+    setListing((current) => (options.keep ? { ...current, loading: true } : { ...EMPTY_LISTING }));
+    try {
+      const held = options.keep ? listing.items.length : 0;
+      const out = await api.driveChildren(folderId, { sort: sort.sort, order: sort.order, limit: Math.min(200, Math.max(PAGE, held)) });
+      if (run !== generation.current) return;
+      setListing({ folder: out.folder, path: out.path, items: out.items, cursor: out.next_cursor, loading: false, error: null });
+    } catch (error) {
+      if (run !== generation.current) return;
+      if (error instanceof ApiError && error.code === "drive_item_not_found") {
+        if (folderId !== location.root_id) onFolder(location.root_id);
+        else onLost?.();
+        return;
+      }
+      setListing((current) => ({ ...current, loading: false, error: describeError(error) }));
+    }
+    // `listing.items.length` only sizes a reload; reading again on its change would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, folderId, sort.sort, sort.order, mode, location.root_id]);
+
+  useEffect(() => {
+    setSelected(new Set());
+    setAnchor(null);
+    void load();
+  }, [load]);
+
+  const loadMore = useCallback(async () => {
+    if (!api || !listing.cursor || listing.loading) return;
+    const run = generation.current;
+    setListing((current) => ({ ...current, loading: true }));
+    try {
+      const out = await api.driveChildren(folderId, { sort: sort.sort, order: sort.order, cursor: listing.cursor, limit: PAGE });
+      if (run !== generation.current) return;
+      setListing((current) => ({ ...current, items: appendPage(current.items, out.items), cursor: out.next_cursor, loading: false }));
+    } catch (error) {
+      if (run === generation.current) setListing((current) => ({ ...current, loading: false, error: describeError(error) }));
+    }
+  }, [api, folderId, sort.sort, sort.order, listing.cursor, listing.loading]);
+
+  // The next page when the end of the list comes into view.
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = sentinel.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+    }, { root: listRef.current, rootMargin: "200px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [loadMore, listing.cursor]);
+
+  // --- the trash ----------------------------------------------------------------------------------------------------
+
+  const [trash, setTrash] = useState<{ entries: DriveTrashEntryOut[]; cursor: string | null; loading: boolean; error: string | null }>({ entries: [], cursor: null, loading: true, error: null });
+  const [forever, setForever] = useState<DriveTrashEntryOut | null>(null);
+  const loadTrash = useCallback(async (cursor: string | null = null) => {
+    if (!api || mode !== "trash") return;
+    setTrash((current) => ({ ...current, loading: true, ...(cursor ? {} : { entries: [] }) }));
+    try {
+      const out = await api.driveTrash(location.id, cursor);
+      setTrash((current) => ({ entries: cursor ? [...current.entries, ...out.entries] : out.entries, cursor: out.next_cursor, loading: false, error: null }));
+    } catch (error) {
+      setTrash((current) => ({ ...current, loading: false, error: describeError(error) }));
+    }
+  }, [api, location.id, mode]);
+  useEffect(() => {
+    void loadTrash();
+  }, [loadTrash]);
+
+  // --- live updates -------------------------------------------------------------------------------------------------
+
+  const reload = useRef(coalesce(() => undefined));
+  useEffect(() => {
+    const again = coalesce(() => {
+      if (mode === "trash") void loadTrash();
+      else void load({ keep: true });
+    });
+    reload.current = again;
+    const hub = engine?.drive;
+    const unsubscribe = hub?.subscribe((signal) => {
+      if (signal.kind === "resync") again.poke();
+      else if (signal.kind === "changed" && signal.locationId === location.id && (mode === "trash" || signal.folderIds.includes(folderId))) again.poke();
+    });
+    return () => {
+      again.cancel();
+      unsubscribe?.();
+    };
+  }, [engine, location.id, folderId, mode, load, loadTrash]);
+  useUploadsDone(controller.accountKey, useCallback((job) => {
+    if (job.target.parentId === folderId && !job.relativeDir) reload.current.poke();
+  }, [folderId]));
+
+  // --- search in this location ---------------------------------------------------------------------------------------
+
+  useEffect(() => {
+    const words = query.trim();
+    if (!api || !words) {
+      setHits(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void api.searchDrive({ q: words, location_id: location.id, limit: 50 }).then(
+        (out) => { if (!cancelled) setHits(out.items); },
+        (error) => { if (!cancelled) { setHits([]); controller.setError(error); } },
+      );
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [api, query, location.id, controller]);
+
+  // --- actions --------------------------------------------------------------------------------------------------------
+
+  const items = hits ? hits.map((hit) => hit.item) : listing.items;
+  const order = items.map((item) => item.id);
+  const chosen = items.filter((item) => selected.has(item.id));
+  const viewables = useMemo(() => viewable(items), [items]);
+
+  const open = (item: DriveItemOut) => {
+    if (item.kind === "folder") {
+      setQuery("");
+      onFolder(item.id);
+      return;
+    }
+    if (viewerKind(item)) setViewing(item);
+    else void controller.downloadDriveFile(item);
+  };
+
+  const download = (targets: DriveItemOut[]) => {
+    for (const item of targets.filter((entry) => entry.kind === "file")) void controller.downloadDriveFile(item);
+  };
+
+  const trashItems = async (targets: DriveItemOut[]) => {
+    if (!api || targets.length === 0) return;
+    try {
+      const out = await api.trashDriveItems(targets.map((item) => item.id));
+      const failed = out.results.filter((result) => !result.ok);
+      if (failed.length > 0) controller.setError(new ApiError(409, failed[0]!.error ?? "unknown", ""));
+      const gone = new Set(out.results.filter((result) => result.ok).map((result) => result.id));
+      setListing((current) => ({ ...current, items: current.items.filter((item) => !gone.has(item.id)) }));
+      setHits((current) => current && current.filter((hit) => !gone.has(hit.item.id)));
+      setSelected(new Set());
+      if (gone.size > 0) controller.setNotice(gone.size === 1 ? t("drive.trashedOne") : t("drive.trashedMany", { count: gone.size }));
+    } catch (error) {
+      controller.setError(error);
+    }
+  };
+
+  const moveItems = async (targets: DriveItemOut[], targetFolderId: string) => {
+    if (!api || targets.length === 0) return;
+    const moving = targets.filter((item) => item.id !== targetFolderId && item.parent_id !== targetFolderId);
+    if (moving.length === 0) return;
+    try {
+      const out = await api.moveDriveItems(moving.map((item) => item.id), targetFolderId, "fail");
+      const failed = out.results.filter((result) => !result.ok);
+      if (failed.length > 0) controller.setError(new ApiError(409, failed[0]!.error ?? "unknown", ""));
+      void load({ keep: true });
+    } catch (error) {
+      controller.setError(error);
+    }
+  };
+
+  /** Files (and the empty folders of a folder upload) into `parentId`. */
+  const upload = async (tree: PickedTree, parentId: string, label: string) => {
+    if (!api || !controller.accountKey) return;
+    const empty = emptyFolders(tree.folders, tree.files);
+    for (const path of empty) {
+      try {
+        await api.createDriveFolder({ parent_id: parentId, path, client_op_id: crypto.randomUUID() });
+      } catch (error) {
+        controller.setError(error);
+        break;
+      }
+    }
+    if (empty.length > 0 && tree.files.length === 0) void load({ keep: true });
+    if (tree.files.length === 0) return;
+    uploadQueueFor(controller.accountKey, api).add(tree.files, { parentId, locationId: location.id, label });
+  };
+
+  const here = pathLine(listing.path, locationName(location));
+  const uploadHere = (tree: PickedTree | null) => {
+    if (tree) void upload(tree, folderId, here);
+  };
+  const pickFiles = () => (isTauri() ? void pickFilesNative().then(uploadHere, (error) => controller.setError(error)) : filesInput.current?.click());
+  const pickFolder = () => (isTauri() ? void pickFolderNative().then(uploadHere, (error) => controller.setError(error)) : folderInput.current?.click());
+
+  /** A drop: its entries walked (folders kept), else its plain files. */
+  const takeDrop = (data: DataTransfer, parentId: string, label: string) => {
+    const entries = dropEntries(data);
+    const files = Array.from(data.files ?? []);
+    void (entries ? treeFromEntries(entries) : Promise.resolve(treeFromInput(files))).then(
+      (tree) => upload(tree, parentId, label),
+      (error) => controller.setError(error),
+    );
+  };
+
+  const blocked = !canWrite ? t("drive.readOnly") : mode === "trash" ? t("drive.dropNotInTrash") : null;
+  const zone = useFileDropZone({
+    enabled: true,
+    blocked,
+    onFiles: () => undefined,
+    onData: (data) => takeDrop(data, folderId, here),
+  });
+
+  // --- keyboard -------------------------------------------------------------------------------------------------------
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("input, textarea")) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const at = focusId ? order.indexOf(focusId) : -1;
+    const focus = (index: number, extend: boolean) => {
+      const id = order[Math.max(0, Math.min(order.length - 1, index))];
+      if (!id) return;
+      setFocusId(id);
+      const next = clickSelection(order, selected, anchor, id, { toggle: false, range: extend });
+      setSelected(next.selected);
+      setAnchor(next.anchor);
+      listRef.current?.querySelector<HTMLElement>(`[data-drive-item="${id}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+    const current = at >= 0 ? items[at] : chosen[0];
+    if (event.key === "ArrowDown" || (view === "grid" && event.key === "ArrowRight")) {
+      event.preventDefault();
+      focus(at + 1, event.shiftKey);
+    } else if (event.key === "ArrowUp" || (view === "grid" && event.key === "ArrowLeft")) {
+      event.preventDefault();
+      focus(at < 0 ? 0 : at - 1, event.shiftKey);
+    } else if (event.key === "Enter" && current) {
+      event.preventDefault();
+      open(current);
+    } else if (event.key === " " && current) {
+      event.preventDefault();
+      if (viewerKind(current)) setViewing(current);
+    } else if (event.key === "F2" && current && canWrite && mode === "folder") {
+      event.preventDefault();
+      setDialog({ kind: "rename", item: current });
+    } else if ((event.key === "Delete" || (event.key === "Backspace" && mod)) && chosen.length > 0 && canWrite && mode === "folder") {
+      event.preventDefault();
+      void trashItems(chosen);
+    } else if (mod && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setSelected(new Set(order));
+    } else if (mod && event.key.toLowerCase() === "x" && chosen.length > 0 && canWrite) {
+      event.preventDefault();
+      cutItems = chosen;
+      controller.setNotice(t("drive.cut", { count: chosen.length }));
+    } else if (mod && event.key.toLowerCase() === "v" && cutItems.length > 0 && canWrite && mode === "folder") {
+      event.preventDefault();
+      const moving = cutItems;
+      cutItems = [];
+      void moveItems(moving, folderId);
+    } else if (event.key === "Escape" && selected.size > 0) {
+      setSelected(new Set());
+    }
+  };
+
+  const select = (item: DriveItemOut, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
+    const next = clickSelection(order, selected, anchor, item.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey });
+    setSelected(next.selected);
+    setAnchor(next.anchor);
+    setFocusId(item.id);
+  };
+
+  // --- rows: drag to move, drop files into a folder --------------------------------------------------------------------
+
+  const rowDrag = (item: DriveItemOut) => ({
+    draggable: canWrite && mode === "folder",
+    onDragStart: (event: DragEvent) => {
+      const moving = selected.has(item.id) ? chosen : [item];
+      event.dataTransfer.setData(ROW_DRAG, JSON.stringify(moving.map((entry) => entry.id)));
+      event.dataTransfer.effectAllowed = "move";
+    },
+  });
+  const folderDrop = (folder: { id: string; name: string }) => ({
+    onDragOver: (event: DragEvent) => {
+      if (!canWrite || mode !== "folder") return;
+      const internal = event.dataTransfer.types.includes(ROW_DRAG);
+      if (!internal && !isFileDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = internal ? "move" : "copy";
+      setDropFolder(folder.id);
+    },
+    onDragLeave: () => setDropFolder((current) => (current === folder.id ? null : current)),
+    onDrop: (event: DragEvent) => {
+      setDropFolder(null);
+      if (!canWrite || mode !== "folder") return;
+      const raw = event.dataTransfer.getData(ROW_DRAG);
+      if (raw) {
+        event.preventDefault();
+        event.stopPropagation();
+        const ids = new Set(JSON.parse(raw) as string[]);
+        void moveItems(items.filter((entry) => ids.has(entry.id)), folder.id);
+        return;
+      }
+      if (!isFileDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      // Not to the listing's own zone: its overlay ends with the window's drop listener.
+      window.dispatchEvent(new Event("drop"));
+      takeDrop(event.dataTransfer, folder.id, `${here} › ${folder.name}`);
+    },
+  });
+
+  const rowMenu = (item: DriveItemOut) => {
+    const targets = selected.has(item.id) && chosen.length > 1 ? chosen : [item];
+    const many = targets.length > 1;
+    return (
+      <>
+        {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => open(item)}>{item.kind === "folder" ? t("drive.open") : viewerKind(item) ? t("drive.preview") : t("drive.download")}</ContextMenu.Item>}
+        {targets.some((entry) => entry.kind === "file") && (many || viewerKind(item)) && (
+          <ContextMenu.Item className={MENU_ITEM} onSelect={() => download(targets)}><Download size={14} /> {t("drive.download")}</ContextMenu.Item>
+        )}
+        {hits && !many && item.parent_id && (
+          <ContextMenu.Item className={MENU_ITEM} onSelect={() => { setQuery(""); onFolder(item.parent_id!); }}><FolderInput size={14} /> {t("drive.showInFolder")}</ContextMenu.Item>
+        )}
+        {canWrite && mode === "folder" && (
+          <>
+            <ContextMenu.Separator className="my-1 h-px bg-line" />
+            {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "rename", item })}><Pencil size={14} /> {t("drive.rename")}</ContextMenu.Item>}
+            <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "move", items: targets })}><FolderInput size={14} /> {t("drive.move")}</ContextMenu.Item>
+            <ContextMenu.Item className={cn(MENU_ITEM, "text-danger")} onSelect={() => void trashItems(targets)}><Trash2 size={14} /> {t("drive.toTrash")}</ContextMenu.Item>
+          </>
+        )}
+      </>
+    );
+  };
+
+  // --- drawing ------------------------------------------------------------------------------------------------------
+
+  const users = controller.store.users;
+  const who = (id: string | null | undefined) => (id ? users.get(id)?.display_name ?? t("drive.someone") : "");
+  const crumbs = breadcrumbs(listing.path, locationName(location));
+  const emptyFolder = !listing.loading && !listing.error && listing.items.length === 0 && !hits;
+
+  const toolbar = (
+    <div className="flex shrink-0 flex-col border-b border-line">
+      <div className="flex h-11 items-center gap-1.5 px-3">
+      {header}
+      <nav aria-label={t("drive.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-0.5 text-[15px]">
+        {mode === "trash" ? (
+          <>
+            <button type="button" className="truncate rounded-md px-1.5 py-1 hover:bg-ink/6" onClick={() => onMode?.("folder")}>{locationName(location)}</button>
+            <ChevronRight size={14} className="shrink-0 text-muted" />
+            <strong className="truncate px-1.5">{t("drive.trash")}</strong>
+          </>
+        ) : (
+          crumbs.shown.map((crumb, index) => (
+            <span key={crumb.id} className="flex min-w-0 items-center gap-0.5">
+              {index > 0 && <ChevronRight size={14} className="shrink-0 text-muted" />}
+              {index === 1 && crumbs.hidden.length > 0 && (
+                <>
+                  <Menu>
+                    <MenuTrigger asChild>
+                      <button type="button" className="rounded-md px-1.5 py-1 text-muted hover:bg-ink/6" aria-label={t("drive.moreFolders")}>…</button>
+                    </MenuTrigger>
+                    <MenuContent align="start">
+                      {crumbs.hidden.map((hidden) => <MenuItem key={hidden.id} onSelect={() => onFolder(hidden.id)}>{hidden.name}</MenuItem>)}
+                    </MenuContent>
+                  </Menu>
+                  <ChevronRight size={14} className="shrink-0 text-muted" />
+                </>
+              )}
+              <button
+                type="button"
+                data-drive-crumb={crumb.id}
+                aria-current={crumb.id === folderId ? "page" : undefined}
+                onClick={() => onFolder(crumb.id)}
+                {...folderDrop(crumb)}
+                className={cn("max-w-[18rem] truncate rounded-md px-1.5 py-1 hover:bg-ink/6", crumb.id === folderId && "font-semibold", dropFolder === crumb.id && "bg-accent-soft ring-1 ring-accent")}
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))
+        )}
+      </nav>
+      </div>
+      {mode === "folder" && (
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+          <label className="relative mr-auto flex items-center">
+            <Search size={14} className="pointer-events-none absolute left-2 text-muted" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("drive.searchIn", { name: locationName(location) })} aria-label={t("drive.search")} className="h-8 w-48 py-1 pl-7 pr-7 text-[13px] max-md:w-36" />
+            {query && <button type="button" aria-label={t("drive.clearSearch")} className="absolute right-1.5 rounded p-0.5 text-muted hover:text-ink" onClick={() => setQuery("")}><X size={13} /></button>}
+          </label>
+          {canWrite && (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "new-folder" })}><FolderPlus size={14} /> {t("drive.newFolder")}</Button>
+              <Menu>
+                <MenuTrigger asChild>
+                  <Button size="sm"><Upload size={14} /> {t("drive.upload")}</Button>
+                </MenuTrigger>
+                <MenuContent align="end">
+                  <MenuItem onSelect={pickFiles}><FilePlus2 size={14} /> {t("drive.uploadFiles")}</MenuItem>
+                  <MenuItem onSelect={pickFolder}><FolderUp size={14} /> {t("drive.uploadFolder")}</MenuItem>
+                </MenuContent>
+              </Menu>
+            </>
+          )}
+          <Menu>
+            <MenuTrigger asChild>
+              <Button size="sm" variant="ghost" aria-label={t("drive.sortBy", { sort: sortLabel(sort.sort) })}>
+                {sort.order === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />} {sortLabel(sort.sort)}
+              </Button>
+            </MenuTrigger>
+            <MenuContent align="end">
+              <MenuRadioGroup value={sort.sort} onValueChange={(value) => setSort(nextSort({ sort: "name", order: "asc" }, value as DriveSort))}>
+                {(["name", "modified", "size"] as const).map((value) => <MenuRadioItem key={value} value={value}>{sortLabel(value)}</MenuRadioItem>)}
+              </MenuRadioGroup>
+              <MenuSeparator />
+              <MenuItem onSelect={() => setSort((current) => ({ ...current, order: current.order === "asc" ? "desc" : "asc" }))}>
+                {sort.order === "asc" ? t("drive.sortDesc") : t("drive.sortAsc")}
+              </MenuItem>
+            </MenuContent>
+          </Menu>
+          <div role="group" aria-label={t("drive.viewMode")} className="flex rounded-lg border border-line">
+            {(["list", "grid"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={view === value}
+                aria-label={value === "list" ? t("drive.viewList") : t("drive.viewGrid")}
+                title={value === "list" ? t("drive.viewList") : t("drive.viewGrid")}
+                onClick={() => { setView(value); writeViewMode(value); }}
+                className={cn("flex h-7 w-8 items-center justify-center first:rounded-l-lg last:rounded-r-lg", view === value ? "bg-ink/8 text-ink" : "text-muted hover:text-ink")}
+              >
+                {value === "list" ? <List size={15} /> : <LayoutGrid size={15} />}
+              </button>
+            ))}
+          </div>
+          <IconButton label={t("drive.details")} aria-pressed={details} onClick={() => setDetails((value) => !value)} className={cn(details && "bg-ink/8")}><Info size={16} /></IconButton>
+          {onMode && <IconButton label={t("drive.trash")} onClick={() => onMode("trash")}><Trash2 size={16} /></IconButton>}
+        </div>
+      )}
+    </div>
+  );
+
+  const listingBody = mode === "trash" ? (
+    <TrashList
+      controller={controller}
+      location={location}
+      trash={trash}
+      onMore={() => void loadTrash(trash.cursor)}
+      onRestore={async (entry) => {
+        if (!api) return;
+        try {
+          await api.restoreDriveItem(entry.item.id, "rename");
+          controller.setNotice(t("drive.restored", { name: entry.item.name }));
+          void loadTrash();
+        } catch (error) {
+          controller.setError(error);
+        }
+      }}
+      onDelete={setForever}
+    />
+  ) : listing.error && listing.items.length === 0 ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted">
+      <p role="alert">{listing.error}</p>
+      <Button variant="secondary" size="sm" onClick={() => void load()}>{t("common.retry")}</Button>
+    </div>
+  ) : emptyFolder ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent"><Folder size={22} /></span>
+      <strong>{t("drive.emptyFolder")}</strong>
+      <span className="max-w-sm text-sm text-muted">{canWrite ? t("drive.emptyFolderHint") : t("drive.emptyReadOnly")}</span>
+    </div>
+  ) : hits && hits.length === 0 ? (
+    <p className="p-6 text-center text-sm text-muted">{t("drive.noResults", { q: query.trim() })}</p>
+  ) : view === "list" ? (
+    <table className="w-full table-fixed border-collapse text-[13px]">
+      <thead className="sticky top-0 z-10 bg-canvas text-left text-xs text-muted">
+        <tr className="border-b border-line">
+          <SortHeader label={t("drive.column.name")} sort="name" current={sort} onSort={setSort} disabled={!!hits} className="pl-4" />
+          <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} className="w-40 max-md:hidden" />
+          <th className="w-32 px-2 py-2 font-medium max-lg:hidden">{t("drive.column.by")}</th>
+          <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} className="w-24 text-right" />
+          <th className="w-10" aria-label={t("drive.actions")} />
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => {
+          const hit = hits?.find((entry) => entry.item.id === item.id);
+          return (
+            <ContextMenu.Root key={item.id}>
+              <ContextMenu.Trigger asChild>
+                <tr
+                  data-drive-item={item.id}
+                  aria-selected={selected.has(item.id)}
+                  onClick={(event) => select(item, event)}
+                  onDoubleClick={() => open(item)}
+                  {...rowDrag(item)}
+                  {...(item.kind === "folder" ? folderDrop(item) : {})}
+                  className={cn("cursor-default border-b border-line/60", selected.has(item.id) ? "bg-accent-soft" : "hover:bg-ink/4", dropFolder === item.id && "bg-accent-soft ring-1 ring-inset ring-accent", focusId === item.id && "outline outline-1 -outline-offset-1 outline-accent/50")}
+                >
+                  <td className="py-1.5 pl-4 pr-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Thumb controller={controller} item={item} className="h-7 w-7 rounded" />
+                      <div className="min-w-0">
+                        <FileName name={item.name} className="font-medium" />
+                        {hit && <div className="truncate text-[11px] text-muted">{pathLine(hit.path, locationName(location))}</div>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="truncate px-2 text-muted max-md:hidden">{sinceLabel(itemTime(item))}</td>
+                  <td className="truncate px-2 text-muted max-lg:hidden">{who(item.updated_by ?? item.created_by)}</td>
+                  <td className="px-2 text-right tabular-nums text-muted">{item.kind === "file" ? formatBytes(item.size_bytes) : ""}</td>
+                  <td className="pr-2 text-right">
+                    <RowMenuButton>{rowMenu(item)}</RowMenuButton>
+                  </td>
+                </tr>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content className={MENU_CONTENT} collisionPadding={8}>{rowMenu(item)}</ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu.Root>
+          );
+        })}
+      </tbody>
+    </table>
+  ) : (
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3 p-4">
+      {items.map((item) => (
+        <ContextMenu.Root key={item.id}>
+          <ContextMenu.Trigger asChild>
+            <li
+              data-drive-item={item.id}
+              aria-selected={selected.has(item.id)}
+              onClick={(event) => select(item, event)}
+              onDoubleClick={() => open(item)}
+              {...rowDrag(item)}
+              {...(item.kind === "folder" ? folderDrop(item) : {})}
+              className={cn("flex cursor-default flex-col overflow-hidden rounded-xl border", selected.has(item.id) ? "border-accent bg-accent-soft" : "border-line hover:bg-ink/4", dropFolder === item.id && "ring-2 ring-accent")}
+            >
+              <Thumb controller={controller} item={item} iconSize={36} className="h-28 w-full bg-panel" />
+              <div className="flex items-center gap-1.5 px-2 py-1.5">
+                <DriveIcon item={item} size={14} />
+                <FileName name={item.name} className="min-w-0 flex-1 text-[12.5px] font-medium" />
+              </div>
+            </li>
+          </ContextMenu.Trigger>
+          <ContextMenu.Portal>
+            <ContextMenu.Content className={MENU_CONTENT} collisionPadding={8}>{rowMenu(item)}</ContextMenu.Content>
+          </ContextMenu.Portal>
+        </ContextMenu.Root>
+      ))}
+    </ul>
+  );
+
+  const detailItem = chosen.length === 1 ? chosen[0]! : chosen.length === 0 ? listing.folder : null;
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-drive-browser={mode}>
+      {toolbar}
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={listRef}
+          role="grid"
+          aria-label={mode === "trash" ? t("drive.trash") : here}
+          aria-multiselectable
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onClick={(event) => { if (event.target === event.currentTarget) setSelected(new Set()); }}
+          className="relative flex min-h-0 flex-1 flex-col overflow-y-auto outline-none"
+          data-drop-zone="drive"
+          {...zone.handlers}
+        >
+          {listingBody}
+          {mode === "folder" && !hits && <div ref={sentinel} className="h-px shrink-0" />}
+          {listing.loading && mode === "folder" && <div className="flex justify-center py-4 text-muted"><Loader2 size={18} className="animate-spin" /></div>}
+          <DropOverlay active={zone.active} blocked={blocked} destination={t("drive.dropTo", { path: here })} />
+        </div>
+        {details && mode === "folder" && <DetailsPane controller={controller} item={detailItem} count={chosen.length} path={here} onClose={() => setDetails(false)} />}
+      </div>
+      <input ref={filesInput} type="file" multiple hidden onChange={(event) => { uploadHere(treeFromInput(Array.from(event.target.files ?? []))); event.target.value = ""; }} />
+      <input
+        ref={folderInput}
+        type="file"
+        multiple
+        hidden
+        // webkitdirectory: a folder and everything in it (React has no typed prop for it).
+        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        onChange={(event) => { uploadHere(treeFromInput(Array.from(event.target.files ?? []))); event.target.value = ""; }}
+      />
+      {dialog?.kind === "new-folder" && <NewFolderDialog controller={controller} parentId={folderId} onClose={() => setDialog(null)} onMade={() => void load({ keep: true })} />}
+      {dialog?.kind === "rename" && <RenameDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} onDone={(renamed) => {
+        setListing((current) => ({ ...current, items: current.items.map((item) => (item.id === renamed.id ? renamed : item)) }));
+        void load({ keep: true });
+      }} />}
+      {dialog?.kind === "move" && <MoveDialog controller={controller} items={dialog.items} startLocation={location} startFolderId={folderId} onClose={() => setDialog(null)} onMoved={(_target, failed) => {
+        if (failed > 0) controller.setError(t("drive.someNotMoved", { count: failed }));
+        setSelected(new Set());
+        void load({ keep: true });
+      }} />}
+      {forever && (
+        <DeleteForeverDialog
+          name={forever.item.name}
+          count={forever.item_count}
+          onClose={() => setForever(null)}
+          onConfirm={async () => {
+            if (!api) return;
+            try {
+              await api.deleteDriveItem(forever.item.id);
+              setForever(null);
+              void loadTrash();
+            } catch (error) {
+              controller.setError(error);
+            }
+          }}
+        />
+      )}
+      {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} />}
+    </div>
+  );
+}
+
+function SortHeader({ label, sort, current, onSort, disabled, className }: { label: string; sort: DriveSort; current: { sort: DriveSort; order: DriveOrder }; onSort: (next: { sort: DriveSort; order: DriveOrder }) => void; disabled: boolean; className?: string }) {
+  const active = current.sort === sort;
+  return (
+    <th className={cn("px-2 py-2 font-medium", className)} aria-sort={active ? (current.order === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" disabled={disabled} onClick={() => onSort(nextSort(current, sort))} className={cn("inline-flex items-center gap-1 hover:text-ink disabled:hover:text-muted", active && !disabled && "text-ink")}>
+        {label}
+        {active && !disabled && (current.order === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+      </button>
+    </th>
+  );
+}
+
+/** The row's ⋯: the same items as its context menu, opened by a click. */
+function RowMenuButton({ children }: { children: ReactNode }) {
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={t("drive.actions")}
+          className="rounded-md p-1 text-muted hover:bg-ink/8 hover:text-ink"
+          onClick={(event) => {
+            event.stopPropagation();
+            const box = event.currentTarget.getBoundingClientRect();
+            event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left, clientY: box.bottom }));
+          }}
+        >
+          <MoreHorizontal size={15} />
+        </button>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={MENU_CONTENT} collisionPadding={8}>{children}</ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
+  );
+}
+
+function TrashList({ controller, location, trash, onMore, onRestore, onDelete }: {
+  controller: AppController;
+  location: DriveLocationOut;
+  trash: { entries: DriveTrashEntryOut[]; cursor: string | null; loading: boolean; error: string | null };
+  onMore: () => void;
+  onRestore: (entry: DriveTrashEntryOut) => Promise<void>;
+  onDelete: (entry: DriveTrashEntryOut) => void;
+}) {
+  const users = controller.store.users;
+  if (trash.error && trash.entries.length === 0) return <p role="alert" className="p-6 text-center text-sm text-muted">{trash.error}</p>;
+  if (!trash.loading && trash.entries.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent"><Trash2 size={22} /></span>
+        <strong>{t("drive.trashEmpty")}</strong>
+        <span className="max-w-sm text-sm text-muted">{t("drive.trashHint")}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <p className="border-b border-line px-4 py-2 text-xs text-muted">{t("drive.trashHint")}</p>
+      <ul>
+        {trash.entries.map((entry) => (
+          <li key={entry.item.id} data-drive-trash={entry.item.id} className="flex items-center gap-3 border-b border-line/60 px-4 py-2 text-[13px]">
+            <DriveIcon item={entry.item} />
+            <div className="min-w-0 flex-1">
+              <FileName name={entry.item.name} className="font-medium" />
+              <div className="truncate text-[11px] text-muted">
+                {t("drive.trashedBy", { who: entry.trashed_by ? users.get(entry.trashed_by)?.display_name ?? t("drive.someone") : t("drive.someone"), when: sinceLabel(entry.trashed_at) })}
+                {entry.item.kind === "folder" ? ` · ${t("drive.itemCount", { count: entry.item_count - 1 })}` : ""} · {formatBytes(entry.size_bytes)}
+              </div>
+            </div>
+            {location.can_write && (
+              <Button size="sm" variant="secondary" onClick={() => void onRestore(entry)}><RotateCcw size={13} /> {t("drive.restore")}</Button>
+            )}
+            {location.can_manage && (
+              <Button size="sm" variant="ghost" className="text-danger" onClick={() => onDelete(entry)}><Trash2 size={13} /> {t("drive.deleteForever")}</Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {trash.cursor && <Button variant="ghost" size="sm" className="m-3 self-center" onClick={onMore}>{t("drive.showMore")}</Button>}
+      {trash.loading && <div className="flex justify-center py-4 text-muted"><Loader2 size={18} className="animate-spin" /></div>}
+    </div>
+  );
+}
+
+function DetailsPane({ controller, item, count, path, onClose }: { controller: AppController; item: DriveItemOut | null; count: number; path: string; onClose: () => void }) {
+  const users = controller.store.users;
+  const who = (id: string | null | undefined) => (id ? users.get(id)?.display_name ?? t("drive.someone") : "—");
+  return (
+    <aside aria-label={t("drive.details")} className="flex w-72 shrink-0 flex-col border-l border-line bg-panel/40 max-md:hidden">
+      <header className="flex h-11 items-center gap-2 border-b border-line px-3">
+        <Info size={15} className="text-muted" />
+        <strong className="flex-1 text-sm">{t("drive.details")}</strong>
+        <IconButton label={t("common.close")} onClick={onClose} className="h-7 w-7"><X size={14} /></IconButton>
+      </header>
+      {count > 1 ? (
+        <p className="p-4 text-sm text-muted">{t("drive.selectedCount", { count })}</p>
+      ) : item ? (
+        <div className="space-y-3 overflow-y-auto p-4 text-[13px]">
+          <Thumb controller={controller} item={item} iconSize={40} className="h-36 w-full rounded-lg bg-panel" />
+          <FileName name={item.name || path} className="text-sm font-semibold" />
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+            <dt className="text-muted">{t("drive.detail.kind")}</dt>
+            <dd className="truncate">{item.kind === "folder" ? t("drive.detail.folder") : item.content_type ?? "—"}</dd>
+            {item.kind === "file" && (
+              <>
+                <dt className="text-muted">{t("drive.column.size")}</dt>
+                <dd>{formatBytes(item.size_bytes)}</dd>
+              </>
+            )}
+            <dt className="text-muted">{t("drive.column.modified")}</dt>
+            <dd>{sinceLabel(itemTime(item))}</dd>
+            <dt className="text-muted">{t("drive.detail.createdBy")}</dt>
+            <dd className="truncate">{who(item.created_by)}</dd>
+            <dt className="text-muted">{t("drive.column.by")}</dt>
+            <dd className="truncate">{who(item.updated_by)}</dd>
+            {item.kind === "file" && (
+              <>
+                <dt className="text-muted">{t("drive.detail.versions")}</dt>
+                <dd>{item.version_count}</dd>
+              </>
+            )}
+            <dt className="text-muted">{t("drive.detail.where")}</dt>
+            <dd className="break-words">{path}</dd>
+          </dl>
+          {item.kind === "file" && (
+            <Button size="sm" variant="secondary" onClick={() => void controller.downloadDriveFile(item)}><Download size={13} /> {t("drive.download")}</Button>
+          )}
+        </div>
+      ) : (
+        <p className="p-4 text-sm text-muted">{t("drive.detailsHint")}</p>
+      )}
+      <p className="mt-auto border-t border-line px-4 py-2 text-[11px] text-muted">{t("drive.shortcutsHint", { key: modKey() })}</p>
+    </aside>
+  );
+}

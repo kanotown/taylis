@@ -10,13 +10,15 @@ import { t, labelled } from "../i18n";
  * §4.1), which the wide layout has too (in the header). M51: 「予定」, a channel's calendar (CALENDAR.md §7; not in a DM).
  * M55: 「タスク」, a channel's board (TASKS.md §6; not in a DM either).
  */
-export type ConversationTab = "messages" | "canvas" | "events" | "tasks" | "pins" | "files";
+export type ConversationTab = "messages" | "canvas" | "events" | "tasks" | "drive" | "pins" | "files";
 
 const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
   labelled("messages", "main.tab.messages"),
   labelled("canvas", "main.tab.canvas"),
   labelled("events", "main.tab.events"),
   labelled("tasks", "main.tab.tasks"),
+  // M161 (docs/DRIVE.md §13.3): the channel's drive (not in a DM).
+  labelled("drive", "nav.drive"),
   labelled("pins", "main.pins"),
   labelled("files", "nav.files"),
 ];
@@ -45,7 +47,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   return (
     <div ref={row} className="scroll-row flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2">
       <div role="tablist" aria-label={t("main.view")} className="flex shrink-0 items-center">
-        {TABS.filter(([value]) => (value !== "events" && value !== "tasks") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
+        {TABS.filter(([value]) => (value !== "events" && value !== "tasks" && value !== "drive") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button
             key={value}
             type="button"

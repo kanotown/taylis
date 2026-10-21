@@ -26,6 +26,8 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   { key: "saved", label: "保存済み", visible: true, platforms: ["desktop", "mobile"] },
   { key: "reminders", label: "リマインダー", visible: true, platforms: ["desktop", "mobile"] },
   { key: "files", label: "ファイル", visible: true, platforms: ["desktop", "mobile"] },
+  // M161 (docs/DRIVE.md §17.1): 「ドライブ」, Desktop / Web only until the phones' D7.
+  { key: "drive", label: "ドライブ", visible: true, platforms: ["desktop"] },
   { key: "canvases", label: "キャンバス", visible: true, platforms: ["desktop", "mobile"] },
   { key: "docs", label: "ドキュメント", visible: true, platforms: ["desktop", "mobile"] },
   { key: "calendar", label: "カレンダー", visible: true, platforms: ["desktop", "mobile"] },
@@ -39,12 +41,12 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
 ];
 
 export const NAV_ORDER: Readonly<Record<NavPlatform, readonly string[]>> = {
-  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"],
-  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance", "actions"],
+  desktop: ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"],
+  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity", "attendance", "actions", "drive"],
 };
 
 /** The items this client draws in its sidebar (M112: 「予約」 with its page). */
-export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"];
+export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"];
 
 /**
  * The items implemented here now: 「在室状況」 (M140) only while the workspace has the board on, 「操作」 (M143) only while
@@ -65,6 +67,7 @@ const LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   saved: "nav.saved",
   reminders: "nav.reminders",
   files: "nav.files",
+  drive: "nav.drive",
   canvases: "nav.canvases",
   docs: "nav.docs",
   calendar: "nav.calendar",

@@ -87,7 +87,7 @@ async function openCanvasTab() {
 
 it("wide: 「メッセージ | キャンバス」 in the header; a canvas from a template; the editor saves after the pause", async () => {
   const { server, channelId } = await setup();
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ドライブ"]);
   await openCanvasTab();
   expect(screen.getByText("この会話にはまだキャンバスがありません")).toBeTruthy();
   expect(document.querySelector(".timeline")?.closest("[inert]")).toBeTruthy(); // the conversation is covered, not read
@@ -145,7 +145,7 @@ it("a narrow header (the thread pane open): the tabs fold into one menu, then pi
   expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy(); // "tabMenu": the buttons stay
   fireEvent.keyDown(fold(), { key: "Enter" });
   await settle();
-  expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent?.replace("✓", ""))).toEqual(["メッセージ", "キャンバス", "予定", "タスク"]);
+  expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent?.replace("✓", ""))).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ドライブ"]);
   expect(screen.getByRole("menuitemradio", { name: /メッセージ/ }).getAttribute("aria-checked")).toBe("true");
   fireEvent.click(screen.getByRole("menuitemradio", { name: "キャンバス" }));
   await settle();
@@ -177,7 +177,7 @@ it("phone: 「キャンバス」 in the conversation's tab row; someone else's s
   const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });
   fireEvent.click(screen.getByTitle("#lab"));
   await settle(20);
-  expect(within(screen.getByRole("tablist", { name: "会話の表示" })).getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ピン留め", "ファイル"]);
+  expect(within(screen.getByRole("tablist", { name: "会話の表示" })).getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ドライブ", "ピン留め", "ファイル"]);
   await openCanvasTab();
   // A phone opens it to read (the editor is a tap away).
   expect(editor()).toBeNull();
