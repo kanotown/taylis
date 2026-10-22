@@ -47,6 +47,11 @@ def source_kind(content_type: str, filename: str) -> str | None:
         ext = ext.lower()
         if dot and ext in OFFICE_EXTENSIONS:
             return ext
+        # 2026-10-22 (docs/DRIVE.md §27): a PDF whose header is not at the very start (bytes
+        # before "%PDF-", which readers accept within the first 1 KB) is not recognised by the
+        # sniffer; PDFium decides whether it is one (a file that is not fails the preview).
+        if dot and ext == "pdf" and content_type == "application/octet-stream":
+            return "pdf"
     return None
 
 

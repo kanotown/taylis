@@ -77,6 +77,11 @@ def to_attachment_out(attachment: Attachment) -> AttachmentOut:
     )
 
 
+def preview_out(attachment: Attachment) -> AttachmentPreviewOut | None:
+    """The preview's state as the API shows it (None: no preview, not made or not wanted)."""
+    return _preview_out(attachment)
+
+
 def _preview_out(attachment: Attachment) -> AttachmentPreviewOut | None:
     status = attachment.preview_status
     if status == "ready":
