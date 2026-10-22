@@ -215,7 +215,7 @@ it("a member who may only tick (edit_policy owners): no editor, the reason, and 
   expect(saveState()).toBe("saved");
 });
 
-it("the same words changed by someone else: 自分の版 / 相手の版 / 両方残す, and 自分の版 wins", async () => {
+it("the same words changed by someone else: 自分のバージョン / 相手のバージョン / 両方残す, and 自分のバージョン wins", async () => {
   const { server, alice, channelId } = await setup();
   const body = "# 議事録\n来週までに研究計画を提出する。\n";
   const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body, title: "議事録" });
@@ -227,9 +227,9 @@ it("the same words changed by someone else: 自分の版 / 相手の版 / 両方
   const dialog = screen.getByRole("dialog", { name: "同じ箇所がほかの人にも変更されました" });
   expect(within(dialog).getByText("来週までに予稿を提出する。")).toBeTruthy();
   expect(within(dialog).getByText("来週までに発表資料を提出する。")).toBeTruthy();
-  expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).toEqual(expect.arrayContaining(["自分の版", "相手の版", "両方残す", "あとで"]));
+  expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).toEqual(expect.arrayContaining(["自分のバージョン", "相手のバージョン", "両方残す", "あとで"]));
   expect(saveState()).toBe("conflict");
-  fireEvent.click(within(dialog).getByRole("button", { name: "自分の版" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "自分のバージョン" }));
   await settle(40);
   server.holdEvents = false;
   server.release();

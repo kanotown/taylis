@@ -75,7 +75,7 @@ export class UpdateChecker {
   progress: { downloaded: number; total: number | null } | null = null;
   /** The running app's version (null until read, and in the web build). */
   currentVersion: string | null = null;
-  /** The last check failed (the settings do not say 「最新の版です」 then). */
+  /** The last check failed (the settings do not say 「最新のバージョンです」 then). */
   lastCheckFailed = false;
   /** Bumped on every change (useSyncExternalStore). */
   version = 0;

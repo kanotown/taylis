@@ -1,7 +1,7 @@
 /**
  * M43: a conversation's 「キャンバス」 (CANVAS.md §4.1 / §5): its canvases (the conversation's tab canvas first), one of
  * them open — rendered, or in the editor with the preview beside it on a wide screen — with the save state
- * (保存中… / 保存済み / オフライン / 競合), the conflict choice (自分の版 / 相手の版 / 両方残す), a new canvas from a template,
+ * (保存中… / 保存済み / オフライン / 競合), the conflict choice (自分のバージョン / 相手のバージョン / 両方残す), a new canvas from a template,
  * the settings (title, who edits, the tab) and the trash. The history, search, images and sharing come in M44.
  */
 import { Check, ChevronDown, CircleAlert, Cloud, CloudOff, Copy, FileText, History, ListTree, Loader2, MessageSquare, MoreHorizontal, Pencil, Plus, RotateCcw, Share2, Trash2 } from "lucide-react";

@@ -100,7 +100,7 @@ it("history: the versions, what changed (words of a touched-up line), a name, an
   const dialog = screen.getByRole("dialog", { name: "履歴：議事録" });
   const rows = within(dialog).getAllByRole("button").filter((b) => b.hasAttribute("data-revision"));
   expect(rows).toHaveLength(2);
-  expect(rows[0]!.textContent).toContain("現在の版");
+  expect(rows[0]!.textContent).toContain("現在のバージョン");
   expect(rows[0]!.textContent).toContain("+2");
   expect(rows[0]!.textContent).toContain("−1");
   expect(rows[1]!.textContent).toContain("作成");
@@ -116,22 +116,22 @@ it("history: the versions, what changed (words of a touched-up line), a name, an
   await settle(10);
   fireEvent.click(within(dialog).getByRole("button", { name: /名前を付ける/ }));
   await settle();
-  const labelDialog = screen.getByRole("dialog", { name: "版に名前を付ける" });
-  fireEvent.change(within(labelDialog).getByRole("textbox", { name: "版の名前" }), { target: { value: "  提出版 " } });
+  const labelDialog = screen.getByRole("dialog", { name: "バージョンに名前を付ける" });
+  fireEvent.change(within(labelDialog).getByRole("textbox", { name: "バージョン名" }), { target: { value: "  提出版 " } });
   fireEvent.click(within(labelDialog).getByRole("button", { name: "保存" }));
   await settle(10);
   const history = server.canvases.get(canvas.id)!.history;
   expect(history[0]!.label).toBe("提出版");
   expect(within(dialog).getByText("提出版")).toBeTruthy();
 
-  // 「この版の本文」 shows it as it was; restoring asks first, then makes it a new version.
-  fireEvent.click(within(dialog).getByRole("tab", { name: "この版の本文" }));
+  // 「このバージョンの本文」 shows it as it was; restoring asks first, then makes it a new version.
+  fireEvent.click(within(dialog).getByRole("tab", { name: "このバージョンの本文" }));
   await settle(10);
   expect(within(dialog).getByText("来週までに研究計画を提出する。")).toBeTruthy();
-  fireEvent.click(within(dialog).getByRole("button", { name: /この版に戻す/ }));
+  fireEvent.click(within(dialog).getByRole("button", { name: /このバージョンに戻す/ }));
   await settle();
-  const confirm = screen.getByRole("dialog", { name: "この版に戻しますか？" });
-  fireEvent.click(within(confirm).getByRole("button", { name: "この版に戻す" }));
+  const confirm = screen.getByRole("dialog", { name: "このバージョンに戻しますか？" });
+  fireEvent.click(within(confirm).getByRole("button", { name: "このバージョンに戻す" }));
   await settle(60);
   const record = server.canvases.get(canvas.id)!;
   expect(record.canvas.body).toBe(MINUTES);
@@ -141,7 +141,7 @@ it("history: the versions, what changed (words of a touched-up line), a name, an
   const after = within(screen.getByRole("dialog", { name: "履歴：議事録" })).getAllByRole("button").filter((b) => b.hasAttribute("data-revision"));
   expect(after).toHaveLength(3);
   expect(after[0]!.textContent).toContain("復元");
-  expect(after[0]!.textContent).toContain("現在の版");
+  expect(after[0]!.textContent).toContain("現在のバージョン");
   // The editor shows the restored body once it reads the canvas again.
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await settle(40);
@@ -162,12 +162,12 @@ it("history: an owner erases an older version's body (asked first); the current 
   await settle(10);
   fireEvent.click(within(dialog).getByRole("button", { name: /本文を消去/ }));
   await settle();
-  const confirm = screen.getByRole("dialog", { name: "この版の本文を消去しますか？" });
+  const confirm = screen.getByRole("dialog", { name: "このバージョンの本文を消去しますか？" });
   fireEvent.click(within(confirm).getByRole("button", { name: "消去する" }));
   await settle(20);
   expect(server.canvases.get(canvas.id)!.history[0]!.kind).toBe("erased");
-  expect(within(dialog).getByText("この版の本文は消去されています。")).toBeTruthy();
-  expect(within(dialog).queryByRole("button", { name: /この版に戻す/ })).toBeNull();
+  expect(within(dialog).getByText("このバージョンの本文は消去されています。")).toBeTruthy();
+  expect(within(dialog).queryByRole("button", { name: /このバージョンに戻す/ })).toBeNull();
 });
 
 it("sharing: 「会話に共有」 posts the link; the message shows a card that opens the canvas; 「コメント」 opens its thread", async () => {
