@@ -16,14 +16,14 @@
  *   who may (§3.2).
  * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
  */
-import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderPlus, FolderUp, History, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
 import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, DriveTrashEntryOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { appendPage, breadcrumbs, clickAction, clickSelection, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
+import { appendPage, breadcrumbs, clickAction, clickSelection, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
 import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
 import { coalesce } from "../sync/drive";
@@ -39,7 +39,7 @@ import { SharedMark, ShareLinksDialog } from "./DriveShareDialog";
 import { DropOverlay, useFileDropZone } from "./FileDropZone";
 import { FileName } from "./FileName";
 import { sinceLabel } from "./format";
-import { Button, cn, IconButton, Input, Menu, MenuContent, MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
+import { Button, cn, IconButton, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { t } from "../i18n";
 
 const PAGE = 100;
@@ -61,10 +61,33 @@ const ICONS: Readonly<Record<DriveIconKind, typeof File>> = {
   folder: Folder, image: FileImage, video: FileVideo, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
 };
 
+/**
+ * §27: one colour per kind of file, the same in the list, the grid, the details, the trash and the search (as Box,
+ * Dropbox and Nextcloud do): folders in the app's warm brown, PDF red, Word blue, Excel green, PowerPoint orange,
+ * photos violet, videos rose, archives umber, the rest grey.
+ */
+export const ICON_COLOURS: Readonly<Record<DriveIconKind, string>> = {
+  folder: "text-[#b7791f] fill-[#b7791f]/20",
+  pdf: "text-[#d14b3d]",
+  document: "text-[#2f6fd6]",
+  sheet: "text-[#1f8a4c]",
+  slides: "text-[#d9731a]",
+  image: "text-[#8b5cf6]",
+  video: "text-[#d6457a]",
+  archive: "text-[#8a6d3b]",
+  text: "text-muted",
+  file: "text-muted",
+};
+
 export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind" | "name" | "content_type">; size?: number }) {
   const kind = iconKind(item);
   const Icon = ICONS[kind];
-  return <Icon size={size} className={cn("shrink-0", kind === "folder" ? "text-accent" : "text-muted")} aria-hidden />;
+  return <Icon size={size} data-drive-icon={kind} className={cn("shrink-0", ICON_COLOURS[kind])} aria-hidden />;
+}
+
+function LocationGlyph({ kind }: { kind: DriveLocationOut["kind"] }) {
+  const Icon = kind === "workspace" ? HardDrive : kind === "user" ? User : Hash;
+  return <Icon size={14} className="shrink-0 text-muted" aria-hidden />;
 }
 
 /** A thumbnail fetched with the bearer token (an object URL, revoked when gone); null while none. */
@@ -99,6 +122,34 @@ function Thumb({ controller, item, className, iconSize = 18 }: { controller: App
   return url ? <img src={url} alt="" draggable={false} className={cn("object-cover", className)} /> : <span className={cn("flex items-center justify-center", className)}><DriveIcon item={item} size={iconSize} /></span>;
 }
 
+/** A list row's picture (§27): a photo's or a video's thumbnail, else the kind's icon (a page shrunk to 32 px says nothing). */
+function RowIcon({ controller, item }: { controller: AppController; item: DriveItemOut }) {
+  const kind = iconKind(item);
+  const media = kind === "image" || kind === "video";
+  const url = useThumbnail(controller, media ? thumbnailPath(item) : null);
+  if (url) return <img src={url} alt="" draggable={false} className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-line" />;
+  return <span className="flex h-8 w-8 shrink-0 items-center justify-center"><DriveIcon item={item} size={22} /></span>;
+}
+
+/** A tile's picture (§27): photos fill it, a document's first page sits on paper, anything else is a large icon. */
+function TileThumb({ controller, item }: { controller: AppController; item: DriveItemOut }) {
+  const url = useThumbnail(controller, thumbnailPath(item));
+  const kind = iconKind(item);
+  return (
+    <span className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-panel">
+      {url ? (
+        kind === "image" || kind === "video" ? (
+          <img src={url} alt="" draggable={false} className="h-full w-full object-cover" />
+        ) : (
+          <img src={url} alt="" draggable={false} className="mt-4 h-full w-[78%] rounded-t-sm bg-white object-cover object-top shadow-sm ring-1 ring-line" />
+        )
+      ) : (
+        <DriveIcon item={item} size={44} />
+      )}
+    </span>
+  );
+}
+
 interface Listing {
   folder: DriveItemOut | null;
   path: DriveCrumb[];
@@ -114,7 +165,7 @@ const EMPTY_LISTING: Listing = { folder: null, path: [], items: [], cursor: null
 
 export type DriveMode = "folder" | "trash";
 
-export function DriveBrowser({ controller, location, folderId, onFolder, mode = "folder", onMode, onLost, header }: {
+export function DriveBrowser({ controller, location, folderId, onFolder, mode = "folder", onMode, onLost, header, locations }: {
   controller: AppController;
   location: DriveLocationOut;
   folderId: string;
@@ -125,6 +176,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   onLost?: () => void;
   /** Drawn before the breadcrumbs (a narrow layout's back button). */
   header?: ReactNode;
+  /** §27: the locations the root crumb's ▾ offers (「ドライブ」 only; not a channel's tab). */
+  locations?: { list: readonly DriveLocationOut[]; onChoose: (location: DriveLocationOut) => void };
 }) {
   const api = controller.api;
   const engine = controller.engine;
@@ -448,6 +501,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       if (paste?.action === "move") void moveItems(paste.items, folderId);
       else if (paste?.action === "copy") void copyItems(paste.items, folderId);
     } else if (event.key === "Escape" && selected.size > 0) {
+      // Only the selection: not the screen's own Esc (which would leave 「ドライブ」).
+      event.stopPropagation();
       setSelected(new Set());
     }
   };
@@ -462,7 +517,9 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const clickItem = (item: DriveItemOut, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; detail: number }) => {
     const action = clickAction(item, event);
     if (action === "none") return;
-    select(item, event);
+    // A file opened in a viewer is not left selected (the selection bar is for what was picked to act on).
+    if (action === "view") setFocusId(item.id);
+    else select(item, event);
     if (action !== "select") open(item);
   };
   /** The row's check box: adds or removes the item (Shift: the range), never opens it. */
@@ -557,87 +614,105 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const who = (id: string | null | undefined) => (id ? users.get(id)?.display_name ?? t("drive.someone") : "");
   const crumbs = breadcrumbs(listing.path, locationName(location));
   const emptyFolder = !listing.loading && !listing.error && listing.items.length === 0 && !hits;
+  const canShareItem = (item: DriveItemOut) => mode === "folder" && !!item.parent_id && (location.can_share || item.link_count > 0);
 
+  /** §27: the root crumb's ▾ lists the other locations (the way back to them while the locations column is hidden). */
+  const rootSwitcher = locations && locations.list.length > 1 ? (
+    <Menu>
+      <MenuTrigger asChild>
+        <button type="button" data-drive-switch-location="" aria-label={t("drive.switchLocation")} title={t("drive.switchLocation")} className="flex h-7 w-5 shrink-0 items-center justify-center rounded-md text-muted hover:bg-ink/6 hover:text-ink">
+          <ChevronDown size={14} />
+        </button>
+      </MenuTrigger>
+      <MenuContent align="start" className="max-h-80 overflow-y-auto">
+        <MenuLabel>{t("drive.locations")}</MenuLabel>
+        {locations.list.map((loc) => (
+          <MenuItem key={loc.id} onSelect={() => locations.onChoose(loc)}>
+            <LocationGlyph kind={loc.kind} /> <span className={cn("truncate", loc.id === location.id && "font-semibold")}>{locationName(loc)}</span>
+          </MenuItem>
+        ))}
+      </MenuContent>
+    </Menu>
+  ) : null;
+
+  const crumbClass = (current: boolean) => cn("truncate rounded-md px-1.5 py-0.5 hover:bg-ink/6", current ? "max-w-[24rem] text-[17px] font-semibold text-ink" : "max-w-[14rem] text-[14px] text-muted hover:text-ink");
   const toolbar = (
     <div className="flex shrink-0 flex-col border-b border-line">
-      <div className="flex h-11 items-center gap-1.5 px-3">
-      {header}
-      <nav aria-label={t("drive.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-0.5 text-[15px]">
-        {mode === "trash" ? (
-          <>
-            <button type="button" className="truncate rounded-md px-1.5 py-1 hover:bg-ink/6" onClick={() => onMode?.("folder")}>{locationName(location)}</button>
-            <ChevronRight size={14} className="shrink-0 text-muted" />
-            <strong className="truncate px-1.5">{t("drive.trash")}</strong>
-          </>
-        ) : (
-          crumbs.shown.map((crumb, index) => (
-            <span key={crumb.id} className="flex min-w-0 items-center gap-0.5">
-              {index > 0 && <ChevronRight size={14} className="shrink-0 text-muted" />}
-              {index === 1 && crumbs.hidden.length > 0 && (
-                <>
-                  <Menu>
-                    <MenuTrigger asChild>
-                      <button type="button" className="rounded-md px-1.5 py-1 text-muted hover:bg-ink/6" aria-label={t("drive.moreFolders")}>…</button>
-                    </MenuTrigger>
-                    <MenuContent align="start">
-                      {crumbs.hidden.map((hidden) => <MenuItem key={hidden.id} onSelect={() => onFolder(hidden.id)}>{hidden.name}</MenuItem>)}
-                    </MenuContent>
-                  </Menu>
-                  <ChevronRight size={14} className="shrink-0 text-muted" />
-                </>
-              )}
-              <button
-                type="button"
-                data-drive-crumb={crumb.id}
-                aria-current={crumb.id === folderId ? "page" : undefined}
-                onClick={() => onFolder(crumb.id)}
-                {...folderDrop(crumb)}
-                className={cn("max-w-[18rem] truncate rounded-md px-1.5 py-1 hover:bg-ink/6", crumb.id === folderId && "font-semibold", dropFolder === crumb.id && "bg-accent-soft ring-1 ring-accent")}
-              >
-                {crumb.name}
-              </button>
-            </span>
-          ))
-        )}
-      </nav>
+      <div className="flex min-h-[52px] items-center gap-1 px-3 pt-1">
+        {header}
+        <nav aria-label={t("drive.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-0.5">
+          {mode === "trash" ? (
+            <>
+              <button type="button" className={crumbClass(false)} onClick={() => onMode?.("folder")}>{locationName(location)}</button>
+              <ChevronRight size={14} className="shrink-0 text-muted" />
+              <strong className={crumbClass(true)}>{t("drive.trash")}</strong>
+            </>
+          ) : (
+            crumbs.shown.map((crumb, index) => (
+              <span key={crumb.id} className="flex min-w-0 items-center gap-0.5">
+                {index > 0 && <ChevronRight size={14} className="shrink-0 text-muted" />}
+                {index === 1 && crumbs.hidden.length > 0 && (
+                  <>
+                    <Menu>
+                      <MenuTrigger asChild>
+                        <button type="button" className="rounded-md px-1.5 py-0.5 text-muted hover:bg-ink/6" aria-label={t("drive.moreFolders")}>…</button>
+                      </MenuTrigger>
+                      <MenuContent align="start">
+                        {crumbs.hidden.map((hidden) => <MenuItem key={hidden.id} onSelect={() => onFolder(hidden.id)}>{hidden.name}</MenuItem>)}
+                      </MenuContent>
+                    </Menu>
+                    <ChevronRight size={14} className="shrink-0 text-muted" />
+                  </>
+                )}
+                <button
+                  type="button"
+                  data-drive-crumb={crumb.id}
+                  aria-current={crumb.id === folderId ? "page" : undefined}
+                  onClick={() => onFolder(crumb.id)}
+                  {...folderDrop(crumb)}
+                  className={cn(crumbClass(crumb.id === folderId), dropFolder === crumb.id && "bg-accent-soft ring-1 ring-accent")}
+                >
+                  {crumb.name}
+                </button>
+                {index === 0 && rootSwitcher}
+              </span>
+            ))
+          )}
+        </nav>
       </div>
-      {mode === "folder" && (
-        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+      {mode === "folder" && chosen.length > 0 ? (
+        // §27: the selection bar takes the actions row's place while something is selected.
+        <div data-drive-selection-bar="" role="toolbar" aria-label={t("drive.selectedCount", { count: chosen.length })} className="flex min-h-11 flex-wrap items-center gap-1 px-3 pb-2">
+          <IconButton label={t("drive.clearSelection")} onClick={() => setSelected(new Set())}><X size={16} /></IconButton>
+          <strong className="mr-2 text-[13.5px]">{t("drive.selectedCount", { count: chosen.length })}</strong>
+          <Button size="sm" variant="secondary" onClick={() => download(chosen)}><Download size={14} /> {chosen.length > 1 || chosen[0]!.kind === "folder" ? t("drive.downloadZip") : t("drive.download")}</Button>
+          {chosen.length === 1 && canShareItem(chosen[0]!) && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "share", item: chosen[0]! })}><Link2 size={14} /> {t("drive.share.open")}</Button>}
+          <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "copy", items: chosen })}><Copy size={14} /> {t("drive.copy")}</Button>
+          {canWrite && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "move", items: chosen })}><FolderInput size={14} /> {t("drive.move")}</Button>}
+          {canWrite && <Button size="sm" variant="ghost" className="text-danger" onClick={() => void trashItems(chosen)}><Trash2 size={14} /> {t("drive.toTrash")}</Button>}
+        </div>
+      ) : mode === "folder" ? (
+        <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-3 pb-2">
           <label className="relative mr-auto flex items-center">
-            <Search size={14} className="pointer-events-none absolute left-2 text-muted" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("drive.searchIn", { name: locationName(location) })} aria-label={t("drive.search")} className="h-8 w-48 py-1 pl-7 pr-7 text-[13px] max-md:w-36" />
-            {query && <button type="button" aria-label={t("drive.clearSearch")} className="absolute right-1.5 rounded p-0.5 text-muted hover:text-ink" onClick={() => setQuery("")}><X size={13} /></button>}
+            <Search size={14} className="pointer-events-none absolute left-2.5 text-muted" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("drive.searchIn", { name: locationName(location) })} aria-label={t("drive.search")} className="h-8 w-56 rounded-full py-1 pl-8 pr-7 text-[13px] max-md:w-40" />
+            {query && <button type="button" aria-label={t("drive.clearSearch")} className="absolute right-2 rounded p-0.5 text-muted hover:text-ink" onClick={() => setQuery("")}><X size={13} /></button>}
           </label>
           {canWrite && (
             <>
-              <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "new-folder" })}><FolderPlus size={14} /> {t("drive.newFolder")}</Button>
               <Menu>
                 <MenuTrigger asChild>
-                  <Button size="sm"><Upload size={14} /> {t("drive.upload")}</Button>
+                  <Button size="sm" data-drive-upload=""><Upload size={14} /> {t("drive.upload")} <ChevronDown size={13} className="-mr-0.5 opacity-80" /></Button>
                 </MenuTrigger>
                 <MenuContent align="end">
                   <MenuItem onSelect={pickFiles}><FilePlus2 size={14} /> {t("drive.uploadFiles")}</MenuItem>
                   <MenuItem onSelect={pickFolder}><FolderUp size={14} /> {t("drive.uploadFolder")}</MenuItem>
                 </MenuContent>
               </Menu>
+              <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "new-folder" })}><FolderPlus size={14} /> {t("drive.newFolder")}</Button>
             </>
           )}
-          <Menu>
-            <MenuTrigger asChild>
-              <Button size="sm" variant="ghost" aria-label={t("drive.sortBy", { sort: sortLabel(sort.sort) })}>
-                {sort.order === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />} {sortLabel(sort.sort)}
-              </Button>
-            </MenuTrigger>
-            <MenuContent align="end">
-              <MenuRadioGroup value={sort.sort} onValueChange={(value) => setSort(nextSort({ sort: "name", order: "asc" }, value as DriveSort))}>
-                {(["name", "modified", "size"] as const).map((value) => <MenuRadioItem key={value} value={value}>{sortLabel(value)}</MenuRadioItem>)}
-              </MenuRadioGroup>
-              <MenuSeparator />
-              <MenuItem onSelect={() => setSort((current) => ({ ...current, order: current.order === "asc" ? "desc" : "asc" }))}>
-                {sort.order === "asc" ? t("drive.sortDesc") : t("drive.sortAsc")}
-              </MenuItem>
-            </MenuContent>
-          </Menu>
+          <span className="mx-1 h-5 w-px bg-line" aria-hidden />
           <div role="group" aria-label={t("drive.viewMode")} className="flex rounded-lg border border-line">
             {(["list", "grid"] as const).map((value) => (
               <button
@@ -654,9 +729,29 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
             ))}
           </div>
           <IconButton label={t("drive.details")} aria-pressed={details} onClick={() => setDetails((value) => !value)} className={cn(details && "bg-ink/8")}><Info size={16} /></IconButton>
-          {onMode && <IconButton label={t("drive.trash")} onClick={() => onMode("trash")}><Trash2 size={16} /></IconButton>}
+          {/* Secondary actions: the order (the list's headers sort too) and the trash. */}
+          <Menu>
+            <MenuTrigger asChild>
+              <IconButton label={t("drive.more")} data-drive-more=""><MoreHorizontal size={16} /></IconButton>
+            </MenuTrigger>
+            <MenuContent align="end">
+              <MenuLabel>{t("drive.sortBy", { sort: sortLabel(sort.sort) })}</MenuLabel>
+              <MenuRadioGroup value={sort.sort} onValueChange={(value) => setSort(nextSort({ sort: "name", order: "asc" }, value as DriveSort))}>
+                {(["name", "modified", "size"] as const).map((value) => <MenuRadioItem key={value} value={value}>{sortLabel(value)}</MenuRadioItem>)}
+              </MenuRadioGroup>
+              <MenuItem onSelect={() => setSort((current) => ({ ...current, order: current.order === "asc" ? "desc" : "asc" }))}>
+                {sort.order === "asc" ? <ArrowDown size={14} /> : <ArrowUp size={14} />} {sort.order === "asc" ? t("drive.sortDesc") : t("drive.sortAsc")}
+              </MenuItem>
+              {onMode && (
+                <>
+                  <MenuSeparator />
+                  <MenuItem onSelect={() => onMode("trash")}><Trash2 size={14} /> {t("drive.openTrash")}</MenuItem>
+                </>
+              )}
+            </MenuContent>
+          </Menu>
         </div>
-      )}
+      ) : null}
     </div>
   );
 
@@ -666,8 +761,28 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     </p>
   ) : null;
 
+  // A narrow listing keeps only the ⋯ (the hover buttons would take the names' room).
+  const hoverActions = width === 0 || width >= 520;
+  /** §27: a row's actions on hover (共有・ダウンロード) and its ⋯. */
+  const rowActions = (item: DriveItemOut) => (
+    <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
+      <span data-drive-hover-actions="" className={cn("flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:hidden", !hoverActions && "hidden")}>
+        {canShareItem(item) && (
+          <button type="button" data-drive-row-share="" aria-label={t("drive.share.open")} title={t("drive.share.open")} className="rounded-md p-1.5 text-muted hover:bg-ink/8 hover:text-ink" onClick={() => setDialog({ kind: "share", item })}>
+            <Link2 size={15} />
+          </button>
+        )}
+        <button type="button" data-drive-row-download="" aria-label={item.kind === "folder" ? t("drive.downloadZip") : t("drive.download")} title={item.kind === "folder" ? t("drive.downloadZip") : t("drive.download")} className="rounded-md p-1.5 text-muted hover:bg-ink/8 hover:text-ink" onClick={() => download([item])}>
+          <Download size={15} />
+        </button>
+      </span>
+      <RowMenuButton>{rowMenu(item)}</RowMenuButton>
+    </div>
+  );
+
   // Beside the details pane the listing is narrower by its width.
   const columns = driveColumns(width === 0 ? Infinity : width - (details && mode === "folder" && width >= DETAILS_BESIDE_MIN ? DETAILS_WIDTH : 0));
+  const now = new Date();
   const listingBody = mode === "trash" ? (
     <TrashList
       controller={controller}
@@ -692,28 +807,35 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       <Button variant="secondary" size="sm" onClick={() => void load()}>{t("common.retry")}</Button>
     </div>
   ) : emptyFolder ? (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent"><Folder size={22} /></span>
-      <strong>{t("drive.emptyFolder")}</strong>
+    <div data-drive-empty="" className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-panel"><FolderOpen size={30} className={ICON_COLOURS.folder} /></span>
+      <strong className="text-[15px]">{t("drive.emptyFolder")}</strong>
       <span className="max-w-sm text-sm text-muted">{canWrite ? t("drive.emptyFolderHint") : t("drive.emptyReadOnly")}</span>
+      {canWrite && (
+        <div className="mt-1 flex flex-wrap justify-center gap-2">
+          <Button size="sm" onClick={pickFiles}><Upload size={14} /> {t("drive.uploadFiles")}</Button>
+          <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "new-folder" })}><FolderPlus size={14} /> {t("drive.newFolder")}</Button>
+        </div>
+      )}
     </div>
   ) : hits && hits.length === 0 ? (
     <p className="p-6 text-center text-sm text-muted">{t("drive.noResults", { q: query.trim() })}</p>
   ) : view === "list" ? (
-    <table className="w-full table-fixed border-collapse text-[13px]" data-drive-columns={[columns.modified && "modified", columns.by && "by", columns.size && "size"].filter(Boolean).join(" ")}>
+    <table className="w-full table-fixed border-collapse text-[13.5px]" data-drive-columns={[columns.modified && "modified", columns.by && "by", columns.size && "size"].filter(Boolean).join(" ")}>
       <thead className="sticky top-0 z-10 bg-canvas text-left text-xs text-muted">
         <tr className="border-b border-line">
-          <th className="w-9 pl-3" aria-label={t("drive.select")} />
+          <th className="w-10 pl-4" aria-label={t("drive.select")} />
           <SortHeader label={t("drive.column.name")} sort="name" current={sort} onSort={setSort} disabled={!!hits} />
           {columns.modified && <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} className="w-36" />}
           {columns.by && <th className="w-32 px-2 py-2 font-medium">{t("drive.column.by")}</th>}
-          {columns.size && <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} className="w-20 text-right" />}
-          <th className="w-10" aria-label={t("drive.actions")} />
+          {columns.size && <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} className="w-20 text-right" align="right" />}
+          <th className={hoverActions ? "w-[6.5rem]" : "w-10"} aria-label={t("drive.actions")} />
         </tr>
       </thead>
       <tbody>
         {items.map((item) => {
           const hit = hits?.find((entry) => entry.item.id === item.id);
+          const time = itemTime(item);
           return (
             <ContextMenu.Root key={item.id}>
               <ContextMenu.Trigger asChild>
@@ -724,29 +846,27 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                   onClick={(event) => clickItem(item, event)}
                   {...rowDrag(item)}
                   {...(item.kind === "folder" ? folderDrop(item) : {})}
-                  className={cn("group/row cursor-pointer border-b border-line/60", selected.has(item.id) ? "bg-accent-soft" : "hover:bg-ink/5", dropFolder === item.id && "bg-accent-soft ring-1 ring-inset ring-accent", focusId === item.id && "outline outline-1 -outline-offset-1 outline-accent/50")}
+                  className={cn("group/row h-12 cursor-pointer border-b border-line/60", selected.has(item.id) ? "bg-accent-soft" : "hover:bg-ink/[0.045]", dropFolder === item.id && "bg-accent-soft ring-1 ring-inset ring-accent", focusId === item.id && "outline outline-1 -outline-offset-1 outline-accent/50")}
                 >
-                  <td className="pl-3">
+                  <td className="pl-4">
                     <ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} />
                   </td>
-                  <td className="overflow-hidden py-1.5 pr-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Thumb controller={controller} item={item} className="h-7 w-7 shrink-0 rounded" />
+                  <td className="overflow-hidden pr-2">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <RowIcon controller={controller} item={item} />
                       <div className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-1.5">
                           <FileName name={item.name} className="min-w-0 font-medium" />
                           <SharedMark count={item.link_count} />
                         </span>
-                        {hit && <div className="truncate text-[11px] text-muted">{pathLine(hit.path, locationName(location))}</div>}
+                        {hit && <div className="truncate text-[11.5px] text-muted">{pathLine(hit.path, locationName(location))}</div>}
                       </div>
                     </div>
                   </td>
-                  {columns.modified && <td className="truncate px-2 text-muted">{sinceLabel(itemTime(item))}</td>}
-                  {columns.by && <td className="truncate px-2 text-muted">{who(item.updated_by ?? item.created_by)}</td>}
-                  {columns.size && <td className="truncate px-2 text-right tabular-nums text-muted">{item.kind === "file" ? formatBytes(item.size_bytes) : ""}</td>}
-                  <td className="pr-2 text-right">
-                    <RowMenuButton>{rowMenu(item)}</RowMenuButton>
-                  </td>
+                  {columns.modified && <td className="truncate px-2 text-[13px] text-muted" title={exactTime(time)}>{driveTime(time, now)}</td>}
+                  {columns.by && <td className="truncate px-2 text-[13px] text-muted">{who(item.updated_by ?? item.created_by)}</td>}
+                  {columns.size && <td className="truncate px-2 text-right text-[13px] tabular-nums text-muted">{item.kind === "file" ? formatBytes(item.size_bytes) : "—"}</td>}
+                  <td className="pr-2">{rowActions(item)}</td>
                 </tr>
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
@@ -758,7 +878,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       </tbody>
     </table>
   ) : (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(148px,100%),1fr))] gap-3 p-4 max-sm:grid-cols-2 max-sm:gap-2 max-sm:p-3">
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(168px,100%),1fr))] gap-4 p-4 max-sm:grid-cols-2 max-sm:gap-2.5 max-sm:p-3">
       {items.map((item) => (
         <ContextMenu.Root key={item.id}>
           <ContextMenu.Trigger asChild>
@@ -769,13 +889,21 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
               onClick={(event) => clickItem(item, event)}
               {...rowDrag(item)}
               {...(item.kind === "folder" ? folderDrop(item) : {})}
-              className={cn("group/row relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border", selected.has(item.id) ? "border-accent bg-accent-soft" : "border-line hover:border-ink/25 hover:bg-ink/5", dropFolder === item.id && "ring-2 ring-accent", focusId === item.id && "outline outline-1 outline-offset-1 outline-accent/50")}
+              className={cn("group/row relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-canvas transition-shadow", selected.has(item.id) ? "border-accent ring-1 ring-accent" : "border-line hover:border-ink/20 hover:shadow-md", dropFolder === item.id && "ring-2 ring-accent", focusId === item.id && "outline outline-1 outline-offset-1 outline-accent/50")}
             >
-              <span className="absolute left-1.5 top-1.5 z-[1]"><ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} tile /></span>
-              <Thumb controller={controller} item={item} iconSize={36} className="h-28 w-full bg-panel" />
-              <div className="flex items-center gap-1.5 px-2 py-1.5">
-                <DriveIcon item={item} size={14} />
-                <FileName name={item.name} className="min-w-0 flex-1 text-[12.5px] font-medium" />
+              <span className="absolute left-2 top-2 z-[1]"><ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} tile /></span>
+              <span className="absolute right-1.5 top-1.5 z-[1] rounded-md bg-canvas/90 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100" onClick={(event) => event.stopPropagation()}>
+                <RowMenuButton>{rowMenu(item)}</RowMenuButton>
+              </span>
+              <TileThumb controller={controller} item={item} />
+              <div className="flex min-w-0 items-center gap-2 border-t border-line/70 px-2.5 py-2">
+                <DriveIcon item={item} size={15} />
+                <div className="min-w-0 flex-1">
+                  <FileName name={item.name} className="min-w-0 text-[13px] font-medium" />
+                  <div className="truncate text-[11.5px] text-muted" title={exactTime(itemTime(item))}>
+                    {item.kind === "file" ? `${formatBytes(item.size_bytes)} · ${driveTime(itemTime(item), now)}` : driveTime(itemTime(item), now)}
+                  </div>
+                </div>
                 <SharedMark count={item.link_count} />
               </div>
             </li>
@@ -917,11 +1045,11 @@ function ItemCheck({ item, checked, shown, onCheck, tile = false }: {
   );
 }
 
-function SortHeader({ label, sort, current, onSort, disabled, className }: { label: string; sort: DriveSort; current: { sort: DriveSort; order: DriveOrder }; onSort: (next: { sort: DriveSort; order: DriveOrder }) => void; disabled: boolean; className?: string }) {
+function SortHeader({ label, sort, current, onSort, disabled, className, align = "left" }: { label: string; sort: DriveSort; current: { sort: DriveSort; order: DriveOrder }; onSort: (next: { sort: DriveSort; order: DriveOrder }) => void; disabled: boolean; className?: string; align?: "left" | "right" }) {
   const active = current.sort === sort;
   return (
     <th className={cn("px-2 py-2 font-medium", className)} aria-sort={active ? (current.order === "asc" ? "ascending" : "descending") : undefined}>
-      <button type="button" disabled={disabled} onClick={() => onSort(nextSort(current, sort))} className={cn("inline-flex items-center gap-1 hover:text-ink disabled:hover:text-muted", active && !disabled && "text-ink")}>
+      <button type="button" disabled={disabled} onClick={() => onSort(nextSort(current, sort))} className={cn("inline-flex items-center gap-1 hover:text-ink disabled:hover:text-muted", align === "right" && "flex-row-reverse", active && !disabled && "text-ink")}>
         {label}
         {active && !disabled && (current.order === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
       </button>
@@ -1045,7 +1173,7 @@ function DetailsPane({ controller, item, count, path, onClose, onVersions, onSha
               </>
             )}
             <dt className="text-muted">{t("drive.column.modified")}</dt>
-            <dd>{sinceLabel(itemTime(item))}</dd>
+            <dd title={exactTime(itemTime(item))}>{driveTime(itemTime(item))}</dd>
             <dt className="text-muted">{t("drive.detail.createdBy")}</dt>
             <dd className="truncate">{who(item.created_by)}</dd>
             <dt className="text-muted">{t("drive.column.by")}</dt>

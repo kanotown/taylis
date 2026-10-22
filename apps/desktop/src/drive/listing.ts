@@ -4,6 +4,7 @@
  */
 import type { AttachmentOut, DriveCrumb, DriveItemOut, DriveLocationOut } from "../api/types";
 import { type MessageKey, t } from "../i18n";
+import { dateLabel, dayKey, timeLabel } from "../ui/format";
 
 export type DriveSort = "name" | "modified" | "size";
 export type DriveOrder = "asc" | "desc";
@@ -263,6 +264,32 @@ export function formatBytes(bytes: number | null | undefined): string {
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(bytes >= 10 * 1024 ** 2 ? 0 : 1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${bytes} B`;
+}
+
+/**
+ * §27: a row's time, readable at a glance: 「たった今」「3 分前」「5 時間前」 today, 「昨日 14:05」, then the day
+ * (「10月3日 (金)」, another year with the year). The exact time is the cell's tooltip (exactTime).
+ */
+export function driveTime(iso: string, now = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60000);
+  const sameDay = dayKey(iso, now) === dayKey(now.toISOString(), now);
+  if (minutes < 1 && minutes > -5) return t("drive.time.justNow");
+  if (sameDay && minutes >= 0 && minutes < 60) return t("drive.time.minutesAgo", { count: minutes });
+  if (sameDay && minutes >= 0) return t("drive.time.hoursAgo", { count: Math.floor(minutes / 60) });
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (dayKey(iso, now) === dayKey(yesterday.toISOString(), now)) return `${t("search.date.yesterday")} ${timeLabel(iso)}`;
+  return dateLabel(iso, now);
+}
+
+/** 「2026年10月22日 (水) 14:05」: the tooltip of a relative time. */
+export function exactTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const far = new Date(date.getFullYear() + 1, 0, 1); // always with the year
+  return `${dateLabel(iso, far)} ${timeLabel(iso)}`;
 }
 
 /** 「3 分」「1 時間 5 分」 for the time left. */

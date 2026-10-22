@@ -7,7 +7,7 @@
  * §27 (2026-10-22): the open location, folder and trash are the screen's (MainScreen's) state when it passes `place` /
  * `onPlace`: each change is a place of the back / forward history (← →, ⌘[ ⌘], the mouse's and the browser's buttons).
  */
-import { ArrowLeft, Hash, HardDrive, Link2, Loader2, Lock, MoreHorizontal, Plus, User } from "lucide-react";
+import { ArrowLeft, Hash, HardDrive, Link2, Loader2, Lock, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, User } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
@@ -20,11 +20,30 @@ import { DriveBrowser, type DriveMode } from "./DriveBrowser";
 import { onDriveTarget, takeDriveTarget } from "./DriveSearch";
 import { MyLinksDialog } from "./DriveShareDialog";
 import type { DrivePlace } from "./placeHistory";
-import { Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "./primitives";
+import { Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "./primitives";
 import { t } from "../i18n";
 
 /** Where 「ドライブ」 was left in this window (a page visited again opens there). */
 let lastPlace: DrivePlace | null = null;
+
+const COLUMN_KEY = "taylis.drive.locationsHidden";
+
+/** §27: whether the locations column is put away, remembered on this device. */
+export function readLocationsHidden(): boolean {
+  try {
+    return localStorage.getItem(COLUMN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeLocationsHidden(hidden: boolean): void {
+  try {
+    localStorage.setItem(COLUMN_KEY, hidden ? "1" : "0");
+  } catch {
+    /* per-device convenience */
+  }
+}
 
 function LocationIcon({ location }: { location: DriveLocationOut }) {
   if (location.kind === "workspace") return <HardDrive size={15} className="shrink-0" />;
@@ -74,6 +93,12 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [myLinks, setMyLinks] = useState(false);
+  // §27: the column gives its room to the listing once a location is chosen; the toolbar's button brings it back.
+  const [columnHidden, setColumnHidden] = useState(readLocationsHidden);
+  const hideColumn = (hidden: boolean) => {
+    setColumnHidden(hidden);
+    writeLocationsHidden(hidden);
+  };
 
   const load = useCallback(async () => {
     if (!api) return;
@@ -143,7 +168,8 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
     }
   };
 
-  const choose = (loc: DriveLocationOut) => {
+  const choose = (loc: DriveLocationOut, fromColumn = false) => {
+    if (fromColumn && !compact) hideColumn(true);
     setCurrent({ locationId: loc.id, folderId: loc.root_id, trash: false });
     setListOpen(false);
   };
@@ -165,7 +191,7 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
   };
 
   const column = (
-    <aside aria-label={t("drive.locations")} className={cn("flex shrink-0 flex-col border-line bg-panel/40", compact ? "flex-1" : "w-[240px] border-r")}>
+    <aside id="drive-locations" aria-label={t("drive.locations")} className={cn("flex shrink-0 flex-col border-line bg-panel/40", compact ? "flex-1" : "w-[240px] border-r")}>
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
         <HardDrive size={16} className="text-muted" />
         <strong className="flex-1 text-sm">{t("nav.drive")}</strong>
@@ -199,7 +225,7 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
                     type="button"
                     data-drive-location={loc.kind}
                     aria-current={loc.id === location?.id ? "true" : undefined}
-                    onClick={() => choose(loc)}
+                    onClick={() => choose(loc, true)}
                     className={cn("flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm", loc.id === location?.id ? "bg-accent-soft text-ink" : "hover:bg-ink/6")}
                   >
                     <span className={cn("mt-0.5", loc.id === location?.id ? "text-accent" : "text-muted")}><LocationIcon location={loc} /></span>
@@ -259,7 +285,19 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
       onLost={() => void load()}
       header={compact ? (
         <Button size="sm" variant="ghost" aria-label={t("drive.locations")} onClick={() => setListOpen(true)}><ArrowLeft size={15} /></Button>
-      ) : undefined}
+      ) : (
+        <IconButton
+          label={columnHidden ? t("drive.showLocations") : t("drive.hideLocations")}
+          data-drive-locations-toggle=""
+          aria-expanded={!columnHidden}
+          aria-controls="drive-locations"
+          onClick={() => hideColumn(!columnHidden)}
+          className="-ml-1 shrink-0"
+        >
+          {columnHidden ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        </IconButton>
+      )}
+      locations={locations ? { list: locations, onChoose: (loc) => choose(loc) } : undefined}
     />
   ) : (
     <div className="flex flex-1 items-center justify-center text-sm text-muted">
@@ -270,7 +308,7 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
   if (compact) return <div className="flex min-h-0 flex-1 flex-col" data-drive-view="compact">{listOpen || !location ? column : browser}</div>;
   return (
     <div className="flex min-h-0 flex-1" data-drive-view="wide">
-      {column}
+      {!columnHidden && column}
       {browser}
     </div>
   );

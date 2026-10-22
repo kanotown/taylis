@@ -8,11 +8,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { DriveItemOut, DriveSearchHitOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { formatBytes, pathLine, viewable, viewerKind } from "../drive/listing";
+import { driveTime, formatBytes, pathLine, viewable, viewerKind } from "../drive/listing";
 import { DriveIcon } from "./DriveBrowser";
 import { DriveViewer } from "./DriveViewer";
 import { FileName } from "./FileName";
-import { sinceLabel } from "./format";
 import { Button, IconButton } from "./primitives";
 import { t } from "../i18n";
 
@@ -104,7 +103,8 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
     const item = hit.item;
     if (item.kind === "folder") onShowInDrive({ locationId: item.location_id, folderId: item.id });
     else if (viewerKind(item)) setViewing(item);
-    else void controller.downloadDriveFile(item);
+    // §27: a click never downloads by itself: a file no viewer shows is shown in its folder.
+    else if (item.parent_id) onShowInDrive({ locationId: item.location_id, folderId: item.parent_id });
   };
 
   if (!words) return <p className="p-6 text-center text-sm text-muted">{t("search.drive.empty")}</p>;
@@ -121,7 +121,7 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
               <span className="min-w-0 flex-1">
                 <FileName name={hit.item.name} className="text-sm font-medium" />
                 <span className="block truncate text-xs text-muted">
-                  {hitPath(hit)} · {sinceLabel(hit.item.content_modified_at ?? hit.item.updated_at)}
+                  {hitPath(hit)} · {driveTime(hit.item.content_modified_at ?? hit.item.updated_at)}
                   {hit.item.kind === "file" ? ` · ${formatBytes(hit.item.size_bytes)}` : ""}
                 </span>
               </span>
