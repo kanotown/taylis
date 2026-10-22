@@ -234,3 +234,41 @@ describe("a click on a file (§27)", () => {
     rect.mockRestore();
   });
 });
+
+describe("the selection bar, the row actions and the locations column (§27)", () => {
+  const listing = (items: DriveItemOut[]) => vi.fn(async () => ({ folder: ROOT, path: [{ id: "root", name: "研究室ドライブ" }], items, next_cursor: null, shared_above: 0 }));
+
+  it("a selection shows a bar with its count and actions; Esc clears it without leaving the screen", async () => {
+    const a = file("a", "a.pdf", "application/pdf");
+    const b = file("b", "b.txt", "text/plain");
+    const controller = { ...controllerWith({ driveChildren: listing([FOLDER, a, b]), searchDrive: vi.fn() }), downloadDriveZip: vi.fn() } as unknown as AppController;
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("b.txt");
+    expect(document.querySelector("[data-drive-selection-bar]")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "a.pdf を選ぶ" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "ゼミ資料 を選ぶ" }));
+    const bar = document.querySelector("[data-drive-selection-bar]") as HTMLElement;
+    expect(bar.textContent).toContain("2 件を選択中");
+    fireEvent.click(within(bar).getByRole("button", { name: /ZIP でダウンロード/ }));
+    expect(controller.downloadDriveZip).toHaveBeenCalledWith(["f1", "a"]);
+    const outer = vi.fn();
+    window.addEventListener("keydown", outer);
+    fireEvent.keyDown(screen.getByRole("grid"), { key: "Escape" });
+    window.removeEventListener("keydown", outer);
+    expect(document.querySelector("[data-drive-selection-bar]")).toBeNull();
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("a row's download button downloads that file only (the row does not open)", async () => {
+    const a = file("a", "a.pdf", "application/pdf");
+    const fetchBlob = vi.fn();
+    const controller = controllerWith({ driveChildren: listing([a]), searchDrive: vi.fn(), fetchBlob });
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("a.pdf");
+    fireEvent.click(document.querySelector('[data-drive-item="a"] [data-drive-row-download]')!);
+    expect(controller.downloadDriveFile).toHaveBeenCalledWith(a);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetchBlob).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-drive-item="a"] [data-drive-icon]')!.getAttribute("data-drive-icon")).toBe("pdf");
+  });
+});

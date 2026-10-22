@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DriveItemOut } from "../src/api/types";
 import { browserDownload, downloadRoute, pipeToSink, ticketUrl } from "../src/drive/download";
-import { appendPage, asAttachment, breadcrumbs, clickAction, clickSelection, documentSource, driveColumns, driveFileOf, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
+import { appendPage, asAttachment, breadcrumbs, clickAction, clickSelection, documentSource, driveColumns, driveFileOf, driveTime, exactTime, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
 import { dirOf, emptyFolders, foldersOf, treeFromEntries, treeFromInput } from "../src/platform/driveFiles";
 import { coalesce, DriveHub, type DriveSignal } from "../src/sync/drive";
 import { setLocale } from "../src/i18n";
@@ -266,5 +266,20 @@ describe("live signals", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("times (§27)", () => {
+  it("reads recent times relatively and older ones as a day; the tooltip has the exact time", () => {
+    setLocale("ja");
+    const now = new Date(2026, 9, 22, 15, 0);
+    const at = (d: Date) => d.toISOString();
+    expect(driveTime(at(new Date(2026, 9, 22, 14, 59, 40)), now)).toBe("たった今");
+    expect(driveTime(at(new Date(2026, 9, 22, 14, 57)), now)).toBe("3 分前");
+    expect(driveTime(at(new Date(2026, 9, 22, 10, 0)), now)).toBe("5 時間前");
+    expect(driveTime(at(new Date(2026, 9, 21, 14, 5)), now)).toBe("昨日 14:05");
+    expect(driveTime(at(new Date(2026, 9, 3, 9, 0)), now)).toMatch(/^10月3日/);
+    expect(driveTime(at(new Date(2025, 9, 3, 9, 0)), now)).toMatch(/^2025年10月3日/);
+    expect(exactTime(at(new Date(2026, 9, 22, 14, 5)))).toMatch(/^2026年10月22日.* 14:05$/);
   });
 });
