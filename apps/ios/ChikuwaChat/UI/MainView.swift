@@ -849,7 +849,7 @@ private extension String {
 }
 
 /// What the badge on my picture at the home's top left says (M38): my presence as others see it while connected
-/// (取り込み中's red dot over it, PRESENCE.md §11.5; then the quiet hours' 🔕; then the grey ring of オフライン表示),
+/// (取り込み中's red dot over it, PRESENCE.md §11.5; then the quiet hours' bell; then the grey ring of オフライン表示),
 /// else the connection, which the green dot it replaced stood for alone.
 enum HomeAvatarBadge: Equatable {
     case online, away, dnd, quiet, invisible, connecting, offline, none

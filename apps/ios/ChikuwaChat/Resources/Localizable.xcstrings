@@ -31742,25 +31742,6 @@
     "🔒" : {
       "shouldTranslate" : false
     },
-    "🔕" : {
-      "shouldTranslate" : false
-    },
-    "🔕 通知を一時停止中" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "🔕 Notifications paused"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "🔕 已暂停通知"
-          }
-        }
-      }
-    },
     "毎時 0 分から %lld 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。" : {
       "localizations" : {
         "en" : {

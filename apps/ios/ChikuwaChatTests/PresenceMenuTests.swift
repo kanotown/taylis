@@ -360,6 +360,25 @@ final class PresenceMenuTests: XCTestCase {
 
     // MARK: the dot
 
+    /// PRESENCE.md §11.9: one size rule on every client (the same numbers as Desktop / Web's avatarDotSize,
+    /// presenceRing and presenceOverhang).
+    func testDotSizeRule() {
+        let sizes: [CGFloat] = [18, 20, 22, 24, 28, 30, 32, 36, 40, 56, 64]
+        XCTAssertEqual(sizes.map { PresenceDotRule(avatar: $0).diameter }, [10, 10, 10, 10, 11, 11, 12, 14, 15, 20, 20])
+        XCTAssertEqual(sizes.map { PresenceDotRule(avatar: $0).ring }, [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 2, 2, 2.5, 3, 3])
+        // The home's 22 pt DM pictures (2026-10-23: too small): 7 pt of colour in a 1.5 pt ring, 2 pt past the corner.
+        let home = PresenceDotRule(avatar: 22)
+        XCTAssertEqual(home.side, 7)
+        XCTAssertEqual(home.overhang, 2)
+        XCTAssertEqual(home.shift, 0.5)
+        // 20 pt and less: three tenths of the dot past the corner, clear of the initials.
+        XCTAssertEqual(PresenceDotRule(avatar: 20).overhang, 3)
+        let row = PresenceDotRule(avatar: 36)
+        XCTAssertEqual(row.side, 10)
+        XCTAssertEqual(row.overhang, 3)
+    }
+
+
     /// 取り込み中 is a plain red disc (the same as Desktop / Web; its white bar went on 2026-10-13).
     func testTheDndDotIsAPlainRedDisc() throws {
         XCTAssertEqual(PresenceDot.Style(look: "dnd"), .dnd)
@@ -390,19 +409,19 @@ final class PresenceMenuTests: XCTestCase {
         for (scheme, row) in [(ColorScheme.light, (r: 1.0, g: 1.0, b: 1.0)), (.dark, (r: 0.11, g: 0.11, b: 0.12))] {
             let avatar = AvatarView(id: "u-ring", name: "加納", size: 40, presence: "offline").padding(8)
             let image = try renderAt4x(avatar.background(Color(red: row.r, green: row.g, blue: row.b)), scheme: scheme)
-            // The 10 pt dot's centre (see below); its 2 pt stroke spans 3–5 pt from it, the hole reaches 7 pt.
-            let centre = 8 + 40 - 5 + 2.2
+            // The 10 pt ring's centre (see below); its 2.5 pt stroke spans 2.5–5 pt from it, the hole reaches 7.5 pt.
+            let centre = 8 + 40 - 5 + 0.5
             func at(_ dx: Double) throws -> (r: Double, g: Double, b: Double, a: Double) {
                 try pixelOf(image, x: Int(4 * (centre - dx)), y: Int(4 * centre))
             }
             let label = "\(scheme)"
-            for (dx, what) in [(0.0, "the middle"), (1.5, "inside the ring"), (6.0, "the gap around it")] {
+            for (dx, what) in [(0.0, "the middle"), (1.5, "inside the ring"), (6.25, "the gap around it")] {
                 let pixel = try at(dx)
                 XCTAssertEqual(pixel.r, row.r, accuracy: 0.03, "\(what) is the row: \(label)")
                 XCTAssertEqual(pixel.g, row.g, accuracy: 0.03, label)
                 XCTAssertEqual(pixel.b, row.b, accuracy: 0.03, label)
             }
-            let ring = try at(4)
+            let ring = try at(3.75)
             XCTAssertEqual(ring.a, 1, accuracy: 0.01, label)
             XCTAssertEqual(ring.r, ring.g, accuracy: 0.05, "grey: \(label)")
             XCTAssertEqual(ring.g, ring.b, accuracy: 0.06, "grey: \(label)")
@@ -419,10 +438,11 @@ final class PresenceMenuTests: XCTestCase {
         let ground = (r: 1.0, g: 0.8, b: 0.0)
         for scheme in [ColorScheme.light, .dark] {
             for look in ["online", "away", "dnd", "offline"] {
-                // A 40 pt picture: the dot is 10 pt (40 × 0.3 − 2), its centre 2.2 pt past the corner (5 − 2.8), the
-                // hole 2 pt wider all round. Drawn at 4× with 8 pt around it.
+                // A 40 pt picture (PresenceDotRule): a 15 pt dot, 10 pt of colour in a 2.5 pt ring (the hole), its outer
+                // edge 3 pt past the corner, so the colour's centre is 0.5 pt inside it (−5 + 0.5). Drawn at 4× with
+                // 8 pt around it; the ring is sampled halfway through it (6.25 pt from the centre, diagonally).
                 let avatar = AvatarView(id: "u-dot", name: "加納", size: 40, presence: look, showOffline: true).padding(8)
-                let centre = 4 * (8 + 40 - 5 + 2.2), ringAt = 4 * (8 + 40 - 5 + 2.2 - 6 / 2.0.squareRoot())
+                let centre = 4 * (8 + 40 - 5 + 0.5), ringAt = 4 * (8 + 40 - 5 + 0.5 - 6.25 / 2.0.squareRoot())
                 let onGround = try renderAt4x(avatar.background(Color(red: ground.r, green: ground.g, blue: ground.b)), scheme: scheme)
                 let alone = try renderAt4x(avatar, scheme: scheme)
                 let label = "\(look) \(scheme)"
@@ -515,9 +535,10 @@ final class MessageAvatarPresenceTests: XCTestCase {
         let store = Store()
         store.upsertUser(user("alice"))
         let ground = (r: 1.0, g: 0.8, b: 0.0)
-        // 36 pt: the dot is 8.8 pt (36 × 0.3 − 2), its centre 2.52 pt inside the corner (4.4 − 1.88), the hole 6.4 pt
-        // across its radius. Drawn at 4× with 8 pt around it; the ring is checked 5.4 pt from the centre, diagonally.
-        let centre = 4 * (8 + 36 - 2.52), ringAt = 4 * (8 + 36 - 2.52 - 5.4 / 2.0.squareRoot())
+        // 36 pt (PresenceDotRule): a 14 pt dot, 10 pt of colour in a 2 pt ring, its outer edge 3 pt past the corner, so
+        // the colour's centre is 4 pt inside the corner (5 − 1) and the hole reaches 7 pt from it. Drawn at 4× with 8 pt
+        // around it; the ring is checked 6 pt from the centre, diagonally.
+        let centre = 4 * (8 + 36 - 4.0), ringAt = 4 * (8 + 36 - 4.0 - 6 / 2.0.squareRoot())
         for scheme in [ColorScheme.light, .dark] {
             for status in ["online", "offline"] {
                 store.setPresence("alice", status: status)

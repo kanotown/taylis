@@ -44,7 +44,12 @@ struct ProfileSheet: View {
                                 }
                             }
                             if DND.isActive(user) {
-                                Text(tr("🔕 通知を一時停止中") + (user?.quietHours.map { " · " + DND.label($0) } ?? "")).font(.caption).foregroundStyle(.secondary)
+                                HStack(spacing: 4) {
+                                    PausedBell(decorative: true)
+                                    Text(tr("通知を一時停止中") + (user?.quietHours.map { " · " + DND.label($0) } ?? ""))
+                                }
+                                .font(.caption).foregroundStyle(.secondary)
+                                .accessibilityElement(children: .combine)
                             }
                         }
                     }
@@ -265,7 +270,25 @@ struct StatusEditorView: View {
     }
 }
 
-/// The status emoji next to a name when the person has an active custom status.
+/// 「通知を一時停止中」 next to a name (a manual pause or the quiet hours, M12c): SF Symbol `bell.slash.fill` in the
+/// secondary colour at the surrounding text's size (docs/PRESENCE.md §11.9; the orange 🔕 emoji until 2026-10-23).
+/// Filled, so it differs from the outline `bell.slash` of a muted conversation next to it in the DM rows. `decorative`
+/// when the words or the row's label say it; else VoiceOver reads 「通知を一時停止中」.
+struct PausedBell: View {
+    var decorative = false
+
+    var body: some View {
+        let image = Image(systemName: "bell.slash.fill")
+            .foregroundStyle(.secondary)
+        if decorative {
+            image.accessibilityHidden(true)
+        } else {
+            image.accessibilityLabel(tr("通知を一時停止中"))
+        }
+    }
+}
+
+/// The status emoji next to a name when the person has an active custom status (and the paused bell).
 struct StatusEmojiView: View {
     let user: UserPublic?
     let controller: AppController
@@ -275,7 +298,7 @@ struct StatusEmojiView: View {
         if !emoji.isEmpty || quiet {
             HStack(spacing: 2) {
                 if !emoji.isEmpty { StatusGlyph(controller: controller, emoji: emoji, size: 15) }
-                if quiet { Text("🔕") }
+                if quiet { PausedBell(decorative: true) }
             }
             .font(.caption)
             .accessibilityElement(children: .ignore)
