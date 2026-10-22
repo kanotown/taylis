@@ -3246,6 +3246,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/items/{item_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Preview
+         * @description 2026-10-22 (§27): asks for the preview of a file's current version when it was never made
+         *     (imported files, §24): 'pending' until the preview loop makes it (drive.changed then). Only
+         *     a file without one is queued; a ready, pending or failed preview is answered as it is, and
+         *     null means this file gets none (the viewer offers the download instead).
+         */
+        post: operations["request_preview_api_v1_drive_items__item_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/items/{item_id}/reach": {
         parameters: {
             query?: never;
@@ -10220,6 +10243,16 @@ export interface components {
             user_id: string;
             /** Versions */
             versions: number;
+        };
+        /**
+         * DrivePreviewOut
+         * @description 2026-10-22 (§27): the preview of a file's current version after POST
+         *     /drive/items/{id}/preview. 'pending' while the server makes it (drive.changed follows when
+         *     it is ready or failed), 'ready', 'failed'; null when this file gets no preview (not a PDF or
+         *     an Office file, too large, previews off, or no converter for an Office file).
+         */
+        DrivePreviewOut: {
+            preview: components["schemas"]["AttachmentPreviewOut"] | null;
         };
         /** DriveQuotaIn */
         DriveQuotaIn: {
@@ -22243,6 +22276,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveShareLinkCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_preview_api_v1_drive_items__item_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivePreviewOut"];
                 };
             };
             /** @description Validation Error */

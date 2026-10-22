@@ -3,12 +3,13 @@
  * M161 (docs/DRIVE.md §17.2): a location's listing on screen — the breadcrumbs named after the location, the rows of a
  * folder read by cursor as the end comes into view, a click into a folder, sorting by a column, and the trash.
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DriveChildrenOut, DriveItemOut, DriveLocationOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { DriveBrowser } from "../src/ui/DriveBrowser";
+import { DriveHub } from "../src/sync/drive";
 
 const LOCATION: DriveLocationOut = {
   id: "loc", kind: "workspace", channel_id: null, user_id: null, root_id: "root", name: "研究室ドライブ",
@@ -74,9 +75,11 @@ describe("DriveBrowser", () => {
     expect(names.length).toBe(3);
     expect(document.querySelectorAll("[data-drive-item]")[0]!.textContent).toContain("ゼミ資料");
     expect(screen.getAllByText("加納").length).toBeGreaterThan(0);
-    // A double click opens the folder.
-    fireEvent.doubleClick(document.querySelector('[data-drive-item="f1"]')!);
+    // §27: a single click opens the folder; the second click of a double click does nothing more.
+    fireEvent.click(document.querySelector('[data-drive-item="f1"]')!, { detail: 1 });
     expect(onFolder).toHaveBeenCalledWith("f1");
+    fireEvent.click(document.querySelector('[data-drive-item="a"]')!, { detail: 2 });
+    expect(onFolder).toHaveBeenCalledTimes(1);
   });
 
   it("sorts by a column: the server is asked again, newest first for the time", async () => {
@@ -110,5 +113,124 @@ describe("DriveBrowser", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "完全に削除" }));
     await waitFor(() => expect(deleteDriveItem).toHaveBeenCalledWith("t"));
+  });
+});
+
+// --- §27 (2026-10-22): a click opens, nothing downloads by itself, the columns give way -----------------------------
+
+// PDF.js does not run in jsdom: the viewer's loader hands back a document of one page that draws nothing.
+const pdf = vi.hoisted(() => ({ open: vi.fn() }));
+vi.mock("../src/ui/pdfLoader", () => ({ openPdf: (data: ArrayBuffer) => pdf.open(data) }));
+
+const PENDING = { status: "pending" as const, pages: null, width: null, height: null };
+const READY = { status: "ready" as const, pages: 1, width: 800, height: 1100 };
+
+function file(id: string, name: string, contentType: string, preview: NonNullable<DriveItemOut["file"]>["preview"] = null): DriveItemOut {
+  return {
+    ...row(id, "file", name), content_type: contentType,
+    file: { attachment_id: `a-${id}`, version_id: `v-${id}`, width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, preview },
+  };
+}
+
+describe("a click on a file (§27)", () => {
+  const imported = file("p", "論文.pdf", "application/pdf");
+  const word = file("w", "議事録.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  const text = file("t", "メモ.txt", "text/plain");
+  const listing = (items: DriveItemOut[]) => vi.fn(async () => ({ folder: ROOT, path: [{ id: "root", name: "研究室ドライブ" }], items, next_cursor: null, shared_above: 0 }));
+
+  beforeEach(() => {
+    const page = { getViewport: ({ scale }: { scale: number }) => ({ width: 595 * scale, height: 842 * scale }), render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }) };
+    pdf.open.mockReset().mockResolvedValue({ numPages: 1, getPage: async () => page, loadingTask: { destroy: vi.fn() } });
+  });
+
+  it("opens an imported PDF (no preview) from its own bytes in the viewer, never as a download", async () => {
+    const fetchBlob = vi.fn(async () => new Blob(["%PDF-1.7"]));
+    const requestDrivePreview = vi.fn(async () => ({ preview: PENDING }));
+    const controller = controllerWith({ driveChildren: listing([imported, text]), searchDrive: vi.fn(), fetchBlob, requestDrivePreview });
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("論文.pdf");
+    fireEvent.click(document.querySelector('[data-drive-item="p"]')!, { detail: 1 });
+    await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(1));
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/drive/items/p/content");
+    expect(requestDrivePreview).toHaveBeenCalledWith("p"); // its thumbnail is made meanwhile
+    expect(controller.downloadDriveFile).not.toHaveBeenCalled();
+  });
+
+  it("an Office file without a preview asks for it, shows 「プレビューを作成中…」 and opens when drive.changed says it is ready", async () => {
+    const hub = new DriveHub();
+    const fetchBlob = vi.fn(async () => new Blob(["%PDF-1.7"]));
+    const requestDrivePreview = vi.fn(async () => ({ preview: PENDING }));
+    const driveItem = vi.fn(async () => ({ item: { ...word, file: { ...word.file!, preview: READY } }, path: [], location_kind: "workspace" }));
+    const controller = { ...controllerWith({ driveChildren: listing([word]), searchDrive: vi.fn(), fetchBlob, requestDrivePreview, driveItem }), engine: { drive: hub } } as unknown as AppController;
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("議事録.docx");
+    fireEvent.click(document.querySelector('[data-drive-item="w"]')!, { detail: 1 });
+    await waitFor(() => expect(requestDrivePreview).toHaveBeenCalledWith("w"));
+    expect((await screen.findByText("プレビューを作成中…")).closest("[data-pdf-hold]")).toBeTruthy();
+    expect(fetchBlob).not.toHaveBeenCalled();
+    hub.applyEvent("drive.changed", { location_id: "loc", folder_ids: ["root"], seq: 1 });
+    await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(1));
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a-w/preview/pdf");
+    expect(controller.downloadDriveFile).not.toHaveBeenCalled();
+  });
+
+  it("an Office file that gets no preview says so and offers the download (only that button downloads)", async () => {
+    const requestDrivePreview = vi.fn(async () => ({ preview: null }));
+    const downloadAttachment = vi.fn();
+    const controller = { ...controllerWith({ driveChildren: listing([word]), searchDrive: vi.fn(), fetchBlob: vi.fn(), requestDrivePreview }), downloadAttachment } as unknown as AppController;
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("議事録.docx");
+    fireEvent.click(document.querySelector('[data-drive-item="w"]')!, { detail: 1 });
+    await screen.findByText("このファイルはプレビューできません");
+    expect(downloadAttachment).not.toHaveBeenCalled();
+    fireEvent.click(within(document.querySelector("[data-pdf-hold]") as HTMLElement).getByRole("button", { name: "ダウンロード" }));
+    expect(downloadAttachment).toHaveBeenCalledTimes(1);
+  });
+
+  it("a file no viewer shows opens its details; ⌘-click and the check box only select", async () => {
+    const fetchBlob = vi.fn(async () => new Blob());
+    const controller = controllerWith({ driveChildren: listing([imported, text]), searchDrive: vi.fn(), fetchBlob, requestDrivePreview: vi.fn() });
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("メモ.txt");
+    fireEvent.click(document.querySelector('[data-drive-item="t"]')!, { detail: 1 });
+    const details = await screen.findByRole("complementary", { name: "詳細" });
+    expect(details.textContent).toContain("メモ.txt");
+    expect(controller.downloadDriveFile).not.toHaveBeenCalled();
+    // ⌘-click: selected, not opened.
+    fireEvent.click(document.querySelector('[data-drive-item="p"]')!, { detail: 1, metaKey: true });
+    expect(document.querySelector('[data-drive-item="p"]')!.getAttribute("aria-selected")).toBe("true");
+    expect(document.querySelector('[data-drive-item="t"]')!.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The check box takes one out again, without opening it.
+    fireEvent.click(screen.getByRole("checkbox", { name: "論文.pdf を選ぶ" }));
+    expect(document.querySelector('[data-drive-item="p"]')!.getAttribute("aria-selected")).toBe("false");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetchBlob).not.toHaveBeenCalled();
+  });
+
+  it("rows look clickable and the list's columns give way to the names as the listing narrows", async () => {
+    let width = 1200;
+    const callbacks: Array<() => void> = [];
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { callbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({ width, height: 600, top: 0, left: 0, right: width, bottom: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect);
+    render(<DriveBrowser controller={controllerWith({ driveChildren: listing([text]), searchDrive: vi.fn() })} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("メモ.txt");
+    const table = () => document.querySelector("table")!;
+    expect(table().dataset["driveColumns"]).toBe("modified by size");
+    expect(document.querySelector('[data-drive-item="t"]')!.className).toContain("cursor-pointer");
+    const headers = () => screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+    width = 600;
+    act(() => callbacks.forEach((callback) => callback()));
+    expect(table().dataset["driveColumns"]).toBe("modified size");
+    expect(headers()).not.toContain("更新した人");
+    width = 400;
+    act(() => callbacks.forEach((callback) => callback()));
+    expect(table().dataset["driveColumns"]).toBe("");
+    expect(document.querySelector('[data-drive-item="t"]')!.querySelectorAll("td")).toHaveLength(3); // check box, name, ⋯
+    rect.mockRestore();
   });
 });

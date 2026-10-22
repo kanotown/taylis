@@ -69,24 +69,88 @@ export function iconKind(item: Pick<DriveItemOut, "kind" | "name" | "content_typ
   const type = (item.content_type ?? "").toLowerCase();
   if (type.startsWith("image/")) return "image";
   if (type.startsWith("video/")) return "video";
-  if (type === "application/pdf") return "pdf";
+  if (isPdf(item)) return "pdf";
   return OFFICE[extensionOf(item.name)] ?? "file";
 }
 
 export type ViewerKind = "image" | "video" | "document";
 
+const OFFICE_EXTENSIONS = new Set(["doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"]);
+const OFFICE_TYPE = /^application\/(msword|rtf|vnd\.ms-(excel|powerpoint)|vnd\.openxmlformats-officedocument\.|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation)$)/;
+/** What the server's sniffer answers for a file it could not place (the server then goes by the extension). */
+const UNPLACED = new Set(["", "application/octet-stream", "application/zip", "application/x-ole-storage"]);
+
+type Viewable = Pick<DriveItemOut, "kind" | "name" | "content_type" | "file">;
+
+/** A PDF: by its type, or by its name when the server could not tell (bytes before the header, §27). */
+export function isPdf(item: Pick<DriveItemOut, "kind" | "name" | "content_type">): boolean {
+  if (item.kind !== "file") return false;
+  const type = (item.content_type ?? "").toLowerCase();
+  return type === "application/pdf" || (extensionOf(item.name) === "pdf" && (type === "" || type === "application/octet-stream"));
+}
+
+/** An Office file the converter may turn into a PDF (the server's preview_kinds.source_kind). */
+export function isOffice(item: Pick<DriveItemOut, "kind" | "name" | "content_type">): boolean {
+  if (item.kind !== "file") return false;
+  const type = (item.content_type ?? "").toLowerCase();
+  return OFFICE_TYPE.test(type) || (UNPLACED.has(type) && OFFICE_EXTENSIONS.has(extensionOf(item.name)));
+}
+
 /**
- * Which of the app's viewers opens a file (§17.2): photos with a thumbnail (the server could read them), videos, and
- * PDF / Office files whose preview is ready or being made; anything else downloads.
+ * Which of the app's viewers opens a file (§17.2, §27): photos with a thumbnail (the server could read them), videos,
+ * every PDF (its own bytes while its preview is not made), and Office files (the viewer waits for, or asks for, the
+ * preview). Anything else has no viewer: opening it shows its details, and only 「ダウンロード」 downloads it.
  */
-export function viewerKind(item: Pick<DriveItemOut, "kind" | "content_type" | "file">): ViewerKind | null {
+export function viewerKind(item: Viewable): ViewerKind | null {
   if (item.kind !== "file" || !item.file) return null;
   const type = (item.content_type ?? "").toLowerCase();
   if (type.startsWith("video/")) return "video";
   if (type.startsWith("image/") && item.file.has_thumbnail) return "image";
   const status = item.file.preview?.status;
-  if (status === "ready" || status === "pending") return "document";
+  if (status === "ready" || status === "pending" || isPdf(item) || isOffice(item)) return "document";
   return null;
+}
+
+/**
+ * Where the document viewer reads a file's pages (§27):
+ * - "preview": the made preview (/attachments/{id}/preview/pdf; for a PDF that is the file itself);
+ * - "original": a PDF whose preview is not ready (not made yet, being made, failed, too large): its own bytes;
+ * - "making": an Office file's preview is being made (「プレビューを作成中…」 until it is ready);
+ * - "ask": an Office file without one (imported, §24): the viewer asks the server to make it;
+ * - "failed": the Office file's preview could not be made (the download is offered).
+ */
+export type DocumentSource = "preview" | "original" | "making" | "ask" | "failed";
+
+export function documentSource(item: Viewable): DocumentSource {
+  const status = item.file?.preview?.status;
+  if (status === "ready") return "preview";
+  if (isPdf(item)) return "original";
+  if (status === "pending") return "making";
+  if (status === "failed") return "failed";
+  return "ask";
+}
+
+/**
+ * What a click on a row or a tile does (§27): with ⌘ / Ctrl or Shift it only selects; a plain click opens — a folder
+ * (into it), a file with a viewer (the viewer), any other file (its details) — and selects it too. The second click of
+ * a double click does nothing more (the first one opened already: a folder's next click would land in it).
+ */
+export function clickAction(item: Viewable, keys: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; detail?: number }): "select" | "folder" | "view" | "details" | "none" {
+  if (keys.metaKey || keys.ctrlKey || keys.shiftKey) return "select";
+  if ((keys.detail ?? 1) > 1) return "none";
+  if (item.kind === "folder") return "folder";
+  return viewerKind(item) ? "view" : "details";
+}
+
+/** The list's optional columns at a width of the listing (px): the least needed go first as it narrows (§27). */
+export interface DriveColumns {
+  modified: boolean;
+  by: boolean;
+  size: boolean;
+}
+
+export function driveColumns(width: number): DriveColumns {
+  return { by: width >= 700, size: width >= 520, modified: width >= 420 };
 }
 
 /** The thumbnail a row or a tile shows (null: an icon). */

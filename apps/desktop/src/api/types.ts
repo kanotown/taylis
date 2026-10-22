@@ -642,6 +642,7 @@ export type DriveItemOut = components["schemas"]["DriveItemOut"];
 export type DriveFileOut = components["schemas"]["DriveFileOut"];
 export type DriveCrumb = components["schemas"]["DriveCrumb"];
 export type DriveItemDetailOut = components["schemas"]["DriveItemDetailOut"];
+export type DrivePreviewOut = components["schemas"]["DrivePreviewOut"];
 export type DriveChildrenOut = components["schemas"]["DriveChildrenOut"];
 export type DriveResultsOut = components["schemas"]["DriveResultsOut"];
 export type DriveTrashOut = components["schemas"]["DriveTrashOut"];

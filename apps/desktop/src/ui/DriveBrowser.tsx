@@ -4,11 +4,12 @@
  * - The bar: breadcrumbs (a crumb takes dropped items: moved there), the search of this location, 「新しいフォルダ」,
  *   「アップロード」 (files / a folder), sort, list or grid (remembered on this device), the trash, the details pane.
  * - The listing reads 100 items a page by cursor as it scrolls (folders first, then by name, time or size), lists them
- *   (icon or thumbnail, name, time, who changed it, size) or tiles them (thumbnails), and opens a photo, a video, a PDF or
- *   an Office file in the app's viewers (others download). Select with a click, ⌘ / Ctrl and Shift; ↑ ↓ Enter, Space
- *   (preview), F2 (rename), Delete (trash), ⌘A, ⌘X then ⌘V (move), ⌘C then ⌘V (copy, M162). A right-click or the
- *   row's ⋯ opens its menu: download (a folder or several items as one ZIP, M162), rename, move, copy, the version
- *   history (M162), the trash.
+ *   (icon or thumbnail, name, time, who changed it, size; the less needed columns give way as the listing narrows) or
+ *   tiles them (thumbnails). §27: a click opens — a folder (into it), a photo, a video, a PDF or an Office file (the
+ *   app's viewers), anything else (its details; only 「ダウンロード」 downloads) — and ⌘ / Ctrl, Shift or the
+ *   row's check box only select; ↑ ↓ Enter, Space (preview), F2 (rename), Delete (trash), ⌘A, ⌘X then ⌘V (move),
+ *   ⌘C then ⌘V (copy, M162). A right-click or the row's ⋯ opens its menu: download (a folder or several items as one
+ *   ZIP, M162), rename, move, copy, the version history (M162), the trash.
  * - Files and folders dragged from the desktop drop onto the listing (into this folder) or onto a folder row (into it);
  *   rows dragged onto a folder or a crumb move there.
  * - The trash: what was put there together, restored as a whole (to where it was, else the top) or deleted for good by
@@ -22,7 +23,7 @@ import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEff
 import { ApiError, describeError } from "../api/errors";
 import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, DriveTrashEntryOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { appendPage, breadcrumbs, clickSelection, type DriveIconKind, type DriveOrder, type DriveSort, type DriveViewMode, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
+import { appendPage, breadcrumbs, clickAction, clickSelection, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
 import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
 import { coalesce } from "../sync/drive";
@@ -42,6 +43,9 @@ import { Button, cn, IconButton, Input, Menu, MenuContent, MenuItem, MenuRadioGr
 import { t } from "../i18n";
 
 const PAGE = 100;
+/** The details pane's width (w-72), and the listing width below which it lies over the listing instead (§27). */
+const DETAILS_WIDTH = 288;
+const DETAILS_BESIDE_MIN = 640;
 const ROW_DRAG = "application/x-taylis-drive-items";
 const MENU_CONTENT = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
@@ -139,6 +143,20 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const filesInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // §27: the listing's own width decides the list's columns (the window's would not: the rail, the sidebar and the
+  // locations column take part of it).
+  const [width, setWidth] = useState(0);
+  const resize = useRef<ResizeObserver | null>(null);
+  const measured = useCallback((element: HTMLDivElement | null) => {
+    resize.current?.disconnect();
+    resize.current = null;
+    if (!element) return;
+    const measure = () => setWidth(element.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    resize.current = new ResizeObserver(measure);
+    resize.current.observe(element);
+  }, []);
   const generation = useRef(0);
   const canWrite = location.can_write;
 
@@ -148,6 +166,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     if (!api || mode !== "folder") return;
     const run = ++generation.current;
     setListing((current) => (options.keep ? { ...current, loading: true } : { ...EMPTY_LISTING }));
+    // Another folder starts at its top (back / forward puts a folder back where it was: MainScreen's scroll memory).
+    if (!options.keep && listRef.current) listRef.current.scrollTop = 0;
     try {
       const held = options.keep ? listing.items.length : 0;
       const out = await api.driveChildren(folderId, { sort: sort.sort, order: sort.order, limit: Math.min(200, Math.max(PAGE, held)) });
@@ -273,7 +293,13 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       return;
     }
     if (viewerKind(item)) setViewing(item);
-    else void controller.downloadDriveFile(item);
+    else {
+      // §27: a file no viewer shows opens its details (with 「ダウンロード」), never a download by itself.
+      setSelected(new Set([item.id]));
+      setAnchor(item.id);
+      setFocusId(item.id);
+      setDetails(true);
+    }
   };
 
   /** One file as it is; a folder or several items as one ZIP (M162). */
@@ -426,11 +452,23 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     }
   };
 
-  const select = (item: DriveItemOut, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
-    const next = clickSelection(order, selected, anchor, item.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey });
+  const select = (item: DriveItemOut, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }, toggle = false) => {
+    const next = clickSelection(order, selected, anchor, item.id, { toggle: toggle || event.metaKey || event.ctrlKey, range: event.shiftKey });
     setSelected(next.selected);
     setAnchor(next.anchor);
     setFocusId(item.id);
+  };
+  /** §27: a plain click opens (and selects) the item; with ⌘ / Ctrl or Shift it only selects. */
+  const clickItem = (item: DriveItemOut, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; detail: number }) => {
+    const action = clickAction(item, event);
+    if (action === "none") return;
+    select(item, event);
+    if (action !== "select") open(item);
+  };
+  /** The row's check box: adds or removes the item (Shift: the range), never opens it. */
+  const checkItem = (item: DriveItemOut, event: { stopPropagation: () => void; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
+    event.stopPropagation();
+    select(item, event, true);
   };
 
   // --- rows: drag to move, drop files into a folder --------------------------------------------------------------------
@@ -479,10 +517,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     const many = targets.length > 1;
     return (
       <>
-        {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => open(item)}>{item.kind === "folder" ? t("drive.open") : viewerKind(item) ? t("drive.preview") : t("drive.download")}</ContextMenu.Item>}
-        {(many || item.kind === "folder" || viewerKind(item)) && (
-          <ContextMenu.Item className={MENU_ITEM} onSelect={() => download(targets)}><Download size={14} /> {many || item.kind === "folder" ? t("drive.downloadZip") : t("drive.download")}</ContextMenu.Item>
-        )}
+        {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => open(item)}>{item.kind === "folder" ? t("drive.open") : viewerKind(item) ? t("drive.preview") : t("drive.details")}</ContextMenu.Item>}
+        <ContextMenu.Item className={MENU_ITEM} onSelect={() => download(targets)}><Download size={14} /> {many || item.kind === "folder" ? t("drive.downloadZip") : t("drive.download")}</ContextMenu.Item>
         {!many && item.kind === "file" && mode === "folder" && (
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "versions", item })}><History size={14} /> {t("drive.versions.open")}</ContextMenu.Item>
         )}
@@ -630,6 +666,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     </p>
   ) : null;
 
+  // Beside the details pane the listing is narrower by its width.
+  const columns = driveColumns(width === 0 ? Infinity : width - (details && mode === "folder" && width >= DETAILS_BESIDE_MIN ? DETAILS_WIDTH : 0));
   const listingBody = mode === "trash" ? (
     <TrashList
       controller={controller}
@@ -662,13 +700,14 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   ) : hits && hits.length === 0 ? (
     <p className="p-6 text-center text-sm text-muted">{t("drive.noResults", { q: query.trim() })}</p>
   ) : view === "list" ? (
-    <table className="w-full table-fixed border-collapse text-[13px]">
+    <table className="w-full table-fixed border-collapse text-[13px]" data-drive-columns={[columns.modified && "modified", columns.by && "by", columns.size && "size"].filter(Boolean).join(" ")}>
       <thead className="sticky top-0 z-10 bg-canvas text-left text-xs text-muted">
         <tr className="border-b border-line">
-          <SortHeader label={t("drive.column.name")} sort="name" current={sort} onSort={setSort} disabled={!!hits} className="pl-4" />
-          <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} className="w-40 max-md:hidden" />
-          <th className="w-32 px-2 py-2 font-medium max-lg:hidden">{t("drive.column.by")}</th>
-          <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} className="w-24 text-right" />
+          <th className="w-9 pl-3" aria-label={t("drive.select")} />
+          <SortHeader label={t("drive.column.name")} sort="name" current={sort} onSort={setSort} disabled={!!hits} />
+          {columns.modified && <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} className="w-36" />}
+          {columns.by && <th className="w-32 px-2 py-2 font-medium">{t("drive.column.by")}</th>}
+          {columns.size && <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} className="w-20 text-right" />}
           <th className="w-10" aria-label={t("drive.actions")} />
         </tr>
       </thead>
@@ -680,17 +719,20 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
               <ContextMenu.Trigger asChild>
                 <tr
                   data-drive-item={item.id}
+                  data-row-key={item.id}
                   aria-selected={selected.has(item.id)}
-                  onClick={(event) => select(item, event)}
-                  onDoubleClick={() => open(item)}
+                  onClick={(event) => clickItem(item, event)}
                   {...rowDrag(item)}
                   {...(item.kind === "folder" ? folderDrop(item) : {})}
-                  className={cn("cursor-default border-b border-line/60", selected.has(item.id) ? "bg-accent-soft" : "hover:bg-ink/4", dropFolder === item.id && "bg-accent-soft ring-1 ring-inset ring-accent", focusId === item.id && "outline outline-1 -outline-offset-1 outline-accent/50")}
+                  className={cn("group/row cursor-pointer border-b border-line/60", selected.has(item.id) ? "bg-accent-soft" : "hover:bg-ink/5", dropFolder === item.id && "bg-accent-soft ring-1 ring-inset ring-accent", focusId === item.id && "outline outline-1 -outline-offset-1 outline-accent/50")}
                 >
-                  <td className="py-1.5 pl-4 pr-2">
+                  <td className="pl-3">
+                    <ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} />
+                  </td>
+                  <td className="overflow-hidden py-1.5 pr-2">
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <Thumb controller={controller} item={item} className="h-7 w-7 rounded" />
-                      <div className="min-w-0">
+                      <Thumb controller={controller} item={item} className="h-7 w-7 shrink-0 rounded" />
+                      <div className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-1.5">
                           <FileName name={item.name} className="min-w-0 font-medium" />
                           <SharedMark count={item.link_count} />
@@ -699,9 +741,9 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                       </div>
                     </div>
                   </td>
-                  <td className="truncate px-2 text-muted max-md:hidden">{sinceLabel(itemTime(item))}</td>
-                  <td className="truncate px-2 text-muted max-lg:hidden">{who(item.updated_by ?? item.created_by)}</td>
-                  <td className="px-2 text-right tabular-nums text-muted">{item.kind === "file" ? formatBytes(item.size_bytes) : ""}</td>
+                  {columns.modified && <td className="truncate px-2 text-muted">{sinceLabel(itemTime(item))}</td>}
+                  {columns.by && <td className="truncate px-2 text-muted">{who(item.updated_by ?? item.created_by)}</td>}
+                  {columns.size && <td className="truncate px-2 text-right tabular-nums text-muted">{item.kind === "file" ? formatBytes(item.size_bytes) : ""}</td>}
                   <td className="pr-2 text-right">
                     <RowMenuButton>{rowMenu(item)}</RowMenuButton>
                   </td>
@@ -716,19 +758,20 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       </tbody>
     </table>
   ) : (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3 p-4">
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(148px,100%),1fr))] gap-3 p-4 max-sm:grid-cols-2 max-sm:gap-2 max-sm:p-3">
       {items.map((item) => (
         <ContextMenu.Root key={item.id}>
           <ContextMenu.Trigger asChild>
             <li
               data-drive-item={item.id}
+              data-row-key={item.id}
               aria-selected={selected.has(item.id)}
-              onClick={(event) => select(item, event)}
-              onDoubleClick={() => open(item)}
+              onClick={(event) => clickItem(item, event)}
               {...rowDrag(item)}
               {...(item.kind === "folder" ? folderDrop(item) : {})}
-              className={cn("flex cursor-default flex-col overflow-hidden rounded-xl border", selected.has(item.id) ? "border-accent bg-accent-soft" : "border-line hover:bg-ink/4", dropFolder === item.id && "ring-2 ring-accent")}
+              className={cn("group/row relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border", selected.has(item.id) ? "border-accent bg-accent-soft" : "border-line hover:border-ink/25 hover:bg-ink/5", dropFolder === item.id && "ring-2 ring-accent", focusId === item.id && "outline outline-1 outline-offset-1 outline-accent/50")}
             >
+              <span className="absolute left-1.5 top-1.5 z-[1]"><ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} tile /></span>
               <Thumb controller={controller} item={item} iconSize={36} className="h-28 w-full bg-panel" />
               <div className="flex items-center gap-1.5 px-2 py-1.5">
                 <DriveIcon item={item} size={14} />
@@ -746,14 +789,17 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   );
 
   const detailItem = chosen.length === 1 ? chosen[0]! : chosen.length === 0 ? listing.folder : null;
+  // The details pane beside a wide listing; over a narrow one (it would squeeze the names).
+  const overlayDetails = width > 0 && width < DETAILS_BESIDE_MIN;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-drive-browser={mode}>
       {toolbar}
       {sharedBanner}
-      <div className="flex min-h-0 flex-1">
+      <div ref={measured} className="relative flex min-h-0 flex-1">
         <div
           ref={listRef}
+          data-scroll-memory=""
           role="grid"
           aria-label={mode === "trash" ? t("drive.trash") : here}
           aria-multiselectable
@@ -780,6 +826,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
             onShare={(item) => setDialog({ kind: "share", item })}
             canShare={location.can_share}
             onDownload={() => download(chosen.length > 0 ? chosen : listing.folder ? [listing.folder] : [])}
+            overlay={overlayDetails}
           />
         )}
       </div>
@@ -839,6 +886,34 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       )}
       {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} />}
     </div>
+  );
+}
+
+/**
+ * A row's or a tile's check box (§27): selects without opening. Shown while something is selected, on hover, when
+ * focused, and always where there is no hover (touch).
+ */
+function ItemCheck({ item, checked, shown, onCheck, tile = false }: {
+  item: DriveItemOut;
+  checked: boolean;
+  shown: boolean;
+  onCheck: (item: DriveItemOut, event: { stopPropagation: () => void; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void;
+  tile?: boolean;
+}) {
+  return (
+    <input
+      type="checkbox"
+      data-drive-check={item.id}
+      checked={checked}
+      aria-label={t("drive.selectItem", { name: item.name })}
+      onClick={(event) => onCheck(item, event)}
+      onChange={() => undefined}
+      className={cn(
+        "block h-4 w-4 cursor-pointer accent-[var(--accent)]",
+        checked || shown ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100",
+        tile && "rounded shadow-sm",
+      )}
+    />
   );
 }
 
@@ -927,7 +1002,7 @@ function TrashList({ controller, location, trash, onMore, onRestore, onDelete }:
   );
 }
 
-function DetailsPane({ controller, item, count, path, onClose, onVersions, onShare, canShare, onDownload }: {
+function DetailsPane({ controller, item, count, path, onClose, onVersions, onShare, canShare, onDownload, overlay = false }: {
   controller: AppController;
   item: DriveItemOut | null;
   count: number;
@@ -939,11 +1014,13 @@ function DetailsPane({ controller, item, count, path, onClose, onVersions, onSha
   canShare: boolean;
   /** The selection (or the open folder) downloaded: a file as it is, else a ZIP. */
   onDownload: () => void;
+  /** Over the listing's right edge (a narrow listing) instead of beside it. */
+  overlay?: boolean;
 }) {
   const users = controller.store.users;
   const who = (id: string | null | undefined) => (id ? users.get(id)?.display_name ?? t("drive.someone") : "—");
   return (
-    <aside aria-label={t("drive.details")} className="flex w-72 shrink-0 flex-col border-l border-line bg-panel/40 max-md:hidden">
+    <aside aria-label={t("drive.details")} data-drive-details={overlay ? "overlay" : "beside"} className={cn("flex shrink-0 flex-col border-l border-line", overlay ? "absolute inset-y-0 right-0 z-20 w-[min(18rem,100%)] bg-canvas shadow-xl" : "w-72 bg-panel/40")}>
       <header className="flex h-11 items-center gap-2 border-b border-line px-3">
         <Info size={15} className="text-muted" />
         <strong className="flex-1 text-sm">{t("drive.details")}</strong>
@@ -957,10 +1034,10 @@ function DetailsPane({ controller, item, count, path, onClose, onVersions, onSha
       ) : item ? (
         <div className="space-y-3 overflow-y-auto p-4 text-[13px]">
           <Thumb controller={controller} item={item} iconSize={40} className="h-36 w-full rounded-lg bg-panel" />
-          <FileName name={item.name || path} className="text-sm font-semibold" />
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+          <FileName name={item.name || path} className="min-w-0 text-sm font-semibold" />
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
             <dt className="text-muted">{t("drive.detail.kind")}</dt>
-            <dd className="truncate">{item.kind === "folder" ? t("drive.detail.folder") : item.content_type ?? "—"}</dd>
+            <dd className="min-w-0 truncate">{item.kind === "folder" ? t("drive.detail.folder") : item.content_type ?? "—"}</dd>
             {item.kind === "file" && (
               <>
                 <dt className="text-muted">{t("drive.column.size")}</dt>
