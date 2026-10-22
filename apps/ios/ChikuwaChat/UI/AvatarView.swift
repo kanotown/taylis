@@ -14,18 +14,17 @@ struct AvatarView: View {
 
     var body: some View {
         let style = PresenceDot.Style(look: presence, showOffline: showOffline)
-        // The dot sits in a hole cut out of the picture (badgeHole), 2 pt wider all round: what is behind the picture
-        // (a row, a selected row, a grouped cell, a sheet, a bar) is the ring, and the picture never shows through the
-        // dot where a sheet or bar blends what it draws (iOS 26 glass).
-        let side = size * 0.3 - 2
-        let shift = size * 0.08 - 1
+        // The dot sits in a hole cut out of the picture (badgeHole), the ring's width wider all round: what is behind
+        // the picture (a row, a selected row, a grouped cell, a sheet, a bar) is the ring, and the picture never shows
+        // through the dot where a sheet or bar blends what it draws (iOS 26 glass). Sizes: PresenceDotRule.
+        let rule = PresenceDotRule(avatar: size)
         face
             .frame(width: size, height: size)
-            .badgeHole(dot: style == nil ? 0 : side, gap: style == nil ? 0 : 2, offset: shift)
+            .badgeHole(dot: style == nil ? 0 : rule.side, gap: style == nil ? 0 : rule.ring, offset: rule.shift)
             .overlay(alignment: .bottomTrailing) {
                 if let style {
-                    PresenceDot(style: style, side: side)
-                        .offset(x: shift, y: shift)
+                    PresenceDot(style: style, side: rule.side, stroke: rule.ring)
+                        .offset(x: rule.shift, y: rule.shift)
                 }
             }
             .accessibilityHidden(true)
@@ -49,6 +48,33 @@ struct AvatarView: View {
                 .background(Color(uiColor: InitialsAvatar.color(id)), in: RoundedRectangle(cornerRadius: size / 4, style: .continuous))
         }
     }
+}
+
+/// The presence dot's sizes on a picture `avatar` pt wide (docs/PRESENCE.md §11.9, the same rule as Desktop / Web and
+/// Android): the dot with its ring is about two fifths of the picture, 10 to 20 pt (18–26 pt pictures 10, 30 pt 11,
+/// 36 pt 14, 40 pt 15, 56 pt and up 20); the ring is three twentieths of it to the nearest half point (1.5 / 2 / 2.5 / 3),
+/// and it reaches a fifth of itself (at least 2 pt) past the corner, three tenths on pictures of 20 pt or less so it
+/// keeps clear of the initials. Until 2026-10-23 the colour was 0.3 × the picture − 2 pt in a 2 pt ring (4.6 pt of colour
+/// on the home's 22 pt DM pictures).
+struct PresenceDotRule: Equatable {
+    /// The dot's diameter with its ring.
+    let diameter: CGFloat
+    /// The ring (the hole's gap around the colour, and the offline ring's grey stroke).
+    let ring: CGFloat
+    /// How far the dot's outer edge reaches past the picture's corner.
+    let overhang: CGFloat
+
+    init(avatar size: CGFloat) {
+        let dot = min(20, max(10, (size * 0.38).rounded()))
+        diameter = dot
+        ring = (dot * 3 / 10).rounded() / 2
+        overhang = size <= 20 ? (dot * 0.3).rounded() : max(2, (dot * 0.2).rounded())
+    }
+
+    /// The colour's diameter (inside the ring).
+    var side: CGFloat { diameter - ring * 2 }
+    /// How far the colour circle moves down and right from the picture's bottom-trailing corner.
+    var shift: CGFloat { overhang - ring }
 }
 
 /// A message's sender picture with their presence dot (PRESENCE.md §11.5) in the message lists: conversations and DMs,
@@ -103,12 +129,14 @@ struct PresenceDot: View {
 
     let style: Style
     var side: CGFloat = 10
+    /// The offline ring's stroke (a picture's dot passes its ring width, PresenceDotRule); nil: a fifth of the side.
+    var stroke: CGFloat? = nil
 
     var body: some View {
         Group {
             if style == .offline {
                 // Hollow: on a picture the hole under it (badgeHole) shows what is behind, like the ring around it.
-                Circle().strokeBorder(style.color, lineWidth: max(1.5, side * 0.2))
+                Circle().strokeBorder(style.color, lineWidth: stroke ?? max(1.5, side * 0.2))
             } else {
                 Circle().fill(style.color)
             }

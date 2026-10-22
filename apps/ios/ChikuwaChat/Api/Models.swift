@@ -15,7 +15,7 @@ struct UserPublic: Codable, Identifiable, Equatable, Hashable {
     var statusText: String? = nil
     var statusEmoji: String? = nil
     var statusExpiresAt: String? = nil
-    /// Do not disturb (M12c): a manual pause and the daily quiet hours (public, for 🔕 next to the name).
+    /// Do not disturb (M12c): a manual pause and the daily quiet hours (public, for the paused bell next to the name).
     var dndUntil: String? = nil
     var quietHours: QuietHours? = nil
     /// M14a: when the profile picture changed (nil = no picture); the cache key.

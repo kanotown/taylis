@@ -65,7 +65,7 @@ enum PresenceRules {
         return at >= indefiniteFrom
     }
 
-    /// The manual pause (取り込み中) still running, else nil. Quiet hours are not 取り込み中 (they keep the 🔕 only).
+    /// The manual pause (取り込み中) still running, else nil. Quiet hours are not 取り込み中 (they keep the paused bell only).
     /// The one test of a running pause: the settings' DND.paused and the in-app notices' DND.isActive read it too.
     static func activeDnd(_ until: String?, now: Date = Date()) -> String? {
         guard let until, let at = parseIsoDate(until), at > now else { return nil }
