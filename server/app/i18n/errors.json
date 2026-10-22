@@ -332,7 +332,7 @@
    "zh-Hans": "不能举报自己。"
   },
   "canvas_base_expired": {
-   "ja": "編集の元にした版がなくなりました。今の版と見比べてください",
+   "ja": "編集の元にしたバージョンがなくなりました。現在のバージョンと見比べてください",
    "en": "The version you edited from is gone. Compare with the current version.",
    "zh-Hans": "你编辑时所基于的版本已不存在。请与当前版本进行比较。"
   },
@@ -352,17 +352,17 @@
    "zh-Hans": "找不到画布。"
   },
   "canvas_revision_erased": {
-   "ja": "この版の本文は消去されています",
+   "ja": "このバージョンの本文は消去されています",
    "en": "The text of this version has been erased.",
    "zh-Hans": "此版本的内容已被清除。"
   },
   "canvas_revision_is_head": {
-   "ja": "現在の版は消去できません。先に本文を直してください",
+   "ja": "現在のバージョンは消去できません。先に本文を直してください",
    "en": "The current version can't be erased. Fix the text first.",
    "zh-Hans": "不能清除当前版本。请先修改内容。"
   },
   "canvas_revision_not_found": {
-   "ja": "版が見つかりません",
+   "ja": "バージョンが見つかりません",
    "en": "Version not found.",
    "zh-Hans": "找不到版本。"
   },
@@ -787,7 +787,7 @@
    "zh-Hans": "访客和机器人不能成为所有者。"
   },
   "page_base_expired": {
-   "ja": "編集の元にした版がなくなりました。今の版と見比べてください",
+   "ja": "編集の元にしたバージョンがなくなりました。現在のバージョンと見比べてください",
    "en": "The version you edited from is gone. Compare with the current version.",
    "zh-Hans": "你编辑时所基于的版本已不存在。请与当前版本进行比较。"
   },
@@ -817,17 +817,17 @@
    "zh-Hans": "找不到页面（未与你共享或已被删除）。"
   },
   "page_revision_erased": {
-   "ja": "この版の本文は消去されています",
+   "ja": "このバージョンの本文は消去されています",
    "en": "This version's text was erased.",
    "zh-Hans": "此版本的正文已被清除。"
   },
   "page_revision_is_head": {
-   "ja": "今の版は消去できません。先に本文を変更してください",
+   "ja": "現在のバージョンは消去できません。先に本文を変更してください",
    "en": "The current version can't be erased. Change the text first.",
    "zh-Hans": "无法清除当前版本。请先修改正文。"
   },
   "page_revision_not_found": {
-   "ja": "版が見つかりません",
+   "ja": "バージョンが見つかりません",
    "en": "Version not found.",
    "zh-Hans": "找不到该版本。"
   },
@@ -1622,7 +1622,7 @@
    "zh-Hans": "云盘空间已满。请永久删除不需要的文件，或联系管理员。"
   },
   "drive_version_current": {
-   "ja": "今の版です。古い版だけを戻したり削除したりできます",
+   "ja": "現在のバージョンです。古いバージョンだけを戻したり削除したりできます",
    "en": "This is the current version. Only older versions can be restored or deleted.",
    "zh-Hans": "这是当前版本。只能恢复或删除旧版本。"
   },
