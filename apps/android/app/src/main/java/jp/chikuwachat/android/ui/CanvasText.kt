@@ -411,7 +411,7 @@ data class CanvasRights(
     /** M58: 「会話に共有」 (posting the link is posting a message: not where only owners post, unless one). */
     val share: Boolean = false,
 ) {
-    /** Ticking is all this member may do (the conflict choice is then only 「相手の版」). */
+    /** Ticking is all this member may do (the conflict choice is then only 「相手のバージョン」). */
     val tickOnly: Boolean get() = tick && !edit
 
     companion object {

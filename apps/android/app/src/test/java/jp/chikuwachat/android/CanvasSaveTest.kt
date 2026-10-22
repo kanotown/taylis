@@ -423,7 +423,7 @@ class CanvasSaveTest {
     fun rightsFollowTheServer() {
         val members = meta()
         val owners = meta(editPolicy = "owners")
-        // A member edits a members canvas; an owners canvas only ticks (the conflict choice is then 相手の版 only).
+        // A member edits a members canvas; an owners canvas only ticks (the conflict choice is then 相手のバージョン only).
         assertEquals(CanvasRights(create = true, edit = true, tick = true, manage = false, trash = false, share = true), CanvasRights.of(channel(), "me", "member", members))
         val ticker = CanvasRights.of(channel(), "me", "member", owners)
         assertTrue(ticker.tickOnly)

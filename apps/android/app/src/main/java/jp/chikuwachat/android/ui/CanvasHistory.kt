@@ -88,7 +88,7 @@ import androidx.compose.ui.res.stringResource
 
 /*
  * M58 (CANVAS.md §4.9, the desktop's M44 CanvasHistory.tsx): a canvas's history, full screen. The versions newest first
- * (who, when, the kind, lines added / removed, the name given to it, 「現在の版」); one of them compared with the version
+ * (who, when, the kind, lines added / removed, the name given to it, 「現在のバージョン」); one of them compared with the version
  * before it (the default) or with the current one — lines added and removed, the words of a line only touched up — or
  * shown as it was. A version can be made the current one again (a new version: nothing is lost), named (「提出版」),
  * and — by the conversation's owners and administrators, in a DM its creator — have its body erased. Everyone who reads
@@ -508,7 +508,7 @@ private fun DiffLineRow(line: CanvasDiff.Line) {
     }
 }
 
-/** 「版に名前を付ける」: named versions are kept however old they get (§4.9); empty takes the name off. */
+/** 「バージョンに名前を付ける」: named versions are kept however old they get (§4.9); empty takes the name off. */
 @Composable
 private fun LabelDialog(revision: CanvasRevisionMeta, busy: Boolean, onDismiss: () -> Unit, onSave: (String?) -> Unit) {
     var label by rememberSaveable(revision.id) { mutableStateOf(revision.label ?: "") }
