@@ -391,7 +391,7 @@ function HomeRow({ controller, channel, folded, onOpen }: { controller: AppContr
               group ? (
                 <span className="flex h-6 w-6 items-center justify-center rounded-md bg-panel-2 text-[11px] font-semibold">{(channel.dm_user_ids ?? []).length - 1}</span>
               ) : other ? (
-                <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={24} className="rounded-md text-[10px]" presence={presenceDotOf(store, other)} presenceClassName="border border-canvas" />
+                <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={24} className="rounded-md text-[10px]" presence={presenceDotOf(store, other)} />
               ) : (
                 <AtSign size={20} />
               )

@@ -212,7 +212,7 @@ function JumpRowBody({ controller, row, meId }: { controller: AppController; row
     case "bot":
       return (
         <>
-          <Avatar id={row.user.id} name={row.user.display_name} size={24} className="rounded-md text-[10px]" presence={row.kind === "bot" ? undefined : store.presenceOf(row.user.id)} presenceClassName="border border-canvas" />
+          <Avatar id={row.user.id} name={row.user.display_name} size={24} className="rounded-md text-[10px]" presence={row.kind === "bot" ? undefined : store.presenceOf(row.user.id)} />
           <span className="min-w-0 truncate">{row.user.display_name}</span>
           {row.kind === "bot" && <AiBadge />}
           <span className="min-w-0 shrink truncate text-[13px] text-muted">@{row.user.username}{row.user.id === meId ? ` ${t("tasks.dialog.me")}` : ""}</span>

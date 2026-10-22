@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { avatarDotSize } from "../src/ui/Avatar";
+import { avatarDotSize, presenceRing } from "../src/ui/Avatar";
 import { MessageRow } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
 
@@ -67,6 +67,10 @@ describe("the presence dot on a message's sender", () => {
     const threadDot = w.dot(w.ids.reply, true)!;
     expect(threadDot.dataset.presence).toBe("online");
     expect(threadDot.style.width).toBe(`${avatarDotSize(30)}px`);
+    // The thread pane's 30 px pictures (2026-10-23: 9 px looked small): 11 px with a 1.5 px ring; the channel's 14 px.
+    expect(threadDot.style.width).toBe("11px");
+    expect(threadDot.style.borderWidth).toBe("1.5px");
+    expect(dot.style.width).toBe("14px");
   });
 
   it("updates live (away, 取り込み中, offline) without redrawing the list", () => {
@@ -97,8 +101,9 @@ describe("the presence dot on a message's sender", () => {
     expect(ring.childElementCount).toBe(0);
     expect(ring.className).toContain("border-muted");
     expect(ring.className).toContain("bg-transparent");
-    // 36 px: an 11 px dot, a 9 px ring 2 px wide inside a 1 px gap.
-    expect(ring.style.width).toBe(`${avatarDotSize(36) - 2}px`);
+    // 36 px: a 14 px dot, a 10 px ring 2 px wide inside a 2 px gap (PRESENCE.md §11.9).
+    expect(ring.style.width).toBe(`${avatarDotSize(36) - 2 * presenceRing(avatarDotSize(36))}px`);
+    expect(ring.style.width).toBe("10px");
     expect(ring.style.borderWidth).toBe("2px");
     const picture = ring.closest("[aria-hidden]")!.firstElementChild as HTMLElement;
     expect(picture.style.maskImage).toContain("radial-gradient");

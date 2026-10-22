@@ -306,7 +306,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
             other ? <Avatar
               id={other} name={store.users.get(other)?.display_name ?? "?"} size={18} className="rounded-md text-[9px]"
               presence={presenceDotOf(store, other)}
-              presenceClassName="border border-sidebar"
+              presenceClassName="border-sidebar"
             /> : <AtSign size={15} className="shrink-0 opacity-70" />
           ) : channel.type === "private" ? (
             <Lock size={15} className="shrink-0 opacity-70" />
@@ -314,7 +314,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
             <Hash size={15} className="shrink-0 opacity-70" />
           )}
           <span className="flex-1 truncate">{channelTitle(channel, controller).replace(/^#/, "")}</span>
-          {other && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
+          {other && <StatusEmoji controller={controller} userId={other} className="shrink-0" bellClassName="opacity-70" />}
           {store.isDmPinned(channel.id) && <PinMark className="opacity-70" />}
           {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
           {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-sidebar-strong" /> : quietUnread ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sidebar-strong/40" title={t("sidebar.quietUnread")} /> : null}
@@ -804,7 +804,7 @@ function SidebarIdentity({ controller, meId, name, status, presence, withAvatar 
       <span className="block min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1">
           <span className="truncate text-sm font-semibold text-sidebar-strong">{name}</span>
-          {meId && <StatusEmoji controller={controller} userId={meId} className="shrink-0" />}
+          {meId && <StatusEmoji controller={controller} userId={meId} className="shrink-0" bellClassName="opacity-70" />}
         </span>
         {presence !== undefined && connected ? (
           <span data-my-presence-line className="block truncate whitespace-nowrap text-[11px] opacity-80">{presence}</span>

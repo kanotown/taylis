@@ -139,7 +139,7 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
             <Users size={18} />
           </span>
         ) : other ? (
-          <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={40} className="rounded-xl" presence={single ? presenceDotOf(store, single) : undefined} presenceClassName="border-2 border-canvas" />
+          <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={40} className="rounded-xl" presence={single ? presenceDotOf(store, single) : undefined} />
         ) : null}
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">

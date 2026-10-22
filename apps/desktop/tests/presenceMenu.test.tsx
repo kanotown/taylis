@@ -2,7 +2,7 @@
 /**
  * The quick status menu (docs/PRESENCE.md §11): the shared rules (apps/shared/presence-rules.json: my choice, the look
  * others see, 「解除するまで」, the end's label, the one redraw timer, the request body, the durations), the header line,
- * the store's 取り込み中 look and its end by the clock, the red dot (and the directory's 🔕), the menu (choices,
+ * the store's 取り込み中 look and its end by the clock, the red dot (and the directory's paused bell), the menu (choices,
  * durations, 解除), the settings' pause that mirrors it, and a change from another of my devices.
  */
 import { readFileSync } from "node:fs";
@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DndDuration, PresenceChoice, PresenceStatus, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { Avatar, avatarDotSize, HEADER_AVATAR_SIZE } from "../src/ui/Avatar";
+import { Avatar, avatarDotSize, HEADER_AVATAR_SIZE, presenceOverhang, presenceRing } from "../src/ui/Avatar";
 import { DirectoryDialog } from "../src/ui/DirectoryDialog";
 import { isIndefiniteDnd, pauseValue } from "../src/ui/dnd";
 import { MyStatusMenu } from "../src/ui/MyStatusMenu";
@@ -163,8 +163,8 @@ describe("the dot", () => {
     expect(ring.className).toContain("bg-transparent");
     expect(ring.className).not.toMatch(/border-(canvas|sidebar)\b/);
     expect(ring.style.borderWidth).toBe("2px");
-    // 36 px: an 11 px dot, 1 px of gap around a 9 px ring.
-    expect(ring.style.width).toBe("9px");
+    // 36 px: a 14 px dot, 2 px of gap around a 10 px ring (PRESENCE.md §11.9).
+    expect(ring.style.width).toBe("10px");
     // The picture (initials here) has the hole, so the row, the sidebar or the popover shows in the gap and the centre.
     const picture = container.querySelector("span > span") as HTMLElement;
     expect(picture.style.maskImage || picture.style.getPropertyValue("-webkit-mask-image")).toContain("radial-gradient");
@@ -240,19 +240,30 @@ describe("the dot", () => {
     expect(dot.style.width).toBe("14px");
     expect(dot.style.height).toBe("14px");
     // The ring is the 2 px border in the sidebar's colour; the dot overhangs the corner by 3 px.
-    expect(dot.className).toContain("border-2");
+    expect(dot.style.borderWidth).toBe("2px");
     expect(dot.className).toContain("border-sidebar");
     expect(dot.style.right).toBe("-3px");
     expect(dot.style.bottom).toBe("-3px");
   });
 
-  it("other pictures keep their dot: three tenths of the picture, at least 8 px, 2 px off the corner", () => {
-    const { container } = render(<Avatar id={ALICE} name="アリス" size={18} presence="online" />);
-    const dot = container.querySelector<HTMLElement>('[data-presence="online"]')!;
-    expect(dot.style.width).toBe("8px");
-    expect(dot.style.right).toBe("-2px");
-    expect(avatarDotSize(36)).toBe(11);
-    expect(avatarDotSize(40)).toBe(12);
+  it("other pictures: one rule (PRESENCE.md §11.9) — about two fifths of the picture, 10 to 20 px, a ring that scales", () => {
+    // The sidebar's 18 px DM pictures: the 10 px minimum, a 1.5 px ring, 3 px past the corner (clear of the initials).
+    const { container, rerender } = render(<Avatar id={ALICE} name="アリス" size={18} presence="online" />);
+    let dot = container.querySelector<HTMLElement>('[data-presence="online"]')!;
+    expect(dot.style.width).toBe("10px");
+    expect(dot.style.borderWidth).toBe("1.5px");
+    expect(dot.style.right).toBe("-3px");
+    // A 40 px picture: 15 px, a 2.5 px ring, 3 px past the corner.
+    rerender(<Avatar id={ALICE} name="アリス" size={40} presence="dnd" />);
+    dot = container.querySelector<HTMLElement>('[data-presence="dnd"]')!;
+    expect(dot.style.width).toBe("15px");
+    expect(dot.style.borderWidth).toBe("2.5px");
+    expect(dot.style.right).toBe("-3px");
+    expect([18, 20, 24, 30, 32, 34, 36, 40, 56, 64].map(avatarDotSize)).toEqual([10, 10, 10, 11, 12, 13, 14, 15, 20, 20]);
+    expect([10, 11, 12, 14, 15, 18, 19, 20].map(presenceRing)).toEqual([1.5, 1.5, 2, 2, 2.5, 2.5, 3, 3]);
+    expect(([[18, 10], [24, 10], [36, 14], [64, 20]] as const).map(([size, d]) => presenceOverhang(size, d))).toEqual([3, 2, 3, 4]);
+    // The header's and the attendance board's deliberate sizes agree with the rule.
+    expect(avatarDotSize(HEADER_AVATAR_SIZE)).toBe(14);
   });
 
   it("my header: オフライン表示 is the hollow ring and its name; 自動 reads the look; a lost connection takes the line", () => {
@@ -287,7 +298,7 @@ describe("the dot", () => {
     expect(within(menu).getByText("離席中")).toBeTruthy();
   });
 
-  it("the member directory's 🔕 ends with the pause, like the dot (dnd_until stays set until the next user.updated)", () => {
+  it("the member directory's paused bell ends with the pause, like the dot (dnd_until stays set until the next user.updated)", () => {
     vi.useFakeTimers();
     const store = storeWith(meWith());
     store.setPresence(ALICE, "online");
@@ -297,12 +308,16 @@ describe("the dot", () => {
     const dialog = () => <DirectoryDialog controller={controller} onClose={() => {}} onOpen={() => {}} />;
     const view = render(dialog());
     const row = () => screen.getByText("アリス", { selector: "span.font-medium" }).closest("li")!;
-    expect(within(row()).getByText("🔕")).toBeTruthy();
+    // A vector bell-with-slash in the muted colour (the 🔕 emoji until 2026-10-23), read as 「通知を一時停止中」.
+    const bell = row().querySelector<SVGElement>("[data-paused-bell]")!;
+    expect(bell.getAttribute("aria-label")).toBe("通知を一時停止中");
+    expect(bell.getAttribute("class")).toContain("text-muted");
+    expect(row().textContent).not.toContain("🔕");
     expect(row().querySelector('[data-presence="dnd"]')).toBeTruthy();
     vi.advanceTimersByTime(10 * 60_000 + 100);
     view.rerender(dialog()); // the store's redraw
     expect(store.users.get(ALICE)!.dnd_until).not.toBeNull();
-    expect(within(row()).queryByText("🔕")).toBeNull();
+    expect(row().querySelector("[data-paused-bell]")).toBeNull();
     expect(row().querySelector('[data-presence="online"]')).toBeTruthy();
   });
 });

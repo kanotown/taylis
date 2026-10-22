@@ -8,7 +8,7 @@ import { Avatar, presenceLabel } from "./Avatar";
 import { pausedUntil } from "./dnd";
 import { Badge, Button, Input, Modal } from "./primitives";
 import { compareByRoster, rosterLabel, rosterSection, titleExtra } from "./roster";
-import { EmojiText } from "./UserPopover";
+import { EmojiText, PausedBell } from "./UserPopover";
 import { activeStatus } from "./users";
 import { t } from "../i18n";
 
@@ -72,7 +72,7 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       {user.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                       {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
                       {/* By the clock, like the dot: the store redraws when the pause ends, and dnd_until stays set until the next user.updated. */}
-                      {pausedUntil(user) && <span title={t("popover.paused")}>🔕</span>}
+                      {pausedUntil(user) && <span title={t("popover.paused")} className="inline-flex"><PausedBell size={13} /></span>}
                       <AttendanceChip controller={controller} userId={user.id} />
                       {user.id === me && <span className="text-xs text-muted">{t("calendar.me")}</span>}
                     </div>

@@ -1,4 +1,4 @@
-import { Ban, Flag, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
+import { Ban, BellOff, Flag, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
 import { Fragment, type PointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -162,7 +162,7 @@ function UserCard({ controller, userId, onClose, onReport }: { controller: AppCo
             {/* M140: 在室状況, when the workspace has the board on and the person set one. */}
             <AttendanceChip controller={controller} userId={userId} className="mt-1" />
             {dndActive(user) && (
-              <div className="mt-0.5 text-xs text-muted" title={user?.quiet_hours ? t("popover.quietHours", { hours: quietHoursLabel(user.quiet_hours) }) : undefined}>🔕 {t("popover.paused")}</div>
+              <div className="mt-0.5 flex items-center gap-1 text-xs text-muted" title={user?.quiet_hours ? t("popover.quietHours", { hours: quietHoursLabel(user.quiet_hours) }) : undefined}><PausedBell size={12} decorative />{t("popover.paused")}</div>
             )}
           </div>
         </div>
@@ -223,16 +223,34 @@ function UserCard({ controller, userId, onClose, onReport }: { controller: AppCo
   );
 }
 
-/** The status emoji shown next to a name when the person has an active custom status. */
-export function StatusEmoji({ controller, userId, className }: { controller: AppController; userId: string; className?: string }) {
+/**
+ * 「通知を一時停止中」 next to a name (a manual pause or the quiet hours, M12c): a bell with a slash in the secondary text
+ * colour, sized to the text around it (docs/PRESENCE.md §11.9; the orange 🔕 emoji until 2026-10-23). `decorative` when
+ * the words are beside it; else it is read out as 「通知を一時停止中」. `className` replaces the colour (the sidebar's
+ * rows use their own text colour, faded, like the muted-channel bell there).
+ */
+export function PausedBell({ size = 13, decorative = false, className }: { size?: number; decorative?: boolean; className?: string }) {
+  return (
+    <BellOff
+      data-paused-bell
+      size={size}
+      strokeWidth={2.25}
+      className={cn("inline-block shrink-0 align-[-0.125em]", className ?? "text-muted")}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": t("popover.paused") })}
+    />
+  );
+}
+
+/** The status emoji shown next to a name when the person has an active custom status (and the paused bell). */
+export function StatusEmoji({ controller, userId, className, bellClassName }: { controller: AppController; userId: string; className?: string; bellClassName?: string }) {
   const status = activeStatus(controller.store.users.get(userId));
   const quiet = dndActive(controller.store.users.get(userId));
   if (!status?.emoji && !quiet) return null;
   const label = [status?.text, quiet ? t("popover.paused") : null].filter(Boolean).join(" · ");
   return (
-    <span className={cn("text-[13px] leading-none", className)} title={label} aria-label={label}>
+    <span className={cn("inline-flex items-center gap-0.5 text-[13px] leading-none", className)} title={label} aria-label={label}>
       {status?.emoji && <StatusGlyph controller={controller} emoji={status.emoji} size={14} />}
-      {quiet && "🔕"}
+      {quiet && <PausedBell size={13} decorative className={bellClassName} />}
     </span>
   );
 }

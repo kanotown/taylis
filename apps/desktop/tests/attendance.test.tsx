@@ -157,7 +157,7 @@ describe("the page", () => {
     const dot = document.querySelector<HTMLElement>("[data-attendance-group] [data-presence=online]")!;
     expect(dot.style.width).toBe("14px");
     expect(dot.style.height).toBe("14px");
-    expect(dot.className).toContain("border-2");
+    expect(dot.style.borderWidth).toBe("2px");
     expect(dot.className).toContain("border-canvas");
     expect((dot.parentElement as HTMLElement).style.width).toBe("36px");
   });
