@@ -8,7 +8,7 @@ import type { SendOptions } from "../sync/types";
 import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
-import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
+import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
 import type { DriveItemLinksOut, DriveShareEventListOut,DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
 
@@ -2025,6 +2025,11 @@ export class ApiClient {
   /** A URL the browser's own download (or a video's source) can follow without the bearer token (§7.3, D2). */
   driveDownloadTicket(itemId: string, versionId: string | null = null): Promise<DriveDownloadTicketOut> {
     return this.request("POST", `/api/v1/drive/items/${itemId}/download-ticket${versionId ? `?version_id=${versionId}` : ""}`);
+  }
+
+  /** §27: the current version's preview, queued now when it was never made (imported files); null: it gets none. */
+  requestDrivePreview(itemId: string): Promise<DrivePreviewOut> {
+    return this.request("POST", `/api/v1/drive/items/${itemId}/preview`);
   }
 
   // --- M162 (§7.2, §10.2, §10.3, §11): versions, copies, ZIPs, usage ------------------------------------------------

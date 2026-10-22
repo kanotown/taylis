@@ -3,6 +3,9 @@
  * my channels and 「チャンネルを選ぶ」 for one of my channels that has none yet — each with what it uses (and a bar
  * against its quota when it has one), beside the open location's folders (DriveBrowser). A channel's own 「ドライブ」 tab
  * is ChannelDrive below: the same browser on that channel's drive.
+ *
+ * §27 (2026-10-22): the open location, folder and trash are the screen's (MainScreen's) state when it passes `place` /
+ * `onPlace`: each change is a place of the back / forward history (← →, ⌘[ ⌘], the mouse's and the browser's buttons).
  */
 import { ArrowLeft, Hash, HardDrive, Link2, Loader2, Lock, MoreHorizontal, Plus, User } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -16,11 +19,12 @@ import { coalesce } from "../sync/drive";
 import { DriveBrowser, type DriveMode } from "./DriveBrowser";
 import { onDriveTarget, takeDriveTarget } from "./DriveSearch";
 import { MyLinksDialog } from "./DriveShareDialog";
+import type { DrivePlace } from "./placeHistory";
 import { Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "./primitives";
 import { t } from "../i18n";
 
 /** Where 「ドライブ」 was left in this window (a page visited again opens there). */
-let lastPlace: { locationId: string; folderId: string } | null = null;
+let lastPlace: DrivePlace | null = null;
 
 function LocationIcon({ location }: { location: DriveLocationOut }) {
   if (location.kind === "workspace") return <HardDrive size={15} className="shrink-0" />;
@@ -42,14 +46,33 @@ function Usage({ location }: { location: DriveLocationOut }) {
   );
 }
 
-export function DriveView({ controller, compact = false }: { controller: AppController; compact?: boolean }) {
+export function DriveView({ controller, compact = false, place, onPlace }: {
+  controller: AppController;
+  compact?: boolean;
+  /** The location and folder on screen, kept by the caller (null: not chosen yet). Without `onPlace`, kept here. */
+  place?: DrivePlace | null;
+  onPlace?: (place: DrivePlace) => void;
+}) {
   const api = controller.api;
   const engine = controller.engine;
   const [locations, setLocations] = useState<DriveLocationOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [current, setCurrent] = useState<{ locationId: string; folderId: string } | null>(() => takeDriveTarget() ?? lastPlace);
-  const [mode, setMode] = useState<DriveMode>("folder");
-  const [listOpen, setListOpen] = useState(compact && !lastPlace);
+  const [own, setOwn] = useState<DrivePlace | null>(null);
+  const current = onPlace ? (place ?? null) : own;
+  const setCurrent = useCallback((next: DrivePlace) => (onPlace ? onPlace(next) : setOwn(next)), [onPlace]);
+  const mode: DriveMode = current?.trash ? "trash" : "folder";
+  const setMode = (next: DriveMode) => {
+    if (current) setCurrent({ ...current, trash: next === "trash" });
+  };
+  const [listOpen, setListOpen] = useState(compact && !lastPlace && !place);
+  // Opened without a place: a search result asked for, else where it was left in this window.
+  useEffect(() => {
+    const target = takeDriveTarget();
+    if (target) setCurrent({ ...target, trash: false });
+    else if (!current && lastPlace) setCurrent(lastPlace);
+    // Once, on opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [myLinks, setMyLinks] = useState(false);
 
   const load = useCallback(async () => {
@@ -80,10 +103,9 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
   useEffect(() => onDriveTarget(() => {
     const target = takeDriveTarget();
     if (!target) return;
-    setCurrent(target);
-    setMode("folder");
+    setCurrent({ ...target, trash: false });
     setListOpen(false);
-  }), []);
+  }), [setCurrent]);
   // The usage figures follow the changes too (a few at a time: one read per second at most).
   useEffect(() => {
     const again = coalesce(() => void load(), 1000);
@@ -103,9 +125,8 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
     if (!locations || locations.length === 0) return;
     if (current && locations.some((loc) => loc.id === current.locationId)) return;
     const first = locations[0]!;
-    setCurrent({ locationId: first.id, folderId: first.root_id });
-    setMode("folder");
-  }, [locations, current]);
+    setCurrent({ locationId: first.id, folderId: first.root_id, trash: false });
+  }, [locations, current, setCurrent]);
   useEffect(() => {
     lastPlace = current;
   }, [current]);
@@ -123,8 +144,7 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
   };
 
   const choose = (loc: DriveLocationOut) => {
-    setCurrent({ locationId: loc.id, folderId: loc.root_id });
-    setMode("folder");
+    setCurrent({ locationId: loc.id, folderId: loc.root_id, trash: false });
     setListOpen(false);
   };
 
@@ -233,7 +253,7 @@ export function DriveView({ controller, compact = false }: { controller: AppCont
       controller={controller}
       location={location}
       folderId={current.folderId}
-      onFolder={(folderId) => setCurrent({ locationId: location.id, folderId })}
+      onFolder={(folderId) => setCurrent({ locationId: location.id, folderId, trash: false })}
       mode={mode}
       onMode={setMode}
       onLost={() => void load()}

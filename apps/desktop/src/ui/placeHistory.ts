@@ -10,9 +10,25 @@ import type { SearchParams } from "./search";
 
 export type PlaceView = "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions" | "drive";
 
+/** docs/DRIVE.md §27: where 「ドライブ」 is — a location's folder, or its trash. */
+export interface DrivePlace {
+  locationId: string;
+  folderId: string;
+  trash: boolean;
+}
+
 export type Place<F = unknown> =
   | { kind: "channel"; channelId: string; /** The reveal it was left at (the controller's message focus), or none. */ focus: F | null }
-  | { kind: "view"; view: PlaceView; /** "search": its query. */ search: SearchParams | null; /** "files": the channel it is scoped to. */ filesChannelId: string | null };
+  | {
+      kind: "view";
+      view: PlaceView;
+      /** "search": its query. */
+      search: SearchParams | null;
+      /** "files": the channel it is scoped to. */
+      filesChannelId: string | null;
+      /** "drive" (§27): the folder (each folder is a place of its own); null until 「ドライブ」 has chosen one. */
+      drive?: DrivePlace | null;
+    };
 
 export interface PlaceHistory<F = unknown> {
   entries: Place<F>[];
@@ -29,7 +45,17 @@ export function placeKey(place: Place<unknown>): string {
   if (place.kind === "channel") return `channel:${place.channelId}`;
   if (place.view === "search") return `search:${JSON.stringify(place.search)}`;
   if (place.view === "files") return `files:${place.filesChannelId ?? ""}`;
+  if (place.view === "drive" && place.drive) return `drive:${place.drive.locationId}:${place.drive.folderId}${place.drive.trash ? ":trash" : ""}`;
   return `view:${place.view}`;
+}
+
+/**
+ * The same place as the entry on screen (replaced, not added): the same key, or 「ドライブ」 opened before it chose its
+ * folder taking that folder (the first folder it lands on is where it opened, not a step to go back from).
+ */
+function samePlace(current: Place<unknown>, place: Place<unknown>): boolean {
+  if (placeKey(current) === placeKey(place)) return true;
+  return current.kind === "view" && current.view === "drive" && !current.drive && place.kind === "view" && place.view === "drive";
 }
 
 /**
@@ -38,7 +64,7 @@ export function placeKey(place: Place<unknown>): string {
  */
 export function visit<F>(history: PlaceHistory<F>, place: Place<F>, cap = HISTORY_CAP): PlaceHistory<F> {
   const current = history.entries[history.index];
-  if (current && placeKey(current) === placeKey(place)) {
+  if (current && samePlace(current, place)) {
     const entries = history.entries.slice();
     entries[history.index] = place;
     return { entries, index: history.index };

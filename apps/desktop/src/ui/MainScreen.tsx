@@ -80,7 +80,7 @@ import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, headerFit, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
-import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, restore, visit } from "./placeHistory";
+import { canGo, type DrivePlace, emptyHistory, go, type Place, type PlaceHistory, placeKey, restore, visit } from "./placeHistory";
 import { scrollMemoryFor } from "./scrollMemory";
 import { useViewScrollMemory } from "./viewScrollMemory";
 import { historyStep, historyShortcutLabels, isMacPlatform, mouseHistoryStep } from "./historyShortcuts";
@@ -122,6 +122,8 @@ interface Nav {
   pinsOpen: boolean;
   pane: "list" | "main";
   filesChannelId: string | null;
+  /** 「ドライブ」's folder (docs/DRIVE.md §27): each one is a place of the history. */
+  drive: DrivePlace | null;
   search: SearchParams | null;
   searchTab: SearchTab;
   backToSearch: boolean;
@@ -136,11 +138,11 @@ function rootNav(nav: Nav): Nav {
 }
 
 /** M67: the place a screen shows for the back / forward history (none on a phone's layout, or with no conversation open). */
-function placeOf(nav: Pick<Nav, "currentId" | "view" | "search" | "filesChannelId">, focus: Focus | null, compact: boolean): Place<Focus> | null {
+function placeOf(nav: Pick<Nav, "currentId" | "view" | "search" | "filesChannelId" | "drive">, focus: Focus | null, compact: boolean): Place<Focus> | null {
   if (compact) return null;
   const { currentId, view } = nav;
   if (view === "channel") return currentId ? { kind: "channel", channelId: currentId, focus: focus?.channelId === currentId ? focus : null } : null;
-  return { kind: "view", view, search: view === "search" ? nav.search : null, filesChannelId: view === "files" ? nav.filesChannelId : null };
+  return { kind: "view", view, search: view === "search" ? nav.search : null, filesChannelId: view === "files" ? nav.filesChannelId : null, drive: view === "drive" ? nav.drive : null };
 }
 
 /** The place with the message it was revealed at: a change of either is recorded. */
@@ -173,6 +175,7 @@ function snapshotFor(target: TabTarget): TabSnapshot {
     pinsOpen: false,
     pane: "main",
     filesChannelId: target.filesChannelId,
+    drive: null,
     search: target.search,
     searchTab: "messages",
     backToSearch: false,
@@ -256,6 +259,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [docsPageId, setDocsPageId] = useState<string | null>(initialTarget?.docsPageId ?? null);
   /** M11i: the channel the files view is scoped to (null: all my channels). */
   const [filesChannelId, setFilesChannelId] = useState<string | null>(initialTarget?.filesChannelId ?? null);
+  const [drivePlace, setDrivePlace] = useState<DrivePlace | null>(null);
   const [threadChannelId, setThreadChannelId] = useState<string | null>(initialTarget?.threadChannelId ?? null);
   // M16b: the search on screen (view "search"), the open search box, and the way back from a result.
   const [search, setSearch] = useState<SearchParams | null>(initialTarget?.search ?? null);
@@ -322,7 +326,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [mobileTab, setMobileTab] = useState<MobileTab>(() => (controller.messageFocus ? landingTab(store.getChannel(controller.messageFocus.channelId)) : "home"));
   const [savedTabs, setSavedTabs] = useState<Partial<Record<MobileTab, Nav>>>({});
   const [youPopToRoot, setYouPopToRoot] = useState(0);
-  const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch, tab, details: detailsOpen };
+  const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, drive: drivePlace, search, searchTab, backToSearch, tab, details: detailsOpen };
   const focus = controller.messageFocus;
   /** Put a screen on (a history entry coming back, a tab's screens coming back or landing). */
   const applyNav = (nav: Nav) => {
@@ -335,6 +339,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setDetailsOpen(nav.details);
     setPane(nav.pane);
     setFilesChannelId(nav.filesChannelId);
+    setDrivePlace(nav.drive ?? null);
     setSearch(nav.search);
     setSearchTab(nav.searchTab);
     setBackToSearch(nav.backToSearch);
@@ -1052,6 +1057,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       setSearch(place.search);
     }
     if (place.view === "files") setFilesChannelId(place.filesChannelId);
+    if (place.view === "drive" && place.drive) setDrivePlace(place.drive);
     setView(place.view);
   };
   // M75: a centre view's list position, recorded while it is on screen (the wide layout) and put back when back /
@@ -1709,7 +1715,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           }}
         />
       ) : view === "drive" ? (
-        <DriveView controller={controller} compact={compact} />
+        <DriveView controller={controller} compact={compact} place={drivePlace} onPlace={setDrivePlace} />
       ) : view === "calendar" ? (
         <CalendarView controller={controller} />
       ) : view === "tasks" ? (

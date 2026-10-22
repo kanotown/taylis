@@ -75,7 +75,7 @@ const settle = async (w: World) => {
 };
 
 /** Bob in #c (alice's post with one reply), #d and #e. */
-async function setup() {
+async function setup(more: Record<string, unknown> = {}) {
   const w = world({ posts: 1, lastRead: 1 });
   const extra = (name: string) => {
     const channel = w.server.createChannel(name, w.alice.id);
@@ -90,7 +90,7 @@ async function setup() {
   const inner = w.api as unknown as Record<string, unknown>;
   const getMessage = w.api.getMessage as (id: string) => Promise<MessageOut>;
   const messageContext = async (id: string) => [await getMessage(id)];
-  const api = new Proxy<Record<string, unknown>>({ ...inner, messageContext }, { get: (target, key: string) => target[key] ?? (async () => []) }) as unknown as ApiClient;
+  const api = new Proxy<Record<string, unknown>>({ ...inner, messageContext, ...more }, { get: (target, key: string) => target[key] ?? (async () => []) }) as unknown as ApiClient;
   await w.engine.start();
   await w.engine.idle();
   const controller = new AppController();
@@ -416,4 +416,64 @@ it("historyStep: the keys per platform", () => {
   expect(historyStep(key({ key: "ArrowRight", altKey: true }), false)).toBe(1);
   expect(historyStep(key({ key: "[", metaKey: true }), false)).toBeNull();
   expect(historyStep(key({ key: "ArrowLeft", ctrlKey: true, altKey: true }), false)).toBeNull();
+});
+
+// docs/DRIVE.md §27: folders and locations of 「ドライブ」 are places of the history, like conversations.
+it("back / forward go between the drive's folders and locations, and out of the drive to the conversation before", async () => {
+  const location = (id: string, kind: "workspace" | "user", name: string) => ({
+    id, kind, channel_id: null, user_id: null, root_id: `${id}-root`, name, can_write: true, can_manage: false, can_share: false, external_links: true, quota_bytes: null, used_bytes: 0, item_count: 0,
+  });
+  const folder = (id: string, parent: string, name: string) => ({
+    id, location_id: "lab", parent_id: parent, kind: "folder", name, size_bytes: null, content_type: null, content_modified_at: null,
+    created_by: null, created_at: "2026-10-01T00:00:00Z", updated_by: null, updated_at: "2026-10-01T00:00:00Z", version_count: 0, file: null, link_count: 0,
+  });
+  const lab = location("lab", "workspace", "研究室ドライブ");
+  const mine = location("mine", "user", "マイドライブ");
+  const children: Record<string, { items: unknown[]; path: Array<{ id: string; name: string }> }> = {
+    "lab-root": { items: [folder("seminar", "lab-root", "ゼミ資料")], path: [{ id: "lab-root", name: "" }] },
+    seminar: { items: [folder("y2026", "seminar", "2026")], path: [{ id: "lab-root", name: "" }, { id: "seminar", name: "ゼミ資料" }] },
+    y2026: { items: [], path: [{ id: "lab-root", name: "" }, { id: "seminar", name: "ゼミ資料" }, { id: "y2026", name: "2026" }] },
+    "mine-root": { items: [], path: [{ id: "mine-root", name: "" }] },
+  };
+  const driveChildren = vi.fn(async (id: string) => ({ folder: folder(id, "", ""), ...children[id]!, next_cursor: null, shared_above: 0 }));
+  const { w } = await setup({
+    driveLocations: async () => ({ locations: [lab, mine] }),
+    resolveDriveLocation: async () => mine,
+    driveChildren,
+  });
+  const crumbs = () => [...document.querySelectorAll("[data-drive-crumb]")].map((crumb) => crumb.textContent);
+  const step = async (button: HTMLButtonElement) => {
+    fireEvent.click(button);
+    await settle(w);
+  };
+  fireEvent.click(place("ドライブ"));
+  await settle(w);
+  expect(crumbs()).toEqual(["研究室ドライブ"]);
+  // One click into a folder, and another; then the other location.
+  fireEvent.click(document.querySelector('[data-drive-item="seminar"]')!, { detail: 1 });
+  await settle(w);
+  fireEvent.click(document.querySelector('[data-drive-item="y2026"]')!, { detail: 1 });
+  await settle(w);
+  expect(crumbs()).toEqual(["研究室ドライブ", "ゼミ資料", "2026"]);
+  fireEvent.click(document.querySelector('[data-drive-location="user"]')!);
+  await settle(w);
+  expect(crumbs()).toEqual(["マイドライブ"]);
+
+  await step(backButton());
+  expect(crumbs()).toEqual(["研究室ドライブ", "ゼミ資料", "2026"]);
+  await step(backButton());
+  expect(crumbs()).toEqual(["研究室ドライブ", "ゼミ資料"]);
+  await step(backButton());
+  expect(crumbs()).toEqual(["研究室ドライブ"]);
+  await step(backButton());
+  expect(title()).toBe("c"); // the conversation before 「ドライブ」 (opening it was not a step of its own)
+  expect(backButton().disabled).toBe(true);
+  await step(forwardButton());
+  expect(crumbs()).toEqual(["研究室ドライブ"]);
+  await step(forwardButton());
+  expect(crumbs()).toEqual(["研究室ドライブ", "ゼミ資料"]);
+  // ⌘] too.
+  await press(w, { key: "]", metaKey: true });
+  expect(crumbs()).toEqual(["研究室ドライブ", "ゼミ資料", "2026"]);
+  w.engine.stop();
 });

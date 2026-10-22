@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DriveItemOut } from "../src/api/types";
 import { browserDownload, downloadRoute, pipeToSink, ticketUrl } from "../src/drive/download";
-import { appendPage, asAttachment, breadcrumbs, clickSelection, driveFileOf, formatBytes, iconKind, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
+import { appendPage, asAttachment, breadcrumbs, clickAction, clickSelection, documentSource, driveColumns, driveFileOf, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
 import { dirOf, emptyFolders, foldersOf, treeFromEntries, treeFromInput } from "../src/platform/driveFiles";
 import { coalesce, DriveHub, type DriveSignal } from "../src/sync/drive";
 import { setLocale } from "../src/i18n";
@@ -83,8 +83,8 @@ describe("viewers", () => {
   const huge = item("h", { name: "scan.pdf", content_type: "application/pdf" }); // no preview (past the limit)
   const folder = item("f", { kind: "folder", file: null, content_type: null, size_bytes: null });
 
-  it("opens photos, videos and previewed documents; the rest download", () => {
-    expect([photo, big, clip, pdf, docx, huge, folder, item("t")].map(viewerKind)).toEqual(["image", null, "video", "document", "document", null, null, null]);
+  it("opens photos, videos and every PDF / Office file; the rest have no viewer", () => {
+    expect([photo, big, clip, pdf, docx, huge, folder, item("t")].map(viewerKind)).toEqual(["image", null, "video", "document", "document", "document", null, null]);
     expect(viewable([folder, photo, item("t"), clip]).map((row) => row.id)).toEqual(["p", "v"]);
     expect(stepItem([photo, clip], "p", 1)?.id).toBe("v");
     expect(stepItem([photo, clip], "p", -1)).toBeNull();
@@ -99,6 +99,43 @@ describe("viewers", () => {
     expect(thumbnailPath(pdf)).toBe("/api/v1/attachments/a-d/preview/thumbnail");
     expect(thumbnailPath(docx)).toBeNull();
     expect(thumbnailPath(folder)).toBeNull();
+  });
+
+  // §27 (2026-10-22): an imported PDF (no preview) downloaded when opened; now it never does.
+  it("a document opens from its preview, a PDF without one from its own bytes, an Office file waits or asks", () => {
+    const imported = item("i", { name: "論文.pdf", content_type: "application/pdf" });
+    const sniffless = item("s", { name: "scan.PDF", content_type: "application/octet-stream" });
+    const pdfMaking = item("m", { name: "m.pdf", content_type: "application/pdf", file: { ...item("m").file!, preview: { status: "pending", pages: null, width: null, height: null } } });
+    const pdfFailed = item("f", { name: "f.pdf", content_type: "application/pdf", file: { ...item("f").file!, preview: { status: "failed", pages: null, width: null, height: null } } });
+    const oldXls = item("x", { name: "名簿.xls", content_type: "application/x-ole-storage" });
+    const pptxFailed = item("p", { name: "発表.pptx", content_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation", file: { ...item("p").file!, preview: { status: "failed", pages: null, width: null, height: null } } });
+    const zip = item("z", { name: "data.zip", content_type: "application/zip" });
+    expect([imported, sniffless, pdfMaking, pdfFailed, oldXls, pptxFailed].map(viewerKind)).toEqual(Array(6).fill("document"));
+    expect(viewerKind(zip)).toBeNull();
+    expect(viewerKind(item("n", { name: "notes.pdf.txt" }))).toBeNull();
+    expect([pdf, imported, sniffless, pdfMaking, pdfFailed, huge, docx, oldXls, pptxFailed].map(documentSource)).toEqual(["preview", "original", "original", "original", "original", "original", "making", "ask", "failed"]);
+    expect([isPdf(sniffless), isPdf(item("j", { name: "a.pdf", content_type: "image/png" })), isOffice(oldXls), isOffice(zip)]).toEqual([true, false, true, false]);
+  });
+
+  it("a plain click opens (a folder, a viewer, else the details); ⌘ / Ctrl / Shift only select; a double click's second click does nothing", () => {
+    const keys = { metaKey: false, ctrlKey: false, shiftKey: false };
+    expect(clickAction(folder, keys)).toBe("folder");
+    expect(clickAction(pdf, keys)).toBe("view");
+    expect(clickAction(huge, keys)).toBe("view");
+    expect(clickAction(item("t"), keys)).toBe("details");
+    expect(clickAction(big, keys)).toBe("details");
+    expect(clickAction(folder, { ...keys, metaKey: true })).toBe("select");
+    expect(clickAction(pdf, { ...keys, ctrlKey: true })).toBe("select");
+    expect(clickAction(item("t"), { ...keys, shiftKey: true })).toBe("select");
+    expect(clickAction(folder, { ...keys, detail: 2 })).toBe("none");
+  });
+
+  it("the list's columns give way as the listing narrows: who changed it, then the size, then the time", () => {
+    expect(driveColumns(1000)).toEqual({ modified: true, by: true, size: true });
+    expect(driveColumns(700)).toEqual({ modified: true, by: true, size: true });
+    expect(driveColumns(650)).toEqual({ modified: true, by: false, size: true });
+    expect(driveColumns(480)).toEqual({ modified: true, by: false, size: false });
+    expect(driveColumns(360)).toEqual({ modified: false, by: false, size: false });
   });
 
   it("a drive file in a viewer is an attachment that downloads the drive's way", () => {

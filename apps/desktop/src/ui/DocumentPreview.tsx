@@ -142,14 +142,27 @@ const prefersReducedMotion = () => typeof window !== "undefined" && !!window.mat
  * passes how to read the bytes (`load`), its own buttons and its download instead of the controller.
  */
 export type PdfSource = Pick<AttachmentOut, "id" | "filename" | "size_bytes" | "preview">;
+/**
+ * docs/DRIVE.md §27: why a drive file's pages are not read yet — its preview is being made (「プレビューを作成中…」, the
+ * caller swaps in the pages when it is ready), it gets none, or it could not be made (both offer the download).
+ */
+export type PdfHold = "making" | "unavailable" | "failed";
 type PdfViewerProps =
-  | { attachment: AttachmentOut; controller: AppController; onClose: () => void }
-  | { attachment: PdfSource; load: () => Promise<ArrayBuffer>; buttons: ReactNode; onDownload: () => void; onClose: () => void };
+  | {
+      attachment: AttachmentOut;
+      controller: AppController;
+      onClose: () => void;
+      /** Another source of the pages (a drive PDF's own bytes while its preview is not made). Keep it stable. */
+      load?: () => Promise<ArrayBuffer>;
+      hold?: PdfHold | null;
+    }
+  | { attachment: PdfSource; load: () => Promise<ArrayBuffer>; buttons: ReactNode; onDownload: () => void; onClose: () => void; hold?: undefined };
 
 export function PdfViewer(props: PdfViewerProps) {
   const { attachment, onClose } = props;
   const controller = "controller" in props ? props.controller : null;
-  const load = "load" in props ? props.load : null;
+  const load = props.load ?? null;
+  const hold = props.hold ?? null;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -167,6 +180,7 @@ export function PdfViewer(props: PdfViewerProps) {
     let loaded: PDFDocumentProxy | null = null;
     setDoc(null);
     setFailed(false);
+    if (hold) return;
     void (async () => {
       try {
         const read = load ?? (api ? async () => (await api.fetchBlob(`/api/v1/attachments/${attachment.id}/preview/pdf`)).arrayBuffer() : null);
@@ -192,7 +206,7 @@ export function PdfViewer(props: PdfViewerProps) {
       cancelled = true;
       if (loaded) void loaded.loadingTask.destroy();
     };
-  }, [attachment.id, api, load, attempt]);
+  }, [attachment.id, api, load, attempt, hold]);
 
   // The scroller mounts with the dialog's content (a portal): follow it by callback, not by a one-time effect.
   const observer = useRef<ResizeObserver | null>(null);
@@ -322,6 +336,14 @@ export function PdfViewer(props: PdfViewerProps) {
             {Array.from({ length: doc.numPages }, (_, index) => (
               <PdfPage key={index} doc={doc} number={index + 1} width={width} aspect={aspect} root={scroller.current} />
             ))}
+          </div>
+        ) : hold ? (
+          <div className="m-auto flex flex-col items-center gap-3 px-6 text-center text-white" data-pdf-hold={hold}>
+            {hold === "making" && <Loader2 size={28} aria-hidden className="animate-spin text-white/70" />}
+            <p role="status">{hold === "making" ? t("docPreview.creating") : hold === "failed" ? t("drive.previewFailed") : t("drive.previewUnavailable")}</p>
+            {hold !== "making" && "controller" in props && (
+              <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void props.controller.downloadAttachment(props.attachment)}>{t("attach.download")}</button>
+            )}
           </div>
         ) : failed ? (
           <div className="m-auto flex flex-col items-center gap-3 text-white">

@@ -111,3 +111,24 @@ it("restore (the web's own Back / Forward) moves to the nearest entry of the pla
   h = restore(h, ch("z"));
   expect([keys(h), h.index]).toEqual([["channel:c", "channel:z"], 1]);
 });
+
+// docs/DRIVE.md §27: each folder of 「ドライブ」 is a place; its first folder completes the entry it opened as.
+it("drive folders and locations are places; the first folder 「ドライブ」 lands on replaces its blank entry", () => {
+  const drive = (locationId: string | null, folderId = "root", trash = false): Place<string> => ({ kind: "view", view: "drive", search: null, filesChannelId: null, drive: locationId ? { locationId, folderId, trash } : null });
+  let h = build(ch("a"), drive(null), drive("lab"), drive("lab", "seminar"), drive("mine"), drive("mine", "root", true));
+  expect(keys(h)).toEqual(["channel:a", "drive:lab:root", "drive:lab:seminar", "drive:mine:root", "drive:mine:root:trash"]);
+  // The same folder again (a reload of it) adds nothing.
+  h = visit(h, drive("mine", "root", true));
+  expect(h.entries).toHaveLength(5);
+  let moved = go(h, -1, all)!;
+  expect(moved.place).toEqual(drive("mine"));
+  moved = go(moved.history, -1, all)!;
+  expect(moved.place).toEqual(drive("lab", "seminar"));
+  moved = go(moved.history, -1, all)!;
+  moved = go(moved.history, -1, all)!;
+  expect(moved.place).toEqual(ch("a"));
+  moved = go(moved.history, 1, all)!;
+  expect(moved.place).toEqual(drive("lab"));
+  // A folder opened after going back drops the forward entries.
+  expect(keys(visit(moved.history, drive("lab", "thesis")))).toEqual(["channel:a", "drive:lab:root", "drive:lab:thesis"]);
+});
