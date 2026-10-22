@@ -8,6 +8,7 @@ import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
 import jp.chikuwachat.android.ui.DndDuration
 import jp.chikuwachat.android.ui.PresenceChoice
+import jp.chikuwachat.android.ui.PresenceDotRule
 import jp.chikuwachat.android.ui.PresenceRules
 import jp.chikuwachat.android.ui.YouSettings
 import jp.chikuwachat.android.ui.presenceDotOf
@@ -312,5 +313,19 @@ class PresenceTest {
         server.setMyPresence(bob.id, "auto"); settle(engine)
         assertEquals(PresenceChoice.AUTO, PresenceRules.myChoice(store.me))
         engine.stop(); scope.cancel()
+    }
+
+    /** PRESENCE.md §11.9: one size rule on every client (the numbers Desktop / Web and iOS test too). */
+    @Test
+    fun dotSizeRule() {
+        val sizes = listOf(18f, 20f, 22f, 24f, 28f, 30f, 32f, 36f, 40f, 56f, 64f)
+        assertEquals(listOf(10f, 10f, 10f, 10f, 11f, 11f, 12f, 14f, 15f, 20f, 20f), sizes.map { PresenceDotRule.diameter(it) })
+        assertEquals(listOf(1.5f, 1.5f, 2f, 2f, 2.5f, 2.5f, 3f, 3f), listOf(10f, 11f, 12f, 14f, 15f, 18f, 19f, 20f).map { PresenceDotRule.ring(it) })
+        // Half up (15 × 3 / 10 = 4.5 → 5 → 2.5), not Kotlin's half-even round.
+        assertEquals(2.5f, PresenceDotRule.ring(15f), 0f)
+        // The home's 24 dp DM pictures (2026-10-23: too small): 10 dp, 7 dp of colour, 2 dp past the corner.
+        assertEquals(2f, PresenceDotRule.overhang(24f), 0f)
+        assertEquals(3f, PresenceDotRule.overhang(20f), 0f)
+        assertEquals(3f, PresenceDotRule.overhang(36f), 0f)
     }
 }

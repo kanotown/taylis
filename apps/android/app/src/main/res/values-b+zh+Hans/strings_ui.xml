@@ -993,7 +993,7 @@
     <string name="profile_dialog_deactivated_account">已停用的账户</string>
     <string name="profile_dialog_guest_sees_only_channels_theyve_joined">访客 (只能看到已加入的频道)</string>
     <string name="profile_dialog_incoming_webhook_bot">传入 Webhook 机器人</string>
-    <string name="profile_dialog_notifications_paused">🔕 通知已暂停</string>
+    <string name="profile_dialog_notifications_paused">通知已暂停</string>
     <string name="profile_dialog_profile">个人资料</string>
     <string name="profile_dialog_research_topic">研究主题：%1$s</string>
     <string name="profile_dialog_send_a_message">发送消息</string>

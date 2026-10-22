@@ -998,7 +998,7 @@
     <string name="profile_dialog_deactivated_account">Deactivated account</string>
     <string name="profile_dialog_guest_sees_only_channels_theyve_joined">Guest (sees only channels they\'ve joined)</string>
     <string name="profile_dialog_incoming_webhook_bot">Incoming webhook bot</string>
-    <string name="profile_dialog_notifications_paused">🔕 Notifications paused</string>
+    <string name="profile_dialog_notifications_paused">Notifications paused</string>
     <string name="profile_dialog_profile">Profile</string>
     <string name="profile_dialog_research_topic">Research topic: %1$s</string>
     <string name="profile_dialog_send_a_message">Send a message</string>

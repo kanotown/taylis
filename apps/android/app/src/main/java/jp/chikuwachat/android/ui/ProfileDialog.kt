@@ -5,7 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.activeStatus
 import jp.chikuwachat.android.app.AppController
@@ -73,7 +79,11 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                         AttendanceProfileLine(controller, userId, version, Modifier.padding(top = 4.dp))
                         // M12c's line is for the quiet hours only (not 取り込み中, §11.1): the pause is the presence line above.
                         Dnd.activeQuietHours(user)?.let { hours ->
-                            Text(stringResource(R.string.profile_dialog_notifications_paused) + " · " + Dnd.label(hours), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                PausedBell(size = 12.dp, decorative = true)
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.profile_dialog_notifications_paused) + " · " + Dnd.label(hours), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
@@ -150,7 +160,22 @@ fun expiryAt(choice: String, now: Instant = Instant.now()): String? {
 }
 
 /**
- * The status emoji next to a name when the person has an active custom status; a custom emoji (`:name:`) is its image
+ * 「通知を一時停止中」 next to a name (a manual pause or the quiet hours, M12c): Material's NotificationsOff in the secondary
+ * text colour (onSurfaceVariant) at the text's size (docs/PRESENCE.md §11.9; the orange 🔕 emoji until 2026-10-23).
+ * `decorative` when the words are beside it; else TalkBack reads 「通知を一時停止中」.
+ */
+@Composable
+fun PausedBell(modifier: Modifier = Modifier, size: Dp = 14.dp, decorative: Boolean = false) {
+    Icon(
+        Icons.Filled.NotificationsOff,
+        contentDescription = if (decorative) null else stringResource(R.string.profile_dialog_notifications_paused),
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.size(size),
+    )
+}
+
+/**
+ * The status emoji next to a name when the person has an active custom status (and the paused bell); a custom emoji (`:name:`) is its image
  * (SectionIcon), as on a reaction chip.
  */
 @Composable
@@ -160,7 +185,7 @@ fun StatusEmoji(user: jp.chikuwachat.android.api.UserPublic?, controller: AppCon
     if (emoji.isEmpty() && !quiet) return
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         if (emoji.isNotEmpty()) SectionIcon(controller, emoji, version, size = 14.dp)
-        if (quiet) Text("🔕", style = MaterialTheme.typography.labelMedium)
+        if (quiet) PausedBell(modifier = Modifier.padding(start = if (emoji.isNotEmpty()) 2.dp else 0.dp))
     }
 }
 

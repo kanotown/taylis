@@ -45,7 +45,7 @@ object Dnd {
     }
 
     /**
-     * The quiet hours running now, else null: the profile card's 「🔕 通知を一時停止中 · 22:00〜07:00」 line. The manual
+     * The quiet hours running now, else null: the profile card's 「通知を一時停止中 · 22:00〜07:00」 line (after the paused bell). The manual
      * pause (`dnd_until`) is not this: it is 取り込み中, which the card says on its presence line (PRESENCE.md §11.1, §11.5),
      * and saying it twice for the same `dnd_until` was the review's finding.
      */

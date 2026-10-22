@@ -102,7 +102,7 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
                                         roster[user.id]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
                                         val tag = when (user.role) { "admin" -> stringResource(R.string.directory_dialog_admin); "manager" -> stringResource(R.string.directory_dialog_manager); "guest" -> stringResource(R.string.directory_dialog_guest); "bot" -> "BOT"; else -> null }
                                         if (tag != null) { Spacer(Modifier.width(6.dp)); Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
-                                        if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); Text("🔕", style = MaterialTheme.typography.labelSmall) }
+                                        if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); PausedBell() }
                                     }
                                     EmojiLineText(subtitle(user), controller, version, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
