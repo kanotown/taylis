@@ -700,7 +700,7 @@ struct DriveItemDetailsList: View {
                 LabeledContent("更新日時", value: Timeline.fullLabel(item.shownDate))
                 if let id = item.updatedBy { LabeledContent("更新した人", value: users[id]?.displayName ?? tr("だれか")) }
                 if let id = item.createdBy { LabeledContent("作った人", value: users[id]?.displayName ?? tr("だれか")) }
-                if !item.isFolder, item.versionCount > 1 { LabeledContent("版", value: tr("\(item.versionCount) 版")) }
+                if !item.isFolder, item.versionCount > 1 { LabeledContent("バージョン", value: tr("\(item.versionCount) バージョン")) }
                 if !path.isEmpty { LabeledContent("場所", value: DriveRules.whereLabel(path, kind: kind)) }
                 if item.file?.preview?.isPending == true { LabeledContent("プレビュー", value: tr("作成中…")) }
             }

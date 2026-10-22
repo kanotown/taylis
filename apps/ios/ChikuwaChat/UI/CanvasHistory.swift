@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// M58 (CANVAS.md §4.9, the desktop's M44 `ui/CanvasHistory.tsx`): a canvas's history on the phone. The versions newest
-/// first (who, when, lines added / removed, the name given to one, 「現在の版」); a version opens on its comparison with
+/// first (who, when, lines added / removed, the name given to one, 「現在のバージョン」); a version opens on its comparison with
 /// the version before it, with the current one, or as it was. Who may change the body may make a version the current one
 /// again (a new version: nothing is lost) and name it (「提出版」). Everyone who reads the canvas reads its history.
 /// M74: owners and administrators (in a DM the canvas's creator) may erase an older version's body (a secret pasted by
@@ -48,7 +48,7 @@ final class CanvasHistoryModel {
 
     func revision(_ id: String) -> CanvasRevisionMeta? { rows?.first { $0.id == id } }
 
-    /// 「前の版」: the next older one listed; its parent for the oldest loaded one; none for the first version.
+    /// 「前のバージョン」: the next older one listed; its parent for the oldest loaded one; none for the first version.
     func previousId(of id: String) -> String? {
         guard let rows, let index = rows.firstIndex(where: { $0.id == id }) else { return nil }
         if index + 1 < rows.count { return rows[index + 1].id }
@@ -87,8 +87,8 @@ final class CanvasHistoryModel {
     static func kindLabel(_ kind: String) -> String {
         switch kind {
         case "create": tr("作成")
-        case "merge": tr("同時編集をまとめた版")
-        case "side": tr("送信した版")
+        case "merge": tr("同時編集をまとめたバージョン")
+        case "side": tr("送信したバージョン")
         case "restore": tr("復元")
         case "erased": tr("本文を消去")
         case "task": tr("タスクと連動") // M83: the server's marker or tick for a linked task (CANVAS.md §22)
@@ -152,7 +152,7 @@ struct CanvasHistorySheet: View {
                                      rights: meta.map { CanvasRights.of(channel, actor: controller.canvasActor, meta: $0) } ?? .none)
             }
             .safeAreaInset(edge: .bottom) {
-                Text("版を選ぶと、前の版や現在の版との違いを見られます。").font(.footnote).foregroundStyle(.secondary).padding(8)
+                Text("バージョンを選ぶと、前のバージョンや現在のバージョンとの違いを見られます。").font(.footnote).foregroundStyle(.secondary).padding(8)
             }
             // Read again when the canvas gets a new version (a restore here, someone's save meanwhile).
             .task(id: headId) { await model.load(controller, more: false) }
@@ -160,7 +160,7 @@ struct CanvasHistorySheet: View {
     }
 }
 
-/// One version in the list: who, 「現在の版」, when and what kind, +n −m, its name.
+/// One version in the list: who, 「現在のバージョン」, when and what kind, +n −m, its name.
 struct CanvasRevisionRow: View {
     @Bindable var controller: AppController
     let revision: CanvasRevisionMeta
@@ -174,7 +174,7 @@ struct CanvasRevisionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(author).fontWeight(.medium).lineLimit(1)
-                    if head { CanvasBadge(text: tr("現在の版"), tint: .accentColor) }
+                    if head { CanvasBadge(text: tr("現在のバージョン"), tint: .accentColor) }
                 }
                 Text("\(Timeline.fullLabel(revision.createdAt)) · \(CanvasHistoryModel.kindLabel(revision.kind))")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -216,16 +216,16 @@ struct CanvasBadge: View {
 }
 
 /// One version: compared with the one before it (the default), with the current one, or shown as it was; 名前を付ける
-/// and この版に戻す for who may change the body.
+/// and このバージョンに戻す for who may change the body.
 struct CanvasRevisionDetail: View {
     enum Mode: String, CaseIterable, Identifiable {
         case previous, current, body
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .previous: tr("前の版と比較")
-            case .current: tr("現在の版と比較")
-            case .body: tr("この版の本文")
+            case .previous: tr("前のバージョンと比較")
+            case .current: tr("現在のバージョンと比較")
+            case .body: tr("このバージョンの本文")
             }
         }
     }
@@ -283,7 +283,7 @@ struct CanvasRevisionDetail: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .navigationTitle(revision.map { CanvasHistoryModel.kindLabel($0.kind) } ?? tr("版"))
+        .navigationTitle(revision.map { CanvasHistoryModel.kindLabel($0.kind) } ?? tr("バージョン"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let revision, CanvasHistoryModel.offersErase(revision, headId: headId, rights: rights) {
@@ -294,7 +294,7 @@ struct CanvasRevisionDetail: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .disabled(busy)
-                    .accessibilityLabel("この版の操作")
+                    .accessibilityLabel("このバージョンの操作")
                 }
             }
             if let revision, !erased, rights.edit {
@@ -308,7 +308,7 @@ struct CanvasRevisionDetail: View {
                     Spacer()
                     if !isHead {
                         Button { confirmRestore = true } label: {
-                            Text("この版に戻す")
+                            Text("このバージョンに戻す")
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(busy)
@@ -322,19 +322,19 @@ struct CanvasRevisionDetail: View {
             if let otherId { await model.body(otherId, controller) }
         }
         .task(id: diffKey) { await makeDiff() }
-        .confirmationDialog("この版の本文を消去しますか？", isPresented: $confirmErase, titleVisibility: .visible) {
+        .confirmationDialog("このバージョンの本文を消去しますか？", isPresented: $confirmErase, titleVisibility: .visible) {
             Button("消去する", role: .destructive) { Task { await erase() } }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("誤って書いた秘密などを履歴から消します。消した本文は戻せません。消去したことは監査ログに残ります。")
         }
-        .confirmationDialog("この版に戻しますか？", isPresented: $confirmRestore, titleVisibility: .visible) {
-            Button("この版に戻す") { Task { await restore() } }
+        .confirmationDialog("このバージョンに戻しますか？", isPresented: $confirmRestore, titleVisibility: .visible) {
+            Button("このバージョンに戻す") { Task { await restore() } }
             Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("\(revision.map { Timeline.fullLabel($0.createdAt) } ?? "") の版の本文を、新しい版として保存します。今の本文も履歴に残ります。")
+            Text("\(revision.map { Timeline.fullLabel($0.createdAt) } ?? "") のバージョンの本文を、新しいバージョンとして保存します。今の本文も履歴に残ります。")
         }
-        .alert("版に名前を付ける", isPresented: $labelling) {
+        .alert("バージョンに名前を付ける", isPresented: $labelling) {
             TextField("提出版", text: $labelText)
             Button("保存") { Task { await saveLabel(labelText) } }
                 .disabled(labelText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -343,7 +343,7 @@ struct CanvasRevisionDetail: View {
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("「提出版」「ゼミ発表前」のように名前を付けた版は、古くなっても整理されずに残ります。")
+            Text("「提出版」「ゼミ発表前」のように名前を付けたバージョンは、古くなっても整理されずに残ります。")
         }
     }
 
@@ -353,7 +353,7 @@ struct CanvasRevisionDetail: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(revision.title).font(.headline).lineLimit(2)
-                if head { CanvasBadge(text: tr("現在の版"), tint: .accentColor) }
+                if head { CanvasBadge(text: tr("現在のバージョン"), tint: .accentColor) }
                 if let label = revision.label, !label.isEmpty {
                     Label(label, systemImage: "tag").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 1)
@@ -369,9 +369,9 @@ struct CanvasRevisionDetail: View {
     @ViewBuilder
     private func content(erased: Bool, isHead: Bool) -> some View {
         if erased {
-            note(tr("この版の本文は消去されています。"))
+            note(tr("このバージョンの本文は消去されています。"))
         } else if mode == .current && isHead {
-            note(tr("これが現在の版です。"))
+            note(tr("これが現在のバージョンです。"))
         } else if mode == .body {
             if let text = model.bodies[revisionId] {
                 CanvasBodyView(body: text, controller: controller, onToggleTask: nil)
@@ -381,7 +381,7 @@ struct CanvasRevisionDetail: View {
         } else if let diff {
             CanvasDiffView(rows: diff)
         } else if let otherId, model.revision(otherId)?.kind == "erased" {
-            note(tr("比べる版の本文は消去されています。"))
+            note(tr("比べるバージョンの本文は消去されています。"))
         } else {
             ProgressView().frame(maxWidth: .infinity)
         }
@@ -416,7 +416,7 @@ struct CanvasRevisionDetail: View {
         let restored = await controller.restoreCanvasRevision(model.canvasId, revisionId: revisionId)
         busy = false
         guard restored != nil else { return }
-        controller.notice = tr("この版を復元しました")
+        controller.notice = tr("このバージョンを復元しました")
         dismiss() // back to the list, read again with the new current version on top
     }
 
@@ -427,7 +427,7 @@ struct CanvasRevisionDetail: View {
         guard let erased else { return }
         model.erased(erased)
         diff = nil
-        controller.notice = tr("この版の本文を消去しました")
+        controller.notice = tr("このバージョンの本文を消去しました")
     }
 
     private func saveLabel(_ label: String?) async {

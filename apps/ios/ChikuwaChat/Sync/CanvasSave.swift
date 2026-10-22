@@ -67,7 +67,7 @@ enum CanvasSaveStatus: String, Equatable {
     case offline
     /// The save failed with 429 / 5xx and goes out again (same key).
     case retrying
-    /// Someone changed the same words: waiting for 自分の版 / 相手の版 / 両方残す.
+    /// Someone changed the same words: waiting for 自分のバージョン / 相手のバージョン / 両方残す.
     case conflict
     /// The version this was written on is gone (long offline): waiting for a choice.
     case expired

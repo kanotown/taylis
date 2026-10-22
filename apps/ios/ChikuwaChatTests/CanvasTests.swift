@@ -810,7 +810,7 @@ final class CanvasSaveTests: XCTestCase {
         h.saver.edit(ticked, external: true)
         await h.saver.flush()
         XCTAssertEqual(h.saver.status, .conflict)
-        // 「自分の版」 is not theirs to take (the server refuses it: 403), 「相手の版」 is.
+        // 「自分のバージョン」 is not theirs to take (the server refuses it: 403), 「相手のバージョン」 is.
         await h.saver.resolveConflict(.theirs)
         XCTAssertEqual(h.saver.status, .saved)
         XCTAssertEqual(h.saver.text, BODY.replacingOccurrences(of: "- [ ] 資料", with: "- [ ] 資料を集める"))

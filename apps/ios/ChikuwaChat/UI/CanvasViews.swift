@@ -777,7 +777,7 @@ private struct CanvasTrashSheet: View {
     }
 }
 
-/// §4.4 409 canvas_conflict: where both changed the same words, and the choices (a member who may only tick: 相手の版).
+/// §4.4 409 canvas_conflict: where both changed the same words, and the choices (a member who may only tick: 相手のバージョン).
 struct CanvasConflictSheet: View {
     @Bindable var controller: AppController
     let saver: CanvasSaver
@@ -791,15 +791,15 @@ struct CanvasConflictSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(tickOnly ? "相手の版を残して、チェックを付け直してください。" : "重なった箇所だけ、どちらを残すか選んでください。ほかの変更はどちらも残ります。")
+                    Text(tickOnly ? "相手のバージョンを残して、チェックを付け直してください。" : "重なった箇所だけ、どちらを残すか選んでください。ほかの変更はどちらも残ります。")
                         .font(.subheadline).foregroundStyle(.secondary)
                     if conflict.details.timedOut == true {
                         Text("文書が大きく、細かく比べられませんでした。文書全体をひとつの箇所として扱います。").font(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(Array(shown.enumerated()), id: \.offset) { _, region in
                         VStack(alignment: .leading, spacing: 6) {
-                            side(tr("自分の版"), region.ours, mine: true)
-                            side(tr("相手の版"), region.theirs, mine: false)
+                            side(tr("自分のバージョン"), region.ours, mine: true)
+                            side(tr("相手のバージョン"), region.theirs, mine: false)
                             if !region.base.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 Text(tr("元の文：") + String(names(region.base).prefix(200))).font(.caption).foregroundStyle(.secondary)
                             }
@@ -814,9 +814,9 @@ struct CanvasConflictSheet: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
                     if !tickOnly {
-                        Button { choose(.ours) } label: { Text("自分の版").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
+                        Button { choose(.ours) } label: { Text("自分のバージョン").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
                     }
-                    Button { choose(.theirs) } label: { Text("相手の版").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
+                    Button { choose(.theirs) } label: { Text("相手のバージョン").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
                     if !tickOnly {
                         Button { choose(.both) } label: { Text("両方残す").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
                     }
@@ -862,7 +862,7 @@ struct CanvasExpiredSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("長くオフラインだった間に版が整理されました。自分の本文と今の本文を見比べて選んでください。")
+                    Text("長くオフラインだった間にバージョンが整理されました。自分の本文と今の本文を見比べて選んでください。")
                         .font(.subheadline).foregroundStyle(.secondary)
                     side(tr("自分の本文"), saver.text, mine: true)
                     side(tr("今の本文"), head.body, mine: false)
@@ -885,7 +885,7 @@ struct CanvasExpiredSheet: View {
                 .padding(16)
                 .background(.bar)
             }
-            .navigationTitle("編集の元にした版がなくなりました")
+            .navigationTitle("編集の元にしたバージョンがなくなりました")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("あとで") { dismiss() } } }
         }

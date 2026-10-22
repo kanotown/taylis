@@ -15,16 +15,16 @@ struct RevisionsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section { Text("以前の版は自分にだけ表示されます。メッセージを削除すると履歴も消えます。").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("以前のバージョンは自分にだけ表示されます。メッセージを削除すると履歴も消えます。").font(.footnote).foregroundStyle(.secondary) }
                 if let rows {
-                    if rows.isEmpty { Section { Text("以前の版は記録されていません（履歴の記録を始める前の編集です）。").foregroundStyle(.secondary) } }
+                    if rows.isEmpty { Section { Text("以前のバージョンは記録されていません（履歴の記録を始める前の編集です）。").foregroundStyle(.secondary) } }
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        Section(tr("\(Timeline.fullLabel(row.writtenAt)) の版")) {
+                        Section(tr("\(Timeline.fullLabel(row.writtenAt)) のバージョン")) {
                             Text(text(row.body)).textSelection(.enabled)
                             Text(tr("\(Timeline.fullLabel(row.replacedAt)) に編集")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    Section(tr("現在の版") + (message.editedAt.map { " · " + Timeline.fullLabel($0) } ?? "")) {
+                    Section(tr("現在のバージョン") + (message.editedAt.map { " · " + Timeline.fullLabel($0) } ?? "")) {
                         Text(text(message.body)).textSelection(.enabled)
                     }
                 } else if failed {
