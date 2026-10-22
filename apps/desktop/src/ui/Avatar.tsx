@@ -18,14 +18,17 @@ import { t } from "../i18n";
  *
  * The offline ring is always cut out that way, wherever it sits: the hole shows the surface behind the avatar (a row,
  * the sidebar, a popover, light or dark) both in the gap and in the ring's centre, so it reads as one grey circle. (Before,
- * a painted gap ring around a grey ring around a `canvas` centre read as two circles on the sidebar, 「二重丸」.) Its gap
- * is 1 px on the small dots (under 12 px) so the ring keeps a centre to see, 2 px on the larger ones.
+ * a painted gap ring around a grey ring around a `canvas` centre read as two circles on the sidebar, 「二重丸」.)
+ *
+ * Sizes (docs/PRESENCE.md §11.9, one rule on every client): the dot is `avatarDotSize(size)` across with its ring, the
+ * ring `presenceRing(dot)` wide, and it overhangs the corner by `presenceOverhang`. The offline ring uses the same width
+ * for its gap and its grey stroke.
  */
 export function Avatar({ id, name, size = 36, className, presence, presenceClassName, dotSize, presenceCutout = false }: { id: string; name: string; size?: number; className?: string; presence?: PresenceLook; presenceClassName?: string; dotSize?: number; presenceCutout?: boolean }) {
   const hue = avatarHue(id);
   const dot = dotSize ?? avatarDotSize(size);
-  // The dot overhangs the corner by a fifth of itself (2 px for the usual 8–10 px dots, 3 px for my header's 14 px).
-  const overhang = -Math.max(2, Math.round(dot * 0.2));
+  const ring = presenceRing(dot);
+  const overhang = -presenceOverhang(size, dot);
   const picture = useAvatar(id);
   const offline = presence === "offline";
   // The hole: a circle the dot's size (its 2 px border included) centred where the dot is.
@@ -55,19 +58,19 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
             <span
               data-presence={presence}
               className="absolute box-border rounded-full border-solid border-muted bg-transparent"
-              style={{ width: dot - 2 * offlineGap(dot), height: dot - 2 * offlineGap(dot), right: overhang + offlineGap(dot), bottom: overhang + offlineGap(dot), borderWidth: offlineRing(dot) }}
+              style={{ width: dot - 2 * ring, height: dot - 2 * ring, right: overhang + ring, bottom: overhang + ring, borderWidth: ring }}
             />
           ) : (
             <span
               data-presence={presence}
               className={cn(
-                "absolute inline-flex items-center justify-center rounded-full border-2",
+                "absolute inline-flex items-center justify-center rounded-full border-solid",
                 // Cut out: a transparent border the hole shows through, the colour inside it only.
                 presenceCutout ? "border-transparent bg-clip-padding" : "border-canvas",
                 presence === "online" ? "bg-success" : presence === "away" ? "bg-warning" : "bg-danger",
                 presenceClassName,
               )}
-              style={{ width: dot, height: dot, right: overhang, bottom: overhang }}
+              style={{ width: dot, height: dot, right: overhang, bottom: overhang, borderWidth: ring }}
             />
           )}
         </HoverList>
@@ -76,29 +79,43 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
   );
 }
 
-/** The offline ring's gap to the picture: 1 px on a dot under 12 px (so the ring keeps a centre), else 2 px. */
-export function offlineGap(dot: number): number {
-  return dot >= 12 ? 2 : 1;
-}
-
-/** The offline ring's width: 2 px from a 10 px dot up, 1.5 px on the 8–9 px ones. */
-export function offlineRing(dot: number): number {
-  return dot >= 10 ? 2 : 1.5;
-}
-
 /** The dot for `userId` in a list or a card: none for a bot or a webhook's bot (they have no presence), else their look. */
 export function presenceDotOf(store: Pick<Store, "users" | "presenceOf">, userId: string): PresenceLook | undefined {
   return store.users.get(userId)?.role === "bot" ? undefined : store.presenceOf(userId);
 }
 
-/** The presence dot for a picture `size` px wide: three tenths of it, at least 8 px. */
+/**
+ * The presence dot for a picture `size` px wide, its ring included (docs/PRESENCE.md §11.9, the same on iOS and
+ * Android): about two fifths of the picture, at least 10 px (so the colour inside the ring stays readable, 7 px) and at
+ * most 20 px. 18–26 px pictures get 10 px, 30 px 11, 32 px 12, 36 px 14, 40 px 15, 56 px and up 20. (Until 2026-10-23
+ * it was three tenths, at least 8 px: 8 px with a 2 px ring left 4 px of colour on the sidebar's and the pickers' 18–24 px
+ * pictures, 9 px in the thread pane.)
+ */
 export function avatarDotSize(size: number): number {
-  return Math.max(8, Math.round(size * 0.3));
+  return Math.min(20, Math.max(10, Math.round(size * 0.38)));
+}
+
+/**
+ * The ring around a dot of `dot` px (the gap to the picture, and the offline ring's grey stroke): three twentieths of
+ * the dot to the nearest half pixel — 1.5 px on 10–11 px dots, 2 px on 12–14, 2.5 px on 15–18, 3 px on 19–20.
+ */
+export function presenceRing(dot: number): number {
+  return Math.round((dot * 3) / 10) / 2;
+}
+
+/**
+ * How far the dot's outer edge reaches past the picture's corner: a fifth of the dot (at least 2 px). On a picture of
+ * 20 px or less (the sidebar's DMs, the pickers) three tenths, so the 10 px dot keeps clear of the initials and only its
+ * inner part sits on the picture's corner; it is not hidden there, as it is the only presence cue in those lists.
+ */
+export function presenceOverhang(size: number, dot: number): number {
+  return size <= 20 ? Math.round(dot * 0.3) : Math.max(2, Math.round(dot * 0.2));
 }
 
 /**
  * My own picture in the sidebar header (2026-10-12: its dot was too small to read, 10 px with 6 px of colour inside the
- * ring): 36 px with a 14 px dot in a 2 px ring, so the colour is 10 px across.
+ * ring): 36 px with a 14 px dot in a 2 px ring, so the colour is 10 px across. Since 2026-10-23 that is what
+ * `avatarDotSize(36)` gives too; the constant stays as the header's deliberate size.
  */
 export const HEADER_AVATAR_SIZE = 36;
 export const HEADER_DOT_SIZE = 14;

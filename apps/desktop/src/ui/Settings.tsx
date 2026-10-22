@@ -37,7 +37,7 @@ import { applyThemeToAllWorkspaces, FONT_OPTIONS, PALETTES, SIDEBAR_TONES, THEME
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { DeleteAccountDialog, ProblemReportDialog } from "./ModerationDialogs";
 import { UsernameEditor } from "./UsernameEditor";
-import { StatusGlyph } from "./UserPopover";
+import { PausedBell, StatusGlyph } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 import { useUpdates } from "./UpdateBanner";
 import { versionLabel } from "../state/updates";
@@ -331,7 +331,7 @@ function PauseSection({ controller, onDone }: { controller: AppController; onDon
   return (
     <div className="space-y-4">
       <p className="text-sm">
-        {until ? <>🔕 {t("settings.pause.paused")} <span className="text-muted">{pauseValue(until, now)}</span></> : <span className="text-muted">{t("settings.pause.notPaused")}</span>}
+        {until ? <span className="inline-flex flex-wrap items-center gap-1"><PausedBell size={14} decorative />{t("settings.pause.paused")} <span className="text-muted">{pauseValue(until, now)}</span></span> : <span className="text-muted">{t("settings.pause.notPaused")}</span>}
       </p>
       {quietNow && me?.quiet_hours && <p className="text-xs text-muted">{t("settings.pause.quietNow", { hours: quietHoursLabel(me.quiet_hours) })}</p>}
       <div role="group" aria-label={t("settings.pause.length")} className="divide-y divide-line overflow-hidden rounded-xl border border-line">
