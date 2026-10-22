@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import jp.chikuwachat.android.platform.AvatarCache
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.floor
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 import androidx.compose.ui.res.stringResource
@@ -59,7 +61,9 @@ fun Avatar(
             }
         }
         if (presence != null) {
-            PresenceBadge(presence, size * 0.32f, Modifier.align(Alignment.BottomEnd), ring = presenceRing ?: MaterialTheme.colorScheme.surface)
+            // PresenceDotRule (docs/PRESENCE.md §11.9): its outer edge past the picture's corner, as on iOS and the web.
+            val past = PresenceDotRule.overhang(size.value).dp
+            PresenceBadge(presence, size, Modifier.align(Alignment.BottomEnd).offset(x = past, y = past), ring = presenceRing ?: MaterialTheme.colorScheme.surface)
         }
     }
 }
@@ -84,30 +88,57 @@ fun SenderAvatar(store: Store, userId: String, name: String, size: Dp, ring: Col
 }
 
 /**
- * The dot at an avatar's corner (with the surface's ring around it): green online, amber away, and 取り込み中 a plain red
- * disc (docs/PRESENCE.md §11.5; its white bar went on 2026-10-13); offline a hollow grey ring (everyone's since 2026-10-13,
- * not only mine), its inside the `ring` colour too, so it reads as one white circle with a grey edge.
+ * The presence dot's sizes on a picture `avatar` dp wide (docs/PRESENCE.md §11.9, the same rule as Desktop / Web and iOS):
+ * the dot with its ring is about two fifths of the picture, 10 to 20 dp (18–26 dp pictures 10, 28–30 dp 11, 32 dp 12,
+ * 36 dp 14, 40 dp 15, 52 dp and up 20); the ring is three twentieths of it to the nearest half dp (1.5 / 2 / 2.5 / 3);
+ * the dot reaches a fifth of itself (at least 2 dp) past the corner, three tenths on pictures of 20 dp or less so it keeps
+ * clear of the initials. Until 2026-10-23 the dot was 0.32 × the picture inside the corner with a 2 dp ring (3.7 dp of
+ * colour on the home's 24 dp DM pictures). Rounding is half up, as on the other clients (not Kotlin's half-even round).
  */
-@Composable
-fun PresenceBadge(look: String, size: Dp, modifier: Modifier = Modifier, ring: Color = MaterialTheme.colorScheme.surface) {
-    Box(modifier.size(size).background(ring, CircleShape).padding(2.dp)) {
-        PresenceDot(look, Modifier.matchParentSize())
+object PresenceDotRule {
+    private fun roundHalfUp(x: Float): Float = floor(x + 0.5f)
+
+    /** The dot's diameter with its ring. */
+    fun diameter(avatar: Float): Float = roundHalfUp(avatar * 0.38f).coerceIn(10f, 20f)
+
+    /** The ring: the gap in the row's colour around the colour, and the offline ring's grey stroke. */
+    fun ring(dot: Float): Float = roundHalfUp(dot * 3f / 10f) / 2f
+
+    /** How far the dot's outer edge reaches past the picture's corner. */
+    fun overhang(avatar: Float): Float {
+        val dot = diameter(avatar)
+        return if (avatar <= 20f) roundHalfUp(dot * 0.3f) else maxOf(2f, roundHalfUp(dot * 0.2f))
     }
 }
 
-/** The dot alone (the status menu's choices): [PresenceBadge]'s inside. */
+/**
+ * The dot at the corner of a picture `avatar` wide (with the surface's ring around it, [PresenceDotRule]): green online,
+ * amber away, and 取り込み中 a plain red disc (docs/PRESENCE.md §11.5; its white bar went on 2026-10-13); offline a hollow
+ * grey ring (everyone's since 2026-10-13, not only mine), its inside the `ring` colour too, so it reads as one white
+ * circle with a grey edge.
+ */
 @Composable
-fun PresenceDot(look: String, modifier: Modifier = Modifier) {
+fun PresenceBadge(look: String, avatar: Dp, modifier: Modifier = Modifier, ring: Color = MaterialTheme.colorScheme.surface) {
+    val dot = PresenceDotRule.diameter(avatar.value)
+    val width = PresenceDotRule.ring(dot)
+    Box(modifier.size(dot.dp).background(ring, CircleShape).padding(width.dp)) {
+        PresenceDot(look, Modifier.matchParentSize(), stroke = width.dp)
+    }
+}
+
+/** The dot alone (the status menu's choices): [PresenceBadge]'s inside. `stroke`: the offline ring's (null: a fifth). */
+@Composable
+fun PresenceDot(look: String, modifier: Modifier = Modifier, stroke: Dp? = null) {
     when (look) {
         PresenceRules.ONLINE -> Box(modifier.background(PRESENCE_GREEN, CircleShape))
         PresenceRules.AWAY -> Box(modifier.background(PRESENCE_AMBER, CircleShape))
         PresenceRules.DND -> Box(modifier.background(PRESENCE_RED, CircleShape))
         else -> {
-            // A hollow ring ~0.2 × the dot thick (as on Desktop / Web and iOS); the inside shows what is behind it.
+            // A hollow ring the badge's ring thick (as on Desktop / Web and iOS); the inside shows what is behind it.
             val outline = MaterialTheme.colorScheme.outline
             Box(modifier.drawBehind {
-                val stroke = size.minDimension * 0.2f
-                drawCircle(outline, radius = (size.minDimension - stroke) / 2, style = Stroke(width = stroke))
+                val width = stroke?.toPx() ?: (size.minDimension * 0.2f)
+                drawCircle(outline, radius = (size.minDimension - width) / 2, style = Stroke(width = width))
             })
         }
     }

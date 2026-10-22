@@ -56,7 +56,7 @@ object PresenceRules {
 
     fun isIndefinite(until: String?): Boolean = parse(until)?.let { !it.isBefore(INDEFINITE_FROM) } == true
 
-    /** The manual pause still running, else null. Quiet hours are not 取り込み中 (they keep the 🔕 only). */
+    /** The manual pause still running, else null. Quiet hours are not 取り込み中 (they keep the paused bell only). */
     fun dndUntil(until: String?, now: Instant = Instant.now()): Instant? = parse(until)?.takeIf { it.isAfter(now) }
 
     /** What an avatar shows (§11.5): 取り込み中 beats the connection (online, away and offline alike). */

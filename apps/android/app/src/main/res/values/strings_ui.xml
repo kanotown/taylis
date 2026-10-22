@@ -993,7 +993,7 @@
     <string name="profile_dialog_deactivated_account">無効化されたアカウント</string>
     <string name="profile_dialog_guest_sees_only_channels_theyve_joined">ゲスト（参加したチャンネルだけ見えます）</string>
     <string name="profile_dialog_incoming_webhook_bot">受信 Webhook の bot</string>
-    <string name="profile_dialog_notifications_paused">🔕 通知を一時停止中</string>
+    <string name="profile_dialog_notifications_paused">通知を一時停止中</string>
     <string name="profile_dialog_profile">プロフィール</string>
     <string name="profile_dialog_research_topic">研究テーマ：%1$s</string>
     <string name="profile_dialog_send_a_message">メッセージを送る</string>

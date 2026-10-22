@@ -32,7 +32,7 @@ data class UserPublic(
     val statusText: String? = null,
     val statusEmoji: String? = null,
     val statusExpiresAt: String? = null,
-    /** Do not disturb (M12c): a manual pause and the daily quiet hours (public, for 🔕 next to the name). */
+    /** Do not disturb (M12c): a manual pause and the daily quiet hours (public, for the paused bell next to the name). */
     val dndUntil: String? = null,
     val quietHours: QuietHours? = null,
     val avatarUpdatedAt: String? = null,
