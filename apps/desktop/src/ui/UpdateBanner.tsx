@@ -26,7 +26,7 @@ export function progressPercent(progress: { downloaded: number; total: number | 
 }
 
 /**
- * The desktop app's 「新しい版があります」 card in the bottom-right corner: the version, the notes' first line,
+ * The desktop app's 「新しいバージョンがあります」 card in the bottom-right corner: the version, the notes' first line,
  * 「更新して再起動」 (with a progress bar while it downloads) and 「あとで」 (hidden until the next start).
  */
 export function UpdateBanner({ controller }: { controller: AppController }) {

@@ -51,7 +51,7 @@ describe("versions", () => {
   });
 
   it("says how a version came to be", () => {
-    expect(versionSourceLabel({ source: "restore" })).toBe("前の版から戻した");
+    expect(versionSourceLabel({ source: "restore" })).toBe("前のバージョンから戻した");
     expect(versionSourceLabel({ source: "upload" })).toBe("アップロード");
     expect(versionSourceLabel({ source: "something-new" })).toBe("something-new");
   });

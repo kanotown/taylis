@@ -50,7 +50,7 @@ const EXPIRED_CODES = new Set(["canvas_base_expired", "page_base_expired"]);
  * - editing: typed, the save goes out when typing pauses
  * - saving: a save is on the wire
  * - offline / retrying: the save failed on the network / with 429 or 5xx and goes out again (same key)
- * - conflict: someone changed the same words; waiting for 自分の版 / 相手の版 / 両方残す
+ * - conflict: someone changed the same words; waiting for 自分のバージョン / 相手のバージョン / 両方残す
  * - expired: the version this was written on is gone (long offline); waiting for a choice
  * - blocked: refused for good (403, 422, an archived conversation …); the text stays here
  * - gone: the canvas was moved to the trash (or cannot be seen any more)

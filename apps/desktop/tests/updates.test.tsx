@@ -88,7 +88,7 @@ it("an update shows the banner with the version and the notes' first line", asyn
   const { controller } = controllerWith(updates);
   render(<UpdateBanner controller={controller} />);
   await act(async () => { await updates.check(false); });
-  expect(screen.getByText("新しい版（v0.1.20）があります")).toBeTruthy();
+  expect(screen.getByText("新しいバージョン（v0.1.20）があります")).toBeTruthy();
   expect(screen.getByText("「更新して再起動」が使えます")).toBeTruthy();
   expect(screen.getByRole("button", { name: "更新して再起動" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "あとで" })).toBeTruthy();
@@ -102,24 +102,24 @@ it("「あとで」 hides it until the next start; a newer version or the settin
   render(<UpdateBanner controller={controller} />);
   await act(async () => { await updates.check(false); });
   fireEvent.click(screen.getByRole("button", { name: "あとで" }));
-  expect(screen.queryByText("新しい版（v0.1.20）があります")).toBeNull();
+  expect(screen.queryByText("新しいバージョン（v0.1.20）があります")).toBeNull();
   // The 6-hour check finds the same version: still hidden.
   await act(async () => { await updates.check(false); });
-  expect(screen.queryByText("新しい版（v0.1.20）があります")).toBeNull();
+  expect(screen.queryByText("新しいバージョン（v0.1.20）があります")).toBeNull();
   // A newer one comes back.
   plugin.check.mockResolvedValue(fakeUpdate("0.1.21"));
   await act(async () => { await updates.check(false); });
-  expect(screen.getByText("新しい版（v0.1.21）があります")).toBeTruthy();
+  expect(screen.getByText("新しいバージョン（v0.1.21）があります")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "あとで" }));
   // 「アップデートを確認」 asks on purpose: shown again.
   await act(async () => { await updates.check(true); });
-  expect(screen.getByText("新しい版（v0.1.21）があります")).toBeTruthy();
+  expect(screen.getByText("新しいバージョン（v0.1.21）があります")).toBeTruthy();
   // The next start is a new checker: shown again.
   cleanup();
   const next = new UpdateChecker();
   render(<UpdateBanner controller={controllerWith(next).controller} />);
   await act(async () => { await next.check(false); });
-  expect(screen.getByText("新しい版（v0.1.21）があります")).toBeTruthy();
+  expect(screen.getByText("新しいバージョン（v0.1.21）があります")).toBeTruthy();
 });
 
 it("looks again every 6 hours while running", async () => {
@@ -212,7 +212,7 @@ it("the web build never looks for an update and has no 「このアプリにつ�
   expect(menuSections(true, true)).toEqual(["notifications", "appearance", "input", "profile", "account", "workspaces", "about", "admin"]);
 });
 
-it("settings 「このアプリについて」: the version, 「アップデートを確認」 → 最新の版です / 新しい版", async () => {
+it("settings 「このアプリについて」: the version, 「アップデートを確認」 → 最新のバージョンです / 新しいバージョン", async () => {
   desktop();
   plugin.check.mockResolvedValue(null);
   const updates = new UpdateChecker();
@@ -222,11 +222,11 @@ it("settings 「このアプリについて」: the version, 「アップデー�
   expect(screen.getByText("バージョン v0.1.19")).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "アップデートを確認" })); });
   await flush();
-  expect(screen.getByText("最新の版です。")).toBeTruthy();
+  expect(screen.getByText("最新のバージョンです。")).toBeTruthy();
   plugin.check.mockResolvedValue(fakeUpdate("0.1.20"));
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "アップデートを確認" })); });
   await flush();
-  expect(screen.getByText("新しい版（v0.1.20）があります")).toBeTruthy();
+  expect(screen.getByText("新しいバージョン（v0.1.20）があります")).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "更新して再起動" })); });
   await flush();
   expect(steps).toEqual(["download", "prepare", "install", "relaunch"]);

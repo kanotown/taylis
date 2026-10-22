@@ -110,26 +110,26 @@ describe("VersionsDialog", () => {
     const controller = controllerWith({ driveVersions: vi.fn(async () => versions), restoreDriveVersion });
     const onChanged = vi.fn();
     render(<VersionsDialog controller={controller} item={row("a", "file", "a.txt")} location={LOCATION} onClose={vi.fn()} onChanged={onChanged} />);
-    await screen.findByText("版 3");
-    expect(document.body.textContent).toContain("今の版");
-    expect(document.body.textContent).toContain("前の版から戻した");
-    expect(document.body.textContent).toContain("10 版まで");
+    await screen.findByText("バージョン 3");
+    expect(document.body.textContent).toContain("現在のバージョン");
+    expect(document.body.textContent).toContain("前のバージョンから戻した");
+    expect(document.body.textContent).toContain("10 個まで");
     // Only the older version restores; nobody here may delete for good.
-    expect(screen.getAllByRole("button", { name: /この版に戻す/ }).length).toBe(1);
-    expect(screen.queryByRole("button", { name: /版 2 を削除/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "版 2 をダウンロード" }));
+    expect(screen.getAllByRole("button", { name: /このバージョンに戻す/ }).length).toBe(1);
+    expect(screen.queryByRole("button", { name: /バージョン 2 を削除/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "バージョン 2 をダウンロード" }));
     expect(controller.downloadDriveFile).toHaveBeenCalledWith({ id: "a", name: "a.txt", size_bytes: 200 }, { versionId: "v2" });
-    fireEvent.click(screen.getByRole("button", { name: /この版に戻す/ }));
+    fireEvent.click(screen.getByRole("button", { name: /このバージョンに戻す/ }));
     await waitFor(() => expect(restoreDriveVersion).toHaveBeenCalledWith("a", "v2"));
     expect(onChanged).toHaveBeenCalledWith(row("a", "file", "a.txt"));
-    expect(controller.setNotice).toHaveBeenCalledWith("版 2 を今の版として戻しました");
+    expect(controller.setNotice).toHaveBeenCalledWith("バージョン 2 を現在のバージョンとして戻しました");
   });
 
   it("deletes an older version after asking (those who may delete for good)", async () => {
     const deleteDriveVersion = vi.fn(async () => undefined);
     const controller = controllerWith({ driveVersions: vi.fn(async () => versions), deleteDriveVersion });
     render(<VersionsDialog controller={controller} item={row("a", "file", "a.txt")} location={{ can_write: true, can_manage: true }} onClose={vi.fn()} onChanged={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "版 2 を削除" }));
+    fireEvent.click(await screen.findByRole("button", { name: "バージョン 2 を削除" }));
     const ask = (await screen.findAllByRole("dialog")).at(-1)!;
     expect(ask.textContent).toContain("元に戻せません");
     fireEvent.click(within(ask).getByRole("button", { name: "削除" }));
