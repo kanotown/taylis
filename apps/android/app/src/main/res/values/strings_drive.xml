@@ -22,12 +22,12 @@
     <string name="drive_folder">フォルダ</string>
     <string name="drive_detail_kind">種類</string>
     <string name="drive_detail_created_by">作った人</string>
-    <string name="drive_detail_versions">版</string>
+    <string name="drive_detail_versions">バージョン</string>
     <string name="drive_detail_where">場所</string>
     <string name="drive_column_modified">更新日時</string>
     <string name="drive_column_by">更新した人</string>
     <string name="drive_column_size">大きさ</string>
-    <string name="drive_versions_count">%1$d 版</string>
+    <string name="drive_versions_count">%1$d バージョン</string>
     <string name="drive_details_of">「%1$s」の詳細</string>
     <string name="drive_someone">だれか</string>
     <string name="drive_open">開く</string>

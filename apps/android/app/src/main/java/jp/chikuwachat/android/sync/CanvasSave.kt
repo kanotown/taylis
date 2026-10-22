@@ -26,7 +26,7 @@ import java.util.UUID
  * - EDITING: typed, the save goes out when typing pauses
  * - SAVING: a save is on the wire
  * - OFFLINE / RETRYING: the save failed on the network / with 429 or 5xx and goes out again (same key)
- * - CONFLICT: someone changed the same words; waiting for 自分の版 / 相手の版 / 両方残す
+ * - CONFLICT: someone changed the same words; waiting for 自分のバージョン / 相手のバージョン / 両方残す
  * - EXPIRED: the version this was written on is gone (long offline); waiting for a choice
  * - BLOCKED: refused for good (403, 422, an archived conversation …); the text stays here
  * - GONE: the canvas was moved to the trash (or cannot be seen any more)
