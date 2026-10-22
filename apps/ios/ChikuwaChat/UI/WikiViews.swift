@@ -1106,7 +1106,7 @@ struct WikiHistorySheet: View {
                 CanvasRevisionDetail(controller: controller, model: model, revisionId: id, headId: headId, rights: .none)
             }
             .safeAreaInset(edge: .bottom) {
-                Text("版を選ぶと、前の版や現在の版との違いを見られます。版に戻すのはパソコンから行えます。")
+                Text("バージョンを選ぶと、前のバージョンや現在のバージョンとの違いを見られます。以前のバージョンに戻すのはパソコンから行えます。")
                     .font(.footnote).foregroundStyle(.secondary).padding(8)
             }
             .task(id: headId) { await model.load(controller, more: false) }

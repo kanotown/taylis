@@ -339,7 +339,7 @@ final class CanvasEraseTests: XCTestCase {
             XCTFail("expected 409")
         } catch let error as ApiError {
             XCTAssertEqual(error.code, "canvas_revision_is_head")
-            XCTAssertEqual(ErrorMessages.byCode[error.code], "現在の版は消去できません。先に本文を直してください")
+            XCTAssertEqual(ErrorMessages.byCode[error.code], "現在のバージョンは消去できません。先に本文を直してください")
         }
     }
 }

@@ -109,7 +109,7 @@ final class CanvasHistoryModelTests: XCTestCase {
         XCTAssertEqual(partial.previousId(of: "r2"), "r1") // the oldest loaded: its parent
         partial.replace(revision("r2", parent: "r1", label: "提出版"))
         XCTAssertEqual(partial.revision("r2")?.label, "提出版")
-        XCTAssertEqual(CanvasHistoryModel.kindLabel("merge"), "同時編集をまとめた版")
+        XCTAssertEqual(CanvasHistoryModel.kindLabel("merge"), "同時編集をまとめたバージョン")
         XCTAssertEqual(CanvasHistoryModel.kindLabel("save"), "編集")
     }
 }
