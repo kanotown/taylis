@@ -90,4 +90,4 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
 - [バックアップ](backup.md) を毎日動かす（いちばん大事です）
 - [プッシュ通知](push.md) を設定する
 - 他のサイトの nginx がすでにあるサーバなら [既存のリバースプロキシの後ろで](reverse-proxy.md)
-- 新しい版への [更新](updates.md)
+- 新しいバージョンへの [更新](updates.md)

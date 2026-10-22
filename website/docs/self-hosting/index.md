@@ -57,7 +57,7 @@ flowchart TD
     - [プッシュ通知（APNs / FCM）](push.md)
     - [文書のプレビュー](previews.md)
 3. [バックアップと復元](backup.md) を毎日動かします。
-4. [更新と自動デプロイ](updates.md)：新しい版への更新、GitHub のタグからの自動デプロイ。
+4. [更新と自動デプロイ](updates.md)：新しいバージョンへの更新、GitHub のタグからの自動デプロイ。
 5. [Slack / Mattermost / Notion からの移行](import.md)。
 6. うまくいかないときは [困ったとき](troubleshooting.md)。
 
