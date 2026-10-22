@@ -9737,6 +9737,26 @@
         "title": "DrivePersonUsageOut",
         "type": "object"
       },
+      "DrivePreviewOut": {
+        "description": "2026-10-22 (§27): the preview of a file's current version after POST\n/drive/items/{id}/preview. 'pending' while the server makes it (drive.changed follows when\nit is ready or failed), 'ready', 'failed'; null when this file gets no preview (not a PDF or\nan Office file, too large, previews off, or no converter for an Office file).",
+        "properties": {
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentPreviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "preview"
+        ],
+        "title": "DrivePreviewOut",
+        "type": "object"
+      },
       "DriveQuotaIn": {
         "properties": {
           "quota_bytes": {
@@ -35024,6 +35044,55 @@
           }
         ],
         "summary": "Create Link",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/items/{item_id}/preview": {
+      "post": {
+        "description": "2026-10-22 (§27): asks for the preview of a file's current version when it was never made\n(imported files, §24): 'pending' until the preview loop makes it (drive.changed then). Only\na file without one is queued; a ready, pending or failed preview is answered as it is, and\nnull means this file gets none (the viewer offers the download instead).",
+        "operationId": "request_preview_api_v1_drive_items__item_id__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrivePreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Request Preview",
         "tags": [
           "drive"
         ]

@@ -22,8 +22,10 @@ from app.core.ids import uuid7
 from app.core.roles import has_capability
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.attachments import preview_kinds
 from app.modules.attachments import service as attachments
-from app.modules.attachments.schemas import to_attachment_out
+from app.modules.attachments.models import Attachment
+from app.modules.attachments.schemas import preview_out, to_attachment_out
 from app.modules.audit import service as audit
 from app.modules.channels import service as channels
 from app.modules.drive import access as acl
@@ -46,6 +48,7 @@ from app.modules.drive.schemas import (
     DriveItemResult,
     DriveLocationOut,
     DriveLocationResolve,
+    DrivePreviewOut,
     DriveResultsOut,
     DriveSearchHitOut,
     DriveTrashEntryOut,
@@ -308,6 +311,39 @@ async def get_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> DriveIt
         path=await crumbs(db, chain[:-1], rights.location),
         location_kind=rights.location.kind,  # type: ignore[arg-type]
     )
+
+
+async def request_preview(
+    db: AsyncSession, actor: User, settings: Settings, item_id: uuid.UUID
+) -> tuple[DrivePreviewOut, bool]:
+    """2026-10-22 (§27): the preview of a file's current version, queued now when it was never
+    made (a Nextcloud import stores files without one, §24; files stored while previews were
+    off). Anyone who can read the file may ask; only 'none' moves (to 'pending'), so asking
+    again, or for a file whose preview failed, queues nothing. Returns the preview and whether
+    the preview loop should be woken."""
+    item, _ = await readable_item(db, actor, item_id)
+    if item.kind != "file" or item.current_version_id is None:
+        raise item_not_found()
+    version = await db.get(DriveFileVersion, item.current_version_id)
+    if version is None:
+        raise item_not_found()
+    row = (
+        await db.execute(
+            select(Attachment).where(Attachment.id == version.attachment_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None or row.status == "deleted":
+        raise item_not_found()
+    queued = False
+    if row.preview_status == "none" and preview_kinds.wants(row, settings):
+        row.preview_status = "pending"
+        row.preview_attempts = 0
+        row.preview_error = None
+        row.preview_next_at = utcnow()
+        queued = True
+    out = DrivePreviewOut(preview=preview_out(row))
+    await db.commit()
+    return out, queued
 
 
 async def readable_location_ids(db: AsyncSession, actor: User) -> list[uuid.UUID]:

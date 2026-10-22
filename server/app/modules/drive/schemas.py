@@ -228,6 +228,15 @@ class DriveUploadCompleteOut(BaseModel):
     version_id: UUID | None = None
 
 
+class DrivePreviewOut(BaseModel):
+    """2026-10-22 (§27): the preview of a file's current version after POST
+    /drive/items/{id}/preview. 'pending' while the server makes it (drive.changed follows when
+    it is ready or failed), 'ready', 'failed'; null when this file gets no preview (not a PDF or
+    an Office file, too large, previews off, or no converter for an Office file)."""
+
+    preview: AttachmentPreviewOut | None
+
+
 class DriveDownloadTicketOut(BaseModel):
     """A URL the browser's own download (or a video's source) can follow without the bearer
     token (§7.3): relative to the server, valid `expires_in` seconds after its last use."""

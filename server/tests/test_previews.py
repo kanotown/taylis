@@ -117,6 +117,9 @@ def test_source_kind_and_eligibility() -> None:
     assert source_kind("application/zip", "archive.zip") is None
     assert source_kind("application/octet-stream", "docx") is None
     assert source_kind("image/png", "a.pdf") is None
+    # A PDF the sniffer could not place (bytes before its header): PDFium decides.
+    assert source_kind("application/octet-stream", "scan.PDF") == "pdf"
+    assert source_kind("application/zip", "a.pdf") is None
 
     def ok(content_type: str, size: int, converter: bool) -> bool:
         name = "a.pdf" if content_type == "application/pdf" else "a.docx"

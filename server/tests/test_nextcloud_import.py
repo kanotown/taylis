@@ -1055,3 +1055,68 @@ async def test_generate_previews_for_the_drive_lets_the_chat_go_first(
     await db.commit()
     waited = await previews._let_the_chat_go_first(db, 5.0, sleep)
     assert waited == 5.0
+
+
+# --- 2026-10-22 (docs/DRIVE.md §27): the preview asked for when an imported file is opened ------
+
+
+async def test_opening_an_imported_file_asks_for_its_preview(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Any, tmp_path: Path
+) -> None:
+    from app.modules.attachments import previews
+    from app.modules.attachments.models import Attachment
+    from tests.test_previews import enable, pdf_bytes
+
+    admin = await setup_targets(client, db, as_user)
+    root = tmp_path / "kano" / "files"
+    write(root, "/研究室共有/a.pdf", pdf_bytes(2))
+    # A PDF with bytes before its header: the sniffer calls it octet-stream, PDFium reads it.
+    write(root, "/研究室共有/scan.pdf", b"\r\n" * 8 + pdf_bytes(1))
+    write(root, "/研究室共有/notes.txt", b"plain text")
+    mapping = '[[map]]\nsource="/研究室共有"\ntarget="workspace:/"\n'
+    settings = enable(app, None)
+    await run(db, app, DataDirSource(root), mapping=mapping, settings=settings)
+    a = await find(db, "a.pdf")
+    scan = await find(db, "scan.pdf")
+    notes = await find(db, "notes.txt")
+    assert scan.content_type == "application/octet-stream"
+    as_user(admin)
+    shown = (await client.get(f"{API}/drive/items/{a.id}")).json()["item"]
+    assert shown["file"]["preview"] is None  # imported without one
+
+    asked = await client.post(f"{API}/drive/items/{a.id}/preview")
+    assert asked.status_code == 200, asked.text
+    assert asked.json()["preview"]["status"] == "pending"
+    again = await client.post(f"{API}/drive/items/{a.id}/preview")
+    assert again.json()["preview"]["status"] == "pending"  # asked twice: queued once
+    scanned = await client.post(f"{API}/drive/items/{scan.id}/preview")
+    assert scanned.json()["preview"]["status"] == "pending"
+    # Not a document: nothing to make. A folder is not a file.
+    plain = await client.post(f"{API}/drive/items/{notes.id}/preview")
+    assert plain.json() == {"preview": None}
+    folder = await client.post(f"{API}/drive/items/{shown['parent_id']}/preview")
+    assert folder.status_code == 404
+
+    # The preview loop makes both (the octet-stream PDF too).
+    while await previews.process_due(app.state.db, app.state.blobs, None, settings):
+        pass
+    for item in (a, scan):
+        out = (await client.post(f"{API}/drive/items/{item.id}/preview")).json()["preview"]
+        assert out["status"] == "ready", item.name
+    detail = (await client.get(f"{API}/drive/items/{scan.id}")).json()["item"]
+    pdf = await client.get(f"{API}/attachments/{detail['file']['attachment_id']}/preview/pdf")
+    assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
+    assert pdf.headers["content-disposition"].startswith("inline")
+
+    # A failed preview is not queued again by asking.
+    row = (
+        await db.execute(
+            select(Attachment)
+            .where(Attachment.drive_item_id == a.id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    row.preview_status = "failed"
+    await db.commit()
+    out = (await client.post(f"{API}/drive/items/{a.id}/preview")).json()["preview"]
+    assert out["status"] == "failed"

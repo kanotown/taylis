@@ -41,6 +41,7 @@ from app.modules.drive.schemas import (
     DriveLocationResolve,
     DriveLocationUsageOut,
     DriveMoveIn,
+    DrivePreviewOut,
     DriveQuotaIn,
     DriveReachOut,
     DriveRestoreIn,
@@ -282,6 +283,20 @@ def _wake(request: Request) -> None:
     runtime.media_wake.set()
     if runtime.preview_wake is not None:
         runtime.preview_wake.set()
+
+
+@router.post("/drive/items/{item_id}/preview", response_model=DrivePreviewOut)
+async def request_preview(
+    item_id: UUID, request: Request, user: CurrentUser, db: Db
+) -> DrivePreviewOut:
+    """2026-10-22 (§27): asks for the preview of a file's current version when it was never made
+    (imported files, §24): 'pending' until the preview loop makes it (drive.changed then). Only
+    a file without one is queued; a ready, pending or failed preview is answered as it is, and
+    null means this file gets none (the viewer offers the download instead)."""
+    out, queued = await service.request_preview(db, user, request.app.state.settings, item_id)
+    if queued:
+        _wake(request)
+    return out
 
 
 @router.get("/drive/items/{item_id}/versions", response_model=DriveVersionListOut)
