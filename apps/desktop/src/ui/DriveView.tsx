@@ -168,8 +168,8 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
     }
   };
 
-  const choose = (loc: DriveLocationOut, fromColumn = false) => {
-    if (fromColumn && !compact) hideColumn(true);
+  // Choosing a location keeps the column open (2026-10-23: folding it at once was surprising); its own button hides it.
+  const choose = (loc: DriveLocationOut, _fromColumn = false) => {
     setCurrent({ locationId: loc.id, folderId: loc.root_id, trash: false });
     setListOpen(false);
   };

@@ -38,19 +38,25 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("choosing a location puts the column away; the toggle and the root crumb's ▾ bring the others back", async () => {
+it("choosing a location keeps the column; its toggle hides it, and the root crumb's ▾ then switches location", async () => {
   render(<DriveView controller={controller()} />);
   await waitFor(() => expect(document.querySelector('[data-drive-location="user"]')).toBeTruthy());
   const toggle = () => document.querySelector("[data-drive-locations-toggle]") as HTMLButtonElement;
   await waitFor(() => expect(toggle()).toBeTruthy());
   expect(toggle().getAttribute("aria-expanded")).toBe("true");
 
+  // 2026-10-23: a location chosen in the column leaves the column where it is.
   fireEvent.click(document.querySelector('[data-drive-location="user"]')!);
-  await waitFor(() => expect(document.querySelector("#drive-locations")).toBeNull());
+  await screen.findByText("このフォルダは空です");
+  expect(document.querySelector("#drive-locations")).toBeTruthy();
+  expect(readLocationsHidden()).toBe(false);
+
+  // The toggle puts it away (remembered on this device).
+  fireEvent.click(toggle());
+  expect(document.querySelector("#drive-locations")).toBeNull();
   expect(readLocationsHidden()).toBe(true);
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
   expect(toggle().getAttribute("aria-label")).toBe("場所の一覧を表示");
-  await screen.findByText("このフォルダは空です");
 
   // The root crumb's ▾: the other location, without the column.
   const switcher = document.querySelector("[data-drive-switch-location]") as HTMLElement;
