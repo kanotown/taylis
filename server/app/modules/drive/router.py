@@ -522,7 +522,8 @@ async def complete_upload(
     """200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again). `item` and
     `version_id` are null when the uploader can no longer read the file (moved elsewhere, a
     channel left). 409 drive_upload_target_moved: the folder moved to another drive, the session
-    ended."""
+    ended. 409 drive_upload_incomplete (`details.missing`): parts to send, also after the store
+    refused parts whose bytes differed (the session is active again without them)."""
     status, out = await uploads.complete(
         request.app.state.drive,
         db,

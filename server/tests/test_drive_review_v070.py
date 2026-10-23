@@ -12,14 +12,14 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import MemoryBlobStore
 from app.modules.drive import repository as repo
 from app.modules.drive import service
-from app.modules.drive.models import DriveUpload
+from app.modules.drive.models import DriveUpload, DriveUploadPart
 from app.modules.users.models import User
 from tests.drive_helpers import (
     act_as,
@@ -29,6 +29,7 @@ from tests.drive_helpers import (
     folder,
     location,
     names_in,
+    put_part,
     send_parts,
     start,
     upload,
@@ -496,3 +497,177 @@ async def test_zip_keeps_the_issued_versions_of_readable_entries(
     archive = zipfile.ZipFile(io.BytesIO(response.content))
     assert archive.read("shared/confidential.txt") == b"CONFIDENTIAL"
     assert archive.read("shared/sub/deeper.txt") == b"CONFIDENTIAL-2"
+
+
+# --- #5: the same part sent twice at once with different bytes ---------------------------------
+
+
+class HeldStore:
+    """Wraps the store's upload_part: the calls named in `hold` (by their order, 1-based) wait
+    after the real write until released, so a later request can overtake them."""
+
+    def __init__(self, store: MemoryBlobStore, monkeypatch: pytest.MonkeyPatch, hold: set[int]):
+        self.real = store.upload_part
+        self.hold = hold
+        self.calls = 0
+        self.written: dict[int, asyncio.Event] = {}
+        self.release: dict[int, asyncio.Event] = {}
+        for order in hold:
+            self.written[order] = asyncio.Event()
+            self.release[order] = asyncio.Event()
+        monkeypatch.setattr(store, "upload_part", self.upload_part)
+
+    async def upload_part(self, *args: Any, **kwargs: Any) -> str:
+        self.calls += 1
+        order = self.calls
+        etag = await self.real(*args, **kwargs)
+        if order in self.hold:
+            self.written[order].set()
+            await self.release[order].wait()
+        return etag
+
+
+async def stored_and_recorded(
+    app: FastAPI, upload_id: str
+) -> tuple[dict[int, str], dict[int, str]]:
+    async with app.state.drive.session_factory() as db:
+        row = await db.get(DriveUpload, upload_id)
+        assert row is not None
+        recorded = dict(
+            (
+                await db.execute(
+                    select(DriveUploadPart.part_number, DriveUploadPart.etag).where(
+                        DriveUploadPart.upload_id == row.id
+                    )
+                )
+            ).all()
+        )
+        key = attachments.storage_key(row.attachment_id)
+        stored = await blobs(app).list_parts(key, row.s3_upload_id)
+    assert stored is not None
+    return stored, recorded
+
+
+async def test_same_part_twice_at_once_ends_with_matching_etags(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The review's race: the first PUT's bytes are in the store and its answer is held; a
+    second PUT of the same number with other bytes must wait for the first to commit, so the
+    store and the database end with the same (the second's) ETag and the completion works."""
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    root = await workspace_root(client)
+    session = (await start(client, root, "retry.txt", 4)).json()
+    held = HeldStore(blobs(app), monkeypatch, {1})
+    first = asyncio.create_task(put_part(client, session["id"], 1, b"AAAA"))
+    await asyncio.wait_for(held.written[1].wait(), 5)
+    second = asyncio.create_task(put_part(client, session["id"], 1, b"BBBB"))
+    await asyncio.sleep(0.3)
+    overtook = second.done() or held.calls > 1
+    held.release[1].set()
+    assert not overtook  # the second waited for the first part's lock
+    assert (await first).status_code == 200
+    assert (await second).status_code == 200
+    stored, recorded = await stored_and_recorded(app, session["id"])
+    assert stored == recorded
+    done = await complete(client, session["id"])
+    assert done.status_code == 200, done.text
+    assert await content(client, done.json()["item"]["id"]) == b"BBBB"
+
+
+async def test_different_parts_still_go_in_parallel(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    root = await workspace_root(client)
+    data = b"x" * 1024 + b"y" * 10
+    session = (await start(client, root, "two.bin", len(data))).json()
+    held = HeldStore(blobs(app), monkeypatch, {1})
+    first = asyncio.create_task(put_part(client, session["id"], 1, data[:1024]))
+    await asyncio.wait_for(held.written[1].wait(), 5)
+    # Part 2 goes in while part 1 is still held.
+    second = await asyncio.wait_for(put_part(client, session["id"], 2, data[1024:]), 5)
+    assert second.status_code == 200 and not first.done()
+    held.release[1].set()
+    assert (await first).status_code == 200
+    # The same bytes again: fine, nothing to fix.
+    assert (await put_part(client, session["id"], 2, data[1024:])).status_code == 200
+    done = await complete(client, session["id"])
+    assert done.status_code == 200, done.text
+    assert await content(client, done.json()["item"]["id"]) == data
+
+
+async def test_completion_waits_for_a_part_under_way(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    root = await workspace_root(client)
+    session = (await start(client, root, "late.txt", 4)).json()
+    held = HeldStore(blobs(app), monkeypatch, {2})
+    assert (await put_part(client, session["id"], 1, b"AAAA")).status_code == 200
+    replacing = asyncio.create_task(put_part(client, session["id"], 1, b"CCCC"))
+    await asyncio.wait_for(held.written[2].wait(), 5)
+    completing = asyncio.create_task(complete(client, session["id"]))
+    await asyncio.sleep(0.3)
+    overtook = completing.done()
+    held.release[2].set()
+    assert not overtook  # the join waited for the part being replaced
+    assert (await replacing).status_code == 200
+    done = await completing
+    assert done.status_code == 200, done.text
+    assert await content(client, done.json()["item"]["id"]) == b"CCCC"
+
+
+async def test_a_part_that_differs_in_the_store_is_asked_again(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """A session whose recorded ETag no longer matches the store (a crash between the store's
+    write and the commit; or the race above before the fix): the completion does not stay stuck
+    in `completing` but goes back to active, naming the parts to send again."""
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    root = await workspace_root(client)
+    data = b"a" * 1024 + b"b" * 1024 + b"c" * 5
+    session = (await start(client, root, "stuck.bin", len(data))).json()
+    await send_parts(client, session, data)
+    # The store gets other bytes for part 2 behind the database's back.
+    async with app.state.drive.session_factory() as other:
+        row = await other.get(DriveUpload, session["id"])
+        assert row is not None
+        key, s3_upload_id = attachments.storage_key(row.attachment_id), row.s3_upload_id
+    await blobs(app).upload_part(key, s3_upload_id, 2, io.BytesIO(b"z" * 1024), 1024)
+
+    refused = await complete(client, session["id"])
+    assert refused.status_code == 409, refused.text
+    error = refused.json()["error"]
+    assert error["code"] == "drive_upload_incomplete"
+    assert error["details"] == {"missing": [2], "missing_count": 1}
+    state = (await client.get(f"{API}/drive/uploads/{session['id']}")).json()
+    assert state["status"] == "active" and state["received_parts"] == [1, 3]
+    assert state["error"] == "drive_upload_incomplete"
+    # Asked again without sending: the same list, not a stuck 202.
+    again = await complete(client, session["id"])
+    assert again.status_code == 409 and again.json()["error"]["details"]["missing"] == [2]
+
+    assert (await put_part(client, session["id"], 2, data[1024:2048])).status_code == 200
+    done = await complete(client, session["id"])
+    assert done.status_code == 200, done.text
+    assert await content(client, done.json()["item"]["id"]) == data
