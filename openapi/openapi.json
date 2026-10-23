@@ -36154,7 +36154,7 @@
     },
     "/api/v1/drive/uploads/{upload_id}/complete": {
       "post": {
-        "description": "200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again).",
+        "description": "200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again). `item` and\n`version_id` are null when the uploader can no longer read the file (moved elsewhere, a\nchannel left). 409 drive_upload_target_moved: the folder moved to another drive, the session\nended.",
         "operationId": "complete_upload_api_v1_drive_uploads__upload_id__complete_post",
         "parameters": [
           {

@@ -514,7 +514,10 @@ async def put_part(
 async def complete_upload(
     upload_id: UUID, request: Request, user: CurrentUser, db: Db
 ) -> JSONResponse:
-    """200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again)."""
+    """200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again). `item` and
+    `version_id` are null when the uploader can no longer read the file (moved elsewhere, a
+    channel left). 409 drive_upload_target_moved: the folder moved to another drive, the session
+    ended."""
     status, out = await uploads.complete(
         request.app.state.drive,
         db,

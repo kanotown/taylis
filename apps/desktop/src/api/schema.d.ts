@@ -3578,7 +3578,10 @@ export interface paths {
         put?: never;
         /**
          * Complete Upload
-         * @description 200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again).
+         * @description 200 {completed, item} or 202 {completing} (ask GET /drive/uploads/{id} again). `item` and
+         *     `version_id` are null when the uploader can no longer read the file (moved elsewhere, a
+         *     channel left). 409 drive_upload_target_moved: the folder moved to another drive, the session
+         *     ended.
          */
         post: operations["complete_upload_api_v1_drive_uploads__upload_id__complete_post"];
         delete?: never;
