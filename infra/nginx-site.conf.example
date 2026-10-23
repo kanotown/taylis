@@ -13,8 +13,9 @@ map $http_upgrade $chikuwachat_connection {
 # Paths whose next part is a secret (docs/SECURITY.md §7, docs/DRIVE.md §9.5): the drive's external share links
 # (/s/<token>, /api/v1/shares/<token>/…), invite links, iCal feeds, webhooks, the drive's download and ZIP tickets.
 # nginx's default access log would keep them in /var/log/nginx for weeks: this one writes them as ***.
-# (The query string is left out on purpose too.) error_log lines can still name a request on upstream errors: keep
-# /var/log/nginx readable by root / adm only.
+# (The query string is left out on purpose too.) error_log cannot be masked: on an upstream error (Caddy down, a
+# timeout) it writes the request line, the upstream URL and the referrer as they are. Keep /var/log/nginx readable by
+# root / adm only, or set the error_log line in the server block below to crit (infra/README.md, REVIEW-v0.1.70 #4).
 map $uri $chikuwachat_log_uri {
     ~^(?<chikuwachat_p>/s/|/invite/|/api/v1/(shares|invites|calendar/ical|hooks|drive/download|drive/zip)/)[^/]+(?<chikuwachat_rest>.*)$ $chikuwachat_p***$chikuwachat_rest;
     default $uri;
@@ -33,6 +34,9 @@ server {
     # The masked access log above instead of the default one (which would keep share-link tokens). The certbot step
     # leaves this line in place.
     access_log /var/log/nginx/access.log chikuwachat_masked;
+    # Optional: upstream errors are logged at the `error` level with the token in the request line; at `crit` they are
+    # not written at all (the masked access log still has the 502). Uncomment to keep share tokens out of error_log.
+    # error_log /var/log/nginx/chikuwachat-error.log crit;
 
     location / {
         proxy_pass http://127.0.0.1:18080;

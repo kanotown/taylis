@@ -656,9 +656,11 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - ログイン失敗、refresh の再利用検知、権限エラー (`403`) は WARN で記録する。
 - アクセスログのパスは、URL に秘密が入るもの (`/api/v1/hooks/{token}`、`/invite/{token}`、`/api/v1/invites/{token}/…`、
   `/api/v1/calendar/ical/{token}.ics`、M160〜M163 のドライブのダウンロード・ZIP のチケットと外部共有リンク `/s/{token}`・
-  `/api/v1/shares/{token}/…`) を `***` に置き換えて記録する (§7: トークンをログに残さない)。Caddy はアクセスログを書かない
-  (Caddyfile に `log` が無い)。ホストの nginx の後ろで動かすときは、伏せた形式のアクセスログ (`infra/nginx-site.conf.example`、
-  infra/README.md) を使う。
+  `/api/v1/shares/{token}/…`) を `***` に置き換えて記録する (§7: トークンをログに残さない)。Caddy はアクセスログを書かないが、
+  `reverse_proxy` が失敗したときのエラーログ (`http.log.error`) に `request.uri` が載るので、Caddyfile の全体の `log default` の
+  `format filter` が同じパスを `***` にしてから書く (Referer も。REVIEW-v0.1.70 #4)。ホストの nginx の後ろで動かすときは、伏せた
+  形式のアクセスログ (`infra/nginx-site.conf.example`、infra/README.md) を使う。nginx の `error_log` は伏せられず、上流のエラーで
+  リクエストの行を書くので、`/var/log/nginx` を root と adm だけが読めるままにするか、`error_log … crit` にする (infra/README.md)。
 - 管理者操作 (ユーザー作成、パスワードリセット、ロール変更、無効化、セッション失効、他人のメッセージ削除) は
   `audit_logs` に記録する (M10)。M142: 記録には操作した人のその時のロール (`actor_role`) が付き、運営に開いた操作は
   すべて記録に残る (docs/ROLES.md §6)。ユーザー名の変更は本人のものも `user.username_changed` (`from`・`to`・`by`、times の
@@ -859,7 +861,7 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 
 DRIVE.md §23.3 の表の各項目に試験がある（`server/tests/test_drive_d4.py`）。変更のたびに次を見直す。
 
-- [x] トークンは 256 ビットの乱数で、DB・監査・ログに残らない（SHA-256 だけ。アクセスログは `***`、Caddy はログなし、nginx は伏せた形式）
+- [x] トークンは 256 ビットの乱数で、DB・監査・ログに残らない（SHA-256 だけ。アクセスログは `***`、Caddy はエラーログも `***`、nginx は伏せた形式。nginx の error_log は infra/README.md）
 - [x] 知らないトークンは 404、ほかの止まったリンクは理由なしの 410。総当たりは IP ごとに引く前に 429
 - [x] 期限・取り消し・回数・スイッチ（ワークスペース・場所）・アーカイブ・作った人の権限（抜けた・ゲスト・無効化）を毎回確かめる
 - [x] 公開側の項目は id だけで受け、祖先の鎖でリンクの部分木の中・ゴミ箱の外を確かめる（兄弟・親・根・別の場所・移された項目・古い版は 404）
