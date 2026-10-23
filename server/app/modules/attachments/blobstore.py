@@ -64,6 +64,11 @@ class BlobStore(Protocol):
         """Drops an upload and its parts; an unknown or finished upload is not an error."""
         ...
 
+    async def list_parts(self, key: str, upload_id: str) -> dict[int, str] | None:
+        """REVIEW-v0.1.70 #5: {part number: ETag} of what the store holds for an upload in
+        progress (S3 ListParts); None when there is no such upload (finished or aborted)."""
+        ...
+
     def list_multipart_uploads(self, prefix: str) -> AsyncIterator[tuple[str, str, datetime]]:
         """(key, upload id, initiated) of every upload in progress under `prefix`."""
         ...
@@ -139,6 +144,12 @@ class MemoryBlobStore:
 
     async def abort_multipart(self, key: str, upload_id: str) -> None:
         self.uploads.pop(upload_id, None)
+
+    async def list_parts(self, key: str, upload_id: str) -> dict[int, str] | None:
+        found = self.uploads.get(upload_id)
+        if found is None or found[0] != key:
+            return None
+        return {number: etag for number, (_, etag) in found[3].items()}
 
     async def list_multipart_uploads(self, prefix: str) -> AsyncIterator[tuple[str, str, datetime]]:
         for upload_id, (key, _, initiated, _) in list(self.uploads.items()):
@@ -297,6 +308,29 @@ class S3BlobStore:
                     raise
 
         await run_in_threadpool(work)
+
+    async def list_parts(self, key: str, upload_id: str) -> dict[int, str] | None:
+        from botocore.exceptions import ClientError
+
+        def work() -> dict[int, str] | None:
+            parts: dict[int, str] = {}
+            marker: dict[str, int] = {}
+            while True:
+                try:
+                    page = self.client.list_parts(
+                        Bucket=self.bucket, Key=key, UploadId=upload_id, **marker
+                    )
+                except ClientError as exc:
+                    if exc.response.get("Error", {}).get("Code") in ("NoSuchUpload", "404"):
+                        return None
+                    raise
+                for part in page.get("Parts", []):
+                    parts[int(part["PartNumber"])] = str(part["ETag"])
+                if not page.get("IsTruncated"):
+                    return parts
+                marker = {"PartNumberMarker": int(page["NextPartNumberMarker"])}
+
+        return await run_in_threadpool(work)
 
     async def list_multipart_uploads(self, prefix: str) -> AsyncIterator[tuple[str, str, datetime]]:
         markers: dict[str, str] = {}

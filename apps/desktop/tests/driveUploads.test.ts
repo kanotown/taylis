@@ -384,6 +384,43 @@ describe("the queue", () => {
     expect(api.creates).toBe(1);
   });
 
+  it("sends again the parts a completion names, then completes (REVIEW-v0.1.70 #5)", async () => {
+    const api = new FakeDrive();
+    const real = api.completeDriveUpload.bind(api);
+    let refused = 0;
+    api.completeDriveUpload = async (uploadId) => {
+      if (refused === 0) {
+        // The store held other bytes for part 2: the server forgot it and names it.
+        refused += 1;
+        api.sessions.get(uploadId)!.parts.delete(2);
+        throw new ApiError(409, "drive_upload_incomplete", "missing", { missing: [2], missing_count: 1 });
+      }
+      return real(uploadId);
+    };
+    const { queue } = queueWith(api);
+    const file = source("again.bin", 10);
+    const [job] = queue.add([file], TARGET);
+    await settle(queue);
+    expect(job!.state).toBe("done");
+    expect(api.puts.map(([, n]) => n).sort()).toEqual([1, 2, 2, 3]);
+    expect(api.files.get("root/again.bin")).toEqual(await file.read(0, 10));
+    expect(api.creates).toBe(1);
+  });
+
+  it("gives up after a few rounds of parts named again", async () => {
+    const api = new FakeDrive();
+    api.completeDriveUpload = async (uploadId) => {
+      api.sessions.get(uploadId)!.parts.delete(1);
+      throw new ApiError(409, "drive_upload_incomplete", "missing", { missing: [1], missing_count: 1 });
+    };
+    const { queue } = queueWith(api);
+    const [job] = queue.add([source("never.bin", 4)], TARGET);
+    await settle(queue);
+    expect(job!.state).toBe("failed");
+    expect(job!.error).toBe("drive_upload_incomplete");
+    expect(api.puts.length).toBe(4); // the first send and three rounds
+  });
+
   it("starts over when the session expired", async () => {
     const api = new FakeDrive();
     const { queue } = queueWith(api, { partsPerFile: 1 });

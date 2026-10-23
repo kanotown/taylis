@@ -13,6 +13,12 @@ and its multipart upload is dropped; the client starts a new upload where it wan
 Parts and completions are ordered by an advisory lock per session: a part holds it shared while it
 writes to the store, the switch to `completing` takes it exclusively, so no part is replaced while
 the parts are being joined. Nothing waits on a database transaction while a body streams in.
+REVIEW-v0.1.70 #5: a second advisory lock per (session, part number), taken inside the shared one,
+covers a part from its write to the store to the commit of its ETag, so two PUTs of the same
+number (different bytes) cannot leave the store with one and the database with the other's ETag;
+different parts still go in parallel. A join the store refuses because a part's ETag differs
+(left by a crash between the store and the commit, say) sends the session back to active with
+error drive_upload_incomplete and without those parts: the client sends them again.
 """
 
 import asyncio
@@ -80,6 +86,7 @@ ERROR_STATUS = {
     "drive_name_invalid": 422,
     "drive_upload_failed": 502,
     "drive_upload_target_moved": 409,
+    "drive_upload_incomplete": 409,
 }
 TARGET_MOVED = "drive_upload_target_moved"
 
@@ -169,6 +176,32 @@ def _modified(ms: int | None) -> datetime | None:
 
 def _lock_key(upload_id: uuid.UUID) -> int:
     return int.from_bytes(upload_id.bytes[:8], "big", signed=True)
+
+
+def _part_lock_key(upload_id: uuid.UUID) -> int:
+    """The first key of the two-key advisory lock of a part (the second is its number): another
+    key space than _lock_key's one-key locks. Two sessions sharing it only wait for each other."""
+    return int.from_bytes(upload_id.bytes[8:12], "big", signed=True)
+
+
+def incomplete(missing: list[int]) -> AppError:
+    return conflict(
+        "drive_upload_incomplete",
+        "Some parts have not been received",
+        {"missing": missing[:MISSING_SHOWN], "missing_count": len(missing)},
+    )
+
+
+async def _missing(db: AsyncSession, upload: DriveUpload) -> list[int]:
+    total = parts_total(upload.size_bytes, upload.part_size)
+    have = set(
+        (
+            await db.execute(
+                select(DriveUploadPart.part_number).where(DriveUploadPart.upload_id == upload.id)
+            )
+        ).scalars()
+    )
+    return [n for n in range(1, total + 1) if n not in have]
 
 
 async def upload_out(db: AsyncSession, upload: DriveUpload) -> DriveUploadOut:
@@ -416,6 +449,11 @@ async def receive_part(
         await db.execute(
             text("SELECT pg_advisory_xact_lock_shared(:key)"), {"key": _lock_key(upload_id)}
         )
+        # This part number, from the store to the commit (REVIEW-v0.1.70 #5).
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(:key, :number)"),
+            {"key": _part_lock_key(upload_id), "number": number},
+        )
         upload = await _own(db, actor, upload_id)
         _require_active(upload)
         etag = await blobs.upload_part(
@@ -507,6 +545,9 @@ async def complete(
         return 202, DriveUploadCompleteOut(status="completing")
     if upload.status in ("expired", "aborted"):
         _raise_ended(upload)
+    if upload.error == "drive_upload_incomplete":
+        # The store refused parts whose ETag differed (REVIEW-v0.1.70 #5): which to send again.
+        raise incomplete(await _missing(db, upload))
     _raise_error(upload.error or "drive_upload_failed")
     raise AssertionError  # unreachable
 
@@ -536,21 +577,9 @@ async def _end_moved(db: AsyncSession, blobs: BlobStore, upload: DriveUpload) ->
 async def _start_completing(db: AsyncSession, actor: User, upload: DriveUpload) -> None:
     """active → completing, after the checks that need no object: every part is there, the
     actor may still write, the folder is still there, and (with `fail`) the name is free."""
-    total = parts_total(upload.size_bytes, upload.part_size)
-    have = set(
-        (
-            await db.execute(
-                select(DriveUploadPart.part_number).where(DriveUploadPart.upload_id == upload.id)
-            )
-        ).scalars()
-    )
-    missing = [n for n in range(1, total + 1) if n not in have]
+    missing = await _missing(db, upload)
     if missing:
-        raise conflict(
-            "drive_upload_incomplete",
-            "Some parts have not been received",
-            {"missing": missing[:MISSING_SHOWN], "missing_count": len(missing)},
-        )
+        raise incomplete(missing)
     location = await repo.location(db, upload.location_id)
     if location is None:
         raise acl.item_not_found()
@@ -636,8 +665,10 @@ async def finalize(
         try:
             whole = await _assemble(blobs, upload, parts)
         except Exception:
-            # Left completing: the housekeeping tries again (the parts are still in the store).
             log.warning("joining the parts of %s failed", upload_id, exc_info=True)
+            # Parts the store holds with another ETag go back to the client (REVIEW-v0.1.70 #5);
+            # anything else is left completing: the housekeeping tries again.
+            await _reopen_stale_parts(db, blobs, upload, parts)
             return
         if not whole:
             await _fail(db, upload_id, "drive_upload_failed")
@@ -655,6 +686,44 @@ async def finalize(
             if gone is None:
                 # The session went with its folder (a purge) while the parts were joined.
                 await blobs.delete(key)
+
+
+async def _reopen_stale_parts(
+    db: AsyncSession, blobs: BlobStore, upload: DriveUpload, parts: list[tuple[int, str]]
+) -> None:
+    """After a refused join: the parts whose ETag in the store is not the one recorded (or that
+    the store does not have) are forgotten and the session goes back to active with error
+    drive_upload_incomplete, so the client sends them again. Nothing differs (a timeout, the
+    store away): left completing."""
+    if not upload.s3_upload_id:
+        return
+    key = attachments.storage_key(upload.attachment_id)
+    try:
+        stored = await blobs.list_parts(key, upload.s3_upload_id)
+    except Exception:
+        log.warning("listing the parts of %s failed", upload.id, exc_info=True)
+        return
+    if stored is None:
+        return  # joined meanwhile, or gone: the housekeeping decides
+    stale = [number for number, etag in parts if stored.get(number) != etag]
+    if not stale:
+        return
+    row = await db.get(DriveUpload, upload.id, with_for_update=True, populate_existing=True)
+    if row is None or row.status != "completing":
+        await db.rollback()
+        return
+    log.warning("upload %s: parts %s differ in the store, asked again", upload.id, stale)
+    await db.execute(
+        delete(DriveUploadPart).where(
+            DriveUploadPart.upload_id == row.id, DriveUploadPart.part_number.in_(stale)
+        )
+    )
+    row.status = "active"
+    row.error = "drive_upload_incomplete"
+    row.updated_at = utcnow()
+    await db.flush()
+    await events.emit_upload_updated(db, row.user_id, await upload_out(db, row))
+    await db.commit()
 
 
 async def _fail(db: AsyncSession, upload_id: uuid.UUID, code: str) -> None:

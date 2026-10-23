@@ -19,6 +19,8 @@
  *   and asks the server which parts it has before going on. An expired session starts again from the first part.
  * - The completion answers 200 (done) or 202 (still joining the parts: asked again every 2 s). A name taken meanwhile
  *   (`fail`) leaves the session active with error drive_name_taken: the question is asked and the session patched.
+ *   A completion answering 409 drive_upload_incomplete (parts whose bytes the store holds differently, REVIEW-v0.1.70
+ *   #5) is answered by sending the parts the session no longer lists, then completing again.
  *   A folder moved to another drive meanwhile ends the session (409 drive_upload_target_moved, REVIEW-v0.1.70 #1):
  *   the job fails with that error and is not started again by itself (the person picks where it goes).
  * - What a restart needs is kept in `storage` (per account): the session's ids, the file's name, size, time and folder,
@@ -139,6 +141,9 @@ export interface UploadDeps {
 }
 
 const FINISHED: readonly UploadState[] = ["done", "skipped", "cancelled"];
+/** How often a completion that names parts to send again (409 drive_upload_incomplete) is answered by sending them. */
+const RESEND_ROUNDS = 3;
+
 const ACTIVE: readonly UploadState[] = ["uploading", "completing", "asking"];
 export const RETRY_MIN_MS = 2_000;
 export const RETRY_MAX_MS = 30_000;
@@ -548,7 +553,20 @@ export class UploadQueue {
       let session = await this.ensureSession(job);
       if (!session) return; // skipped
       await this.sendParts(job, source, session, controller.signal);
-      session = await this.complete(job);
+      for (let round = 1; ; round++) {
+        try {
+          session = await this.complete(job);
+          break;
+        } catch (error) {
+          // Parts the server no longer counts (the store held other bytes for them, REVIEW-v0.1.70 #5): send those
+          // again, then complete again. A few rounds at most; past them the job fails with the reason.
+          if (!(error instanceof ApiError) || error.code !== "drive_upload_incomplete" || round > RESEND_ROUNDS) throw error;
+          const fresh = await this.deps.api.driveUpload(job.uploadId!);
+          this.take(job, fresh);
+          this.update(job, { state: "uploading" });
+          await this.sendParts(job, source, fresh, controller.signal);
+        }
+      }
       if (!session) return;
     } catch (error) {
       if ((job.state as UploadState) === "paused" || (job.state as UploadState) === "cancelled" || error instanceof Paused) return;
