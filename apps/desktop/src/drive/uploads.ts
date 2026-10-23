@@ -19,6 +19,8 @@
  *   and asks the server which parts it has before going on. An expired session starts again from the first part.
  * - The completion answers 200 (done) or 202 (still joining the parts: asked again every 2 s). A name taken meanwhile
  *   (`fail`) leaves the session active with error drive_name_taken: the question is asked and the session patched.
+ *   A folder moved to another drive meanwhile ends the session (409 drive_upload_target_moved, REVIEW-v0.1.70 #1):
+ *   the job fails with that error and is not started again by itself (the person picks where it goes).
  * - What a restart needs is kept in `storage` (per account): the session's ids, the file's name, size, time and folder,
  *   and in the desktop app its path (read again from disk). A browser cannot reopen a file after the tab is gone.
  */
@@ -485,6 +487,9 @@ export class UploadQueue {
     if (upload.status === "completed" && job.state !== "done") {
       this.update(job, { state: "done", itemId: upload.item_id ?? null, sent: job.size, speed: 0 });
       this.deps.onDone?.(job);
+    } else if (upload.status === "aborted" && upload.error === "drive_upload_target_moved") {
+      // REVIEW-v0.1.70 #1: the completion ended the session because its folder moved to another drive.
+      this.update(job, { state: "failed", error: upload.error, speed: 0 });
     } else if ((upload.status === "expired" || upload.status === "aborted") && job.state !== "uploading") {
       this.update(job, { uploadId: null, clientUploadId: this.newId(), received: [], sent: 0 });
     }
@@ -726,6 +731,8 @@ export class UploadQueue {
           throw new ApiError(409, session.error, session.error);
         }
         if (session.status === "active") break;
+        // Ended because its folder moved to another drive (REVIEW-v0.1.70 #1): not started again by itself.
+        if (session.status === "aborted" && session.error === "drive_upload_target_moved") throw new ApiError(409, session.error, session.error);
         throw new ApiError(410, "drive_upload_expired", "expired");
       }
     }

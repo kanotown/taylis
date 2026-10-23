@@ -1656,6 +1656,11 @@
    "en": "This upload is being completed or is already complete.",
    "zh-Hans": "此上传正在完成或已完成。"
   },
+  "drive_upload_target_moved": {
+   "ja": "アップロードの間に、置き場所のフォルダ（またはファイル）が別のドライブへ移されました。置きたい場所へもう一度アップロードしてください",
+   "en": "While the file was uploading, its folder (or file) was moved to another drive. Upload it again where you want it.",
+   "zh-Hans": "上传期间，目标文件夹（或文件）已被移到其他云盘。请重新上传到需要的位置。"
+  },
   "drive_upload_failed": {
    "ja": "アップロードを完了できませんでした。もう一度お試しください",
    "en": "The upload couldn't be completed. Try again.",

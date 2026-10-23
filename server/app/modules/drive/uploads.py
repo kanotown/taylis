@@ -4,6 +4,11 @@ multipart upload of attachments/{attachment_id}, a completion that joins them ou
 States: active → completing → completed; active → aborted (DELETE) or expired (no part for
 DRIVE_UPLOAD_TTL_HOURS). A completion that cannot place the file (the name is taken with `fail`,
 the quota, the folder went away, the person lost access) goes back to active with `error` set.
+REVIEW-v0.1.70 #1: a folder (or the file of `target_item_id`) moved to another location since the
+session began ends it instead (aborted, error drive_upload_target_moved, 409): the session's
+location is what its permissions and its quota reservation were checked against, and a file must
+never land where the uploader cannot write (another person's マイドライブ). Its reservation goes
+and its multipart upload is dropped; the client starts a new upload where it wants the file.
 
 Parts and completions are ordered by an advisory lock per session: a part holds it shared while it
 writes to the store, the switch to `completing` takes it exclusively, so no part is replaced while
@@ -74,7 +79,9 @@ ERROR_STATUS = {
     "drive_depth_exceeded": 422,
     "drive_name_invalid": 422,
     "drive_upload_failed": 502,
+    "drive_upload_target_moved": 409,
 }
+TARGET_MOVED = "drive_upload_target_moved"
 
 
 @dataclass
@@ -122,6 +129,13 @@ def upload_expired() -> AppError:
 
 def not_active() -> AppError:
     return conflict("drive_upload_not_active", "This upload is being completed or is complete")
+
+
+def target_moved() -> AppError:
+    return conflict(
+        TARGET_MOVED,
+        "The folder (or file) of this upload moved to another drive; upload the file again",
+    )
 
 
 def part_invalid(message: str, details: dict[str, object] | None = None) -> AppError:
@@ -457,12 +471,18 @@ async def complete(
     if upload.status == "completed":
         return 200, await _completed_out(db, upload)
     if upload.status in ("expired", "aborted"):
-        raise upload_expired()
+        _raise_ended(upload)
     if upload.status == "active":
         await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _lock_key(upload_id)})
         upload = await _own(db, actor, upload_id)
         if upload.status == "active":
-            await _start_completing(db, actor, upload)
+            try:
+                await _start_completing(db, actor, upload)
+            except AppError as exc:
+                if exc.code != TARGET_MOVED:
+                    raise
+                await _end_moved(db, blobs, upload)
+                raise
         await db.commit()
     upload = await _own(db, actor, upload_id)
     if upload.status == "completing":
@@ -475,9 +495,31 @@ async def complete(
     if upload.status == "completing":
         return 202, DriveUploadCompleteOut(status="completing")
     if upload.status in ("expired", "aborted"):
-        raise upload_expired()
+        _raise_ended(upload)
     _raise_error(upload.error or "drive_upload_failed")
     raise AssertionError  # unreachable
+
+
+def _raise_ended(upload: DriveUpload) -> None:
+    """An aborted or expired session: 410, or 409 drive_upload_target_moved when the completion
+    ended it because its folder moved (REVIEW-v0.1.70 #1)."""
+    if upload.error == TARGET_MOVED:
+        raise target_moved()
+    raise upload_expired()
+
+
+async def _end_moved(db: AsyncSession, blobs: BlobStore, upload: DriveUpload) -> None:
+    """REVIEW-v0.1.70 #1: the session ends (aborted, error drive_upload_target_moved) in the
+    caller's transaction, committed here: it reserves no quota any more and its parts' rows go,
+    then its multipart upload (and an object a completion already joined) is dropped."""
+    upload.status = "aborted"
+    upload.error = TARGET_MOVED
+    upload.updated_at = utcnow()
+    await db.execute(delete(DriveUploadPart).where(DriveUploadPart.upload_id == upload.id))
+    await db.flush()
+    await events.emit_upload_updated(db, upload.user_id, await upload_out(db, upload))
+    await db.commit()
+    await _drop_objects(blobs, upload)
 
 
 async def _start_completing(db: AsyncSession, actor: User, upload: DriveUpload) -> None:
@@ -502,9 +544,19 @@ async def _start_completing(db: AsyncSession, actor: User, upload: DriveUpload) 
     if location is None:
         raise acl.item_not_found()
     (await acl.access(db, actor, location)).require_write()
-    parent = await repo.item(db, upload.parent_id)
+    parent = await repo.item(db, upload.parent_id, fresh=True)
     if parent is None or parent.trashed_at is not None:
         raise acl.item_not_found()
+    # REVIEW-v0.1.70 #1: moved to another location since the session began (checked again under
+    # the lock when the file is placed).
+    if upload.target_item_id is not None:
+        target = await repo.item(db, upload.target_item_id, fresh=True)
+        if target is None or target.trashed_at is not None:
+            raise acl.item_not_found()
+        if target.location_id != upload.location_id:
+            raise target_moved()
+    elif parent.location_id != upload.location_id:
+        raise target_moved()
     if upload.target_item_id is None and upload.on_conflict == "fail":
         folder: DriveItem | None = parent
         for segment in (upload.relative_dir or "").split("/") if upload.relative_dir else []:
@@ -580,7 +632,7 @@ async def finalize(
             await _fail(db, upload_id, "drive_upload_failed")
             return
         content_type = await _sniff(blobs, key, upload.size_bytes)
-        placed = await _place(runtime, db, settings, upload_id, content_type)
+        placed = await _place(runtime, db, settings, blobs, upload_id, content_type)
         if placed is None:
             return
         if placed:
@@ -611,6 +663,7 @@ async def _place(
     runtime: DriveRuntime,
     db: AsyncSession,
     settings: Settings,
+    blobs: BlobStore,
     upload_id: uuid.UUID,
     content_type: str,
 ) -> bool | None:
@@ -627,6 +680,9 @@ async def _place(
                 raise acl.item_not_found()
             item, version, folders = await _place_in_tx(db, settings, user, upload, content_type)
     except AppError as exc:
+        if exc.code == TARGET_MOVED:
+            await _end_moved(db, blobs, upload)
+            return None
         upload.status = "active"
         upload.error = exc.code
         upload.updated_at = utcnow()
@@ -650,6 +706,11 @@ async def _place(
 async def _place_in_tx(
     db: AsyncSession, settings: Settings, user: User, upload: DriveUpload, content_type: str
 ) -> tuple[DriveItem, DriveFileVersion, list[uuid.UUID]]:
+    """The file placed in the session's location, which the uploader must still be able to write
+    in. Every row it writes in or under is locked first and must still be in that location
+    (REVIEW-v0.1.70 #1): the folder, the folders of `relative_dir`, the file a new version goes
+    to. One moved elsewhere (a move committed before the lock was taken, or while it was waited
+    for) is drive_upload_target_moved."""
     location = await repo.location(db, upload.location_id)
     if location is None:
         raise acl.item_not_found()
@@ -661,31 +722,41 @@ async def _place_in_tx(
     name = upload.name
     if upload.target_item_id is not None:
         target = (await repo.lock_items(db, [upload.target_item_id])).get(upload.target_item_id)
-        if (
-            target is None
-            or target.kind != "file"
-            or target.trashed_at is not None
-            or target.location_id != location.id
-        ):
+        if target is None or target.kind != "file" or target.trashed_at is not None:
             raise acl.item_not_found()
+        if target.location_id != location.id:
+            raise target_moved()
         item = target
         folders.append(target.parent_id)  # type: ignore[arg-type]
     else:
         parent = (await repo.lock_items(db, [upload.parent_id])).get(upload.parent_id)
         if parent is None or parent.kind != "folder" or parent.trashed_at is not None:
             raise acl.item_not_found()
+        if parent.location_id != location.id:
+            raise target_moved()
         folder = parent
         if upload.relative_dir:
             folder, made = await service.ensure_path_in_tx(
                 db, user, parent, names.split_path(upload.relative_dir)
             )
+            if folder.location_id != location.id:
+                raise target_moved()
             folders += made
             folders_made = len(made)
         folders.append(folder.id)
         existing = await repo.child_by_key(db, folder.id, names.key(name))
         if existing is not None:
             if upload.on_conflict == "version" and existing.kind == "file":
-                item = (await repo.lock_items(db, [existing.id]))[existing.id]
+                item = (await repo.lock_items(db, [existing.id])).get(existing.id)
+                if (
+                    item is None
+                    or item.parent_id != folder.id
+                    or item.trashed_at is not None
+                    or item.kind != "file"
+                ):
+                    raise acl.item_not_found()
+                if item.location_id != location.id:
+                    raise target_moved()
             elif upload.on_conflict == "rename":
                 name = await service.free_name(db, folder.id, name, is_file=True)
             else:
@@ -919,12 +990,15 @@ async def _drop_objects(blobs: BlobStore, upload: DriveUpload) -> None:
     """The store's side of a session that will not complete: its multipart upload and any object
     an earlier completion joined but could not place. Failures are left to the orphan sweep."""
     key = attachments.storage_key(upload.attachment_id)
-    try:
-        if upload.s3_upload_id:
+    if upload.s3_upload_id:
+        try:
             await blobs.abort_multipart(key, upload.s3_upload_id)
+        except Exception:
+            log.warning("could not abort the multipart upload of %s", upload.id, exc_info=True)
+    try:
         await blobs.delete(key)
     except Exception:
-        log.warning("could not drop the objects of upload %s", upload.id, exc_info=True)
+        log.warning("could not drop the object of upload %s", upload.id, exc_info=True)
 
 
 # --- housekeeping (§6.2) -----------------------------------------------------------------------

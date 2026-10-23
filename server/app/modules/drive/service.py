@@ -572,8 +572,16 @@ async def ensure_path_in_tx(
         if existing is not None:
             if existing.kind != "folder":
                 raise name_taken(existing)
-            locked = await repo.lock_items(db, [existing.id])
-            current = locked[existing.id]
+            found = (await repo.lock_items(db, [existing.id])).get(existing.id)
+            # Moved or trashed between the lookup and the lock (REVIEW-v0.1.70 #1).
+            if (
+                found is None
+                or found.parent_id != current.id
+                or found.trashed_at is not None
+                or found.location_id != current.location_id
+            ):
+                raise item_not_found()
+            current = found
             continue
         folder = await new_folder_in_tx(db, actor, current, segment)
         changed.append(current.id)
