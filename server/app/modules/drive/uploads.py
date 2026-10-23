@@ -443,13 +443,24 @@ async def receive_part(
     return DriveUploadPartOut(part_number=number, size_bytes=size)
 
 
-async def _completed_out(db: AsyncSession, upload: DriveUpload) -> DriveUploadCompleteOut:
-    item: DriveItemOut | None = None
+async def _completed_out(
+    db: AsyncSession, actor: User, upload: DriveUpload
+) -> DriveUploadCompleteOut:
+    """The answer for a completed session, now or when asked again: the file as it is now, only
+    while the uploader can still read it (REVIEW-v0.1.70 #3: moved to someone else's マイドライブ,
+    a channel left, the trash). Otherwise `completed` without the item and its version, so a
+    name, a size or a version made after it became unreadable is never shown."""
     if upload.item_id is not None:
-        row = await repo.item(db, upload.item_id)
+        try:
+            row, _ = await service.readable_item(db, actor, upload.item_id)
+        except AppError:
+            row = None
         if row is not None:
-            item = await service.item_out(db, row)
-    return DriveUploadCompleteOut(status="completed", item=item, version_id=upload.version_id)
+            item: DriveItemOut = await service.item_out(db, row)
+            return DriveUploadCompleteOut(
+                status="completed", item=item, version_id=upload.version_id
+            )
+    return DriveUploadCompleteOut(status="completed")
 
 
 def _raise_error(code: str) -> None:
@@ -469,7 +480,7 @@ async def complete(
     restart cut off is taken over by the housekeeping."""
     upload = await _own(db, actor, upload_id)
     if upload.status == "completed":
-        return 200, await _completed_out(db, upload)
+        return 200, await _completed_out(db, actor, upload)
     if upload.status in ("expired", "aborted"):
         _raise_ended(upload)
     if upload.status == "active":
@@ -491,7 +502,7 @@ async def complete(
         await asyncio.wait({task}, timeout=settings.drive_complete_wait_seconds)
         upload = await _own(db, actor, upload_id)
     if upload.status == "completed":
-        return 200, await _completed_out(db, upload)
+        return 200, await _completed_out(db, actor, upload)
     if upload.status == "completing":
         return 202, DriveUploadCompleteOut(status="completing")
     if upload.status in ("expired", "aborted"):

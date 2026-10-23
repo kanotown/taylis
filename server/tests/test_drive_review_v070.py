@@ -270,3 +270,78 @@ async def test_folder_moved_while_the_completion_waits_for_its_lock(
     await assert_ended_moved(app, client, session)
     as_user(bob)
     assert await names_in(client, shared) == []
+
+
+# --- #3: the completion asked again after the file became unreadable ----------------------------
+
+
+async def test_completion_asked_again_hides_a_file_moved_to_someone_elses_drive(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    root = await workspace_root(client)
+    session = (await start(client, root, "old.txt", 3)).json()
+    await send_parts(client, session, b"old")
+    first = await complete(client, session["id"])
+    assert first.status_code == 200
+    made = first.json()["item"]
+    # Unchanged permissions: the same answer again (idempotent).
+    again = await complete(client, session["id"])
+    assert again.status_code == 200 and again.json() == first.json()
+
+    as_user(bob)
+    mine = await location(client, "me")
+    await move(client, made["id"], mine["root_id"])
+    renamed = await client.patch(
+        f"{API}/drive/items/{made['id']}", json={"name": "PRIVATE-NEW-NAME.txt"}
+    )
+    assert renamed.status_code == 200, renamed.text
+    await upload(
+        client, mine["root_id"], "PRIVATE-NEW-NAME.txt", b"new secret", on_conflict="version"
+    )
+
+    as_user(alice)
+    assert (await client.get(f"{API}/drive/items/{made['id']}")).status_code == 404
+    late = await complete(client, session["id"])
+    assert late.status_code == 200, late.text
+    assert late.json() == {"status": "completed", "item": None, "version_id": None}
+    assert "PRIVATE" not in late.text
+
+
+async def test_completion_asked_again_after_leaving_the_channel(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    drive_settings(app)
+    owner = await make_user(db, "owner")
+    member = await make_user(db, "member")
+    as_user(owner)
+    lab = (await client.post(f"{API}/channels", json={"name": "lab", "type": "private"})).json()
+    joined = await client.post(
+        f"{API}/channels/{lab['id']}/members", json={"user_id": str(member.id)}
+    )
+    assert joined.status_code in (200, 201, 204), joined.text
+    drive = await location(client, "channel", channel_id=lab["id"])
+    as_user(member)
+    session = (await start(client, drive["root_id"], "notes.txt", 5)).json()
+    await send_parts(client, session, b"notes")
+    first = await complete(client, session["id"])
+    assert first.status_code == 200 and first.json()["item"]["name"] == "notes.txt"
+
+    as_user(owner)
+    removed = await client.delete(f"{API}/channels/{lab['id']}/members/{member.id}")
+    assert removed.status_code in (200, 204), removed.text
+    renamed = await client.patch(
+        f"{API}/drive/items/{first.json()['item']['id']}", json={"name": "after.txt"}
+    )
+    assert renamed.status_code == 200, renamed.text
+
+    as_user(member)
+    late = await complete(client, session["id"])
+    assert late.status_code == 200
+    assert late.json() == {"status": "completed", "item": None, "version_id": None}
+    # The session itself still says how it ended (its own ids, no names).
+    state = (await client.get(f"{API}/drive/uploads/{session['id']}")).json()
+    assert state["status"] == "completed" and state["item_id"] == first.json()["item"]["id"]
