@@ -496,7 +496,9 @@ ShareLinkOut = {
 | 413 | `drive_file_too_large` / `drive_zip_too_large` / `drive_copy_too_large` | 大きさの上限（`details.limit_bytes`） |
 | 409 | `drive_quota_exceeded` | 容量の上限（`details.quota_bytes`、`used_bytes`、`location_id`。全体の上限なら `scope: "workspace"`） |
 | 410 | `drive_upload_expired` | セッションの期限切れ・取りやめ |
-| 409 | `drive_upload_incomplete` | 足りない部品がある（`details.missing: [n]`） |
+| 409 | `drive_upload_incomplete` | 足りない部品がある（`details.missing: [n]`）。ストアの部品と ETag が合わず、送り直してほしい部品もこれで返す（§28.5） |
+| 409 | `drive_upload_target_moved` | アップロードの間に置き場所のフォルダ（またはファイル）が別の場所へ移った。セッションは終わる（§28.1） |
+| 409 | `drive_zip_outdated` | ZIP のチケットを作った後に、中の項目が読めなくなった（移動・ゴミ箱）。作り直す（§28.2） |
 | 422 | `drive_part_invalid` | 部品の大きさ・SHA-256 が合わない |
 | 403 | `drive_links_disabled` | ワークスペース・場所で外部リンクが止まっている |
 | 422 | `drive_not_available` | DM・グループ DM |
@@ -536,7 +538,8 @@ ShareLinkOut = {
   オブジェクトの大きさも `head` で確かめる。
 - **部品の大きさ** 16 MiB（S3 の下限 5 MiB と部品の数の上限 10,000 の間。5 GB で 306 個、10,000 個で 160 GB まで）。app は部品を
   一時ファイルに流してから `upload_part` に渡す（メモリに 2 つ持たない。今の添付の SpooledTemporaryFile と同じ）。
-- **冪等**：セッションは `(user_id, client_upload_id)` で 1 つ。部品は番号で置き換え。完了は状態で分ける（`completed` なら同じ結果、
+- **冪等**：セッションは `(user_id, client_upload_id)` で 1 つ。部品は番号で置き換え（同じ番号の部品はストアへの書き込みから DB の確定まで
+  1 本ずつ。§28.5）。完了は状態で分ける（`completed` なら同じ結果、
   `completing` なら 202 で端末は 2 秒ごとに `GET /drive/uploads/{id}`）。送り直しで同じファイルが 2 つできることはない。
 - **名前の衝突**（完了のとき、親の行のロックの中で決める）：
   - `version`：同じ名前のファイルがあれば新しい版にする（フォルダなら 409 `drive_name_taken`）。
@@ -550,6 +553,9 @@ ShareLinkOut = {
 - **更新日時**：`content_modified_ms`（ブラウザの `File.lastModified`）は表示のための値で、並び順・同期には使わない
   （CLAUDE.md：クライアントの時刻を信用しない）。1980-01-01 から「今 + 1 日」に収め、外れれば NULL。
 - **型**：完了のときにオブジェクトの先頭 8 KB を Range で読み、今の添付と同じ `filetype` で sniff する（端末の申告は使わない）。
+- **置き場所**：完了のときに、親のフォルダ・`relative_dir` のフォルダ・版を足す同じ名前のファイル・`target_item_id` の項目を
+  ロックした上で、どれもセッションの場所にあり、その場所に今も書けることを確かめる。別の場所へ移っていれば 409
+  `drive_upload_target_moved` でセッションを終える（容量の予約を外し、マルチパートを取りやめる。§28.1）。
 - **容量**：作成のときに「使用量 + その場所の進行中のセッションの合計 + 今回」が上限を超えれば 409。完了のときに場所の行を
   `FOR UPDATE` で取ってもう一度確かめ、`used_bytes` を加える（§11）。
 - **速度制限**（プロセス内の token bucket、SECURITY.md §5 の表に足す）：セッションの作成 ユーザー 600 回 / 分（フォルダの
@@ -593,6 +599,7 @@ class BlobStore(Protocol):
     async def upload_part(self, key: str, upload_id: str, number: int, data: IO[bytes], size: int) -> str: ...  # etag
     async def complete_multipart(self, key: str, upload_id: str, parts: list[tuple[int, str]]) -> None: ...
     async def abort_multipart(self, key: str, upload_id: str) -> None: ...
+    async def list_parts(self, key: str, upload_id: str) -> dict[int, str] | None: ...  # §28.5：{番号: ETag}、無ければ None
     def list_multipart_uploads(self, prefix: str) -> AsyncIterator[tuple[str, str, datetime]]: ...
     def stream(self, key: str, start: int | None = None, end: int | None = None) -> AsyncIterator[bytes]: ...
     async def head(self, key: str) -> int | None: ...                                   # 大きさ、無ければ None
@@ -644,6 +651,8 @@ class BlobStore(Protocol):
 - 名前は UTF-8 のフラグ付き（Windows 10 以降・macOS で日本語が化けない）、Windows で使えない文字は置き換え（§4.3）、
   同じ名前が重なれば「(1)」。更新日時は `content_modified_at`（無ければ `updated_at`）を拡張タイムスタンプで入れる。空のフォルダも入れる。
 - 中身は**チケットを作った時点の**項目の一覧と版で決め、流している間の変更は入れない（途中で消された版は、GC が 24 時間待つので読める）。
+  ただし流し始めるときに、すべての項目を今も読めるか（項目と上のフォルダがゴミ箱に無く、今の場所を読める）確かめ直し、1 つでも
+  読めなければチケットを断る（409 `drive_zip_outdated`、§28.2）。
   読めない項目・ゴミ箱の項目は入れない。
 - 上限：1 つの ZIP に 10,000 件・合計 20 GB（`DRIVE_ZIP_MAX_ENTRIES` / `DRIVE_ZIP_MAX_BYTES`、超えれば 413 `drive_zip_too_large`）。
   同時に流す ZIP は 1 人 2 本、サーバ全体で 4 本（超えれば 429）。
@@ -752,7 +761,8 @@ class BlobStore(Protocol):
 - 使われ方（`drive_share_events`）：開いた・落とした・ZIP・パスワードの失敗・断った（上限）を、IP と User-Agent（200 文字）付きで
   180 日残す（周期ジョブで消す）。作った人と admin が見られる（IP は作った人には上位 2 オクテットだけ）。プライバシーの説明
   （website/docs/privacy.md）に「外部リンクの利用の記録」を足す。
-- アクセスログはトークンを伏せる（§2）：`/s/***`、`/api/v1/shares/***/…`。
+- アクセスログはトークンを伏せる（§2）：`/s/***`、`/api/v1/shares/***/…`。Caddy のエラーログ（app につながらないときの
+  `request.uri`）も Caddyfile の `log default` の `format filter` で伏せる（§28.4）。nginx の `error_log` は伏せられない（infra/README.md）。
 
 ### 9.6 Caddy と nginx
 
@@ -1436,7 +1446,7 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
 | 14 | Range・HEAD での上限のすり抜け | `bytes=0-` と途中からの初めての Range は数える。HEAD・一覧・サムネイル・プレビューは数えない。416 は数えない | `test_the_download_limit_counts_downloads_only` |
 | 15 | 悪いファイル（HTML・SVG）の配布 | 本文は常に `attachment`（画像だけ `?inline=1`）、`nosniff`、`CSP: sandbox`、PDF のプレビューも sandbox | `test_a_file_link_downloads_with_safe_headers` |
 | 16 | 検索エンジン・Referer・埋め込み | すべての応答（エラーも）に `X-Robots-Tag`・`no-referrer`・`DENY`・`no-store`。ページの meta、robots.txt、Caddy の `/s/*` のヘッダ | 同上、`driveShares.test.tsx`、compose での確かめ（§23.4） |
-| 17 | ログのトークン | app のアクセスログは `***`。Caddy はアクセスログを書かない。nginx は伏せた形式（infra/README.md） | `test_tokens_never_reach_the_logs`、nginx 1.27 での確かめ（§23.4） |
+| 17 | ログのトークン | app のアクセスログは `***`。Caddy はアクセスログを書かず、エラーログは `format filter` で `***`（§28.4）。nginx は伏せた形式（infra/README.md） | `test_tokens_never_reach_the_logs`、nginx 1.27 での確かめ（§23.4） |
 | 18 | ZIP の名前でのパスの乗っ取り | ZIP の名前は項目の名前から `names.download_name` で作る（`/`・`\`・先頭の `.` を置き換え）。`../../etc/passwd`・`..\..\evil.bat` のような名前（移行で入りうる）も 1 つの部分になる | `test_a_folder_link_zips_safely_and_counts_once` |
 | 19 | 帯域・ディスクの浪費 | 回数の上限、リンクごとのダウンロード 60 / 分、ZIP の同時の本数（リンク 2・全体 4）、ZIP の上限（10,000 件・20 GB） | `test_every_public_request_is_rate_limited_per_address`、D3 の ZIP の試験 |
 | 20 | 管理者が知らないうちに外へ出る | admin の一覧と取り消し、スイッチ、作成・変更・取り消しの監査、一覧のしるしと帯 | `test_admins_see_every_link_and_events_are_kept_180_days`、`test_a_link_is_a_random_token_kept_as_its_hash` |
@@ -1843,3 +1853,96 @@ Box・Dropbox・Nextcloud の Files の作りを見て、このアプリの見�
   ゴミ箱から ⌘[ で戻る、チャンネルの「ドライブ」のタブ。
 - **確かめていないこと**：Tauri のアプリでのマウスの戻る / 進むボタン（Web のブラウザのボタンは確かめた）、とても大きな PDF
   （数百 MB）をファイルそのものから開いた時のメモリ。
+
+## 28. REVIEW-v0.1.70 の対応（2026-10-24）
+
+v0.1.70 の後の main のレビュー（`REVIEW-v0.1.70.md`、P1 4 件・P2 1 件）をすべて直した。どれも直す前に失敗し、直した後に通る
+試験を足した（サーバは `tests/test_drive_review_v070.py`、Desktop / Web は `tests/driveUploads.test.ts`）。
+
+### 28.1 アップロードの間に置き場所が別の場所へ移る（#1、P1）
+
+- **原因**：完了はセッションを始めたときの場所（`drive_uploads.location_id`）に書けるかだけを確かめ、親のフォルダ・同じ名前の
+  ファイルが今もその場所にあるかを見ていなかった。A が研究室ドライブのフォルダに `version` で送っている間に B がそのフォルダを
+  B のマイドライブへ移し同じ名前のファイルを置くと、A の完了が B の読めないファイルに版を足していた。
+- **直したこと**：`_place_in_tx` は親のフォルダ・`relative_dir` のフォルダ（`ensure_path_in_tx` はロックした後に親・ゴミ箱・場所を
+  確かめ直す）・`version` で見つけた同じ名前のファイル・`target_item_id` のファイルをロックしてから、どれもセッションの場所にあり、
+  その場所に今も書けることを確かめる。`_start_completing`（`completing` にする前）も同じ。合わなければ 409
+  **`drive_upload_target_moved`**（新しいエラー、ja / en / zh-Hans）。セッションは `aborted`（`error` にこのコード）になり、部品の行を
+  消して容量の予約から外れ、マルチパートを取りやめ、組み立て済みのオブジェクトも消す。同じ完了をもう一度頼んでも同じ 409。
+  別の場所へ「付け替える」ことはしない（権限と容量を最初から確かめ直すことになるので、端末が新しいアップロードを始める）。
+- **端末**：Desktop / Web のアップロードの欄は、409・202 の後の問い合わせ・`drive.upload.updated` のどれで知っても、このエラーで
+  「失敗」にする（期限切れと同じに扱って、移った先へ自動で送り直すことはしない）。
+- **試験**：新しいファイル・版の追加・`relative_dir`・`target_item_id` のそれぞれで、部品の前に移す・部品の後に移す・完了が親の
+  ロックを待っている間に移す（移動のトランザクションを `move_across_in_tx` の後で止める）。B のファイルが元のまま、予約 0、
+  マルチパートとオブジェクトが残らないこと。
+
+### 28.2 ZIP のチケットの後に中の項目が読めなくなる（#2、P1）
+
+- **原因**：ZIP の計画は発行時の各ファイルの保存キーを持つ一方、流し始めるときの確かめは頼まれた最上位の項目だけだった。
+  共有フォルダの中のファイルだけを他人のマイドライブへ移しても、古いチケットからその本文を取れた。
+- **直したこと**：`ZipEntry` に項目の id と（ファイルは）版の id を持たせた。`GET /drive/zip/{ticket}` は今までの確かめ（頼んだ項目、
+  読めなければ 404）の後で `entries_readable` を行う：すべての項目が残っていて、項目とその上のフォルダがゴミ箱に無く（1 回の再帰の
+  問い合わせで上へたどる）、項目の今の場所を発行した人が読める（メンバーシップ・本人のマイドライブ）。1 つでも外れればチケットを
+  使い切って 409 **`drive_zip_outdated`**（新しいエラー。Desktop はトーストで「もう一度 ZIP でダウンロード」と出す）。読める項目は
+  今までどおり発行時の版を流す（§7.2）。
+- **試験**：子を他人のマイドライブへ、孫を入っていないチャンネルへ、フォルダとファイルをゴミ箱へ、移した先のチャンネルから抜けた。
+  版の追加・名前の変更・読める場所の中の移動の後は、発行時の中身のまま 200。
+
+### 28.3 完了の再送が読めなくなったファイルの今の名前を返す（#3、P1）
+
+- **原因**：完了済みのセッションに `complete` をもう一度頼むと、セッションの持ち主であることだけを見て今のファイルの行を返していた。
+  移された後の名前・大きさ・版が、項目の取得は 404 なのに見えた。
+- **直したこと**：`_completed_out()` は上げた本人で `readable_item` と同じ確かめを行い、読めなければ `{status: "completed", item: null,
+  version_id: null}` を返す（API の形は変えない。Desktop は `answer.item?.id ?? null` で受けていて、iOS・Android はドライブへ
+  アップロードしない）。前に完了していた場合も、この要求の中で完了した場合も同じ。`GET /drive/uploads/{id}` の `item_id`（id だけ）は
+  そのまま。
+- **試験**：他人のマイドライブへ移して名前を変え版を足した後、チャンネルから外されて名前が変わった後。権限が変わらなければ 2 回目も
+  同じ答え。
+
+### 28.4 Caddy のエラーログに共有のトークンが残る（#4、P1）
+
+- **原因**：Caddyfile に `log` が無いのでアクセスログは書かないが、Caddy の既定のロガーは `reverse_proxy` が失敗したとき
+  （app の停止・再起動中の 502）に `http.log.error` の行へ `request.uri` を丸ごと書く。「`log` が無いのでトークンは残らない」という
+  前の説明は誤りだった。
+- **直したこと**：Caddyfile の全体の設定に `log default`（`format filter`、`wrap json`）を置き、`request>uri` と
+  `request>headers>Referer` の `/s/`・`/invite/`・`/api/v1/(shares|invites|calendar/ical|hooks|drive/download|drive/zip)/` の次の部分を
+  `regexp` で `***` にする（app の `core/logging.py`・nginx の例の `map` と同じ経路）。後で `log` を足したときのアクセスログも同じに
+  伏せられる。Caddyfile は infra/ に 1 つだけ（本番・behind-proxy・デモが同じものを使う）。
+- **nginx**：`error_log` は書式を変えられず、上流のエラーのときに `request:`・`upstream:`・`referrer:` を平文で書く（nginx 1.27 で
+  確かめた）。残る危険として infra/README.md に書き、`/var/log/nginx` を root と adm だけが読めるままにするか、
+  `nginx-site.conf.example` のコメントの `error_log … crit;` を有効にする（上流のエラーは書かれなくなる）ことを対策にした。
+  本番のサーバの設定は変えていない。
+- **確かめたこと**：caddy 2.11.6 のコンテナで app を止めて 502 にし、エラーログに `/api/v1/shares/***/…`・`/api/v1/drive/zip/***` など
+  が出てダミーのトークンが 1 つも出ないこと、Referer も `***`、app を動かせば普通に通ること、`log` を足したアクセスログも伏せられること。
+
+### 28.5 同じ部品を違う中身で同時に送る（#5、P2）
+
+- **原因**：部品の PUT はセッションの共有のアドバイザリロックだけを取っていたので、同じ番号の部品どうしも並んで走った。ストアには
+  後の中身、DB には先の ETag が残ると、両方 200 なのに `CompleteMultipartUpload` が断り、セッションは `completing` のまま止まって
+  いた（やり直しても同じ ETag で失敗する）。
+- **直したこと**：
+  - 共有のロックの中で、2 つのキー（セッション・部品の番号）のアドバイザリロックを取り、ストアへの書き込みから DB の確定まで持つ。
+    DB の ETag は常にストアの部品のもの。違う番号の部品は今までどおり並んで送れ、完了は進行中の部品を待つ（排他のロック）。
+  - `BlobStore.list_parts`（S3 の ListParts、ページ送りつき。終わった・無いアップロードは None）を足した。組み立てが失敗したら
+    記録した ETag とストアの ETag を比べ、違う・無い部品の行を消してセッションを `active`（`error = drive_upload_incomplete`）に戻す。
+    完了は 409 `drive_upload_incomplete`（`details.missing`）を返し、`received_parts` からその部品が消える。ほかの失敗（時間切れ・
+    ストアが落ちている）は今までどおり `completing` のまま周期ジョブがやり直す。versitygw v1.8.0 で、ListParts の ETag が UploadPart の
+    ものと同じ形、古い ETag の組み立てが `InvalidPart`、組み立て後は None になることを確かめた。
+  - Desktop / Web のアップロードの欄は、完了の 409 `drive_upload_incomplete` に、セッションを読み直して足りない部品を送り、完了し直す
+    （3 回まで。超えればその理由で失敗）。
+- **試験**：レビューの逆順の競合（先の PUT のストアへの書き込みの後で止め、後の PUT が待つこと・両方 200・ETag が一致・中身は後の
+  もの）、DB の裏でストアの部品を置き換えた後の完了（409・`missing: [2]`・`active` に戻る・送り直して完了）。違う番号の並行、
+  同じ中身の送り直し、部品の PUT と完了の競合は今までどおり。
+
+### 28.6 確かめたこと
+
+- サーバ：`uv run pytest -n 4` 全体 1,702 件成功（専用の PostgreSQL 17 / PGroonga のコンテナ）、ruff check・ruff format --check・mypy。
+  `test_drive_review_v070.py` の 17 件のうち、直す前に失敗する 13 件（#1：5、#2：4、#3：2、#5：2）は修正のコミットを外すと失敗し、
+  ほかの 4 件（並行の部品と同じ中身の送り直し・部品と完了の競合・読める項目の版・`relative_dir` の途中のフォルダだけが移る場合）は
+  前後とも通る（直しすぎていないことの確かめ）。
+- Desktop / Web：`tsc --noEmit`、vitest 全体 3,259 件成功（`driveUploads.test.ts` に 5 件。直す前は 4 件が失敗、1 件は無限に送り直す）。
+- エラーの表を作り直したので、Android `./gradlew :app:compileDebugKotlin`、iOS のシミュレータ（iPhone 17 Pro、iOS 26.5、作って消した）
+  での `xcodebuild build` も成功。
+- 実物：caddy 2.11.6（§28.4）、nginx 1.27（`error_log` の中身）、versitygw v1.8.0（`list_parts`、§28.5）のコンテナで確かめた。
+- **確かめていないこと**：本番・開発のサーバには触れていない（Caddyfile の変更は次のデプロイで入る。nginx の `error_log … crit` は
+  運用者が選ぶ）。実 versitygw を通したアップロードの全体の流れでの競合の再現はしていない（ストアの順序は `MemoryBlobStore` の上で作った）。
