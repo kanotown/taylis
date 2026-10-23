@@ -362,7 +362,8 @@ async def create_zip(data: DriveZipIn, request: Request, user: CurrentUser, db: 
 async def download_zip(token: str, request: Request, db: Db) -> StreamingResponse:
     """The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,
     Content-Length exact. 404 for an unknown or used ticket or a person who can no longer read
-    the items; 429 while too many ZIPs stream (the ticket stays valid)."""
+    the items; 409 drive_zip_outdated when an item inside can no longer be read (moved, in the
+    trash; make a new ZIP); 429 while too many ZIPs stream (the ticket stays valid)."""
     runtime: DriveRuntime = request.app.state.drive
     settings = request.app.state.settings
     ticket = runtime.zip_tickets.peek(token) if len(token) <= 100 else None
@@ -372,6 +373,10 @@ async def download_zip(token: str, request: Request, db: Db) -> StreamingRespons
     if not await zips.still_readable(db, job):
         runtime.zip_tickets.take(token)
         raise item_not_found()
+    if not await zips.entries_readable(db, job):
+        # REVIEW-v0.1.70 #2: an entry moved where the person cannot read it, or into the trash.
+        runtime.zip_tickets.take(token)
+        raise zips.zip_outdated()
     await db.commit()
     if not runtime.zip_slots.try_acquire(
         job.user_id, per_user=settings.drive_zip_per_user, total=settings.drive_zip_total

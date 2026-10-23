@@ -1636,6 +1636,11 @@
    "en": "This is too much for one ZIP (up to 10,000 items and 20 GB). Download the folders separately.",
    "zh-Hans": "超出了一个 ZIP 可容纳的量（最多 10,000 项、20 GB）。请分开下载各文件夹。"
   },
+  "drive_zip_outdated": {
+   "ja": "ZIP を用意した後に、中のファイルの一部が移動やゴミ箱などで読めなくなりました。もう一度 ZIP でダウンロードしてください",
+   "en": "Some files in this ZIP can no longer be read (moved or put in the trash after it was prepared). Download the ZIP again.",
+   "zh-Hans": "准备 ZIP 后，其中部分文件已无法读取（被移动或放入回收站）。请重新下载 ZIP。"
+  },
   "drive_upload_expired": {
    "ja": "アップロードの期限が切れたか、取りやめられました。もう一度アップロードしてください",
    "en": "The upload expired or was cancelled. Upload the file again.",

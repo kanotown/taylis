@@ -36318,7 +36318,7 @@
     },
     "/api/v1/drive/zip/{token}": {
       "get": {
-        "description": "The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,\nContent-Length exact. 404 for an unknown or used ticket or a person who can no longer read\nthe items; 429 while too many ZIPs stream (the ticket stays valid).",
+        "description": "The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,\nContent-Length exact. 404 for an unknown or used ticket or a person who can no longer read\nthe items; 409 drive_zip_outdated when an item inside can no longer be read (moved, in the\ntrash; make a new ZIP); 429 while too many ZIPs stream (the ticket stays valid).",
         "operationId": "download_zip_api_v1_drive_zip__token__get",
         "parameters": [
           {
