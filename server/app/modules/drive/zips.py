@@ -7,6 +7,12 @@ made while it streams are not in it, and a version removed meanwhile can still b
 attachment GC waits a day before it removes bytes). Items in the trash and folders the actor
 cannot read are never in it.
 
+REVIEW-v0.1.70 #2: the plan keeps every entry's item id and version id, and when the ZIP starts
+the person must still be able to read every entry, not only the requested items: one moved to a
+location they cannot read (another person's マイドライブ, a channel they left), put in the trash
+or under a folder in the trash refuses the whole ticket with 409 drive_zip_outdated (the client
+makes a new ZIP). Entries still readable keep the versions fixed at issue time.
+
 Inside: each requested item at the top (a folder with everything under it), names made safe for
 Windows (names.download_name, the downloads' rule) and numbered 「名前 (1)」 where two would clash
 in one folder (case-insensitively, as Windows and macOS compare), folders as entries of their own
@@ -19,14 +25,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError
+from app.core.errors import AppError, conflict
 from app.core.settings import Settings
 from app.modules.drive import access as acl
 from app.modules.drive import names, service, tree, zipstream
 from app.modules.drive import repository as repo
-from app.modules.drive.models import DriveItem
+from app.modules.drive.models import DriveItem, DriveLocation
 from app.modules.users.models import User
 
 DEFAULT_ZONE = "Asia/Tokyo"
@@ -43,6 +51,30 @@ def zip_too_large(settings: Settings) -> AppError:
             "limit_entries": settings.drive_zip_max_entries,
         },
     )
+
+
+def zip_outdated() -> AppError:
+    return conflict(
+        "drive_zip_outdated",
+        "Some items of this ZIP can no longer be read; make the ZIP again",
+    )
+
+
+# The entries (and every folder above them) that are gone, in the trash, or no longer in a
+# location: one walk up from all of them at once.
+_STALE_ENTRIES = text(
+    """
+    WITH RECURSIVE up(entry, id, parent_id, trashed, steps) AS (
+        SELECT i.id, i.id, i.parent_id, i.trashed_at IS NOT NULL, 0
+        FROM drive_items i WHERE i.id = ANY(:ids)
+        UNION ALL
+        SELECT up.entry, i.id, i.parent_id, i.trashed_at IS NOT NULL, up.steps + 1
+        FROM drive_items i JOIN up ON i.id = up.parent_id
+        WHERE up.steps < 40
+    )
+    SELECT DISTINCT entry FROM up WHERE trashed
+    """
+).bindparams(bindparam("ids", type_=ARRAY(UUID(as_uuid=True))))
 
 
 @dataclass
@@ -100,9 +132,15 @@ def _entries(root: tree.Node, prefix: str, taken: _Names) -> list[zipstream.ZipE
                 size=root.version.size_bytes,
                 modified=_when(item),
                 source=root.attachment.storage_key,
+                item_id=item.id,
+                version_id=root.version.id,
             )
         ]
-    out = [zipstream.ZipEntry(name=f"{path}/", size=0, modified=_when(item), is_dir=True)]
+    out = [
+        zipstream.ZipEntry(
+            name=f"{path}/", size=0, modified=_when(item), is_dir=True, item_id=item.id
+        )
+    ]
     for child in root.children:
         out += _entries(child, f"{path}/", taken)
     return out
@@ -171,5 +209,27 @@ async def still_readable(db: AsyncSession, job: ZipJob) -> bool:
         try:
             await service.readable_item(db, user, item_id)
         except AppError:
+            return False
+    return True
+
+
+async def entries_readable(db: AsyncSession, job: ZipJob) -> bool:
+    """When the ZIP starts, after still_readable (REVIEW-v0.1.70 #2): every entry's item still
+    exists, neither it nor a folder above it is in the trash, and its location (now) is readable
+    by the person, as GET /drive/items/{id}/content would decide for each."""
+    user = await db.get(User, job.user_id)
+    if user is None:
+        return False
+    ids = list({entry.item_id for entry in job.plan.entries if entry.item_id is not None})
+    if not ids:
+        return True
+    rows = await repo.items(db, ids)
+    if len(rows) != len(ids):
+        return False
+    if (await db.execute(_STALE_ENTRIES, {"ids": ids})).first() is not None:
+        return False
+    for location_id in {row.location_id for row in rows.values()}:
+        location = await db.get(DriveLocation, location_id)
+        if location is None or not (await acl.access(db, user, location)).can_read:
             return False
     return True

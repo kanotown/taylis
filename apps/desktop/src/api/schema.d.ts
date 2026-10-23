@@ -3643,7 +3643,8 @@ export interface paths {
          * Download Zip
          * @description The ZIP of a ticket (no bearer token; used once): stored entries, ZIP64 where needed,
          *     Content-Length exact. 404 for an unknown or used ticket or a person who can no longer read
-         *     the items; 429 while too many ZIPs stream (the ticket stays valid).
+         *     the items; 409 drive_zip_outdated when an item inside can no longer be read (moved, in the
+         *     trash; make a new ZIP); 429 while too many ZIPs stream (the ticket stays valid).
          */
         get: operations["download_zip_api_v1_drive_zip__token__get"];
         put?: never;

@@ -20,6 +20,7 @@ the size and writes fields whose length then differs, which makes the length har
 """
 
 import struct
+import uuid
 import zlib
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -44,6 +45,10 @@ class ZipEntry:
     is_dir: bool = False
     # Opaque to this module: what `open_source` needs to stream the bytes (a storage key).
     source: str | None = None
+    # Opaque to this module too: the drive item (and the file's version) the entry was made from,
+    # checked again when the ZIP starts (REVIEW-v0.1.70 #2).
+    item_id: uuid.UUID | None = None
+    version_id: uuid.UUID | None = None
     # Filled while planning:
     offset: int = 0
     crc: int = 0

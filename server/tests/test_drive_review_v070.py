@@ -4,6 +4,8 @@ uploader can no longer read (#3), and the same part sent twice at once with diff
 The tests act as two people through the real API (drive_helpers.act_as)."""
 
 import asyncio
+import io
+import zipfile
 from collections.abc import Callable
 from typing import Any
 
@@ -345,3 +347,152 @@ async def test_completion_asked_again_after_leaving_the_channel(
     # The session itself still says how it ended (its own ids, no names).
     state = (await client.get(f"{API}/drive/uploads/{session['id']}")).json()
     assert state["status"] == "completed" and state["item_id"] == first.json()["item"]["id"]
+
+
+# --- #2: a ZIP ticket whose entries lost access ------------------------------------------------
+
+
+async def make_zip(client: AsyncClient, item_ids: list[str]) -> str:
+    response = await client.post(f"{API}/drive/zip", json={"item_ids": item_ids})
+    assert response.status_code == 200, response.text
+    return str(response.json()["url"])
+
+
+def outdated(response: Any) -> None:
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "drive_zip_outdated"
+    assert "CONFIDENTIAL" not in response.text
+
+
+async def zip_tree(app: FastAPI, client: AsyncClient, db: AsyncSession) -> dict[str, Any]:
+    """A shared folder of 研究室ドライブ with a file and a grandchild in a subfolder."""
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user = act_as(app)
+    as_user(alice)
+    root = await workspace_root(client)
+    shared = await folder(client, root, "shared")
+    sub = await folder(client, shared, "sub")
+    child = await upload(client, shared, "confidential.txt", b"CONFIDENTIAL")
+    grandchild = await upload(client, sub, "deeper.txt", b"CONFIDENTIAL-2")
+    return {
+        "alice": alice,
+        "bob": bob,
+        "as_user": as_user,
+        "root": root,
+        "shared": shared,
+        "sub": sub,
+        "child": child,
+        "grandchild": grandchild,
+    }
+
+
+async def test_zip_refused_when_a_child_moved_to_someone_elses_drive(
+    app: FastAPI, client: AsyncClient, db: AsyncSession
+) -> None:
+    """The review's case: only the child moves to B's マイドライブ; the folder stays readable."""
+    t = await zip_tree(app, client, db)
+    url = await make_zip(client, [t["shared"]])
+    t["as_user"](t["bob"])
+    mine = await location(client, "me")
+    await move(client, t["child"]["id"], mine["root_id"])
+    t["as_user"](t["alice"])
+    assert (await client.get(f"{API}/drive/items/{t['child']['id']}/content")).status_code == 404
+    outdated(await client.get(url))
+    assert (await client.get(url)).status_code == 404  # the ticket was used up
+    # A new ZIP has what A can read now.
+    fresh = await client.get(await make_zip(client, [t["shared"]]))
+    assert fresh.status_code == 200
+    assert sorted(zipfile.ZipFile(io.BytesIO(fresh.content)).namelist()) == [
+        "shared/",
+        "shared/sub/",
+        "shared/sub/deeper.txt",
+    ]
+
+
+async def test_zip_refused_when_a_grandchild_moved_to_a_channel_not_joined(
+    app: FastAPI, client: AsyncClient, db: AsyncSession
+) -> None:
+    t = await zip_tree(app, client, db)
+    url = await make_zip(client, [t["shared"]])
+    t["as_user"](t["bob"])
+    lab = (await client.post(f"{API}/channels", json={"name": "lab", "type": "private"})).json()
+    drive = await location(client, "channel", channel_id=lab["id"])
+    await move(client, t["grandchild"]["id"], drive["root_id"])
+    t["as_user"](t["alice"])
+    outdated(await client.get(url))
+
+
+async def test_zip_refused_when_a_child_or_its_folder_went_to_the_trash(
+    app: FastAPI, client: AsyncClient, db: AsyncSession
+) -> None:
+    t = await zip_tree(app, client, db)
+    url = await make_zip(client, [t["shared"]])
+    trashed = await client.post(f"{API}/drive/items/trash", json={"item_ids": [t["sub"]]})
+    assert trashed.status_code == 200 and trashed.json()["results"][0]["ok"]
+    outdated(await client.get(url))
+    # A file in the trash on its own.
+    url = await make_zip(client, [t["shared"]])
+    trashed = await client.post(f"{API}/drive/items/trash", json={"item_ids": [t["child"]["id"]]})
+    assert trashed.status_code == 200 and trashed.json()["results"][0]["ok"]
+    outdated(await client.get(url))
+
+
+async def test_zip_refused_when_the_entry_moved_to_a_channel_the_person_left(
+    app: FastAPI, client: AsyncClient, db: AsyncSession
+) -> None:
+    """Both channels readable when the ticket is made; A is removed from the one the file
+    moved to before the ZIP starts."""
+    drive_settings(app)
+    owner = await make_user(db, "owner")
+    member = await make_user(db, "member")
+    as_user = act_as(app)
+    as_user(owner)
+    drives = []
+    for name in ("one", "two"):
+        channel = (
+            await client.post(f"{API}/channels", json={"name": name, "type": "private"})
+        ).json()
+        joined = await client.post(
+            f"{API}/channels/{channel['id']}/members", json={"user_id": str(member.id)}
+        )
+        assert joined.status_code in (200, 201, 204), joined.text
+        drives.append((channel, await location(client, "channel", channel_id=channel["id"])))
+    box = await folder(client, drives[0][1]["root_id"], "box")
+    secret = await upload(client, box, "secret.txt", b"CONFIDENTIAL")
+    as_user(member)
+    url = await make_zip(client, [box])
+    as_user(owner)
+    await move(client, secret["id"], drives[1][1]["root_id"])
+    as_user(member)
+    # Still a member of both: the file moved but is readable, the ZIP has the issued version.
+    ok = await client.get(url)
+    assert ok.status_code == 200
+    assert zipfile.ZipFile(io.BytesIO(ok.content)).read("box/secret.txt") == b"CONFIDENTIAL"
+    as_user(owner)
+    await move(client, secret["id"], box)
+    as_user(member)
+    url = await make_zip(client, [box])
+    as_user(owner)
+    await move(client, secret["id"], drives[1][1]["root_id"])
+    removed = await client.delete(f"{API}/channels/{drives[1][0]['id']}/members/{member.id}")
+    assert removed.status_code in (200, 204), removed.text
+    as_user(member)
+    outdated(await client.get(url))
+
+
+async def test_zip_keeps_the_issued_versions_of_readable_entries(
+    app: FastAPI, client: AsyncClient, db: AsyncSession
+) -> None:
+    """A new version, a rename or a move inside the readable drive after the ticket: the ZIP
+    still has what was fixed when it was made."""
+    t = await zip_tree(app, client, db)
+    url = await make_zip(client, [t["shared"]])
+    await upload(client, t["shared"], "confidential.txt", b"NEWER", on_conflict="version")
+    await move(client, t["grandchild"]["id"], t["root"])
+    response = await client.get(url)
+    assert response.status_code == 200, response.text
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    assert archive.read("shared/confidential.txt") == b"CONFIDENTIAL"
+    assert archive.read("shared/sub/deeper.txt") == b"CONFIDENTIAL-2"
