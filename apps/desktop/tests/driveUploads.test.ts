@@ -352,6 +352,38 @@ describe("the queue", () => {
     expect(job!.state).toBe("done");
   });
 
+  it("fails, and does not start over, when the folder moved to another drive (REVIEW-v0.1.70 #1)", async () => {
+    const api = new FakeDrive();
+    api.completeDriveUpload = async (uploadId) => {
+      const session = api.sessions.get(uploadId)!;
+      session.out.status = "aborted";
+      session.out.error = "drive_upload_target_moved";
+      throw new ApiError(409, "drive_upload_target_moved", "moved");
+    };
+    const { queue } = queueWith(api);
+    const [job] = queue.add([source("moved.txt", 4)], TARGET);
+    await settle(queue);
+    expect(job!.state).toBe("failed");
+    expect(job!.error).toBe("drive_upload_target_moved");
+    expect(api.creates).toBe(1);
+  });
+
+  it("a completion that answered 202 and then ended because the folder moved fails too", async () => {
+    const api = new FakeDrive();
+    api.completeDriveUpload = async (uploadId) => {
+      const session = api.sessions.get(uploadId)!;
+      session.out.status = "aborted";
+      session.out.error = "drive_upload_target_moved";
+      return { status: "completing" };
+    };
+    const { queue } = queueWith(api);
+    const [job] = queue.add([source("moved.txt", 4)], TARGET);
+    await settle(queue);
+    expect(job!.state).toBe("failed");
+    expect(job!.error).toBe("drive_upload_target_moved");
+    expect(api.creates).toBe(1);
+  });
+
   it("starts over when the session expired", async () => {
     const api = new FakeDrive();
     const { queue } = queueWith(api, { partsPerFile: 1 });
@@ -466,5 +498,17 @@ describe("drive.upload.updated", () => {
     queue.applyEvent({ id: "u-bg", client_upload_id: job!.clientUploadId, status: "completed", item_id: "item-bg" } as DriveUploadOut);
     expect(job!.state).toBe("done");
     expect(job!.itemId).toBe("item-bg");
+  });
+
+  it("a session ended because its folder moved fails the job (REVIEW-v0.1.70 #1)", () => {
+    const api = new FakeDrive();
+    const { queue } = queueWith(api);
+    const [job] = queue.add([source("bg.bin", 0)], TARGET);
+    queue.stop();
+    job!.state = "completing";
+    job!.uploadId = "u-bg";
+    queue.applyEvent({ id: "u-bg", client_upload_id: job!.clientUploadId, status: "aborted", error: "drive_upload_target_moved" } as DriveUploadOut);
+    expect(job!.state).toBe("failed");
+    expect(job!.error).toBe("drive_upload_target_moved");
   });
 });

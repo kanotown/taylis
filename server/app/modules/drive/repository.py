@@ -97,11 +97,13 @@ async def channel_locations(
 
 
 async def item(
-    db: AsyncSession, item_id: uuid.UUID, *, for_update: bool = False
+    db: AsyncSession, item_id: uuid.UUID, *, for_update: bool = False, fresh: bool = False
 ) -> DriveItem | None:
+    """`fresh`: read again from the database, not the session's copy (a row another
+    transaction may have changed since it was loaded)."""
     if for_update:
         return await db.get(DriveItem, item_id, with_for_update=True, populate_existing=True)
-    return await db.get(DriveItem, item_id)
+    return await db.get(DriveItem, item_id, populate_existing=fresh)
 
 
 async def lock_items(db: AsyncSession, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, DriveItem]:
