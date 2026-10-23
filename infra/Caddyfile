@@ -1,4 +1,20 @@
 {
+	# Secrets in URL paths (docs/DRIVE.md §9.5, SECURITY.md §7): share links, invites, iCal feeds, webhooks, the drive's
+	# download and ZIP tickets. This site writes no access log, but Caddy's default logger still writes an error line
+	# (logger http.log.error) with the whole request.uri whenever reverse_proxy fails (the app down or restarting:
+	# 502), and any `log` added later goes through the default logger too. Mask them before anything is written, the
+	# same paths as app/core/logging.py and the nginx example's map (REVIEW-v0.1.70 #4). The query string is kept:
+	# none of these secrets travel in it. The Referer of a request from such a page is masked the same way.
+	log default {
+		output stderr
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "^(/s/|/invite/|/api/v1/(?:shares|invites|calendar/ical|hooks|drive/download|drive/zip)/)[^/?]+" "${1}***"
+				request>headers>Referer regexp "(/s/|/invite/|/api/v1/(?:shares|invites|calendar/ical|hooks|drive/download|drive/zip)/)[^/?]+" "${1}***"
+			}
+		}
+	}
 	servers {
 		# Whose X-Forwarded-For / X-Forwarded-Proto are passed on to the app (the client address it records and
 		# rate-limits, https for the Secure cookie). Only this container by default: a client cannot set them.
@@ -58,7 +74,8 @@
 	}
 
 	# The drive's external share links (M163, docs/DRIVE.md §9.3, §9.6). The token is in the path: this Caddyfile has
-	# no `log` directive, so Caddy writes no access log at all (keep it that way, or mask /s/* and /api/v1/shares/*);
+	# no `log` directive, so Caddy writes no access log, but its error log names the request when the app cannot be
+	# reached: the global `log default` above masks the token there (and in an access log, should one be added);
 	# the app masks it in its own log. The public API: the app sets noindex, no-referrer, nosniff, no framing and
 	# no-store on every answer, its errors too (app/modules/drive/public.py), so they are not repeated here.
 	@shareapi path /api/v1/shares/*

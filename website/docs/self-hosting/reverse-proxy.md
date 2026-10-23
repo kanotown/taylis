@@ -60,8 +60,10 @@ certbot --nginx -d chat.example.com --redirect
 `map $uri $chikuwachat_log_uri { … }` と `log_format chikuwachat_masked …` を `server` の外に、
 `access_log /var/log/nginx/access.log chikuwachat_masked;` を `server` の中に置きます。ログには `GET /s/*** …` のように残り、
 クエリ文字列は書きません。すでに動いているサーバでは、この 3 か所を今のサイトの設定に足して `nginx -t && systemctl reload nginx`
-してください。`error_log` は上流のエラーのときにリクエストの行を書くことがあるので、`/var/log/nginx` は root と adm だけが
-読めるままにします。
+してください。`error_log` は書式を変えられず、上流（Caddy）につながらないときにリクエストの行・上流の URL・Referer を
+そのまま書きます。`/var/log/nginx` は root と adm だけが読めるままにするか、設定例のコメントの
+`error_log /var/log/nginx/chikuwachat-error.log crit;` を有効にしてください（上流のエラーは書かれなくなります）。
+Caddy 自身のエラーログは、同梱の Caddyfile がトークンを `***` にしてから書きます。
 
 ## TLS について
 

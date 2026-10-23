@@ -449,13 +449,25 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
   絵文字セットの取り込み（`/api/v1/emoji/packs/import`、ZIP かフォルダーの合計 64 MiB）70 MB、それ以外の `/api/*` は
   1 MB（レビュー v0.1.37 #8）。
 - **アクセスログのトークン（M163、docs/DRIVE.md §9.5）**：ドライブの外部共有リンクは URL のパスにトークンがある
-  （`/s/<token>`、`/api/v1/shares/<token>/…`）。app のログと Caddy（Caddyfile に `log` が無いのでアクセスログを書かない）は
-  伏せているが、**nginx の既定のアクセスログはそのまま残す**。`nginx-site.conf.example` の `map $uri $chikuwachat_log_uri` と
+  （`/s/<token>`、`/api/v1/shares/<token>/…`）。app のログと Caddy は伏せているが、**nginx の既定のアクセスログはそのまま残す**。
+  Caddy は `log` ディレクティブが無いのでアクセスログを書かないが、**エラーログは別にあり**、`reverse_proxy` が app に
+  つながらない（app の停止・再起動中の 502）たびに `request.uri` を丸ごと書く（REVIEW-v0.1.70 #4。初めは「`log` が無いので
+  トークンは残らない」と書いていたが誤り）。そのため Caddyfile の先頭の `log default`（`format filter` の `regexp`）が、
+  `request>uri` と `request>headers>Referer` の `/s/`・`/invite/`・`/api/v1/(shares|invites|calendar/ical|hooks|drive/download|drive/zip)/`
+  の次の部分を `***` にしてから書く（エラーログも、後で `log` を足したときのアクセスログも同じ）。caddy 2.11.6 で app を止めて
+  502 にし、エラーログが `/api/v1/shares/***/…` になること、app が動いていれば普通に通ることを確かめた。`nginx-site.conf.example` の `map $uri $chikuwachat_log_uri` と
   `log_format chikuwachat_masked` を `server` の外に、`access_log /var/log/nginx/access.log chikuwachat_masked;` を `server` の中に
   置く（招待・iCal・Webhook・ドライブのダウンロードのチケットも `***` になる。クエリ文字列は書かない）。すでに動いている
   サーバでは、この 3 か所を今のサイトの設定に足して `nginx -t && systemctl reload nginx`。過去のログ（`/var/log/nginx/access.log*`）に
-  残ったリンクは、取り消すか期限切れを待つ。`error_log` は上流のエラーのときにリクエストの行を書くことがあるので、
-  `/var/log/nginx` を root と adm だけが読めるままにする。
+  残ったリンクは、取り消すか期限切れを待つ。
+- **nginx の `error_log` に残るもの（残る危険）**：nginx の `error_log` は書式を変えられず、伏せられない。上流（Caddy）に
+  つながらない・時間切れなどのとき、`error` の水準で `request: "GET /s/<token> HTTP/1.1"`、`upstream: "http://127.0.0.1:18080/s/<token>"`、
+  `referrer: "…"` を平文で書く（nginx 1.27 で Caddy を止めて確かめた）。Caddy の上の伏せ方は nginx には効かない。対策は 2 つ：
+  1. 既定：`/var/log/nginx` を root と adm だけが読めるままにし（Debian / Ubuntu の既定、`ls -ld /var/log/nginx` で確かめる）、
+     logrotate の保持を短めにする。漏れたと思うリンクは取り消す。
+  2. もっと絞るなら、`nginx-site.conf.example` の `server` の中のコメントの `error_log /var/log/nginx/chikuwachat-error.log crit;`
+     を有効にする。上流のエラーは `error` の水準なので書かれなくなる（その代わり、上流がつながらない理由は nginx のログから
+     読めなくなる。Caddy と app のログで見る）。`crit` にしてもアクセスログ（伏せた形式）には 502 が残る。
 - 手で compose を動かすときも `-f docker-compose.behind-proxy.yml` を付ける (付けずに Caddy を起動すると
   80 / 443 を取りに行き、nginx とぶつかって起動しない)。
 
