@@ -44,6 +44,8 @@ async def get_pool(pool_id: UUID, user: CurrentUser, db: Db) -> PoolOut:
 
 @router.patch("/reservation-pools/{pool_id}", response_model=PoolOut)
 async def update_pool(pool_id: UUID, body: PoolUpdate, user: CurrentUser, db: Db) -> PoolOut:
+    """Administrators and the pool's creator. Turning `walkins_enabled` off cancels the queue
+    (each person told) and keeps those on a seat until they return or an operator removes them."""
     return await service.update_pool(db, user, pool_id, body)
 
 
@@ -59,7 +61,8 @@ async def delete_pool(pool_id: UUID, user: CurrentUser, db: Db) -> Response:
 async def reserve(pool_id: UUID, user: CurrentUser, db: Db) -> PoolOut:
     """「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a
     seat: no change. 409 reservation_already_active with a booking in the pool (one reservation
-    per person and pool), reservation_pool_disabled while the pool is paused."""
+    per person and pool), reservation_pool_disabled while the pool is paused,
+    reservation_walkins_disabled when the pool takes bookings only (walkins_enabled off)."""
     return await service.reserve(db, user, pool_id)
 
 

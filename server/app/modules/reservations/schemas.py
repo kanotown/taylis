@@ -67,6 +67,11 @@ class PoolCreate(BaseModel):
         description="The zone of the booking grid (whole hours) and of the notices' times",
     )
     enabled: bool = True
+    walkins_enabled: bool = Field(
+        default=False,
+        description="Whether the pool takes 「今すぐ」 (walk-ins, the queue) besides bookings; "
+        "off (the default): booking-only",
+    )
     log_channel_id: UUID | None = Field(
         default=None,
         description="A channel the 「予約」 bot writes a line in for each change (none: no posts)",
@@ -109,6 +114,11 @@ class PoolUpdate(BaseModel):
     operator_ids: list[UUID] | None = Field(default=None, max_length=MAX_OPERATORS)
     tz: str | None = Field(default=None, max_length=64)
     enabled: bool | None = None
+    walkins_enabled: bool | None = Field(
+        default=None,
+        description="Off: the queue is cancelled (each person told), no new walk-ins; those on a "
+        "seat keep it until they return or an operator removes them",
+    )
     log_channel_id: UUID | None = None
     visibility: Visibility | None = None
     visibility_channel_id: UUID | None = None
@@ -214,6 +224,10 @@ class PoolOut(BaseModel):
     grace_minutes: int
     tz: str
     enabled: bool
+    walkins_enabled: bool = Field(
+        description="Takes 「今すぐ」 (walk-ins, the queue); false: booking-only (POST /reserve "
+        "answers 409 reservation_walkins_disabled)"
+    )
     operator_ids: list[UUID]
     log_channel_id: UUID | None
     visibility: Visibility

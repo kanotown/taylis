@@ -16353,6 +16353,12 @@
               }
             ],
             "title": "Visibility Group Id"
+          },
+          "walkins_enabled": {
+            "default": false,
+            "description": "Whether the pool takes 「今すぐ」 (walk-ins, the queue) besides bookings; off (the default): booking-only",
+            "title": "Walkins Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -16545,6 +16551,11 @@
             },
             "title": "Waiting",
             "type": "array"
+          },
+          "walkins_enabled": {
+            "description": "Takes 「今すぐ」 (walk-ins, the queue); false: booking-only (POST /reserve answers 409 reservation_walkins_disabled)",
+            "title": "Walkins Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -16556,6 +16567,7 @@
           "grace_minutes",
           "tz",
           "enabled",
+          "walkins_enabled",
           "operator_ids",
           "log_channel_id",
           "visibility",
@@ -16735,6 +16747,18 @@
               }
             ],
             "title": "Visibility Group Id"
+          },
+          "walkins_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Off: the queue is cancelled (each person told), no new walk-ins; those on a seat keep it until they return or an operator removes them",
+            "title": "Walkins Enabled"
           }
         },
         "title": "PoolUpdate",
@@ -39710,6 +39734,7 @@
         ]
       },
       "patch": {
+        "description": "Administrators and the pool's creator. Turning `walkins_enabled` off cancels the queue\n(each person told) and keeps those on a seat until they return or an operator removes them.",
         "operationId": "update_pool_api_v1_reservation_pools__pool_id__patch",
         "parameters": [
           {
@@ -39827,7 +39852,7 @@
     },
     "/api/v1/reservation-pools/{pool_id}/reserve": {
       "post": {
-        "description": "「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a\nseat: no change. 409 reservation_already_active with a booking in the pool (one reservation\nper person and pool), reservation_pool_disabled while the pool is paused.",
+        "description": "「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a\nseat: no change. 409 reservation_already_active with a booking in the pool (one reservation\nper person and pool), reservation_pool_disabled while the pool is paused,\nreservation_walkins_disabled when the pool takes bookings only (walkins_enabled off).",
         "operationId": "reserve_api_v1_reservation_pools__pool_id__reserve_post",
         "parameters": [
           {

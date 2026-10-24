@@ -289,6 +289,12 @@ def _inputs(
 
 def _plan(pool: ReservationPool, rows: list[Reservation], now: datetime) -> Plan:
     holders, bookings, waiters = _inputs(rows)
+    if not pool.walkins_enabled:
+        # A booking-only pool has no queue (2026-10-24): nobody is assigned or swapped in for it,
+        # so no walk-in is told to make way for it. Walk-ins still on a seat (from before it was
+        # turned off) keep it until they return or an operator removes them, and past their
+        # guarantee they get the remove to-do as anywhere (so the operators can reclaim it).
+        waiters = []
     return make_plan(
         pool.capacity,
         holders,
@@ -446,6 +452,7 @@ async def _outs(
                 grace_minutes=pool.grace_minutes,
                 tz=pool.tz,
                 enabled=pool.enabled,
+                walkins_enabled=pool.walkins_enabled,
                 operator_ids=list(pool.operator_ids),
                 log_channel_id=pool.log_channel_id,
                 visibility=pool.visibility,  # type: ignore[arg-type]
@@ -727,8 +734,13 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
     audience = await _audience(db, pool)
     found = await users.get_users(db, list({r.user_id for r in rows}))
     change.people.update(found)
+    if not pool.walkins_enabled:
+        # A booking-only pool keeps no queue (normally emptied when it was turned off).
+        changed |= bool(await _cancel_queue(db, change, rows))
     for row in rows:
         person = found.get(row.user_id)
+        if row.status == "cancelled":
+            continue
         if row.status in ("waiting", "booked") and (person is None or not audience.sees(person)):
             row.status, row.ended_at, row.end_reason = "cancelled", now, "cancelled"
             row.updated_at = now
@@ -983,6 +995,7 @@ async def create_pool(db: AsyncSession, actor: User, data: PoolCreate) -> PoolOu
         tz=data.tz,
         operator_ids=data.operator_ids,
         enabled=data.enabled,
+        walkins_enabled=data.walkins_enabled,
         log_channel_id=data.log_channel_id,
         visibility=data.visibility,
         visibility_channel_id=vis_channel,
@@ -999,7 +1012,11 @@ async def create_pool(db: AsyncSession, actor: User, data: PoolCreate) -> PoolOu
         action="reservation_pool.created",
         target_type="reservation_pool",
         target_id=pool.id,
-        details={"name": pool.name, "capacity": pool.capacity},
+        details={
+            "name": pool.name,
+            "capacity": pool.capacity,
+            "walkins_enabled": pool.walkins_enabled,
+        },
     )
     await _emit(db, pool.id)
     await db.commit()
@@ -1045,18 +1062,71 @@ async def update_pool(
     if fields:
         pool.updated_at = change.now
         await db.flush()
+        details: dict[str, object] = {
+            key: {"from": _plain(before[key]), "to": _plain(value)} for key, value in fields.items()
+        }
+        if "walkins_enabled" in fields:
+            cancelled = await _walkins_switched(db, change, actor)
+            if not pool.walkins_enabled:
+                details["cancelled_waiting"] = [str(r.id) for r in cancelled]
         await audit.record_in_tx(
             db,
             actor_id=actor.id,
             action="reservation_pool.updated",
             target_type="reservation_pool",
             target_id=pool.id,
-            details={
-                key: {"from": _plain(before[key]), "to": _plain(value)}
-                for key, value in fields.items()
-            },
+            details=details,
         )
     return await _finish(db, actor, change)
+
+
+async def _cancel_queue(
+    db: AsyncSession, change: _Change, rows: list[Reservation], *, by: uuid.UUID | None = None
+) -> list[Reservation]:
+    """A booking-only pool (walkins_enabled off) cancels everyone waiting in the queue; each is
+    told once (key `<id>/walkins_off`) to book instead. Those on a seat are not touched."""
+    cancelled = []
+    for row in rows:
+        if row.status != "waiting":
+            continue
+        row.status, row.ended_at, row.ended_by = "cancelled", change.now, by
+        row.end_reason = "cancelled"
+        row.updated_at = change.now
+        cancelled.append(row)
+        await _notify(
+            db,
+            change,
+            row.user_id,
+            f"{row.id}/walkins_off",
+            lambda lc: i18n.t("reservation.walkins_off", lc, pool=_pool_name(change, lc)),
+            reservation_id=row.id,
+        )
+    if cancelled:
+        await db.flush()
+    return cancelled
+
+
+async def _walkins_switched(db: AsyncSession, change: _Change, actor: User) -> list[Reservation]:
+    """「今すぐ」 turned off (the queue is cancelled, the holders stay) or on again; a line in the
+    log channel either way. Returns the cancelled requests."""
+    pool = change.pool
+    cancelled: list[Reservation] = []
+    if not pool.walkins_enabled:
+        cancelled = await _cancel_queue(
+            db, change, await repo.active_rows(db, [pool.id]), by=actor.id
+        )
+    name = await _name(db, change, actor.id)
+    if pool.walkins_enabled:
+        line = (
+            f"▶️ {name} さんが{_pool_name(change)}の「今すぐ」（順番待ち）を受け付けるようにしました"
+        )
+    else:
+        line = f"⏸ {name} さんが{_pool_name(change)}の「今すぐ」（順番待ち）を止めました"
+        if cancelled:
+            line += f"（順番待ちの {len(cancelled)} 人を取り消し）"
+    state = "on" if pool.walkins_enabled else "off"
+    await _post(db, change, line, f"{pool.id}/walkins/{state}/{change.now.isoformat()}")
+    return cancelled
 
 
 async def delete_pool(db: AsyncSession, actor: User, pool_id: uuid.UUID) -> None:
@@ -1116,6 +1186,10 @@ async def reserve(db: AsyncSession, actor: User, pool_id: uuid.UUID) -> PoolOut:
         raise _already_active(active)
     if not pool.enabled:
         raise conflict("reservation_pool_disabled", "This pool takes no reservations now")
+    if not pool.walkins_enabled:
+        raise conflict(
+            "reservation_walkins_disabled", "This pool takes bookings only (no 「今すぐ」 queue)"
+        )
     change = _change_for(pool, actor)
     row = Reservation(
         pool_id=pool.id,

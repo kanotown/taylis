@@ -1031,6 +1031,11 @@
       "en": "Choose a channel or group to limit who can see it.",
       "zh-Hans": "请选择用于限定可见范围的频道或用户组。"
     },
+    "reservation_walkins_disabled": {
+      "ja": "この枠は予約だけです（「今すぐ」は受け付けていません）",
+      "en": "This slot takes bookings only (no “Now” queue).",
+      "zh-Hans": "此名额仅接受预约（不接受“立即”排队）。"
+    },
     "reuse_detected": {
       "ja": "安全のためログアウトしました。もう一度ログインしてください",
       "en": "You were logged out for security. Log in again.",

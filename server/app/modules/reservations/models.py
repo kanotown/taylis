@@ -33,7 +33,8 @@ class ReservationPool(Base):
     seats that members book by the hour (up to `max_hours` at a time, two weeks ahead) or queue
     for right now; operators hand them out by hand (outside Taylis) and press the buttons here.
     A walk-in keeps a seat at least `min_hours` from assignment (less when a booking needs the seat
-    sooner); past that, a waiting member takes it after `grace_minutes` of notice.
+    sooner); past that, a waiting member takes it after `grace_minutes` of notice. A pool takes
+    walk-ins only while `walkins_enabled` (otherwise it is booking-only).
 
     Visible to every member (not guests) unless `visibility` narrows it to a channel's or a group's
     members (the operators, the creator and the administrators always see it). `log_channel_id`:
@@ -55,6 +56,12 @@ class ReservationPool(Base):
         ARRAY(Uuid), default=list, server_default=text("'{}'::uuid[]")
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Whether the pool takes walk-ins (「今すぐ」, the queue) besides bookings (2026-10-24). New
+    # pools are booking-only unless their creator turns it on; the pools from before 0120 take
+    # them. Off: no queue, no new walk-in seats (holders keep theirs until they go).
+    walkins_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     log_channel_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("channels.id", ondelete="SET NULL")
     )
