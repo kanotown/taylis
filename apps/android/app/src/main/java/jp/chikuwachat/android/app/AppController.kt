@@ -2815,12 +2815,16 @@ class AppController(private val app: Application) {
         if (job.serverUrl == activeKey) engine?.drive?.applyChanged(listOf(job.parentId), null)
     }
 
-    /** A notification of the drive's uploads was tapped: its workspace on screen, then the panel. */
+    /**
+     * A notification of the drive's uploads was tapped: its workspace on screen (switching if needed), then the panel
+     * of its uploads. Through the pending workspace like a message's notification (WORKSPACES.md §7): a tap that starts
+     * the app finds the saved workspaces not read yet, and startup opens that workspace first; the panel opened in the
+     * one shown last before (the uploads of another account).
+     */
     fun openDriveUploads(workspace: String?) {
-        scope.launch {
-            if (workspace != null && workspace != activeKey && workspaces.any { it.serverUrl == workspace && !it.signedOut }) switchWorkspace(workspace)
-            driveUploadsShown = true
-        }
+        pendingWorkspaceKey = workspace
+        driveUploadsShown = true
+        bringWorkspace { driveUploadsShown = true }
     }
 
     /** A drive folder to show once the main screen sees it (a /d/ link tapped in a body): over what is on screen. */
