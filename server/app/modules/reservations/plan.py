@@ -10,7 +10,9 @@ They are matched in order with the seats that can be had:
 3. walk-ins past their guarantee (the earliest end first): for a booking at once (the walk-in's
    guarantee never runs past a booking that needs the seat, and they were told `LEAD` before),
    for the queue after the grace period they are told of.
-Whoever is left waits.
+Whoever is left waits. A walk-in past its guarantee that nobody claims is taken out all the same
+(a `remove` to-do due at the guarantee's end, 2026-10-24), unless a booking starting within `LEAD`
+will take its seat, or the pool gives no guarantee at all (`min_hours` 0).
 
 Bookings are checked against every hour they cover: bookings on that hour plus walk-ins whose
 guarantee reaches into it must stay below the capacity. A walk-in's guarantee, in turn, ends
@@ -26,7 +28,8 @@ from typing import Literal
 Step = Literal["assign", "swap", "wait"]
 Kind = Literal["walkin", "booking"]
 Action = Literal["assign", "swap", "remove"]
-# remove/swap: why the seat can be taken.
+# remove/swap: why the seat can be taken (guarantee_over: a walk-in past its guarantee, for a swap
+# while someone waits and, since 2026-10-24, for a remove when nobody does).
 Reason = Literal["free", "returned", "booking_ended", "guarantee_over"]
 
 HOUR = timedelta(hours=1)
@@ -349,6 +352,25 @@ def make_plan(
             if holder is not None and not _released(holder, soon):
                 # Also when the queue has a later time for them already (review v0.1.37 #5).
                 _set_evict(plan, holder, booking.id, _goes(holder, booking, now, grace))
+
+    # Walk-ins past their guarantee nobody claims (2026-10-24, option A): the operators take them
+    # out too, from the guarantee's end; not those a booking within LEAD takes (its to-do covers
+    # them) and not in a pool without a guarantee (min_hours 0: the seat is kept until needed).
+    if min_hours > 0:
+        over = [
+            h
+            for h in holders
+            if h.id not in paired
+            and h.id not in plan.evict
+            and not _released(h, now)
+            and _evictable(h, now)
+        ]
+        for holder in sorted(over, key=lambda h: (h.guarantee_until, h.id)):
+            plan.ready.add(holder.id)
+            due = holder.guarantee_until or now
+            plan.todos.append(
+                Todo(f"remove:{holder.id}", "remove", "guarantee_over", None, holder.id, due)
+            )
 
     evicting = [h for h in holders if h.id in plan.evict]
     if evicting:

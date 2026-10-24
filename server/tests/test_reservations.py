@@ -21,7 +21,7 @@ from app.modules.groups.models import UserGroup, UserGroupMember
 from app.modules.messages.models import Message
 from app.modules.reservations import repository as reservations_repo
 from app.modules.reservations import service as reservations
-from app.modules.reservations.models import Reservation, ReservationNotice
+from app.modules.reservations.models import Reservation, ReservationNotice, ReservationPool
 from app.modules.reservations.schemas import BookingIn
 from app.modules.users.models import User
 from tests.helpers import make_user
@@ -446,7 +446,8 @@ async def test_walkin_queue_todo_is_shared_and_done_for_everyone(
     assert feed[0]["reservation"]["done_by"] == str(s["op"].id)
     assigned = await _notices(db, s["alice"])
     assert [n.key for n in assigned] == [f"{rid}/assigned"]
-    assert assigned[0].text.startswith("✅ 「Claude Premium シート」が割り当てられました。")
+    assert assigned[0].text.startswith("✅ 「Claude Premium シート」が割り当てられました（")
+    assert " まで保証）。" in assigned[0].text
     # Twice is once.
     as_user(s["op"])
     assert (await client.post(f"/api/v1/reservations/{rid}/assign")).status_code == 200
@@ -583,11 +584,19 @@ async def test_waiting_walkin_grace_then_swap(
     assert await _tick(app, now + timedelta(minutes=16)) == 1
     swap_items = [n for n in await _notices(db, s["op"]) if n.key == f"swap:{rid}:{wid}"]
     assert len(swap_items) == 1 and "保証時間が終了" in swap_items[0].text
-    # Bob gives up: the swap to-do is done and Alice keeps the seat (told so).
+    # Bob gives up: the swap to-do is done. Alice is past her guarantee, so the seat is not kept
+    # (2026-10-24): the operators get a remove to-do, Alice hears her guarantee is over (not
+    # 「そのまま使えます」).
     as_user(s["bob"])
     await client.post(f"/api/v1/reservations/{wid}/cancel")
-    assert all(n.done_at is not None for n in await _notices(db, s["op"]) if n.operator)
-    assert "そのまま使えます" in (await _notices(db, s["alice"]))[-1].text
+    op_items = [n for n in await _notices(db, s["op"]) if n.operator]
+    assert all(n.done_at is not None for n in op_items if n.key != f"remove:{rid}")
+    assert [n.key for n in op_items if n.done_at is None] == [f"remove:{rid}"]
+    alice_items = await _notices(db, s["alice"])
+    assert not any("そのまま使えます" in n.text for n in alice_items)
+    assert alice_items[-1].key == f"{rid}/guarantee_over"
+    last = alice_items[-1].text
+    assert "保証時間" in last and "担当者が外すことがあります" in last
 
 
 async def test_log_channel_lines_only_when_set(
@@ -879,3 +888,161 @@ async def test_the_swap_todo_is_due_at_the_booking_start_not_after_the_grace(
     assert [t.key for t in plan.todos] == [f"swap:{bob_id}:{booking_id}"]
     keys = [n.key for n in await _notices(db, s["op"])]
     assert f"swap:{bob_id}:{booking_id}" in keys
+
+
+# --- 2026-10-24 (option A): the guarantee's end, and 「外す」 on any holder ----------------------
+
+
+async def _walkin_holding(client: AsyncClient, s: dict[str, Any], who: str = "alice") -> str:
+    as_user = s["as_user"]
+    as_user(s[who])
+    rid = (await client.post(f"/api/v1/reservation-pools/{s['pid']}/reserve")).json()[
+        "my_reservation_id"
+    ]
+    as_user(s["op"])
+    assigned = await client.post(f"/api/v1/reservations/{rid}/assign")
+    assert assigned.status_code == 200, assigned.text
+    return str(rid)
+
+
+async def test_guarantee_over_with_nobody_waiting_is_a_remove_todo_and_one_notice(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    s = await _setup(client, db, as_user)
+    s["as_user"] = as_user
+    rid = await _walkin_holding(client, s)
+    assigned = await _notices(db, s["alice"])
+    assert "まで保証）" in assigned[-1].text  # 「…割り当てられました（HH:MM まで保証）。」
+    # Inside the guarantee: nothing to do.
+    assert await _tick(app) == 0
+    now = utcnow()
+    await db.execute(
+        update(Reservation)
+        .where(Reservation.id == uuid.UUID(rid))
+        .values(guarantee_until=now - timedelta(minutes=5))
+    )
+    await db.commit()
+    assert await _tick(app, now) == 1
+    for op in (s["op"], s["op2"]):
+        todo = [n for n in await _notices(db, op) if n.key == f"remove:{rid}"]
+        assert len(todo) == 1 and todo[0].done_at is None
+        head = "Alice さん（alice@example.jp） の「Claude Premium シート」の保証時間"
+        assert head in todo[0].text
+        assert "外して「外した」を押してください" in todo[0].text
+    told = [n for n in await _notices(db, s["alice"]) if n.key == f"{rid}/guarantee_over"]
+    assert len(told) == 1 and told[0].text.startswith("⏰ 「Claude Premium シート」の保証時間")
+    # The page lists it (not counted as waiting work, but listed), due at the guarantee's end.
+    as_user(s["op"])
+    pool = (await client.get(f"/api/v1/reservation-pools/{s['pid']}")).json()
+    assert [(t["action"], t["reason"], t["remove_id"]) for t in pool["todos"]] == [
+        ("remove", "guarantee_over", rid)
+    ]
+    assert datetime.fromisoformat(pool["todos"][0]["due_at"]) == now - timedelta(minutes=5)
+    # Ticks again: nothing new.
+    before = (len(await _notices(db, s["op"])), len(await _notices(db, s["alice"])))
+    assert await _tick(app, now + timedelta(minutes=1)) == 0
+    assert (len(await _notices(db, s["op"])), len(await _notices(db, s["alice"]))) == before
+    # Someone queues: a swap instead (after the grace), the remove to-do is done meanwhile.
+    as_user(s["bob"])
+    wid = (await client.post(f"/api/v1/reservation-pools/{s['pid']}/reserve")).json()[
+        "my_reservation_id"
+    ]
+    as_user(s["op"])
+    pool = (await client.get(f"/api/v1/reservation-pools/{s['pid']}")).json()
+    # capacity 2: Bob gets the free seat, Alice's remove stands
+    assert sorted(t["action"] for t in pool["todos"]) == ["assign", "remove"]
+    await client.post(f"/api/v1/reservations/{wid}/assign")
+    # Bob holds the second seat; Carol queues for Alice's: a swap only (after the grace).
+    as_user(s["carol"])
+    cid = (await client.post(f"/api/v1/reservation-pools/{s['pid']}/reserve")).json()[
+        "my_reservation_id"
+    ]
+    as_user(s["op"])
+    pool = (await client.get(f"/api/v1/reservation-pools/{s['pid']}")).json()
+    assert pool["todos"] == []  # the grace for Alice runs; no remove alongside
+    remove_items = [n for n in await _notices(db, s["op"]) if n.key == f"remove:{rid}"]
+    assert all(n.done_at is not None for n in remove_items)
+    assert "待っている人がいます" in (await _notices(db, s["alice"]))[-1].text
+    # Carol gives up: the remove to-do is back (on the page; already told once), and Alice
+    # hears nothing more (neither 「そのまま使えます」 nor the guarantee notice again).
+    alice_before = len(await _notices(db, s["alice"]))
+    as_user(s["carol"])
+    await client.post(f"/api/v1/reservations/{cid}/cancel")
+    as_user(s["op"])
+    pool = (await client.get(f"/api/v1/reservation-pools/{s['pid']}")).json()
+    assert [(t["action"], t["remove_id"]) for t in pool["todos"]] == [("remove", rid)]
+    assert len(await _notices(db, s["alice"])) == alice_before
+    # 外した: done for everyone, Alice told she was taken out.
+    gone = await client.post(f"/api/v1/reservations/{rid}/remove")
+    assert gone.status_code == 200 and gone.json()["todos"] == []
+    assert (await _notices(db, s["alice"]))[-1].text.startswith("⏹ 「Claude Premium シート」から外")
+
+
+async def test_operators_can_remove_any_holder_at_any_time(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    s = await _setup(client, db, as_user, capacity=3)
+    s["as_user"] = as_user
+    alice = await _walkin_holding(client, s, "alice")
+    # A booking on a seat, inside its time, can be taken out too.
+    as_user(s["bob"])
+    pool = (await _book(client, s["pid"], _hour(0), 2)).json()
+    bid = _mine(pool, s["bob"])[0]["id"]
+    as_user(s["op"])
+    assert (await client.post(f"/api/v1/reservations/{bid}/assign")).status_code == 200
+    # Members and the holder themself cannot (the holder returns the seat instead).
+    for who, rid in ((s["carol"], alice), (s["alice"], alice), (s["bob"], bid), (s["alice"], bid)):
+        as_user(who)
+        refused = await client.post(f"/api/v1/reservations/{rid}/remove")
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["error"]["code"] == "reservation_operator_required"
+    # An operator removes Alice inside her guarantee: she is told, the log line says so.
+    as_user(s["op2"])
+    done = await client.post(f"/api/v1/reservations/{alice}/remove")
+    assert done.status_code == 200 and [h["id"] for h in done.json()["holders"]] == [bid]
+    row = await db.get(Reservation, uuid.UUID(alice))
+    await db.refresh(row)
+    assert row is not None and row.status == "done" and row.end_reason == "removed"
+    assert row.ended_by == s["op2"].id
+    assert (await _notices(db, s["alice"]))[-1].key == f"{alice}/removed"
+    # Twice is once.
+    assert (await client.post(f"/api/v1/reservations/{alice}/remove")).status_code == 200
+    # The administrator removes Bob's booking (inside its time).
+    as_user(s["admin"])
+    out = await client.post(f"/api/v1/reservations/{bid}/remove")
+    assert out.status_code == 200 and out.json()["holders"] == []
+    assert (await _notices(db, s["bob"]))[-1].text.startswith("⏹ 「Claude Premium シート」から外")
+    # The pool's creator (not an administrator, not an operator) may too.
+    await db.execute(
+        update(ReservationPool)
+        .where(ReservationPool.id == uuid.UUID(s["pid"]))
+        .values(created_by=s["carol"].id)
+    )
+    await db.commit()
+    dave = await make_user(db, "dave")
+    s["dave"] = dave
+    third = await _walkin_holding(client, s, "dave")
+    as_user(s["carol"])
+    assert (await client.post(f"/api/v1/reservations/{third}/remove")).status_code == 200
+
+
+async def test_log_lines_say_the_walkin_guarantee(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    s = await _setup(client, db, as_user)
+    s["as_user"] = as_user
+    as_user(s["admin"])
+    cid = (await client.post("/api/v1/channels", json={"name": "claude"})).json()["id"]
+    await client.patch(f"/api/v1/reservation-pools/{s['pid']}", json={"log_channel_id": cid})
+    await _walkin_holding(client, s)
+    as_user(s["bob"])
+    await _book(client, s["pid"], _hour(0), 1)
+    lines = await db.execute(
+        select(Message.body)
+        .where(Message.channel_id == uuid.UUID(cid), Message.type == "user")
+        .order_by(Message.seq)
+    )
+    bodies = list(lines.scalars().all())
+    assigned = [b for b in bodies if b.startswith("✅ Alice さんに")]
+    assert len(assigned) == 1 and assigned[0].endswith(" まで保証）"), bodies
+    assert any(b.startswith("🗓 Bob さんが") and b.endswith("）") for b in bodies), bodies
