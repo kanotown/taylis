@@ -68,6 +68,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takeConversation(intent: Intent?) {
+        // DRIVE.md §6: a drive upload's notification (a name conflict to answer, a failure, done): the uploads panel.
+        if (intent?.getBooleanExtra(jp.chikuwachat.android.platform.DriveUploadNotifications.EXTRA_DRIVE_UPLOADS, false) == true) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(jp.chikuwachat.android.platform.DriveUploadNotifications.EXTRA_DRIVE_UPLOADS)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openDriveUploads(workspace)
+            return
+        }
         // The 未読・メンション / 今日の予定・締切 widgets: a conversation, an event, a task or a screen, in their workspace.
         if (intent?.hasExtra(jp.chikuwachat.android.widget.WidgetLinks.EXTRA_LINK) == true) {
             val link = jp.chikuwachat.android.widget.WidgetLinks.parse { intent.getStringExtra(it) }

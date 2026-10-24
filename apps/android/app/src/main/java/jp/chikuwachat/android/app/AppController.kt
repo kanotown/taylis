@@ -677,6 +677,8 @@ class AppController(private val app: Application) {
             }
         }.join()
         ssoPending.purgeExpired()
+        // DRIVE.md §6: drive uploads left unfinished (the app closed, the process killed, a force-stop) go on.
+        withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveUploadCenter.resume(app) }
         push.refresh() // WORKSPACES.md §8: at startup the token goes to every signed-in workspace
         // The widget picker's previews (Android 15+), once per version and language.
         scope.launch { jp.chikuwachat.android.widget.WidgetPreviews.publish(app) }
@@ -1745,6 +1747,8 @@ class AppController(private val app: Application) {
      */
     private suspend fun dropAccountWork(serverUrl: String, keepUserId: String? = null, reason: String? = null) {
         withContext(Dispatchers.IO) { jp.chikuwachat.android.share.ShareWorker.dropAccount(app, serverUrl, keepUserId, reason) }
+        // 2026-10-24 (DRIVE.md §6): the account's drive uploads, their copies, work and notifications go too.
+        withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveUploadCenter.dropAccount(app, serverUrl, keepUserId) }
         jp.chikuwachat.android.widget.AttendanceWidgetWorker.cancel(app, serverUrl)
     }
 
@@ -2772,6 +2776,52 @@ class AppController(private val app: Application) {
     /** The engine's drive (null: signed out): availability, locations, the /d/ cards, the open folder's signals. */
     val drive: jp.chikuwachat.android.sync.DriveHub? get() = engine?.drive
     val driveApi: jp.chikuwachat.android.sync.DriveApi? get() = api
+    /** 2026-10-24 (DRIVE.md §6, §27.3): folders, uploads and previews asked for from the phone. */
+    val driveWriteApi: jp.chikuwachat.android.sync.DriveWriteApi? get() = api
+
+    /**
+     * §27.3: a drive file's own bytes (`/drive/items/{id}/content` with the token) streamed into [target] (a PDF the
+     * viewer draws while it has no preview); a copy of the right size made before is used again.
+     */
+    suspend fun driveOriginalTo(item: jp.chikuwachat.android.api.DriveItemOut, target: java.io.File) {
+        val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
+        val expected = item.sizeBytes
+        if (expected != null && withContext(Dispatchers.IO) { target.isFile && target.length() == expected }) return
+        api.streamGet("/api/v1/drive/items/${item.id}/content", auth = true) { input, _ ->
+            jp.chikuwachat.android.platform.DriveFiles.streamToFile(input, target, expected, { false }) {}
+        }
+    }
+
+    // --- drive uploads from the phone (2026-10-24, DRIVE.md §6; platform/DriveUploadWorker.kt) ------------------
+
+    /** The uploads panel's sheet (opened from the drive's bar or a notification). */
+    var driveUploadsShown by mutableStateOf(false)
+
+    /**
+     * The client of a drive upload's account for the work (as [shareClient]): null when that account is not the one
+     * signed in to its server any more (REVIEW-v0.1.62 #1).
+     */
+    suspend fun driveUploadClient(job: jp.chikuwachat.android.sync.DriveUploadJob): ApiClient? {
+        ensureWorkspacesLoaded()
+        val entry = job.accountIn(workspaces) ?: return null
+        return clientFor(entry)
+    }
+
+    fun driveUploadStillOurs(job: jp.chikuwachat.android.sync.DriveUploadJob, client: ApiClient): Boolean =
+        clients[job.serverUrl] === client && job.serverUrl !in leaving && job.accountIn(workspaces) != null
+
+    /** A job finished: the folder it went into reads again (drive.changed says so too). */
+    fun driveUploadDone(job: jp.chikuwachat.android.sync.DriveUploadJob) {
+        if (job.serverUrl == activeKey) engine?.drive?.applyChanged(listOf(job.parentId), null)
+    }
+
+    /** A notification of the drive's uploads was tapped: its workspace on screen, then the panel. */
+    fun openDriveUploads(workspace: String?) {
+        scope.launch {
+            if (workspace != null && workspace != activeKey && workspaces.any { it.serverUrl == workspace && !it.signedOut }) switchWorkspace(workspace)
+            driveUploadsShown = true
+        }
+    }
 
     /** A drive folder to show once the main screen sees it (a /d/ link tapped in a body): over what is on screen. */
     data class PendingDrive(val locationId: String, val folderId: String, val itemId: String?)

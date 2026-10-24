@@ -164,7 +164,10 @@ fun DrivePane(
     val locationId = route.locationId
     val folderId = route.folderId
     if (locationId == null || folderId == null) {
-        DriveLocations(controller) { location -> onOpenFolder(location.id, location.rootId, null) }
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) { DriveLocations(controller) { location -> onOpenFolder(location.id, location.rootId, null) } }
+            DriveUploadsBar(controller)
+        }
     } else {
         androidx.compose.runtime.key(folderId) {
             DriveFolder(controller, locationId, folderId, route.itemId, onOpenFolder, onCrumb, onGone)
@@ -373,6 +376,12 @@ private fun DriveFolder(
             placeholder = location?.let { L10n.str(R.string.drive_search_in, DriveNames.locationName(it)) } ?: L10n.str(R.string.drive_search),
             sort = state.sort, order = state.order,
             onSort = { sort -> val (s, o) = DriveListing.choose(state, sort); scope.launch { loader.reload(s, o); listState.scrollToItem(0) } },
+            extra = {
+                // DRIVE.md §6: uploads and 「新しいフォルダ」 only where the location can be written (read only: none).
+                if (location?.canWrite == true) DriveUploadButton(controller, locationId, folderId, DriveNames.pathLine(state.path, kind)) {
+                    scope.launch { loader.reload() }
+                }
+            },
         )
         if (location != null && !location.canWrite) {
             Text(stringResource(R.string.drive_read_only), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -418,6 +427,7 @@ private fun DriveFolder(
                 }
             }
         }
+        DriveUploadsBar(controller) // DRIVE.md §6: the account's uploads (a tap opens the sheet)
     }
     details?.let { item ->
         DriveDetailsSheet(controller, item, kind = kind, onDismiss = { details = null }, onPreview = { details = null; viewing = item },
@@ -445,7 +455,10 @@ private fun DriveCrumbs(crumbs: List<jp.chikuwachat.android.api.DriveCrumb>, onC
 }
 
 @Composable
-private fun DriveToolbar(query: String, onQuery: (String) -> Unit, placeholder: String, sort: DriveSort, order: String, onSort: (DriveSort) -> Unit) {
+private fun DriveToolbar(
+    query: String, onQuery: (String) -> Unit, placeholder: String, sort: DriveSort, order: String, onSort: (DriveSort) -> Unit,
+    extra: @Composable () -> Unit = {},
+) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
@@ -469,6 +482,7 @@ private fun DriveToolbar(query: String, onQuery: (String) -> Unit, placeholder: 
                 }
             }
         }
+        extra()
     }
 }
 
@@ -594,7 +608,7 @@ fun DriveViewer(controller: AppController, item: DriveItemOut, onDismiss: () -> 
     when (DriveNames.viewer(item)) {
         DriveNames.Viewer.IMAGE -> ImageViewer(attachment, controller, onDismiss, onOpenElsewhere = elsewhere)
         DriveNames.Viewer.VIDEO -> VideoViewer(attachment, controller, null, onDismiss, stream = { controller.driveStreamUrl(item.id) }, onOpenElsewhere = elsewhere)
-        DriveNames.Viewer.DOCUMENT -> PdfPreviewViewer(attachment, controller, onDismiss, onOpenElsewhere = elsewhere)
+        DriveNames.Viewer.DOCUMENT -> DriveDocumentViewer(controller, item, onDismiss, onOpenElsewhere = elsewhere) // §27.3
         null -> LaunchedEffect(item.id) { onDismiss() }
     }
 }
