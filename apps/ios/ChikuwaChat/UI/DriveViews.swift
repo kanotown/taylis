@@ -552,10 +552,17 @@ struct DriveSearchList: View {
                     ContentUnavailableView.search(text: query).listRowSeparator(.hidden)
                 }
                 ForEach(hits, id: \.item.id) { hit in
-                    DriveItemRow(controller: controller, item: hit.item,
-                                 subtitle: DriveRules.whereLabel(hit.path, kind: hit.locationKind),
-                                 onOpen: { open(hit) }, onDetails: { details = hit },
-                                 onDownload: { download = DriveDownloadRequest(item: hit.item, then: $0) })
+                    VStack(alignment: .leading, spacing: 2) {
+                        DriveItemRow(controller: controller, item: hit.item,
+                                     subtitle: DriveRules.whereLabel(hit.path, kind: hit.locationKind),
+                                     onOpen: { open(hit) }, onDetails: { details = hit },
+                                     onDownload: { download = DriveDownloadRequest(item: hit.item, then: $0) })
+                        // §29: the words around a match inside the file, under the name (past the 40 pt picture).
+                        if let snippet = DriveSnippetLine.text(hit) {
+                            Text(snippet).font(.caption).lineLimit(2).padding(.leading, 52)
+                                .onTapGesture { open(hit) }
+                        }
+                    }
                 }
                 if cursor != nil {
                     Button("さらに表示") { Task { await load(more: true) } }
@@ -600,6 +607,28 @@ struct DriveSearchList: View {
             return
         }
         Task { viewing = await DriveViewing.of(hit.item, controller: controller) }
+    }
+}
+
+/// A drive search hit's snippet (docs/DRIVE.md §29): 「中身 · 2 ページ」, then the text with the found words in bold
+/// on a yellow tint. Plain text pieces from the server, never markup.
+enum DriveSnippetLine {
+    static func text(_ hit: DriveSearchHitOut) -> AttributedString? {
+        guard let parts = hit.snippet, !parts.isEmpty else { return nil }
+        var label = AttributedString(tr("中身"))
+        if let page = hit.page { label += AttributedString(" · " + tr("\(page) ページ目")) }
+        label += AttributedString("  ")
+        label.foregroundColor = .secondary
+        var line = label
+        for part in parts {
+            var piece = AttributedString(part.text)
+            if part.isHit {
+                piece.font = .caption.bold()
+                piece.backgroundColor = Color.yellow.opacity(0.35)
+            }
+            line += piece
+        }
+        return line
     }
 }
 
