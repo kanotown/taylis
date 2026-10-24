@@ -73,7 +73,8 @@ class ApiClient(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
-    jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi {
+    jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi,
+    jp.chikuwachat.android.sync.DriveWriteApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -1225,6 +1226,65 @@ class ApiClient(
     override suspend fun driveZip(itemIds: List<String>): DriveZipOut =
         request("POST", "/api/v1/drive/zip", buildJsonObject { put("item_ids", buildJsonArray { itemIds.forEach { add(JsonPrimitive(it)) } }) })
 
+    // --- drive uploads, folders and previews from the phone (2026-10-24, DRIVE.md §6, §27.3) -------------------
+
+    override suspend fun createDriveUpload(clientUploadId: String, parentId: String, name: String, sizeBytes: Long, contentModifiedMs: Long?, onConflict: String): DriveUploadOut =
+        request("POST", "/api/v1/drive/uploads", buildJsonObject {
+            put("client_upload_id", clientUploadId)
+            put("parent_id", parentId)
+            put("name", name)
+            put("size_bytes", sizeBytes)
+            if (contentModifiedMs != null) put("content_modified_ms", contentModifiedMs)
+            put("on_conflict", onConflict)
+        })
+
+    override suspend fun driveUpload(uploadId: String): DriveUploadOut = request("GET", "/api/v1/drive/uploads/$uploadId")
+
+    override suspend fun patchDriveUpload(uploadId: String, onConflict: String): DriveUploadOut =
+        request("PATCH", "/api/v1/drive/uploads/$uploadId", buildJsonObject { put("on_conflict", onConflict) })
+
+    override suspend fun putDrivePart(
+        uploadId: String, number: Int, bytes: jp.chikuwachat.android.sync.UploadBytes, start: Long, end: Long, sha256Hex: String, sent: (Long) -> Unit,
+    ): DriveUploadPartOut {
+        val body = object : RequestBody() {
+            override fun contentType() = "application/octet-stream".toMediaType()
+            override fun contentLength(): Long = end - start
+            override fun writeTo(sink: okio.BufferedSink) {
+                bytes.open(start, end).use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        sink.write(buffer, 0, read)
+                        total += read
+                        sent(total)
+                    }
+                }
+            }
+        }
+        val (text, _) = requestRaw("PUT", "/api/v1/drive/uploads/$uploadId/parts/$number", null, auth = true, retry401 = true,
+            headers = mapOf("X-Content-SHA256" to sha256Hex), rawBody = body)
+        return Codec.snake.decodeFromString(DriveUploadPartOut.serializer(), text)
+    }
+
+    override suspend fun completeDriveUpload(uploadId: String): DriveUploadCompleteOut =
+        request("POST", "/api/v1/drive/uploads/$uploadId/complete", buildJsonObject {})
+
+    override suspend fun abortDriveUpload(uploadId: String) {
+        requestRaw("DELETE", "/api/v1/drive/uploads/$uploadId", null, auth = true, retry401 = true)
+    }
+
+    override suspend fun createDriveFolder(parentId: String, name: String, clientOpId: String): DriveItemOut =
+        request("POST", "/api/v1/drive/folders", buildJsonObject {
+            put("parent_id", parentId)
+            put("name", name)
+            put("client_op_id", clientOpId)
+        })
+
+    override suspend fun requestDrivePreview(itemId: String): DrivePreviewOut =
+        request("POST", "/api/v1/drive/items/$itemId/preview", buildJsonObject {})
+
     /**
      * M166 (DRIVE.md §26): a GET whose body is handed to [read] as a stream (never whole in memory: the 300 MB file)
      * with its Content-Length (−1 unknown). `path` is relative to the server (a ticket's URL needs no token: `auth`
@@ -1316,11 +1376,13 @@ class ApiClient(
         method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean, headers: Map<String, String> = emptyMap(),
         /** M122: the answer's ETag lands here (GET /wiki/tree). */
         etagOut: Array<String?>? = null,
+        /** A body that is not JSON (a drive part's bytes); written again when the request is repeated after a refresh. */
+        rawBody: RequestBody? = null,
     ): Pair<String, Int> {
         if (auth && accessToken == null && refreshToken != null) ensureAccessToken()
         val builder = Request.Builder().url(baseUrl.trimEnd('/') + path).header("Accept", "application/json")
         headers.forEach { (name, value) -> builder.header(name, value) }
-        val requestBody = body?.let { Codec.plain.encodeToString(JsonElement.serializer(), it).toRequestBody("application/json".toMediaType()) }
+        val requestBody = rawBody ?: body?.let { Codec.plain.encodeToString(JsonElement.serializer(), it).toRequestBody("application/json".toMediaType()) }
         builder.method(method, requestBody ?: if (method == "GET") null else "".toRequestBody(null))
         if (auth) accessToken?.let { builder.header("Authorization", "Bearer $it") }
 
@@ -1341,7 +1403,7 @@ class ApiClient(
         val error = ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed", envelope?.error?.details)
         if (auth && status == 401 && error.code == "token_expired" && retry401) {
             refresh()
-            return requestRaw(method, path, body, auth, retry401 = false, headers = headers, etagOut = etagOut)
+            return requestRaw(method, path, body, auth, retry401 = false, headers = headers, etagOut = etagOut, rawBody = rawBody)
         }
         if (auth && status == 401 && error.code != "token_expired") signOut()
         throw error
