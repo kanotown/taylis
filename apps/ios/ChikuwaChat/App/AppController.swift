@@ -683,6 +683,8 @@ final class AppController {
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
             self.activeBadgeChanged(count)
         }
+        // docs/DRIVE.md §29: drive uploads waiting for the network go on once the connection is back.
+        engine.drive.onReconnect = { Task { await DriveUploadCenter.shared.online() } }
         self.engine = engine
         engine.prepareConnection = { [weak self, weak engine] refresh in
             // §7.2: renew the access token only when it is missing, about to expire, or was refused (close 4001);
@@ -719,6 +721,7 @@ final class AppController {
             await refreshSummaries()
         }
         Task { await resumeShares() } // MOBILE_UI.md §21.4: shares left pending
+        Task { await DriveUploadCenter.shared.resume() } // docs/DRIVE.md §29: drive uploads left (the share sheet's too)
     }
 
     /// Background: the server learns at once that this phone is not in use, so its pushes are not held back for

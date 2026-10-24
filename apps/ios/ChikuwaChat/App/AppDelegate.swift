@@ -16,6 +16,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// share's session, takes the results, posts the message, then lets iOS suspend it again.
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
+        // docs/DRIVE.md §29: a drive upload batch's parts ended (the app or the share sheet left the screen): attach to the
+        // batch's session, take the results, send what is missing or complete the files, then let iOS suspend it again.
+        if let batchId = BackgroundDriveTransport.batchId(ofSession: identifier) {
+            guard let processor = DriveUploadProcessor.shared else {
+                completionHandler()
+                return
+            }
+            (processor.transport as? BackgroundDriveTransport)?.attach(identifier: identifier)
+            Task {
+                await processor.run(batchId)
+                await MainActor.run { completionHandler() }
+            }
+            return
+        }
         guard let shareId = BackgroundShareTransport.shareId(ofSession: identifier), let processor = ShareProcessor.shared else {
             completionHandler()
             return

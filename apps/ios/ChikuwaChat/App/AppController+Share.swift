@@ -9,6 +9,7 @@ extension AppController {
         Keychain.migrateToSharedGroup()
         SharedContainer.saveWorkspaces(workspaces, active: activeServerUrl)
         Task { await resumeShares() }
+        Task { await DriveUploadCenter.shared.resume() } // docs/DRIVE.md §29: drive uploads a restart left
     }
 
     /// Shares the extension left (offline, closed before the uploads ended, a session to refresh) are sent now; a

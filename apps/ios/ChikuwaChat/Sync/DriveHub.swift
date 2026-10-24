@@ -35,6 +35,8 @@ final class DriveHub {
     @ObservationIgnored private var resolving: [String: Task<LinkState, Never>] = [:]
     @ObservationIgnored private var bootstraps = 0
     @ObservationIgnored var now: () -> Date = Date.init
+    /// §29: the connection came back (a bootstrap after the first): uploads waiting for the network go on now.
+    @ObservationIgnored var onReconnect: (() -> Void)?
 
     init(api: DriveApi?) {
         self.api = api
@@ -49,6 +51,7 @@ final class DriveHub {
             reconnects += 1
             // A card may be stale after a gap (renamed, trashed, my access changed): ask again when shown.
             linkTimes.removeAll()
+            onReconnect?()
         }
         await loadLocations()
     }
