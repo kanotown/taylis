@@ -284,6 +284,7 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    | `generate-previews --drive [--limit 500] [--chat-wait-seconds 600]` | ドライブのファイル (今の版) のうち、プレビューの無い PDF と Office (Nextcloud から移したもの) のプレビューを作る (M164)。各ファイルの前に、チャットの添付がプレビューを待っていれば先に通す |
    | `import-nextcloud …` | Nextcloud のファイルをドライブへ移す (M164、下の「Nextcloud からの移行」)。`--list-shares`・`--dry-run`・`--limit-bytes` |
    | `drive-usage --verify / --rebuild` | ドライブの場所ごとの使用量と件数を版と項目から数え直して比べる (M162) |
+   | `drive-index [--limit 500] [--retry-failed] [--chat-wait-seconds 600]` | ドライブのファイル (今の版) の中の文字を検索の索引に入れる (docs/DRIVE.md §29)。サーバの media loop も空いた時に同じことをするので、前からあるファイルを一晩で済ませたい・進み具合を見たいときに使う。1 件ずつ確定し、何度流しても読んでいないものだけを読む。「more files are left」ならもう一度。Office はプレビューの PDF から読むので、プレビューの無いもの (Nextcloud から移したもの) は先に `generate-previews --drive`。`--retry-failed` は失敗したものと、プレビューの失敗で飛ばしたものを読み直す |
    | `anonymize-user --username <name>` | 退会: 氏名・メール・資格情報・端末を消し、履歴は「退会したユーザー」名義で残す |
    | `export-channel --channel <name|id> --out <file.jsonl>` | チャンネルの履歴を JSONL で書き出す (添付はメタデータのみ) |
 
@@ -1084,6 +1085,8 @@ Nextcloud のデータディレクトリの写しで試すなら `--webdav …` 
 - プレビューはまだ作らない（チャットのプレビューを待たせないため）。移した後の夜に少しずつ作る：
   `… app python -m app.cli generate-previews --drive --limit 500`（「more files are left」ならまた。チャットの添付が待っていれば先に通す）。
 - 画像のサムネイルと動画のポスターは、サーバの media loop が 1 件ずつ作る（数千枚なら数時間）。
+- ファイルの中身の検索（docs/DRIVE.md §29）も media loop が空いた時に読み進める。一晩で済ませるなら、プレビューの後に
+  `… app python -m app.cli drive-index --limit 1000`（「more files are left」ならまた）。
 
 **5. 切り替えの日**：
 

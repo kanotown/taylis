@@ -2196,6 +2196,39 @@ PREVIEWS.md §3)。
   `canvas_id`・`page_id` は NULL。版を消すときは `deleted` にしてから項目の行を消す（今の GC がバイト列・サムネイル・プレビューを消す）。
 - 順序：`drive_change_seq`（項目のメタデータの変更ごと、`drive.changed` の `seq`）。
 
+### drive_texts（ドライブのファイルの中身、2026-10-24、docs/DRIVE.md §29、移行 0121）
+
+ファイルの版 1 つにつき 0 か 1 行。中身の全文検索のため、PDF（Office は変換したプレビューの PDF）・テキスト・Markdown・CSV の文字を持つ。
+読むのは **今の版** だけ。
+
+```sql
+CREATE TABLE drive_texts (
+  version_id    uuid PRIMARY KEY REFERENCES drive_file_versions(id) ON DELETE CASCADE,
+  item_id       uuid NOT NULL REFERENCES drive_items(id) ON DELETE CASCADE,
+  status        varchar(12) NOT NULL,   -- 'working'（取った・再試行待ち）| 'ready' | 'skipped' | 'failed'
+  reason        varchar(32),            -- encrypted / no_text（スキャン）/ too_large / not_text / no_preview / unreadable / read_failed / gave_up
+  body          text NOT NULL DEFAULT '',  -- NFKC に正規化、DRIVE_TEXT_MAX_BYTES（既定 1 MiB、UTF-8）まで
+  page_starts   integer[],              -- PDF：各ページの文字が body の何文字目から始まるか（検索の結果のページ）
+  pages         integer,                -- PDF のページ数
+  truncated     boolean NOT NULL DEFAULT false,
+  attempts      integer NOT NULL DEFAULT 0,  -- 試行の番号（結果を書けるのは同じ番号の試行だけ）
+  next_at       timestamptz,            -- working のリース・再試行の時刻
+  extracted_at  timestamptz,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  CHECK (status IN ('working', 'ready', 'skipped', 'failed'))
+);
+CREATE INDEX drive_texts_item_idx ON drive_texts (item_id);
+CREATE INDEX drive_texts_working_idx ON drive_texts (next_at) WHERE status = 'working';
+CREATE INDEX drive_texts_body_pgroonga_idx ON drive_texts USING pgroonga (body);  -- メッセージと同じトークナイザ
+```
+
+- 行が無い：まだ読んでいない、または読むものが無い（画像・動画・ZIP など、行は作らない）。Office はプレビューが `ready`
+  になるまで行を作らない（待つ）。
+- 新しい版・版を戻すと、同じトランザクションで前の版の行を消す（`drive.texts.forget_replaced_in_tx`）。完全削除・版の整理は CASCADE。
+  検索は `drive_items.current_version_id = drive_texts.version_id` の行だけを見る（二重の守り）。ゴミ箱の項目は検索で除く（行は残し、
+  戻せばそのまま探せる）。
+- 将来の意味検索（RAG）では、この `body` を区切って `drive_text_embeddings` を足せる（`message_embeddings` と同じ考え方、§6）。
+
 ### drive_share_*（外部共有リンク、M163、docs/DRIVE.md §9・§23、移行 0119）
 
 - `drive_share_links`：リンク 1 本。`token_hash`（トークンの SHA-256、一意。トークン自体は持たない）、`password_hash`（Argon2id、NULL = なし）と
