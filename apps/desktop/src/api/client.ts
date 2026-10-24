@@ -2137,9 +2137,13 @@ export class ApiClient {
     return this.request("PATCH", "/api/v1/admin/drive/settings", body);
   }
 
-  /** §12: names of files and folders in the drives I can read (`location_id`: one of them). */
-  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | null; cursor?: string | null; limit?: number }): Promise<DriveSearchOut> {
+  /**
+   * §12: names of files and folders in the drives I can read (`location_id`: one of them). §29 `content`: the text inside
+   * the files too (each hit says what matched, with a marked snippet and the PDF page).
+   */
+  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | null; cursor?: string | null; limit?: number; content?: boolean }): Promise<DriveSearchOut> {
     const params = new URLSearchParams({ q: query.q });
+    if (query.content) params.set("content", "true");
     if (query.location_id) params.set("location_id", query.location_id);
     if (query.kind) params.set("kind", query.kind);
     if (query.cursor) params.set("cursor", query.cursor);

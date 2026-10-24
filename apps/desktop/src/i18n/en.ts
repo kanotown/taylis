@@ -3551,8 +3551,10 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "drive.upload.minutesLeft": "{n} min left",
   "drive.upload.hoursLeft": "{h} h {m} min left",
   "search.tab.drive": "Drive",
-  "search.drive.empty": "Searches file and folder names (not their contents)",
+  "search.drive.empty": "Searches file and folder names and the text inside PDF, Office and text files",
   "search.drive.none": "No file or folder matches “{q}”",
+  "search.drive.inside": "Inside",
+  "search.drive.page": "Page {page}",
   // M163 (docs/DRIVE.md §9, §17.4): external share links, their admin section and the public page.
   "drive.share.open": "Share link",
   "drive.share.title": "Share links of “{name}”",

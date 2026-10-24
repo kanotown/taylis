@@ -155,6 +155,8 @@ type PdfViewerProps =
       /** Another source of the pages (a drive PDF's own bytes while its preview is not made). Keep it stable. */
       load?: () => Promise<ArrayBuffer>;
       hold?: PdfHold | null;
+      /** docs/DRIVE.md §29: the page to show first (a drive search's match inside the file), from 1. */
+      initialPage?: number | null;
     }
   | { attachment: PdfSource; load: () => Promise<ArrayBuffer>; buttons: ReactNode; onDownload: () => void; onClose: () => void; hold?: undefined };
 
@@ -163,6 +165,7 @@ export function PdfViewer(props: PdfViewerProps) {
   const controller = "controller" in props ? props.controller : null;
   const load = props.load ?? null;
   const hold = props.hold ?? null;
+  const initialPage = "initialPage" in props ? (props.initialPage ?? null) : null;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -258,6 +261,18 @@ export function PdfViewer(props: PdfViewerProps) {
     if (element && element.scrollHeight > 0 && keepAt.current === null) keepAt.current = element.scrollTop / element.scrollHeight;
     setZoom(next);
   };
+  // §29: opened at a search match's page, once, as soon as the pages are laid out (no smooth scroll from the top).
+  const shownFirst = useRef(false);
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || !doc || shownFirst.current || !initialPage || initialPage <= 1) return;
+    const number = Math.min(initialPage, doc.numPages);
+    const node = element.querySelector<HTMLElement>(`[data-pdf-page='${number}']`);
+    if (!node) return;
+    shownFirst.current = true;
+    element.scrollTop = Math.max(0, node.offsetTop - 12);
+    setPage(number);
+  }, [doc, initialPage, width]);
   useLayoutEffect(() => {
     const element = scroller.current;
     if (!element || keepAt.current === null) return;

@@ -24,6 +24,7 @@ import { ApiError, describeError } from "../api/errors";
 import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, DriveTrashEntryOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { appendPage, breadcrumbs, clickAction, clickSelection, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
+import { openPage } from "../drive/snippet";
 import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
 import { coalesce } from "../sync/drive";
@@ -33,6 +34,7 @@ import { isTauri } from "../platform/env";
 import { DeleteForeverDialog, MoveDialog, NewFolderDialog, RenameDialog } from "./DriveDialogs";
 import { SendToConversationDialog } from "./DriveConversation";
 import { driveLink } from "./permalink";
+import { DriveSnippet } from "./DriveSnippet";
 import { DriveViewer } from "./DriveViewer";
 import { VersionsDialog } from "./DriveVersions";
 import { SharedMark, ShareLinksDialog } from "./DriveShareDialog";
@@ -192,6 +194,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const [details, setDetails] = useState(false);
   const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | { kind: "send"; item: DriveItemOut } | null>(null);
   const [viewing, setViewing] = useState<DriveItemOut | null>(null);
+  // §29: the page a document found by its text opens at (stepping to another file starts at its top).
+  const [openAt, setOpenAt] = useState<{ id: string; page: number } | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -321,7 +325,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      void api.searchDrive({ q: words, location_id: location.id, limit: 50 }).then(
+      void api.searchDrive({ q: words, location_id: location.id, limit: 50, content: true }).then(
         (out) => { if (!cancelled) setHits(out.items); },
         (error) => { if (!cancelled) { setHits([]); controller.setError(error); } },
       );
@@ -345,8 +349,11 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       onFolder(item.id);
       return;
     }
-    if (viewerKind(item)) setViewing(item);
-    else {
+    if (viewerKind(item)) {
+      const page = openPage(hits?.find((hit) => hit.item.id === item.id));
+      setOpenAt(page ? { id: item.id, page } : null);
+      setViewing(item);
+    } else {
       // §27: a file no viewer shows opens its details (with 「ダウンロード」), never a download by itself.
       setSelected(new Set([item.id]));
       setAnchor(item.id);
@@ -851,7 +858,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                   <td className="pl-4">
                     <ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} />
                   </td>
-                  <td className="overflow-hidden pr-2">
+                  <td className={cn("overflow-hidden pr-2", hit?.snippet && "py-1.5")}>
                     <div className="flex min-w-0 items-center gap-3">
                       <RowIcon controller={controller} item={item} />
                       <div className="min-w-0 flex-1">
@@ -860,6 +867,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                           <SharedMark count={item.link_count} />
                         </span>
                         {hit && <div className="truncate text-[11.5px] text-muted">{pathLine(hit.path, locationName(location))}</div>}
+                        {hit && <DriveSnippet hit={hit} className="mt-0.5" />}
                       </div>
                     </div>
                   </td>
@@ -1012,7 +1020,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           }}
         />
       )}
-      {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} />}
+      {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} page={openAt?.id === viewing.id ? openAt.page : null} />}
     </div>
   );
 }
