@@ -719,6 +719,7 @@ fun MainScreen(controller: AppController) {
     // M95 (WORKFLOWS.md §8 4.): a workflow's form, from the ＋ menu, channel details, `/name` or a 「⚡ name」 label.
     controller.workflowForm?.let { session -> WorkflowFormScreen(controller, session, version, onDismiss = { controller.workflowForm = null }) }
     DriveTransferDialog(controller) // M166: a drive download's progress and 「キャンセル」 (DRIVE.md §26)
+    DriveUploadDialogs(controller) // DRIVE.md §6: the uploads panel's sheet and a name conflict's question
     AiSheets(controller) // M66: the 「要約」 choices and the summary sheet (docs/AI.md §6)
     val openChannel = selectedChannel
 
