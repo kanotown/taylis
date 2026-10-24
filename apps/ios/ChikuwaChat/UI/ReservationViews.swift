@@ -262,6 +262,13 @@ enum ReservationRules {
         }
     }
 
+    /// The pool's footer: the booking rules, and the walk-in ones only when it takes 「今すぐ」 (2026-10-24).
+    static func rulesText(_ pool: PoolOut) -> String {
+        pool.takesWalkins
+            ? tr("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を保証の時間（次の予約が始まるまで）使えます。保証が過ぎると担当者が外します。")
+            : tr("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで。予約・利用中は 1 つの枠で 1 人 1 つまで。")
+    }
+
     static func todoButton(_ todo: ReservationTodo) -> String {
         switch todo.action {
         case "assign": tr("割り当てた")
@@ -271,8 +278,8 @@ enum ReservationRules {
     }
 }
 
-/// 「予約」: per pool, my reservations, 「予約する」 / 「今すぐ (順番待ち)」, the operators' to-do and a day's hours.
-/// Pool settings are on the desktop / web only.
+/// 「予約」: per pool, my reservations, 「予約する」 / 「今すぐ (順番待ち)」 (not in a booking-only pool), the operators'
+/// to-do and a day's hours. Pool settings (also whether a pool takes 「今すぐ」) are on the desktop / web only.
 struct ReservationsView: View {
     static let selectionId = "reservations"
     @Bindable var controller: AppController
@@ -353,11 +360,14 @@ struct PoolSection: View {
                 }
                     .buttonStyle(.borderedProminent)
                     .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
-                if mine.walkin == nil {
+                if pool.takesWalkins && mine.walkin == nil {
                     Button("今すぐ（順番待ち）") { run { _ = await controller.reservePool(pool.id) } }
                         .buttonStyle(.bordered)
                         .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
                 }
+            }
+            if !pool.takesWalkins {
+                Text("この枠は予約だけです").font(.footnote).foregroundStyle(.secondary)
             }
             if let active {
                 VStack(alignment: .leading, spacing: 4) {
@@ -412,7 +422,7 @@ struct PoolSection: View {
                 if !pool.enabled { Text("停止中").foregroundStyle(.secondary) }
             }
         } footer: {
-            Text("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を保証の時間（次の予約が始まるまで）使えます。保証が過ぎると担当者が外します。")
+            Text(ReservationRules.rulesText(pool))
         }
         .disabled(busy)
         .sheet(isPresented: $booking) { BookingSheet(controller: controller, pool: pool, initialDay: day) }

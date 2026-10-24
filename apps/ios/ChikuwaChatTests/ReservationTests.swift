@@ -51,6 +51,26 @@ final class ReservationTests: XCTestCase {
         XCTAssertEqual(ReservationRules.todoCount([pool]), 0) // only due to-dos count
     }
 
+    /// 2026-10-24: a pool may take bookings only (walkins_enabled false); a server from before the setting does not
+    /// send it, and every pool took walk-ins then.
+    func testABookingOnlyPool() throws {
+        let old = #"{"id": "p1", "name": "x", "capacity": 1, "min_hours": 6, "grace_minutes": 15, "tz": "Asia/Tokyo", "enabled": true, "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z", "max_hours": 6, "operator_ids": [], "visibility": "all", "holders": [], "waiting": [], "bookings": [], "todos": [], "can_manage": false, "can_operate": false, "horizon_days": 14}"#
+        let before = try JSON.snakeDecoder.decode(PoolOut.self, from: Data(old.utf8))
+        XCTAssertNil(before.walkinsEnabled)
+        XCTAssertTrue(before.takesWalkins)
+        let off = try JSON.snakeDecoder.decode(
+            PoolOut.self, from: Data(old.replacingOccurrences(of: #""enabled": true"#, with: #""enabled": true, "walkins_enabled": false"#).utf8))
+        XCTAssertEqual(off.walkinsEnabled, false)
+        XCTAssertFalse(off.takesWalkins)
+        XCTAssertTrue(PoolOut(id: "p", name: "x", capacity: 1, walkinsEnabled: true).takesWalkins)
+        // The footer leaves the walk-in rules out.
+        XCTAssertTrue(ReservationRules.rulesText(PoolOut(id: "p", name: "x", capacity: 1, maxHours: 3)).contains("「今すぐ」"))
+        let bookingOnly = ReservationRules.rulesText(PoolOut(id: "p", name: "x", capacity: 1, maxHours: 3, walkinsEnabled: false))
+        XCTAssertFalse(bookingOnly.contains("今すぐ"))
+        XCTAssertFalse(bookingOnly.contains("保証"))
+        XCTAssertTrue(bookingOnly.contains("3"))
+    }
+
     func testStartsDurationsAndHours() {
         let pool = PoolOut(id: "p1", name: "シート", capacity: 2, bookings: [booking("b1", user: "a", from: 12, to: 15), booking("b2", user: "b", from: 13, to: 14)])
         let day = tokyo.startOfDay(for: now)
