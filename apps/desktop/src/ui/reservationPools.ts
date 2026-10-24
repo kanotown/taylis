@@ -48,6 +48,15 @@ export function whenLabel(iso: string, now: Date): string {
   return dayStart(d).getTime() === dayStart(now).getTime() ? hm(d) : `${dayLabel(d, now)} ${hm(d)}`;
 }
 
+/**
+ * Whether the pool takes 「今すぐ」 (walk-ins, the queue) besides bookings (2026-10-24, RESERVATIONS.md §1). A
+ * booking-only pool hides the button, the queue and the walk-in rules; walk-ins still on a seat stay in 「利用中」.
+ * A server from before the setting does not send it: every pool took walk-ins then.
+ */
+export function takesWalkins(pool: PoolOut): boolean {
+  return pool.walkins_enabled !== false;
+}
+
 /** The bookings still counting (booked or on a seat). */
 export function liveBookings(pool: PoolOut): ReservationOut[] {
   return pool.bookings.filter((b) => b.status === "booked" || b.status === "holding" || b.status === "returning");

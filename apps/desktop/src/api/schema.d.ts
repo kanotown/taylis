@@ -4684,7 +4684,11 @@ export interface paths {
         delete: operations["delete_pool_api_v1_reservation_pools__pool_id__delete"];
         options?: never;
         head?: never;
-        /** Update Pool */
+        /**
+         * Update Pool
+         * @description Administrators and the pool's creator. Turning `walkins_enabled` off cancels the queue
+         *     (each person told) and keeps those on a seat until they return or an operator removes them.
+         */
         patch: operations["update_pool_api_v1_reservation_pools__pool_id__patch"];
         trace?: never;
     };
@@ -4725,7 +4729,8 @@ export interface paths {
          * Reserve
          * @description 「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a
          *     seat: no change. 409 reservation_already_active with a booking in the pool (one reservation
-         *     per person and pool), reservation_pool_disabled while the pool is paused.
+         *     per person and pool), reservation_pool_disabled while the pool is paused,
+         *     reservation_walkins_disabled when the pool takes bookings only (walkins_enabled off).
          */
         post: operations["reserve_api_v1_reservation_pools__pool_id__reserve_post"];
         delete?: never;
@@ -12865,6 +12870,12 @@ export interface components {
             visibility_channel_id?: string | null;
             /** Visibility Group Id */
             visibility_group_id?: string | null;
+            /**
+             * Walkins Enabled
+             * @description Whether the pool takes 「今すぐ」 (walk-ins, the queue) besides bookings; off (the default): booking-only
+             * @default false
+             */
+            walkins_enabled: boolean;
         };
         /** PoolOut */
         PoolOut: {
@@ -12960,6 +12971,11 @@ export interface components {
              * @description The walk-in queue, in order
              */
             waiting: components["schemas"]["ReservationOut"][];
+            /**
+             * Walkins Enabled
+             * @description Takes 「今すぐ」 (walk-ins, the queue); false: booking-only (POST /reserve answers 409 reservation_walkins_disabled)
+             */
+            walkins_enabled: boolean;
         };
         /**
          * PoolUpdate
@@ -12991,6 +13007,11 @@ export interface components {
             visibility_channel_id?: string | null;
             /** Visibility Group Id */
             visibility_group_id?: string | null;
+            /**
+             * Walkins Enabled
+             * @description Off: the queue is cancelled (each person told), no new walk-ins; those on a seat keep it until they return or an operator removes them
+             */
+            walkins_enabled?: boolean | null;
         };
         /** PosterOut */
         PosterOut: {
