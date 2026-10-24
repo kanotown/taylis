@@ -215,6 +215,19 @@ it("CANVAS.md §24: someone else's version waits while an IME composition is ope
   expect(saveState()).toBe("saved");
 });
 
+it("CANVAS.md §24.4: the canvas the tab opened on stays when another canvas of the conversation is saved", async () => {
+  const { server, alice, channelId } = await setup();
+  const one = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: false, body: "# 一つ目", title: "一つ目" });
+  const two = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: false, body: "# 二つ目", title: "二つ目" });
+  await openCanvasTab();
+  const shown = editor()!.value; // the most recently updated one
+  const other = shown === "# 一つ目" ? two : one;
+  // Someone saves the other one: it becomes the most recent, the open one stays.
+  server.saveCanvas(alice.id, other.id, { base_rev_id: other.head_rev_id, body: other.body + "\n追記", client_save_id: crypto.randomUUID(), on_conflict: "fail" });
+  await settle(60);
+  expect(editor()!.value).toBe(shown);
+});
+
 it("a member who may only tick (edit_policy owners): no editor, the reason, and a tick is saved", async () => {
   const { server, alice, channelId } = await setup();
   const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });
