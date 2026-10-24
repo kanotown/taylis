@@ -463,6 +463,33 @@ final class DriveApiTests: XCTestCase {
         XCTAssertEqual(page.folder.name, "研究室ドライブ")
         _ = try await client.searchDrive(query: "修論 2026", locationId: "w", cursor: nil)
         XCTAssertEqual(asked[0], "GET /api/v1/drive/folders/f/children?sort=modified&order=desc&limit=100&cursor=c%2B1")
-        XCTAssertEqual(asked[1], "GET /api/v1/search/drive?q=%E4%BF%AE%E8%AB%96%202026&limit=50&location_id=w")
+        XCTAssertEqual(asked[1], "GET /api/v1/search/drive?q=%E4%BF%AE%E8%AB%96%202026&limit=50&location_id=w&content=true")
+    }
+}
+
+/// docs/DRIVE.md §29: a drive search hit inside a file — the pieces, the page, and an older server's answer.
+final class DriveSnippetTests: XCTestCase {
+    private let item = #"{"id":"a","location_id":"w","parent_id":"r","kind":"file","name":"報告.pdf","size_bytes":10,"content_type":"application/pdf","content_modified_at":null,"created_by":null,"created_at":"x","updated_by":null,"updated_at":"x","version_count":1,"file":null,"link_count":0}"#
+
+    func testAHitInsideAFileReadsItsSnippet() throws {
+        let json = #"{"items":[{"item":"# + item + #","path":[],"location_kind":"workspace","match":"content","snippet":[{"text":"…共振器の","hit":false},{"text":"品質係数","hit":true},{"text":"は高い…"}],"page":2}],"next_cursor":null,"keywords":["品質係数"]}"#
+        let out = try JSON.snakeDecoder.decode(DriveSearchOut.self, from: Data(json.utf8))
+        let hit = try XCTUnwrap(out.items.first)
+        XCTAssertEqual(hit.match, "content")
+        XCTAssertEqual(hit.page, 2)
+        XCTAssertEqual(hit.snippet?.map(\.isHit), [false, true, false])
+        XCTAssertEqual(hit.snippetText, "…共振器の品質係数は高い…")
+        let line = try XCTUnwrap(DriveSnippetLine.text(hit))
+        XCTAssertTrue(String(line.characters).hasSuffix("…共振器の品質係数は高い…"))
+        let marked = line.runs.filter { $0.backgroundColor != nil }.map { String(line[$0.range].characters) }
+        XCTAssertEqual(marked, ["品質係数"])
+    }
+
+    func testANameHitOrAnOlderServerHasNoSnippet() throws {
+        let json = #"{"items":[{"item":"# + item + #","path":[],"location_kind":"workspace"}],"next_cursor":null}"#
+        let hit = try XCTUnwrap(try JSON.snakeDecoder.decode(DriveSearchOut.self, from: Data(json.utf8)).items.first)
+        XCTAssertNil(hit.match)
+        XCTAssertNil(hit.snippetText)
+        XCTAssertNil(DriveSnippetLine.text(hit))
     }
 }

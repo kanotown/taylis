@@ -82,6 +82,26 @@ struct DriveSearchHitOut: Codable, Equatable {
     let item: DriveItemOut
     let path: [DriveCrumb]
     let locationKind: String
+    /// §29: what matched (`name`, `content`, `both`); nil from a server before it.
+    var match: String? = nil
+    /// §29: the text around the match inside the file, in pieces; `hit` pieces are the words found.
+    var snippet: [DriveSnippetPart]? = nil
+    /// §29: the PDF page the snippet is on (from 1).
+    var page: Int? = nil
+
+    /// The snippet as one line (nil for a name match).
+    var snippetText: String? {
+        guard let snippet, !snippet.isEmpty else { return nil }
+        return snippet.map(\.text).joined()
+    }
+}
+
+/// A piece of a drive search snippet (docs/DRIVE.md §29): plain text, never markup.
+struct DriveSnippetPart: Codable, Equatable {
+    let text: String
+    var hit: Bool? = nil
+
+    var isHit: Bool { hit ?? false }
 }
 
 struct DriveSearchOut: Codable, Equatable {
@@ -154,6 +174,8 @@ extension ApiClient: DriveApi {
         var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: "50")]
         if let locationId { items.append(URLQueryItem(name: "location_id", value: locationId)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        // §29: names and the text inside PDF, Office and text files.
+        items.append(URLQueryItem(name: "content", value: "true"))
         return try await requestJSON("GET", Self.pathWithQuery("/api/v1/search/drive", items))
     }
 
