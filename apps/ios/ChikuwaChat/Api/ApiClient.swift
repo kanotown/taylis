@@ -1487,6 +1487,12 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         }
         if auth, let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        // A request this client validates itself (If-None-Match → 304 means "what you hold is current") must not go
+        // through URLCache: URLSession answers the server's 304 with the copy it cached from an earlier 200, as a 200 —
+        // an older canvas or page that then replaced the newer one on screen (CANVAS.md §19.1, 2026-10-24).
+        if headers.keys.contains(where: { $0.caseInsensitiveCompare("If-None-Match") == .orderedSame }) {
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+        }
 
         let data: Data
         let response: HTTPURLResponse

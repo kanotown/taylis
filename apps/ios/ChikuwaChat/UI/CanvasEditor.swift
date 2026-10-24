@@ -28,13 +28,15 @@ struct CanvasEditor: View {
     @State private var uploading = 0
     /// M73: 「タスクにする」 from the edit menu of an open checklist item (CANVAS.md §18.3).
     @State private var taskForm: TaskFormTarget?
+    /// CANVAS.md §25: the clock the others' carets expire by (moved on by the presence loop below).
+    @State private var presenceNow = Date()
     @Environment(\.scenePhase) private var scenePhase
     private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                CanvasTextView(model: model, autoFocus: autoFocus, initialLine: initialLine)
+                CanvasTextView(model: model, autoFocus: autoFocus, initialLine: initialLine, remoteCarets: remoteCarets)
                 if model.shown.isEmpty {
                     Text(sectionLine == nil ? "# 見出し\n本文を書きます。\n- [ ] チェックリスト\n@名前 でメンション" : "## 見出し\n本文を書きます。")
                         .foregroundStyle(.tertiary)
@@ -92,8 +94,8 @@ struct CanvasEditor: View {
             }
             // M73 (§18.2): 「編集中」 for the others while the text view has the focus.
             let canvasId = saver.id
-            model.onPresence = { [weak app = controller] editing, section in
-                app?.engine?.setCanvasEditing(canvasId, editing: editing, section: section)
+            model.onPresence = { [weak app = controller] editing, section, caret in
+                app?.engine?.setCanvasEditing(canvasId, editing: editing, section: section, caret: caret)
             }
             let channelId = saver.channelId
             model.onMakeTask = controller.serverHasTasks ? { [weak app = controller] body, line in
@@ -109,6 +111,7 @@ struct CanvasEditor: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 model.refreshPresence()
+                presenceNow = Date()
             }
         }
         // A sheet, not a full-screen cover: a cover ends the canvas screen under it (onDisappear lets go of the canvas).
@@ -145,6 +148,16 @@ struct CanvasEditor: View {
                 Task { await upload(data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg") }
             }
             .ignoresSafeArea()
+        }
+    }
+
+    /// CANVAS.md §25: the others editing this canvas who said where their caret is (none on a wiki page).
+    private var remoteCarets: [CanvasRemoteCaret] {
+        if isPage { return [] }
+        let store = controller.store
+        return store.canvasEditors(saver.id, now: presenceNow).compactMap { editor in
+            guard let caret = editor.caret else { return nil }
+            return CanvasRemoteCaret(userId: editor.userId, name: store.users[editor.userId]?.displayName ?? tr("メンバー"), caret: caret)
         }
     }
 
@@ -231,10 +244,18 @@ final class CanvasEditorModel {
     @ObservationIgnored private var store: Store?
     /// The stored body the shown text stands for: a change of the loop's text that is not this one is taken in.
     @ObservationIgnored private var wire = ""
+    /// CANVAS.md §24: the save loop's generation (`textLineage`) of the body shown here — every edit says it is written on
+    /// that one, so a keystroke that reaches the loop before a body it put in (a merge, someone else's version) reached
+    /// the text view is saved on the version it was written on and merged, instead of taking the others' edits back out.
+    @ObservationIgnored private(set) var lineage = 0
+    /// The loop put a body in while an IME composition was open: taken when the composition ends (if what it put in
+    /// changed nothing; else the edit, written on `lineage`, is merged by the loop).
+    @ObservationIgnored private var externalWaiting = false
     /// The section being edited, in `wire` (nil: the whole body).
     @ObservationIgnored private(set) var section: NSRange?
-    /// M73 (CANVAS.md §18.2): tells the others I edit (true, with the caret's heading) or stopped (false).
-    @ObservationIgnored var onPresence: ((Bool, String?) -> Void)?
+    /// M73 (CANVAS.md §18.2): tells the others I edit (true, with the caret's heading and, §25, the caret in the stored
+    /// body) or stopped (false).
+    @ObservationIgnored var onPresence: ((Bool, String?, CanvasCaret?) -> Void)?
     /// M73 (§18.3): 「タスクにする」 on an open checklist item: the stored body and the item's line in it.
     @ObservationIgnored var onMakeTask: ((String, Int) -> Void)?
     /// MOBILE_UI.md §23: the @ list is open (the canvas's channel's members are read for it).
@@ -245,7 +266,8 @@ final class CanvasEditorModel {
     /// The text view has the focus (and the app is in front).
     @ObservationIgnored private(set) var focused = false
     @ObservationIgnored private var inFront = true
-    @ObservationIgnored private var lastAnnounced: Date?
+    /// CANVAS.md §25: the frame of a burst of typing / caret moves, sent `caretInterval` after its first (trailing).
+    @ObservationIgnored private var presenceTimer: Task<Void, Never>?
     /// M83 (CANVAS.md §22.8): the task markers shown as stand-ins, which go back to the end of their line when stored.
     @ObservationIgnored let markers = CanvasMarkers.Table()
     /// Set while the editor makes its own deletion beside a stand-in (the text view may ask the delegate again).
@@ -255,6 +277,8 @@ final class CanvasEditorModel {
         self.saver = saver
         self.store = store
         wire = saver.text
+        lineage = saver.textLineage
+        externalWaiting = false
         if let sectionLine { section = CanvasText.section(wire, headingLine: sectionLine) ?? NSRange(location: 0, length: 0) }
         shown = decode(section.map { CanvasText.slice(wire, $0) } ?? wire)
         textView?.text = shown
@@ -284,6 +308,7 @@ final class CanvasEditorModel {
     /// The reader typed (or the toolbar changed the text): the stored body goes to the save loop.
     func userChanged(_ text: String) {
         shown = text
+        textView?.setNeedsLayout() // the others' carets (§25)
         let stored = encode(text)
         if let range = section {
             wire = CanvasText.replacing(wire, range, with: stored)
@@ -291,15 +316,27 @@ final class CanvasEditorModel {
         } else {
             wire = stored
         }
-        saver?.edit(wire)
+        saver?.edit(wire, basedOn: lineage)
+        if let saver, saver.text == wire { lineage = saver.textLineage }
+        takeWaitingExternal()
         updateCandidates()
         if focused { announce(true, soon: true) }
     }
 
     /// The loop replaced the body (a merge, someone else's version): shown with the caret kept.
     func external() {
-        guard let saver, saver.text != wire else { return }
-        if let tv = textView, tv.markedTextRange != nil { return } // the loop does not replace under a composition
+        guard let saver else { return }
+        guard saver.text != wire else {
+            lineage = saver.textLineage
+            externalWaiting = false
+            return
+        }
+        if let tv = textView, tv.markedTextRange != nil {
+            externalWaiting = true // the loop does not replace under a composition: taken when it ends
+            return
+        }
+        externalWaiting = false
+        lineage = saver.textLineage
         let before = shown
         if let range = section {
             section = CanvasText.relocateSection(wire, saver.text, range)
@@ -314,6 +351,7 @@ final class CanvasEditorModel {
         let end = CanvasText.preserveCaret(before, next, selected.location + selected.length)
         tv.text = next
         tv.selectedRange = NSRange(location: start, length: max(0, end - start))
+        tv.setNeedsLayout() // the others' carets (§25)
     }
 
     /// A toolbar edit on the current selection.
@@ -443,7 +481,14 @@ final class CanvasEditorModel {
     /// A cut's stored form as this editor shows it.
     func hidden(_ wireText: String) -> String { markers.hide(wireText) }
 
+    /// A body the loop put in during a composition, once the composition is over.
+    private func takeWaitingExternal() {
+        guard externalWaiting, textView?.markedTextRange == nil else { return }
+        external()
+    }
+
     func selectionChanged() {
+        takeWaitingExternal()
         if textView?.isFirstResponder == true { caretPlaced = true }
         updateCandidates()
         if focused { announce(true, soon: true) }
@@ -456,10 +501,45 @@ final class CanvasEditorModel {
     // MARK: 「編集中」 (M73, CANVAS.md §18.2)
 
     /// `soon`: from typing or the caret moving — looked at every 2 s at most (the heading is found by a scan).
-    func announce(_ editing: Bool, soon: Bool = false, now: Date = Date()) {
-        if editing && soon, let lastAnnounced, now.timeIntervalSince(lastAnnounced) < CanvasPresence.throttle { return }
-        lastAnnounced = now
-        onPresence?(editing, editing ? caretSection() : nil)
+    func announce(_ editing: Bool, soon: Bool = false) {
+        if editing && soon {
+            // Typing or the caret moving: one frame `caretInterval` later, with the caret as it is then (the last
+            // position of a burst always goes out; the sender holds back what did not change).
+            guard presenceTimer == nil else { return }
+            presenceTimer = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(CanvasPresence.caretInterval * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                self.presenceTimer = nil
+                if self.focused && self.inFront { self.onPresence?(true, self.caretSection(), self.storedCaret()) }
+            }
+            return
+        }
+        presenceTimer?.cancel()
+        presenceTimer = nil
+        onPresence?(editing, editing ? caretSection() : nil, editing ? storedCaret() : nil)
+    }
+
+    /// The stored line the shown text starts on (a section starts at its heading).
+    private var lineOffset: Int { section.map { CanvasText.lineIndex(wire, at: $0.location) } ?? 0 }
+
+    /// CANVAS.md §25: my caret in the stored body's terms (the line of the body, the column with mentions as stored).
+    func storedCaret() -> CanvasCaret? {
+        guard let tv = textView else { return nil }
+        return CanvasPresence.storedCaret(shown: tv.text, offset: tv.selectedRange.location, lineOffset: lineOffset) { [weak self] prefix in
+            let plain = CanvasMarkers.stripStandIns(prefix)
+            guard let store = self?.store else { return plain }
+            return Mentions.encode(plain, users: store.users.values, groups: Array(store.groups.values))
+        }
+    }
+
+    /// CANVAS.md §25: someone's caret (stored terms) as an offset into the text shown here; nil when its line is not here.
+    func shownOffset(_ caret: CanvasCaret) -> Int? {
+        let shownText = textView?.text ?? shown
+        return CanvasPresence.shownOffset(stored: wire, shown: shownText, caret: caret, lineOffset: lineOffset) { [weak self] prefix in
+            let plain = CanvasMarkers.strip(prefix)
+            guard let store = self?.store else { return plain }
+            return Mentions.decode(plain, users: store.users, groups: store.groups)
+        }
     }
 
     /// The heading over the caret, in the text shown (a section's text starts with its heading).
@@ -550,6 +630,8 @@ struct CanvasTextView: UIViewRepresentable {
     var autoFocus = false
     /// M153a: the caret on this line of the shown text (and the keyboard up) when the view is made.
     var initialLine: Int? = nil
+    /// CANVAS.md §25: the others' carets drawn over the text.
+    var remoteCarets: [CanvasRemoteCaret] = []
     static let inset = UIEdgeInsets(top: 12, left: 12, bottom: 24, right: 12)
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
@@ -590,6 +672,7 @@ struct CanvasTextView: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         if model.textView !== view { model.textView = view }
+        if let view = view as? CanvasUITextView, view.remoteCarets != remoteCarets { view.remoteCarets = remoteCarets }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -636,6 +719,49 @@ final class CanvasUITextView: UITextView {
     static let pasteboardType = "jp.chikuwachat.canvas-text"
     weak var model: CanvasEditorModel?
 
+    // MARK: the others' carets (CANVAS.md §25)
+
+    /// Someone else's caret, drawn as a thin line in their colour with their name above it.
+    var remoteCarets: [CanvasRemoteCaret] = [] {
+        didSet { setNeedsLayout() }
+    }
+    private var caretViews: [String: RemoteCaretView] = [:]
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        placeRemoteCarets()
+    }
+
+    /// In the text view's content (they scroll with the text); measured again on every layout (scrolling, typing, a
+    /// new body, another size) — a few carets, cheap.
+    private func placeRemoteCarets() {
+        let wanted = Set(remoteCarets.map(\.userId))
+        for (userId, view) in caretViews where !wanted.contains(userId) {
+            view.removeFromSuperview()
+            caretViews[userId] = nil
+        }
+        let length = (text as NSString).length
+        for remote in remoteCarets {
+            guard let model, let offset = model.shownOffset(remote.caret),
+                  let position = self.position(from: beginningOfDocument, offset: min(offset, length)) else {
+                caretViews[remote.userId]?.isHidden = true
+                continue
+            }
+            let rect = caretRect(for: position)
+            guard rect.origin.x.isFinite, rect.origin.y.isFinite else { continue }
+            let view = caretViews[remote.userId] ?? {
+                let made = RemoteCaretView()
+                caretViews[remote.userId] = made
+                addSubview(made)
+                return made
+            }()
+            view.show(name: remote.name, color: RemoteCaretView.color(remote.userId), caretHeight: max(rect.height, 16), roomAbove: rect.minY > 18)
+            view.frame.origin = CGPoint(x: rect.minX - 1, y: rect.minY - view.caretTop)
+            view.isHidden = false
+            bringSubviewToFront(view)
+        }
+    }
+
     private var selectedShown: String? {
         guard let range = selectedTextRange, !range.isEmpty else { return nil }
         return text(in: range)
@@ -662,5 +788,68 @@ final class CanvasUITextView: UITextView {
         let shown = model.hidden(stored)
         replace(range, withText: shown)
         if model.shown != text { model.userChanged(text) }
+    }
+}
+
+/// CANVAS.md §25: someone else's caret for the canvas editor (stored terms; placed by the model).
+struct CanvasRemoteCaret: Equatable {
+    let userId: String
+    let name: String
+    let caret: CanvasCaret
+}
+
+/// A thin 2 pt caret in the person's colour and a small name label above it (below, at the top of the text). No
+/// touches, not read out (the 「編集中」 row says who edits).
+final class RemoteCaretView: UIView {
+    private let line = UIView()
+    private let label = PaddedLabel()
+    /// Where the caret line starts within this view (under the label, or at the top when the label is below).
+    private(set) var caretTop: CGFloat = 0
+
+    static func color(_ userId: String) -> UIColor {
+        let rgb = CanvasPresence.caretColor(userId)
+        return UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        accessibilityElementsHidden = true
+        line.layer.cornerRadius = 1
+        label.font = .systemFont(ofSize: 10, weight: .semibold)
+        label.textColor = .white
+        label.layer.cornerRadius = 3
+        label.layer.masksToBounds = true
+        addSubview(line)
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func show(name: String, color: UIColor, caretHeight: CGFloat, roomAbove: Bool) {
+        line.backgroundColor = color
+        label.backgroundColor = color
+        if label.text != name { label.text = name }
+        let size = label.intrinsicContentSize
+        let labelSize = CGSize(width: min(size.width, 160), height: size.height)
+        if roomAbove {
+            label.frame = CGRect(origin: .zero, size: labelSize)
+            caretTop = labelSize.height
+        } else {
+            label.frame = CGRect(origin: CGPoint(x: 0, y: caretHeight), size: labelSize)
+            caretTop = 0
+        }
+        line.frame = CGRect(x: 0, y: caretTop, width: 2, height: caretHeight)
+        frame.size = CGSize(width: max(labelSize.width, 2), height: caretHeight + labelSize.height)
+    }
+
+    private final class PaddedLabel: UILabel {
+        private let insets = UIEdgeInsets(top: 1, left: 4, bottom: 1, right: 4)
+        override func drawText(in rect: CGRect) { super.drawText(in: rect.inset(by: insets)) }
+        override var intrinsicContentSize: CGSize {
+            let size = super.intrinsicContentSize
+            return CGSize(width: size.width + insets.left + insets.right, height: size.height + insets.top + insets.bottom)
+        }
     }
 }

@@ -526,6 +526,10 @@ final class FakeCanvasApi: CanvasApi {
     var onList: (() -> Void)?
     /// While set, saves wait for `release()`.
     var holding = false
+    /// While set, saves reach the server, then their answer waits for `release()`.
+    var holdingAnswer = false
+    /// The next reads answer with these instead of the server's canvas (a stale copy, as URLCache handed out for a 304).
+    var staleGets: [CanvasOut] = []
     private var held: [CheckedContinuation<Void, Never>] = []
 
     init(server: FakeCanvasServer, userId: String) {
@@ -535,6 +539,7 @@ final class FakeCanvasApi: CanvasApi {
 
     func release() {
         holding = false
+        holdingAnswer = false
         for continuation in held { continuation.resume() }
         held = []
     }
@@ -549,6 +554,7 @@ final class FakeCanvasApi: CanvasApi {
     func getCanvas(id: String, knownVersion: Int?) async throws -> CanvasOut? {
         gets.append(knownVersion)
         if !getFail.isEmpty { throw getFail.removeFirst() }
+        if !staleGets.isEmpty { return staleGets.removeFirst() }
         let canvas = try server.get(userId, id)
         return knownVersion == canvas.version ? nil : canvas
     }
@@ -565,6 +571,7 @@ final class FakeCanvasApi: CanvasApi {
         default: break
         }
         let answer = try server.save(userId, id, save)
+        if holdingAnswer { await withCheckedContinuation { held.append($0) } }
         if case .lost? = failure { throw ApiError.network(URLError(.networkConnectionLost)) }
         return answer
     }

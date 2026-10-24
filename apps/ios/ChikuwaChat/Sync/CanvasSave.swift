@@ -146,6 +146,9 @@ final class CanvasSaver {
     @ObservationIgnored private var inFlightLineage: Int?
     @ObservationIgnored private var inFlightDetached = false
     @ObservationIgnored private var version = 0
+    /// The newest version a canvas.updated announced: read once nothing here is unsaved, if newer than what came (a
+    /// canvas.updated that arrives while a save is on the wire or while typing would otherwise be dropped).
+    @ObservationIgnored private var announced = 0
     @ObservationIgnored private var inFlight: CanvasInFlight?
     @ObservationIgnored private var again = false
     @ObservationIgnored private var attempt = 0
@@ -255,6 +258,8 @@ final class CanvasSaver {
     /// A canvas.updated (or a reconnect): read again unless something here is not saved yet (§4.4).
     func remoteVersion(_ newVersion: Int) {
         guard !disposed, newVersion > version else { return }
+        // Remembered: when the read is skipped (typing, a save on the wire), the version is read once this is idle again.
+        announced = max(announced, newVersion)
         scheduleRefresh(options.refreshDebounce)
     }
 
@@ -320,6 +325,12 @@ final class CanvasSaver {
         guard let fresh = answer else {
             // 304: the version on screen is the current one (the kept copy too, when that is what is shown).
             if cachedAt != nil, knownVersion == canvas?.version { confirmed?() }
+            serverAnswered()
+            return
+        }
+        // Older than what this already holds (a save here answered with a newer one): nothing to take — never an older
+        // body back on screen.
+        if loaded, fresh.version < version {
             serverAnswered()
             return
         }
@@ -506,6 +517,9 @@ final class CanvasSaver {
             save()
         } else if dirty && saveTimer == nil {
             save()
+        } else if announced > version {
+            // A canvas.updated came while this was on the wire (its read was skipped): read it now.
+            scheduleRefresh(0)
         }
     }
 

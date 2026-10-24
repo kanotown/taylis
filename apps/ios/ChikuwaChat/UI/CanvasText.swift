@@ -70,40 +70,136 @@ enum CanvasText {
     // MARK: the caret
 
     /// Where the caret goes when the editor's text changes from `before` to `after` under it (a merge brought someone
-    /// else's edits): before the first difference it stays; after the last one it keeps its distance from the end;
-    /// inside the changed stretch it follows its own line when that line is still there (the nearest copy of it), else
-    /// it goes to the end of the change.
+    /// else's edits, CANVAS.md §24): before the first difference it stays; after the last one it keeps its distance from
+    /// the end. Inside the changed stretch it follows its own line through the lines both texts keep (a line diff). A line
+    /// that changed itself (someone typed on it too) is matched to its new form and the caret follows the characters both
+    /// keep, so it stays where it was typing instead of jumping to the end of the whole change (another person's line). A
+    /// line that is gone puts it at the end of the line before; a line rewritten as a whole, at the end of the new line.
+    /// The same rule on the three clients (apps/shared/canvas_markdown.json `caret`; the desktop's canvasText.ts).
+    /// Offsets are UTF-16 units.
     static func preserveCaret(_ before: String, _ after: String, _ caret: Int) -> Int {
-        let a = before as NSString, b = after as NSString
-        if before == after { return min(caret, b.length) }
-        let maxCommon = min(a.length, b.length)
-        var prefix = 0
-        while prefix < maxCommon && a.character(at: prefix) == b.character(at: prefix) { prefix += 1 }
-        var suffix = 0
-        while suffix < maxCommon - prefix && a.character(at: a.length - 1 - suffix) == b.character(at: b.length - 1 - suffix) { suffix += 1 }
+        let a = Array(before.utf16), b = Array(after.utf16)
+        if a == b { return min(caret, b.count) }
+        let (prefix, suffix) = commonEnds(a, b)
         if caret <= prefix { return caret }
-        if caret >= a.length - suffix { return max(0, b.length - (a.length - caret)) }
-        // Inside the changed stretch: find the caret's line in the new text, nearest to where it would have moved.
-        let lineStart = lineStartOffset(a, caret)
-        let lineEnd = lineEndOffset(a, caret)
-        let lineText = a.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+        if caret >= a.count - suffix { return max(0, b.count - (a.count - caret)) }
+        let beforeLines = splitLines(a)
+        let afterLines = splitLines(b)
+        var line = 0
+        var lineStart = 0
+        for index in 0..<caret where a[index] == newline {
+            line += 1
+            lineStart = index + 1
+        }
         let column = caret - lineStart
-        let beforeLines = before.components(separatedBy: "\n")
-        let afterLines = after.components(separatedBy: "\n")
-        let lineIndex = a.substring(to: lineStart).components(separatedBy: "\n").count - 1
-        let expected = lineIndex + (afterLines.count - beforeLines.count)
-        var best = -1
-        if !lineText.trimmingCharacters(in: .whitespaces).isEmpty {
-            for (k, line) in afterLines.enumerated() where line == lineText {
-                if best == -1 || abs(k - expected) < abs(best - expected)
-                    || (abs(k - expected) == abs(best - expected) && abs(k - lineIndex) < abs(best - lineIndex)) { best = k }
+        func offset(_ k: Int) -> Int {
+            var at = 0
+            for n in 0..<k { at += afterLines[n].count + 1 }
+            return at
+        }
+        let (p, s) = commonEnds(beforeLines, afterLines)
+        if line < p { return offset(line) + column }
+        if line >= beforeLines.count - s { return offset(line + afterLines.count - beforeLines.count) + column }
+        let midBefore = Array(beforeLines[p..<(beforeLines.count - s)])
+        let midAfter = Array(afterLines[p..<(afterLines.count - s)])
+        let i = line - p
+        var prev = (-1, -1)
+        var next = (midBefore.count, midAfter.count)
+        for (x, y) in keptPairs(midBefore, midAfter) {
+            if x == i { return offset(p + y) + column }
+            if x < i {
+                prev = (x, y)
+            } else {
+                next = (x, y)
+                break
             }
         }
-        if best != -1 {
-            let offset = afterLines[..<best].reduce(0) { $0 + ($1 as NSString).length + 1 }
-            return offset + column
+        let gapBefore = next.0 - prev.0 - 1
+        let gapAfter = next.1 - prev.1 - 1
+        if gapAfter <= 0 {
+            // The caret's line went: the end of the line before it (or the start).
+            let k = p + prev.1
+            return k < 0 ? 0 : offset(k) + afterLines[k].count
         }
-        return max(prefix, b.length - suffix)
+        var k = prev.1 + 1 + (i - prev.0 - 1)
+        if gapBefore != gapAfter {
+            // The new line most like the caret's (most characters kept at its ends), nearest to the same place in the gap.
+            let own = beforeLines[line]
+            let place = Double(i - prev.0 - 1) / Double(max(1, gapBefore))
+            var bestScore = -1
+            var bestDistance = Double.infinity
+            for j in (prev.1 + 1)..<next.1 {
+                let (x, y) = commonEnds(own, midAfter[j])
+                let distance = abs(Double(j - prev.1 - 1) / Double(max(1, gapAfter)) - place)
+                if x + y > bestScore || (x + y == bestScore && distance < bestDistance) {
+                    k = j
+                    bestScore = x + y
+                    bestDistance = distance
+                }
+            }
+        }
+        return offset(p + k) + caretInLine(beforeLines[line], afterLines[p + k], column)
+    }
+
+    private static let newline = UInt16(UInt8(ascii: "\n"))
+
+    /// The lines of a text as UTF-16 units (as `split("\n")`: n newlines make n + 1 lines).
+    private static func splitLines(_ units: [UInt16]) -> [[UInt16]] {
+        units.split(separator: newline, omittingEmptySubsequences: false).map(Array.init)
+    }
+
+    /// The lengths of the common start and end of two sequences, not overlapping.
+    private static func commonEnds<T: Equatable>(_ a: [T], _ b: [T]) -> (Int, Int) {
+        let maxCommon = min(a.count, b.count)
+        var prefix = 0
+        while prefix < maxCommon && a[prefix] == b[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < maxCommon - prefix && a[a.count - 1 - suffix] == b[b.count - 1 - suffix] { suffix += 1 }
+        return (prefix, suffix)
+    }
+
+    /// Past this many cells (a × b) the diff is not run; what lies between is taken as replaced.
+    private static let caretDiffCells = 250_000
+
+    /// The pairs (index in a, index in b) of a longest common subsequence, in order.
+    private static func keptPairs<T: Equatable>(_ a: [T], _ b: [T]) -> [(Int, Int)] {
+        let n = a.count, m = b.count
+        if n == 0 || m == 0 || n * m > caretDiffCells { return [] }
+        let width = m + 1
+        var table = [UInt32](repeating: 0, count: (n + 1) * width)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                table[i * width + j] = a[i] == b[j] ? table[(i + 1) * width + j + 1] + 1 : max(table[(i + 1) * width + j], table[i * width + j + 1])
+            }
+        }
+        var pairs: [(Int, Int)] = []
+        var i = 0, j = 0
+        while i < n && j < m {
+            if a[i] == b[j] {
+                pairs.append((i, j))
+                i += 1
+                j += 1
+            } else if table[(i + 1) * width + j] >= table[i * width + j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return pairs
+    }
+
+    /// The caret's column in a line that changed: through the characters both keep (the last one before it).
+    private static func caretInLine(_ before: [UInt16], _ after: [UInt16], _ column: Int) -> Int {
+        let (p, s) = commonEnds(before, after)
+        if column <= p { return column }
+        if column >= before.count - s { return after.count - (before.count - column) }
+        let pairs = keptPairs(Array(before[p..<(before.count - s)]), Array(after[p..<(after.count - s)]))
+        if pairs.isEmpty { return after.count - s } // rewritten as a whole: after the new text
+        var at = p
+        for (i, j) in pairs {
+            if p + i < column { at = p + j + 1 } else { break }
+        }
+        return at
     }
 
     // MARK: the outline
