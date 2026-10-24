@@ -227,8 +227,29 @@ object ReservationRules {
         }
         if (row.status == "returning") return L10n.str(R.string.reservations_returned_waiting_for_an_operator_to)
         row.evictAt?.let { return L10n.str(R.string.reservations_will_be_removed_after, whenText(it, now, zone)) }
+        // Past the guarantee with nobody waiting: the operators take the seat out (RESERVATIONS.md §4, 2026-10-24).
+        val until = row.guaranteeUntil
+        if (row.status == "holding" && until != null && time(until)?.let { it <= now } == true) {
+            return L10n.str(R.string.reservations_in_use_guarantee_over, whenText(until, now, zone))
+        }
         return row.guaranteeUntil?.let { L10n.str(R.string.reservations_in_use_guaranteed_until, whenText(it, now, zone)) } ?: L10n.str(R.string.reservations_in_use)
     }
+
+    /** A holder's line in the operators' 「利用中」 list: a booking's time, or what a walk-in's says. */
+    fun holderText(row: ReservationOut, pool: PoolOut, now: Instant, zone: ZoneId): String {
+        if (row.kind == "booking" && row.startAt != null) {
+            val s = L10n.str(R.string.reservations_active_booking, span(row.startAt, row.endAt, now, zone))
+            return if (row.status == "returning") L10n.str(R.string.reservations_returned, s) else s
+        }
+        return walkinText(row, pool, now, zone)
+    }
+
+    /**
+     * Whether the caller may take this holder out by hand (「外す」 on the row, 2026-10-24): operators (the pool's operators,
+     * its creator, administrators) on anyone on a seat, at any time. The holder themself returns it instead.
+     */
+    fun canRemoveHolder(pool: PoolOut, row: ReservationOut): Boolean =
+        pool.canOperate && (row.status == "holding" || row.status == "returning")
 
     fun bookingText(row: ReservationOut, now: Instant, zone: ZoneId): String {
         val s = span(row.startAt, row.endAt, now, zone)
@@ -307,7 +328,9 @@ fun ReservationsPane(controller: AppController, version: Int) {
     val keys = pools.flatMap { pool ->
         val mine = ReservationRules.mine(pool, store.me?.id)
         listOf("h:" + pool.id) + mine.bookings.map { "b:" + it.id } + listOfNotNull(mine.walkin?.let { "w:" + it.id }) +
-            (if (pool.canOperate) listOf("t:" + pool.id) + pool.todos.map { "todo:" + pool.id + it.key } else emptyList()) + listOf("d:" + pool.id)
+            (if (pool.canOperate) listOf("t:" + pool.id) + pool.todos.map { "todo:" + pool.id + it.key } else emptyList()) +
+            (if (pool.canOperate && pool.holders.isNotEmpty()) listOf("hs:" + pool.id) + pool.holders.map { "hr:" + it.id } else emptyList()) +
+            listOf("d:" + pool.id)
     }
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
         pools.forEach { pool ->
@@ -386,6 +409,27 @@ fun ReservationsPane(controller: AppController, version: Int) {
                                 }
                             }
                         }, enabled = !busy && !early) { Text(ReservationRules.todoButton(todo)) }
+                    }
+                }
+            }
+            if (pool.canOperate && pool.holders.isNotEmpty()) {
+                // Who is on a seat now; an operator can take anyone out by hand (asked first; 2026-10-24).
+                item(key = "hs:" + pool.id) {
+                    Text(stringResource(R.string.reservations_holders_title, pool.holders.size, pool.capacity), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+                }
+                items(pool.holders, key = { "hr:" + it.id }) { row ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(name(row.userId), style = MaterialTheme.typography.bodyMedium)
+                            row.email?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                            Text(ReservationRules.holderText(row, pool, now, zone), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (ReservationRules.canRemoveHolder(pool, row)) {
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = {
+                                confirm = Confirm(L10n.str(R.string.reservations_remove_holder_question, name(row.userId)), L10n.str(R.string.reservations_remove_holder)) { controller.reservationAction(row.id, "remove") }
+                            }, enabled = !busy) { Text(stringResource(R.string.reservations_remove_holder)) }
+                        }
                     }
                 }
             }

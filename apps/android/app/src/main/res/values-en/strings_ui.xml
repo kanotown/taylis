@@ -1098,7 +1098,7 @@
     <string name="reservations_assigned">Assigned</string>
     <string name="reservations_availability">%1$s availability</string>
     <string name="reservations_available">Available</string>
-    <string name="reservations_available_until_waiting_for_an_operator">Available (until %1$s) · waiting for an operator to assign</string>
+    <string name="reservations_available_until_waiting_for_an_operator">Available (guaranteed until %1$s) · waiting for an operator to assign</string>
     <string name="reservations_available_waiting_for_an_operator_to">Available · waiting for an operator to assign</string>
     <string name="reservations_book">Book</string>
     <string name="reservations_book_2">Book %1$s</string>
@@ -1120,6 +1120,10 @@
     <string name="reservations_in_use">In use</string>
     <string name="reservations_in_use_2">%1$s · In use</string>
     <string name="reservations_in_use_guaranteed_until">In use (guaranteed until %1$s)</string>
+    <string name="reservations_in_use_guarantee_over">In use (guaranteed until %1$s; an operator may take you off)</string>
+    <string name="reservations_holders_title">In use (%1$d/%2$d)</string>
+    <string name="reservations_remove_holder">Remove</string>
+    <string name="reservations_remove_holder_question">Remove %1$s? Remove them in the admin console too.</string>
     <string name="reservations_it_will_be_assigned_after_the">It will be assigned after the previous person\'s guaranteed time</string>
     <string name="reservations_no_free_times_on_this_day">No free times on this day</string>
     <string name="reservations_no_reservation_slots_an_administrator">No reservation slots (an administrator creates them on Desktop / Web)</string>

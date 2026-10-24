@@ -1093,7 +1093,7 @@
     <string name="reservations_assigned">已分配</string>
     <string name="reservations_availability">%1$s 的空位</string>
     <string name="reservations_available">有空位</string>
-    <string name="reservations_available_until_waiting_for_an_operator">有空位 (至 %1$s) · 等待负责人分配</string>
+    <string name="reservations_available_until_waiting_for_an_operator">有空位 (保证至 %1$s) · 等待负责人分配</string>
     <string name="reservations_available_waiting_for_an_operator_to">有空位 · 等待负责人分配</string>
     <string name="reservations_book">预约</string>
     <string name="reservations_book_2">预约 %1$s</string>
@@ -1115,6 +1115,10 @@
     <string name="reservations_in_use">使用中</string>
     <string name="reservations_in_use_2">%1$s · 使用中</string>
     <string name="reservations_in_use_guaranteed_until">使用中 (保证至 %1$s)</string>
+    <string name="reservations_in_use_guarantee_over">使用中 (保证至 %1$s，负责人可能会移除)</string>
+    <string name="reservations_holders_title">使用中 (%1$d/%2$d)</string>
+    <string name="reservations_remove_holder">移除</string>
+    <string name="reservations_remove_holder_question">要移除 %1$s 吗？请同时在管理界面中移除。</string>
     <string name="reservations_it_will_be_assigned_after_the">将在上一位的保证时间结束后分配</string>
     <string name="reservations_no_free_times_on_this_day">当天没有空闲时间</string>
     <string name="reservations_no_reservation_slots_an_administrator">没有预约名额 (由管理员在桌面端 / 网页端创建)</string>

@@ -124,7 +124,7 @@ class ReservationsTest {
             todos = todos, myReservationId = "q1", canOperate = true)
         val name: (String) -> String = { mapOf("me" to "わたし", "bob" to "ボブ", "alice" to "アリス")[it] ?: "?" }
         assertEquals("q1", ReservationRules.mine(pool, "me").walkin?.id)
-        assertEquals("空きあり（〜13:00 まで）· 担当者の割り当て待ち", ReservationRules.walkinText(waiting, pool, now, tokyo))
+        assertEquals("空きあり（〜13:00 まで保証）· 担当者の割り当て待ち", ReservationRules.walkinText(waiting, pool, now, tokyo))
         assertEquals("わたし さん（me@example.jp） に割り当てる", ReservationRules.todoLine(todos[0], pool, name, now, tokyo))
         assertEquals("12:00 から：ボブ さん を外して アリス さん に割り当てる（保証時間が終了） · 予約 12:00〜15:00", ReservationRules.todoLine(todos[1], pool, name, now, tokyo))
         assertEquals(1, ReservationRules.todoCount(listOf(pool)))
@@ -141,6 +141,33 @@ class ReservationsTest {
         assertEquals(tiles.indexOfFirst { it.tile == HomeTile.DEADLINES } + 1, tiles.indexOf(tile))
         assertNull(HomeTiles.tiles(ThreadSummary(0, 0), 0, 0, 0).firstOrNull { it.tile == HomeTile.RESERVATIONS })
         assertEquals("reservations", HomeTile.RESERVATIONS.navKey)
+    }
+
+    /** 2026-10-24 (option A): the walk-in's time reads as a guarantee; past it the operators take the seat out; operators remove anyone. */
+    @Test fun theGuaranteeAndRemovingAHolder() {
+        val inside = ReservationOut(id = "w1", userId = "bob", kind = "walkin", status = "holding", requestedAt = at(8), assignedAt = at(9), guaranteeUntil = at(12))
+        val over = ReservationOut(id = "w2", userId = "carol", kind = "walkin", status = "holding", requestedAt = at(7), assignedAt = at(8), guaranteeUntil = at(10))
+        val seated = booking("b1", "alice", 10, 12, status = "holding")
+        val pool = PoolOut(id = "p1", name = "シート", capacity = 3, holders = listOf(inside, over, seated), canOperate = true)
+        assertEquals("利用中（〜12:00 まで保証）", ReservationRules.walkinText(inside, pool, now, tokyo))
+        assertEquals("利用中（保証は 10:00 まで · 担当者が外すことがあります）", ReservationRules.walkinText(over, pool, now, tokyo))
+        // told to go for someone waiting: the time they go wins
+        assertEquals("11:00 以降に外されます", ReservationRules.walkinText(over.copy(evictAt = at(11)), pool, now, tokyo))
+        assertEquals("予約 10:00〜12:00", ReservationRules.holderText(seated, pool, now, tokyo))
+        assertEquals("利用中（保証は 10:00 まで · 担当者が外すことがあります）", ReservationRules.holderText(over, pool, now, tokyo))
+        // the remove to-do of a guarantee over with nobody waiting: listed, not counted
+        val todo = ReservationTodo(key = "remove:w2", action = "remove", reason = "guarantee_over", removeId = "w2", dueAt = at(10))
+        val withTodo = pool.copy(todos = listOf(todo))
+        val name: (String) -> String = { mapOf("carol" to "キャロル")[it] ?: "?" }
+        assertEquals("キャロル さん を外す（保証時間が終了）", ReservationRules.todoLine(todo, withTodo, name, now, tokyo))
+        assertEquals(0, ReservationRules.todoCount(listOf(withTodo)))
+        assertEquals("外した", ReservationRules.todoButton(todo))
+        // who may take a holder out by hand
+        assertTrue(ReservationRules.canRemoveHolder(pool, inside))
+        assertTrue(ReservationRules.canRemoveHolder(pool, seated))
+        assertTrue(ReservationRules.canRemoveHolder(pool, inside.copy(status = "returning")))
+        assertFalse(ReservationRules.canRemoveHolder(pool, inside.copy(status = "waiting")))
+        assertFalse(ReservationRules.canRemoveHolder(pool.copy(canOperate = false), inside))
     }
 
     @Test fun activityItemOfKindReservation() {
