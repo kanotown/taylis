@@ -636,6 +636,8 @@ CREATE TABLE reservation_pools (                       -- M112: ワークスペ�
   tz                     varchar(64) NOT NULL,                 -- 予約の格子 (毎時 0 分) と知らせの時刻のゾーン (作った端末の)
   operator_ids           uuid[] NOT NULL DEFAULT '{}',         -- 担当者 (有効なメンバー、ゲスト・ボット不可、20 人まで)
   enabled                boolean NOT NULL DEFAULT true,        -- false: 新しい予約・待ちを受け付けない (今の人はそのまま)
+  walkins_enabled        boolean NOT NULL DEFAULT false,       -- 2026-10-24 (移行 0120): 「今すぐ」(順番待ち) を受け付けるか。false: 予約だけ
+                                                               --   (既定。移行の時点の枠は true)。false にすると順番待ちを取り消す (利用中はそのまま)
   log_channel_id         uuid REFERENCES channels(id) ON DELETE SET NULL,  -- M112 記録のチャンネル (任意。NULL: どこにも書かない)
   visibility             varchar(16) NOT NULL DEFAULT 'all'    -- M112 all / channel / group
                          CHECK (visibility IN ('all', 'channel', 'group')),
