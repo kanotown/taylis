@@ -1,8 +1,9 @@
 import SwiftUI
 
-// M166 (docs/DRIVE.md §17.6, §26; MOBILE_UI.md §25): the drive on the phone, read only — the drives, a folder (its
-// path, sort, search, pages of 100, pull to refresh), a file's details, its preview in the app's viewers, and download
-// to share or save. No upload, name, move or trash here (the server would allow some; the phone does not offer them).
+// M166 (docs/DRIVE.md §17.6, §26; MOBILE_UI.md §25): the drive on the phone — the drives, a folder (its path, sort,
+// search, pages of 100, pull to refresh), a file's details, its preview in the app's viewers, and download to share or
+// save. §29: uploads (photos, camera, files) and new folders where the drive can be written to (DriveUploadsView.swift).
+// No rename, move or trash here (the phone stays read-mostly).
 
 /// A drive link opened from a message: its sheet (MainView).
 struct DriveLinkTarget: Identifiable, Equatable {
@@ -227,6 +228,11 @@ struct DriveFolderView: View {
     @State private var details: DriveItemOut?
     @State private var download: DriveDownloadRequest?
     @State private var opening: String?
+    /// §29: the ＋ menu's choice (photos, camera, files, a new folder), the uploads sheet, whether this folder is the
+    /// screen on top (only that one asks a name conflict's question).
+    @State private var uploadAction: DriveUploadAction?
+    @State private var showUploads = false
+    @State private var onTop = false
     @AppStorage(DriveSortSetting.sortKey) private var sortRaw = DriveSort.name.rawValue
     @AppStorage(DriveSortSetting.descendingKey) private var descending = false
 
@@ -250,9 +256,43 @@ struct DriveFolderView: View {
         return folder.parentId == nil ? DriveRules.rootName(kind: kind, serverName: folder.name) : folder.name
     }
 
+    /// Where an upload from here goes: this folder, when its drive can be written to (read-only drives show no upload).
+    private var uploadTarget: DriveUploadTarget? {
+        guard let folder = model.folder, hub?.location(folder.locationId)?.canWrite == true else { return nil }
+        return DriveUploadTarget(parentId: folderId, locationId: folder.locationId,
+                                 label: DriveRules.whereLabel(model.path, kind: kind).isEmpty ? title : DriveRules.whereLabel(model.path, kind: kind))
+    }
+
+    private var uploads: DriveUploadCenter { .shared }
+    private var account: String? { controller.activeWorkspace?.account }
+
+    @ViewBuilder
+    private var actions: some View {
+        HStack(spacing: 14) {
+            if uploadTarget != nil { DriveUploadMenu(action: $uploadAction) }
+            sortMenu
+        }
+    }
+
     var body: some View {
         content
-            .modifier(DriveFolderChrome(embedded: embedded, title: title, query: $query, sortMenu: AnyView(sortMenu)))
+            .modifier(DriveFolderChrome(embedded: embedded, title: title, query: $query, sortMenu: AnyView(actions)))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                let totals = uploads.totals(account: account)
+                if DriveUploadsBar.shows(totals, preparing: uploads.preparing) {
+                    DriveUploadsBar(totals: totals, preparing: uploads.preparing) { showUploads = true }
+                }
+            }
+            .modifier(DriveUploadActions(controller: controller, target: uploadTarget, action: $uploadAction,
+                                         onFolderMade: { _ in model.reloadSoon() }))
+            .sheet(isPresented: $showUploads) { DriveUploadsSheet(controller: controller) }
+            .sheet(item: Binding(get: { onTop && !showUploads && !uploads.sheetOpen ? uploads.question(account: account) : nil },
+                                 set: { _ in })) { question in
+                DriveUploadQuestionView(question: question) { choice, all in uploads.answer(question, choice, all: all) }
+            }
+            .onAppear { onTop = true }
+            .onDisappear { onTop = false }
+            .onChange(of: uploads.doneCount(parentId: folderId)) { _, _ in model.reloadSoon() }
             .task { if model.items == nil { await model.load() } }
             .onChange(of: hub?.signal(folderId) ?? 0) { _, _ in model.reloadSoon() }
             .onChange(of: hub?.reconnects ?? 0) { _, _ in model.reloadSoon() }
@@ -286,7 +326,7 @@ struct DriveFolderView: View {
             }
             if !model.path.isEmpty {
                 DriveBreadcrumbs(crumbs: DriveRules.crumbs(model.path, kind: kind), current: folderId, embedded: embedded,
-                                 onOpen: onOpenFolder, trailing: embedded ? AnyView(sortMenu) : nil)
+                                 onOpen: onOpenFolder, trailing: embedded ? AnyView(actions) : nil)
                     .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                     .listRowSeparator(.hidden)
             }
