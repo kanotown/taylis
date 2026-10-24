@@ -3551,8 +3551,10 @@ export const ja = {
   "drive.upload.minutesLeft": "残り {n} 分",
   "drive.upload.hoursLeft": "残り {h} 時間 {m} 分",
   "search.tab.drive": "ドライブ",
-  "search.drive.empty": "ファイル名で検索します（中身は検索しません）",
+  "search.drive.empty": "ファイル名と、PDF・Office・テキストのファイルの中身を検索します",
   "search.drive.none": "「{q}」に一致するファイルやフォルダはありません",
+  "search.drive.inside": "中身",
+  "search.drive.page": "{page} ページ目",
   // M163 (docs/DRIVE.md §9, §17.4): external share links, their admin section and the public page.
   "drive.share.open": "共有リンク",
   "drive.share.title": "「{name}」の共有リンク",

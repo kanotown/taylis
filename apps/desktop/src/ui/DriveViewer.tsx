@@ -22,9 +22,11 @@ import { type PdfHold, PdfViewer } from "./DocumentPreview";
 /** How often a preview being made is looked at again (drive.changed usually says it first). */
 export const PREVIEW_POLL_MS = 4000;
 
-export function DriveViewer({ controller, item, siblings, onStep, onClose }: {
+export function DriveViewer({ controller, item, siblings, onStep, onClose, page }: {
   controller: AppController;
   item: DriveItemOut;
+  /** §29: a document opens at this page (a search's match inside it). */
+  page?: number | null;
   /** The viewable files of the folder, in the listing's order. */
   siblings: readonly DriveItemOut[];
   onStep: (item: DriveItemOut) => void;
@@ -55,7 +57,7 @@ export function DriveViewer({ controller, item, siblings, onStep, onClose }: {
     const stream = isWeb() && api ? async () => ticketUrl(api.baseUrl, (await api.driveDownloadTicket(item.id)).url) : undefined;
     return <VideoViewer key={item.id} attachment={attachment} controller={controller} onClose={onClose} stream={stream} />;
   }
-  return <DriveDocument key={item.id} controller={controller} item={item} onClose={onClose} />;
+  return <DriveDocument key={item.id} controller={controller} item={item} onClose={onClose} page={page ?? null} />;
 }
 
 function withPreview(item: DriveItemOut, preview: DrivePreviewOut["preview"]): DriveItemOut {
@@ -63,7 +65,7 @@ function withPreview(item: DriveItemOut, preview: DrivePreviewOut["preview"]): D
 }
 
 /** A PDF or an Office file (§27): the pages from the preview or the PDF itself, or why they are not there yet. */
-function DriveDocument({ controller, item, onClose }: { controller: AppController; item: DriveItemOut; onClose: () => void }) {
+function DriveDocument({ controller, item, onClose, page }: { controller: AppController; item: DriveItemOut; onClose: () => void; page: number | null }) {
   const api = controller.api;
   const engine = controller.engine;
   const [live, setLive] = useState(item);
@@ -129,5 +131,5 @@ function DriveDocument({ controller, item, onClose }: { controller: AppControlle
     : source === "failed" ? "failed"
     : source === "ask" ? (answer === "none" ? "unavailable" : "making")
     : null;
-  return <PdfViewer attachment={attachment} controller={controller} onClose={onClose} load={source === "original" ? load : undefined} hold={hold} />;
+  return <PdfViewer attachment={attachment} controller={controller} onClose={onClose} load={source === "original" ? load : undefined} hold={hold} initialPage={page} />;
 }

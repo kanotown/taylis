@@ -3551,8 +3551,10 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "drive.upload.minutesLeft": "剩余 {n} 分钟",
   "drive.upload.hoursLeft": "剩余 {h} 小时 {m} 分钟",
   "search.tab.drive": "云盘",
-  "search.drive.empty": "按文件名搜索（不搜索内容）",
+  "search.drive.empty": "搜索文件名以及 PDF、Office 和文本文件中的内容",
   "search.drive.none": "没有与“{q}”匹配的文件或文件夹",
+  "search.drive.inside": "内容",
+  "search.drive.page": "第 {page} 页",
   // M163 (docs/DRIVE.md §9, §17.4): external share links, their admin section and the public page.
   "drive.share.open": "共享链接",
   "drive.share.title": "“{name}”的共享链接",

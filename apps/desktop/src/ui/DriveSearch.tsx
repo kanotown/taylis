@@ -1,7 +1,8 @@
 /**
  * The search screen's 「ドライブ」 tab (M161, docs/DRIVE.md §12): file and folder names in every drive I can read
- * (GET /search/drive; the contents are not searched in v1), each with its place. A folder opens in 「ドライブ」; a file
- * opens in its viewer (or downloads), and 「フォルダで表示」 shows it in its folder.
+ * (GET /search/drive), each with its place. A folder opens in 「ドライブ」; a file opens in its viewer (or downloads),
+ * and 「フォルダで表示」 shows it in its folder. §29: the text inside PDF, Office and text files too (`content`): such a
+ * hit shows the words around the match, marked, and a document opens at the match's page.
  */
 import { FolderInput, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -9,7 +10,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { DriveItemOut, DriveSearchHitOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { driveTime, formatBytes, pathLine, viewable, viewerKind } from "../drive/listing";
+import { openPage } from "../drive/snippet";
 import { DriveIcon } from "./DriveBrowser";
+import { DriveSnippet } from "./DriveSnippet";
 import { DriveViewer } from "./DriveViewer";
 import { FileName } from "./FileName";
 import { Button, IconButton } from "./primitives";
@@ -53,6 +56,8 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [viewing, setViewing] = useState<DriveItemOut | null>(null);
+  // §29: the page a document was opened at (its match inside); stepping to another file starts at its top.
+  const [openAt, setOpenAt] = useState<{ id: string; page: number } | null>(null);
   const words = q.trim();
 
   useEffect(() => {
@@ -64,7 +69,7 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
     let cancelled = false;
     setHits(null);
     setLoading(true);
-    void api.searchDrive({ q: words, limit: PAGE }).then(
+    void api.searchDrive({ q: words, limit: PAGE, content: true }).then(
       (out) => {
         if (cancelled) return;
         setHits(out.items);
@@ -87,7 +92,7 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
     if (!api || !cursor) return;
     setLoading(true);
     try {
-      const out = await api.searchDrive({ q: words, limit: PAGE, cursor });
+      const out = await api.searchDrive({ q: words, limit: PAGE, cursor, content: true });
       setHits((held) => [...(held ?? []), ...out.items]);
       setCursor(out.next_cursor);
     } catch (error) {
@@ -102,7 +107,11 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
   const open = (hit: DriveSearchHitOut) => {
     const item = hit.item;
     if (item.kind === "folder") onShowInDrive({ locationId: item.location_id, folderId: item.id });
-    else if (viewerKind(item)) setViewing(item);
+    else if (viewerKind(item)) {
+      const page = openPage(hit);
+      setOpenAt(page ? { id: item.id, page } : null);
+      setViewing(item);
+    }
     // §27: a click never downloads by itself: a file no viewer shows is shown in its folder.
     else if (item.parent_id) onShowInDrive({ locationId: item.location_id, folderId: item.parent_id });
   };
@@ -124,6 +133,7 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
                   {hitPath(hit)} · {driveTime(hit.item.content_modified_at ?? hit.item.updated_at)}
                   {hit.item.kind === "file" ? ` · ${formatBytes(hit.item.size_bytes)}` : ""}
                 </span>
+                <DriveSnippet hit={hit} className="mt-0.5" />
               </span>
             </button>
             {hit.item.parent_id && (
@@ -135,7 +145,7 @@ export function DriveResults({ controller, q, onShowInDrive }: { controller: App
         ))}
       </ul>
       {cursor && <Button variant="ghost" size="sm" className="mt-3" disabled={loading} onClick={() => void more()}>{t("drive.showMore")}</Button>}
-      {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} />}
+      {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} page={openAt?.id === viewing.id ? openAt.page : null} />}
     </div>
   );
 }

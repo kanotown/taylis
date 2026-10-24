@@ -4952,6 +4952,11 @@ export interface paths {
          * @description Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,
          *     partial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my
          *     channels' drives), never in the trash; each with its path. `location_id`: one drive only.
+         *
+         *     §29 `content=true`: also the files whose text matches (the current version; PDFs, Office
+         *     files through their PDF preview, plain text, Markdown, CSV), name matches first; each hit says
+         *     what matched (`match`) and, for a match inside, the marked text around it (`snippet`) and its
+         *     PDF page (`page`). Without it the answer is the file-name search of before.
          */
         get: operations["search_drive_api_v1_search_drive_get"];
         put?: never;
@@ -10330,13 +10335,25 @@ export interface components {
              * @enum {string}
              */
             location_kind: "workspace" | "channel" | "user";
+            /**
+             * Match
+             * @default name
+             * @enum {string}
+             */
+            match: "name" | "content" | "both";
+            /** Page */
+            page?: number | null;
             /** Path */
             path: components["schemas"]["DriveCrumb"][];
+            /** Snippet */
+            snippet?: components["schemas"]["DriveSnippetPart"][] | null;
         };
         /** DriveSearchOut */
         DriveSearchOut: {
             /** Items */
             items: components["schemas"]["DriveSearchHitOut"][];
+            /** Keywords */
+            keywords?: string[];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -10522,6 +10539,19 @@ export interface components {
             link_max_days?: number | null;
             /** Link Password Required */
             link_password_required?: boolean | null;
+        };
+        /**
+         * DriveSnippetPart
+         * @description A piece of a snippet: `hit` pieces are the searched words as found (to be marked).
+         */
+        DriveSnippetPart: {
+            /**
+             * Hit
+             * @default false
+             */
+            hit: boolean;
+            /** Text */
+            text: string;
         };
         /** DriveTakeoverIn */
         DriveTakeoverIn: {
@@ -25621,6 +25651,8 @@ export interface operations {
                 kind?: ("folder" | "file") | null;
                 cursor?: string | null;
                 limit?: number;
+                /** @description Also the text inside the files (PDF, Office, plain text), with a snippet */
+                content?: boolean;
             };
             header?: never;
             path?: never;
