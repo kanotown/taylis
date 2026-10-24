@@ -88,29 +88,139 @@ struct DocumentPreviewCard: View {
 
 @MainActor @Observable
 final class DocumentPDFLoader {
+    /// What the pages area shows while there is no document (§27 / §29 for the drive's files).
+    enum Status: Equatable {
+        case loading
+        /// A drive PDF's own bytes on their way (received, expected).
+        case downloading(Int64, Int64?)
+        /// An Office file's preview is being made (「プレビューを作成中…」): looked at again until it is ready.
+        case making
+        /// The file gets no preview (too large, no converter, not a kind the server previews).
+        case unavailable
+        /// The server could not make the preview.
+        case previewFailed
+        /// The pages could not be read (network, a PDF that is not one): 再試行.
+        case failed
+    }
+
     var document: PDFDocument?
     var file: URL?
-    var failed = false
+    var status: Status = .loading
+    var failed: Bool { status == .failed }
+    /// A drive.changed for the file's folder (or a reconnect) while its preview is being made: look now.
+    @ObservationIgnored private var poked = false
+    /// How often a preview being made is looked at again (the desktop's 4 s).
+    static var makingPoll: Duration = .seconds(4)
 
     func load(attachment: AttachmentOut, controller: AppController) async {
-        failed = false
+        status = .loading
         do {
             guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
-            let data = try await api.fetchData("/api/v1/attachments/\(attachment.id)/preview/pdf")
-            try Task.checkCancellation()
-            guard let document = PDFDocument(data: data) else { failed = true; return }
-            // For the share button: a PDF named after the original (「議事録.pdf」), in the app's temporary folder.
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("previews", isDirectory: true)
-                .appendingPathComponent(attachment.id.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let url = dir.appendingPathComponent(Self.pdfName(attachment.filename))
-            try data.write(to: url, options: .atomic)
-            self.file = url
-            self.document = document
+            try await loadPreview(attachmentId: attachment.id, filename: attachment.filename, api: api)
         } catch {
             guard !Task.isCancelled else { return }
-            failed = true
+            status = .failed
         }
+    }
+
+    private func loadPreview(attachmentId: String, filename: String, api: ApiClient) async throws {
+        let data = try await api.fetchData("/api/v1/attachments/\(attachmentId)/preview/pdf")
+        try Task.checkCancellation()
+        guard let document = PDFDocument(data: data) else { status = .failed; return }
+        // For the share button: a PDF named after the original (「議事録.pdf」), in the app's temporary folder.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("previews", isDirectory: true)
+            .appendingPathComponent(attachmentId.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(Self.pdfName(filename))
+        try data.write(to: url, options: .atomic)
+        self.file = url
+        self.document = document
+    }
+
+    func poke() { poked = true }
+
+    /// A drive file (§27, §29, the desktop's DriveDocument): a PDF always shows, from its preview when ready, else from
+    /// its own bytes (streamed to this device's caches, never whole in memory); an Office file without a preview asks
+    /// the server to make it and waits (「プレビューを作成中…」) until the pages are there; one that gets none, or whose
+    /// preview failed, says so (the viewer offers 「ダウンロード」).
+    func load(drive item: DriveItemOut, controller: AppController) async {
+        status = .loading
+        guard let api = controller.api else { status = .failed; return }
+        var live = item
+        // A PDF opened from its own bytes stays on them (its preview becoming ready meanwhile would reload the pages).
+        let original = DriveRules.documentSource(item) == .original
+        do {
+            // Never made (imported, §24): ask for it. A PDF asks too (its thumbnail later), but reads its own bytes.
+            if live.file != nil, live.file?.preview == nil {
+                do {
+                    let preview = try await api.requestDrivePreview(item.id)
+                    live.file?.preview = preview
+                    if preview == nil, !original { status = .unavailable; return }
+                } catch {
+                    if !original { throw error }
+                }
+            }
+            if original { return try await loadOriginal(item, api: api) }
+            while true {
+                try Task.checkCancellation()
+                switch DriveRules.documentSource(live) {
+                case .preview:
+                    guard let file = live.file else { status = .failed; return }
+                    return try await loadPreview(attachmentId: file.attachmentId, filename: live.name, api: api)
+                case .original:
+                    return try await loadOriginal(live, api: api)
+                case .failed:
+                    status = .previewFailed
+                    return
+                case .ask:
+                    status = .unavailable
+                    return
+                case .making:
+                    status = .making
+                    try await waitForMaking()
+                    if let detail = try? await api.driveItem(item.id) { live = detail.item }
+                }
+            }
+        } catch {
+            guard !Task.isCancelled, !(error is CancellationError) else { return }
+            status = .failed
+        }
+    }
+
+    private func waitForMaking() async throws {
+        poked = false
+        let step = Duration.milliseconds(100)
+        var waited = Duration.zero
+        while waited < Self.makingPoll, !poked {
+            try await Task.sleep(for: step)
+            waited += step
+        }
+    }
+
+    /// The PDF itself (its preview is not ready): the download ticket's URL to the caches, kept per version.
+    private func loadOriginal(_ item: DriveItemOut, api: ApiClient) async throws {
+        guard let file = item.file else { status = .failed; return }
+        let name = Self.pdfName(DriveRules.fileName(item.name))
+        let destination = DriveFiles.directory("view").appendingPathComponent(file.versionId ?? file.attachmentId, isDirectory: true)
+            .appendingPathComponent(name)
+        if !FileManager.default.fileExists(atPath: destination.path) {
+            let ticket = try await api.driveDownloadTicket(item.id)
+            guard let url = DriveFiles.absolute(ticket.url, base: api.baseUrl) else { status = .failed; return }
+            status = .downloading(0, item.sizeBytes)
+            try await DriveFiles.download(url, to: destination) { [weak self] received, total in
+                guard let self, case .downloading = self.status else { return }
+                self.status = .downloading(received, total ?? item.sizeBytes)
+            }
+        }
+        try Task.checkCancellation()
+        guard let document = PDFDocument(url: destination) else {
+            // Not a PDF after all (or damaged): not kept, so 再試行 fetches it again.
+            try? FileManager.default.removeItem(at: destination)
+            status = .failed
+            return
+        }
+        self.file = destination
+        self.document = document
     }
 
     static func pdfName(_ filename: String) -> String {
@@ -145,10 +255,13 @@ enum DocumentDismiss {
 struct DocumentPDFViewer: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
+    /// A drive file (§29): its pages from the preview or the PDF itself, or why they are not there (with 「ダウンロード」).
+    var driveItem: DriveItemOut? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var loader = DocumentPDFLoader()
     @State private var attempt = 0
+    @State private var download: DriveDownloadRequest?
     /// How far the document is pulled down, and whether the header's drag is a pull (decided on its first move).
     @State private var pull: CGFloat = 0
     @State private var headerPull: Bool?
@@ -174,7 +287,28 @@ struct DocumentPDFViewer: View {
         .presentationBackground(.clear)
         // VoiceOver's escape (two-finger scrub) closes it like 閉じる.
         .accessibilityAction(.escape) { dismiss() }
-        .task(id: attempt) { await loader.load(attachment: attachment, controller: controller) }
+        .task(id: attempt) {
+            if let driveItem {
+                await loader.load(drive: driveItem, controller: controller)
+            } else {
+                await loader.load(attachment: attachment, controller: controller)
+            }
+        }
+        // The preview loop's drive.changed (or a reconnect) while its preview is being made: look now.
+        .onChange(of: controller.drive?.signal(driveItem?.parentId ?? "") ?? 0) { _, _ in loader.poke() }
+        .onChange(of: controller.drive?.reconnects ?? 0) { _, _ in loader.poke() }
+        .sheet(item: $download) { DriveDownloadSheet(request: $0, controller: controller) }
+    }
+
+    private var title: String { driveItem?.name ?? attachment.filename }
+
+    /// A drive file without pages to show: its own bytes to this device (share, “ファイル”に保存).
+    @ViewBuilder
+    private var downloadButton: some View {
+        if let driveItem {
+            Button { download = DriveDownloadRequest(item: driveItem) } label: { Label("ダウンロード", systemImage: "arrow.down.circle") }
+                .buttonStyle(.bordered)
+        }
     }
 
     private func header(extent: CGFloat) -> some View {
@@ -188,7 +322,7 @@ struct DocumentPDFViewer: View {
         }
         // The system title cuts a long name at its end; this one keeps the extension (FileNameEllipsis).
         .overlay {
-            Text(attachment.filename).font(.headline).fileNameLine(attachment.filename)
+            Text(title).font(.headline).fileNameLine(title)
                 .padding(.horizontal, 72)
                 .accessibilityAddTraits(.isHeader)
         }
@@ -218,14 +352,46 @@ struct DocumentPDFViewer: View {
             if let document = loader.document {
                 PDFKitView(document: document, onPull: pulled,
                            onRelease: { released($0, velocity: $1, extent: extent) })
-            } else if loader.failed {
-                VStack(spacing: 12) {
-                    Label("プレビューを読み込めませんでした", systemImage: "exclamationmark.triangle")
-                    Button("再試行") { attempt += 1 }
-                }
-                .foregroundStyle(.secondary)
             } else {
-                ProgressView().accessibilityLabel("プレビューを読み込み中")
+                switch loader.status {
+                case .failed:
+                    VStack(spacing: 12) {
+                        Label("プレビューを読み込めませんでした", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                        Button("再試行") { attempt += 1 }
+                        downloadButton
+                    }
+                case .making:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("プレビューを作成中…")
+                    }
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .combine)
+                case .unavailable:
+                    VStack(spacing: 12) {
+                        Label("このファイルはプレビューできません", systemImage: "doc").foregroundStyle(.secondary)
+                        downloadButton
+                    }
+                case .previewFailed:
+                    VStack(spacing: 12) {
+                        Label("プレビューを作れませんでした", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                        downloadButton
+                    }
+                case .downloading(let received, let expected):
+                    VStack(spacing: 8) {
+                        if let expected, expected > 0 {
+                            ProgressView(value: min(1, Double(received) / Double(expected)))
+                            Text(verbatim: "\(driveSize(received)) / \(driveSize(expected))").font(.footnote).monospacedDigit()
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    .frame(maxWidth: 260)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("プレビューを読み込み中")
+                case .loading:
+                    ProgressView().accessibilityLabel("プレビューを読み込み中")
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

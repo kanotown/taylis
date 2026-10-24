@@ -304,7 +304,8 @@ struct DriveViewing: Identifiable {
     enum Kind {
         case images([AttachmentOut], start: Int, items: [String: DriveItemOut])
         case video(AttachmentOut, URL, poster: UIImage?)
-        case document(AttachmentOut)
+        /// A PDF or an Office file (§27, §29): its preview, the PDF itself, or why there are no pages yet.
+        case document(AttachmentOut, DriveItemOut)
     }
 
     let id = UUID()
@@ -335,7 +336,7 @@ struct DriveViewing: Identifiable {
                 return nil
             }
         case .document:
-            return DriveViewing(kind: .document(attachment))
+            return DriveViewing(kind: .document(attachment, item))
         }
     }
 }
@@ -354,8 +355,8 @@ struct DriveViewerView: View {
         case .video(let attachment, let url, let poster):
             // Streamed: the share button would hand out the ticket's URL, so the download is in the file's details.
             VideoViewer(attachment: attachment, url: url, poster: poster, shares: false)
-        case .document(let attachment):
-            DocumentPDFViewer(attachment: attachment, controller: controller)
+        case .document(let attachment, let item):
+            DocumentPDFViewer(attachment: attachment, controller: controller, driveItem: item)
         }
     }
 }
