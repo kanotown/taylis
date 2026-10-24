@@ -11,7 +11,7 @@ import { restoredDmPins } from "./dmCloses";
 import { ownNotification } from "./notifications";
 import { isIndefiniteDnd } from "../ui/dnd";
 import { presenceLook } from "../ui/presence";
-import { LOCAL_PREFIX } from "./types";
+import { type CanvasCaret, LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
 /** What the threads list's optimistic 「すべて既読にする」 changed (THREADS.md §3.2), to put back on failure. */
@@ -1345,8 +1345,8 @@ export class Store {
   }
 
   /** M72: a `canvas_presence` frame from someone else (true for 45 s unless refreshed, false ends it). */
-  noteCanvasEditing(canvasId: string, userId: string, editing: boolean, section: string | null, now: number = Date.now()): void {
-    if (this.canvasEditing.note(canvasId, userId, editing, section, now)) this.emit();
+  noteCanvasEditing(canvasId: string, userId: string, editing: boolean, section: string | null, now: number = Date.now(), caret: CanvasCaret | null = null): void {
+    if (this.canvasEditing.note(canvasId, userId, editing, section, now, caret)) this.emit();
   }
 
   /** M72: who edits the canvas now; pure (called during render), expired entries are skipped. */

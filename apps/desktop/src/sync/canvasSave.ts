@@ -108,6 +108,12 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
   /** Bumped when the saver itself changed `text` (a merge or someone else's version): the editor takes it. */
   textRevision = 0;
   /**
+   * CANVAS.md §24: the generation of the body `text` is written on — the `textRevision` that put it in, or an earlier
+   * one when an editor came back with a text written before a body it had not taken yet (`edit(text, false, basedOn)`).
+   * As iOS / Android (M153a): an editor that shows a body says which one its edits are written on.
+   */
+  textLineage = 0;
+  /**
    * Whether the editor can take a new text now (not while an IME composition is open). When it cannot, the merged
    * body waits: the next save carries this text on the version that holds it, and the server merges again.
    */
@@ -115,6 +121,18 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
 
   private synced = "";
   private baseRevId: string | null = null;
+  /**
+   * For the generations an editor may still write on after the saver put a newer body in (it had not taken it yet): the
+   * version a text of that generation is saved on, so the server merges it with what came since instead of taking it
+   * as written over the newer body (which would take the other people's edits back out). The current generation's base
+   * is `baseRevId` / `synced`.
+   */
+  private readonly lineageBases = new Map<number, { revId: string; body: string }>();
+  /** The generation of the text on the wire, and whether an editor went back to another generation since it went out. */
+  private inFlightLineage: number | null = null;
+  private inFlightDetached = false;
+  /** The newest version a canvas.updated announced (read once nothing here is unsaved, if newer than what came). */
+  private announced = 0;
   private version = 0;
   private inFlight: InFlight | null = null;
   private again = false;
@@ -190,6 +208,8 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
   /** A canvas.updated (or a reconnect): read again unless something here is not saved yet (§4.4). */
   remoteVersion(version: number): void {
     if (this.disposed || version <= this.version) return;
+    // Remembered: when the read is skipped (typing, a save on the wire), the version is read once this is idle again.
+    this.announced = Math.max(this.announced, version);
     this.scheduleRefresh();
   }
 
@@ -270,6 +290,8 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
       this.setStatus("saved");
       return;
     }
+    // Older than what a save here already answered with: nothing to take.
+    if (canvas.version < this.version) return;
     // Typed (or saved) since the request went out: the next save merges instead.
     if (this.text !== before || !this.idleHere() || !this.canReplace()) {
       if (this.idleHere() && canvas.body !== this.text) this.stale = true; // an IME composition: read again after it
@@ -284,25 +306,60 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
 
   /** The server's version becomes the text (nothing unsaved here). */
   private adopt(canvas: D): void {
+    const previous = this.currentBase();
     this.baseRevId = canvas.head_rev_id;
     this.synced = canvas.body;
-    if (this.text !== canvas.body) {
-      this.text = canvas.body;
-      this.textRevision += 1;
-    }
+    if (this.text !== canvas.body) this.putText(canvas.body, previous);
     this.persist();
+  }
+
+  private currentBase(): { revId: string; body: string } | null {
+    return this.baseRevId === null ? null : { revId: this.baseRevId, body: this.synced };
+  }
+
+  /**
+   * The saver puts a body of its own in `text` (a merge, someone else's version, a tick): a new generation. A text an
+   * editor wrote on the generation before (it had not taken this body yet) is saved on `previous`.
+   */
+  private putText(body: string, previous: { revId: string; body: string } | null): void {
+    if (previous) this.lineageBases.set(this.textLineage, previous);
+    this.text = body;
+    this.textRevision += 1;
+    this.textLineage = this.textRevision;
+    for (const key of this.lineageBases.keys()) if (key <= this.textRevision - LINEAGES_KEPT) this.lineageBases.delete(key);
+  }
+
+  /**
+   * An editor's text was written on generation `lineage` (an earlier body it kept, the newer one not taken yet): it is
+   * saved on that generation's version, and the server merges it with the newer one again.
+   */
+  private rebase(lineage: number, base: { revId: string; body: string }): void {
+    const current = this.currentBase();
+    if (current) this.lineageBases.set(this.textLineage, current);
+    this.textLineage = lineage;
+    this.baseRevId = base.revId;
+    this.synced = base.body;
+    if (this.inFlight && this.inFlightLineage !== lineage) this.inFlightDetached = true;
+    this.stale = true; // the server holds more than this text: read again if it turns out unchanged
   }
 
   // --- editing and saving ---------------------------------------------------------------------
 
   /**
    * The editor's text changed: saved once typing pauses. `external`: the change came from elsewhere on the screen (a
-   * box ticked in the preview), so the editor takes it like a merge.
+   * box ticked in the preview), so the editor takes it like a merge. `basedOn`: the generation (`textLineage`) of the
+   * body the editor wrote this text on, when it says so; an earlier one than `textLineage` means a body the saver put in
+   * since (a merge, someone else's version) had not reached the editor yet, and the text is saved on that generation's
+   * version so that the server merges it with the newer body instead of taking it as written over it (CANVAS.md §24).
    */
-  edit(text: string, external = false): void {
+  edit(text: string, external = false, basedOn: number | null = null): void {
     if (this.disposed || text === this.text) return;
-    this.text = text;
-    if (external) this.textRevision += 1;
+    if (basedOn !== null && basedOn !== this.textLineage) {
+      const base = this.lineageBases.get(basedOn);
+      if (base) this.rebase(basedOn, base);
+    }
+    if (external) this.putText(text, this.currentBase());
+    else this.text = text;
     if (this.status === "blocked") this.error = null; // an edit may fix it (a body that was too long)
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
@@ -335,6 +392,8 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
       return this.running;
     }
     this.inFlight = { clientSaveId: this.opts.newId(), sent: this.text, baseRevId: this.baseRevId, onConflict };
+    this.inFlightLineage = this.textLineage;
+    this.inFlightDetached = false;
     this.persist();
     return this.track(this.send());
   }
@@ -355,18 +414,27 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
   }
 
   private landed(flight: InFlight, answer: DocSaveOut<D>): void {
+    const flightLineage = this.inFlightLineage ?? this.textLineage;
+    const detached = this.inFlightDetached;
     this.inFlight = null;
+    this.inFlightLineage = null;
+    this.inFlightDetached = false;
     this.attempt = 0;
     this.canvas = answer.canvas;
     this.version = Math.max(this.version, answer.canvas.version);
-    if (this.text === flight.sent && this.canReplace()) {
-      // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen.
+    // The version holding exactly what was sent: the base of a text its editor writes on after it.
+    const submitted = { revId: answer.submitted_rev_id, body: flight.sent };
+    if (detached) {
+      // The editor went back to an earlier body after this went out: its text is not written on what was sent. The
+      // sent text's generation keeps this version; the text here goes on on its own base (merged again).
+      this.lineageBases.set(flightLineage, submitted);
+      if (answer.canvas.body !== this.text) this.stale = true;
+    } else if (this.text === flight.sent && this.canReplace()) {
+      // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen. Should the editor type on
+      // the text it shows before it takes that body, its text is saved on the version of what was sent.
       this.baseRevId = answer.canvas.head_rev_id;
       this.synced = answer.canvas.body;
-      if (this.text !== answer.canvas.body) {
-        this.text = answer.canvas.body;
-        this.textRevision += 1;
-      }
+      if (this.text !== answer.canvas.body) this.putText(answer.canvas.body, submitted);
       this.stale = false;
     } else {
       // Typed on: the next save is written on the version holding exactly what was sent (§4.4).
@@ -381,6 +449,9 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
       void this.save();
     } else if (this.dirty && !this.saveTimer) {
       void this.save();
+    } else if (this.announced > this.version) {
+      // A canvas.updated came while this was on the wire (its read was skipped): read it now.
+      this.scheduleRefresh(0);
     }
   }
 
@@ -568,6 +639,9 @@ export class CanvasSaver<D extends SavedDoc = CanvasOut> {
  * it) past this goes out only on an ordinary request, so closing the tab must ask first.
  */
 export const KEEPALIVE_BODY_BYTES = 60_000;
+
+/** How many earlier generations an editor may still write on (CANVAS.md §24; as iOS / Android). */
+const LINEAGES_KEPT = 32;
 
 export function fitsKeepalive(body: string): boolean {
   // UTF-8 is at most 3 bytes per UTF-16 unit; count exactly only when that bound is over the limit.

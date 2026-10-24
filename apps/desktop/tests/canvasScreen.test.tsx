@@ -193,6 +193,28 @@ it("phone: 「キャンバス」 in the conversation's tab row; someone else's s
   expect(editor()!.value).toBe(TASKS + "\n- [ ] 発表練習");
 });
 
+it("CANVAS.md §24: someone else's version waits while an IME composition is open; what it commits keeps their edit", async () => {
+  const { server, alice, channelId } = await setup();
+  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });
+  await openCanvasTab();
+  const area = editor()!;
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+  // A composition starts …
+  fireEvent.compositionStart(area);
+  fireEvent.change(area, { target: { value: TASKS + "\nけんきゅう" } });
+  // … and alice's save comes in meanwhile (the loop, typing here, merges it on the next save).
+  server.saveCanvas(alice.id, canvas.id, { base_rev_id: canvas.head_rev_id, body: "# 学会準備 (確定)\n- [ ] 参加登録\n- [ ] 旅費申請\n- [ ] 予稿", client_save_id: crypto.randomUUID(), on_conflict: "fail" });
+  await settle(20);
+  expect(editor()!.value).toBe(TASKS + "\nけんきゅう"); // not replaced under the composition
+  fireEvent.change(area, { target: { value: TASKS + "\n研究" } });
+  fireEvent.compositionEnd(area);
+  await settle(120); // the pause, the save (merged), its answer, the editor taking it
+  expect(bodyOf(server, canvas.id)).toBe("# 学会準備 (確定)\n- [ ] 参加登録\n- [ ] 旅費申請\n- [ ] 予稿\n研究");
+  expect(editor()!.value).toBe(bodyOf(server, canvas.id));
+  expect(saveState()).toBe("saved");
+});
+
 it("a member who may only tick (edit_policy owners): no editor, the reason, and a tick is saved", async () => {
   const { server, alice, channelId } = await setup();
   const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });

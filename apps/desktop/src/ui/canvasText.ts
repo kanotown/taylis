@@ -26,41 +26,122 @@ export function toggleTaskLine(body: string, line: number, done?: boolean): stri
 
 /**
  * Where the caret goes when the editor's text changes from `before` to `after` under it (a merge brought someone else's
- * edits): before the first difference it stays; after the last one it keeps its distance from the end; inside the changed
- * stretch it follows its own line when that line is still there (the nearest copy of it), else it goes to the end of
- * the change.
+ * edits, CANVAS.md §24): before the first difference it stays; after the last one it keeps its distance from the end.
+ * Inside the changed stretch it follows its own line through the lines both texts keep (a line diff). A line that
+ * changed itself (someone typed on it too) is matched to its new form and the caret follows the characters both keep,
+ * so it stays where it was typing instead of jumping to the end of the whole change (another person's line). A line
+ * that is gone puts it at the end of the line before; a line rewritten as a whole, at the end of the new line.
+ * The same rule on the three clients (apps/shared/canvas_markdown.json `caret`).
  */
 export function preserveCaret(before: string, after: string, caret: number): number {
   if (before === after) return Math.min(caret, after.length);
-  const max = Math.min(before.length, after.length);
-  let prefix = 0;
-  while (prefix < max && before.charCodeAt(prefix) === after.charCodeAt(prefix)) prefix++;
-  let suffix = 0;
-  while (suffix < max - prefix && before.charCodeAt(before.length - 1 - suffix) === after.charCodeAt(after.length - 1 - suffix)) suffix++;
+  const [prefix, suffix] = commonEnds(before, after);
   if (caret <= prefix) return caret;
   if (caret >= before.length - suffix) return Math.max(0, after.length - (before.length - caret));
-  // Inside the changed stretch: find the caret's line in the new text, nearest to where it would have moved.
-  const lineStart = before.lastIndexOf("\n", caret - 1) + 1;
-  const lineEndIndex = before.indexOf("\n", caret);
-  const lineText = before.slice(lineStart, lineEndIndex === -1 ? before.length : lineEndIndex);
-  const column = caret - lineStart;
   const beforeLines = before.split("\n");
   const afterLines = after.split("\n");
-  const lineIndex = before.slice(0, lineStart).split("\n").length - 1;
-  const expected = lineIndex + (afterLines.length - beforeLines.length);
-  let best = -1;
-  if (lineText.trim() !== "") {
-    for (let k = 0; k < afterLines.length; k++) {
-      if (afterLines[k] !== lineText) continue;
-      if (best === -1 || Math.abs(k - expected) < Math.abs(best - expected) || (Math.abs(k - expected) === Math.abs(best - expected) && Math.abs(k - lineIndex) < Math.abs(best - lineIndex))) best = k;
+  const line = before.slice(0, caret).split("\n").length - 1;
+  const column = caret - (before.lastIndexOf("\n", caret - 1) + 1);
+  const offset = (k: number) => {
+    let at = 0;
+    for (let n = 0; n < k; n++) at += afterLines[n]!.length + 1;
+    return at;
+  };
+  const [p, s] = commonEnds(beforeLines, afterLines);
+  if (line < p) return offset(line) + column;
+  if (line >= beforeLines.length - s) return offset(line + afterLines.length - beforeLines.length) + column;
+  const midBefore = beforeLines.slice(p, beforeLines.length - s);
+  const midAfter = afterLines.slice(p, afterLines.length - s);
+  const i = line - p;
+  let prev: [number, number] = [-1, -1];
+  let next: [number, number] = [midBefore.length, midAfter.length];
+  for (const [a, b] of keptPairs(midBefore, midAfter)) {
+    if (a === i) return offset(p + b) + column;
+    if (a < i) prev = [a, b];
+    else {
+      next = [a, b];
+      break;
     }
   }
-  if (best !== -1) {
-    let offset = 0;
-    for (let k = 0; k < best; k++) offset += (afterLines[k] ?? "").length + 1;
-    return offset + column;
+  const gapBefore = next[0] - prev[0] - 1;
+  const gapAfter = next[1] - prev[1] - 1;
+  if (gapAfter <= 0) {
+    // The caret's line went: the end of the line before it (or the start).
+    const k = p + prev[1];
+    return k < 0 ? 0 : offset(k) + afterLines[k]!.length;
   }
-  return Math.max(prefix, after.length - suffix);
+  let k = prev[1] + 1 + (i - prev[0] - 1);
+  if (gapBefore !== gapAfter) {
+    // The new line most like the caret's (most characters kept at its ends), nearest to the same place in the gap.
+    const own = beforeLines[line]!;
+    const where = (i - prev[0] - 1) / Math.max(1, gapBefore);
+    let bestScore = -1;
+    let bestDistance = Infinity;
+    for (let j = prev[1] + 1; j < next[1]; j++) {
+      const [a, b] = commonEnds(own, midAfter[j]!);
+      const distance = Math.abs((j - prev[1] - 1) / Math.max(1, gapAfter) - where);
+      if (a + b > bestScore || (a + b === bestScore && distance < bestDistance)) {
+        k = j;
+        bestScore = a + b;
+        bestDistance = distance;
+      }
+    }
+  }
+  return offset(p + k) + caretInLine(beforeLines[line]!, afterLines[p + k]!, column);
+}
+
+/** The lengths of the common start and end of two strings (UTF-16 units) or line lists, not overlapping. */
+function commonEnds(a: string | readonly string[], b: string | readonly string[]): [number, number] {
+  const max = Math.min(a.length, b.length);
+  let prefix = 0;
+  while (prefix < max && a[prefix] === b[prefix]) prefix++;
+  let suffix = 0;
+  while (suffix < max - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix++;
+  return [prefix, suffix];
+}
+
+/** Past this many cells (a × b) the diff is not run; what lies between is taken as replaced. */
+const CARET_DIFF_CELLS = 250_000;
+
+/** The pairs (index in a, index in b) of a longest common subsequence, in order. */
+function keptPairs(a: readonly string[], b: readonly string[]): Array<[number, number]> {
+  const n = a.length;
+  const m = b.length;
+  if (n === 0 || m === 0 || n * m > CARET_DIFF_CELLS) return [];
+  const width = m + 1;
+  const table = new Uint32Array((n + 1) * width);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      table[i * width + j] = a[i] === b[j] ? table[(i + 1) * width + j + 1]! + 1 : Math.max(table[(i + 1) * width + j]!, table[i * width + j + 1]!);
+    }
+  }
+  const pairs: Array<[number, number]> = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      pairs.push([i, j]);
+      i++;
+      j++;
+    } else if (table[(i + 1) * width + j]! >= table[i * width + j + 1]!) i++;
+    else j++;
+  }
+  return pairs;
+}
+
+/** The caret's column in a line that changed: through the characters both keep (the last one before it). */
+function caretInLine(before: string, after: string, column: number): number {
+  const [p, s] = commonEnds(before, after);
+  if (column <= p) return column;
+  if (column >= before.length - s) return after.length - (before.length - column);
+  const pairs = keptPairs(before.slice(p, before.length - s).split(""), after.slice(p, after.length - s).split(""));
+  if (pairs.length === 0) return after.length - s; // rewritten as a whole: after the new text
+  let at = p;
+  for (const [i, j] of pairs) {
+    if (p + i < column) at = p + j + 1;
+    else break;
+  }
+  return at;
 }
 
 export interface OutlineEntry {
