@@ -1093,7 +1093,7 @@
     <string name="reservations_assigned">割り当てた</string>
     <string name="reservations_availability">%1$s の空き</string>
     <string name="reservations_available">空きあり</string>
-    <string name="reservations_available_until_waiting_for_an_operator">空きあり（〜%1$s まで）· 担当者の割り当て待ち</string>
+    <string name="reservations_available_until_waiting_for_an_operator">空きあり（〜%1$s まで保証）· 担当者の割り当て待ち</string>
     <string name="reservations_available_waiting_for_an_operator_to">空きあり · 担当者の割り当て待ち</string>
     <string name="reservations_book">予約する</string>
     <string name="reservations_book_2">%1$s を予約</string>
@@ -1115,6 +1115,10 @@
     <string name="reservations_in_use">利用中</string>
     <string name="reservations_in_use_2">%1$s · 利用中</string>
     <string name="reservations_in_use_guaranteed_until">利用中（〜%1$s まで保証）</string>
+    <string name="reservations_in_use_guarantee_over">利用中（保証は %1$s まで · 担当者が外すことがあります）</string>
+    <string name="reservations_holders_title">利用中（%1$d/%2$d）</string>
+    <string name="reservations_remove_holder">外す</string>
+    <string name="reservations_remove_holder_question">%1$s さんを外しますか？ 管理画面でも外してください。</string>
     <string name="reservations_it_will_be_assigned_after_the">前の人の保証時間の後に割り当てられます</string>
     <string name="reservations_no_free_times_on_this_day">この日は空いている時間がありません</string>
     <string name="reservations_no_reservation_slots_an_administrator">予約の枠はありません（枠は管理者が Desktop / Web で作ります）</string>
