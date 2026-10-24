@@ -135,6 +135,47 @@ final class ReservationTests: XCTestCase {
             .first { $0.kind == .reservations })
     }
 
+    /// 2026-10-24 (option A): a walk-in's time reads as a guarantee; past it, the operators take the seat out; operators
+    /// can take any holder out by hand.
+    func testTheGuaranteeAndRemovingAHolder() {
+        let waiting = ReservationOut(id: "q1", userId: "me", kind: "walkin", status: "waiting", requestedAt: at(9), step: "assign", until: at(13))
+        let inside = ReservationOut(id: "w1", userId: "bob", kind: "walkin", status: "holding", requestedAt: at(8), assignedAt: at(9),
+                                    guaranteeUntil: at(12))
+        let over = ReservationOut(id: "w2", userId: "carol", kind: "walkin", status: "holding", requestedAt: at(7), assignedAt: at(8),
+                                  guaranteeUntil: at(10))
+        let seated = booking("b1", user: "alice", from: 10, to: 12, status: "holding")
+        let pool = PoolOut(id: "p1", name: "シート", capacity: 3, holders: [inside, over, seated], waiting: [waiting], canOperate: true)
+        XCTAssertTrue(ReservationRules.walkinText(waiting, pool: pool, now: now).contains(" まで保証）· 担当者の割り当て待ち"))
+        XCTAssertTrue(ReservationRules.walkinText(inside, pool: pool, now: now).hasPrefix("利用中（〜"))
+        XCTAssertTrue(ReservationRules.walkinText(inside, pool: pool, now: now).hasSuffix(" まで保証）"))
+        let ended = ReservationRules.walkinText(over, pool: pool, now: now)
+        XCTAssertTrue(ended.hasPrefix("利用中（保証は "), ended)
+        XCTAssertTrue(ended.hasSuffix(" まで · 担当者が外すことがあります）"), ended)
+        // Told to go for someone waiting: the time they go wins.
+        var told = over
+        told.evictAt = at(11)
+        XCTAssertTrue(ReservationRules.walkinText(told, pool: pool, now: now).hasSuffix(" 以降に外されます"))
+        XCTAssertTrue(ReservationRules.holderText(seated, pool: pool, now: now).hasPrefix("予約 "))
+        XCTAssertEqual(ReservationRules.holderText(over, pool: pool, now: now), ended)
+        // The remove to-do of a guarantee over, nobody waiting: listed, not counted.
+        let todo = ReservationTodo(key: "remove:w2", action: "remove", reason: "guarantee_over", removeId: "w2", dueAt: at(10))
+        var withTodo = pool
+        withTodo.todos = [todo]
+        let name: (String) -> String = { ["carol": "キャロル"][$0] ?? "?" }
+        XCTAssertEqual(ReservationRules.todoLine(todo, pool: withTodo, name: name, now: now), "キャロル さん を外す（保証時間が終了）")
+        XCTAssertEqual(ReservationRules.todoCount([withTodo]), 0)
+        XCTAssertEqual(ReservationRules.todoButton(todo), "外した")
+        // Who may take a holder out by hand: operators, on anyone on a seat.
+        XCTAssertTrue(ReservationRules.canRemoveHolder(pool, inside))
+        XCTAssertTrue(ReservationRules.canRemoveHolder(pool, seated))
+        let returning = ReservationOut(id: "w3", userId: "dave", kind: "walkin", status: "returning", requestedAt: at(7), assignedAt: at(8))
+        XCTAssertTrue(ReservationRules.canRemoveHolder(pool, returning))
+        XCTAssertFalse(ReservationRules.canRemoveHolder(pool, waiting))
+        var member = pool
+        member.canOperate = false
+        XCTAssertFalse(ReservationRules.canRemoveHolder(member, inside))
+    }
+
     func testActivityItemOfKindReservation() throws {
         let json = """
         {"kind": "reservation", "at": "2026-10-05T01:00:00Z", "message": null, "canvas": null, "actor_ids": [], "emojis": [],

@@ -26812,22 +26812,6 @@
         }
       }
     },
-    "空きあり（〜%@ まで）· 担当者の割り当て待ち" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Free (until %@) · waiting for an operator"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空闲（至 %@）· 等待负责人分配"
-          }
-        }
-      }
-    },
     "空きあり · 担当者の割り当て待ち" : {
       "localizations" : {
         "en" : {
@@ -31742,22 +31726,6 @@
     "🔒" : {
       "shouldTranslate" : false
     },
-    "毎時 0 分から %lld 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "From the top of the hour for up to %lld hours, up to 2 weeks ahead. One booking, queue place or seat per person in a slot. “Now” uses a free slot until the next booking starts."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从整点开始，最长 %lld 小时，最多可预约 2 周以内。同一名额中每人只能有一个预约、排队或正在使用。“立即”可以使用空闲时段直到下一个预约开始。"
-          }
-        }
-      }
-    },
     "%@ から埋まっているため、最長 %lld 時間です" : {
       "localizations" : {
         "en" : {
@@ -34063,6 +34031,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顺序"
+          }
+        }
+      }
+    },
+    "空きあり（〜%@ まで保証）· 担当者の割り当て待ち" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Free (guaranteed until %@) · waiting for an operator"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空闲（保证至 %@）· 等待负责人分配"
+          }
+        }
+      }
+    },
+    "毎時 0 分から %lld 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を保証の時間（次の予約が始まるまで）使えます。保証が過ぎると担当者が外します。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the top of the hour for up to %lld hours, up to 2 weeks ahead. One booking, queue place or seat per person in a slot. “Now” uses a free slot for its guaranteed time (until the next booking starts). After that an operator takes you off."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从整点开始，最长 %lld 小时，最多可预约 2 周以内。同一名额中每人只能有一个预约、排队或正在使用。“立即”可以在保证时间内（到下一个预约开始为止）使用空闲时段。保证时间过后，负责人会将你移出。"
+          }
+        }
+      }
+    },
+    "利用中（保証は %@ まで · 担当者が外すことがあります）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In use (guaranteed until %@; an operator may take you off)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用中（保证到 %@，负责人可能会移出）"
+          }
+        }
+      }
+    },
+    "%@ さんを外しますか？ 管理画面でも外してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Take %@ off? Take them off in the admin screen too."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要移出 %@ 吗？请同时在管理画面中移出。"
+          }
+        }
+      }
+    },
+    "利用中（%lld/%lld）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In use (%lld/%lld)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用中（%lld/%lld）"
           }
         }
       }
