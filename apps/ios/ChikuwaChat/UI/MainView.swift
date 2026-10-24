@@ -14,6 +14,10 @@ struct MainView: View {
     @State private var sidebar = SidebarVisibility()
     /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
     @State private var youPath: [YouRoute] = []
+    /// The split's detail stack, built again when several of its screens go at once (`MainNavigation.splitStackRebuilds`),
+    /// and the last path it wrote itself.
+    @State private var splitStackGeneration = 0
+    @State private var splitStackWrites = SplitStackWrites()
     /// PRESENCE.md §11.7: the quick status menu from my picture at the home's top left (either layout; `myStatusSheet`
     /// remembers where it sends me until it is gone).
     @State private var myStatusShown = false
@@ -595,6 +599,7 @@ struct MainView: View {
                 }
         } detail: {
             NavigationStack(path: Binding(get: { Array(nav.split.dropFirst()) }, set: { tail in
+                splitStackWrites.tail = tail
                 nav.split = Array(nav.split.prefix(1)) + tail
             })) {
                 Group {
@@ -611,6 +616,7 @@ struct MainView: View {
                     screen(route, on: .home).modifier(SidebarShowButton(columns: $columns))
                 }
             }
+            .id(splitStackGeneration)
             .environment(\.threadInPane, true)
             // The front conversation's thread, in a pane beside it (Slack's right panel); the conversation stays read.
             .inspector(isPresented: Binding(get: { paneThread != nil }, set: { if !$0 { nav.openThread = nil } })) {
@@ -618,6 +624,13 @@ struct MainView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        // Several screens taken off the detail column's path at once (a breadcrumb, the sidebar deep in a stack): its
+        // NavigationStack does not follow such a change, so it is built again on the new path.
+        .onChange(of: nav.split) { old, new in
+            let fromStack = splitStackWrites.tail == Array(new.dropFirst())
+            splitStackWrites.tail = nil
+            if !fromStack, MainNavigation.splitStackRebuilds(from: old, to: new) { splitStackGeneration += 1 }
+        }
         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in splitWidth = width }
         // Sidebar, conversation and thread need about 1180 pt; narrower (portrait) the sidebar steps aside while the
         // pane is open and comes back with its close — unless it was changed by hand meanwhile (SidebarVisibility).
@@ -831,6 +844,11 @@ struct MainView: View {
             EmptyView()
         }
     }
+}
+
+/// The path the split's detail NavigationStack last set itself (a Back, its long-press menu, a NavigationLink).
+private final class SplitStackWrites {
+    var tail: [MainRoute]?
 }
 
 private extension MainView.Sheet {
