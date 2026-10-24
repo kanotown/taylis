@@ -12,11 +12,14 @@ import { Store } from "../src/sync/store";
 import { BookingDialog, PoolSection } from "../src/ui/Reservations";
 import {
   activeText,
+  barTitle,
   bookingDays,
+  canRemoveHolder,
   dayLabel,
   dueTodos,
   durationChoices,
   durationDefault,
+  holderText,
   hourCounts,
   myActive,
   myReservations,
@@ -162,7 +165,7 @@ describe("the helpers", () => {
     const waiting = row({ id: "q1", user_id: ME, kind: "walkin", status: "waiting", step: "assign", until: at(13), position: 1 });
     const p = pool({ waiting: [waiting], my_reservation_id: "q1", bookings: [B1] });
     expect(myReservations(p, ME).walkin?.id).toBe("q1");
-    expect(walkinText(waiting, p, NOW)).toBe("空きあり（〜13:00 まで）· 担当者の割り当て待ち");
+    expect(walkinText(waiting, p, NOW)).toBe("空きあり（〜13:00 まで保証）· 担当者の割り当て待ち");
     expect(walkinText({ ...waiting, step: "wait", position: 2, until: null }, p, NOW)).toBe("順番待ち 2 番目");
     const todos: TodoOut[] = [
       { key: "assign:q1", action: "assign", reason: "free", assign_id: "q1", remove_id: null, due_at: NOW.toISOString(), upcoming: false },
@@ -183,6 +186,32 @@ describe("the helpers", () => {
     expect(dueTodos({ ...withTodos, todos: [...todos, remove] }).map((todo) => todo.key)).toEqual(["assign:q1", "remove:h1"]);
     expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "25", minHours: "6", graceMinutes: "15" })).toMatch("予約の最長");
     expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "6", minHours: "6", graceMinutes: "15" })).toBeNull();
+  });
+
+  it("words the walk-in's guarantee and its end (2026-10-24)", () => {
+    const p = pool({ holders: [WALK] });
+    // inside the guarantee (10:20 < 11:00)
+    expect(walkinText({ ...WALK, guarantee_until: at(11) }, p, NOW)).toBe("利用中（〜11:00 まで保証）");
+    // past it, nobody waiting: the operators take it out
+    const over = { ...WALK, guarantee_until: at(10) };
+    expect(walkinText(over, p, NOW)).toBe("利用中（保証は 10:00 まで · 担当者が外すことがあります）");
+    expect(holderText(over, p, NOW)).toBe("利用中（保証は 10:00 まで · 担当者が外すことがあります）");
+    // told to go for someone waiting: the time they go
+    expect(walkinText({ ...over, evict_at: at(11) }, p, NOW)).toBe("11:00 以降に外されます");
+    expect(holderText({ ...B1, status: "holding" }, p, NOW)).toBe("予約 12:00〜15:00");
+    // the timeline bar's title reads as a guarantee
+    const [bar] = timelineBars(p, new Date(2026, 9, 5), NOW);
+    expect(barTitle(bar!, p, "ボブ")).toBe("ボブ · 今すぐ 09:00〜（11:00 まで保証）");
+    // the to-do for a guarantee over with nobody waiting
+    const todo: TodoOut = { key: "remove:w1", action: "remove", reason: "guarantee_over", assign_id: null, remove_id: "w1", due_at: at(11), upcoming: false };
+    const name = (id: string) => people.find((u) => u.id === id)!.display_name;
+    expect(todoLine(todo, { ...p, todos: [todo] }, name, NOW)).toBe("ボブ さん を外す（保証時間が終了）");
+    expect(reservationTodoCount([{ ...p, todos: [todo] }])).toBe(0); // nobody waits on it
+    // who may take a holder out by hand
+    expect(canRemoveHolder(pool({ can_operate: true }), WALK)).toBe(true);
+    expect(canRemoveHolder(pool({ can_operate: true }), { ...WALK, status: "returning" })).toBe(true);
+    expect(canRemoveHolder(pool({ can_operate: false }), WALK)).toBe(false);
+    expect(canRemoveHolder(pool({ can_operate: true }), { ...WALK, status: "waiting" })).toBe(false);
   });
 });
 
@@ -267,6 +296,33 @@ describe("the page", () => {
     await settle();
     fireEvent.click(within(list).getByRole("button", { name: "外した" }));
     expect(controller.reservationAction).toHaveBeenCalledWith("h1", "remove");
+  });
+
+  it("lets operators take any holder out from the 「利用中」 list, after asking", async () => {
+    const booked = row({ id: "b9", user_id: ALICE, status: "holding", start_at: at(10), end_at: at(12), assigned_at: at(10), guarantee_until: at(12) });
+    const { controller } = setup(pool({ holders: [WALK, booked], can_operate: true }));
+    render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    const walkRow = document.querySelector('[data-walkin="w1"]') as HTMLElement;
+    expect(within(walkRow).getByText("利用中（〜11:00 まで保証）")).toBeTruthy();
+    fireEvent.click(within(walkRow).getByRole("button", { name: "外す" }));
+    expect(within(walkRow).getByText("ボブ さんを外しますか？ 管理画面でも外してください。")).toBeTruthy();
+    expect(controller.reservationAction).not.toHaveBeenCalled();
+    fireEvent.click(within(walkRow).getAllByRole("button", { name: "外す" }).at(-1)!);
+    expect(controller.reservationAction).toHaveBeenCalledWith("w1", "remove");
+    await settle();
+    // a booking on a seat has it too; 「やめる」 does nothing
+    const bookedRow = document.querySelector('[data-walkin="b9"]') as HTMLElement;
+    fireEvent.click(within(bookedRow).getByRole("button", { name: "外す" }));
+    fireEvent.click(within(bookedRow).getByRole("button", { name: "やめる" }));
+    expect(controller.reservationAction).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-bar="w1"]')?.getAttribute("title")).toBe("ボブ · 今すぐ 09:00〜（11:00 まで保証）");
+  });
+
+  it("does not offer 「外す」 to members", () => {
+    const { controller } = setup(pool({ holders: [WALK], can_operate: false }));
+    render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    const walkRow = document.querySelector('[data-walkin="w1"]') as HTMLElement;
+    expect(within(walkRow).queryByRole("button", { name: "外す" })).toBeNull();
   });
 
   it("defaults the length to the pool's maximum, or the longest that fits and why", () => {

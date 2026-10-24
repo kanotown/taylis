@@ -4829,7 +4829,8 @@ export interface paths {
         put?: never;
         /**
          * Remove
-         * @description 「外した」 (operators): the seat was taken back (a return, or a removal).
+         * @description 「外した」 (operators): the seat was taken back (a return, a removal, or any holder taken out
+         *     by hand at any time). The holder themself returns the seat instead (`/return`).
          */
         post: operations["remove_api_v1_reservations__reservation_id__remove_post"];
         delete?: never;

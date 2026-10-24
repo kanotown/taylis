@@ -230,8 +230,38 @@ export function walkinText(row: ReservationOut, pool: PoolOut, now: Date): strin
   }
   if (row.status === "returning") return t("reservations.walkin.returning");
   if (row.evict_at) return t("reservations.walkin.evictAt", { at: whenLabel(row.evict_at, now) });
+  // Past the guarantee with nobody waiting: the operators take the seat out (RESERVATIONS.md §4, 2026-10-24).
+  if (row.status === "holding" && row.guarantee_until && ms(row.guarantee_until) <= now.getTime()) {
+    return t("reservations.walkin.guaranteeOver", { until: whenLabel(row.guarantee_until, now) });
+  }
   if (pool.next_evict_id === row.id) return row.guarantee_until ? t("reservations.walkin.holdingNext", { until: whenLabel(row.guarantee_until, now) }) : t("reservations.holding");
   return row.guarantee_until ? t("reservations.walkin.holdingUntil", { until: whenLabel(row.guarantee_until, now) }) : t("reservations.holding");
+}
+
+/** A holder's line in the 「利用中」 list: a booking's time, or what a walk-in's says. */
+export function holderText(row: ReservationOut, pool: PoolOut, now: Date): string {
+  if (row.kind === "booking" && row.start_at && row.end_at) {
+    return `${t("reservations.booking")} ${spanLabel(row.start_at, row.end_at, now)}${row.status === "returning" ? ` · ${t("reservations.returned")}` : ""}`;
+  }
+  return walkinText(row, pool, now);
+}
+
+/**
+ * Whether the caller may take this holder out by hand (「外す」 on the row, 2026-10-24): operators (the pool's
+ * operators, its creator, administrators) on anyone on a seat, at any time. The holder themself returns it instead.
+ */
+export function canRemoveHolder(pool: PoolOut, row: ReservationOut): boolean {
+  return pool.can_operate && (row.status === "holding" || row.status === "returning");
+}
+
+/** A timeline bar's title: 「アリス · 予約 12:00〜15:00」, 「ボブ · 今すぐ 09:00〜（11:00 まで保証）」. */
+export function barTitle(bar: TimelineBar, pool: PoolOut, who: string): string {
+  const row = pool.holders.find((r) => r.id === bar.id);
+  if (bar.kind === "walkin" && row?.guarantee_until) {
+    return `${who} · ${t("reservations.walkinBar", { start: hm(bar.start), until: hm(row.guarantee_until) })}`;
+  }
+  const label = bar.kind === "walkin" ? t("reservations.walkin") : t("reservations.booking");
+  return `${who} · ${label} ${hm(bar.start)}${t("common.rangeTo")}${hm(bar.end)}`;
 }
 
 /** What a booking of mine says. */

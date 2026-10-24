@@ -16,8 +16,10 @@ import { BackButton } from "./compact";
 import { Badge, Button, cn, Input, Modal } from "./primitives";
 import {
   activeText,
+  barTitle,
   bookingDays,
   bookingText,
+  canRemoveHolder,
   dayLabel,
   dayStart,
   deviceZone,
@@ -25,6 +27,7 @@ import {
   durationChoices,
   durationDefault,
   hm,
+  holderText,
   myActive,
   myReservations,
   poolFormProblem,
@@ -306,13 +309,12 @@ function Timeline({ controller, pool, day, now }: { controller: AppController; p
           {today && nowAt > 0 && nowAt < 1 && <div className="absolute bottom-0 top-0 w-px bg-rose-500" style={{ left: `${nowAt * 100}%` }} aria-hidden="true" />}
           {bars.map((bar) => {
             const who = userName(controller, bar.userId);
-            const span = `${hm(bar.start)}${t("common.rangeTo")}${hm(bar.end)}`;
             const mineBar = bar.userId === me;
             return (
               <div
                 key={bar.id}
                 data-bar={bar.id}
-                title={`${who} · ${bar.kind === "walkin" ? t("reservations.walkin") : t("reservations.booking")} ${span}`}
+                title={barTitle(bar, pool, who)}
                 className={cn(
                   "absolute flex items-center gap-1 overflow-hidden rounded-md px-1.5 text-[11px] leading-none",
                   bar.kind === "walkin" ? "border border-dashed border-amber-500 bg-amber-500/15" : "bg-accent-soft text-accent",
@@ -359,9 +361,17 @@ function WalkIns({ controller, pool, now, busy, run }: { controller: AppControll
           {pool.holders.map((row) =>
             person(
               row,
-              row.kind === "booking" && row.start_at && row.end_at
-                ? `${t("reservations.booking")} ${spanLabel(row.start_at, row.end_at, now)}${row.status === "returning" ? ` · ${t("reservations.returned")}` : ""}`
-                : walkinText(row, pool, now),
+              holderText(row, pool, now),
+              // 「外す」: an operator takes anyone off a seat by hand, at any time (asked first; 2026-10-24).
+              canRemoveHolder(pool, row) ? (
+                <ConfirmButton
+                  label={t("reservations.removeHolder")}
+                  question={t("reservations.removeHolderQuestion", { name: userName(controller, row.user_id) })}
+                  variant="danger"
+                  disabled={busy}
+                  onConfirm={() => void run(() => controller.reservationAction(row.id, "remove"))}
+                />
+              ) : undefined,
             ),
           )}
           {pool.holders.length === 0 && <li className="py-1.5 text-sm text-muted">{t("reservations.nobody")}</li>}
