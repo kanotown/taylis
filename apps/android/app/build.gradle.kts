@@ -55,8 +55,8 @@ android {
         targetSdk = 37
         // versionName: what people see (X.Y.Z, raised for a store release). versionCode: an integer Play needs to
         // grow with every upload (any track), raised by one per uploaded build (docs/STORE_RELEASE.md).
-        versionCode = 30
-        versionName = "1.0.21"
+        versionCode = 31
+        versionName = "1.0.22"
     }
 
     signingConfigs {
