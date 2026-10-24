@@ -99,8 +99,9 @@ object DriveNames {
     enum class Viewer { IMAGE, VIDEO, DOCUMENT }
 
     /**
-     * Which of the app's viewers opens a file (§17.2, §26): photos with a thumbnail (the server could read them), videos,
-     * and PDF / Office files whose preview is ready (a pending one shows its details: the viewer reads the PDF at once).
+     * Which of the app's viewers opens a file (§17.2, §27.3, the desktop's viewerKind): photos with a thumbnail (the
+     * server could read them), videos, every PDF (its own bytes while its preview is not made) and Office files (the
+     * viewer asks for, or waits for, the preview). Anything else shows its details.
      */
     fun viewer(item: DriveItemOut): Viewer? {
         val file = item.file ?: return null
@@ -109,8 +110,47 @@ object DriveNames {
         return when {
             type.startsWith("video/") -> Viewer.VIDEO
             type.startsWith("image/") && file.hasThumbnail -> Viewer.IMAGE
-            file.preview?.isReady == true -> Viewer.DOCUMENT
+            file.preview?.isReady == true || file.preview?.isPending == true || isPdf(item) || isOffice(item) -> Viewer.DOCUMENT
             else -> null
+        }
+    }
+
+    private val OFFICE_EXTENSIONS = setOf("doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf")
+    private val OFFICE_TYPE = Regex("^application/(msword|rtf|vnd\\.ms-(excel|powerpoint)|vnd\\.openxmlformats-officedocument\\.|vnd\\.oasis\\.opendocument\\.(text|spreadsheet|presentation)$)")
+    /** What the server's sniffer answers for a file it could not place (the server then goes by the extension). */
+    private val UNPLACED = setOf("", "application/octet-stream", "application/zip", "application/x-ole-storage")
+
+    private fun extension(name: String): String = name.substringAfterLast('.', "").lowercase().takeIf { name.lastIndexOf('.') > 0 } ?: ""
+
+    /** A PDF: by its type, or by its name when the server could not tell (bytes before the header, §27.3). */
+    fun isPdf(item: DriveItemOut): Boolean {
+        if (item.isFolder) return false
+        val type = item.contentType.orEmpty().lowercase()
+        return type == "application/pdf" || (extension(item.name) == "pdf" && (type == "" || type == "application/octet-stream"))
+    }
+
+    /** An Office file the converter may turn into a PDF (the server's preview_kinds.source_kind). */
+    fun isOffice(item: DriveItemOut): Boolean {
+        if (item.isFolder) return false
+        val type = item.contentType.orEmpty().lowercase()
+        return OFFICE_TYPE.containsMatchIn(type) || (type in UNPLACED && extension(item.name) in OFFICE_EXTENSIONS)
+    }
+
+    /**
+     * Where the document viewer reads a file's pages (§27.3, the desktop's documentSource): the made preview; a PDF's
+     * own bytes while its preview is not ready; an Office file's preview being made; one never asked for (imported,
+     * §24: the viewer asks); one that failed.
+     */
+    enum class DocumentSource { PREVIEW, ORIGINAL, MAKING, ASK, FAILED }
+
+    fun documentSource(item: DriveItemOut): DocumentSource {
+        val preview = item.file?.preview
+        return when {
+            preview?.isReady == true -> DocumentSource.PREVIEW
+            isPdf(item) -> DocumentSource.ORIGINAL
+            preview?.isPending == true -> DocumentSource.MAKING
+            preview?.status == "failed" -> DocumentSource.FAILED
+            else -> DocumentSource.ASK
         }
     }
 
@@ -152,7 +192,7 @@ object DriveNames {
         return when {
             type.startsWith("image/") -> Icon.IMAGE
             type.startsWith("video/") -> Icon.VIDEO
-            type == "application/pdf" -> Icon.PDF
+            isPdf(item) -> Icon.PDF
             else -> OFFICE[item.name.substringAfterLast('.', "").lowercase()] ?: Icon.FILE
         }
     }
