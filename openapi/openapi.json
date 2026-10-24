@@ -9896,12 +9896,47 @@
             "title": "Location Kind",
             "type": "string"
           },
+          "match": {
+            "default": "name",
+            "enum": [
+              "name",
+              "content",
+              "both"
+            ],
+            "title": "Match",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
           "path": {
             "items": {
               "$ref": "#/components/schemas/DriveCrumb"
             },
             "title": "Path",
             "type": "array"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DriveSnippetPart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
           }
         },
         "required": [
@@ -9919,6 +9954,13 @@
               "$ref": "#/components/schemas/DriveSearchHitOut"
             },
             "title": "Items",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
             "type": "array"
           },
           "next_cursor": {
@@ -10456,6 +10498,25 @@
           }
         },
         "title": "DriveShareSettingsPatch",
+        "type": "object"
+      },
+      "DriveSnippetPart": {
+        "description": "A piece of a snippet: `hit` pieces are the searched words as found (to be marked).",
+        "properties": {
+          "hit": {
+            "default": false,
+            "title": "Hit",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "DriveSnippetPart",
         "type": "object"
       },
       "DriveTakeoverIn": {
@@ -40509,7 +40570,7 @@
     },
     "/api/v1/search/drive": {
       "get": {
-        "description": "Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,\npartial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my\nchannels' drives), never in the trash; each with its path. `location_id`: one drive only.",
+        "description": "Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,\npartial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my\nchannels' drives), never in the trash; each with its path. `location_id`: one drive only.\n\n§29 `content=true`: also the files whose text matches (the current version; PDFs, Office\nfiles through their PDF preview, plain text, Markdown, CSV), name matches first; each hit says\nwhat matched (`match`) and, for a match inside, the marked text around it (`snippet`) and its\nPDF page (`page`). Without it the answer is the file-name search of before.",
         "operationId": "search_drive_api_v1_search_drive_get",
         "parameters": [
           {
@@ -40587,6 +40648,18 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Also the text inside the files (PDF, Office, plain text), with a snippet",
+            "in": "query",
+            "name": "content",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Also the text inside the files (PDF, Office, plain text), with a snippet",
+              "title": "Content",
+              "type": "boolean"
             }
           }
         ],

@@ -18,6 +18,7 @@ from sqlalchemy import (
     literal_column,
     or_,
     select,
+    text,
     union_all,
 )
 from sqlalchemy.dialects import postgresql
@@ -27,7 +28,7 @@ from sqlalchemy.orm import aliased
 from app.core.doctext import blocks as doc_blocks
 from app.modules.attachments.models import Attachment
 from app.modules.canvases.models import Canvas
-from app.modules.drive.models import DriveItem
+from app.modules.drive.models import DriveItem, DriveText
 from app.modules.messages.models import Message, Reaction
 from app.modules.users.models import User
 from app.modules.wiki.access import readable_ids
@@ -522,11 +523,17 @@ def drive_search_statement(
     kind: str | None,
     limit: int,
     offset: int,
+    content: bool = False,
 ) -> Select[Any]:
     """Live items (not a location's root, not in the trash) of these locations whose name matches
     (PGroonga, drive_items_name_pgroonga_idx; the words are escaped: a file name is not a query),
     the best first, then the newest. The words alone go through the index (a materialized step),
-    the locations and the rest are applied to what it found, as for canvases."""
+    the locations and the rest are applied to what it found, as for canvases.
+
+    §29 `content`: also the files whose text (drive_texts_body_pgroonga_idx, the current version
+    only) matches; each row then carries whether its name and its text matched. Name matches
+    come first (a file called so is what one looks for), then the scores."""
+    needle = _text_needle(query, True)
     matched = (
         select(
             DriveItem.id.label("id"),
@@ -534,13 +541,72 @@ def drive_search_statement(
                 literal_column("drive_items.tableoid"), literal_column("drive_items.ctid")
             ).label("score"),
         )
-        .where(DriveItem.name.op("&@~")(_text_needle(query, True)))
+        .where(DriveItem.name.op("&@~")(needle))
         .cte("drive_hits")
         .prefix_with("MATERIALIZED")
     )
+    if not content:
+        stmt = (
+            select(DriveItem, matched.c.score)
+            .join(matched, matched.c.id == DriveItem.id)
+            .where(
+                DriveItem.location_id.in_(list(location_ids)),
+                DriveItem.trashed_at.is_(None),
+                DriveItem.parent_id.is_not(None),
+            )
+        )
+        if kind is not None:
+            stmt = stmt.where(DriveItem.kind == kind)
+        return (
+            stmt.order_by(matched.c.score.desc(), DriveItem.updated_at.desc(), DriveItem.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    in_text = (
+        select(
+            DriveText.item_id.label("id"),
+            DriveText.version_id.label("version_id"),
+            func.pgroonga_score(
+                literal_column("drive_texts.tableoid"), literal_column("drive_texts.ctid")
+            ).label("score"),
+        )
+        .where(DriveText.body.op("&@~")(needle))
+        .cte("drive_text_hits")
+        .prefix_with("MATERIALIZED")
+    )
+    current = aliased(DriveItem)
+    hits = union_all(
+        select(
+            matched.c.id.label("id"),
+            literal(1).label("by_name"),
+            literal(0).label("by_text"),
+            matched.c.score.label("score"),
+        ),
+        select(
+            in_text.c.id.label("id"),
+            literal(0).label("by_name"),
+            literal(1).label("by_text"),
+            in_text.c.score.label("score"),
+        )
+        # The text of the current version only (a replaced version's row is removed, too).
+        .join(
+            current,
+            (current.id == in_text.c.id) & (current.current_version_id == in_text.c.version_id),
+        ),
+    ).subquery("drive_any_hits")
+    grouped = (
+        select(
+            hits.c.id.label("id"),
+            func.max(hits.c.by_name).label("by_name"),
+            func.max(hits.c.by_text).label("by_text"),
+            func.sum(hits.c.score).label("score"),
+        )
+        .group_by(hits.c.id)
+        .subquery("drive_grouped")
+    )
     stmt = (
-        select(DriveItem, matched.c.score)
-        .join(matched, matched.c.id == DriveItem.id)
+        select(DriveItem, grouped.c.by_name, grouped.c.by_text)
+        .join(grouped, grouped.c.id == DriveItem.id)
         .where(
             DriveItem.location_id.in_(list(location_ids)),
             DriveItem.trashed_at.is_(None),
@@ -550,10 +616,22 @@ def drive_search_statement(
     if kind is not None:
         stmt = stmt.where(DriveItem.kind == kind)
     return (
-        stmt.order_by(matched.c.score.desc(), DriveItem.updated_at.desc(), DriveItem.id)
+        stmt.order_by(
+            grouped.c.by_name.desc(),
+            grouped.c.score.desc(),
+            DriveItem.updated_at.desc(),
+            DriveItem.id,
+        )
         .limit(limit)
         .offset(offset)
     )
+
+
+@dataclass(frozen=True)
+class DriveHit:
+    item: DriveItem
+    by_name: bool
+    by_text: bool
 
 
 async def search_drive(
@@ -564,8 +642,78 @@ async def search_drive(
     kind: str | None,
     limit: int,
     offset: int,
-) -> list[DriveItem]:
+    content: bool = False,
+) -> list[DriveHit]:
     if not location_ids:
         return []
-    stmt = drive_search_statement(query, location_ids, kind=kind, limit=limit, offset=offset)
-    return [row[0] for row in (await db.execute(stmt)).all()]
+    stmt = drive_search_statement(
+        query, location_ids, kind=kind, limit=limit, offset=offset, content=content
+    )
+    rows = (await db.execute(stmt)).all()
+    if not content:
+        return [DriveHit(row[0], True, False) for row in rows]
+    return [DriveHit(row[0], bool(row[1]), bool(row[2])) for row in rows]
+
+
+@dataclass(frozen=True)
+class TextWindow:
+    """A piece of a file's text around the first keyword found in it."""
+
+    text: str
+    # Where the piece begins and where the keyword is in the whole text (characters from 0;
+    # `found` is None when no keyword was found as written: the piece is the text's start).
+    start: int
+    found: int | None
+    length: int
+    page_starts: list[int] | None
+
+
+_TEXT_WINDOWS = text(
+    """
+    SELECT t.item_id, p.pos, char_length(t.body) AS length, t.page_starts,
+           substr(t.body, greatest(coalesce(p.pos, 1) - :before, 1), :width) AS piece,
+           greatest(coalesce(p.pos, 1) - :before, 1) AS piece_start
+    FROM drive_texts t
+    JOIN drive_items i ON i.id = t.item_id AND i.current_version_id = t.version_id
+    CROSS JOIN LATERAL (
+        SELECT min(nullif(strpos(lower(t.body), k), 0)) AS pos
+        FROM unnest(CAST(:keywords AS text[])) AS k
+    ) p
+    WHERE t.item_id = ANY(CAST(:ids AS uuid[])) AND t.status = 'ready'
+    """
+)
+
+
+async def drive_text_windows(
+    db: AsyncSession,
+    item_ids: Sequence[uuid.UUID],
+    keywords: Sequence[str],
+    *,
+    before: int,
+    width: int,
+) -> dict[uuid.UUID, TextWindow]:
+    """The text around the first of `keywords` (already folded like the stored text: NFKC,
+    lower case) in each item's current text. Cut in the database: a text can be 1 MB."""
+    if not item_ids:
+        return {}
+    rows = (
+        await db.execute(
+            _TEXT_WINDOWS,
+            {
+                "ids": list(item_ids),
+                "keywords": [k for k in keywords if k] or [""],
+                "before": before,
+                "width": width,
+            },
+        )
+    ).all()
+    return {
+        row.item_id: TextWindow(
+            text=row.piece,
+            start=int(row.piece_start) - 1,
+            found=None if row.pos is None else int(row.pos) - 1,
+            length=int(row.length),
+            page_starts=list(row.page_starts) if row.page_starts is not None else None,
+        )
+        for row in rows
+    }

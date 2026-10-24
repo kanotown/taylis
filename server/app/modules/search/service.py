@@ -3,6 +3,7 @@ can read (SECURITY.md §3): messages in their own conversations and, for non-gue
 channel (archived too) they have not joined; canvases in their own conversations only."""
 
 import asyncio
+import bisect
 import logging
 import uuid
 from collections.abc import Awaitable, Callable, Collection
@@ -19,7 +20,7 @@ from app.modules.canvases.schemas import to_meta as to_canvas_meta
 from app.modules.channels import service as channels
 from app.modules.channels.schemas import ChannelOut
 from app.modules.drive import service as drive
-from app.modules.drive.schemas import DriveSearchOut
+from app.modules.drive.schemas import DriveSearchHitOut, DriveSearchOut, DriveSnippetPart
 from app.modules.messages import service as messages
 from app.modules.messages.models import Message
 from app.modules.search import repository as repo
@@ -36,7 +37,7 @@ from app.modules.search.schemas import (
     SearchOut,
     SearchQuery,
 )
-from app.modules.search.snippet import make_snippet
+from app.modules.search.snippet import fold_keyword, make_snippet, window_snippet
 from app.modules.users import repository as users_repo
 from app.modules.users.models import User
 from app.modules.wiki import service as wiki
@@ -667,6 +668,10 @@ def _drive_offset(cursor: str | None) -> int:
     return value
 
 
+# §29: about this many characters of a file's text on each side of the first word found.
+DRIVE_SNIPPET_CONTEXT = 60
+
+
 async def search_drive(
     db: AsyncSession,
     actor: User,
@@ -676,12 +681,14 @@ async def search_drive(
     kind: str | None,
     cursor: str | None,
     limit: int,
+    content: bool = False,
     timeout_ms: int | None = None,
     gate: asyncio.Semaphore | None = None,
 ) -> DriveSearchOut:
     """GET /search/drive: file and folder names in the locations the caller can read now (the
     drive's own rule, drive.service.readable_location_ids), never the trash. `location_id` narrows
-    to one of them (another one, or one I cannot read, finds nothing)."""
+    to one of them (another one, or one I cannot read, finds nothing). §29 `content`: the text
+    inside the files too, with a marked snippet and the page it is on."""
     offset = _drive_offset(cursor)
     words = q.strip()
     if not words:
@@ -693,18 +700,70 @@ async def search_drive(
         if location_id is not None:
             readable = [loc for loc in readable if loc == location_id]
         rows = await repo.search_drive(
-            db, query=words, location_ids=readable, kind=kind, limit=limit + 1, offset=offset
+            db,
+            query=words,
+            location_ids=readable,
+            kind=kind,
+            limit=limit + 1,
+            offset=offset,
+            content=content,
         )
         more = len(rows) > limit
         rows = rows[:limit]
+        hits = await drive.search_hits(db, [row.item for row in rows])
+        keywords: list[str] = []
+        if content:
+            keywords = await repo.extract_keywords(db, words, escaped=True)
+            await _add_snippets(db, rows, hits, keywords)
         return DriveSearchOut(
-            items=await drive.search_hits(db, rows),
+            items=hits,
             next_cursor=str(offset + limit)
             if more and offset + limit <= DRIVE_MAX_OFFSET
             else None,
+            keywords=keywords,
         )
 
     async def run() -> DriveSearchOut:
         return await _in_time(db, found, timeout_ms)
 
     return await _gated(run, timeout_ms=timeout_ms, gate=gate)
+
+
+async def _add_snippets(
+    db: AsyncSession,
+    rows: list[repo.DriveHit],
+    hits: list[DriveSearchHitOut],
+    keywords: list[str],
+) -> None:
+    """What matched, and for a match inside a file the text around the first word found (cut
+    in the database, marked here) and its page."""
+    by_id = {row.item.id: row for row in rows}
+    folded = [fold_keyword(k) for k in keywords if k.strip()]
+    longest = max((len(k) for k in folded), default=0)
+    windows = await repo.drive_text_windows(
+        db,
+        [row.item.id for row in rows if row.by_text],
+        folded,
+        before=DRIVE_SNIPPET_CONTEXT,
+        width=2 * DRIVE_SNIPPET_CONTEXT + longest,
+    )
+    for hit in hits:
+        row = by_id.get(hit.item.id)
+        if row is None:
+            continue
+        hit.match = "both" if row.by_name and row.by_text else "content" if row.by_text else "name"
+        window = windows.get(hit.item.id)
+        if window is None:
+            continue
+        hit.snippet = [
+            DriveSnippetPart(text=part, hit=marked)
+            for part, marked in window_snippet(
+                window.text,
+                cut_before=window.start > 0,
+                cut_after=window.start + len(window.text) < window.length,
+                keywords=keywords,
+            )
+        ]
+        if window.page_starts:
+            at = window.found if window.found is not None else 0
+            hit.page = max(1, bisect.bisect_right(window.page_starts, at))

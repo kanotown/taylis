@@ -1053,7 +1053,7 @@ async def test_generate_previews_for_the_drive_lets_the_chat_go_first(
     assert row is not None
     row.preview_status = "pending"
     await db.commit()
-    waited = await previews._let_the_chat_go_first(db, 5.0, sleep)
+    waited = await previews.let_the_chat_go_first(db, 5.0, sleep)
     assert waited == 5.0
 
 

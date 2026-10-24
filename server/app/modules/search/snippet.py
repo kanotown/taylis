@@ -58,3 +58,62 @@ def make_snippet(body: str, keywords: list[str], *, context: int = CONTEXT) -> s
     head = ELLIPSIS if start > 0 else ""
     tail = ELLIPSIS if end < len(flat) else ""
     return f"{head}{flat[start:end]}{tail}"
+
+
+def fold_keyword(word: str) -> str:
+    """A keyword as the drive's stored text is folded (NFKC, docs/DRIVE.md §29), lower case."""
+    return unicodedata.normalize("NFKC", word).lower()
+
+
+def mark(text: str, keywords: list[str]) -> list[tuple[str, bool]]:
+    """`text` in pieces, the keywords' occurrences (folded like PGroonga's normaliser: NFKC,
+    lower case) marked True; the longest keyword wins where two overlap."""
+    words = sorted({fold_keyword(k) for k in keywords if k.strip()}, key=len, reverse=True)
+    if not text or not words:
+        return [(text, False)] if text else []
+    folded, where = _fold(text)
+    spans: list[tuple[int, int]] = []
+    taken = [False] * len(folded)
+    for word in words:
+        at = folded.find(word)
+        while at >= 0:
+            end = at + len(word)
+            if not any(taken[at:end]):
+                for i in range(at, end):
+                    taken[i] = True
+                spans.append((where[at], where[end - 1] + 1))
+            at = folded.find(word, end)
+    spans.sort()
+    out: list[tuple[str, bool]] = []
+    cursor = 0
+    for start, end in spans:
+        if start < cursor:
+            continue
+        if start > cursor:
+            out.append((text[cursor:start], False))
+        out.append((text[start:end], True))
+        cursor = end
+    if cursor < len(text):
+        out.append((text[cursor:], False))
+    return out
+
+
+def window_snippet(
+    piece: str, *, cut_before: bool, cut_after: bool, keywords: list[str]
+) -> list[tuple[str, bool]]:
+    """A drive text's window (cut around the first keyword by the database) as marked pieces:
+    spaces and line breaks folded, "…" where the text goes on (docs/DRIVE.md §29)."""
+    flat = " ".join(piece.split())
+    parts = mark(flat, keywords)
+    if cut_before:
+        parts.insert(0, (ELLIPSIS, False))
+    if cut_after:
+        parts.append((ELLIPSIS, False))
+    # Neighbouring plain pieces as one.
+    merged: list[tuple[str, bool]] = []
+    for part, hit in parts:
+        if merged and not hit and not merged[-1][1]:
+            merged[-1] = (merged[-1][0] + part, False)
+        else:
+            merged.append((part, hit))
+    return merged

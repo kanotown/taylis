@@ -164,10 +164,19 @@ async def search_drive(
     kind: Literal["folder", "file"] | None = None,
     cursor: str | None = Query(default=None, max_length=20),
     limit: int = Query(default=50, ge=1, le=100),
+    content: bool = Query(
+        default=False,
+        description="Also the text inside the files (PDF, Office, plain text), with a snippet",
+    ),
 ) -> DriveSearchOut:
     """Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,
     partial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my
-    channels' drives), never in the trash; each with its path. `location_id`: one drive only."""
+    channels' drives), never in the trash; each with its path. `location_id`: one drive only.
+
+    §29 `content=true`: also the files whose text matches (the current version; PDFs, Office
+    files through their PDF preview, plain text, Markdown, CSV), name matches first; each hit says
+    what matched (`match`) and, for a match inside, the marked text around it (`snippet`) and its
+    PDF page (`page`). Without it the answer is the file-name search of before."""
     _limit(request, user)
     settings = request.app.state.settings
     return await service.search_drive(
@@ -178,6 +187,7 @@ async def search_drive(
         kind=kind,
         cursor=cursor,
         limit=limit,
+        content=content,
         timeout_ms=settings.search_timeout_ms,
         gate=request.app.state.search_gate,
     )

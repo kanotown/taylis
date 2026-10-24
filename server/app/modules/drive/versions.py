@@ -32,7 +32,7 @@ from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import pdf_key, queue_on_upload, thumb_key
 from app.modules.audit import service as audit
 from app.modules.drive import access as acl
-from app.modules.drive import events, service
+from app.modules.drive import events, service, texts
 from app.modules.drive import repository as repo
 from app.modules.drive.access import item_not_found
 from app.modules.drive.models import DriveFileVersion, DriveItem, DriveLocation
@@ -285,6 +285,8 @@ async def _place_restored(
     await db.flush()
     now = utcnow()
     item.current_version_id = version.id
+    # §29: the replaced version's text is no longer searched (the loop reads the restored one).
+    await texts.forget_replaced_in_tx(db, item.id, version.id)
     item.size_bytes = attachment.size_bytes
     item.content_type = attachment.content_type
     item.content_modified_at = content_modified_at
