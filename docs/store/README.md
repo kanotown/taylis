@@ -23,6 +23,14 @@
   #研究ミーティング + スレッドのペイン、縦のスレッド (サイドバーをしまった 2 列)、縦の会話、横の #お知らせ (投票)、縦の
   アクティビティ。`asc-metadata.py` は表示の種類を 1 つ (`screenshots.displayType`) しか扱わないので、iPad の組
   (`APP_IPAD_PRO_3GEN_129`) は今は App Store Connect で手で上げるか、スクリプトを複数の組に広げる。
+- iPhone Duo（2026-10-24、MOBILE_UI.md §26）：内側の画面の縦 2007 × 2853（横は 2853 × 2007）と外側の画面の縦 1398 × 2034
+  （横は 2034 × 1398）の 2 組。iOS 27.1 の iPhone Duo のシミュレータで、使い捨てのサーバ（`python -m app.cli seed-demo`、
+  infra/demo/README.md）に review でログインして撮った（加工なし、ステータスバーは 9:41）。画面は 1.0.1 の iPhone の組と同じ 10 枚：
+  在室状況・ウィジェット・週報のスレッド・Times フィード・#研究ミーティング（締切・タスク・確認のお願い）・#お知らせ（承知しました・
+  確認しました）・ホーム・検索（「実験」）・投票・カレンダー。内側は本体を横に持った縦長の画面（電話の形）、外側は閉じたまま起動し直して
+  撮った（MOBILE_UI.md §26.4）。撮る前に、管理者 API で在室状況をオンにして状態を付け、review を times-watanabe・times-takahashi に参加させ、
+  #研究ミーティングに田中さんの確認のお願いを 1 つ投稿し、シードの予定の追加の通知（リンクが `http://demo-seed/…`）を消した。
+  App Store Connect には上げていない（置き場所は手元の `Taylis-store-screens/ios-duo-inner`・`ios-duo-outer`）。
 - Android: Pixel 9 (1080 × 2424) と、Play の 9:16 に合わせて余白を付けた 1080 × 1920 版。
 - ステータスバーは 9:41 に固定 (iOS は `xcrun simctl status_bar … override`、Android はシステム UI のデモモード)。
 
