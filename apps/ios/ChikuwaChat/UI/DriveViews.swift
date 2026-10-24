@@ -337,7 +337,8 @@ struct DriveFolderView: View {
                 }
                 ForEach(items) { item in
                     DriveItemRow(controller: controller, item: item, busy: opening == item.id, onOpen: { open(item) },
-                                 onDetails: { details = item }, onDownload: { download = DriveDownloadRequest(item: item, then: $0) })
+                                 onDetails: { details = item }, onDownload: { download = DriveDownloadRequest(item: item, then: $0) },
+                                 link: item.isFolder && !embedded ? .drive(item.id) : nil)
                         .onAppear { if item.id == items.last?.id { Task { await model.loadMore() } } }
                 }
                 if model.nextCursor != nil {
@@ -493,22 +494,19 @@ struct DriveItemRow: View {
     let onOpen: () -> Void
     let onDetails: () -> Void
     let onDownload: (DriveDownloadRequest.Then) -> Void
+    /// A folder on a screen of its own: pushed as a navigation link (the iPad's split did not push a folder set on its
+    /// path from a pushed folder screen; a link pushes on every stack).
+    var link: MainRoute? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onOpen) {
-                HStack(spacing: 12) {
-                    DriveThumbnail(controller: controller, item: item, side: 40)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.name).font(.body).foregroundStyle(Color.primary).fileNameLine(item.name)
-                        Text(subtitle ?? DriveRules.rowDetail(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                    if busy { ProgressView() }
-                }
-                .contentShape(Rectangle())
+            if let link {
+                NavigationLink(value: link) { label }
+                    .buttonStyle(.plain)
+            } else {
+                Button(action: onOpen) { label }
+                    .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             Menu {
                 DriveItemMenu(item: item, onDetails: onDetails, onDownload: onDownload)
             } label: {
@@ -518,6 +516,19 @@ struct DriveItemRow: View {
         }
         .contextMenu { DriveItemMenu(item: item, onDetails: onDetails, onDownload: onDownload) }
         .accessibilityAction(named: "詳細", onDetails)
+    }
+
+    private var label: some View {
+        HStack(spacing: 12) {
+            DriveThumbnail(controller: controller, item: item, side: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name).font(.body).foregroundStyle(Color.primary).fileNameLine(item.name)
+                Text(subtitle ?? DriveRules.rowDetail(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if busy { ProgressView() }
+        }
+        .contentShape(Rectangle())
     }
 }
 
