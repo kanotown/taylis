@@ -24,7 +24,8 @@ enum ServerFrame: Equatable {
     case typing(channelId: String, parentId: String?, userId: String)
     case presence(userId: String, status: String)
     /// M73 (CANVAS.md §18.2): someone else edits (or stopped editing) a canvas; volatile, dropped after 45 s.
-    case canvasPresence(canvasId: String, channelId: String?, userId: String, editing: Bool, section: String?)
+    /// CANVAS.md §25: `caret` is where their caret is in the stored body (nil: not said).
+    case canvasPresence(canvasId: String, channelId: String?, userId: String, editing: Bool, section: String?, caret: CanvasCaret?)
 
     private struct Head: Decodable {
         let type: String
@@ -39,6 +40,15 @@ enum ServerFrame: Equatable {
         let canvas_id: String?
         let editing: Bool?
         let section: String?
+        let caret: CaretHead?
+    }
+
+    /// A caret that is not two whole numbers ≥ 0 is left out (the frame still says who edits).
+    private struct CaretHead: Decodable {
+        let caret: CanvasCaret?
+        init(from decoder: Decoder) throws {
+            caret = try? CanvasCaret(from: decoder)
+        }
     }
 
     static func parse(_ text: String) -> ServerFrame? {
@@ -57,8 +67,9 @@ enum ServerFrame: Equatable {
             return .presence(userId: userId, status: status)
         case "canvas_presence":
             guard let canvasId = head.canvas_id, let userId = head.user_id else { return nil }
+            let caret = (head.editing ?? false) ? head.caret?.caret.flatMap { $0.line >= 0 && $0.column >= 0 ? $0 : nil } : nil
             return .canvasPresence(canvasId: canvasId, channelId: head.channel_id, userId: userId, editing: head.editing ?? false,
-                                   section: head.section)
+                                   section: head.section, caret: caret)
         default: return nil
         }
     }
@@ -73,10 +84,12 @@ enum ClientFrame {
         return encode(object)
     }
 
-    /// M73: `section` is null without a heading (the server takes 120 characters).
-    static func canvasPresence(canvasId: String, editing: Bool, section: String?) -> String {
-        encode(["type": .string("canvas_presence"), "canvas_id": .string(canvasId), "editing": .bool(editing),
-                "section": section.map(JSONValue.string) ?? .null])
+    /// M73: `section` is null without a heading (the server takes 120 characters). CANVAS.md §25: `caret` is the
+    /// caret in the stored body (0-based line, UTF-16 column), null when not editing or not known.
+    static func canvasPresence(canvasId: String, editing: Bool, section: String?, caret: CanvasCaret? = nil) -> String {
+        let caretValue: JSONValue = caret.map { .object(["line": .number(Double($0.line)), "column": .number(Double($0.column))]) } ?? .null
+        return encode(["type": .string("canvas_presence"), "canvas_id": .string(canvasId), "editing": .bool(editing),
+                       "section": section.map(JSONValue.string) ?? .null, "caret": editing ? caretValue : .null])
     }
 
     private static func encode(_ object: [String: JSONValue]) -> String {

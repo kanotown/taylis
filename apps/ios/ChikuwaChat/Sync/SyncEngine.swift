@@ -575,9 +575,9 @@ final class SyncEngine {
             if userId != store.me?.id { store.noteTyping(channelId, parentId: parentId, userId: userId, until: Date().addingTimeInterval(options.typingTtl)) }
         case .presence(let userId, let status):
             store.setPresence(userId, status: status)
-        case .canvasPresence(let canvasId, _, let userId, let editing, let section):
-            // M73: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh.
-            if userId != store.me?.id { store.noteCanvasEditing(canvasId, userId: userId, editing: editing, section: section) }
+        case .canvasPresence(let canvasId, _, let userId, let editing, let section, let caret):
+            // M73: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh; §25: with their caret.
+            if userId != store.me?.id { store.noteCanvasEditing(canvasId, userId: userId, editing: editing, section: section, caret: caret) }
         case .hello(_, let interval):
             helloReceived = true
             canvasPresence.reset() // a new connection knows nothing of what the last one said
@@ -717,9 +717,10 @@ final class SyncEngine {
 
     /// M73 (CANVAS.md §18.2): I edit this canvas (the editor has the focus and is used; `section` is the caret's heading)
     /// or stopped. Repeats go out at most every 20 s, changes at once; a stop only after a start went out.
-    func setCanvasEditing(_ canvasId: String, editing: Bool, section: String? = nil, now: Date = Date()) {
+    /// CANVAS.md §25: `caret` (stored terms) goes with it; a caret that only moved goes out every 0.3 s at most.
+    func setCanvasEditing(_ canvasId: String, editing: Bool, section: String? = nil, caret: CanvasCaret? = nil, now: Date = Date()) {
         guard status == .online, let ws else { return }
-        guard let frame = canvasPresence.next(canvasId, editing: editing, section: section, now: now) else { return }
+        guard let frame = canvasPresence.next(canvasId, editing: editing, section: section, caret: caret, now: now) else { return }
         Task { try? await ws.send(frame.json) }
     }
 

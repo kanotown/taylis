@@ -61,17 +61,17 @@ final class CanvasPresenceTests: XCTestCase {
 
     func testFramesBothWays() throws {
         let out = try XCTUnwrap(JSON.plainDecoder.decode([String: JSONValue].self, from: Data(ClientFrame.canvasPresence(canvasId: "c1", editing: true, section: "TODO").utf8)))
-        XCTAssertEqual(out, ["type": .string("canvas_presence"), "canvas_id": .string("c1"), "editing": .bool(true), "section": .string("TODO")])
+        XCTAssertEqual(out, ["type": .string("canvas_presence"), "canvas_id": .string("c1"), "editing": .bool(true), "section": .string("TODO"), "caret": .null])
         let stop = try XCTUnwrap(JSON.plainDecoder.decode([String: JSONValue].self, from: Data(ClientFrame.canvasPresence(canvasId: "c1", editing: false, section: nil).utf8)))
         XCTAssertEqual(stop["section"], .null)
         XCTAssertEqual(stop["editing"], .bool(false))
 
         XCTAssertEqual(ServerFrame.parse(#"{"type":"canvas_presence","canvas_id":"c1","channel_id":"ch","user_id":"u-a","editing":true,"section":"TODO"}"#),
-                       .canvasPresence(canvasId: "c1", channelId: "ch", userId: "u-a", editing: true, section: "TODO"))
+                       .canvasPresence(canvasId: "c1", channelId: "ch", userId: "u-a", editing: true, section: "TODO", caret: nil))
         XCTAssertEqual(ServerFrame.parse(#"{"type":"canvas_presence","canvas_id":"c1","channel_id":"ch","user_id":"u-a","editing":false,"section":null}"#),
-                       .canvasPresence(canvasId: "c1", channelId: "ch", userId: "u-a", editing: false, section: nil))
+                       .canvasPresence(canvasId: "c1", channelId: "ch", userId: "u-a", editing: false, section: nil, caret: nil))
         XCTAssertEqual(ServerFrame.parse(#"{"type":"canvas_presence","canvas_id":"c1","user_id":"u-a"}"#),
-                       .canvasPresence(canvasId: "c1", channelId: nil, userId: "u-a", editing: false, section: nil))
+                       .canvasPresence(canvasId: "c1", channelId: nil, userId: "u-a", editing: false, section: nil, caret: nil))
         XCTAssertNil(ServerFrame.parse(#"{"type":"canvas_presence","user_id":"u-a","editing":true}"#)) // no canvas
     }
 
@@ -112,6 +112,25 @@ final class CanvasPresenceEngineTests: XCTestCase {
             await engine.idle()
             await Task.yield()
         }
+    }
+
+    /// CANVAS.md §25: the caret goes out with the frame and someone else's is kept with their entry.
+    func testTheCaretGoesOutAndOthersCaretsAreKept() async throws {
+        let (server, alice, bob, store, engine) = makeEngine()
+        await engine.start()
+        await settle(engine)
+        let socket = try XCTUnwrap(server.sockets.first { $0.userId == bob.id })
+        let t0 = Date()
+        engine.setCanvasEditing("c1", editing: true, section: nil, caret: CanvasCaret(line: 1, column: 2), now: t0)
+        engine.setCanvasEditing("c1", editing: true, section: nil, caret: CanvasCaret(line: 1, column: 3), now: t0.addingTimeInterval(0.1))
+        engine.setCanvasEditing("c1", editing: true, section: nil, caret: CanvasCaret(line: 1, column: 4), now: t0.addingTimeInterval(0.3))
+        await settle(engine)
+        XCTAssertEqual(socket.canvasPresence.map { $0["caret"] }, [.object(["line": .number(1), "column": .number(2)]),
+                                                                    .object(["line": .number(1), "column": .number(4)])])
+        socket.deliver(.object(["type": .string("canvas_presence"), "canvas_id": .string("c1"), "channel_id": .string("ch"), "user_id": .string(alice.id),
+                                "editing": .bool(true), "section": .null, "caret": .object(["line": .number(3), "column": .number(7)])]))
+        await settle(engine)
+        XCTAssertEqual(store.canvasEditors("c1"), [CanvasEditingUser(userId: alice.id, section: nil, caret: CanvasCaret(line: 3, column: 7))])
     }
 
     func testFramesGoOutThrottledAndOthersFramesAreKept() async throws {

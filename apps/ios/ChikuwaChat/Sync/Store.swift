@@ -1457,8 +1457,8 @@ final class Store {
     }
 
     /// M73: a `canvas_presence` frame from someone else (true for 45 s unless refreshed, false ends it).
-    func noteCanvasEditing(_ canvasId: String, userId: String, editing: Bool, section: String?, now: Date = Date()) {
-        canvasEditing.note(canvasId, userId: userId, editing: editing, section: section, now: now)
+    func noteCanvasEditing(_ canvasId: String, userId: String, editing: Bool, section: String?, caret: CanvasCaret? = nil, now: Date = Date()) {
+        canvasEditing.note(canvasId, userId: userId, editing: editing, section: section, caret: caret, now: now)
     }
 
     func canvasEditors(_ canvasId: String, now: Date = Date()) -> [CanvasEditingUser] { canvasEditing.of(canvasId, now: now) }
