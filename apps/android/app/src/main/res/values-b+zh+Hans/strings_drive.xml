@@ -14,6 +14,8 @@
     <string name="drive_search_in">搜索 %1$s</string>
     <string name="drive_clear_search">清除搜索</string>
     <string name="drive_no_results">没有与“%1$s”匹配的文件或文件夹</string>
+    <string name="drive_search_inside">内容</string>
+    <string name="drive_search_page">第 %1$d 页</string>
     <string name="drive_sort_by">排序：%1$s</string>
     <string name="drive_sort_name">名称</string>
     <string name="drive_sort_modified">修改时间</string>

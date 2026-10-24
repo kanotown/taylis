@@ -85,6 +85,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,7 +94,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -102,6 +107,7 @@ import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.api.DriveItemOut
 import jp.chikuwachat.android.api.DriveLocationOut
+import jp.chikuwachat.android.api.DriveSearchHitOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.DriveFolderLoader
@@ -387,6 +393,15 @@ private fun DriveFolder(
                     }
                     items(search.hits, key = { "hit:" + it.item.id }) { hit ->
                         DriveRow(controller, hit.item, subtitle = DriveNames.pathLine(hit.path, hit.locationKind), onClick = { open(hit.item) }, onDetails = { details = hit.item })
+                        // §29: the words around a match inside the file, under the name (past the picture).
+                        val inside = stringResource(R.string.drive_search_inside)
+                        val page = hit.page?.let { stringResource(R.string.drive_search_page, it) }
+                        driveSnippet(hit, inside, page, MaterialTheme.colorScheme.onSurfaceVariant)?.let { snippet ->
+                            Text(
+                                snippet, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().combinedClickableCompat(onClick = { open(hit.item) }).padding(start = 68.dp, end = 16.dp, bottom = 8.dp),
+                            )
+                        }
                     }
                     if (search.nextCursor != null) item(key = "more") { MoreRow(search.loading) { scope.launch { searcher.loadMore() } } }
                 }
@@ -477,6 +492,20 @@ private fun DriveRow(controller: AppController, item: DriveItemOut, subtitle: St
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.combinedClickableCompat(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier =
     combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick)
+
+/**
+ * docs/DRIVE.md §29: a drive search hit's snippet — 「中身 · 2 ページ目」 dimmed, then the server's plain text pieces with
+ * the found words marked like the message search; null for a name match (or an older server).
+ */
+internal fun driveSnippet(hit: DriveSearchHitOut, inside: String, page: String?, dim: Color = Color.Gray): AnnotatedString? {
+    val parts = hit.snippet?.takeIf { it.isNotEmpty() } ?: return null
+    return buildAnnotatedString {
+        withStyle(SpanStyle(color = dim)) { append(listOfNotNull(inside, page).joinToString(" · ") + "  ") }
+        for (part in parts) {
+            if (part.hit) withStyle(SEARCH_HIT) { append(part.text) } else append(part.text)
+        }
+    }
+}
 
 @Composable
 private fun MoreRow(loading: Boolean, onClick: () -> Unit) {
