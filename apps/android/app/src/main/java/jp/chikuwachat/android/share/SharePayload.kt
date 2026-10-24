@@ -127,4 +127,13 @@ object SharePayload {
         if (maxLength != null && text.length > maxLength) add(L10n.str(R.string.share_in_text_too_long, maxLength))
         if (files.isEmpty() && text.isBlank()) add(L10n.str(R.string.share_in_nothing))
     }
+
+    /**
+     * 2026-10-24 (DRIVE.md §6): what keeps 「ドライブに保存」 from saving — only files go to the drive (the text is not
+     * saved), none unreadable. The drive has its own size limit (5 GB, the server says 413) and takes empty files.
+     */
+    fun driveProblems(files: List<SharedFile>): List<String> = buildList {
+        for (file in files) if (!file.readable) add(L10n.str(R.string.share_in_file_unreadable, file.name))
+        if (files.isEmpty()) add(L10n.str(R.string.share_in_nothing))
+    }
 }

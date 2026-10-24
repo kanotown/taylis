@@ -28,4 +28,13 @@
     <string name="share_in_failed_to">Couldn\'t send to %1$s</string>
     <string name="share_in_failed_files_gone">The shared files are no longer on this device. Share them again.</string>
     <string name="share_in_started">Sending. A notification tells you when it\'s done.</string>
+    <string name="share_in_drive">Save to the drive</string>
+    <string name="share_in_drive_note">Saves the files into a drive folder</string>
+    <string name="share_in_drive_destination">Save to: %1$s</string>
+    <string name="share_in_drive_choose">Choose a folder</string>
+    <string name="share_in_drive_save_here">Save here</string>
+    <string name="share_in_drive_no_locations">No drive you can write to</string>
+    <string name="share_in_save">Save</string>
+    <string name="share_in_drive_started">Uploading to the drive. A notification tells you when it\'s done.</string>
+    <string name="share_in_drive_back">Up one level</string>
 </resources>
