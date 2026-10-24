@@ -24,7 +24,11 @@ sealed class ServerFrame {
     data class Typing(val channelId: String, val parentId: String?, val userId: String) : ServerFrame()
     data class Presence(val userId: String, val status: String) : ServerFrame()
     /** M73 (CANVAS.md §18.2): someone else edits a canvas (or stopped). Volatile: dropped 45 s after the last refresh. */
-    data class CanvasPresence(val canvasId: String, val channelId: String?, val userId: String, val editing: Boolean, val section: String?) : ServerFrame()
+    data class CanvasPresence(
+        val canvasId: String, val channelId: String?, val userId: String, val editing: Boolean, val section: String?,
+        /** CANVAS.md §25: where their caret is in the stored body (null: not said, or not editing). */
+        val caret: CanvasCaret? = null,
+    ) : ServerFrame()
 
     companion object {
         fun parse(text: String): ServerFrame? {
@@ -49,6 +53,11 @@ sealed class ServerFrame {
                 "canvas_presence" -> CanvasPresence(
                     obj.str("canvas_id") ?: return null, obj.str("channel_id"), obj.str("user_id") ?: return null,
                     obj.bool("editing") ?: false, obj.str("section")?.takeIf { it.isNotBlank() },
+                    caret = (obj["caret"] as? JsonObject)?.let { at ->
+                        val line = at.int("line")
+                        val column = at.int("column")
+                        if (line != null && column != null && line >= 0 && column >= 0) CanvasCaret(line, column) else null
+                    }.takeIf { obj.bool("editing") == true },
                 )
                 else -> null
             }
@@ -64,12 +73,17 @@ object ClientFrame {
         buildJsonObject { put("type", "typing"); put("channel_id", channelId); if (parentId != null) put("parent_id", parentId) },
     )
 
-    /** M73: `{type: "canvas_presence", canvas_id, editing, section}` (section null when none, or on a stop). */
+    /**
+     * M73: `{type: "canvas_presence", canvas_id, editing, section}` (section null when none, or on a stop). CANVAS.md §25:
+     * with `caret: {line, column}` while editing when the editor knows it (left out otherwise).
+     */
     fun canvasPresence(frame: CanvasPresenceOut): String = Codec.plain.encodeToString(
         JsonObject.serializer(),
         buildJsonObject {
             put("type", "canvas_presence"); put("canvas_id", frame.canvasId); put("editing", frame.editing)
             put("section", frame.section?.let { JsonPrimitive(it) } ?: JsonNull)
+            val caret = frame.caret
+            if (frame.editing && caret != null) put("caret", buildJsonObject { put("line", caret.line); put("column", caret.column) })
         },
     )
 }

@@ -168,6 +168,8 @@ class CanvasSaver(
     private var inFlightLineage: Int? = null
     private var inFlightDetached = false
     private var version = 0L
+    /** The newest version a canvas.updated announced (read once nothing here is unsaved, if newer than what came). */
+    private var announced = 0L
     private var inFlight: CanvasInFlight? = null
     private var again = false
     private var attempt = 0
@@ -289,6 +291,9 @@ class CanvasSaver(
     /** A canvas.updated (or a reconnect): read again unless something here is not saved yet (§4.4). */
     fun remoteVersion(version: Long) {
         if (disposed || version <= this.version) return
+        // CANVAS.md §24.3: remembered — when the read is skipped (typing, a save on the wire), the version is read once
+        // nothing here is unsaved any more (landed()).
+        announced = maxOf(announced, version)
         scheduleRefresh()
     }
 
@@ -362,6 +367,9 @@ class CanvasSaver(
             }
             return
         }
+        // CANVAS.md §24.3: older than what a save here already answered with (it went out before that save landed): nothing
+        // to take — not the text, nor the screen's metadata, nor the copy kept on this device.
+        if (!(first && !loaded) && got.version < version) return
         canvas = got
         reached(got)
         if (first && !loaded) {
@@ -548,6 +556,9 @@ class CanvasSaver(
             save()
         } else if (dirty && saveTimer == null) {
             save()
+        } else if (announced > version && !dirty) {
+            // A canvas.updated came while this was on the wire (its read was skipped): read it now.
+            scheduleRefresh(0)
         }
     }
 

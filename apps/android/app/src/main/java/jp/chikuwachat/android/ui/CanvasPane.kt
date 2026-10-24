@@ -88,6 +88,13 @@ import jp.chikuwachat.android.sync.CanvasSaveStatus
 import jp.chikuwachat.android.sync.CanvasSaver
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.CanvasEditors
+import jp.chikuwachat.android.sync.CanvasCaretThrottle
+import jp.chikuwachat.android.sync.CanvasCarets
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.TextLayoutResult
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
@@ -122,7 +129,13 @@ fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, c
     val scope = rememberCoroutineScope()
     val me = store.me
     val createRights = CanvasRights.of(channel, me?.id, me?.role, null)
-    val selectedId = canvasId ?: list?.let { CanvasText.defaultCanvasId(it) }
+    // CANVAS.md §24.4: the default canvas is chosen once, when the tab opens. Chosen again on every list change (the most
+    // recently updated one first), the pane swapped the canvas being read or edited for another as soon as someone saved
+    // that one (or a task ticked it, or the list was read again after a reconnect): the phone then showed a canvas without
+    // the edit just saved, though the others and the history had it.
+    var shown by rememberSaveable(channel.id) { mutableStateOf<String?>(null) }
+    val selectedId = canvasId ?: list?.let { CanvasText.keptDefault(it, shown) }
+    SideEffect { if (canvasId == null && selectedId != null) shown = selectedId }
 
     when (dialog) {
         "new" -> NewCanvasDialog(controller, channel, list ?: emptyList(), onDismiss = { dialog = null }) { created ->
@@ -251,7 +264,7 @@ private fun CanvasView(
             saver.flush() // §4.4: a tick is saved at once
         }
     } else null
-    val text = remember(revision) { saver.text }
+    val text = remember(saver, revision) { saver.text }
     val headings = remember(text) { CanvasText.outline(text) }
     val title = meta?.title ?: stringResource(R.string.common_canvas)
     val listState = rememberLazyListState()
@@ -328,7 +341,7 @@ private fun CanvasView(
             CanvasEditing(controller, canvasId, Modifier.padding(horizontal = 12.dp).padding(bottom = 4.dp))
             HorizontalDivider()
             // M74 (CANVAS.md §19.2): the copy kept on this device, the server out of reach.
-            val offlineSince = remember(revision) { saver.cachedAt?.takeIf { saver.unreachable } }
+            val offlineSince = remember(saver, revision) { saver.cachedAt?.takeIf { saver.unreachable } }
             if (offlineSince != null && loadError == null) OfflineCopyNotice(offlineSince) { saver.online() }
             if (loadError == null) CanvasNotice(controller, channel, rights, saver, status)
             when {
@@ -472,8 +485,8 @@ internal fun ModeSwitch(mode: CanvasMode, onChange: (CanvasMode) -> Unit) {
 internal fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
     // Collected here too: the section sheet shows it outside the screen that collects the saver's changes.
     val revision by saver.revision.collectAsState()
-    val status = remember(revision) { saver.status }
-    val unread = remember(revision) { saver.loadError != null && status != CanvasSaveStatus.GONE }
+    val status = remember(saver, revision) { saver.status }
+    val unread = remember(saver, revision) { saver.loadError != null && status != CanvasSaveStatus.GONE }
     val (label, tone) = if (unread) stringResource(R.string.canvas_pane_cant_load) to MaterialTheme.colorScheme.error else when (status) {
         CanvasSaveStatus.LOADING -> stringResource(R.string.common_loading) to MaterialTheme.colorScheme.onSurfaceVariant
         CanvasSaveStatus.SAVED -> stringResource(R.string.common_saved) to MaterialTheme.colorScheme.onSurfaceVariant
@@ -570,7 +583,7 @@ private fun CanvasReader(
     preview: Boolean, onStartWriting: () -> Unit, onMakeTask: ((Int) -> Unit)? = null, spans: List<BlockSpan>? = null,
 ) {
     val revision by saver.revision.collectAsState()
-    val text = remember(revision) { saver.text }
+    val text = remember(saver, revision) { saver.text }
     val blocks = remember(text, spans) { spans?.map { it.block } ?: parseBlocks(text, canvas = true) }
     val store = controller.store
     val version by store.version.collectAsState()
@@ -654,9 +667,6 @@ internal fun OutlineColumn(headings: List<CanvasText.OutlineEntry>, modifier: Mo
 
 // --- the editor ------------------------------------------------------------------------------
 
-/** The stored text the editor last showed or wrote, and the section's lines in it (null: the whole body). */
-private class EditorLink(var wire: String, var range: IntRange?)
-
 /**
  * M153a (WIKI.md §30.5): the caret's line across the page's 「見たまま / Markdown」 switch — where the Markdown editor
  * opens ([initialLine], from the bundled editor), and where its caret is now ([current], for the bundled editor).
@@ -729,7 +739,7 @@ internal fun CanvasEditorField(
         val range = CanvasSections.find(stored, section) ?: return null
         return range to CanvasSections.text(stored, range)
     }
-    val link = remember(saver, section) { window(saver.text).let { EditorLink(saver.text, it?.first) } }
+    val link = remember(saver, section) { window(saver.text).let { EditorLink(saver.text, it?.first, saver.textLineage) } }
     var field by remember(saver, section) {
         val shown = decode(window(saver.text)?.second ?: "")
         // M153a: opened from the 見たまま editor on its caret's line (the whole body only).
@@ -744,14 +754,16 @@ internal fun CanvasEditorField(
         saver.canReplace = { field.composition == null && (section == null || !HEADING_IN_SECTION.containsMatchIn(field.text)) }
         onDispose { saver.canReplace = { true } }
     }
-    // The loop replaced the text (a merge, someone else's version, a tick in the preview): show it, the caret kept.
-    LaunchedEffect(revision) {
+    // The loop replaced the text (a merge, someone else's version, a tick in the preview): show it, the caret kept. Not
+    // under an open IME composition (CANVAS.md §24.3): it is taken once the composition ends, unless the commit wrote on
+    // the shown body (that text then goes out on this body's version and the server merges it with the newer one).
+    val composing = field.composition != null
+    LaunchedEffect(revision, composing) {
+        if (!link.shouldTake(saver, composing = field.composition != null)) return@LaunchedEffect
         val stored = saver.text
-        if (stored == link.wire) return@LaunchedEffect
-        link.wire = stored
         val shown = window(stored)
         if (shown == null) { onSectionGone(); return@LaunchedEffect }
-        link.range = shown.first
+        link.took(stored, saver.textLineage, shown.first)
         val next = decode(shown.second)
         val current = field
         if (next != current.text) {
@@ -769,16 +781,31 @@ internal fun CanvasEditorField(
     // M73 (CANVAS.md §18.2 / §18.5): 「編集中」 for the conversation's other members while this field has the focus — said
     // on focus, on typing and when the caret's heading changes (the engine sends a new heading after 2 s at most, the
     // same one every 20 s; this loop asks every 2 s), stopped on blur, when the editor goes and in the background.
+    // CANVAS.md §25: with the caret, in the stored body's terms; typing and caret moves send it at most every 300 ms (the
+    // last position always goes out).
     val engine = controller.engine?.takeIf { presence }
-    var announcedAt by remember { mutableLongStateOf(0L) }
-    fun announce(editing: Boolean, soon: Boolean = false) {
+    val caretThrottle = remember(saver, section) { CanvasCaretThrottle() }
+    val presenceScope = rememberCoroutineScope()
+    fun announce(editing: Boolean) {
         if (engine == null) return
-        if (!editing) return engine.setCanvasEditing(saver.id, false)
-        val now = System.currentTimeMillis()
-        if (soon && now - announcedAt < 1_000) return // the heading is found by a scan: at most once a second while typing
-        announcedAt = now
+        if (!editing) {
+            caretThrottle.reset()
+            return engine.setCanvasEditing(saver.id, false)
+        }
         val current = field
-        engine.setCanvasEditing(saver.id, true, CanvasTasks.sectionAt(current.text, current.selection.start))
+        val caretAt = CanvasCarets.storedCaret(current.text, current.selection.start, link.range?.first ?: 0) { prefix ->
+            CanvasText.encodeMentions(CanvasMarkers.stripStandIns(prefix), store.users.values, store.groups.values)
+        }
+        engine.setCanvasEditing(saver.id, true, CanvasTasks.sectionAt(current.text, current.selection.start), caretAt)
+    }
+    fun caretMoved() {
+        if (engine == null) return
+        val wait = caretThrottle.moved(System.currentTimeMillis()) ?: return
+        presenceScope.launch {
+            if (wait > 0) delay(wait)
+            caretThrottle.sent(System.currentTimeMillis())
+            if (focused && controller.appForeground) announce(true)
+        }
     }
     LaunchedEffect(engine, saver) {
         while (true) {
@@ -788,17 +815,8 @@ internal fun CanvasEditorField(
     }
     DisposableEffect(engine, saver) { onDispose { engine?.setCanvasEditing(saver.id, false) } }
 
-    fun commit(shown: String) {
-        val encoded = encode(shown)
-        val stored = if (section == null) encoded else {
-            val range = link.range ?: return
-            val lines = if (encoded.isEmpty()) 0 else encoded.split("\n").size
-            link.range = range.first until range.first + lines
-            CanvasSections.replace(saver.text, range, encoded)
-        }
-        link.wire = stored
-        saver.edit(stored)
-    }
+    // CANVAS.md §24.3: written on the body this editor shows (a section into its lines there), with that body's generation.
+    fun commit(shown: String) = link.commit(saver, encode(shown), section = section != null)
 
     fun change(incoming: TextFieldValue) {
         scroll?.driver = ScrollDriver.EDITOR
@@ -822,7 +840,7 @@ internal fun CanvasEditorField(
         val changed = next.text != previous.text
         field = next
         if (changed) commit(next.text)
-        if (focused && (changed || next.selection != previous.selection)) announce(true, soon = true)
+        if (focused && (changed || next.selection != previous.selection)) caretMoved()
         if (previous.composition != null && next.composition == null) saver.replaceable() // a merge that waited for the IME
     }
 
@@ -913,6 +931,25 @@ internal fun CanvasEditorField(
     LaunchedEffect(mentionOpen, saver.channelId, memberEpoch) { if (mentionOpen) controller.readMentionMembers(saver.channelId) }
     val candidates = query?.let { q -> Mentions.candidates(q, store.users.values, store.groups.values, limit = 8, aiBotIds = controller.aiBotIdsRead, context = Mentions.documentContext(store, saver.channelId)).filter { it.kind != "all" } } ?: emptyList()
 
+    // CANVAS.md §25: the others editing this canvas, at their carets (kept with 「編集中」, gone after 45 s or a stop).
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val storeVersion by store.version.collectAsState()
+    var caretTick by remember { mutableIntStateOf(0) }
+    val others = remember(storeVersion, caretTick, saver.id) { if (presence) store.canvasEditors(saver.id).filter { it.caret != null } else emptyList() }
+    LaunchedEffect(others.isNotEmpty()) {
+        while (others.isNotEmpty()) {
+            delay(1_000)
+            caretTick += 1
+        }
+    }
+    val remoteCarets = others.mapNotNull { editor ->
+        val at = editor.caret ?: return@mapNotNull null
+        val offset = CanvasCarets.shownOffset(link.wire, field.text, link.range?.first ?: 0, at) { prefix ->
+            markers.hide(Mentions.decode(prefix, store.users, store.groups))
+        } ?: return@mapNotNull null
+        RemoteCaretMark(editor.userId, store.users[editor.userId]?.displayName ?: L10n.str(R.string.common_member), offset)
+    }
+
     Column(modifier) {
         EditorToolbar(
             ::apply, onTable = ::openTable,
@@ -951,7 +988,10 @@ internal fun CanvasEditorField(
             onValueChange = ::change,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            onTextLayout = { layout -> scroll?.let { it.layout = layout; it.editorTop = editorTop } },
+            onTextLayout = { layout ->
+                textLayout = layout
+                scroll?.let { it.layout = layout; it.editorTop = editorTop }
+            },
             modifier = size
                 .focusRequester(focus)
                 .onFocusChanged { state ->
@@ -977,11 +1017,63 @@ internal fun CanvasEditorField(
                 }
             },
         ) } }
-        if (scroll == null) textField(Modifier.weight(1f).fillMaxWidth())
-        else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        // The text scrolls in a box around the field (not inside it), so the others' carets (CANVAS.md §25), drawn over
+        // the field from its text layout, scroll with the text; beside the preview the box is the shared one.
+        val ownScroll = rememberScrollState()
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val viewport = maxHeight
-            Box(Modifier.fillMaxSize().drivesScroll(scroll, ScrollDriver.EDITOR).verticalScroll(scroll.editor)) {
+            val outer = if (scroll != null) Modifier.fillMaxSize().drivesScroll(scroll, ScrollDriver.EDITOR).verticalScroll(scroll.editor)
+            else Modifier.fillMaxSize().verticalScroll(ownScroll)
+            Box(outer) {
                 textField(Modifier.fillMaxWidth().heightIn(min = viewport))
+                if (remoteCarets.isNotEmpty()) RemoteCaretLayer(remoteCarets, textLayout, Modifier.matchParentSize())
+            }
+        }
+    }
+}
+
+/** CANVAS.md §25: another editor's caret, as an offset into the text this editor shows. */
+private class RemoteCaretMark(val userId: String, val name: String, val offset: Int)
+
+/**
+ * CANVAS.md §25: the others' carets over the editor — a thin (2 dp) caret in the person's colour and a small name label
+ * above it (below when there is no room), placed from the field's text layout (inside its 16 × 12 dp padding). Drawn
+ * only: no touches, nothing for the screen reader (「〇〇 が編集中」 says who edits).
+ */
+@Composable
+private fun RemoteCaretLayer(marks: List<RemoteCaretMark>, layout: TextLayoutResult?, modifier: Modifier) {
+    if (layout == null) return
+    val density = LocalDensity.current
+    val padX = with(density) { 16.dp.toPx() }
+    val padY = with(density) { 12.dp.toPx() }
+    val length = layout.layoutInput.text.length
+    val rects = marks.map { layout.getCursorRect(it.offset.coerceIn(0, length)) }
+    Layout(
+        content = {
+            marks.forEachIndexed { index, mark ->
+                val color = Color(CanvasCarets.color(mark.userId))
+                Box(Modifier.width(2.dp).height(with(density) { rects[index].height.toDp() }).background(color))
+                Text(
+                    mark.name, style = MaterialTheme.typography.labelSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 160.dp).background(color, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp),
+                )
+            }
+        },
+        modifier = modifier.clearAndSetSemantics {},
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = measurables.map { it.measure(loose) }
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            marks.indices.forEach { index ->
+                val bar = placeables[index * 2]
+                val label = placeables[index * 2 + 1]
+                val rect = rects[index]
+                val x = (rect.left + padX).roundToInt()
+                val top = (rect.top + padY).roundToInt()
+                bar.place(x, top)
+                val labelX = x.coerceAtMost(constraints.maxWidth - label.width).coerceAtLeast(0)
+                val labelY = if (top - label.height >= 0) top - label.height else top + bar.height
+                label.place(labelX, labelY)
             }
         }
     }

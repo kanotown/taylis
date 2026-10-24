@@ -737,7 +737,7 @@ class SyncEngine(
             is ServerFrame.Presence -> store.setPresence(frame.userId, frame.status)
             // M73: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh.
             is ServerFrame.CanvasPresence -> if (frame.userId != store.me?.id) {
-                store.noteCanvasEditing(frame.canvasId, frame.userId, frame.editing, frame.section, System.currentTimeMillis())
+                store.noteCanvasEditing(frame.canvasId, frame.userId, frame.editing, frame.section, System.currentTimeMillis(), frame.caret)
             }
         }
     }
@@ -874,11 +874,12 @@ class SyncEngine(
     /**
      * M73 (CANVAS.md §18.2): I edit this canvas (the editor has the focus and is used; `section` is the caret's heading)
      * or stopped. Repeats go out every 20 s, a new heading after 2 s at most; a stop only after a start went out.
+     * CANVAS.md §25: `caret` (in the stored body) goes with it; the editor sends one that only moved at most every 300 ms.
      */
-    fun setCanvasEditing(canvasId: String, editing: Boolean, section: String? = null) {
+    fun setCanvasEditing(canvasId: String, editing: Boolean, section: String? = null, caret: CanvasCaret? = null) {
         val socket = ws ?: return
         if (_status.value != EngineStatus.ONLINE) return
-        val frame = canvasPresence.next(canvasId, editing, section, options.clock()) ?: return
+        val frame = canvasPresence.next(canvasId, editing, section, options.clock(), caret) ?: return
         runCatching { socket.send(ClientFrame.canvasPresence(frame)) } // volatile: the others drop it after 45 s anyway
     }
 

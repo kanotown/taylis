@@ -35,44 +35,131 @@ object CanvasText {
     }
 
     /**
-     * Where the caret goes when the editor's text changes from `before` to `after` under it (a merge brought someone
-     * else's edits): before the first difference it stays; after the last one it keeps its distance from the end; inside
-     * the changed stretch it follows its own line when that line is still there (the nearest copy of it), else it goes to
-     * the end of the change.
+     * Where the caret goes when the editor's text changes from `before` to `after` under it (a merge brought someone else's
+     * edits, CANVAS.md §24): before the first difference it stays; after the last one it keeps its distance from the end.
+     * Inside the changed stretch it follows its own line through the lines both texts keep (a line diff). A line that
+     * changed itself (someone typed on it too) is matched to its new form and the caret follows the characters both keep,
+     * so it stays where it was typing instead of jumping to the end of the whole change (another person's line). A line
+     * that is gone puts it at the end of the line before; a line rewritten as a whole, at the end of the new line.
+     * The same rule on the three clients (apps/shared/canvas_markdown.json `caret`; the desktop's canvasText.ts).
      */
     fun preserveCaret(before: String, after: String, caret: Int): Int {
         if (before == after) return minOf(caret, after.length)
-        val max = minOf(before.length, after.length)
-        var prefix = 0
-        while (prefix < max && before[prefix] == after[prefix]) prefix++
-        var suffix = 0
-        while (suffix < max - prefix && before[before.length - 1 - suffix] == after[after.length - 1 - suffix]) suffix++
+        val (prefix, suffix) = commonEnds(before.length, after.length) { i, j -> before[i] == after[j] }
         if (caret <= prefix) return caret
         if (caret >= before.length - suffix) return maxOf(0, after.length - (before.length - caret))
-        // Inside the changed stretch: find the caret's line in the new text, nearest to where it would have moved.
-        val lineStart = before.lastIndexOf('\n', caret - 1) + 1
-        val lineEndIndex = before.indexOf('\n', caret)
-        val lineText = before.substring(lineStart, if (lineEndIndex == -1) before.length else lineEndIndex)
-        val column = caret - lineStart
         val beforeLines = before.split("\n")
         val afterLines = after.split("\n")
-        val lineIndex = before.substring(0, lineStart).split("\n").size - 1
-        val expected = lineIndex + (afterLines.size - beforeLines.size)
-        var best = -1
-        if (lineText.isNotBlank()) {
-            for (k in afterLines.indices) {
-                if (afterLines[k] != lineText) continue
-                if (best == -1 || abs(k - expected) < abs(best - expected) ||
-                    (abs(k - expected) == abs(best - expected) && abs(k - lineIndex) < abs(best - lineIndex))
-                ) best = k
+        val line = before.substring(0, caret).count { it == '\n' }
+        val column = caret - (before.lastIndexOf('\n', caret - 1) + 1)
+        fun offset(k: Int): Int {
+            var at = 0
+            for (n in 0 until k) at += afterLines[n].length + 1
+            return at
+        }
+        val (p, s) = commonEnds(beforeLines.size, afterLines.size) { i, j -> beforeLines[i] == afterLines[j] }
+        if (line < p) return offset(line) + column
+        if (line >= beforeLines.size - s) return offset(line + afterLines.size - beforeLines.size) + column
+        val midBefore = beforeLines.subList(p, beforeLines.size - s)
+        val midAfter = afterLines.subList(p, afterLines.size - s)
+        val i = line - p
+        var prevA = -1
+        var prevB = -1
+        var nextA = midBefore.size
+        var nextB = midAfter.size
+        for ((a, b) in keptPairs(midBefore, midAfter)) {
+            if (a == i) return offset(p + b) + column
+            if (a < i) {
+                prevA = a
+                prevB = b
+            } else {
+                nextA = a
+                nextB = b
+                break
             }
         }
-        if (best != -1) {
-            var offset = 0
-            for (k in 0 until best) offset += afterLines[k].length + 1
-            return offset + column
+        val gapBefore = nextA - prevA - 1
+        val gapAfter = nextB - prevB - 1
+        if (gapAfter <= 0) {
+            // The caret's line went: the end of the line before it (or the start).
+            val k = p + prevB
+            return if (k < 0) 0 else offset(k) + afterLines[k].length
         }
-        return maxOf(prefix, after.length - suffix)
+        var k = prevB + 1 + (i - prevA - 1)
+        if (gapBefore != gapAfter) {
+            // The new line most like the caret's (most characters kept at its ends), nearest to the same place in the gap.
+            val own = beforeLines[line]
+            val where = (i - prevA - 1).toDouble() / maxOf(1, gapBefore)
+            var bestScore = -1
+            var bestDistance = Double.POSITIVE_INFINITY
+            for (j in prevB + 1 until nextB) {
+                val candidate = midAfter[j]
+                val (a, b) = commonEnds(own.length, candidate.length) { x, y -> own[x] == candidate[y] }
+                val distance = abs((j - prevB - 1).toDouble() / maxOf(1, gapAfter) - where)
+                if (a + b > bestScore || (a + b == bestScore && distance < bestDistance)) {
+                    k = j
+                    bestScore = a + b
+                    bestDistance = distance
+                }
+            }
+        }
+        return offset(p + k) + caretInLine(beforeLines[line], afterLines[p + k], column)
+    }
+
+    /**
+     * The lengths of the common start and end of two sequences of these lengths (`same(i, j)`: element i of the first
+     * equals element j of the second), not overlapping.
+     */
+    private inline fun commonEnds(aLength: Int, bLength: Int, same: (Int, Int) -> Boolean): Pair<Int, Int> {
+        val max = minOf(aLength, bLength)
+        var prefix = 0
+        while (prefix < max && same(prefix, prefix)) prefix++
+        var suffix = 0
+        while (suffix < max - prefix && same(aLength - 1 - suffix, bLength - 1 - suffix)) suffix++
+        return prefix to suffix
+    }
+
+    /** Past this many cells (a × b) the diff is not run; what lies between is taken as replaced. */
+    private const val CARET_DIFF_CELLS = 250_000
+
+    /** The pairs (index in a, index in b) of a longest common subsequence, in order. */
+    internal fun <T> keptPairs(a: List<T>, b: List<T>): List<Pair<Int, Int>> {
+        val n = a.size
+        val m = b.size
+        if (n == 0 || m == 0 || n.toLong() * m > CARET_DIFF_CELLS) return emptyList()
+        val width = m + 1
+        val table = IntArray((n + 1) * width)
+        for (i in n - 1 downTo 0) {
+            for (j in m - 1 downTo 0) {
+                table[i * width + j] =
+                    if (a[i] == b[j]) table[(i + 1) * width + j + 1] + 1 else maxOf(table[(i + 1) * width + j], table[i * width + j + 1])
+            }
+        }
+        val pairs = ArrayList<Pair<Int, Int>>()
+        var i = 0
+        var j = 0
+        while (i < n && j < m) {
+            if (a[i] == b[j]) {
+                pairs.add(i to j)
+                i++
+                j++
+            } else if (table[(i + 1) * width + j] >= table[i * width + j + 1]) i++ else j++
+        }
+        return pairs
+    }
+
+    /** The caret's column in a line that changed: through the characters both keep (the last one before it). */
+    private fun caretInLine(before: String, after: String, column: Int): Int {
+        val (p, s) = commonEnds(before.length, after.length) { i, j -> before[i] == after[j] }
+        if (column <= p) return column
+        if (column >= before.length - s) return after.length - (before.length - column)
+        val pairs = keptPairs(before.substring(p, before.length - s).toList(), after.substring(p, after.length - s).toList())
+        if (pairs.isEmpty()) return after.length - s // rewritten as a whole: after the new text
+        var at = p
+        for ((i, j) in pairs) {
+            if (p + i < column) at = p + j + 1 else break
+        }
+        return at
     }
 
     data class OutlineEntry(val level: Int, val text: String, val line: Int)
@@ -294,6 +381,13 @@ object CanvasText {
 
     /** The canvas the tab opens on: the conversation's tab canvas, else the most recently updated one. */
     fun defaultCanvasId(list: List<CanvasMeta>): String? = (list.firstOrNull { it.isChannelTab } ?: list.firstOrNull())?.id
+
+    /**
+     * CANVAS.md §24.4: the canvas the open tab keeps showing — the one it opened on ([shown]) while it is still in the
+     * list, whatever was updated since; else the default. Never another canvas under the reader's (or editor's) hands.
+     */
+    fun keptDefault(list: List<CanvasMeta>, shown: String?): String? =
+        shown?.takeIf { id -> list.any { it.id == id } } ?: defaultCanvasId(list)
 
     // --- images (M58, CANVAS.md §4.10; the desktop's M44 canvasText.ts) ---------------------------
 

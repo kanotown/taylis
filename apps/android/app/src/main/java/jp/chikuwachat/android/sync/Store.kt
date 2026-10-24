@@ -1704,8 +1704,8 @@ class Store(private val persistence: Persistence? = null) {
     private val canvasEditing = CanvasEditors()
 
     /** M73: a `canvas_presence` frame from someone else (true for 45 s unless refreshed, false ends it). */
-    fun noteCanvasEditing(canvasId: String, userId: String, editing: Boolean, section: String?, now: Long = System.currentTimeMillis()) {
-        if (canvasEditing.note(canvasId, userId, editing, section, now)) emit()
+    fun noteCanvasEditing(canvasId: String, userId: String, editing: Boolean, section: String?, now: Long = System.currentTimeMillis(), caret: CanvasCaret? = null) {
+        if (canvasEditing.note(canvasId, userId, editing, section, now, caret)) emit()
     }
 
     /** M73: who edits the canvas now (expired entries are skipped). */
