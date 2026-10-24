@@ -5,14 +5,16 @@
  * highlighted while its page is open. Each place stands where I put it (UserMe.desktop_places, §18.2): in the rail (as
  * many as fit its height, in my order), as a sidebar row, or only under 「その他」. The customise menu 「項目の配置」 moves
  * them and hides the rail; the order (nav_items', shared with the phones) is set by dragging an icon onto another
- * (2026-10-13) or in 設定 → 表示 → 「サイドバーの項目」. One tab stop; ↑ / ↓ / Home / End move between the icons.
+ * (2026-10-13) or in 設定 → 表示 → 「サイドバーの項目」. One tab stop; ↑ / ↓ / Home / End move between the icons. An icon's
+ * right-click menu (2026-10-24, also Shift+F10) moves it to the sidebar or hides it, and up or down.
  */
 import { Ellipsis, EyeOff, SlidersHorizontal } from "lucide-react";
-import { Tooltip } from "radix-ui";
+import { ContextMenu, Tooltip } from "radix-ui";
 import { type DragEvent, forwardRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useLayoutEffect, useRef, useState } from "react";
 
-import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
+import { clickOrNewTab, MENU, MENU_ITEM, middleClickProps } from "./DesktopTabBar";
 import type { PlaceSpot } from "./desktopPlaces";
+import { openContextMenuByKey } from "./SidebarMenus";
 import { cn, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger } from "./primitives";
 import { type MessageKey, t } from "../i18n";
 
@@ -88,13 +90,15 @@ const ITEM = "relative flex h-10 w-10 shrink-0 items-center justify-center round
 const IDLE = "text-sidebar-fg hover:bg-sidebar-hover hover:text-sidebar-strong";
 const ACTIVE = "bg-sidebar-active text-sidebar-active-fg";
 
-export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onNewTab, onMove, movable }: {
+export function PlacesRail({ places, spotOf, onPlace, onPlaceFromMenu, onHideRail, onArrange, onNewTab, onMove, movable }: {
   /** Every place I can open here, in my order. */
   places: readonly Place[];
   /** Where each place stands (rail / sidebar / hidden). */
   spotOf: (key: string) => PlaceSpot;
   /** Moves a place (undefined: a server without the setting; no customise menu then). */
   onPlace?: (key: string, spot: PlaceSpot) => void;
+  /** 2026-10-24: an icon's right-click 「サイドバーに移動」 / 「表示しない」 (the sidebar adds an undo toast); default `onPlace`. */
+  onPlaceFromMenu?: (key: string, spot: PlaceSpot) => void;
   /** 「アイコン列を隠す」: the rail's places become sidebar rows. */
   onHideRail?: () => void;
   /** 「並べ替え…」: the settings' list. */
@@ -125,6 +129,10 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
   const moreBadge = strongestBadge(more);
   // One tab stop: the open place's icon, else the first one.
   const tabStop = rail.find((place) => place.active)?.key ?? rail[0]?.key ?? "more";
+  const canMove = (key: string) => !!onMove && (!movable || movable(key));
+  // 上へ / 下へ in an icon's menu: among the rail's places that move (those past its height too, as dragging would).
+  const railOrder = places.filter((place) => spotOf(place.key) === "rail" && canMove(place.key)).map((place) => place.key);
+  const placeFromMenu = onPlaceFromMenu ?? onPlace;
 
   // In the capture phase: on 「その他」 and the customise button ↓ would otherwise open their menu (Radix's trigger), and
   // a prevented key is left alone by it. Only the rail's own icons: the menus are portalled out of the rail's DOM (React
@@ -153,7 +161,18 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
     >
       <Tooltip.Provider delayDuration={250} disableHoverableContent>
         {rail.map((place) => (
-          <RailPlace key={place.key} place={place} tabStop={place.key === tabStop} onNewTab={onNewTab} onMove={!movable || movable(place.key) ? onMove : undefined} />
+          <RailPlace
+            key={place.key}
+            place={place}
+            tabStop={place.key === tabStop}
+            onNewTab={onNewTab}
+            onMove={canMove(place.key) ? onMove : undefined}
+            menu={{
+              onSpot: placeFromMenu && ((spot) => placeFromMenu(place.key, spot)),
+              ...(onMove && canMove(place.key) ? neighbourMoves(railOrder, place.key, onMove) : {}),
+              onArrange,
+            }}
+          />
         ))}
         <div className="min-h-0 flex-1" />
         <Menu>
@@ -214,13 +233,13 @@ export function PlacesRail({ places, spotOf, onPlace, onHideRail, onArrange, onN
 }
 
 /** One icon of the rail: its tooltip, 「新しいタブで開く」 and, with `onMove`, dragging onto another icon (2026-10-13). */
-function RailPlace({ place, tabStop, onNewTab, onMove }: { place: Place; tabStop: boolean; onNewTab?: (key: string, foreground: boolean) => void; onMove?: PlaceMove }) {
+function RailPlace({ place, tabStop, onNewTab, onMove, menu }: { place: Place; tabStop: boolean; onNewTab?: (key: string, foreground: boolean) => void; onMove?: PlaceMove; menu: Omit<PlaceMenuActions, "onNewTab"> }) {
   const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
   const drag = usePlaceDrag("rail", place.key, onMove);
   return (
     // The menu outside the tooltip: the tooltip's trigger passes its hover / focus handlers to its child, and a menu
     // root between them (no element of its own) dropped them, so the names stopped showing (2026-10-12).
-    <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
+    <PlaceContextMenu scope="rail" label={place.label} actions={{ ...menu, onNewTab: newTab && (() => newTab(true)) }}>
       <RailTip label={place.label} hint={place.hint} count={place.count}>
         <button
           type="button"
@@ -240,7 +259,79 @@ function RailPlace({ place, tabStop, onNewTab, onMove }: { place: Place; tabStop
           {drag.edge && <span aria-hidden className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-accent-solid", drag.edge === "before" ? "-top-[3px]" : "-bottom-[3px]")} />}
         </button>
       </RailTip>
-    </NewTabContextMenu>
+    </PlaceContextMenu>
+  );
+}
+
+/** What a place's right-click menu offers (each left out when undefined; 上へ / 下へ null: disabled at that end). */
+export interface PlaceMenuActions {
+  /** 「新しいタブで開く」 (MOBILE_UI.md §19). */
+  onNewTab?: () => void;
+  /** Moves the place: the rail's icons offer サイドバー / 表示しない, the sidebar's rows アイコン列 / 表示しない. */
+  onSpot?: (spot: PlaceSpot) => void;
+  onUp?: (() => void) | null;
+  onDown?: (() => void) | null;
+  /** 「並べ替え…」: the settings' list. */
+  onArrange?: () => void;
+}
+
+/** 上へ / 下へ for `key` among `order` (the places of its list that move): before the one above, after the one below. */
+export function neighbourMoves(order: readonly string[], key: string, onMove: PlaceMove): Pick<PlaceMenuActions, "onUp" | "onDown"> {
+  const at = order.indexOf(key);
+  if (at < 0) return {};
+  const above = order[at - 1];
+  const below = order[at + 1];
+  return {
+    onUp: above === undefined ? null : () => onMove(key, above, false),
+    onDown: below === undefined ? null : () => onMove(key, below, true),
+  };
+}
+
+/**
+ * 2026-10-24 (MOBILE_UI.md §18.10): the right-click menu of a rail icon (`scope` "rail") or a sidebar place row
+ * ("sidebar"): 新しいタブで開く; サイドバーに移動 or アイコン列に移動, and 表示しない; 上へ / 下へ; 並べ替え…. Shift+F10 and
+ * the context-menu key open it from the keyboard, as on the conversation rows. Nothing to offer: no menu.
+ */
+export function PlaceContextMenu({ scope, label, actions, children }: { scope: "rail" | "sidebar"; label: string; actions: PlaceMenuActions; children: ReactNode }) {
+  const { onNewTab, onSpot, onUp, onDown, onArrange } = actions;
+  const moves = onUp !== undefined || onDown !== undefined;
+  if (!onNewTab && !onSpot && !moves && !onArrange) return <>{children}</>;
+  const groups: ReactNode[] = [];
+  if (onNewTab) groups.push(<ContextMenu.Item key="tab" className={MENU_ITEM} data-open-new-tab="" onSelect={onNewTab}>{t("tabs.openInNewTab")}</ContextMenu.Item>);
+  if (onSpot) {
+    groups.push(
+      <ContextMenu.Group key="spot">
+        {scope === "rail" ? (
+          <ContextMenu.Item className={MENU_ITEM} data-place-action="sidebar" onSelect={() => onSpot("sidebar")}>{t("places.toSidebar")}</ContextMenu.Item>
+        ) : (
+          <ContextMenu.Item className={MENU_ITEM} data-place-action="rail" onSelect={() => onSpot("rail")}>{t("places.toRail")}</ContextMenu.Item>
+        )}
+        <ContextMenu.Item className={MENU_ITEM} data-place-action="hidden" onSelect={() => onSpot("hidden")}>{t("places.hide")}</ContextMenu.Item>
+      </ContextMenu.Group>,
+    );
+  }
+  if (moves || onArrange) {
+    groups.push(
+      <ContextMenu.Group key="order">
+        {moves && (
+          <>
+            <ContextMenu.Item className={MENU_ITEM} data-place-action="up" disabled={!onUp} onSelect={() => onUp?.()}>{t("common.moveUp")}</ContextMenu.Item>
+            <ContextMenu.Item className={MENU_ITEM} data-place-action="down" disabled={!onDown} onSelect={() => onDown?.()}>{t("common.moveDown")}</ContextMenu.Item>
+          </>
+        )}
+        {onArrange && <ContextMenu.Item className={MENU_ITEM} data-place-action="arrange" onSelect={onArrange}>{t("rail.arrange")}</ContextMenu.Item>}
+      </ContextMenu.Group>,
+    );
+  }
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild onKeyDown={openContextMenuByKey}>{children}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={MENU} collisionPadding={8} aria-label={t("places.menu", { name: label })} data-place-menu={scope}>
+          {groups.flatMap((group, index) => (index === 0 ? [group] : [<ContextMenu.Separator key={`sep-${index}`} className="my-1 h-px bg-line" />, group]))}
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
 

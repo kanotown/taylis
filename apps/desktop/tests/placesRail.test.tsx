@@ -255,8 +255,9 @@ function controllerWith(navItems: NavItem[] | null | undefined, places: DesktopP
     store.setMe({ ...store.me!, desktop_places: value });
     return true;
   });
-  const controller = { store, engine: null, me, isGuest: false, isAdmin: false, version: 0, subscribe: () => () => {}, setNavItems, setDesktopPlaces } as unknown as AppController;
-  return { store, controller, setNavItems, setDesktopPlaces };
+  const setNotice = vi.fn();
+  const controller = { store, engine: null, me, isGuest: false, isAdmin: false, version: 0, subscribe: () => () => {}, setNavItems, setDesktopPlaces, setNotice } as unknown as AppController;
+  return { store, controller, setNavItems, setDesktopPlaces, setNotice };
 }
 
 describe("the sidebar with the rail", () => {
@@ -421,5 +422,159 @@ describe("the sidebar with the rail", () => {
     expect(rowKeys()).toEqual(["threads", "drafts"]);
     expect(within(railOf()).queryByRole("button", { name: "項目の配置" })).toBeNull();
     act(() => {});
+  });
+
+  // 2026-10-24 (MOBILE_UI.md §18.10): the right-click menus of the rail's icons and the sidebar's place rows.
+  const menuItems = (menu: HTMLElement) => within(menu).getAllByRole("menuitem").map((item) => item.textContent);
+  const openMenuOn = async (element: HTMLElement) => {
+    fireEvent.contextMenu(element);
+    await act(async () => {});
+    return screen.getByRole("menu");
+  };
+  const row = (key: string) => document.querySelector<HTMLElement>(`[data-sidebar-places] [data-nav-item="${key}"]`)!;
+
+  it("a rail icon's menu: 「サイドバーに移動」 saves desktop_places at once, with 「元に戻す」 in the toast", async () => {
+    const { controller, store, setDesktopPlaces, setNotice, setNavItems } = controllerWith(null);
+    const h = handlers();
+    draw(controller, h, { onArrangePlaces: vi.fn(), onPlaceInNewTab: vi.fn() });
+    const menu = await openMenuOn(railOf().querySelector<HTMLElement>('[data-nav-item="calendar"]')!);
+    expect(menu.getAttribute("aria-label")).toBe("カレンダー のメニュー");
+    expect(menuItems(menu)).toEqual(["新しいタブで開く", "サイドバーに移動", "表示しない", "上へ", "下へ", "並べ替え…"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "サイドバーに移動" }));
+    await act(async () => {});
+    expect(setDesktopPlaces).toHaveBeenLastCalledWith({ rail: true, items: [{ key: "calendar", place: "sidebar" }] });
+    expect(setNavItems).not.toHaveBeenCalled();
+    expect(h.onCalendar).not.toHaveBeenCalled();
+    expect(setNotice).toHaveBeenCalledTimes(1);
+    const [text, action] = setNotice.mock.calls[0]!;
+    expect(text).toBe("カレンダー をサイドバーに移動しました");
+    expect(action.label).toBe("元に戻す");
+    expect(store.me!.desktop_places).toEqual({ rail: true, items: [{ key: "calendar", place: "sidebar" }] });
+    // 元に戻す puts the whole setting back as it was (null: the defaults).
+    action.run();
+    expect(setDesktopPlaces).toHaveBeenLastCalledWith(null);
+  });
+
+  it("a rail icon's 「表示しない」 leaves it under 「その他」", async () => {
+    const { controller, setDesktopPlaces, setNotice } = controllerWith(null);
+    draw(controller, handlers());
+    const menu = await openMenuOn(railOf().querySelector<HTMLElement>('[data-nav-item="files"]')!);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "表示しない" }));
+    await act(async () => {});
+    expect(setDesktopPlaces).toHaveBeenLastCalledWith({ rail: true, items: [{ key: "files", place: "hidden" }] });
+    expect(setNotice.mock.calls[0]![0]).toBe("ファイル を表示しないようにしました（「その他」から開けます）");
+    cleanup();
+    draw(controller, handlers());
+    expect(railKeys()).not.toContain("files");
+    fireEvent.keyDown(within(railOf()).getByRole("button", { name: "その他" }), { key: "Enter" });
+    const more = await screen.findByRole("menu");
+    expect(within(more).getAllByRole("menuitem").map((item) => item.dataset.navItem).filter(Boolean)).toEqual(["files"]);
+  });
+
+  it("上へ / 下へ move an icon among the rail's (nav_items' order), disabled at the ends; Times has none", async () => {
+    const { controller, setNavItems } = controllerWith(null);
+    draw(controller, handlers());
+    const first = await openMenuOn(railOf().querySelector<HTMLElement>('[data-nav-item="activity"]')!);
+    expect(within(first).getByRole("menuitem", { name: "上へ" }).hasAttribute("data-disabled")).toBe(true);
+    fireEvent.click(within(first).getByRole("menuitem", { name: "下へ" }));
+    await act(async () => {});
+    expect(setNavItems).toHaveBeenCalledTimes(1);
+    cleanup();
+    draw(controller, handlers());
+    expect(railKeys().slice(0, 3)).toEqual(["reminders", "activity", "files"]);
+    const saved = await openMenuOn(railOf().querySelector<HTMLElement>('[data-nav-item="saved"]')!);
+    expect(within(saved).getByRole("menuitem", { name: "下へ" }).hasAttribute("data-disabled")).toBe(true);
+    fireEvent.click(within(saved).getByRole("menuitem", { name: "上へ" }));
+    await act(async () => {});
+    cleanup();
+    draw(controller, handlers());
+    expect(railKeys().slice(-2)).toEqual(["saved", "reservations"]);
+  });
+
+  it("a sidebar place row's menu: 「アイコン列に移動」 and 「表示しない」, 上へ / 下へ among the rows", async () => {
+    const { controller, setDesktopPlaces, setNotice, setNavItems } = controllerWith(null);
+    draw(controller, handlers(), { onArrangePlaces: vi.fn() });
+    const menu = await openMenuOn(row("threads"));
+    expect(menu.getAttribute("aria-label")).toBe("スレッド のメニュー");
+    expect(menuItems(menu)).toEqual(["アイコン列に移動", "表示しない", "上へ", "下へ", "並べ替え…"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "下へ" }));
+    await act(async () => {});
+    expect(setNavItems).toHaveBeenCalledTimes(1);
+    cleanup();
+    draw(controller, handlers());
+    expect(rowKeys()).toEqual(["drafts", "threads"]);
+    const again = await openMenuOn(row("threads"));
+    fireEvent.click(within(again).getByRole("menuitem", { name: "アイコン列に移動" }));
+    await act(async () => {});
+    expect(setDesktopPlaces).toHaveBeenLastCalledWith({ rail: true, items: [{ key: "threads", place: "rail" }] });
+    expect(setNotice.mock.calls[0]![0]).toBe("スレッド をアイコン列に移動しました");
+    cleanup();
+    draw(controller, handlers());
+    expect(railKeys()).toContain("threads");
+    expect(rowKeys()).toEqual(["drafts"]);
+  });
+
+  it("with the rail hidden, a row's 「アイコン列に移動」 shows the rail again", async () => {
+    const { controller, setDesktopPlaces } = controllerWith(null, { rail: false, items: [] });
+    draw(controller, handlers());
+    const menu = await openMenuOn(row("drafts"));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "アイコン列に移動" }));
+    await act(async () => {});
+    expect(setDesktopPlaces).toHaveBeenLastCalledWith({ rail: true, items: [{ key: "drafts", place: "rail" }] });
+  });
+
+  it("Shift+F10 and the context-menu key open an icon's and a row's menu from the keyboard", async () => {
+    const { controller } = controllerWith(null);
+    draw(controller, handlers());
+    const icon = railOf().querySelector<HTMLElement>('[data-nav-item="docs"]')!;
+    fireEvent.keyDown(icon, { key: "F10", shiftKey: true });
+    await act(async () => {});
+    expect(screen.getByRole("menu", { name: "ドキュメント のメニュー" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await act(async () => {});
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.keyDown(row("drafts"), { key: "ContextMenu" });
+    await act(async () => {});
+    expect(screen.getByRole("menu", { name: "下書き のメニュー" })).toBeTruthy();
+  });
+
+  it("a server without desktop_places or nav_items: an icon's menu offers only what it can do", async () => {
+    const { controller } = controllerWith(undefined, "absent");
+    draw(controller, handlers(), { onPlaceInNewTab: vi.fn() });
+    const menu = await openMenuOn(railOf().querySelector<HTMLElement>('[data-nav-item="files"]')!);
+    expect(menuItems(menu)).toEqual(["新しいタブで開く"]);
+  });
+});
+
+describe("the place menu on its own", () => {
+  const rail = () => screen.getByRole("navigation", { name: "場所" });
+
+  it("without onPlaceFromMenu the icons' moves use onPlace; Times icons have no 上へ / 下へ", async () => {
+    const onPlace = vi.fn();
+    const onMove = vi.fn();
+    const places = [place("a", { label: "エー" }), place("b"), place("times-feed")];
+    render(<PlacesRail places={places} spotOf={spots({})} onPlace={onPlace} onMove={onMove} movable={placeMovable} />);
+    fireEvent.contextMenu(rail().querySelector<HTMLElement>('[data-nav-item="b"]')!);
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "上へ" }));
+    expect(onMove).toHaveBeenLastCalledWith("b", "a", false);
+    fireEvent.contextMenu(rail().querySelector<HTMLElement>('[data-nav-item="a"]')!);
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "下へ" }));
+    expect(onMove).toHaveBeenLastCalledWith("a", "b", true);
+    fireEvent.contextMenu(rail().querySelector<HTMLElement>('[data-nav-item="a"]')!);
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "サイドバーに移動" }));
+    expect(onPlace).toHaveBeenLastCalledWith("a", "sidebar");
+    fireEvent.contextMenu(rail().querySelector<HTMLElement>('[data-nav-item="times-feed"]')!);
+    await act(async () => {});
+    expect(within(screen.getByRole("menu")).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["サイドバーに移動", "表示しない"]);
+  });
+
+  it("nothing to offer: no menu (a right-click does nothing)", async () => {
+    render(<PlacesRail places={[place("a")]} spotOf={spots({})} />);
+    fireEvent.contextMenu(rail().querySelector<HTMLElement>('[data-nav-item="a"]')!);
+    await act(async () => {});
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });

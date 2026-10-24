@@ -10,14 +10,14 @@ import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
 import { pressable } from "./actions";
-import { navItemsAfterPlaceDrop, placeMovable, railShown, shownSpot, TIMES_PLACE_KEYS, TIMES_SECTION, timesAnchor, timesAnchorAt, timesAnchorMoved, withRail, withSpot, withTimesBefore, withTimesPlaced } from "./desktopPlaces";
+import { navItemsAfterPlaceDrop, placeMovable, type PlaceSpot, railShown, shownSpot, TIMES_PLACE_KEYS, TIMES_SECTION, timesAnchor, timesAnchorAt, timesAnchorMoved, withRail, withSpot, withTimesBefore, withTimesPlaced } from "./desktopPlaces";
 import { desktopNavKeys, fullNavItems, shownNavItems } from "./navItems";
-import { type Place, PlaceMenuItems, type PlaceMove, PlacesRail, usePlaceDrag } from "./PlacesRail";
+import { neighbourMoves, type Place, PlaceContextMenu, type PlaceMenuActions, PlaceMenuItems, type PlaceMove, PlacesRail, usePlaceDrag } from "./PlacesRail";
 import { Badge, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { AddChannelMenu, ChannelContextMenu, type ChannelRowAction, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu, SectionMenu, SectionMenuItem, SectionMenuSeparator, SidebarContextMenu } from "./SidebarMenus";
 import { hasUnreadFeed } from "../sync/timesFeed";
-import { clickOrNewTab, middleClickProps, NewTabContextMenu } from "./DesktopTabBar";
+import { clickOrNewTab, middleClickProps } from "./DesktopTabBar";
 import { StatusEmoji } from "./UserPopover";
 import { MyStatusMenu } from "./MyStatusMenu";
 import { currentMe, myPresenceChoice, myPresenceLine } from "./presence";
@@ -263,6 +263,20 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   const sidebarPlaces = places.filter((entry) => spotOf(entry.key) === "sidebar");
   // With the rail hidden, 「その他」 is a sidebar row (the hidden places, showing the rail again, the settings).
   const hiddenPlaces = places.filter((entry) => spotOf(entry.key) === "hidden");
+  // 2026-10-24 (MOBILE_UI.md §18.10): a rail icon's or a place row's right-click menu moves it at once (the same
+  // desktop_places as 「項目の配置」 and the settings), with 「元に戻す」 in the toast. アイコン列に移動 while the rail is
+  // hidden shows it again (else the place would stay a sidebar row).
+  const placeFromMenu = placeAt && ((key: string, spot: PlaceSpot) => {
+    const before = desktopPlaces ?? null;
+    const name = places.find((entry) => entry.key === key)?.label ?? key;
+    const moved = withSpot(before, key, spot);
+    void controller.setDesktopPlaces(spot === "rail" && !railOn ? withRail(moved, true) : moved).then((ok) => {
+      if (!ok) return;
+      const notice = spot === "rail" ? "places.movedToRail" : spot === "sidebar" ? "places.movedToSidebar" : "places.hiddenNotice";
+      controller.setNotice(t(notice, { name }), { label: t("places.undo"), run: () => void controller.setDesktopPlaces(before) });
+    });
+  });
+  const sidebarOrder = sidebarPlaces.filter((entry) => placeMovable(entry.key)).map((entry) => entry.key);
 
   const item = (channel: ChannelState, folded = false, order?: Reorder) => {
     const muted = isMutedChannel(channel);
@@ -520,7 +534,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     <div data-sidebar-column="" className="flex h-full min-h-0 border-r border-sidebar-edge bg-sidebar text-sidebar-fg">
       {/* 2026-10-12 (MOBILE_UI.md §18): the menu items are a rail of icons, so the list below starts with the channels. */}
       {onThreads && railOn && (
-        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} onNewTab={onPlaceInNewTab} onMove={movePlace} movable={placeMovable} />
+        <PlacesRail places={places} spotOf={spotOf} onPlace={placeAt} onPlaceFromMenu={placeFromMenu} onHideRail={setRail && (() => setRail(false))} onArrange={onArrangePlaces} onNewTab={onPlaceInNewTab} onMove={movePlace} movable={placeMovable} />
       )}
     {/* MOBILE_UI.md §18.6: right-click on the sidebar's empty space (a row's own menu wins). */}
     <SidebarContextMenu
@@ -597,7 +611,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         <ul data-sidebar-places="" aria-label={t("places.sidebarRows")} className="mb-1 space-y-px">
           {sidebarPlaces.map((entry) => (
             <li key={entry.key}>
-              <SidebarPlaceRow place={entry} onNewTab={onPlaceInNewTab} onMove={placeMovable(entry.key) ? movePlace : undefined} />
+              <SidebarPlaceRow place={entry} onNewTab={onPlaceInNewTab} onMove={placeMovable(entry.key) ? movePlace : undefined} menu={{ onSpot: placeFromMenu && ((spot) => placeFromMenu(entry.key, spot)), ...(movePlace && placeMovable(entry.key) ? neighbourMoves(sidebarOrder, entry.key, movePlace) : {}), onArrange: onArrangePlaces }} />
             </li>
           ))}
           {!railOn && (
@@ -646,13 +660,13 @@ export const SECTION_ROW_PAD = "pl-5 pr-2.5";
 /** A place's row near the sidebar's top (MOBILE_UI.md §18.2): the look the menu items had before the rail. */
 const PLACE_ROW = "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors";
 
-function SidebarPlaceRow({ place, onNewTab, onMove }: { place: Place; onNewTab?: (key: string, foreground: boolean) => void; onMove?: PlaceMove }) {
+function SidebarPlaceRow({ place, onNewTab, onMove, menu }: { place: Place; onNewTab?: (key: string, foreground: boolean) => void; onMove?: PlaceMove; menu: Omit<PlaceMenuActions, "onNewTab"> }) {
   // MOBILE_UI.md §19: in a new tab (its menu, a middle click, ⌘-click).
   const newTab = onNewTab && ((foreground: boolean) => onNewTab(place.key, foreground));
   // 2026-10-13: dragged onto another place row it lands before or after it.
   const drag = usePlaceDrag("sidebar", place.key, onMove);
   return (
-    <NewTabContextMenu onOpenInNewTab={newTab && (() => newTab(true))}>
+    <PlaceContextMenu scope="sidebar" label={place.label} actions={{ ...menu, onNewTab: newTab && (() => newTab(true)) }}>
     <button
       type="button"
       data-nav-item={place.key}
@@ -679,7 +693,7 @@ function SidebarPlaceRow({ place, onNewTab, onMove }: { place: Place; onNewTab?:
       ) : null}
       {drag.edge && <span aria-hidden className={cn("pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-accent-solid", drag.edge === "before" ? "top-0" : "bottom-0")} />}
     </button>
-    </NewTabContextMenu>
+    </PlaceContextMenu>
   );
 }
 
