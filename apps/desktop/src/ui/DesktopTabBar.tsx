@@ -45,8 +45,8 @@ export function clickOrNewTab(event: MouseEvent, open: ((foreground: boolean) =>
   return true;
 }
 
-const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
-const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
+export const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
+export const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
 
 /** A right-click menu with 「新しいタブで開く」 (and the element's own `items` above it); none without `onOpenInNewTab`. */
 export function NewTabContextMenu({ onOpenInNewTab, children }: { onOpenInNewTab?: () => void; children: ReactNode }) {
