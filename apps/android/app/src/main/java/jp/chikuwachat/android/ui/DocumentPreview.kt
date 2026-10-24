@@ -138,6 +138,9 @@ object DocumentCards {
     fun cachePath(attachmentId: String): String = DownloadCache.path(attachmentId, "preview.pdf")
 }
 
+/** Why the document viewer shows no pages (DRIVE.md §27.3): being made, none for this file, or it failed. */
+enum class DocumentHold { MAKING, UNAVAILABLE, FAILED }
+
 /**
  * A PDF or Office file with a preview: the first page (a tap opens every page in [PdfPreviewViewer]) over the name, size
  * and page count; 「他のアプリで開く」 hands the original to another app, as the plain row does.
@@ -252,20 +255,38 @@ internal fun PdfPreviewViewer(
     attachment: AttachmentOut, controller: AppController, onDismiss: () -> Unit,
     /** M166 (docs/DRIVE.md §26): a drive file goes to another app the drive's way (streamed to disk); null: the attachment's. */
     onOpenElsewhere: (() -> Unit)? = null,
+    /**
+     * 2026-10-24 (DRIVE.md §27.3): a drive PDF without a ready preview — writes the file itself into the given file
+     * (streamed, never whole in memory); null: the preview PDF is read.
+     */
+    load: (suspend (File) -> Unit)? = null,
+    /** Why there are no pages yet (an Office file's preview being made, none, failed): shown instead of loading. */
+    hold: DocumentHold? = null,
+    /** 「ダウンロード」 where the pages cannot be shown (a drive file: the drive's download). */
+    onDownload: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var pages by remember(attachment.id) { mutableStateOf<PdfPages?>(null) }
     var error by remember(attachment.id) { mutableStateOf<String?>(null) }
     var attempt by remember(attachment.id) { mutableIntStateOf(0) }
-    LaunchedEffect(attachment.id, attempt) {
+    val fromOriginal = load != null
+    LaunchedEffect(attachment.id, attempt, hold == null, fromOriginal) {
         error = null
+        if (hold != null) return@LaunchedEffect
         try {
-            val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/preview/pdf")
-            val opened = withContext(Dispatchers.IO) {
-                val file = File(File(context.cacheDir, "previews"), DocumentCards.cachePath(attachment.id))
-                file.parentFile?.mkdirs()
-                file.writeBytes(bytes)
-                PdfPages(file)
+            val opened = if (load != null) {
+                val file = File(File(context.cacheDir, "previews"), DownloadCache.path(attachment.id, "original.pdf"))
+                withContext(Dispatchers.IO) { file.parentFile?.mkdirs() }
+                load(file)
+                withContext(Dispatchers.IO) { PdfPages(file) }
+            } else {
+                val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/preview/pdf")
+                withContext(Dispatchers.IO) {
+                    val file = File(File(context.cacheDir, "previews"), DocumentCards.cachePath(attachment.id))
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    PdfPages(file)
+                }
             }
             pages = opened
         } catch (e: CancellationException) {
@@ -322,10 +343,21 @@ internal fun PdfPreviewViewer(
                 ) {
                     when {
                         current != null -> PdfPageList(current, listState)
+                        hold == DocumentHold.MAKING -> Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Text(stringResource(R.string.document_preview_creating_preview), Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
+                        }
+                        hold != null -> Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(if (hold == DocumentHold.FAILED) R.string.drive_preview_failed else R.string.drive_preview_unavailable), style = MaterialTheme.typography.titleMedium)
+                            if (onDownload != null) Button(onClick = onDownload, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.drive_preview_download)) }
+                        }
                         error != null -> Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(stringResource(R.string.document_preview_couldnt_load_the_preview), style = MaterialTheme.typography.titleMedium)
                             Text(error!!, Modifier.padding(vertical = 12.dp))
-                            Button(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Button(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
+                                if (onDownload != null) androidx.compose.material3.OutlinedButton(onClick = onDownload) { Text(stringResource(R.string.drive_preview_download)) }
+                            }
                         }
                         else -> CircularProgressIndicator()
                     }

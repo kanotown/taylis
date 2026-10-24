@@ -122,7 +122,8 @@ class DriveTest {
         val ready = AttachmentPreviewOut("ready", pages = 6)
         assertEquals(DriveNames.Viewer.DOCUMENT, DriveNames.viewer(item("a", file = DriveFileOut("att", preview = ready))))
         assertEquals(DriveNames.Viewer.DOCUMENT, DriveNames.viewer(item("a", "発表資料.docx", type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", file = DriveFileOut("att", preview = ready))))
-        assertNull(DriveNames.viewer(item("a", file = DriveFileOut("att", preview = AttachmentPreviewOut("pending")))))
+        // §27.3 (2026-10-24): a PDF opens the viewer whatever its preview (its own bytes while none is ready).
+        assertEquals(DriveNames.Viewer.DOCUMENT, DriveNames.viewer(item("a", file = DriveFileOut("att", preview = AttachmentPreviewOut("pending")))))
         assertEquals(DriveNames.Viewer.IMAGE, DriveNames.viewer(item("a", type = "image/jpeg", file = DriveFileOut("att", hasThumbnail = true))))
         assertNull(DriveNames.viewer(item("a", type = "image/jpeg", file = DriveFileOut("att", hasThumbnail = false))))
         assertEquals(DriveNames.Viewer.VIDEO, DriveNames.viewer(item("a", type = "video/mp4", file = DriveFileOut("att", hasPoster = true))))
