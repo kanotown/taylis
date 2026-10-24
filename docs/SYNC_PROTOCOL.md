@@ -206,7 +206,7 @@
 | `auth` | `{ token }` |
 | `ping` | `{ active: bool }`。`heartbeat_interval_sec` ごとに送る。`active` はウィンドウがフォーカスされている / アプリがフォアグラウンドなら true (プッシュ抑制の判定に使う。PUSH_NOTIFICATIONS.md §4.1) |
 | `typing` | `{ channel_id, parent_id? }`。揮発。入力中に 3 秒に 1 回まで送る (サーバは 1 接続あたり 2 秒に 1 回だけ中継し、メンバーでなければ捨てる) |
-| `canvas_presence` | `{ canvas_id, editing, section? }` (M72、CANVAS.md §18.2)。揮発。キャンバスの編集欄にフォーカスがある間 `editing: true` (見出しが変わればすぐ、そのままなら 20 秒ごと)、やめたら false。サーバは 1 接続・1 キャンバスにつき同じ内容を 2 秒に 1 回だけ中継し、キャンバスが無い・ゴミ箱・メンバーでなければ捨てる |
+| `canvas_presence` | `{ canvas_id, editing, section?, caret? }` (M72、CANVAS.md §18.2)。揮発。キャンバスの編集欄にフォーカスがある間 `editing: true` (見出しが変わればすぐ、そのままなら 20 秒ごと)、やめたら false。`caret` (2026-10-24、CANVAS.md §25) は `{line, column}`：保存される形の本文の行 (0 始まり) と UTF-16 の桁。カーソルが動いたら 300 ms に 1 回まで (最後の位置は必ず送る)。サーバは 1 接続・1 キャンバスにつき同じ内容を 2 秒に 1 回、カーソルだけの変化を 0.2 秒に 1 回だけ中継し、キャンバスが無い・ゴミ箱・メンバーでなければ捨てる |
 
 サーバ → クライアント:
 
@@ -216,7 +216,7 @@
 | `pong` | `{ server_time }` |
 | `event` | `{ id, event, ts, channel_id?, seq?, data }`。`event` がイベント名 (§6)、`id` は outbox の id |
 | `typing` | `{ channel_id, parent_id, user_id }`。揮発 (M11b)。送った本人以外のメンバーに届く。クライアントは 5 秒で消す。AI ボットがメンションに応える準備をしている間は、サーバがボットの `user_id` で 3 秒ごとに同じ形を送る（docs/AI.md §2.2 の 6） |
-| `canvas_presence` | `{ canvas_id, channel_id, user_id, editing, section }` (M72)。揮発。キャンバスの会話の、送った本人以外のメンバーに届く。クライアントは 45 秒送り直しが無ければ消す。送った接続が切れると、その接続が最後に `editing: true` を送ったキャンバスに `editing: false` が届く |
+| `canvas_presence` | `{ canvas_id, channel_id, user_id, editing, section, caret }` (M72)。揮発。キャンバスの会話の、送った本人以外のメンバーに届く。クライアントは 45 秒送り直しが無ければ消す。送った接続が切れると、その接続が最後に `editing: true` を送ったキャンバスに `editing: false` が届く。`caret` (CANVAS.md §25) は `editing: false` では null。DB には書かない |
 | `presence` | `{ user_id, status: "online" \| "away" \| "offline" }`。揮発 (M11b)。接続 / 切断、`ping` の `active: true`、5 分間 active な ping が無いときの away 判定 (30 秒ごとの sweep) で、接続中の全員に届く。在席を隠した人 (`users.presence_hidden`、L4。メニューの「オフライン表示」) は常に offline として配り、bootstrap の `presence` にも載せない (本人にも offline に見える)。自分で「離席中」を選んだ人 (`users.presence_manual = 'away'`、PRESENCE.md §11) は、つながっている間は使っていても away として配る。値は今も online / away / offline の 3 つだけ。「取り込み中」はこのフレームではなく、UserPublic の `dnd_until` から端末が描く (PRESENCE.md §11.3)。プロセス内の状態なので、複数プロセス化するときは Redis に移す (ARCHITECTURE.md §12) |
 | `error` | `{ code, message }`。`auth_required` / `invalid_token` / `invalid_frame` / `already_authenticated` など |
 
@@ -1143,6 +1143,9 @@ X の作成と 👍 は 1 行にまとまって届く (状態ベース)。イベ
 
 端末の状態 (キャンバスごと): `base_rev_id`、`editor_text`、`dirty`、`in_flight {client_save_id, sent, base} | null`。
 Tauri・iOS・Android は保存待ちを端末のストアに持つ (落ちても・オフラインでも同じ key で再送する)。
+2026-10-24 (CANVAS.md §24): 保存のループが本文を差し替えるたびに「世代」が 1 つ進み、エディタは自分が表示している本文の世代を
+編集に添える。差し替えがエディタに届く前に打たれた文字 (古い世代の上の編集) は、その世代の版を base に保存され、サーバが
+新しい本文と改めてマージする (新しい本文の上の編集として保存すると、他の人の変更を消してしまう)。
 
 ```
 編集したら dirty。入力が 2 秒止まったとき、画面を閉じるとき、背面に回るときに save()
@@ -1151,7 +1154,7 @@ save():
   PUT /canvases/{id}/content {base_rev_id, body: sent, client_save_id (新しい UUIDv4), on_conflict: "fail"}
   200 {canvas, submitted_rev_id, merged}:
     editor_text == sent なら: base_rev_id = canvas.head_rev_id。canvas.body が sent と違えば (他の人の変更が
-      マージされた) エディタを canvas.body に差し替える (カーソルは前後で共通する先頭・末尾の長さで保つ)
+      マージされた) エディタを canvas.body に差し替える (カーソルは行と文字の差分で自分の行に保つ、CANVAS.md §24)
     そうでなければ (送信中に入力が続いた): base_rev_id = submitted_rev_id (送った本文そのものの版)。次の保存でマージされる
   409 canvas_conflict: details.head (今の版) と details.conflicts [{base, ours, theirs, ours_line, theirs_line}] で
     競合パネル (自分の版 / 相手の版 / 両方残す) → 同じ base_rev_id・新しい key・on_conflict = ours | theirs | both で再送
@@ -1162,7 +1165,8 @@ save():
   401 token_expired: refresh して 1 回だけ再試行
   429 / 5xx / 通信エラー: in_flight を保ったまま、バックオフして同じ key で再送 (版は増えない)
 閲覧中 (dirty でない) に canvas.updated で大きい version が来たら GET /canvases/{id} (0.5 秒デバウンス、If-None-Match)
-編集中に来たら何もしない。次の保存でマージされ、入力が止まった時点で相手の変更が現れる
+編集中に来たら読まない (version は覚えておく)。次の保存でマージされ、入力が止まった時点で相手の変更が現れる。
+保存の応答を受けて何も残っていないとき、覚えた version が手元より新しければすぐ読み直す (送信中に来た通知を落とさない)
 ```
 
 - **チェックの切り替え**に専用の API は無い。表示中の版の該当行の `[ ]` を `[x]` にして、その版を base に `PUT` する。
@@ -1223,6 +1227,7 @@ base・送られた本文・head を 3-way マージする。
   端末は表示を変えず、開いていれば通知だけ出す (押すとそのキャンバス)。取りこぼしても回復はしない (プッシュと同じく知らせるだけ)。
 - **編集中**: WS の `canvas_presence` (§5.2)。状態はサーバのプロセス内と端末のメモリだけ。再接続の後は、編集中なら端末が
   `editing: true` を送り直す (次の入力か 20 秒ごとの送り直し)。受けた側は 45 秒で消すので、取りこぼしても残り続けない。
+  カーソルの位置 (`caret`、CANVAS.md §25) も同じフレームに乗り、同じく保存しない。
 - **チェックリストからタスク**: `POST /tasks` の `source_canvas_id` + `source_canvas_line` (TASKS.md §10)。端末は送る前に
   キャンバスの手元の入力を保存する (サーバは保存済みの本文に行があるかを見る)。タスクの `canvas_source` は作った時の写しで、
   キャンバスの変更では `task.updated` は出ない (完全に消えたときだけ、次に読んだ `canvas_id` が null)。
