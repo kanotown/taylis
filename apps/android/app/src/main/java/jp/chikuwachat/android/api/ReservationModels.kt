@@ -62,6 +62,11 @@ data class PoolOut(
     val graceMinutes: Int = 15,
     val tz: String = "Asia/Tokyo",
     val enabled: Boolean = true,
+    /**
+     * Whether the pool takes 「今すぐ」 (walk-ins, the queue) besides bookings (2026-10-24, RESERVATIONS.md §1). A server
+     * from before the setting does not send it: every pool took walk-ins then.
+     */
+    val walkinsEnabled: Boolean = true,
     val operatorIds: List<String> = emptyList(),
     val logChannelId: String? = null,
     val visibility: String = "all",

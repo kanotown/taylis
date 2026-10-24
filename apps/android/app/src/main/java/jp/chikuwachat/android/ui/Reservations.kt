@@ -251,6 +251,11 @@ object ReservationRules {
     fun canRemoveHolder(pool: PoolOut, row: ReservationOut): Boolean =
         pool.canOperate && (row.status == "holding" || row.status == "returning")
 
+    /** The pool's line under its name: the seats and the booking rules; a booking-only pool leaves the queue out. */
+    fun summary(pool: PoolOut): String =
+        if (pool.walkinsEnabled) L10n.str(R.string.reservations_slots_up_to_hours_per_booking, pool.capacity, pool.maxHours)
+        else L10n.str(R.string.reservations_slots_booking_only, pool.capacity, pool.maxHours)
+
     fun bookingText(row: ReservationOut, now: Instant, zone: ZoneId): String {
         val s = span(row.startAt, row.endAt, now, zone)
         return when (row.status) {
@@ -296,7 +301,10 @@ object ReservationRules {
 
 private data class Confirm(val text: String, val label: String, val run: suspend () -> Unit)
 
-/** 「予約」: per pool mine, 予約する / 今すぐ, the operators' to-do and a day's hours. Settings are on the desktop / web. */
+/**
+ * 「予約」: per pool mine, 予約する / 今すぐ (not in a booking-only pool), the operators' to-do and a day's hours. Settings (also
+ * whether a pool takes 「今すぐ」) are on the desktop / web.
+ */
 @Composable
 fun ReservationsPane(controller: AppController, version: Int) {
     val store = controller.store
@@ -343,10 +351,12 @@ fun ReservationsPane(controller: AppController, version: Int) {
                         "🎫 ${pool.name}" + if (!pool.enabled) stringResource(R.string.reservations_paused) else "",
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() },
                     )
-                    Text(stringResource(R.string.reservations_slots_up_to_hours_per_booking, pool.capacity, pool.maxHours), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(ReservationRules.summary(pool), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // A booking-only pool (2026-10-24): no 「今すぐ」 button and no queue; booking as ever.
+                    if (!pool.walkinsEnabled) Text(stringResource(R.string.reservations_booking_only), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { booking = pool }, enabled = pool.enabled && !busy && active == null && !controller.isGuest) { Text(stringResource(R.string.reservations_book)) }
-                        if (mine.walkin == null) {
+                        if (pool.walkinsEnabled && mine.walkin == null) {
                             OutlinedButton(onClick = { run { controller.reservePool(pool.id) } }, enabled = pool.enabled && !busy && active == null && !controller.isGuest) { Text(stringResource(R.string.reservations_now_join_the_line)) }
                         }
                     }

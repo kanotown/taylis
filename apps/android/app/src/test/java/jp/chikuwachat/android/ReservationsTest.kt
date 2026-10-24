@@ -143,6 +143,19 @@ class ReservationsTest {
         assertEquals("reservations", HomeTile.RESERVATIONS.navKey)
     }
 
+    /** 2026-10-24: a pool may take bookings only; a server from before the setting does not send it (every pool took walk-ins then). */
+    @Test fun aBookingOnlyPool() {
+        val old = """{"id": "p1", "name": "x", "capacity": 2, "min_hours": 6, "max_hours": 3, "grace_minutes": 15, "tz": "Asia/Tokyo", "enabled": true}"""
+        assertTrue(Codec.snake.decodeFromString(PoolOut.serializer(), old).walkinsEnabled)
+        val off = Codec.snake.decodeFromString(PoolOut.serializer(), old.replace("\"enabled\": true", "\"enabled\": true, \"walkins_enabled\": false"))
+        assertFalse(off.walkinsEnabled)
+        // The line under the name leaves the queue out.
+        assertTrue(ReservationRules.summary(PoolOut(id = "p", name = "x", capacity = 2, maxHours = 3)).contains("順番待ち"))
+        val bookingOnly = ReservationRules.summary(off)
+        assertFalse(bookingOnly.contains("順番待ち"))
+        assertTrue(bookingOnly.startsWith("2 枠 · 予約は 1 回 3 時間まで"))
+    }
+
     /** 2026-10-24 (option A): the walk-in's time reads as a guarantee; past it the operators take the seat out; operators remove anyone. */
     @Test fun theGuaranteeAndRemovingAHolder() {
         val inside = ReservationOut(id = "w1", userId = "bob", kind = "walkin", status = "holding", requestedAt = at(8), assignedAt = at(9), guaranteeUntil = at(12))
