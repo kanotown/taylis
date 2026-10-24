@@ -108,6 +108,9 @@ struct PoolOut: Codable, Equatable, Identifiable {
     let graceMinutes: Int
     let tz: String
     let enabled: Bool
+    /// Whether the pool takes 「今すぐ」 (walk-ins, the queue) besides bookings (2026-10-24, RESERVATIONS.md §1).
+    /// nil: a server from before the setting (every pool took walk-ins then). Read it through `takesWalkins`.
+    var walkinsEnabled: Bool? = nil
     var operatorIds: [String] = []
     var logChannelId: String? = nil
     var visibility: String = "all"
@@ -128,7 +131,8 @@ struct PoolOut: Codable, Equatable, Identifiable {
     let updatedAt: String
 
     init(id: String, name: String, capacity: Int, minHours: Int = 6, maxHours: Int = 6, graceMinutes: Int = 15,
-         tz: String = "Asia/Tokyo", enabled: Bool = true, operatorIds: [String] = [], holders: [ReservationOut] = [],
+         tz: String = "Asia/Tokyo", enabled: Bool = true, walkinsEnabled: Bool? = nil, operatorIds: [String] = [],
+         holders: [ReservationOut] = [],
          waiting: [ReservationOut] = [], bookings: [ReservationOut] = [], todos: [ReservationTodo] = [],
          nextEvictId: String? = nil, myReservationId: String? = nil, myActiveId: String? = nil, canManage: Bool = false,
          canOperate: Bool = false,
@@ -141,6 +145,7 @@ struct PoolOut: Codable, Equatable, Identifiable {
         self.graceMinutes = graceMinutes
         self.tz = tz
         self.enabled = enabled
+        self.walkinsEnabled = walkinsEnabled
         self.operatorIds = operatorIds
         self.holders = holders
         self.waiting = waiting
@@ -155,6 +160,9 @@ struct PoolOut: Codable, Equatable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    /// A booking-only pool (walkins_enabled false) has no 「今すぐ」 button, no queue and no walk-in rules.
+    var takesWalkins: Bool { walkinsEnabled != false }
 }
 
 /// M112: `reservation.notice` — a new activity item about reservations for me (the push's words while the app is open).

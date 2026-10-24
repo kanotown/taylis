@@ -350,6 +350,22 @@
         }
       }
     },
+    "この枠は予約だけです" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This slot takes bookings only"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此名额仅接受预约"
+          }
+        }
+      }
+    },
     "ご意見・要望" : {
       "localizations" : {
         "en" : {
@@ -2282,6 +2298,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未读与提及"
+          }
+        }
+      }
+    },
+    "毎時 0 分から %lld 時間まで、2 週間先まで。予約・利用中は 1 つの枠で 1 人 1 つまで。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the top of the hour for up to %lld hours, up to 2 weeks ahead. One booking or seat per person in a slot."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从整点开始，最长 %lld 小时，最多可预约 2 周以内。同一名额中每人只能有一个预约或正在使用。"
           }
         }
       }
