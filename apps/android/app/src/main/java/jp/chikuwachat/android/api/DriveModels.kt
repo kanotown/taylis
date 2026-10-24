@@ -121,3 +121,44 @@ data class DriveZipOut(
     val zipBytes: Long = 0,
     val filename: String = "download.zip",
 )
+
+/*
+ * 2026-10-24 (docs/DRIVE.md §6, §27.3, §28): uploads from the phone and the preview a viewer asks for. openapi.json's
+ * DriveUploadOut / DriveUploadListOut / DriveUploadCompleteOut / DriveUploadPartOut / DrivePreviewOut.
+ */
+
+/** A resumable upload session (§5.3): the parts the server has (`received_parts`) are never sent again. */
+@Serializable
+data class DriveUploadOut(
+    val id: String,
+    val clientUploadId: String = "",
+    /** active | completing | completed | aborted | expired. */
+    val status: String = "active",
+    val locationId: String = "",
+    val parentId: String = "",
+    val name: String = "",
+    val onConflict: String = "fail",
+    val partSize: Long = 16L * 1024 * 1024,
+    val partsTotal: Int = 0,
+    val receivedParts: List<Int> = emptyList(),
+    val sizeBytes: Long = 0,
+    val expiresAt: String = "",
+    val itemId: String? = null,
+    val versionId: String? = null,
+    /** Why an active session could not complete (drive_name_taken, drive_upload_incomplete) or why it ended (drive_upload_target_moved). */
+    val error: String? = null,
+)
+
+@Serializable
+data class DriveUploadListOut(val uploads: List<DriveUploadOut> = emptyList())
+
+/** POST /drive/uploads/{id}/complete: 200 `completed` (the item; null when I cannot read it any more, §28.3) or 202 `completing`. */
+@Serializable
+data class DriveUploadCompleteOut(val status: String, val item: DriveItemOut? = null, val versionId: String? = null)
+
+@Serializable
+data class DriveUploadPartOut(val partNumber: Int, val sizeBytes: Long = 0)
+
+/** POST /drive/items/{id}/preview (§27.3): pending / ready / failed, or null when this file gets no preview. */
+@Serializable
+data class DrivePreviewOut(val preview: AttachmentPreviewOut? = null)
