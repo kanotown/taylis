@@ -30,7 +30,7 @@ import java.util.UUID
  * MOBILE_UI.md §20.2: the share screen's state, kept across a rotation. The shared files are described at once and
  * copied into the app's own storage while the screen is open: the read permission another app grants with a share
  * lasts only as long as this screen, and a content URI cannot be kept for later (only documents picked through the
- * system's picker can), so the background upload reads the copies. A file over the size limit is not copied.
+ * system's picker can), so the background upload reads the copies. Every file is copied whole (the drive takes large ones).
  */
 class ShareModel(app: Application) : AndroidViewModel(app) {
     private val controller get() = (getApplication<Application>() as ChikuwaApp).controller
@@ -48,6 +48,9 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
     var destination by mutableStateOf<Pair<String, String>?>(null)
     var sending by mutableStateOf(false)
         private set
+    /** 2026-10-24 (DRIVE.md §6): 「ドライブに保存」 — the folder chosen (instead of a conversation), and whether the picker is open. */
+    var driveTarget by mutableStateOf<ShareDriveTarget?>(null)
+    var pickingDrive by mutableStateOf(false)
     /** The copy failed for these files (unreadable), by URI. */
     private val unreadable = mutableStateMapOf<String, Boolean>()
     /** The copied size by URI (a provider that did not tell the size). */
@@ -64,7 +67,8 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
             file.copy(size = file.size ?: copiedSizes[file.uri], readable = file.readable && unreadable[file.uri] != true)
         }
 
-    fun problems(limits: Limits?): List<String> = SharePayload.problems(checkedFiles, text, limits)
+    fun problems(limits: Limits?): List<String> =
+        if (driveTarget != null) SharePayload.driveProblems(checkedFiles) else SharePayload.problems(checkedFiles, text, limits)
 
     /** Called once with the intent's contents (a rotation keeps the model and calls it again: ignored). */
     fun start(data: ShareIntentData, own: OwnProviders) {
@@ -109,13 +113,13 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
         return SharedFile(uri, SharePayload.fileName(name, uri), size, mime, readable)
     }
 
-    /** Each file to `filesDir/share/<job>/<index>`, stopping at the size limit (the screen then says it is too large). */
+    /** Each file to `filesDir/share/<job>/<index>` (a file over the attachments' limit too: the drive takes it). */
     private suspend fun copyAll(described: List<SharedFile>) = withContext(Dispatchers.IO) {
         val dir = jobs.dir(jobId).apply { mkdirs() }
         described.forEachIndexed { index, file ->
             if (!file.readable) return@forEachIndexed
-            val limit = controller.store.limits?.maxAttachmentBytes
-            if (limit != null && file.size != null && file.size > limit) return@forEachIndexed
+            // Every file is copied whole (2026-10-24): 「ドライブに保存」 takes files past the attachments' limit; a
+            // conversation still refuses those (problems()).
             val target = File(dir, index.toString())
             try {
                 val source = foreign(file.uri) ?: throw IOException("refused")
@@ -129,8 +133,6 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
                             if (read < 0) break
                             out.write(buffer, 0, read)
                             total += read
-                            // Past the limit the copy stops: the size shown says why it cannot be sent.
-                            if (limit != null && total > limit) break
                         }
                     }
                 }
@@ -209,6 +211,36 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 「ドライブに保存」's 保存: waits for the copies, moves them into drive upload jobs of the account signed in here
+     * (DriveUploadCenter, the same jobs and work as the drive screen's uploads) and closes; true once handed over.
+     */
+    fun saveToDrive(onDone: (Boolean) -> Unit) {
+        val target = driveTarget ?: return
+        if (sending) return
+        sending = true
+        viewModelScope.launch {
+            copying?.join()
+            val account = controller.shareAccount(target.serverUrl)
+            if (SharePayload.driveProblems(checkedFiles).isNotEmpty() || account == null || driveTarget != target) {
+                sending = false
+                onDone(false)
+                return@launch
+            }
+            val dir = jobs.dir(jobId)
+            val files = checkedFiles.mapIndexedNotNull { index, file -> File(dir, index.toString()).takeIf { file.readable && it.isFile }?.let { it to file.name } }
+            val app = getApplication<Application>()
+            withContext(Dispatchers.IO) {
+                jp.chikuwachat.android.platform.DriveUploadCenter.addFiles(app, files, jp.chikuwachat.android.platform.DriveUploadCenter.Target(
+                    target.serverUrl, account.first, account.second, target.locationId, target.folderId, target.label,
+                ))
+                dir.deleteRecursively()
+            }
+            handedOver = true
+            onDone(true)
+        }
+    }
+
     override fun onCleared() {
         copying?.cancel()
         if (!handedOver) {
@@ -225,3 +257,6 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
         fun recentKey(account: String): String = "chikuwa.share.recent:$account"
     }
 }
+
+/** A drive folder chosen in the share screen: its workspace, location and folder, and 「研究室ドライブ › 論文」. */
+data class ShareDriveTarget(val serverUrl: String, val locationId: String, val folderId: String, val label: String)

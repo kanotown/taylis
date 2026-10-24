@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -102,8 +103,8 @@ class ShareActivity : ComponentActivity() {
         model.start(read(intent), ownProviders())
         setContent {
             ChikuwaTheme(controller.appearance) {
-                ShareRoot(controller, model, onClose = { finish() }, onSent = {
-                    Toast.makeText(this, R.string.share_in_started, Toast.LENGTH_SHORT).show()
+                ShareRoot(controller, model, onClose = { finish() }, onSent = { drive ->
+                    Toast.makeText(this, if (drive) R.string.share_in_drive_started else R.string.share_in_started, Toast.LENGTH_SHORT).show()
                     finish()
                 })
             }
@@ -169,7 +170,7 @@ class ShareActivity : ComponentActivity() {
 
 /** Signed in with a workspace on screen: the share screen; otherwise the app's own boot / sign-in screens. */
 @Composable
-private fun ShareRoot(controller: AppController, model: ShareModel, onClose: () -> Unit, onSent: () -> Unit) {
+private fun ShareRoot(controller: AppController, model: ShareModel, onClose: () -> Unit, onSent: (drive: Boolean) -> Unit) {
     LaunchedEffect(Unit) { controller.boot() }
     val signedIn = controller.screen == AppController.Screen.MAIN && !controller.addingWorkspace
     if (signedIn) {
@@ -191,7 +192,7 @@ private fun ShareRoot(controller: AppController, model: ShareModel, onClose: () 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ShareScreen(controller: AppController, model: ShareModel, onClose: () -> Unit, onSent: () -> Unit) {
+private fun ShareScreen(controller: AppController, model: ShareModel, onClose: () -> Unit, onSent: (drive: Boolean) -> Unit) {
     val store = controller.store
     val active = controller.activeKey
     val request = model.request
@@ -207,10 +208,11 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
         }
     }
     // A conversation of another workspace is not offered once the switcher moved away from it.
-    val chosen = model.destination?.takeIf { it.first == active }?.second?.let { store.channel(it) }
+    val drive = model.driveTarget?.takeIf { it.serverUrl == active }
+    val chosen = if (drive != null) null else model.destination?.takeIf { it.first == active }?.second?.let { store.channel(it) }
     val limits = store.limits
     val problems = model.problems(limits)
-    val ready = chosen != null && problems.isEmpty() && !model.sending
+    val ready = (chosen != null || drive != null) && problems.isEmpty() && !model.sending
     val title: (ChannelState) -> String = { channelTitle(it, store) }
     val account = controller.accountKey
     val recentIds = remember(account, store.channels.size) {
@@ -232,14 +234,24 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
                     if (model.sending) {
                         CircularProgressIndicator(Modifier.size(24.dp).padding(end = 4.dp), strokeWidth = 2.dp)
                     }
-                    TextButton(enabled = ready, onClick = {
+                    if (!model.pickingDrive) TextButton(enabled = ready, onClick = {
+                        if (drive != null) {
+                            model.saveToDrive { handed -> if (handed) onSent(true) }
+                            return@TextButton
+                        }
                         val channel = chosen ?: return@TextButton
-                        model.send(title(channel)) { handed -> if (handed) onSent() }
-                    }) { Text(stringResource(R.string.common_send)) }
+                        model.send(title(channel)) { handed -> if (handed) onSent(false) }
+                    }) { Text(stringResource(if (drive != null) R.string.share_in_save else R.string.common_send)) }
                 },
             )
         },
     ) { padding ->
+        if (model.pickingDrive) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                ShareDrivePicker(controller, onPick = { model.driveTarget = it; model.pickingDrive = false }, onClose = { model.pickingDrive = false })
+            }
+            return@Scaffold
+        }
         LazyColumn(Modifier.fillMaxSize().padding(padding).imePadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (controller.workspaces.size > 1) {
                 item("workspace") { WorkspacePicker(controller) }
@@ -253,7 +265,8 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
             if (request != null) {
                 items(problems, key = { "p:$it" }) { Note(it, error = true) }
             }
-            item("text") {
+            // The drive saves the files only: no message there.
+            if (drive == null) item("text") {
                 OutlinedTextField(
                     value = model.text,
                     onValueChange = { model.text = it },
@@ -263,7 +276,27 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
                     maxLines = 6,
                 )
             }
-            item("to") {
+            // 2026-10-24 (DRIVE.md §6): files (not a text alone) can go into a drive folder instead of a conversation.
+            if (model.files.isNotEmpty() && controller.drive != null) {
+                item("drive") {
+                    Row(
+                        Modifier.fillMaxWidth().clickable(role = Role.RadioButton) { model.pickingDrive = true }.padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.share_in_drive), style = MaterialTheme.typography.bodyLarge)
+                            Text(drive?.let { stringResource(R.string.share_in_drive_destination, it.label) } ?: stringResource(R.string.share_in_drive_note),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        RadioButton(selected = drive != null, onClick = { model.pickingDrive = true })
+                    }
+                }
+            }
+            if (drive == null) item("to") {
                 Text(
                     if (chosen == null) stringResource(R.string.share_in_choose_destination) else stringResource(R.string.share_in_destination, title(chosen)),
                     style = MaterialTheme.typography.titleSmall,
@@ -286,6 +319,7 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
                 items(lists.recent, key = { "r:" + it.id }) { channel ->
                     DestinationRow(channel, title(channel), store.me?.id, selected = chosen?.id == channel.id) {
                         model.destination = (active ?: return@DestinationRow) to channel.id
+                        model.driveTarget = null
                     }
                 }
             }
@@ -294,6 +328,7 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
                 items(lists.others, key = { "o:" + it.id }) { channel ->
                     DestinationRow(channel, title(channel), store.me?.id, selected = chosen?.id == channel.id) {
                         model.destination = (active ?: return@DestinationRow) to channel.id
+                        model.driveTarget = null
                     }
                 }
             }

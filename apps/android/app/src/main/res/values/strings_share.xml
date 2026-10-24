@@ -28,4 +28,13 @@
     <string name="share_in_failed_to">%1$s に送信できませんでした</string>
     <string name="share_in_failed_files_gone">共有したファイルが端末から消えました。もう一度共有してください</string>
     <string name="share_in_started">送信を始めました。終わると通知でお知らせします</string>
+    <string name="share_in_drive">ドライブに保存</string>
+    <string name="share_in_drive_note">ファイルをドライブのフォルダに保存します</string>
+    <string name="share_in_drive_destination">保存先：%1$s</string>
+    <string name="share_in_drive_choose">保存先のフォルダを選ぶ</string>
+    <string name="share_in_drive_save_here">ここに保存</string>
+    <string name="share_in_drive_no_locations">書き込めるドライブがありません</string>
+    <string name="share_in_save">保存</string>
+    <string name="share_in_drive_started">ドライブへのアップロードを始めました。終わると通知でお知らせします</string>
+    <string name="share_in_drive_back">1 つ上へ</string>
 </resources>

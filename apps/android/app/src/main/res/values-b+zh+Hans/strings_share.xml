@@ -28,4 +28,13 @@
     <string name="share_in_failed_to">无法发送到 %1$s</string>
     <string name="share_in_failed_files_gone">分享的文件已不在此设备上。请重新分享。</string>
     <string name="share_in_started">正在发送。完成后会通知你。</string>
+    <string name="share_in_drive">保存到云盘</string>
+    <string name="share_in_drive_note">将文件保存到云盘的文件夹</string>
+    <string name="share_in_drive_destination">保存到：%1$s</string>
+    <string name="share_in_drive_choose">选择文件夹</string>
+    <string name="share_in_drive_save_here">保存到这里</string>
+    <string name="share_in_drive_no_locations">没有可写入的云盘</string>
+    <string name="share_in_save">保存</string>
+    <string name="share_in_drive_started">已开始上传到云盘。完成后会通知你</string>
+    <string name="share_in_drive_back">返回上一级</string>
 </resources>
