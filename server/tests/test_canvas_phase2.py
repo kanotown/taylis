@@ -325,6 +325,7 @@ async def test_canvas_presence_is_relayed_to_members_and_ends_on_close(live: Liv
         "user_id": alice["user"]["id"],
         "editing": True,
         "section": "TODO",
+        "caret": None,
     }
     # The same again inside the interval is dropped; a new section goes at once.
     await alice_ws.send(frame(canvas_id, True, "TODO"))
@@ -353,6 +354,67 @@ async def test_canvas_presence_is_relayed_to_members_and_ends_on_close(live: Liv
     ended = await _recv_type(bob_ws, "canvas_presence")
     assert ended["editing"] is False and ended["user_id"] == alice["user"]["id"]
     for ws in (bob_ws, carol_ws):
+        await ws.close()
+    await asyncio.sleep(0)
+
+
+async def test_canvas_presence_carries_the_caret_throttled(live: LiveServer) -> None:
+    """CANVAS.md §25: the caret rides on canvas_presence; a caret that only moved goes at most
+    every 0.2 s, a stop carries none, and a malformed one is refused."""
+    async with live.app.state.db.session_factory() as db:
+        for name in ("alice", "bob"):
+            await make_user(db, name, password=PASSWORD)
+    alice = await http_login(live.base_url, "alice", PASSWORD)
+    bob = await http_login(live.base_url, "bob", PASSWORD)
+    async with httpx.AsyncClient(base_url=live.base_url) as client:
+        auth = {"Authorization": f"Bearer {alice['access_token']}"}
+        channel = (await client.post(f"{API}/channels", json={"name": "lab"}, headers=auth)).json()
+        bob_auth = {"Authorization": f"Bearer {bob['access_token']}"}
+        await client.post(f"{API}/channels/{channel['id']}/join", headers=bob_auth)
+        created = await client.post(
+            f"{API}/channels/{channel['id']}/canvases",
+            json={"client_save_id": key(), "title": "議事録", "body": "# a\nb"},
+            headers=auth,
+        )
+        canvas_id = created.json()["id"]
+    await _wait_outbox_drained(live)
+    alice_ws = await _connect(live, alice["access_token"])
+    bob_ws = await _connect(live, bob["access_token"])
+
+    def frame(line: int, column: int, editing: bool = True) -> str:
+        return json.dumps(
+            {
+                "type": "canvas_presence",
+                "canvas_id": canvas_id,
+                "editing": editing,
+                "section": "a",
+                "caret": {"line": line, "column": column},
+            }
+        )
+
+    await alice_ws.send(frame(1, 0))
+    got = await _recv_type(bob_ws, "canvas_presence")
+    assert got["caret"] == {"line": 1, "column": 0} and got["section"] == "a"
+    # Moved again at once: dropped (the client's next frame, 300 ms later, carries it).
+    await alice_ws.send(frame(1, 1))
+    with pytest.raises(TimeoutError):
+        await _recv_type(bob_ws, "canvas_presence", wait=0.15)
+    await asyncio.sleep(0.1)
+    await alice_ws.send(frame(1, 2))
+    assert (await _recv_type(bob_ws, "canvas_presence"))["caret"] == {"line": 1, "column": 2}
+    # The same caret again inside the 2 s: nothing.
+    await alice_ws.send(frame(1, 2))
+    with pytest.raises(TimeoutError):
+        await _recv_type(bob_ws, "canvas_presence", wait=0.3)
+    # A stop goes at once and carries no caret.
+    await alice_ws.send(frame(1, 2, editing=False))
+    stopped = await _recv_type(bob_ws, "canvas_presence")
+    assert stopped["editing"] is False and stopped["caret"] is None
+    # A negative position is not a frame.
+    await alice_ws.send(frame(-1, 0))
+    error = await _recv_type(alice_ws, "error")
+    assert error["code"] == "invalid_frame"
+    for ws in (alice_ws, bob_ws):
         await ws.close()
     await asyncio.sleep(0)
 

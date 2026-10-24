@@ -24,6 +24,7 @@ from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
     CLOSE_RECONNECT,
     AuthFrame,
+    CanvasCaret,
     CanvasPresenceFrame,
     CanvasPresenceOut,
     ClientFrame,
@@ -42,6 +43,9 @@ _client_frame: TypeAdapter[AuthFrame | PingFrame | TypingFrame | CanvasPresenceF
 )
 # M72 (CANVAS.md §18.2): the canvases one connection said it edits, remembered for its close.
 MAX_PRESENCE_CANVASES = 20
+# CANVAS.md §25: a caret that only moved is relayed at most this often per connection and canvas
+# (clients send at most every 300 ms; this only stops a client that sends faster).
+CARET_MIN_INTERVAL_SECONDS = 0.2
 
 
 async def _relay_typing(
@@ -65,6 +69,7 @@ async def _relay_canvas_presence(
     canvas_id: uuid.UUID,
     editing: bool,
     section: str | None,
+    caret: CanvasCaret | None = None,
 ) -> bool:
     """Volatile 「編集中」 (M72, CANVAS.md §18.2): to the other members of the canvas's
     conversation, only from a member and for a canvas not in the trash. True when relayed."""
@@ -82,6 +87,7 @@ async def _relay_canvas_presence(
         user_id=user_id,
         editing=editing,
         section=section,
+        caret=caret if editing else None,
     )
     hub.send_to_users((m for m in members if m != user_id), out.model_dump(mode="json"))
     return True
@@ -194,8 +200,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     sender = asyncio.create_task(_sender(websocket, conn))
     deadline = time.monotonic() + settings.ws_max_lifetime_seconds
     last_typing = 0.0
-    # canvas id → (editing, section, when relayed): repeats are throttled, changes go at once.
-    canvas_presence: dict[uuid.UUID, tuple[bool, str | None, float]] = {}
+    # canvas id → (editing, section, when relayed, caret): repeats are throttled, changes go at
+    # once, a caret that only moved at most every CARET_MIN_INTERVAL_SECONDS (§25).
+    canvas_presence: dict[uuid.UUID, tuple[bool, str | None, float, tuple[int, int] | None]] = {}
     closing = False  # we asked for the close: let the queued frames flush first
     try:
         while not sender.done():
@@ -232,22 +239,30 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             elif isinstance(frame, CanvasPresenceFrame):
                 now = time.monotonic()
                 section = " ".join((frame.section or "").split()) or None
+                caret = (frame.caret.line, frame.caret.column) if frame.caret else None
                 last = canvas_presence.get(frame.canvas_id)
                 if last is None:
                     skip = not frame.editing  # a stop for nothing started on this connection
+                elif last[:2] != (frame.editing, section):
+                    skip = False
+                elif last[3] != caret:
+                    skip = now - last[2] < CARET_MIN_INTERVAL_SECONDS
                 else:
-                    skip = (
-                        last[:2] == (frame.editing, section)
-                        and now - last[2] < settings.typing_min_interval_seconds
-                    )
+                    skip = now - last[2] < settings.typing_min_interval_seconds
                 if not skip:
                     if last is None and len(canvas_presence) >= MAX_PRESENCE_CANVASES:
                         oldest = min(canvas_presence, key=lambda c: canvas_presence[c][2])
                         del canvas_presence[oldest]
                     if await _relay_canvas_presence(
-                        websocket, hub, context.user.id, frame.canvas_id, frame.editing, section
+                        websocket,
+                        hub,
+                        context.user.id,
+                        frame.canvas_id,
+                        frame.editing,
+                        section,
+                        frame.caret,
                     ):
-                        canvas_presence[frame.canvas_id] = (frame.editing, section, now)
+                        canvas_presence[frame.canvas_id] = (frame.editing, section, now, caret)
             else:
                 error = ErrorFrame(code="already_authenticated", message="Already authenticated")
                 conn.offer(error.model_dump())
@@ -261,7 +276,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if not sender.done():
             sender.cancel()
         # A window closed or lost while editing: its 「編集中」 ends now, not 45 s later (§18.2).
-        for canvas_id, (editing, _, _) in canvas_presence.items():
+        for canvas_id, (editing, _, _, _) in canvas_presence.items():
             if not editing:
                 continue
             try:

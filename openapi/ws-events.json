@@ -9828,13 +9828,47 @@
           "title": "AuthFrame",
           "type": "object"
         },
+        "CanvasCaret": {
+          "description": "Where an editor's caret is (CANVAS.md §25): a line of the stored body (0-based) and a\ncolumn in UTF-16 units. Volatile like the frame that carries it.",
+          "properties": {
+            "column": {
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Column",
+              "type": "integer"
+            },
+            "line": {
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Line",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "line",
+            "column"
+          ],
+          "title": "CanvasCaret",
+          "type": "object"
+        },
         "CanvasPresenceFrame": {
-          "description": "Volatile (M72, CANVAS.md §18.2): I am editing this canvas (or stopped); relayed to the other\nmembers of its conversation, never stored. `section`: the heading the caret is under.",
+          "description": "Volatile (M72, CANVAS.md §18.2): I am editing this canvas (or stopped); relayed to the other\nmembers of its conversation, never stored. `section`: the heading the caret is under; `caret`\n(§25): where the caret is, for the others' editors to draw it.",
           "properties": {
             "canvas_id": {
               "format": "uuid",
               "title": "Canvas Id",
               "type": "string"
+            },
+            "caret": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CanvasCaret"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "editing": {
               "title": "Editing",
@@ -9947,6 +9981,29 @@
     },
     "server": {
       "$defs": {
+        "CanvasCaret": {
+          "description": "Where an editor's caret is (CANVAS.md §25): a line of the stored body (0-based) and a\ncolumn in UTF-16 units. Volatile like the frame that carries it.",
+          "properties": {
+            "column": {
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Column",
+              "type": "integer"
+            },
+            "line": {
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Line",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "line",
+            "column"
+          ],
+          "title": "CanvasCaret",
+          "type": "object"
+        },
         "CanvasPresenceOut": {
           "description": "Someone is editing a canvas (or stopped). Clients drop it after 45 s without a refresh.",
           "properties": {
@@ -9954,6 +10011,17 @@
               "format": "uuid",
               "title": "Canvas Id",
               "type": "string"
+            },
+            "caret": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CanvasCaret"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "channel_id": {
               "format": "uuid",

@@ -29,14 +29,24 @@ class TypingFrame(BaseModel):
     parent_id: UUID | None = None
 
 
+class CanvasCaret(BaseModel):
+    """Where an editor's caret is (CANVAS.md §25): a line of the stored body (0-based) and a
+    column in UTF-16 units. Volatile like the frame that carries it."""
+
+    line: int = Field(ge=0, le=100_000)
+    column: int = Field(ge=0, le=100_000)
+
+
 class CanvasPresenceFrame(BaseModel):
     """Volatile (M72, CANVAS.md §18.2): I am editing this canvas (or stopped); relayed to the other
-    members of its conversation, never stored. `section`: the heading the caret is under."""
+    members of its conversation, never stored. `section`: the heading the caret is under; `caret`
+    (§25): where the caret is, for the others' editors to draw it."""
 
     type: Literal["canvas_presence"]
     canvas_id: UUID
     editing: bool
     section: str | None = Field(default=None, max_length=120)
+    caret: CanvasCaret | None = None
 
 
 ClientFrame = Annotated[
@@ -90,6 +100,7 @@ class CanvasPresenceOut(BaseModel):
     user_id: UUID
     editing: bool
     section: str | None
+    caret: CanvasCaret | None = None
 
 
 class PresenceOut(BaseModel):
