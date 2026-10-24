@@ -19,6 +19,8 @@ struct ThreadView: View {
 
     /// Placed once the whole thread and my read position are known (§10.2); `provisional` until then.
     @State private var positioned = false
+    /// What the other layout's view of this thread had (LayoutCarry): its place in the list, taken by `position`.
+    @State private var carriedRowId: String?
     @State private var dividerMark: Int?
     @State private var dividerTaken = false
     @State private var provisional = false
@@ -271,6 +273,8 @@ struct ThreadView: View {
             if !(await engine.loadThreadState(parentId, parent: out)) && engine.status == .online && !rootDeleted { loadFailed = true }
         }
         .messageSheets(controller, sheet: $messageSheet, threadRootId: parentId)
+        .modifier(ConversationCarrier(controller: controller, channelId: channelId, parentId: parentId, keptRowId: $keptRowId,
+                                      messageSheet: $messageSheet, carriedRowId: $carriedRowId))
         .keepsKeyboardRoomWhileSwipingBack()
         // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open, also when the
         // channel is not the open conversation (a thread opened from 「スレッド」).
@@ -401,6 +405,21 @@ struct ThreadView: View {
         takeDividerMark()
         guard !positioned else { return }
         let rows = replies
+        // Built for the other layout (MOBILE_UI.md §26): where the previous view was, the kept row at the screen's bottom.
+        if let row = carriedRowId, threadReady {
+            carriedRowId = nil
+            if focusReplyId == nil, rows.contains(where: { $0.rowKey == row }) {
+                positioned = true
+                seenSeq = ReadGate.seenLeftInPlace(rows, dividerMark: nil)
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    keptRowId = row
+                    proxy.scrollTo(row, anchor: .top) // the flipped list's top: the screen's bottom, as `keptRowPosition`
+                }
+                return
+            }
+        }
         guard threadReady, let state = entry?.state else {
             guard !provisional, !rows.isEmpty else { return }
             if let focusReplyId, let focus = rows.first(where: { $0.id == focusReplyId }) {

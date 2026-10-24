@@ -66,7 +66,9 @@ targets:
         CFBundleShortVersionString: "1.0.1"
         CFBundleVersion: "127"
         UILaunchScreen: {}
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # Every orientation, as on the iPad: the iPhone Duo's inner display runs apps side by side and turns all the way
+        # round (MOBILE_UI.md §26); other iPhones never turn upside down, whatever this says. No UIRequiresFullScreen.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The server URL is user-provided; self-hosted LAN deployments may use plain HTTP.
         # Production is expected behind TLS (Caddy). App Review may ask why (docs/STORE_RELEASE.md §2).

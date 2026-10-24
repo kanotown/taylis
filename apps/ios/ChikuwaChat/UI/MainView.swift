@@ -17,6 +17,8 @@ struct MainView: View {
     /// The split's detail stack, built again when several of its screens go at once (`MainNavigation.splitStackRebuilds`),
     /// and the last path it wrote itself.
     @State private var splitStackGeneration = 0
+    /// The window turned compact with the thread pane open: the pane closes before the layout changes (applyLayout).
+    @State private var paneLeaving = false
     @State private var splitStackWrites = SplitStackWrites()
     /// PRESENCE.md §11.7: the quick status menu from my picture at the home's top left (either layout; `myStatusSheet`
     /// remembers where it sends me until it is gone).
@@ -141,7 +143,44 @@ struct MainView: View {
     /// sizes, and each flip would rebuild the open conversation (RootView's look waits for the same reason).
     private func applyLayout() {
         guard scenePhase != .background else { return }
-        nav.setLayout(MainLayout.of(sizeClass), isDm: isDm)
+        let layout = MainLayout.of(sizeClass, width: windowWidth)
+        if nav.layout == .split, layout == .tabs, paneThread != nil, !paneLeaving {
+            // The thread pane goes first: an inspector in a compact window is a sheet, and one still up as the split left
+            // stayed over the phone's layout, empty (iPhone Duo, MOBILE_UI.md §26). Its thread opens again in the phone's.
+            paneLeaving = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                paneLeaving = false
+                applyLayout()
+            }
+            return
+        }
+        if layout != nav.layout {
+            // The conversation views are built anew for the other layout: they take over what these had (LayoutCarry).
+            var thread = nav.openThread?.parentId
+            if case .thread(_, let parentId)? = nav.front { thread = parentId }
+            controller.layoutCarry.layoutChanging(channelId: nav.frontChannelId, parentId: thread)
+        }
+        nav.setLayout(layout, isDm: isDm)
+    }
+
+    /// The window's horizontal size class as UIKit has it now: ahead of the environment's while the size class changes
+    /// (the inspector reports itself closed by the change before `sizeClass` follows).
+    private var windowSizeClass: UserInterfaceSizeClass? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        switch (scene?.keyWindow ?? scene?.windows.first)?.traitCollection.horizontalSizeClass {
+        case .regular?: return .regular
+        case .compact?: return .compact
+        default: return nil
+        }
+    }
+
+    /// The window's width (the scene's: the full screen, a side of the Duo's or an iPad's side-by-side, a Stage Manager
+    /// window), read before the first layout so a narrow regular window never draws the split (MainLayout.of).
+    private var windowWidth: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return (scene?.keyWindow ?? scene?.windows.first)?.bounds.width ?? 0
     }
 
     var body: some View {
@@ -224,6 +263,9 @@ struct MainView: View {
             }
         }
         .onChange(of: scenePhase) { _, _ in applyLayout() }
+        // A window's width can cross MainLayout.splitMinWidth without a new size class (the Duo's inner display turned,
+        // a Stage Manager window resized).
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { _ in applyLayout() }
         .onChange(of: homeSelection) { _, id in
             guard let id else { return }
             homeSelection = nil
@@ -619,7 +661,13 @@ struct MainView: View {
             .id(splitStackGeneration)
             .environment(\.threadInPane, true)
             // The front conversation's thread, in a pane beside it (Slack's right panel); the conversation stays read.
-            .inspector(isPresented: Binding(get: { paneThread != nil }, set: { if !$0 { nav.openThread = nil } })) {
+            // Not shown while the window is compact (a fold, a narrower window, before the layout follows): a compact
+            // inspector is a sheet, which stayed over the screens, empty, after the layout changed (iPhone Duo, MOBILE_UI.md
+            // §26). Closed by the system for that change, its thread stays open: the phone's layout opens it again over
+            // its conversation (MainNavigation.setLayout); only a close in the split closes it.
+            .inspector(isPresented: Binding(get: { paneThread != nil && !paneLeaving && sizeClass == .regular && windowSizeClass != .compact }, set: { shown in
+                if !shown, MainLayout.of(windowSizeClass ?? sizeClass, width: windowWidth) == .split { nav.openThread = nil }
+            })) {
                 threadPane
             }
         }

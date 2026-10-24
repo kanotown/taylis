@@ -794,10 +794,15 @@ struct DriveItemDetailsList: View {
 struct DriveEmbeddedBrowser: View {
     @Bindable var controller: AppController
     @State var folderId: String
+    /// In a conversation's tab: the folder is recorded for the other layout's view (LayoutCarry, MOBILE_UI.md §26).
+    var channelId: String? = nil
 
     var body: some View {
         DriveFolderView(controller: controller, folderId: folderId, embedded: true, onOpenFolder: { folderId = $0 })
             .id(folderId)
+            .onChange(of: folderId, initial: true) { _, folder in
+                if let channelId { controller.layoutCarry.update(channelId) { $0.driveFolderId = folder } }
+            }
     }
 }
 
@@ -812,7 +817,9 @@ struct DriveChannelPane: View {
     var body: some View {
         Group {
             if let location {
-                DriveEmbeddedBrowser(controller: controller, folderId: location.rootId)
+                // The folder this conversation's view (or the other layout's, LayoutCarry) had open, else the drive's top.
+                DriveEmbeddedBrowser(controller: controller, folderId: controller.layoutCarry.current(channel.id)?.driveFolderId ?? location.rootId,
+                                     channelId: channel.id)
             } else if let failure {
                 ContentUnavailableView {
                     Label("ドライブを開けませんでした", systemImage: "externaldrive.badge.exclamationmark")

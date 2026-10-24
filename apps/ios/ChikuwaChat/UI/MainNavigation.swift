@@ -2,10 +2,21 @@ import SwiftUI
 
 /// iPad (MOBILE_UI.md §13): the phone's four tabs at a compact width (an iPhone, an iPad in a narrow Split View, Slide
 /// Over or a small Stage Manager window), a Slack-like sidebar and conversation at a regular width.
+/// iPhone Duo (§26): its inner display is regular in both orientations, but upright it is 669 pt wide; there the
+/// sidebar (320) left the conversation about 350 pt and UIKit's split layout spun without end (iOS 27.1, measured), so a
+/// regular window narrower than `splitMinWidth` keeps the phone's layout too.
 enum MainLayout: Equatable {
     case tabs, split
 
-    static func of(_ sizeClass: UserInterfaceSizeClass?) -> MainLayout { sizeClass == .regular ? .split : .tabs }
+    /// The narrowest window that gets the split: a sidebar and a conversation of about phone width (the iPad mini
+    /// upright is 744).
+    static let splitMinWidth: CGFloat = 700
+
+    /// `width`: the window's (the scene's) width in points, 0 while unknown.
+    static func of(_ sizeClass: UserInterfaceSizeClass?, width: CGFloat = 0) -> MainLayout {
+        guard sizeClass == .regular else { return .tabs }
+        return width > 0 && width < splitMinWidth ? .tabs : .split
+    }
 }
 
 /// The split's sidebar, shown or put away (MOBILE_UI.md §13.1). The sidebar steps aside by itself for the thread pane
