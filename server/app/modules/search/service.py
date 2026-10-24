@@ -668,8 +668,10 @@ def _drive_offset(cursor: str | None) -> int:
     return value
 
 
-# §29: about this many characters of a file's text on each side of the first word found.
-DRIVE_SNIPPET_CONTEXT = 60
+# §29: about this many characters of a file's text before and after the first word found (few
+# before: a result's two lines show the word even in a narrow column or on a phone).
+DRIVE_SNIPPET_BEFORE = 30
+DRIVE_SNIPPET_AFTER = 90
 
 
 async def search_drive(
@@ -744,8 +746,8 @@ async def _add_snippets(
         db,
         [row.item.id for row in rows if row.by_text],
         folded,
-        before=DRIVE_SNIPPET_CONTEXT,
-        width=2 * DRIVE_SNIPPET_CONTEXT + longest,
+        before=DRIVE_SNIPPET_BEFORE,
+        width=DRIVE_SNIPPET_BEFORE + longest + DRIVE_SNIPPET_AFTER,
     )
     for hit in hits:
         row = by_id.get(hit.item.id)
