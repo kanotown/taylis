@@ -245,16 +245,37 @@ class DriveDownloadTicketOut(BaseModel):
     expires_in: int
 
 
+class DriveSnippetPart(BaseModel):
+    """A piece of a snippet: `hit` pieces are the searched words as found (to be marked)."""
+
+    text: str
+    hit: bool = False
+
+
+DriveMatch = Literal["name", "content", "both"]
+
+
 class DriveSearchHitOut(BaseModel):
     item: DriveItemOut
     # The location's name, then the folders down to the item's parent.
     path: list[DriveCrumb]
     location_kind: LocationKind
+    # §29 (`content=true`): what matched, the name, the text inside the file or both. Always
+    # "name" without `content`.
+    match: DriveMatch = "name"
+    # §29: the text around the first word found inside the file (about 60 characters on each
+    # side, spaces folded, "…" where cut), in pieces; null when only the name matched.
+    snippet: list[DriveSnippetPart] | None = None
+    # §29: the page of the PDF (an Office file: of its PDF preview) the snippet is on, from 1;
+    # null for a plain text file or a name match.
+    page: int | None = None
 
 
 class DriveSearchOut(BaseModel):
     items: list[DriveSearchHitOut]
     next_cursor: str | None
+    # §29 (`content=true`): the words looked for, as PGroonga split them.
+    keywords: list[str] = Field(default_factory=list)
 
 
 # --- versions, copies, ZIPs (phase D3) ---------------------------------------------------------

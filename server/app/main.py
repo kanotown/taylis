@@ -61,6 +61,7 @@ from app.modules.drive import events as drive_events
 from app.modules.drive import housekeeping as drive_housekeeping
 from app.modules.drive import media as drive_media
 from app.modules.drive import public as drive_public
+from app.modules.drive import texts as drive_texts
 from app.modules.drive.router import router as drive_router
 from app.modules.drive.share_router import public_router as drive_public_router
 from app.modules.drive.share_router import router as drive_share_router
@@ -264,7 +265,8 @@ async def _attachment_gc_loop(app: FastAPI, stop: asyncio.Event) -> None:
 
 async def _drive_media_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """M160 (docs/DRIVE.md §6.4): a drive file's SHA-256, thumbnail and poster after its upload,
-    one at a time, again at once while there are more; woken by a completion."""
+    one at a time, again at once while there are more; woken by a completion. Then (§29) the
+    text inside the files for the search."""
     settings: Settings = app.state.settings
     runtime: DriveRuntime = app.state.drive
     while not stop.is_set():
@@ -276,6 +278,16 @@ async def _drive_media_loop(app: FastAPI, stop: asyncio.Event) -> None:
             )
         except Exception:
             log.exception("drive media worker failed")
+        if done:
+            continue
+        # §29: with no media to do, the text inside one file for the search (while no chat
+        # attachment waits for its preview); again at once while there are more.
+        try:
+            done = await drive_texts.process_due(
+                app.state.db.session_factory, settings, app.state.blobs
+            )
+        except Exception:
+            log.exception("drive text worker failed")
         if done:
             continue
         waits = [

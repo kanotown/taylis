@@ -284,6 +284,14 @@ class Settings(BaseSettings):
     drive_image_thumb_max_bytes: int = 100 * 1024 * 1024
     drive_video_probe_max_bytes: int = 2 * 1024 * 1024 * 1024
     drive_media_interval_seconds: float = 30.0
+    # §29 (2026-10-24): the text inside files for the full-text search, read by the media loop
+    # when it has no media to do: PDFs and plain text files up to DRIVE_TEXT_MAX_INPUT_BYTES,
+    # Office files through their PDF preview. At most DRIVE_TEXT_MAX_BYTES of text (UTF-8) a file
+    # are kept; a PDF is read in a child process killed after DRIVE_TEXT_TIMEOUT_SECONDS.
+    drive_text_enabled: bool = True
+    drive_text_max_bytes: int = 1024 * 1024
+    drive_text_max_input_bytes: int = 100 * 1024 * 1024
+    drive_text_timeout_seconds: float = 120.0
     drive_housekeeping_interval_seconds: int = 600
     # §6.2: per person per minute, upload sessions (a folder upload makes hundreds) and parts
     # (16 MiB x 4/s), and active sessions at once.

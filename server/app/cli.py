@@ -1103,6 +1103,60 @@ def cmd_drive_usage(args: argparse.Namespace) -> int:
     return asyncio.run(_drive_usage(args.rebuild))
 
 
+async def _drive_index(limit: int, retry_failed: bool, chat_wait_seconds: float) -> int:
+    """§29 (docs/DRIVE.md): the text inside the drive's files for the search, for the files
+    stored before (or that the server's loop has not reached): at most `limit` a run."""
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.drive import texts
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    blobs = build_blobstore(settings)
+    try:
+        if retry_failed:
+            async with db.session_factory() as session:
+                again = await texts.retry_failed(session)
+            print(f"{again} failed file(s) will be read again")
+        result = await texts.index_stored(
+            db.session_factory,
+            settings,
+            blobs,
+            limit=limit,
+            chat_wait_seconds=chat_wait_seconds,
+        )
+        print(
+            f"read {result.tried} file(s): {result.ready} indexed, {result.skipped} skipped "
+            f"(scanned, encrypted, too large, not text), {result.failed} failed, "
+            f"{result.retrying} left to the server's retries"
+        )
+        if result.waited_seconds:
+            print(f"waited {result.waited_seconds:.0f} s for the chat's previews")
+        if result.waiting_for_previews:
+            print(
+                f"{result.waiting_for_previews} Office file(s) wait for their PDF preview "
+                "(generate-previews --drive makes them; they are read afterwards)"
+            )
+        async with db.session_factory() as session:
+            counts = await texts.counts(session)
+        print("rows: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+        if result.remaining:
+            print("more files are left: run it again")
+        return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_drive_index(args: argparse.Namespace) -> int:
+    """§29: the text inside the drive's files for the search (resumable, idempotent)."""
+    if args.limit < 1:
+        raise SystemExit("error: --limit must be at least 1")
+    if args.chat_wait_seconds < 0:
+        raise SystemExit("error: --chat-wait-seconds must be 0 or more")
+    return asyncio.run(_drive_index(args.limit, args.retry_failed, args.chat_wait_seconds))
+
+
 def parse_size(value: str) -> int:
     """1234, 500M, 20G, 1.5T (powers of 1024)."""
     text = value.strip().upper().removesuffix("B").removesuffix("I")
@@ -1687,6 +1741,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild", action="store_true", help="recompute what differs, then verify"
     )
     drive_usage.set_defaults(func=cmd_drive_usage)
+
+    drive_index = sub.add_parser(
+        "drive-index",
+        help="read the text inside the drive's files for the search (docs/DRIVE.md §29)",
+    )
+    drive_index.add_argument("--limit", type=int, default=500, help="at most this many a run")
+    drive_index.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="also read again the ones that failed or waited for a preview that failed",
+    )
+    drive_index.add_argument(
+        "--chat-wait-seconds",
+        type=float,
+        default=600.0,
+        help="before each file, wait up to this long while chat files wait for their previews",
+    )
+    drive_index.set_defaults(func=cmd_drive_index)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

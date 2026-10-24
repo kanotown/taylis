@@ -46,7 +46,7 @@ from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import queue_on_upload
 from app.modules.drive import access as acl
-from app.modules.drive import events, names, service
+from app.modules.drive import events, names, service, texts
 from app.modules.drive import repository as repo
 from app.modules.drive.models import (
     DriveFileVersion,
@@ -954,6 +954,9 @@ async def add_version_in_tx(
     )
     db.add(version)
     await db.flush()
+    if not new_item:
+        # §29: the replaced version's text is no longer searched (the loop reads the new one).
+        await texts.forget_replaced_in_tx(db, item.id, version_id)
     locked_location.used_bytes += size
     locked_location.item_count += folders_made + (1 if new_item else 0)
     locked_location.updated_at = now

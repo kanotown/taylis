@@ -24,7 +24,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.dialects.postgresql import ARRAY, INET
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -193,6 +193,42 @@ class DriveFileVersion(Base):
             "process_next_at",
             postgresql_where=text("processed_at IS NULL"),
         ),
+    )
+
+
+class DriveText(Base):
+    """The text inside a file version, for the full-text search (§29, migration 0121): a PDF's,
+    an Office file's (through its PDF preview), a plain text file's. Only current versions are
+    read; a replaced version's row is removed. NFKC-normalised, capped (DRIVE_TEXT_MAX_BYTES).
+    Indexed by drive_texts_body_pgroonga_idx (made by the migration)."""
+
+    __tablename__ = "drive_texts"
+
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("drive_file_versions.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("drive_items.id", ondelete="CASCADE"))
+    # working (claimed, or waiting for a retry: next_at) | ready | skipped | failed (reason)
+    status: Mapped[str] = mapped_column(String(12))
+    reason: Mapped[str | None] = mapped_column(String(32))
+    body: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # PDFs: where each page's text begins in body (characters), and how many pages there are.
+    page_starts: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
+    pages: Mapped[int | None] = mapped_column(Integer)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('working', 'ready', 'skipped', 'failed')", name="drive_texts_status_check"
+        ),
+        Index("drive_texts_item_idx", "item_id"),
+        Index("drive_texts_working_idx", "next_at", postgresql_where=text("status = 'working'")),
     )
 
 

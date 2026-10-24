@@ -542,6 +542,14 @@ _CHAT_WAITING = text(
 CHAT_POLL_SECONDS = 2.0
 
 
+async def chat_waiting(db: AsyncSession) -> int:
+    """How many chat attachments wait for the preview loop (the drive's text extraction, §29,
+    lets them go first)."""
+    count = int((await db.execute(_CHAT_WAITING)).scalar_one())
+    await db.rollback()
+    return count
+
+
 async def _candidates(
     db: AsyncSession,
     settings: Settings,
@@ -615,7 +623,7 @@ async def generate_stored(
                 result.remaining = True
                 return result
             if drive:
-                result.waited_seconds += await _let_the_chat_go_first(db, chat_wait_seconds, sleep)
+                result.waited_seconds += await let_the_chat_go_first(db, chat_wait_seconds, sleep)
             row = (
                 await db.execute(
                     select(Attachment)
@@ -648,15 +656,13 @@ async def generate_stored(
     return result
 
 
-async def _let_the_chat_go_first(
+async def let_the_chat_go_first(
     db: AsyncSession, most: float, sleep: Callable[[float], Awaitable[None]]
 ) -> float:
     """Waits (at most `most` seconds) while chat attachments wait for their preview."""
     waited = 0.0
     while waited < most:
-        count = int((await db.execute(_CHAT_WAITING)).scalar_one())
-        await db.rollback()
-        if count == 0:
+        if await chat_waiting(db) == 0:
             break
         step = min(CHAT_POLL_SECONDS, most - waited)
         await sleep(step)
