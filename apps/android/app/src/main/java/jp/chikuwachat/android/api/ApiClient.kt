@@ -1212,7 +1212,8 @@ class ApiClient(
 
     override suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int): DriveSearchOut {
         val query = "q=" + Enc.encode(q, "UTF-8") + "&limit=$limit" + (locationId?.let { "&location_id=$it" } ?: "") +
-            (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "")
+            (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "") +
+            "&content=true" // §29: names and the text inside PDF, Office and text files
         return request("GET", "/api/v1/search/drive?$query")
     }
 

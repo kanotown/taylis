@@ -85,7 +85,24 @@ data class DriveChildrenOut(
 )
 
 @Serializable
-data class DriveSearchHitOut(val item: DriveItemOut, val path: List<DriveCrumb> = emptyList(), val locationKind: String = "workspace")
+data class DriveSearchHitOut(
+    val item: DriveItemOut,
+    val path: List<DriveCrumb> = emptyList(),
+    val locationKind: String = "workspace",
+    /** §29: what matched (`name`, `content`, `both`); null from a server before it. */
+    val match: String? = null,
+    /** §29: the text around the match inside the file, in pieces; `hit` pieces are the words found. */
+    val snippet: List<DriveSnippetPart>? = null,
+    /** §29: the PDF page the snippet is on (from 1). */
+    val page: Int? = null,
+) {
+    /** The snippet as one line (null for a name match). */
+    val snippetText: String? get() = snippet?.takeIf { it.isNotEmpty() }?.joinToString("") { it.text }
+}
+
+/** A piece of a drive search snippet (docs/DRIVE.md §29): plain text, never markup. */
+@Serializable
+data class DriveSnippetPart(val text: String, val hit: Boolean = false)
 
 @Serializable
 data class DriveSearchOut(val items: List<DriveSearchHitOut> = emptyList(), val nextCursor: String? = null)
