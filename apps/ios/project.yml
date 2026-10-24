@@ -64,7 +64,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "126"
+        CFBundleVersion: "127"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
@@ -114,7 +114,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "126"
+        CFBundleVersion: "127"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
@@ -147,7 +147,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "126"
+        CFBundleVersion: "127"
         TaylisAppGroup: group.jp.chikuwachat.ios
         TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
         # The servers may be plain HTTP on a LAN (as in the app's Info.plist).
@@ -198,7 +198,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "126"
+        CFBundleVersion: "127"
         TaylisAppGroup: group.jp.chikuwachat.ios
         TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
         # The servers may be plain HTTP on a LAN (as in the app's Info.plist).
