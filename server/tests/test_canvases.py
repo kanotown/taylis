@@ -444,6 +444,71 @@ async def test_concurrent_saves_are_serialised_and_merged(
     assert final["task_done"] == 3 and final["version"] == 4
 
 
+async def test_devices_typing_at_once_keep_every_keystroke(
+    client: AsyncClient, db: AsyncSession, as_user: Actor
+) -> None:
+    """CANVAS.md §4.4 / §24: three devices type on their own lines (two on the same line) and save
+    at once, again and again, each by the clients' rules — the next save on the head when nothing
+    was typed meanwhile, else on the version holding exactly what was sent, and a text written
+    before a merged body reached the editor on the version that body replaced. Every keystroke is
+    kept and the devices end on the same text."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = await _channel(client, "lab")
+    start = "# 議事録\n- 議題: \n本文\nlast"
+    canvas = await _canvas(client, cid, body=start)
+    cvid = canvas["id"]
+
+    class Device:
+        def __init__(self, name: str, after: str, line: int) -> None:
+            self.name, self.after, self.line = name, after, line
+            self.text = self.synced = start
+            self.base = canvas["head_rev_id"]
+            self.typed = ""
+
+        def type(self, word: str) -> None:
+            lines = self.text.split("\n")
+            if self.after:  # after a marker on the line (the same line as another device)
+                at = lines[self.line].index(self.after) + len(self.after)
+                lines[self.line] = lines[self.line][:at] + word + lines[self.line][at:]
+                self.after += word
+            else:
+                lines[self.line] += word
+            self.text = "\n".join(lines)
+            self.typed += word
+
+    devices = [Device("a", "- ", 1), Device("b", "", 1), Device("c", "", 2)]
+    for n in range(8):
+        for d in devices:
+            d.type(f" {d.name}{n}")
+        sent = [(d, d.text, d.base) for d in devices]
+        results = await asyncio.gather(*(_save(client, cvid, base, text) for d, text, base in sent))
+        for (d, text, _), result in zip(sent, results, strict=True):
+            assert result.status_code == 200, result.text
+            answer = result.json()
+            if n % 3 == 1:
+                # Typed on while the save was on the wire: on the version holding what was sent.
+                d.type(f" {d.name}{n}x")
+                d.base, d.synced = answer["submitted_rev_id"], text
+            elif n % 3 == 2:
+                # The merged body reached the loop but not yet the editor, which typed on what it
+                # showed: saved on the version of what was sent (§24), merged again.
+                d.base, d.synced = answer["submitted_rev_id"], text
+                d.type(f" {d.name}{n}y")
+            else:
+                d.base, d.synced = answer["canvas"]["head_rev_id"], answer["canvas"]["body"]
+                d.text = d.synced
+    for d in devices:  # the last saves, then everyone reads
+        if d.text != d.synced:
+            answer = await _save(client, cvid, d.base, d.text)
+            assert answer.status_code == 200, answer.text
+    final = (await client.get(f"{API}/canvases/{cvid}")).json()["body"]
+    for d in devices:
+        for word in d.typed.split(" "):
+            assert word in final, (word, final)
+    assert final.split("\n")[0] == "# 議事録" and final.split("\n")[-1] == "last"
+
+
 async def test_save_rate_limit(
     client: AsyncClient, db: AsyncSession, as_user: Actor, app: FastAPI
 ) -> None:
