@@ -17,9 +17,19 @@ final class ShareModel {
         /// Kept in the App Group; Taylis sends it when it next opens.
         case pending(String)
         case failed(String)
+        /// docs/DRIVE.md §29: the files go up into the drive (the sheet may close: they go on).
+        case saving
+        /// Every file of the drive batch ended (done, skipped, or failed with its reason).
+        case saved
     }
 
-    private(set) var phase: Phase = .loading
+    /// Where the share goes: a conversation (a message with the files) or a drive folder (§29: 「ドライブに保存」).
+    enum Mode: String, Equatable {
+        case conversation, drive
+    }
+
+    /// Set here and by the drive's save (ShareDrive.swift).
+    var phase: Phase = .loading
     private(set) var workspaces: [Workspace] = []
     private(set) var workspace: Workspace?
     private(set) var destinations: ShareDestinationModel?
@@ -29,6 +39,15 @@ final class ShareModel {
     private(set) var thumbnails: [String: UIImage] = [:]
     private(set) var unreadable = 0
     private(set) var progress: Double = 0
+    var mode: Mode = .conversation
+    /// 「ドライブに保存」: the folder picked, and the batch on its way.
+    var driveTarget: DriveUploadTarget?
+    var driveBatch: DriveUploadBatch?
+    var driveInflight: [String: Int64] = [:]
+    @ObservationIgnored var driveBatchId: String?
+    @ObservationIgnored var driveObserver: UUID?
+    /// The workspace's client (the drive picker's calls).
+    private(set) var api: ShareApi?
 
     @ObservationIgnored private let providers: [NSItemProvider]
     @ObservationIgnored private let finish: (Bool) -> Void
@@ -54,7 +73,21 @@ final class ShareModel {
     var tooLarge: [StagedFile] { files.filter { $0.size > limits.maxAttachmentBytes } }
     var tooMany: Bool { files.count > limits.maxAttachmentsPerMessage }
     var isEmpty: Bool { files.isEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var canSend: Bool { phase == .editing && destination != nil && !isEmpty && tooLarge.isEmpty && !tooMany }
+    var canSend: Bool { phase == .editing && mode == .conversation && destination != nil && !isEmpty && tooLarge.isEmpty && !tooMany }
+    /// The drive takes files only (no text), of any size the server allows (it says so per file).
+    var canSave: Bool { phase == .editing && mode == .drive && driveTarget != nil && !files.isEmpty }
+
+    /// The account's session when the sheet opened (the batch is dropped once it signs out or in again).
+    func generation(_ workspace: Workspace) -> Int {
+        generations[workspace.account] ?? AccountSessions.shared.generation(account: workspace.account)
+    }
+
+    /// The sheet's copies are not needed any more (the drive's parts are in DriveUploads/).
+    func releaseStaging() {
+        stagingLock?.release()
+        stagingLock = nil
+        store?.remove(shareId)
+    }
 
     func start() async {
         let sessions = AccountSessions.shared
@@ -87,7 +120,9 @@ final class ShareModel {
     func select(_ workspace: Workspace) {
         guard workspace.serverUrl != self.workspace?.serverUrl, let api = ShareApi(workspace: workspace) else { return }
         self.workspace = workspace
+        self.api = api
         destination = nil
+        driveTarget = nil
         let model = ShareDestinationModel(workspace: workspace, api: api)
         destinations = model
         if model.recent.isEmpty { Task { await model.loadAll() } }

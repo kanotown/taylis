@@ -15,10 +15,17 @@ struct ShareRootView: View {
                             Button("キャンセル") { model.cancel() }
                         }
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("送信") { Task { await model.send() } }
-                                .fontWeight(.semibold)
-                                .disabled(!model.canSend)
-                                .accessibilityIdentifier("share.send")
+                            if model.mode == .drive {
+                                Button("保存") { Task { await model.saveToDrive() } }
+                                    .fontWeight(.semibold)
+                                    .disabled(!model.canSave)
+                                    .accessibilityIdentifier("share.save")
+                            } else {
+                                Button("送信") { Task { await model.send() } }
+                                    .fontWeight(.semibold)
+                                    .disabled(!model.canSend)
+                                    .accessibilityIdentifier("share.send")
+                            }
                         }
                     }
                 }
@@ -47,9 +54,12 @@ struct ShareRootView: View {
                 model.close()
             }
         case .failed(let text):
-            OutcomeView(symbol: "exclamationmark.triangle.fill", tint: .red, title: Text("送信できませんでした"), message: Text(text)) {
+            OutcomeView(symbol: "exclamationmark.triangle.fill", tint: .red,
+                        title: model.mode == .drive ? Text("保存できませんでした") : Text("送信できませんでした"), message: Text(text)) {
                 model.close()
             }
+        case .saving, .saved:
+            ShareDriveSavingView(model: model)
         }
     }
 }
@@ -72,28 +82,45 @@ private struct ShareForm: View {
                     .accessibilityIdentifier("share.workspace")
                 }
             }
-            Section {
-                NavigationLink {
-                    if let destinations = model.destinations {
-                        DestinationPicker(model: destinations, selection: $model.destination)
+            // docs/DRIVE.md §29: files can go into a drive folder instead of a conversation.
+            if !model.files.isEmpty {
+                Section {
+                    Picker("保存先の種類", selection: $model.mode) {
+                        Text("会話に送る").tag(ShareModel.Mode.conversation)
+                        Text("ドライブに保存").tag(ShareModel.Mode.drive)
                     }
-                } label: {
-                    HStack {
-                        Text("送信先")
-                        Spacer()
-                        if let destination = model.destination {
-                            DestinationLabel(destination: destination).foregroundStyle(.secondary)
-                        } else {
-                            Text("選んでください").foregroundStyle(.secondary)
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("share.mode")
+                }
+            }
+            if model.mode == .drive {
+                ShareDriveSection(model: model)
+            } else {
+                Section {
+                    NavigationLink {
+                        if let destinations = model.destinations {
+                            DestinationPicker(model: destinations, selection: $model.destination)
+                        }
+                    } label: {
+                        HStack {
+                            Text("送信先")
+                            Spacer()
+                            if let destination = model.destination {
+                                DestinationLabel(destination: destination).foregroundStyle(.secondary)
+                            } else {
+                                Text("選んでください").foregroundStyle(.secondary)
+                            }
                         }
                     }
+                    .accessibilityIdentifier("share.destination")
                 }
-                .accessibilityIdentifier("share.destination")
             }
             if !model.files.isEmpty || model.unreadable > 0 {
                 Section {
                     ForEach(model.files) { file in
-                        FileRow(file: file, thumbnail: model.thumbnails[file.id], tooLarge: file.size > model.limits.maxAttachmentBytes,
+                        // The drive takes larger files than a message (the server says so per file).
+                        FileRow(file: file, thumbnail: model.thumbnails[file.id],
+                                tooLarge: model.mode == .conversation && file.size > model.limits.maxAttachmentBytes,
                                 limit: model.limits.maxAttachmentBytes) {
                             model.remove(file)
                         }
@@ -104,17 +131,19 @@ private struct ShareForm: View {
                             .font(.footnote)
                     }
                 } header: {
-                    Text("添付するファイル")
+                    if model.mode == .drive { Text("保存するファイル") } else { Text("添付するファイル") }
                 } footer: {
-                    if model.tooMany {
+                    if model.tooMany, model.mode == .conversation {
                         Text("ファイルは\(model.limits.maxAttachmentsPerMessage)件までです。減らしてください").foregroundStyle(.red)
                     }
                 }
             }
-            Section("メッセージ") {
-                TextField("メッセージを追加（任意）", text: $model.text, axis: .vertical)
-                    .lineLimit(1...8)
-                    .accessibilityIdentifier("share.text")
+            if model.mode == .conversation {
+                Section("メッセージ") {
+                    TextField("メッセージを追加（任意）", text: $model.text, axis: .vertical)
+                        .lineLimit(1...8)
+                        .accessibilityIdentifier("share.text")
+                }
             }
         }
     }
