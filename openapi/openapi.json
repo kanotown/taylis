@@ -40092,7 +40092,7 @@
     },
     "/api/v1/reservations/{reservation_id}/remove": {
       "post": {
-        "description": "「外した」 (operators): the seat was taken back (a return, or a removal).",
+        "description": "「外した」 (operators): the seat was taken back (a return, a removal, or any holder taken out\nby hand at any time). The holder themself returns the seat instead (`/return`).",
         "operationId": "remove_api_v1_reservations__reservation_id__remove_post",
         "parameters": [
           {

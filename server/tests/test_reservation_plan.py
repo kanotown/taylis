@@ -241,3 +241,70 @@ def test_the_queue_cancelled_leaves_only_the_booking_deadline() -> None:
     assert before_lead.evict == {}  # nobody needs the seat yet: they keep it
     lead = make_plan(1, [told], [_B], [], _B.start_at - LEAD, grace=_GRACE)
     assert lead.evict == {_id(1): _B.start_at}
+
+
+# --- 2026-10-24 (option A): a walk-in past its guarantee is taken out even if nobody waits -------
+
+
+def test_guarantee_over_with_nobody_waiting_is_a_remove_todo_due_at_its_end() -> None:
+    over = _walkin(1, T0 - 20 * _MIN)
+    inside = _walkin(2, T0 + HOUR)
+    plan = make_plan(3, [over, inside], [], [], T0, min_hours=6)
+    assert [(t.key, t.action, t.reason, t.remove_id, t.due_at) for t in plan.todos] == [
+        (f"remove:{_id(1)}", "remove", "guarantee_over", _id(1), T0 - 20 * _MIN)
+    ]
+    assert plan.ready == {_id(1)} and plan.evict == {} and plan.upcoming == []
+    # Not before the guarantee's end; right at it.
+    assert make_plan(3, [_walkin(1, T0 + _MIN)], [], [], T0, min_hours=6).todos == []
+    at_end = make_plan(3, [_walkin(1, T0)], [], [], T0, min_hours=6)
+    assert [t.key for t in at_end.todos] == [f"remove:{_id(1)}"]
+
+
+def test_guarantee_over_with_someone_waiting_is_a_swap_only() -> None:
+    over = _walkin(1, T0 - HOUR)
+    waiting = make_plan(1, [over], [], [Waiter(_id(9), T0)], T0, grace=_GRACE, min_hours=6)
+    assert waiting.todos == []  # the grace first: no remove meanwhile
+    assert waiting.evict == {_id(1): T0 + _GRACE}
+    told = _walkin(1, T0 - HOUR, evict_at=T0 + _GRACE, evict_notice_at=T0)
+    later = make_plan(1, [told], [], [Waiter(_id(9), T0)], T0 + _GRACE, grace=_GRACE, min_hours=6)
+    assert [(t.key, t.action) for t in later.todos] == [(f"swap:{_id(1)}:{_id(9)}", "swap")]
+    # A waiter served by a returned seat leaves the other walk-in to a remove of its own.
+    back = _walkin(2, T0 + HOUR, status="returning", returned_at=T0 - _MIN)
+    both = make_plan(2, [over, back], [], [Waiter(_id(9), T0)], T0, min_hours=6)
+    assert sorted((t.action, t.reason) for t in both.todos) == [
+        ("remove", "guarantee_over"),
+        ("swap", "returned"),
+    ]
+
+
+def test_a_booking_that_needs_the_seat_keeps_its_own_todo() -> None:
+    # The booking has started: the walk-in's seat goes to it (a swap, no remove).
+    walkin = _walkin(1, T0)
+    booking = Booking(_id(20), T0, T0 + 3 * HOUR)
+    started = make_plan(1, [walkin], [booking], [], T0 + _MIN, min_hours=6)
+    assert [(t.key, t.action) for t in started.todos] == [(f"swap:{_id(1)}:{_id(20)}", "swap")]
+    # A booking starting within LEAD will take the seat: its upcoming to-do, no remove now.
+    soon = Booking(_id(21), T0 + 5 * _MIN, T0 + HOUR)
+    over = _walkin(1, T0 - HOUR)
+    plan = make_plan(1, [over], [soon], [], T0, min_hours=6)
+    assert plan.todos == [] and [t.key for t in plan.upcoming] == [f"booking:{_id(21)}"]
+    assert plan.evict == {_id(1): soon.start_at}
+    # Before the lead the seat is not needed yet: the guarantee's remove stands.
+    early = Booking(_id(22), T0 + HOUR, T0 + 2 * HOUR)
+    plan = make_plan(1, [over], [early], [], T0, min_hours=6)
+    assert [t.key for t in plan.todos] == [f"remove:{_id(1)}"] and plan.evict == {}
+
+
+def test_returned_and_ended_seats_keep_their_reasons() -> None:
+    back = _walkin(1, T0 - HOUR, status="returning", returned_at=T0 - _MIN)
+    ended = _seated(2, T0 - 2 * HOUR, T0)
+    plan = make_plan(3, [back, ended], [], [], T0, min_hours=6)
+    assert sorted((t.key, t.reason) for t in plan.todos) == sorted(
+        [(f"remove:{_id(1)}", "returned"), (f"remove:{_id(2)}", "booking_ended")]
+    )
+
+
+def test_no_guarantee_no_remove() -> None:
+    # A pool with min_hours 0 gives no guarantee: the seat is kept until someone needs it.
+    plan = make_plan(2, [_walkin(1, T0 - HOUR)], [], [], T0, min_hours=0)
+    assert plan.todos == [] and plan.ready == set()

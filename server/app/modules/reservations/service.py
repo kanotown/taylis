@@ -671,9 +671,30 @@ async def _todo_text(
         who = await _who(db, change, out.user_id, lc)
         if todo.reason == "returned":
             return i18n.t("reservation.todo.returned", lc, who=who, pool=name)
+        if todo.reason == "guarantee_over":
+            until = _label(change, out.guarantee_until, lc)
+            return i18n.t("reservation.todo.guarantee_over", lc, who=who, pool=name, until=until)
         end = _label(change, out.end_at, lc)
         return i18n.t("reservation.todo.ended", lc, who=who, pool=name, end=end)
     return i18n.t("reservation.todo.other", lc, pool=name)
+
+
+def _keep_text(change: _Change, row: Reservation, lc: str) -> str:
+    until = _label(change, row.guarantee_until, lc)
+    return i18n.t("reservation.keep", lc, pool=_pool_name(change, lc), until=until)
+
+
+def _guarantee_over_text(change: _Change, row: Reservation, lc: str) -> str:
+    until = _label(change, row.guarantee_until, lc)
+    return i18n.t("reservation.guarantee_over", lc, pool=_pool_name(change, lc), until=until)
+
+
+def _until_note(change: _Change, row: Reservation) -> str:
+    """A log line's tail for a new holder: a walk-in's guarantee 「（09:32 まで保証）」, a booking's
+    time 「（16:00 まで）」."""
+    if row.kind == "walkin":
+        return f"（{_label(change, row.guarantee_until)} まで保証）"
+    return f"（{_label(change, row.guarantee_until)} まで）"
 
 
 def _expired_text(change: _Change, row: Reservation, lc: str) -> str:
@@ -728,6 +749,9 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
 
     plan = _plan(pool, rows, now)
     by_id = {r.id: r for r in rows}
+    guarantee_over = {
+        t.key for t in plan.todos if t.action == "remove" and t.reason == "guarantee_over"
+    }
     for row in rows:
         if row.status not in SEATED_STATUSES or row.kind != "walkin":
             continue
@@ -774,13 +798,15 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
             row.evict_notice_at = row.evict_at = None
             row.updated_at = now
             changed = True
-            if row.status == "holding":
+            # Past the guarantee, nobody waiting no longer means keeping the seat (2026-10-24):
+            # the operators take it out, and the holder hears that instead (below, once).
+            if row.status == "holding" and f"remove:{row.id}" not in guarantee_over:
                 await _notify(
                     db,
                     change,
                     row.user_id,
                     f"{row.id}/keep/{now.isoformat()}",
-                    lambda lc: i18n.t("reservation.keep", lc, pool=_pool_name(change, lc)),
+                    partial(_keep_text, change, row),
                     reservation_id=row.id,
                 )
     if changed:
@@ -805,6 +831,22 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
         )
         told.add(todo.key)
         changed = True
+        holder = (
+            by_id.get(todo.remove_id)
+            if todo.key in guarantee_over and todo.remove_id is not None
+            else None
+        )
+        if holder is not None:
+            # The holder hears once that the guarantee is over (one key per reservation: a
+            # queue coming and going does not repeat it).
+            await _notify(
+                db,
+                change,
+                holder.user_id,
+                f"{holder.id}/guarantee_over",
+                partial(_guarantee_over_text, change, holder),
+                reservation_id=holder.id,
+            )
     for item in await repo.open_operator_notices(db, pool.id):
         if item.key not in keep:
             item.done_at, item.done_by = now, change.actor_id
@@ -1171,7 +1213,7 @@ async def book(db: AsyncSession, actor: User, pool_id: uuid.UUID, data: BookingI
         db,
         change,
         f"🗓 {await _name(db, change, actor.id)} さんが{_pool_name(change)}を予約しました"
-        f" ({_span(change, row)})",
+        f"（{_span(change, row)}）",
         f"{row.id}/booked",
     )
     change.actor_id = None  # an operator booking for themself still gets the to-do
@@ -1364,14 +1406,16 @@ async def assign(db: AsyncSession, actor: User, reservation_id: uuid.UUID) -> Po
         db,
         change,
         f"✅ {await _name(db, change, row.user_id)} さんに{_pool_name(change)}を割り当てました"
-        f" ({_label(change, row.guarantee_until)} まで)",
+        f"{_until_note(change, row)}",
         f"{row.id}/assigned",
     )
     return await _finish(db, actor, change)
 
 
 async def remove(db: AsyncSession, actor: User, reservation_id: uuid.UUID) -> PoolOut:
-    """「外した」: the operator took the seat back in the console (a return, or not)."""
+    """「外した」: the operator took the seat back in the console: a return, a to-do, or any holder
+    at any time (the holder's row's 「外す」, 2026-10-24). Operators only (the pool's operators,
+    its creator, administrators): the holder themself returns the seat (「返却する」)."""
     row, pool = await _locked_reservation(db, actor, reservation_id)
     _require_operator(_can_operate(actor, pool))
     if row.status == "done":
@@ -1423,7 +1467,7 @@ async def swap(db: AsyncSession, actor: User, pool_id: uuid.UUID, data: SwapIn) 
         change,
         f"🔁 {_pool_name(change)}を {await _name(db, change, out_row.user_id)} さんから"
         f" {await _name(db, change, in_row.user_id)} さんに入れ替えました"
-        f" ({_label(change, in_row.guarantee_until)} まで)",
+        f"{_until_note(change, in_row)}",
         f"{out_row.id}/{in_row.id}/swapped",
     )
     return await _finish(db, actor, change)

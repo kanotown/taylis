@@ -109,7 +109,8 @@ async def assign(reservation_id: UUID, user: CurrentUser, db: Db) -> PoolOut:
 
 @router.post("/reservations/{reservation_id}/remove", response_model=PoolOut)
 async def remove(reservation_id: UUID, user: CurrentUser, db: Db) -> PoolOut:
-    """「外した」 (operators): the seat was taken back (a return, or a removal)."""
+    """「外した」 (operators): the seat was taken back (a return, a removal, or any holder taken out
+    by hand at any time). The holder themself returns the seat instead (`/return`)."""
     return await service.remove(db, user, reservation_id)
 
 
