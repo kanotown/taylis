@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PoolOut, ReservationOut, TodoOut, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { BookingDialog, PoolSection } from "../src/ui/Reservations";
+import { BookingDialog, PoolSection, PoolSettingsDialog } from "../src/ui/Reservations";
 import {
   activeText,
   barTitle,
@@ -27,6 +27,7 @@ import {
   reservationTodoCount,
   slotFits,
   startChoices,
+  takesWalkins,
   timelineBars,
   todoLine,
   walkinText,
@@ -87,6 +88,7 @@ function pool(over: Partial<PoolOut> = {}): PoolOut {
     grace_minutes: 15,
     tz: "Asia/Tokyo",
     enabled: true,
+    walkins_enabled: true,
     operator_ids: [],
     log_channel_id: null,
     visibility: "all",
@@ -228,6 +230,8 @@ function setup(p: PoolOut) {
     version: 0,
     subscribe: () => () => {},
     reservePool: vi.fn(async () => p),
+    createReservationPool: vi.fn(async () => p),
+    updateReservationPool: vi.fn(async () => p),
     reservationAction: vi.fn(async () => p),
     swapReservations: vi.fn(async () => p),
     bookReservation: vi.fn(async () => p),
@@ -354,5 +358,64 @@ describe("the page", () => {
     fireEvent.click(screen.getByRole("button", { name: "予約する" }));
     await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(controller.bookReservation).toHaveBeenCalledWith("p1", new Date(2026, 9, 5, 14).toISOString(), 3);
+  });
+});
+
+describe("a booking-only pool (walkins_enabled off, 2026-10-24)", () => {
+  it("reads a server without the setting as taking walk-ins", () => {
+    expect(takesWalkins(pool())).toBe(true);
+    expect(takesWalkins(pool({ walkins_enabled: false }))).toBe(false);
+    const { walkins_enabled: _, ...old } = pool();
+    expect(takesWalkins(old as PoolOut)).toBe(true);
+  });
+
+  it("hides 「今すぐ」, the queue and the guarantee rules; keeps booking and the holders", () => {
+    const { controller } = setup(pool({ walkins_enabled: false, holders: [WALK], can_operate: true }));
+    render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    expect(screen.queryByRole("button", { name: "今すぐ（順番待ち）" })).toBeNull();
+    expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(document.querySelector("[data-booking-only]")?.textContent).toBe("この枠は予約だけです");
+    expect(document.querySelector("[data-queue]")).toBeNull();
+    expect(screen.queryByText(/保証の時間/)).toBeNull();
+    expect(screen.getByText(/予約は毎時 0 分から 6 時間まで/)).toBeTruthy();
+    // a walk-in from before it was turned off stays in 「利用中」 with 「外す」 for operators
+    const walkRow = document.querySelector('[data-walkin="w1"]') as HTMLElement;
+    expect(within(walkRow).getByRole("button", { name: "外す" })).toBeTruthy();
+    cleanup();
+    // taking walk-ins: the queue and the button are there, no hint
+    const open = setup(pool());
+    render(<PoolSection controller={open.controller} pool={open.controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    expect(screen.getByRole("button", { name: "今すぐ（順番待ち）" })).toBeTruthy();
+    expect(document.querySelector("[data-booking-only]")).toBeNull();
+  });
+
+  it("asks for the switch in the form: off for a new pool, the pool's own when editing", async () => {
+    const { controller } = setup(pool());
+    const onClose = vi.fn();
+    render(<PoolSettingsDialog controller={controller} pool={null} onClose={onClose} />);
+    const box = screen.getByRole("checkbox", { name: "「今すぐ」（順番待ち）を受け付ける" }) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(screen.getByText(/オフなら予約だけの枠です/)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("例：Claude Premium シート"), { target: { value: "GPU" } });
+    fireEvent.click(screen.getByRole("button", { name: "追加" }));
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(controller.createReservationPool).toHaveBeenCalledWith(expect.objectContaining({ name: "GPU", walkins_enabled: false }));
+    cleanup();
+    // editing a pool that takes walk-ins, with two people waiting: turning it off warns, then saves false
+    const waiting = [
+      row({ id: "q1", user_id: ALICE, kind: "walkin", status: "waiting", step: "wait", position: 1 }),
+      row({ id: "q2", user_id: BOB, kind: "walkin", status: "waiting", step: "wait", position: 2 }),
+    ];
+    const editing = setup(pool({ waiting, can_manage: true }));
+    const closed = vi.fn();
+    render(<PoolSettingsDialog controller={editing.controller} pool={editing.controller.store.reservationPools![0]!} onClose={closed} />);
+    const sw = screen.getByRole("checkbox", { name: "「今すぐ」（順番待ち）を受け付ける" }) as HTMLInputElement;
+    expect(sw.checked).toBe(true);
+    expect(document.querySelector("[data-walkins-off-warning]")).toBeNull();
+    fireEvent.click(sw);
+    expect(document.querySelector("[data-walkins-off-warning]")?.textContent).toContain("順番待ちの 2 人は取り消されます");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await vi.waitFor(() => expect(closed).toHaveBeenCalled());
+    expect(editing.controller.updateReservationPool).toHaveBeenCalledWith("p1", expect.objectContaining({ walkins_enabled: false }));
   });
 });

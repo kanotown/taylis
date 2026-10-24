@@ -34,6 +34,7 @@ import {
   rowOf,
   spanLabel,
   startChoices,
+  takesWalkins,
   timelineBars,
   todoLine,
   walkinText,
@@ -114,6 +115,7 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
   const days = bookingDays(now, pool.horizon_days);
   const dayIndex = Math.max(0, days.findIndex((d) => d.getTime() === day.getTime()));
   const todos = pool.can_operate ? pool.todos : [];
+  const walkins = takesWalkins(pool);
 
   return (
     <section aria-label={pool.name} data-pool={pool.id} className="space-y-4">
@@ -122,6 +124,7 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
         <h2 className="min-w-0 truncate text-[16px] font-semibold">{pool.name}</h2>
         <span className="text-xs text-muted">{t("reservations.poolSummary", { capacity: pool.capacity, hours: pool.max_hours })}</span>
         {!pool.enabled && <Badge>{t("workflow.paused")}</Badge>}
+        {!walkins && <span className="text-xs text-muted" data-booking-only>{t("reservations.bookingOnly")}</span>}
         {pool.can_manage && (
           <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t("reservations.poolSettingsOf", { name: pool.name })}><Pencil size={13} /></Button>
         )}
@@ -129,7 +132,7 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
           <Button size="sm" disabled={!pool.enabled || busy || active !== null} onClick={() => setBooking(true)} title={activeNote}>
             <CalendarClock size={14} /> {t("reservations.book")}
           </Button>
-          {!mine.walkin && (
+          {walkins && !mine.walkin && (
             <Button size="sm" variant="secondary" disabled={!pool.enabled || busy || active !== null} onClick={() => void run(() => controller.reservePool(pool.id))} title={activeNote}>
               {t("reservations.walkinButton")}
             </Button>
@@ -206,7 +209,9 @@ className="rounded-lg border border-line bg-canvas px-2 py-1 text-sm"
       <WalkIns controller={controller} pool={pool} now={now} busy={busy} run={run} />
 
       <p className="text-xs text-muted">
-        {t("reservations.rules", { maxHours: pool.max_hours, minHours: pool.min_hours, grace: pool.grace_minutes })}
+        {walkins
+          ? t("reservations.rules", { maxHours: pool.max_hours, minHours: pool.min_hours, grace: pool.grace_minutes })
+          : t("reservations.rulesBookingOnly", { maxHours: pool.max_hours })}
         {pool.can_operate ? t("reservations.operatorRule") : ""}
       </p>
       {booking && <BookingDialog controller={controller} pool={pool} initialDay={day} onClose={() => setBooking(false)} />}
@@ -333,7 +338,9 @@ function Timeline({ controller, pool, day, now }: { controller: AppController; p
       <div className="flex gap-3 border-t border-line px-2 py-1 text-[11px] text-muted">
         <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-accent-soft align-middle" />{t("reservations.booking")}</span>
         <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-accent-solid align-middle" />{t("reservations.bookingInUse")}</span>
-        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-dashed border-amber-500 align-middle" />{t("reservations.walkin")}</span>
+        {(takesWalkins(pool) || bars.some((b) => b.kind === "walkin")) && (
+          <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-dashed border-amber-500 align-middle" />{t("reservations.walkin")}</span>
+        )}
       </div>
     </div>
   );
@@ -341,6 +348,8 @@ function Timeline({ controller, pool, day, now }: { controller: AppController; p
 
 /** Walk-ins: who is on a seat (until when), and the queue. Operators also see the addresses. */
 function WalkIns({ controller, pool, now, busy, run }: { controller: AppController; pool: PoolOut; now: Date; busy: boolean; run: (call: () => Promise<unknown>) => Promise<void> }) {
+  // A booking-only pool has no queue; its holders (bookings, walk-ins from before it was turned off) still show.
+  const queue = takesWalkins(pool) || pool.waiting.length > 0;
   if (pool.holders.length === 0 && pool.waiting.length === 0) return null;
   const person = (row: ReservationOut, line: string, extra?: ReactNode) => (
     <li key={row.id} className="flex items-center gap-2 py-1.5 text-sm" data-walkin={row.id}>
@@ -354,7 +363,7 @@ function WalkIns({ controller, pool, now, busy, run }: { controller: AppControll
     </li>
   );
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className={cn("grid gap-3", queue && "md:grid-cols-2")}>
       <div className="rounded-xl border border-line px-3 py-2">
         <h3 className="text-xs font-semibold text-muted">{t("reservations.holdersTitle", { count: pool.holders.length, capacity: pool.capacity })}</h3>
         <ul>
@@ -377,7 +386,8 @@ function WalkIns({ controller, pool, now, busy, run }: { controller: AppControll
           {pool.holders.length === 0 && <li className="py-1.5 text-sm text-muted">{t("reservations.nobody")}</li>}
         </ul>
       </div>
-      <div className="rounded-xl border border-line px-3 py-2">
+      {queue && (
+      <div className="rounded-xl border border-line px-3 py-2" data-queue>
         <h3 className="text-xs font-semibold text-muted">{t("reservations.queueTitle", { count: pool.waiting.length })}</h3>
         <ul>
           {pool.waiting.map((row) =>
@@ -392,6 +402,7 @@ function WalkIns({ controller, pool, now, busy, run }: { controller: AppControll
           {pool.waiting.length === 0 && <li className="py-1.5 text-sm text-muted">{t("reservations.nobody")}</li>}
         </ul>
       </div>
+      )}
     </div>
   );
 }
@@ -480,6 +491,8 @@ type Form = {
   graceMinutes: string;
   operatorIds: string[];
   enabled: boolean;
+  /** 「今すぐ」 (the queue): off for a new pool (booking-only), the pool's own when editing. */
+  walkinsEnabled: boolean;
   visibility: "all" | "channel" | "group";
   visibilityChannelId: string;
   visibilityGroupId: string;
@@ -496,12 +509,13 @@ function formOf(pool: PoolOut | null): Form {
         graceMinutes: String(pool.grace_minutes),
         operatorIds: [...pool.operator_ids],
         enabled: pool.enabled,
+        walkinsEnabled: takesWalkins(pool),
         visibility: pool.visibility,
         visibilityChannelId: pool.visibility_channel_id ?? "",
         visibilityGroupId: pool.visibility_group_id ?? "",
         logChannelId: pool.log_channel_id ?? "",
       }
-    : { name: "", capacity: "3", maxHours: "6", minHours: "6", graceMinutes: "15", operatorIds: [], enabled: true, visibility: "all", visibilityChannelId: "", visibilityGroupId: "", logChannelId: "" };
+    : { name: "", capacity: "3", maxHours: "6", minHours: "6", graceMinutes: "15", operatorIds: [], enabled: true, walkinsEnabled: false, visibility: "all", visibilityChannelId: "", visibilityGroupId: "", logChannelId: "" };
 }
 
 /** Add or edit a pool (administrators; a pool's creator edits it), delete it. */
@@ -533,6 +547,7 @@ export function PoolSettingsDialog({ controller, pool, onClose }: { controller: 
       grace_minutes: Number(form.graceMinutes),
       operator_ids: form.operatorIds,
       enabled: form.enabled,
+      walkins_enabled: form.walkinsEnabled,
       visibility: form.visibility,
       visibility_channel_id: form.visibility === "channel" ? form.visibilityChannelId : null,
       visibility_group_id: form.visibility === "group" ? form.visibilityGroupId : null,
@@ -570,12 +585,22 @@ export function PoolSettingsDialog({ controller, pool, onClose }: { controller: 
           </label>
           <label className={field}>
             {t("reservations.minHours")}
-            <Input className="mt-1" inputMode="numeric" value={form.minHours} onChange={(e) => setForm({ ...form, minHours: e.target.value })} />
+            <Input className="mt-1" inputMode="numeric" disabled={!form.walkinsEnabled} value={form.minHours} onChange={(e) => setForm({ ...form, minHours: e.target.value })} />
           </label>
           <label className={field}>
             {t("reservations.grace")}
-            <Input className="mt-1" inputMode="numeric" value={form.graceMinutes} onChange={(e) => setForm({ ...form, graceMinutes: e.target.value })} />
+            <Input className="mt-1" inputMode="numeric" disabled={!form.walkinsEnabled} value={form.graceMinutes} onChange={(e) => setForm({ ...form, graceMinutes: e.target.value })} />
           </label>
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.walkinsEnabled} onChange={(e) => setForm({ ...form, walkinsEnabled: e.target.checked })} />
+            {t("reservations.walkinsEnabled")}
+          </label>
+          <p className="mt-1 text-xs text-muted">{t("reservations.walkinsNote")}</p>
+          {pool && takesWalkins(pool) && !form.walkinsEnabled && pool.waiting.length > 0 && (
+            <p className="mt-1 text-xs text-danger" data-walkins-off-warning>{t("reservations.walkinsOffWarning", { count: pool.waiting.length })}</p>
+          )}
         </div>
         <fieldset>
           <legend className={field}>{t("reservations.operators")}</legend>
