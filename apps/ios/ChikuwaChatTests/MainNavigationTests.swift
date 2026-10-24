@@ -431,4 +431,49 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertEqual(tabs.tab, .home)
         XCTAssertEqual(tabs.paths[.home], [.list(MyTasksView.selectionId)])
     }
+
+    /// The split's detail stack does not follow several screens leaving its path at once, nor the screens over a first
+    /// screen that changes (iOS 26, DRIVE.md §30.6): those changes build it again; a push or one screen back do not.
+    func testTheSplitsStackIsBuiltAgainWhenSeveralScreensGoAtOnce() {
+        var nav = navigation(.split)
+        nav.select(.list(DriveLocationsView.selectionId))
+        for id in ["root", "a", "b", "c"] { nav.openDriveFolder(id, on: .home) }
+        let deep = nav.split
+        // A breadcrumb two folders up, and the top folder's.
+        nav.openDriveFolder("a", on: .home)
+        XCTAssertEqual(nav.split, [.list("drive"), .drive("root"), .drive("a")])
+        XCTAssertTrue(MainNavigation.splitStackRebuilds(from: deep, to: nav.split))
+        let atA = nav.split
+        nav.openDriveFolder("root", on: .home)
+        XCTAssertFalse(MainNavigation.splitStackRebuilds(from: atA, to: nav.split), "one folder up: the stack pops it")
+        // Pushes and Back.
+        var pushed = nav
+        pushed.openDriveFolder("x", on: .home)
+        XCTAssertFalse(MainNavigation.splitStackRebuilds(from: nav.split, to: pushed.split))
+        var back = pushed
+        back.back()
+        XCTAssertFalse(MainNavigation.splitStackRebuilds(from: pushed.split, to: back.split))
+        // The sidebar (or a notification) over a pushed screen: a new first screen.
+        var selected = pushed
+        selected.select(.channel("general"))
+        XCTAssertTrue(MainNavigation.splitStackRebuilds(from: pushed.split, to: selected.split))
+        var landed = pushed
+        landed.land("general", isDm: false)
+        XCTAssertTrue(MainNavigation.splitStackRebuilds(from: pushed.split, to: landed.split))
+        // A new first screen with nothing pushed: its own identity changes it.
+        var plain = navigation(.split)
+        plain.select(.channel("general"))
+        let before = plain.split
+        plain.select(.channel("random"))
+        XCTAssertFalse(MainNavigation.splitStackRebuilds(from: before, to: plain.split))
+        // A page's breadcrumb, likewise.
+        var pages = navigation(.split)
+        pages.landPage("p3", docsId: DocsView.selectionId)
+        pages.openPage("p4", on: .home)
+        pages.openPage("p5", on: .home)
+        let deepPages = pages.split
+        pages.openPage("p3", on: .home)
+        XCTAssertEqual(pages.split, [.list(DocsView.selectionId), .page("p3")])
+        XCTAssertTrue(MainNavigation.splitStackRebuilds(from: deepPages, to: pages.split))
+    }
 }

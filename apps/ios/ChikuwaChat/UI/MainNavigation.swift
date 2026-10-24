@@ -200,6 +200,18 @@ struct MainNavigation: Equatable {
         if layout == .split { split = path } else { paths[tab] = path }
     }
 
+    /// The split's detail column is a NavigationStack over `split.dropFirst()`. On iOS 26 that stack follows a path set
+    /// from outside when it grows or loses its top screen, but not when it loses several at once (a drive folder's
+    /// breadcrumb two folders up, a page's), nor screens pushed over a first screen that changes (a sidebar row, a
+    /// notification's landing): `split` changed and the column stayed where it was (DRIVE.md §30.6, MOBILE_UI.md
+    /// §13.4). The phone's tab stacks follow every change. MainView builds the column's stack anew (its identity) for
+    /// such a change, unless the stack made it itself (its Back button's long-press menu), which it has shown already.
+    static func splitStackRebuilds(from old: [MainRoute], to new: [MainRoute]) -> Bool {
+        let before = Array(old.dropFirst()), after = Array(new.dropFirst())
+        guard after.count < before.count, before.starts(with: after) else { return false }
+        return before.count - after.count > 1 || old.first != new.first
+    }
+
     /// ⌘[ : one screen back (not past the detail column's first screen or a tab's root).
     mutating func back() {
         if layout == .split {
