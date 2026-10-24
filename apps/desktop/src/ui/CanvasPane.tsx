@@ -36,6 +36,16 @@ export function defaultCanvasId(list: readonly CanvasMeta[]): string | null {
   return (list.find((c) => c.is_channel_tab) ?? list[0])?.id ?? null;
 }
 
+/**
+ * CANVAS.md §24.4: the canvas the tab shows when none was picked — the one it opened on while that is still in the list,
+ * else the default. Not the default worked out again on every change of the list: the list is in update order, so a save
+ * of another canvas (someone else's, a task ticking it, a reconnect reading the list) swapped the open canvas for that one
+ * under the reader — the edit just saved vanished from the screen while everyone else saw it.
+ */
+export function keptCanvasId(list: readonly CanvasMeta[], kept: string | null): string | null {
+  return kept && list.some((c) => c.id === kept) ? kept : defaultCanvasId(list);
+}
+
 function actorOf(controller: AppController) {
   return { id: controller.store.me?.id ?? null, isAdmin: controller.isAdmin, isGuest: controller.isGuest };
 }
@@ -53,7 +63,11 @@ export function CanvasPane({ controller, channel, canvasId, onSelect, onOpenThre
   const list = store.canvasesOf(channel.id);
   const hub = controller.engine?.canvases ?? null;
   const [dialog, setDialog] = useState<"new" | "trash" | null>(null);
-  const selectedId = canvasId ?? (list ? defaultCanvasId(list) : null);
+  const kept = useRef<{ channelId: string; id: string } | null>(null);
+  const selectedId = canvasId ?? (list ? keptCanvasId(list, kept.current?.channelId === channel.id ? kept.current.id : null) : null);
+  useEffect(() => {
+    if (selectedId) kept.current = { channelId: channel.id, id: selectedId };
+  }, [channel.id, selectedId]);
   const createRights = canvasRights(channel, actorOf(controller), null);
 
   // The list arrives with the conversation (engine.openChannel); a pane shown before that asks once more.
