@@ -115,14 +115,62 @@ enum DriveRules {
         return tr("\(String(parts.year ?? 0))年\(parts.month ?? 0)月\(parts.day ?? 0)日")
     }
 
-    /// The viewer a file opens in; nil for a folder and for a file without one (its details instead).
+    /// The viewer a file opens in; nil for a folder and for a file without one (its details instead). As the desktop's
+    /// `viewerKind` (§27, §29): every PDF (its own bytes while its preview is not made) and every Office file (the viewer
+    /// asks for, or waits for, its preview) open in the document viewer.
     static func viewer(_ item: DriveItemOut) -> DriveViewerKind? {
         guard !item.isFolder, let file = item.file else { return nil }
-        let type = item.contentType ?? ""
+        let type = (item.contentType ?? "").lowercased()
         if type.hasPrefix("video/") { return .video }
         if type.hasPrefix("image/"), file.hasThumbnail { return .image }
-        if file.preview?.isReady == true { return .document }
+        if file.preview?.isReady == true || file.preview?.isPending == true || isPdf(item) || isOffice(item) { return .document }
         return nil
+    }
+
+    private static let officeExtensions: Set<String> = ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"]
+    private static let officeType = try! NSRegularExpression(
+        pattern: "^application/(msword|rtf|vnd\\.ms-(excel|powerpoint)|vnd\\.openxmlformats-officedocument\\.|vnd\\.oasis\\.opendocument\\.(text|spreadsheet|presentation)$)")
+    /// What the server's sniffer answers for a file it could not place (the server then goes by the extension).
+    private static let unplaced: Set<String> = ["", "application/octet-stream", "application/zip", "application/x-ole-storage"]
+
+    private static func ext(_ name: String) -> String { (name as NSString).pathExtension.lowercased() }
+
+    /// A PDF: by its type, or by its name when the server could not tell (bytes before the header, §27).
+    static func isPdf(_ item: DriveItemOut) -> Bool {
+        guard !item.isFolder else { return false }
+        let type = (item.contentType ?? "").lowercased()
+        return type == "application/pdf" || (ext(item.name) == "pdf" && (type.isEmpty || type == "application/octet-stream"))
+    }
+
+    /// An Office file the converter may turn into a PDF (the server's preview_kinds.source_kind).
+    static func isOffice(_ item: DriveItemOut) -> Bool {
+        guard !item.isFolder else { return false }
+        let type = (item.contentType ?? "").lowercased()
+        let range = NSRange(type.startIndex..., in: type)
+        return officeType.firstMatch(in: type, range: range) != nil || (unplaced.contains(type) && officeExtensions.contains(ext(item.name)))
+    }
+
+    /// Where the document viewer reads a file's pages (the desktop's `documentSource`).
+    enum DocumentSource: Equatable {
+        /// The made preview (/attachments/{id}/preview/pdf; for a PDF that is the file itself).
+        case preview
+        /// A PDF whose preview is not ready (not made, being made, failed, too large): its own bytes.
+        case original
+        /// An Office file's preview is being made (「プレビューを作成中…」 until it is ready).
+        case making
+        /// An Office file without one (imported, §24): the viewer asks the server to make it.
+        case ask
+        /// The Office file's preview could not be made (the download is offered).
+        case failed
+    }
+
+    static func documentSource(_ item: DriveItemOut) -> DocumentSource {
+        let preview = item.file?.preview
+        if preview?.isReady == true { return .preview }
+        if isPdf(item) { return .original }
+        if preview?.isPending == true { return .making }
+        if preview?.status == "failed" { return .failed }
+        return .ask
     }
 
     /// The thumbnail a row or card shows: a photo's, a video's poster, a document's first page.
@@ -140,7 +188,7 @@ enum DriveRules {
         if type.hasPrefix("image/") { return "photo" }
         if type.hasPrefix("video/") { return "film" }
         if type.hasPrefix("audio/") { return "waveform" }
-        if type == "application/pdf" { return "doc.richtext" }
+        if isPdf(item) { return "doc.richtext" }
         if type == "application/zip" || name.hasSuffix(".zip") { return "doc.zipper" }
         if ["xls", "xlsx", "ods", "csv"].contains((name as NSString).pathExtension) { return "tablecells" }
         if ["ppt", "pptx", "odp", "key"].contains((name as NSString).pathExtension) { return "rectangle.on.rectangle" }

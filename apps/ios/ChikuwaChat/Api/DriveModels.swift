@@ -1,6 +1,7 @@
 import Foundation
 
-// M166 (docs/DRIVE.md §5, §26): the drive's shapes the phone reads. Read only: no uploads, names, moves or trash here.
+// M166 (docs/DRIVE.md §5, §26): the drive's shapes the phone reads. §29: uploads and new folders from the phone (the
+// uploads themselves: Share/DriveUploads.swift); no names, moves or trash here.
 
 /// A drive: 研究室ドライブ (`workspace`), a channel's (`channel`) or マイドライブ (`user`).
 struct DriveLocationOut: Codable, Equatable, Identifiable {
@@ -147,6 +148,15 @@ protocol DriveApi: AnyObject {
     func searchDrive(query: String, locationId: String?, cursor: String?) async throws -> DriveSearchOut
     func driveDownloadTicket(_ itemId: String) async throws -> DriveTicketOut
     func driveZip(_ itemIds: [String]) async throws -> DriveZipOut
+    /// §27: the current version's preview, queued now when it was never made (imported files); nil: it gets none.
+    func requestDrivePreview(_ itemId: String) async throws -> AttachmentPreviewOut?
+    /// §29: a folder made from the phone (`client_op_id`: a retry answers the same folder).
+    func createDriveFolder(parentId: String, name: String, clientOpId: String) async throws -> DriveItemOut
+}
+
+/// POST /drive/items/{id}/preview.
+struct DrivePreviewOut: Codable, Equatable {
+    var preview: AttachmentPreviewOut?
 }
 
 extension ApiClient: DriveApi {
@@ -185,5 +195,15 @@ extension ApiClient: DriveApi {
 
     func driveZip(_ itemIds: [String]) async throws -> DriveZipOut {
         try await requestJSON("POST", "/api/v1/drive/zip", body: .object(["item_ids": .array(itemIds.map(JSONValue.string))]))
+    }
+
+    func requestDrivePreview(_ itemId: String) async throws -> AttachmentPreviewOut? {
+        let out: DrivePreviewOut = try await requestJSON("POST", "/api/v1/drive/items/\(itemId)/preview")
+        return out.preview
+    }
+
+    func createDriveFolder(parentId: String, name: String, clientOpId: String) async throws -> DriveItemOut {
+        try await requestJSON("POST", "/api/v1/drive/folders",
+                              body: .object(["parent_id": .string(parentId), "name": .string(name), "client_op_id": .string(clientOpId)]))
     }
 }

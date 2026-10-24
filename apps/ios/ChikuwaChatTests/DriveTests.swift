@@ -48,6 +48,14 @@ final class FakeDriveApi: DriveApi {
     func searchDrive(query: String, locationId: String?, cursor: String?) async throws -> DriveSearchOut { DriveSearchOut(items: []) }
     func driveDownloadTicket(_ itemId: String) async throws -> DriveTicketOut { DriveTicketOut(url: "/api/v1/drive/download/t-\(itemId)", expiresIn: 300) }
     func driveZip(_ itemIds: [String]) async throws -> DriveZipOut { DriveZipOut(url: "/api/v1/drive/zip/z", filename: "a.zip") }
+    func requestDrivePreview(_ itemId: String) async throws -> AttachmentPreviewOut? {
+        calls.append("preview \(itemId)")
+        return AttachmentPreviewOut(status: "pending")
+    }
+    func createDriveFolder(parentId: String, name: String, clientOpId: String) async throws -> DriveItemOut {
+        calls.append("folder \(parentId) \(name)")
+        return folder("new-\(name)", parent: parentId)
+    }
 
     func folder(_ id: String, parent: String? = nil) -> DriveItemOut {
         DriveItemOut(id: id, locationId: "ws", parentId: parent, kind: "folder", name: id, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z")
@@ -149,7 +157,14 @@ final class DriveRulesTests: XCTestCase {
         XCTAssertEqual(DriveRules.viewer(pdf), .document)
         let docx = driveFile("d", name: "a.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                              file: DriveFileOut(attachmentId: "a", preview: AttachmentPreviewOut(status: "pending")))
-        XCTAssertNil(DriveRules.viewer(docx), "a preview still being made: its details")
+        XCTAssertEqual(DriveRules.viewer(docx), .document, "§29: a preview being made opens the viewer (「プレビューを作成中…」)")
+        // §27 / §29: every PDF and Office file opens the viewer, made preview or not (imported files have none).
+        XCTAssertEqual(DriveRules.viewer(driveFile("ip", name: "論文.pdf", type: "application/pdf")), .document)
+        XCTAssertEqual(DriveRules.viewer(driveFile("jp", name: "前置き.PDF", type: "application/octet-stream")), .document)
+        XCTAssertEqual(DriveRules.viewer(driveFile("id", name: "議事録.docx", type: "application/zip")), .document)
+        XCTAssertEqual(DriveRules.viewer(driveFile("ix", name: "表.xlsx", type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")), .document)
+        XCTAssertNil(DriveRules.viewer(driveFile("t", name: "memo.txt", type: "text/plain")))
+        XCTAssertNil(DriveRules.viewer(driveFile("z", name: "a.zip", type: "application/zip")))
         let photo = driveFile("i", name: "a.jpg", type: "image/jpeg", file: DriveFileOut(attachmentId: "a", hasThumbnail: true))
         XCTAssertEqual(DriveRules.viewer(photo), .image)
         let bigPhoto = driveFile("i2", name: "huge.tif", type: "image/tiff")
@@ -160,6 +175,29 @@ final class DriveRulesTests: XCTestCase {
         XCTAssertEqual(DriveRules.thumbnailPath(photo), "/api/v1/attachments/a/thumbnail")
         XCTAssertEqual(DriveRules.thumbnailPath(pdf), "/api/v1/attachments/a/preview/thumbnail")
         XCTAssertNil(DriveRules.thumbnailPath(docx))
+    }
+
+    /// The desktop's `documentSource` (§27): where the document viewer reads a file's pages.
+    func testWhereTheDocumentViewerReadsThePages() {
+        func file(_ name: String, _ type: String, _ status: String?) -> DriveItemOut {
+            driveFile(name, name: name, type: type, file: DriveFileOut(attachmentId: "a", preview: status.map { AttachmentPreviewOut(status: $0) }))
+        }
+        XCTAssertEqual(DriveRules.documentSource(file("a.pdf", "application/pdf", "ready")), .preview)
+        XCTAssertEqual(DriveRules.documentSource(file("a.pdf", "application/pdf", nil)), .original)
+        XCTAssertEqual(DriveRules.documentSource(file("a.pdf", "application/pdf", "pending")), .original)
+        XCTAssertEqual(DriveRules.documentSource(file("a.pdf", "application/pdf", "failed")), .original)
+        XCTAssertEqual(DriveRules.documentSource(file("b.pdf", "application/octet-stream", nil)), .original)
+        XCTAssertEqual(DriveRules.documentSource(file("a.docx", "application/zip", "ready")), .preview)
+        XCTAssertEqual(DriveRules.documentSource(file("a.docx", "application/zip", "pending")), .making)
+        XCTAssertEqual(DriveRules.documentSource(file("a.docx", "application/zip", "failed")), .failed)
+        XCTAssertEqual(DriveRules.documentSource(file("a.docx", "application/zip", nil)), .ask)
+        XCTAssertTrue(DriveRules.isPdf(file("x.pdf", "", nil)))
+        XCTAssertFalse(DriveRules.isPdf(file("x.pdf", "text/plain", nil)), "a typed file is what its type says")
+        XCTAssertTrue(DriveRules.isOffice(file("x.ppt", "application/x-ole-storage", nil)))
+        XCTAssertTrue(DriveRules.isOffice(file("x", "application/msword", nil)))
+        XCTAssertFalse(DriveRules.isOffice(file("x.csv", "text/csv", nil)))
+        XCTAssertFalse(DriveRules.isOffice(FakeDriveApi().folder("f.docx")))
+        XCTAssertEqual(DriveRules.icon(file("y.pdf", "application/octet-stream", nil)), "doc.richtext")
     }
 
     func testTheViewersGetTheItemsNameAndCurrentVersion() {
