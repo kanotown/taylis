@@ -136,12 +136,21 @@ def test_snippets_mark_the_words() -> None:
         (FULL_QUALITY, True),
         (" factor", False),
     ]
-    snippet = window_snippet("a  b\n品質係数 c", cut_before=True, cut_after=True, keywords=["品質"])
+    snippet = window_snippet(
+        "あ  い\n品質係数 う", cut_before=True, cut_after=True, keywords=["品質"]
+    )
     assert snippet == [
-        ("…a b ", False),
+        ("…あ い ", False),
         ("品質", True),
-        ("係数 c…", False),
+        ("係数 う…", False),
     ]
+    # English words cut at the ends go; the word found stays.
+    snippet = window_snippet(
+        "sults. The photonic crystal experi", cut_before=True, cut_after=True, keywords=["crystal"]
+    )
+    assert snippet == [("…The photonic ", False), ("crystal", True), ("…", False)]
+    whole = window_snippet("The crystal", cut_before=False, cut_after=False, keywords=["crystal"])
+    assert whole == [("The ", False), ("crystal", True)]
 
 
 async def test_pdf_text_from_the_child(tmp_path: Path, app: FastAPI) -> None:

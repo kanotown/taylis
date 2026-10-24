@@ -7,6 +7,8 @@ CONTEXT = 60
 # How far into a body the slow, width-folding look for a keyword goes (NFKC per character).
 FOLD_LIMIT = 20_000
 ELLIPSIS = "…"
+# The drive snippets (§29): at most this many characters of an English word cut at an end go.
+WORD_TRIM = 15
 
 
 def _fold(text: str) -> tuple[str, list[int]]:
@@ -104,6 +106,16 @@ def window_snippet(
     """A drive text's window (cut around the first keyword by the database) as marked pieces:
     spaces and line breaks folded, "…" where the text goes on (docs/DRIVE.md §29)."""
     flat = " ".join(piece.split())
+    # An English word cut at either end is left out ("…sults." reads badly); a short way only,
+    # so the word found (about 30 characters in) always stays.
+    if cut_before and flat[:1].isascii() and flat[:1].isalnum():
+        space = flat.find(" ")
+        if 0 < space <= WORD_TRIM:
+            flat = flat[space + 1 :]
+    if cut_after and flat[-1:].isascii() and flat[-1:].isalnum():
+        space = flat.rfind(" ")
+        if 0 < space and len(flat) - WORD_TRIM <= space:
+            flat = flat[:space]
     parts = mark(flat, keywords)
     if cut_before:
         parts.insert(0, (ELLIPSIS, False))
