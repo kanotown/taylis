@@ -328,6 +328,90 @@ describe("someone else's versions", () => {
   });
 });
 
+describe("an editor behind the loop (CANVAS.md §24)", () => {
+  const CAROL = BODY.replace("- alice", "- alice\n- carol");
+
+  it("a text typed on the body shown before the merged one reached the editor keeps the merge (saved on what was sent)", async () => {
+    const h = await harness();
+    const shown = h.saver.textLineage; // the editor shows the first body
+    aliceSaves(h, CAROL);
+    const mine = BODY.replace("- [ ] 練習", "- [ ] 練習!");
+    h.saver.edit(mine, false, shown);
+    await h.saver.flush(); // merged with carol; the loop puts the merged body in …
+    expect(h.saver.text).toBe(CAROL.replace("- [ ] 練習", "- [ ] 練習!"));
+    expect(h.saver.textLineage).not.toBe(shown);
+    // … but a key reaches the editor first: its text is the body it shows plus the key.
+    h.saver.edit(mine + "\n- [ ] 予稿", false, shown);
+    await h.saver.flush();
+    const merged = h.server.canvases.get(h.canvas.id)!.revisions.get(h.api.calls[1]!.base_rev_id);
+    expect(merged).toBe(mine); // written on the version holding what was sent, not on the merged head
+    expect(head(h).body).toBe(CAROL.replace("- [ ] 練習", "- [ ] 練習!") + "\n- [ ] 予稿"); // carol stays
+    expect(h.saver.text).toBe(head(h).body);
+  });
+
+  it("without saying which body it was written on, the same text is saved over the merge (the bug this fixes)", async () => {
+    const h = await harness();
+    aliceSaves(h, CAROL);
+    const mine = BODY.replace("- [ ] 練習", "- [ ] 練習!");
+    h.saver.edit(mine);
+    await h.saver.flush();
+    h.saver.edit(mine + "\n- [ ] 予稿"); // no generation: taken as written on the merged body
+    await h.saver.flush();
+    expect(head(h).body).not.toContain("carol");
+  });
+
+  it("someone else's version read while idle: a key typed before the editor took it keeps that version", async () => {
+    const h = await harness();
+    const shown = h.saver.textLineage;
+    aliceSaves(h, CAROL);
+    h.saver.remoteVersion(head(h).version);
+    await vi.advanceTimersByTimeAsync(500);
+    await h.saver.settled();
+    expect(h.saver.text).toBe(CAROL);
+    h.saver.edit(BODY + "\n- [ ] 予稿", false, shown); // typed on the body the editor still showed
+    await h.saver.flush();
+    expect(head(h).body).toBe(CAROL + "\n- [ ] 予稿");
+  });
+
+  it("an editor that took the newer body writes on it as before", async () => {
+    const h = await harness();
+    aliceSaves(h, CAROL);
+    h.saver.remoteVersion(head(h).version);
+    await vi.advanceTimersByTimeAsync(500);
+    await h.saver.settled();
+    const before = h.server.canvases.get(h.canvas.id)!.canvas.head_rev_id;
+    h.saver.edit(CAROL.replace("carol", "carol!"), false, h.saver.textLineage);
+    await h.saver.flush();
+    expect(h.api.calls.at(-1)!.base_rev_id).toBe(before);
+    expect(head(h).body).toBe(CAROL.replace("carol", "carol!"));
+  });
+
+  it("a canvas.updated that came while a save was on the wire is read once the save lands", async () => {
+    const h = await harness();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const save = h.api.saveCanvas;
+    h.api.saveCanvas = async (id, body) => {
+      const answer = await save(id, body);
+      await gate;
+      return answer;
+    };
+    const mine = BODY.replace("研究計画", "発表資料");
+    h.saver.edit(mine);
+    const flushing = h.saver.flush(); // reaches the server first
+    aliceSaves(h, mine.replace("- alice", "- alice\n- carol")); // then alice
+    h.saver.remoteVersion(head(h).version);
+    await vi.advanceTimersByTimeAsync(600); // the read is skipped: a save is on the wire
+    release();
+    await flushing;
+    expect(h.saver.text).toBe(mine);
+    await vi.advanceTimersByTimeAsync(0);
+    await h.saver.settled();
+    expect(h.saver.text).toBe(mine.replace("- alice", "- alice\n- carol"));
+    expect(h.saver.status).toBe("saved");
+  });
+});
+
 describe("the web tab closing (M44)", () => {
   it("hands over the typed text as a save for a keepalive request; if the page lives on, the loop sends the same key", async () => {
     const h = await harness();

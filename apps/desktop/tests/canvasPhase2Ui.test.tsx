@@ -81,17 +81,20 @@ it("shows who else edits the canvas, and says when I edit", async () => {
   const socket = server.socketsOf(bob.id)[0]!;
   expect(document.querySelector("[data-canvas-editing]")).toBeNull();
   await act(async () => {
-    socket.deliver({ type: "canvas_presence", canvas_id: canvas.id, channel_id: channelId, user_id: alice.id, editing: true, section: "TODO" });
+    socket.deliver({ type: "canvas_presence", canvas_id: canvas.id, channel_id: channelId, user_id: alice.id, editing: true, section: "TODO", caret: { line: 1, column: 0 } });
   });
   await settle();
   const editing = document.querySelector("[data-canvas-editing]") as HTMLElement;
   expect(editing.textContent).toContain("Alice が編集中");
   expect(editing.getAttribute("title")).toBe("Alice: TODO");
+  // CANVAS.md §25: her caret over the editor, with her name.
+  expect(document.querySelector(`[data-remote-caret="${alice.id}"]`)?.textContent).toBe("Alice");
   await act(async () => {
     socket.deliver({ type: "canvas_presence", canvas_id: canvas.id, channel_id: channelId, user_id: alice.id, editing: false, section: null });
   });
   await settle();
   expect(document.querySelector("[data-canvas-editing]")).toBeNull();
+  expect(document.querySelector("[data-remote-caret]")).toBeNull();
 
   // Mine: a start on focus (with the caret's heading), a stop on blur.
   const editor = screen.getByRole("textbox", { name: /キャンバスの本文/ }) as HTMLTextAreaElement;
@@ -101,8 +104,8 @@ it("shows who else edits the canvas, and says when I edit", async () => {
   await settle();
   const frames = socket.sent.map((raw) => JSON.parse(raw) as { type: string }).filter((f) => f.type === "canvas_presence");
   expect(frames).toEqual([
-    { type: "canvas_presence", canvas_id: canvas.id, editing: true, section: "TODO" },
-    { type: "canvas_presence", canvas_id: canvas.id, editing: false, section: null },
+    { type: "canvas_presence", canvas_id: canvas.id, editing: true, section: "TODO", caret: { line: editor.value.split("\n").length - 1, column: expect.any(Number) as number } },
+    { type: "canvas_presence", canvas_id: canvas.id, editing: false, section: null, caret: null },
   ]);
 });
 

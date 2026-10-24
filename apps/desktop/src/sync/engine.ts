@@ -19,7 +19,7 @@ import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, AttendanceEntr
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
-import { LOCAL_PREFIX } from "./types";
+import { type CanvasCaret, LOCAL_PREFIX } from "./types";
 import { DriveHub } from "./drive";
 import { takesDmClose } from "./dmCloses";
 import { caughtUp, countsAfterDelete, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
@@ -691,19 +691,20 @@ export class SyncEngine {
     else if (frame.type === "canvas_presence") {
       // M72: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh.
       if (frame.user_id !== this.deps.store.me?.id) {
-        this.deps.store.noteCanvasEditing(frame.canvas_id, frame.user_id, frame.editing, frame.section ?? null, this.deps.now ? Date.parse(this.deps.now()) : Date.now());
+        this.deps.store.noteCanvasEditing(frame.canvas_id, frame.user_id, frame.editing, frame.section ?? null, this.deps.now ? Date.parse(this.deps.now()) : Date.now(), frame.caret ?? null);
       }
     }
   }
 
   /**
    * M72 (CANVAS.md §18.2): I edit this canvas (the editor has the focus and is used; `section` is the caret's heading) or
-   * stopped. Repeats go out at most every 20 s, changes at once; a stop only after a start went out.
+   * stopped. Repeats go out at most every 20 s, changes at once; a stop only after a start went out. CANVAS.md §25:
+   * `caret` (in the stored body) goes with it; the editor sends one that only moved at most every 300 ms.
    */
-  setCanvasEditing(canvasId: string, editing: boolean, section: string | null = null): void {
+  setCanvasEditing(canvasId: string, editing: boolean, section: string | null = null, caret: CanvasCaret | null = null): void {
     const ws = this.ws;
     if (!ws || this.status !== "online") return;
-    const frame = this.canvasPresence.next(canvasId, editing, section, Date.now());
+    const frame = this.canvasPresence.next(canvasId, editing, section, Date.now(), caret);
     if (!frame) return;
     try {
       ws.send(JSON.stringify(frame));

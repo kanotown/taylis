@@ -11,6 +11,7 @@ import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
 import { canvasTaskInit, checklistItem } from "../src/ui/canvasTasks";
 import { sectionAt } from "../src/ui/canvasText";
+import { caretColor, shownOffset, storedCaret } from "../src/ui/remoteCarets";
 import { canvasSourceState, taskCreateBody } from "../src/ui/tasks";
 import { FakeServer } from "./fakeServer";
 
@@ -30,12 +31,12 @@ describe("canvas_presence (CANVAS.md §18.2)", () => {
   it("sends a start, repeats only every 20 s or on a new heading, and a stop only after a start", () => {
     const sender = new CanvasPresenceSender();
     expect(sender.next("c1", false, null, 0)).toBeNull(); // nothing started
-    expect(sender.next("c1", true, "  TODO  ", 0)).toEqual({ type: "canvas_presence", canvas_id: "c1", editing: true, section: "TODO" });
+    expect(sender.next("c1", true, "  TODO  ", 0)).toEqual({ type: "canvas_presence", canvas_id: "c1", editing: true, section: "TODO", caret: null });
     expect(sender.next("c1", true, "TODO", 1_000)).toBeNull();
     expect(sender.next("c1", true, "決定事項", 2_000)?.section).toBe("決定事項");
     expect(sender.next("c1", true, "決定事項", 2_000 + CANVAS_PRESENCE_REFRESH_MS - 1)).toBeNull();
     expect(sender.next("c1", true, "決定事項", 2_000 + CANVAS_PRESENCE_REFRESH_MS)?.editing).toBe(true);
-    expect(sender.next("c1", false, "x", 30_000)).toEqual({ type: "canvas_presence", canvas_id: "c1", editing: false, section: null });
+    expect(sender.next("c1", false, "x", 30_000)).toEqual({ type: "canvas_presence", canvas_id: "c1", editing: false, section: null, caret: null });
     expect(sender.next("c1", false, null, 31_000)).toBeNull();
     // Another connection: the next start goes out at once.
     sender.next("c2", true, null, 0);
@@ -48,14 +49,49 @@ describe("canvas_presence (CANVAS.md §18.2)", () => {
     const editors = new CanvasEditors();
     editors.note("c1", "u1", true, "TODO", 0);
     editors.note("c1", "u2", true, null, 1_000);
-    expect(editors.of("c1", 2_000)).toEqual([{ userId: "u1", section: "TODO" }, { userId: "u2", section: null }]);
-    expect(editors.of("c1", CANVAS_PRESENCE_TTL_MS)).toEqual([{ userId: "u2", section: null }]);
+    expect(editors.of("c1", 2_000)).toEqual([{ userId: "u1", section: "TODO", caret: null }, { userId: "u2", section: null, caret: null }]);
+    expect(editors.of("c1", CANVAS_PRESENCE_TTL_MS)).toEqual([{ userId: "u2", section: null, caret: null }]);
     editors.note("c1", "u2", true, "決定事項", 40_000); // refreshed
-    expect(editors.of("c1", 80_000)).toEqual([{ userId: "u2", section: "決定事項" }]);
+    expect(editors.of("c1", 80_000)).toEqual([{ userId: "u2", section: "決定事項", caret: null }]);
     expect(editors.nextExpiry("c1", 80_000)).toBe(40_000 + CANVAS_PRESENCE_TTL_MS);
     editors.note("c1", "u2", false, null, 80_001);
     expect(editors.of("c1", 80_002)).toEqual([]);
     expect(editors.of("other", 0)).toEqual([]);
+  });
+
+  it("CANVAS.md §25: a caret that only moved goes out at most every 250 ms; a new heading at once", () => {
+    const sender = new CanvasPresenceSender();
+    const at = (line: number, column: number) => ({ line, column });
+    expect(sender.next("c1", true, "TODO", 0, at(1, 0))?.caret).toEqual(at(1, 0));
+    expect(sender.next("c1", true, "TODO", 100, at(1, 1))).toBeNull(); // too soon: the editor asks again at 300 ms
+    expect(sender.next("c1", true, "TODO", 300, at(1, 2))?.caret).toEqual(at(1, 2));
+    expect(sender.next("c1", true, "TODO", 400, at(1, 2))).toBeNull(); // the same: only the 20 s refresh
+    expect(sender.next("c1", true, "決定事項", 450, at(5, 0))?.section).toBe("決定事項"); // a new heading: at once
+    expect(sender.next("c1", false, null, 500, at(5, 0))).toEqual({ type: "canvas_presence", canvas_id: "c1", editing: false, section: null, caret: null });
+  });
+
+  it("CANVAS.md §25: the others' carets are kept with their entry and go with it", () => {
+    const editors = new CanvasEditors();
+    expect(editors.note("c1", "u1", true, "TODO", 0, { line: 2, column: 4 })).toBe(true);
+    expect(editors.of("c1", 1)).toEqual([{ userId: "u1", section: "TODO", caret: { line: 2, column: 4 } }]);
+    expect(editors.note("c1", "u1", true, "TODO", 10, { line: 2, column: 5 })).toBe(true); // moved: draw again
+    editors.note("c1", "u1", false, null, 20);
+    expect(editors.of("c1", 21)).toEqual([]);
+  });
+
+  it("CANVAS.md §25: a caret travels in the stored body's terms (mentions as stored) and lands on the same line here", () => {
+    const encode = (s: string) => s.replace(/@kano/g, "<@0001>");
+    const decode = (s: string) => s.replace(/<@0001>/g, "@kano");
+    const shown = "# 議事録\n@kano さんへ: 資料\nlast";
+    const offset = shown.indexOf("資料") + 2;
+    const caret = storedCaret(shown, offset, encode);
+    expect(caret).toEqual({ line: 1, column: "<@0001> さんへ: 資料".length });
+    const stored = "# 議事録\n<@0001> さんへ: 資料\nlast";
+    expect(shownOffset(stored, shown, caret, decode)).toBe(offset);
+    // Past the end of a line that is shorter here: the end of the line; a line not here: none.
+    expect(shownOffset(stored, "# 議事録\n@kano\nlast", caret, decode)).toBe("# 議事録\n@kano".length);
+    expect(shownOffset(stored, "# 議事録", caret, decode)).toBeNull();
+    expect(caretColor("u1")).toBe(caretColor("u1"));
   });
 
   it("words who edits", () => {
@@ -103,11 +139,11 @@ describe("SyncEngine and Canvas Phase 2", () => {
   it("shows others' 「編集中」 frames and sends mine through the throttle", async () => {
     const { server, alice, bob, channel, store, engine } = await engineSetup(() => {});
     const socket = server.socketsOf(bob.id)[0]!;
-    const frame = (user: string, editing: boolean, section: string | null) => ({ type: "canvas_presence", canvas_id: "cv1", channel_id: channel.id, user_id: user, editing, section });
+    const frame = (user: string, editing: boolean, section: string | null) => ({ type: "canvas_presence", canvas_id: "cv1", channel_id: channel.id, user_id: user, editing, section, caret: editing ? { line: 3, column: 2 } : null });
     socket.deliver(frame(alice.id, true, "TODO"));
     socket.deliver(frame(bob.id, true, null)); // my own (another device of mine): not shown
     await engine.idle();
-    expect(store.canvasEditors("cv1", Date.now())).toEqual([{ userId: alice.id, section: "TODO" }]);
+    expect(store.canvasEditors("cv1", Date.now())).toEqual([{ userId: alice.id, section: "TODO", caret: { line: 3, column: 2 } }]);
     expect(store.canvasEditors("cv1", Date.now() + CANVAS_PRESENCE_TTL_MS + 1)).toEqual([]);
     socket.deliver(frame(alice.id, false, null));
     await engine.idle();
@@ -118,8 +154,8 @@ describe("SyncEngine and Canvas Phase 2", () => {
     engine.setCanvasEditing("cv1", false);
     const sent = socket.sent.map((raw) => JSON.parse(raw) as { type: string }).filter((f) => f.type === "canvas_presence");
     expect(sent).toEqual([
-      { type: "canvas_presence", canvas_id: "cv1", editing: true, section: "TODO" },
-      { type: "canvas_presence", canvas_id: "cv1", editing: false, section: null },
+      { type: "canvas_presence", canvas_id: "cv1", editing: true, section: "TODO", caret: null },
+      { type: "canvas_presence", canvas_id: "cv1", editing: false, section: null, caret: null },
     ]);
     engine.stop();
   });

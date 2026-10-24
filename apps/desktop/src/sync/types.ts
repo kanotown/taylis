@@ -144,6 +144,14 @@ export interface CanvasPresenceFrame {
   user_id: string;
   editing: boolean;
   section: string | null;
+  /** CANVAS.md §25: where their caret is (absent from older servers). */
+  caret?: CanvasCaret | null;
+}
+
+/** CANVAS.md §25: a caret in the stored body — a 0-based line, a column in UTF-16 units. */
+export interface CanvasCaret {
+  line: number;
+  column: number;
 }
 
 export type ServerFrame =

@@ -6,33 +6,48 @@
  * Receiving: an editor shows until TTL_MS pass without a refresh (or a false arrives).
  */
 import { t } from "../i18n";
+import type { CanvasCaret } from "./types";
 
 export const CANVAS_PRESENCE_REFRESH_MS = 20_000;
 export const CANVAS_PRESENCE_TTL_MS = 45_000;
+/** CANVAS.md §25: a caret that moved goes out at most this often (the editor sends the last one when the time is up). */
+export const CANVAS_CARET_INTERVAL_MS = 300;
+/** Below this the sender holds a moved caret back whoever asks (timers fire a little early or late). */
+const CARET_MIN_GAP_MS = 250;
 
 export interface CanvasPresenceOut {
   type: "canvas_presence";
   canvas_id: string;
   editing: boolean;
   section: string | null;
+  caret?: CanvasCaret | null;
 }
+
+const sameCaret = (a: CanvasCaret | null, b: CanvasCaret | null) => a === b || (!!a && !!b && a.line === b.line && a.column === b.column);
 
 /** What this device last said per canvas; decides which frames go out. */
 export class CanvasPresenceSender {
-  private readonly sent = new Map<string, { editing: boolean; section: string | null; at: number }>();
+  private readonly sent = new Map<string, { editing: boolean; section: string | null; caret: CanvasCaret | null; at: number; caretAt: number }>();
 
-  /** The frame to send for this state now, or null (nothing new to say). */
-  next(canvasId: string, editing: boolean, section: string | null, now: number): CanvasPresenceOut | null {
+  /**
+   * The frame to send for this state now, or null (nothing new to say). A caret that only moved goes out when
+   * CANVAS_CARET_INTERVAL_MS passed since the last one (the editor asks again then, with the caret as it is by then).
+   */
+  next(canvasId: string, editing: boolean, section: string | null, now: number, caret: CanvasCaret | null = null): CanvasPresenceOut | null {
     const shown = section?.trim().replace(/\s+/g, " ").slice(0, 120) || null;
     const last = this.sent.get(canvasId);
     if (!editing) {
       if (!last?.editing) return null;
       this.sent.delete(canvasId);
-      return { type: "canvas_presence", canvas_id: canvasId, editing: false, section: null };
+      return { type: "canvas_presence", canvas_id: canvasId, editing: false, section: null, caret: null };
     }
-    if (last?.editing && last.section === shown && now - last.at < CANVAS_PRESENCE_REFRESH_MS) return null;
-    this.sent.set(canvasId, { editing: true, section: shown, at: now });
-    return { type: "canvas_presence", canvas_id: canvasId, editing: true, section: shown };
+    if (last?.editing && last.section === shown) {
+      if (sameCaret(last.caret, caret)) {
+        if (now - last.at < CANVAS_PRESENCE_REFRESH_MS) return null;
+      } else if (now - last.caretAt < CARET_MIN_GAP_MS) return null;
+    }
+    this.sent.set(canvasId, { editing: true, section: shown, caret, at: now, caretAt: now });
+    return { type: "canvas_presence", canvas_id: canvasId, editing: true, section: shown, caret };
   }
 
   /** A new connection: the server knows nothing of before, so the next true goes out at once. */
@@ -44,20 +59,23 @@ export class CanvasPresenceSender {
 export interface CanvasEditor {
   userId: string;
   section: string | null;
+  /** CANVAS.md §25: where their caret is, when they said. */
+  caret: CanvasCaret | null;
 }
 
 /** Who edits which canvas, as the frames said (kept by the store; expired entries are skipped when read). */
 export class CanvasEditors {
-  private readonly byCanvas = new Map<string, Map<string, { section: string | null; until: number }>>();
+  private readonly byCanvas = new Map<string, Map<string, { section: string | null; caret: CanvasCaret | null; until: number }>>();
 
   /** A frame from someone else: true (re)starts their entry for TTL_MS, false ends it. Returns whether it changed. */
-  note(canvasId: string, userId: string, editing: boolean, section: string | null, now: number): boolean {
-    const users = this.byCanvas.get(canvasId) ?? new Map<string, { section: string | null; until: number }>();
+  note(canvasId: string, userId: string, editing: boolean, section: string | null, now: number, caret: CanvasCaret | null = null): boolean {
+    const users = this.byCanvas.get(canvasId) ?? new Map<string, { section: string | null; caret: CanvasCaret | null; until: number }>();
     for (const [other, entry] of users) if (entry.until <= now) users.delete(other); // keep the map small
     let changed: boolean;
     if (editing) {
-      changed = users.get(userId)?.section !== section || !users.has(userId);
-      users.set(userId, { section, until: now + CANVAS_PRESENCE_TTL_MS });
+      const was = users.get(userId);
+      changed = !was || was.section !== section || !sameCaret(was.caret, caret);
+      users.set(userId, { section, caret, until: now + CANVAS_PRESENCE_TTL_MS });
     } else {
       changed = users.delete(userId);
     }
@@ -70,7 +88,7 @@ export class CanvasEditors {
   of(canvasId: string, now: number): CanvasEditor[] {
     const users = this.byCanvas.get(canvasId);
     if (!users) return [];
-    return [...users].filter(([, entry]) => entry.until > now).map(([userId, entry]) => ({ userId, section: entry.section }));
+    return [...users].filter(([, entry]) => entry.until > now).map(([userId, entry]) => ({ userId, section: entry.section, caret: entry.caret }));
   }
 
   /** The soonest moment an entry of this canvas expires (to re-render then), or null. */

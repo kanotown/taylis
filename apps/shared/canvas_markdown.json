@@ -112,7 +112,13 @@
     { "name": "a change before the caret moves it with the text", "before": "abc\ndef", "after": "xabc\ndef", "caret": 5, "expected": 6 },
     { "name": "a line inserted above", "before": "a\nb\nc", "after": "a\nNEW\nb\nc", "caret": 4, "expected": 8 },
     { "name": "changes above and below: the caret's line is found again", "before": "L1\nL2\nL3\nL4", "after": "X1\nL2\nL3\nX4", "caret": 7, "expected": 7 },
-    { "name": "the caret's line itself changed: the end of the change", "before": "one\ntwo\nthree", "after": "one\nTWO!\nthree", "caret": 5, "expected": 8 }
+    { "name": "the caret's line itself changed: the end of the change", "before": "one\ntwo\nthree", "after": "one\nTWO!\nthree", "caret": 5, "expected": 8 },
+    { "name": "someone typed on my line before the caret and another line changed below: the caret stays on my line", "before": "a\n- 議題。X\nb\nlast", "after": "a\n- [B:研究]議題。X\nb\nlast p0", "caret": 8, "expected": 14 },
+    { "name": "my line edited after the caret and a line inserted above", "before": "L1\nabc def\nL3", "after": "NEW\nL1\nabc XYZ def\nL3", "caret": 6, "expected": 14 },
+    { "name": "my line edited on both sides of the caret: it follows the characters kept", "before": "x\nhello world\ny", "after": "x\nHi hello world!\ny!", "caret": 7, "expected": 10 },
+    { "name": "lines inserted above and below while my line changed", "before": "t\nmy line\nu", "after": "t\nA\nB\nmy line!\nu\nC", "caret": 7, "expected": 11 },
+    { "name": "my line went: the end of the line before it", "before": "a\nbb\nc\nd", "after": "a\nc\nX", "caret": 3, "expected": 1 },
+    { "name": "the same line twice: the one that is mine", "before": "- a\nfoo\n- a\nbar", "after": "- a\nfoo2\n- a\nbar2", "caret": 11, "expected": 12 }
   ],
   "page_links": {
     "_comment": "M121 (WIKI.md §2.3): links of the canvas dialect (canvases and Docs pages) to a Docs page `[label](page:<uuid>)` and to a file `[label](attachment:<uuid>)` (not an image line). `links`: every link token of the body in order, as {url, label}. With `canvas: false` (a message) they stay text and `links` is empty. The phones join in M122; the desktop reads this section from M121.",

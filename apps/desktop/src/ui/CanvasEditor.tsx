@@ -20,7 +20,8 @@ import { PageIcon } from "./PageIcon";
 import type { AppController } from "../state/app";
 import { anchorLine, findTable, insertTable, lineOf, lineStart, newTable, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
 import { CanvasTableDialog } from "./CanvasTableDialog";
-import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
+import { CANVAS_CARET_INTERVAL_MS, CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
+import { type RemoteCaret, RemoteCarets, shownOffset, storedCaret } from "./remoteCarets";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
 import { continueStructure, type EditState, indentListLine, insertLink, linkFromPaste, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
@@ -80,6 +81,8 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   const area = useRef<HTMLTextAreaElement>(null);
   /** The stored text the shown one stands for: a change of the loop's text that is not this one is taken in. */
   const wire = useRef(saver.text);
+  /** CANVAS.md §24: the loop's generation of the body shown here — every edit says it is written on that one. */
+  const lineage = useRef(saver.textLineage);
   const composing = useRef(false);
   const pendingSelection = useRef<{ start: number; end: number } | null>(null);
 
@@ -91,17 +94,27 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     };
   }, [saver]);
 
-  // The loop replaced the text (a merge, someone else's version, a tick in the preview): show it, the caret kept.
-  useEffect(() => {
-    if (saver.text === wire.current) return;
+  // The loop replaced the text (a merge, someone else's version, a tick in the preview): show it, the caret kept. Not
+  // under an IME composition: the edit that ends it says it was written on the body shown (`lineage`), and the loop
+  // merges it with the newer one; a composition that changed nothing takes the newer body when it ends.
+  const take = () => {
+    if (saver.text === wire.current) {
+      lineage.current = saver.textLineage;
+      return;
+    }
+    if (composing.current) return;
+    lineage.current = saver.textLineage;
     const el = area.current;
+    const shown = textRef.current;
     const next = decode(saver.text);
     wire.current = saver.text;
-    const start = el?.selectionStart ?? text.length;
+    const start = el?.selectionStart ?? shown.length;
     const end = el?.selectionEnd ?? start;
-    pendingSelection.current = { start: preserveCaret(text, next, start), end: preserveCaret(text, next, end) };
+    pendingSelection.current = { start: preserveCaret(shown, next, start), end: preserveCaret(shown, next, end) };
+    textRef.current = next;
     setText(next);
-  }, [saver.textRevision]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
+  useEffect(take, [saver.textRevision]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     const selection = pendingSelection.current;
@@ -149,15 +162,32 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   // again on typing and when the caret's heading changes, else every 20 s), stopped on blur and when the editor goes.
   const engine = controller.engine;
   const focused = useRef(false);
-  const lastAnnounced = useRef(0);
-  /** `soon`: from typing or the caret moving — looked at once a second at most (the heading is found by a scan). */
+  const caretTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * `soon`: from typing or the caret moving — sent once CANVAS_CARET_INTERVAL_MS (300 ms) is up, with the heading and the
+   * caret as they are then (CANVAS.md §25: the others draw the caret), so a burst of keys makes one frame.
+   */
   const announce = (editing: boolean, soon = false) => {
-    const now = Date.now();
-    if (editing && soon && now - lastAnnounced.current < 1000) return;
-    lastAnnounced.current = now;
     if (doc) return; // M121: a page has no presence frames (WIKI.md §7.3, later)
+    if (editing && soon) {
+      caretTimer.current ??= setTimeout(() => {
+        caretTimer.current = null;
+        if (focused.current) announce(true);
+      }, CANVAS_CARET_INTERVAL_MS);
+      return;
+    }
+    if (!editing && caretTimer.current) {
+      clearTimeout(caretTimer.current);
+      caretTimer.current = null;
+    }
     const el = area.current;
-    engine?.setCanvasEditing(saver.id, editing, editing && el ? sectionAt(el.value, el.selectionStart ?? 0) : null);
+    if (!editing || !el) {
+      engine?.setCanvasEditing(saver.id, false);
+      return;
+    }
+    const offset = el.selectionStart ?? 0;
+    const caret = storedCaret(el.value, offset, (prefix) => encodeMentions(stripStandIns(prefix), store.users.values(), store.groups.values()));
+    engine?.setCanvasEditing(saver.id, true, sectionAt(el.value, offset), caret);
   };
   useEffect(() => {
     if (doc) return;
@@ -166,16 +196,20 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     }, CANVAS_PRESENCE_REFRESH_MS);
     return () => {
       clearInterval(timer);
+      if (caretTimer.current) clearTimeout(caretTimer.current);
+      caretTimer.current = null;
       engine?.setCanvasEditing(saver.id, false);
     };
   }, [engine, saver, !doc]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [areaElement, setAreaElement] = useState<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => setAreaElement(area.current), []);
 
   const change = (next: string) => {
     setText(next);
     textRef.current = next;
     const stored = encode(next);
     wire.current = stored;
-    saver.edit(stored);
+    saver.edit(stored, false, lineage.current);
   };
 
   // M44 (§4.10): images pasted, dropped or picked are uploaded (pending) and put in as `![](attachment:<id>)` lines at
@@ -560,6 +594,8 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         }}
         onCompositionEnd={() => {
           composing.current = false;
+          // After the input event that commits it (WebKit sends that one after compositionend).
+          setTimeout(take, 20);
           saver.compositionEnded();
         }}
         onBlur={(event) => {
@@ -608,6 +644,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
           void insertImages([...event.dataTransfer.files]);
         }}
       />
+      {!doc && <OthersCarets controller={controller} canvasId={saver.id} area={areaElement} stored={saver.text} shown={text} />}
       <input
         ref={picker}
         type="file"
@@ -694,4 +731,29 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       )}
     </div>
   );
+}
+
+/**
+ * CANVAS.md §25: the carets of the others editing this canvas (their `canvas_presence` frames), over the text area.
+ * Re-rendered with the store (frames) and every second while someone is there (an entry goes 45 s after its last frame).
+ */
+function OthersCarets({ controller, canvasId, area, stored, shown }: { controller: AppController; canvasId: string; area: HTMLTextAreaElement | null; stored: string; shown: string }) {
+  useSyncExternalStore((listener) => controller.store.subscribe(listener), () => controller.store.version);
+  const store = controller.store;
+  const [now, setNow] = useState(() => Date.now());
+  const editors = store.canvasEditors(canvasId, Date.now());
+  useEffect(() => {
+    if (editors.length === 0) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [editors.length]);
+  void now;
+  const carets: RemoteCaret[] = [];
+  for (const editor of editors) {
+    if (!editor.caret) continue;
+    const offset = shownOffset(stored, shown, editor.caret, (prefix) => decodeMentions(prefix, store.users, store.groups));
+    if (offset === null) continue;
+    carets.push({ userId: editor.userId, name: store.users.get(editor.userId)?.display_name ?? t("common.member"), offset });
+  }
+  return <RemoteCarets area={area} carets={carets} text={shown} />;
 }
