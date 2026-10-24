@@ -190,14 +190,33 @@ enum ReservationRules {
     static func walkinText(_ row: ReservationOut, pool: PoolOut, now: Date) -> String {
         if row.status == "waiting" {
             switch row.step {
-            case "assign": return row.until.map { tr("空きあり（〜\(when($0, now: now)) まで）· 担当者の割り当て待ち") } ?? tr("空きあり · 担当者の割り当て待ち")
+            case "assign": return row.until.map { tr("空きあり（〜\(when($0, now: now)) まで保証）· 担当者の割り当て待ち") } ?? tr("空きあり · 担当者の割り当て待ち")
             case "swap": return row.ready ? tr("まもなく担当者が割り当てます") : tr("前の人の保証時間の後に割り当てられます")
             default: return tr("順番待ち \(row.position.map(String.init) ?? "?") 番目")
             }
         }
         if row.status == "returning" { return tr("返却済み · 担当者が外すのを待っています") }
         if let evict = row.evictAt { return tr("\(when(evict, now: now)) 以降に外されます") }
+        // Past the guarantee with nobody waiting: the operators take the seat out (RESERVATIONS.md §4, 2026-10-24).
+        if row.status == "holding", let until = row.guaranteeUntil, let end = date(until), end <= now {
+            return tr("利用中（保証は \(when(until, now: now)) まで · 担当者が外すことがあります）")
+        }
         return row.guaranteeUntil.map { tr("利用中（〜\(when($0, now: now)) まで保証）") } ?? tr("利用中")
+    }
+
+    /// A holder's line in the operators' 「利用中」 list: a booking's time, or what a walk-in's says.
+    static func holderText(_ row: ReservationOut, pool: PoolOut, now: Date) -> String {
+        if row.kind == "booking", row.startAt != nil {
+            let s = tr("予約 \(span(row.startAt, row.endAt, now: now))")
+            return row.status == "returning" ? tr("\(s) · 返却済み") : s
+        }
+        return walkinText(row, pool: pool, now: now)
+    }
+
+    /// Whether the caller may take this holder out by hand (「外す」 on the row, 2026-10-24): operators (the pool's
+    /// operators, its creator, administrators) on anyone on a seat, at any time. The holder themself returns it instead.
+    static func canRemoveHolder(_ pool: PoolOut, _ row: ReservationOut) -> Bool {
+        pool.canOperate && (row.status == "holding" || row.status == "returning")
     }
 
     /// What a booking of mine says.
@@ -393,7 +412,7 @@ struct PoolSection: View {
                 if !pool.enabled { Text("停止中").foregroundStyle(.secondary) }
             }
         } footer: {
-            Text("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。")
+            Text("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を保証の時間（次の予約が始まるまで）使えます。保証が過ぎると担当者が外します。")
         }
         .disabled(busy)
         .sheet(isPresented: $booking) { BookingSheet(controller: controller, pool: pool, initialDay: day) }
@@ -418,6 +437,31 @@ struct PoolSection: View {
                             .buttonStyle(todo.upcoming ? AnyPrimitiveButtonStyle(.bordered) : AnyPrimitiveButtonStyle(.borderedProminent))
                             .disabled(busy || tooEarly(todo, now: now))
                     }
+                }
+            }
+        }
+
+        if pool.canOperate && !pool.holders.isEmpty {
+            // Who is on a seat now; an operator can take anyone out by hand (asked first; 2026-10-24).
+            Section(tr("利用中（\(pool.holders.count)/\(pool.capacity)）")) {
+                ForEach(pool.holders) { row in
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name(row.userId)).font(.subheadline)
+                            if let email = row.email { Text(email).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                            Text(ReservationRules.holderText(row, pool: pool, now: now)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if ReservationRules.canRemoveHolder(pool, row) {
+                            Button("外す", role: .destructive) {
+                                confirm = Confirm(text: tr("\(name(row.userId)) さんを外しますか？ 管理画面でも外してください。"), label: tr("外す"),
+                                                  destructive: true, run: { _ = await controller.reservationAction(row.id, "remove") })
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(busy)
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
                 }
             }
         }
