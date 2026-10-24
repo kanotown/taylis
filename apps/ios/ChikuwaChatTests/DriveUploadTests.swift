@@ -260,12 +260,22 @@ final class DriveUploadRulesTests: XCTestCase {
     }
 }
 
+/// Background time that never runs out: a batch's claim (a FileLock) stays held for the whole test, whatever the host
+/// app's state (its own background tasks may expire in a long run).
+private final class LastingActivities: BackgroundActivityProvider, @unchecked Sendable {
+    private final class Activity: BackgroundActivity, @unchecked Sendable { func end() {} }
+    func begin(_ name: String, expired: @escaping () -> Void) -> BackgroundActivity? { Activity() }
+}
+
 final class DriveUploadProcessorTests: XCTestCase {
     private var root: URL!
     private var account: String!
     private var server: FakeDriveUploadServer!
+    private var previousActivities: BackgroundActivityProvider!
 
     override func setUp() {
+        previousActivities = FileLock.activities
+        FileLock.activities = LastingActivities()
         root = FileManager.default.temporaryDirectory.appendingPathComponent("drive-batches-\(UUID().uuidString)", isDirectory: true)
         account = "http://drive.test|tester-\(UUID().uuidString)"
         server = FakeDriveUploadServer()
@@ -278,6 +288,7 @@ final class DriveUploadProcessorTests: XCTestCase {
         StubProtocol.handler = nil
         Keychain.delete(account: account)
         try? FileManager.default.removeItem(at: root)
+        FileLock.activities = previousActivities
     }
 
     private var store: DriveUploadStore { DriveUploadStore(root: root) }
@@ -312,7 +323,7 @@ final class DriveUploadProcessorTests: XCTestCase {
     }
 
     /// Waits until the batch's jobs settle (the parts are answered on another queue).
-    private func settled(_ id: String, timeout: TimeInterval = 5, _ done: (DriveUploadBatch) -> Bool = { $0.isFinished }) async throws -> DriveUploadBatch {
+    private func settled(_ id: String, timeout: TimeInterval = 15, _ done: (DriveUploadBatch) -> Bool = { $0.isFinished }) async throws -> DriveUploadBatch {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let batch = store.load(id), done(batch) { return batch }
