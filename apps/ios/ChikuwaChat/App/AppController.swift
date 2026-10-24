@@ -183,6 +183,8 @@ final class AppController {
     /// M37 (6): a conversation chosen from 「新しいメッセージ」, whose input takes the keyboard once it shows; its composer
     /// clears this.
     var composerFocus: String?
+    /// What the open conversation's views had, handed to the other layout's (MOBILE_UI.md §26, LayoutCarry.swift).
+    @ObservationIgnored let layoutCarry = LayoutCarry()
 
     /// The API client of a workspace, made from its saved refresh token the first time.
     private func client(for workspace: Workspace) -> ApiClient {

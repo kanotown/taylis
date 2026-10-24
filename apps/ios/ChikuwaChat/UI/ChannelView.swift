@@ -65,6 +65,8 @@ struct ChannelView: View {
     @State private var newRowsJump: Task<Void, Never>?
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
+    /// What the other layout's view of this conversation had (LayoutCarry): its place in the list, taken by `position`.
+    @State private var carriedRowId: String?
 
     enum ChannelSheet: Identifiable {
         case addMember
@@ -177,6 +179,22 @@ struct ChannelView: View {
     /// come or the reader has already scrolled.
     private func position(_ proxy: ScrollViewProxy) {
         guard !positioned, !messages.isEmpty else { return }
+        // Built for the other layout (MOBILE_UI.md §26): where the previous view was, the kept row at the screen's bottom.
+        if let row = carriedRowId {
+            carriedRowId = nil
+            if focus == nil, Timeline.rows(items).contains(where: { $0.id == row }) {
+                positioned = true
+                revealed = true
+                seenSeq = ReadGate.seenLeftInPlace(messages, dividerMark: dividerMark)
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    keptRowId = row
+                    proxy.scrollTo(row, anchor: .top) // the flipped list's top: the screen's bottom, as `keptRowPosition`
+                }
+                return
+            }
+        }
         if focus == nil, let channel,
            ReadGate.placementWaits(channel, status: controller.engine?.status, userScrolled: userScrolled, waitOver: syncWaitOver) { return }
         positioned = true
@@ -747,6 +765,8 @@ struct ChannelView: View {
         }
         .messageSheets(controller, sheet: $messageSheet, openThread: { thread = ThreadTarget(id: $0.parentId ?? $0.id) },
                        markUnread: markUnreadAction, onClosed: sheetClosed)
+        .modifier(ConversationCarrier(controller: controller, channelId: channelId, tab: $tab, keptRowId: $keptRowId, showInfo: $showInfo,
+                                      messageSheet: $messageSheet, channelSheet: $sheet, carriedRowId: $carriedRowId))
         .onChange(of: controller.calendarOpen, initial: true) { _, open in
             // M52: a notification of this channel's event: its 「予定」 tab, which shows the event.
             if let open, open.channelId == channelId, channel.map(AppController.hasCalendar) == true { tab = .events }
@@ -1521,6 +1541,8 @@ final class IsoDates: @unchecked Sendable {
 struct ComposerView: View {
     let channelId: String
     var parentId: String? = nil
+    /// `AppController.composerFocus` for this input: the conversation's id, or a thread's (`ConversationCarrier.focusKey`).
+    private var focusKey: String { ConversationCarrier.focusKey(channelId, thread: parentId) }
     let users: [UserPublic]
     var placeholder = tr("メッセージを入力")
     var controller: AppController? = nil
@@ -2056,12 +2078,19 @@ struct ComposerView: View {
             .presentationDetents([.medium])
         }
         // M37 (6): chosen from 「新しいメッセージ」: the input takes the keyboard once the push has settled.
-        .task(id: parentId == nil && controller?.composerFocus == channelId) {
-            guard parentId == nil, let controller, controller.composerFocus == channelId else { return }
+        .task(id: controller?.composerFocus == focusKey) {
+            guard let controller, controller.composerFocus == focusKey else { return }
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }
             controller.composerFocus = nil
             focused = true
+        }
+        .onChange(of: focused) { _, focused in
+            // LayoutCarry: whether this input has the keyboard when the layout changes (MOBILE_UI.md §26).
+            controller?.layoutCarry.update(channelId, thread: parentId) { carry in
+                carry.composerFocused = focused
+                carry.composerBlurredAt = focused ? nil : Date()
+            }
         }
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
         // A popover beside the composer on an iPad's regular width, the sheet on a phone.
