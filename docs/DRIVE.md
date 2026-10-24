@@ -478,7 +478,7 @@ ShareLinkOut = {
 
 | メソッド | パス | 中身 |
 | --- | --- | --- |
-| GET | `/search/drive?q=&location_id=&cursor=&limit=` | `{items: [ItemOut + path], next_cursor}`（読める場所だけ、ゴミ箱を除く） |
+| GET | `/search/drive?q=&location_id=&cursor=&limit=&content=` | `{items: [ItemOut + path], next_cursor}`（読める場所だけ、ゴミ箱を除く）。`content=true` でファイルの中身も（§29） |
 | POST | `/drive/items/{id}/attach-copy` | → 201 `AttachmentOut`（pending。入力欄の添付として送る。100 MB を超えれば 413 `attachment_too_large`） |
 | POST | `/drive/save-attachment` | `{attachment_id, folder_id, name?, on_conflict, client_op_id}` → 201 `ItemOut` |
 | GET | `/drive/items/{id}/reach?channel_id=` | `{readable: n, unreadable: m}`（その会話のメンバーのうち読める / 読めない人の数。入力欄の注意、§13.1） |
@@ -866,9 +866,9 @@ handle @driveparts {
 - `search` モジュールに `drive` の読み取り専用の問い合わせを許す（ARCHITECTURE.md §5 の規約 1 の例外に足す。読める場所の集合は
   `drive` の公開関数で得る）。速度制限は今の検索と同じ枠。
 - 全体の検索（⌘K と検索の画面）に「ドライブ」の種類を足す。ドライブの画面の検索欄はその場所の中を探す。
-- **後で**：PDF・Office の中身の全文。版ごとの本文の表 `drive_texts (version_id, text, extracted_at)` を足し、プレビューを作る時に
-  PDF（変換した PDF も）から文字を取り出して PGroonga で引く。ここに入れた本文は将来の RAG（意味検索）の材料にもなる
-  （DATA_MODEL.md §6 の `message_embeddings` と同じ考え方で、`drive_text_embeddings` を足せる）。v1 では表を作らない。
+- **中身の全文**（2026-10-24、§29）：PDF・Office（プレビューの PDF）・テキスト・Markdown・CSV の文字を版ごとの表 `drive_texts` に
+  入れ、PGroonga で引く（`GET /search/drive?content=true`）。ここに入れた本文は将来の RAG（意味検索）の材料にもなる
+  （DATA_MODEL.md §6 の `message_embeddings` と同じ考え方で、`drive_text_embeddings` を足せる）。
 
 ## 13. 会話との連携
 
@@ -1946,3 +1946,100 @@ v0.1.70 の後の main のレビュー（`REVIEW-v0.1.70.md`、P1 4 件・P2 1 �
 - 実物：caddy 2.11.6（§28.4）、nginx 1.27（`error_log` の中身）、versitygw v1.8.0（`list_parts`、§28.5）のコンテナで確かめた。
 - **確かめていないこと**：本番・開発のサーバには触れていない（Caddyfile の変更は次のデプロイで入る。nginx の `error_log … crit` は
   運用者が選ぶ）。実 versitygw を通したアップロードの全体の流れでの競合の再現はしていない（ストアの順序は `MemoryBlobStore` の上で作った）。
+
+## 29. ファイルの中身の全文検索（2026-10-24）
+
+§12 の「後で」を作った。ドライブの検索は、ファイル名に加えてファイルの中の文字（日本語と英語）も探す。移行 0121、
+`drive/texts.py`・`attachments/pdf_text.py`、`GET /search/drive?content=true`、3 つの端末の検索の結果。
+
+### 29.1 作ったもの
+
+- **読むもの**（今の版・ゴミ箱の外だけ）：
+  - PDF：元のバイト列（`DRIVE_TEXT_MAX_INPUT_BYTES`、既定 100 MB まで）。
+  - Office（doc / docx / xls / xlsx / ppt / pptx / odt / ods / odp / rtf）：プレビューの PDF（PREVIEWS.md、`preview_pdf_key`）。プレビューが
+    `ready` になるまで待ち（行を作らない）、プレビューが `failed` なら `skipped`（`no_preview`）。converter をもう一度呼ばない。
+  - テキスト・Markdown・CSV・TSV（拡張子 txt / text / md / markdown / csv / tsv、型が `application/octet-stream` か `text/*`）：最初の
+    `DRIVE_TEXT_MAX_BYTES` だけ読み、UTF-8 → UTF-16（BOM）→ CP932（Excel の CSV）の順に読めたもの。NUL を含めば `not_text`。
+  - 読まないもの：画像・動画・ZIP ほか（行を作らない）。**OCR はしない**：文字の層の無い PDF（スキャン）は `skipped`（`no_text`、
+    文字が 1 ページあたり 2 字未満）、パスワードの要る PDF は `skipped`（`encrypted`）。持ち主のパスワード（印刷の禁止など）だけの
+    PDF は読める。
+- **正規化**：NFKC（PGroonga の NormalizerAuto と同じく全角英数・半角カナを寄せる）、制御文字（NUL を含む）を除き、空白の連続を 1 つに。
+  PDF は行の折り返しで語が切れるので、日本語の文字どうしの改行は詰め（「研究計\n画」→「研究計画」、句で探せる）、それ以外の改行は
+  空白、行末のハイフンで切れた英単語はつなぐ。ページの間は改行 1 つ。各ページの文字が始まる位置を `page_starts` に残す。
+- **上限**：1 ファイル `DRIVE_TEXT_MAX_BYTES`（既定 1 MiB、UTF-8。日本語なら約 35 万字、数百ページ）で打ち切り `truncated`。
+  PDF は子プロセス（`python -m app.modules.attachments.pdf_text`、pypdfium2）で読み、`DRIVE_TEXT_TIMEOUT_SECONDS`（既定 120 秒）で kill、
+  子は `nice 10`。環境変数は `PATH` と `LC_ALL` だけ（プレビューの描画と同じ `run_bounded`）。
+- **保存**：`drive_texts`（DATA_MODEL.md「drive_texts」、移行 0121）。版 1 つに 0 か 1 行、PGroonga の索引（メッセージと同じトークナイザ）。
+- **読む流れ**：drive の media loop が、媒体（SHA-256・サムネイル・ポスター）の仕事が無い時に 1 件ずつ読む。チャットの添付がプレビューを
+  待っている間は読まない（`previews.chat_waiting`。プレビューの loop は別なので、ドライブがチャットのプレビューを待たせることはない）。
+  取る時に行を `working` で入れてリース（タイムアウト + 5 分）を付け、試行の番号（`attempts`）を数える。リースの切れた行は取り直され、
+  3 回で `failed`（`gave_up`）。オブジェクトストアの失敗は 5 分後に再試行（`read_failed`）。結果を書くのは、行がまだ `working` で
+  番号が自分のものの時だけ（遅れて終わった古い試行・置き換えられた版の試行は何も書かない）。
+- **版・ゴミ箱・削除**：新しい版（アップロード・`target_item_id`）と版を戻すは、同じトランザクションで前の版の行を消す
+  （`texts.forget_replaced_in_tx`）。新しい版は loop が読む（ふつう数十秒、Office はプレビューの後）。完全削除・版の整理は
+  外部キーの CASCADE。ゴミ箱の項目は検索で除き（行は残す）、戻せばそのまま探せる。名前の変更で拡張子が変われば、次に読む時の判定が変わる。
+- **API**：`GET /search/drive` に `content`（既定 false）。false なら前のとおり名前だけ（古い端末の答えは変わらない）。true なら
+  名前の一致（`drive_items_name_pgroonga_idx`）と中身の一致（`drive_texts_body_pgroonga_idx`、`current_version_id` の行だけ）を
+  UNION して項目ごとにまとめ、**名前が合ったものが先**、次にスコアの和、更新の新しい順。読める場所・ゴミ箱・`location_id`・`kind`・
+  カーソル（件数）・速度制限・時間切れは今の検索と同じ（`readable_location_ids`）。各ヒットに `match`（`name` / `content` / `both`）、
+  `snippet`（見つかった語の前約 30 字・後約 90 字の文字を `{text, hit}` の部品の配列で。`hit` が見つかった語。HTML は送らない）、
+  `page`（PDF とプレビューの PDF のページ、1 から。テキストは null）、答えに `keywords`。切り出しは DB で
+  （`strpos(lower(body), 語)` と `substr`。1 MB の本文を app に運ばない）、印は app で（NFKC・小文字で照らす、`snippet.mark`）。
+  端で切れた英単語は落とす。
+- **Desktop / Web**：ドライブの検索欄と検索の画面の「ドライブ」のタブが `content=true` で探し、中身で見つかったものに
+  「中身 · 2 ページ目」と前後の文（語に色）を出す（`ui/DriveSnippet.tsx`、`drive/snippet.ts`）。開くと文書のビューアはそのページから
+  （`PdfViewer` の `initialPage`、ページが並んだ時に 1 回だけ飛ぶ）。「ドライブから送る」の選択は名前の検索のまま。
+- **iOS / Android**：検索の結果の行の下に同じ 1 行（語は太字に黄色の地）。ページで開くのはまだ（ビューアは 1 ページ目から）。
+- **`app.cli drive-index --limit N [--retry-failed] [--chat-wait-seconds S]`**：loop と同じ手順を CLI で（1 件ずつ確定、何度流しても
+  読んでいないものだけ、loop とは行のリースで重ならない、各ファイルの前にチャットのプレビューを先に通す）。結果に件数、行の状態ごとの数、
+  プレビューを待っている Office の数、「more files are left」。`--retry-failed` は `failed` と `no_preview` の行を消して読み直す。
+- 設定：`DRIVE_TEXT_ENABLED`（既定 true。false でも読んだ分は探せる）、`DRIVE_TEXT_MAX_BYTES`、`DRIVE_TEXT_MAX_INPUT_BYTES`、
+  `DRIVE_TEXT_TIMEOUT_SECONDS`。
+
+### 29.2 決めたこと
+
+| 項目 | 決めたこと | 理由 |
+| --- | --- | --- |
+| 文字の取り出し | pypdfium2（既に依存、プレビューの描画と同じ）。新しい依存もイメージの変更も無い | poppler の `pdftotext` は app のイメージに apt で足す要があり、pdfminer.six は純 Python で大きな PDF が遅い。PDFium は日本語の CMap も読む（手元の LibreOffice の PDF で確かめた） |
+| Office | プレビューの PDF から読む | converter（LibreOffice）を 2 度動かさない。ページの番号がビューアの PDF と同じになる |
+| 置き場所 | 版ごとの表 `drive_texts`（今の版だけ行がある） | §12 の案のとおり。名前の索引と分け、本文の大きさが `drive_items` の一覧を重くしない。将来の `drive_text_embeddings` の元 |
+| API | 新しいエンドポイントではなく `content` のパラメータ | 権限・カーソル・速度制限・時間切れが同じ。古い端末は送らないので前と同じ答え |
+| スニペット | 文字の部品の配列（`{text, hit}`） | HTML を送らない（端末で組み立てるので XSS が無い）。位置（UTF-16・書記素・コードポイント）の数え方の違いが端末ごとに出ない |
+| 並び | 名前の一致が先 | 名前で探す人の答えが前と変わらない。中身だけの一致はその後にスコア順 |
+| 正規化して保存 | NFKC にしてから保存 | 語の位置を `lower()` 1 回で探せ（1 MB でも速い）、PGroonga の正規化と合う。全角英数は半角で見える |
+| 読む時 | media loop の空き時間、チャットのプレビュー優先 | 新しい常駐のループを足さない。チャットのプレビューを待たせない |
+
+### 29.3 本番の読み込み（約 2,500 件・55 GB）
+
+- 手元の計測（Apple シリコンの Docker、app のイメージ）：2 ページの PDF はダウンロードから保存まで 0.15 秒、600 ページ・本文 1 MiB で打ち切った
+  PDF の子プロセスは 0.4 秒、テキスト・CSV は 0.05〜0.1 秒。論文のような図の多い PDF は 1 件 0.5〜3 秒と見る（VPS は 2〜3 倍遅い想定）。
+- 読むのは PDF とテキスト（とプレビューの PDF）だけで、動画・画像・ZIP は読まない（55 GB の大半は読まない）。PDF・Office・テキストが
+  1,000 件なら CPU 1 個で **10〜50 分**、ディスクの読み出しは PDF の合計分（数 GB〜十数 GB、数分）。本文は 1 件平均数十 KB として
+  表と索引で数十〜百数十 MB。
+- Office は先にプレビューが要る：`generate-previews --drive --limit 500` を夜に（converter は CPU 1 個、1 件 1〜10 秒。数百件で 1〜3 時間）。
+- 手順：デプロイすると loop が空き時間に 1 件ずつ読み始める（何もしなくても進む）。一晩で済ませるなら、夜に
+  `generate-previews --drive --limit 500` を「more files are left」が出なくなるまで → `drive-index --limit 1000` を同じく。途中で止めてもよい。
+  済んだかは `drive-index` の「rows: ready … skipped …」と「more files are left」が出ないことで分かる。
+
+### 29.4 確かめたこと
+
+- pytest：`tests/test_drive_texts.py`（正規化・行の結合・NFKC・切り詰め、種類の判定と文字コード（UTF-8・CP932・UTF-16・バイナリ）、
+  印の付け方と端の英単語、子プロセスで実物の PDF（2 ページ、日本語と英語、LibreOffice で作った）・パスワード付き・スキャン・壊れたもの・
+  上限、loop と検索（日本語・英語・句・CSV、名前が先、`both`、ページ、`content` なしは前と同じ）、読める場所だけ（ゲスト・ほかの人の
+  マイドライブ・`location_id`・`kind`・ゴミ箱と戻す）、新しい版・版を戻す・完全削除、Office はプレビューの後に（docx、converter は偽物で
+  実物の PDF を返す）、`drive-index` の再開と冪等と `--retry-failed`、リースの切れた行の取り直しと 3 回目の `gave_up`、遅れた試行が
+  書かないこと、チャットのプレビューが先、検索が 2 つの索引を使うこと、コマンドの引数）。全体 1,728 件（-n 4、専用の PGroonga のコンテナ）・ruff・ruff format --check・mypy。
+- vitest：`driveSnippet.test.tsx`（部品・ページ、名前の一致と古いサーバ、HTML として描かないこと、検索の画面が `content` で探して印を出す）と全体 3,270 件、`tsc --noEmit`。
+- iOS：`DriveSnippetTests`（デコード・古いサーバ・印の位置）、`DriveApiTests`（クエリに `content=true`）、`LocalizationTests`、ビルド
+  （iPhone 17 Pro / iOS 26.5 のシミュレータ、作って消した）。Android：`DriveSnippetTest`、`compileDebugKotlin`・`testDebugUnitTest` 全体・`lintDebug`。
+- 手で（使い捨ての compose：PGroonga・versitygw v1.8.0・Gotenberg 8.37・この版の app、Vite 1422、ヘッドレスの Chrome を CDP で）：
+  日本語と英語の PDF・30 ページの日本語の PDF・docx・パスワード付き・スキャン・CP932 の CSV・Markdown を上げ、数十秒で読まれ
+  （docx はプレビューの後）、「品質係数」「ちくわ型共振器の損失」「photonic crystal」で中身から見つかり、30 ページの PDF は開くと
+  「17 / 30」から始まることを確かめた。`drive-index` を行を消してから 2 回（`--limit 3` → 残り）、3 回目は 0 件。
+
+### 29.5 まだしないこと
+
+- OCR（スキャンの PDF）、画像の中の文字。
+- 会話の添付・キャンバスの添付の中身（ドライブのファイルだけ）。古い版の中身。
+- ⌘K への中身の検索、スマホでそのページから開くこと、PDF のビューアの中で語に印を付けること。
+- 意味検索（`drive_text_embeddings`）。

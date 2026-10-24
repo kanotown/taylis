@@ -187,7 +187,8 @@ docker compose ... exec app python -m app.cli generate-previews --retry-failed
 ## 8. 作らなかったもの
 
 - 送信前の添付とファイル一覧のサムネイル。
-- 文書の中の文字の全文検索 (PDF のテキストは取り出せるが、今回は使わない。将来の RAG の材料になる)。
+- 会話の添付の文書の中の文字の全文検索 (ドライブのファイルは 2026-10-24 から中身も探せる: DRIVE.md §29。Office は
+  プレビューの PDF から読む。将来の RAG の材料にもなる)。
 - 画像以外の種類 (テキスト、CSV、Keynote / Pages / Numbers) のプレビュー。
 - Android のピンチでの拡大、Desktop のページ内検索。
 - Desktop / Web のビューアのページのサムネイル一覧（ページの位置は「n / N」と前後のボタン・キーで示す）。
