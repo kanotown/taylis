@@ -97,5 +97,6 @@
   "reservation.assigned_walkin": {"ja": "✅ {pool}が割り当てられました（{until} まで保証）。保証の時間が過ぎると担当者が外すことがあります。使い終わったら「返却する」を押してください。", "en": "✅ You have {pool} (guaranteed until {until}). After that an operator may take you out. When you are done, press “Return”.", "zh-Hans": "✅ 已为你分配{pool}（保证至 {until}）。保证时间过后，负责人可能会将你移除。用完后请点击“归还”。"},
   "reservation.guarantee_over": {"ja": "⏰ {pool}の保証時間（{until} まで）が過ぎました。担当者が外すことがあります。使い終わっていれば「返却する」を押してください。", "en": "⏰ Your guaranteed time on {pool} (until {until}) is over. An operator may take you out. If you are done, press “Return”.", "zh-Hans": "⏰ 你在{pool}的保证时间（至 {until}）已过。负责人可能会将你移除。如已用完，请点击“归还”。"},
   "reservation.returned_done": {"ja": "⏹ {pool}の返却が済みました。ありがとうございました。", "en": "⏹ {pool} has been returned. Thank you.", "zh-Hans": "⏹ {pool}已归还。谢谢。"},
+  "reservation.walkins_off": {"ja": "↩️ {pool}は「今すぐ」を受け付けなくなったため、順番待ちを取り消しました。予約を使ってください。", "en": "↩️ {pool} no longer takes “Now” requests, so your place in the queue was cancelled. Please book a time instead.", "zh-Hans": "↩️ {pool}已不再接受“立即”使用，因此你的排队已取消。请改用预约。"},
   "reservation.removed": {"ja": "⏹ {pool}から外されました。", "en": "⏹ You were taken out of {pool}.", "zh-Hans": "⏹ 你已被从{pool}移除。"}
 }

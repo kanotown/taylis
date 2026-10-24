@@ -648,6 +648,7 @@ class _Seeder:
             json={
                 "name": c.POOL_NAME,
                 "capacity": 2,
+                "walkins_enabled": True,
                 "operator_ids": [self.uid("suzuki"), self.uid("tanaka")],
                 "tz": c.TZ,
                 "log_channel_id": self.channels["equip"],

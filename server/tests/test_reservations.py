@@ -57,6 +57,8 @@ async def _setup(
             "name": "Claude Premium シート",
             "capacity": 2,
             "operator_ids": [str(op.id), str(op2.id)],
+            # The walk-in tests below need the queue (new pools are booking-only by default).
+            "walkins_enabled": True,
             **pool,
         },
     )
@@ -337,7 +339,10 @@ async def test_one_active_reservation_per_person_and_pool(
     assert (await _book(client, pid, _hour(8), 1)).status_code == 200
     # Another pool is separate.
     as_user(s["admin"])
-    other = await client.post("/api/v1/reservation-pools", json={"name": "GPU", "capacity": 1})
+    other = await client.post(
+        "/api/v1/reservation-pools",
+        json={"name": "GPU", "capacity": 1, "walkins_enabled": True},
+    )
     as_user(s["alice"])
     elsewhere = await client.post(f"/api/v1/reservation-pools/{other.json()['id']}/reserve")
     assert elsewhere.status_code == 200 and elsewhere.json()["my_active_id"] is not None

@@ -220,7 +220,12 @@ async def test_canvas_page_and_reservation_items_are_read_when_opened(
     as_user(admin)
     made = await client.post(
         f"{API}/reservation-pools",
-        json={"name": "Seat", "capacity": 1, "operator_ids": [str(op.id), str(op2.id)]},
+        json={
+            "name": "Seat",
+            "capacity": 1,
+            "walkins_enabled": True,
+            "operator_ids": [str(op.id), str(op2.id)],
+        },
     )
     assert made.status_code == 201, made.text
     as_user(alice)
