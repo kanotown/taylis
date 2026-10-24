@@ -64,6 +64,9 @@ class FakeCanvasServer(initial: String = "", val canvasId: String = "c1", val ch
         version += 1
     }
 
+    /** The body of a version (a save's base), or null. */
+    fun revision(revId: String): String? = revisions[revId]
+
     /** The versions of the last day are thinned away (the base of a long offline edit is gone). */
     fun forget(revId: String) {
         revisions.remove(revId)
