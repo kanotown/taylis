@@ -2210,6 +2210,7 @@ CREATE TABLE drive_texts (
   body          text NOT NULL DEFAULT '',  -- NFKC に正規化、DRIVE_TEXT_MAX_BYTES（既定 1 MiB、UTF-8）まで
   page_starts   integer[],              -- PDF：各ページの文字が body の何文字目から始まるか（検索の結果のページ）
   pages         integer,                -- PDF のページ数
+  page_unit     varchar(8),             -- 移行 0122（§29.6）：page_starts の数え方。'slide' | 'sheet'、null は PDF のページ
   truncated     boolean NOT NULL DEFAULT false,
   attempts      integer NOT NULL DEFAULT 0,  -- 試行の番号（結果を書けるのは同じ番号の試行だけ）
   next_at       timestamptz,            -- working のリース・再試行の時刻
@@ -2222,8 +2223,12 @@ CREATE INDEX drive_texts_working_idx ON drive_texts (next_at) WHERE status = 'wo
 CREATE INDEX drive_texts_body_pgroonga_idx ON drive_texts USING pgroonga (body);  -- メッセージと同じトークナイザ
 ```
 
-- 行が無い：まだ読んでいない、または読むものが無い（画像・動画・ZIP など、行は作らない）。Office はプレビューが `ready`
-  になるまで行を作らない（待つ）。
+- 行が無い：まだ読んでいない、または読むものが無い（画像・動画・ZIP など、行は作らない）。古い Office（doc / xls / ppt / rtf）は
+  プレビューが `ready` になるまで行を作らない（待つ）。ただしプレビューが来ないもの（converter の上限より大きい・プレビューが
+  切ってある）は待たず `skipped`（`too_large` / `no_preview`）。
+- 2026-10-25（§29.6、移行 0122）：Word / Excel / PowerPoint（OOXML）と OpenDocument はパッケージから直に読む（プレビューを待たない）。
+  PowerPoint・プレゼンテーションはスライドごと（`page_unit = 'slide'`）、Excel・表計算はシートごと（`'sheet'`）に `page_starts` を残す。
+  Word は `page_starts` 無し。移行 0122 は `no_preview` で飛ばした行を消し、loop が読み直す。
 - 新しい版・版を戻すと、同じトランザクションで前の版の行を消す（`drive.texts.forget_replaced_in_tx`）。完全削除・版の整理は CASCADE。
   検索は `drive_items.current_version_id = drive_texts.version_id` の行だけを見る（二重の守り）。ゴミ箱の項目は検索で除く（行は残し、
   戻せばそのまま探せる）。
