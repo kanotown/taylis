@@ -1,8 +1,10 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.Codec
+import jp.chikuwachat.android.api.DriveSearchHitOut
 import jp.chikuwachat.android.api.DriveSearchOut
 import jp.chikuwachat.android.ui.SEARCH_HIT
+import jp.chikuwachat.android.ui.drivePageLabel
 import jp.chikuwachat.android.ui.driveSnippet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -27,6 +29,21 @@ class DriveSnippetTest {
         assertEquals("中身 · 2 ページ目  …共振器の品質係数は高い…", line.text)
         val marked = line.spanStyles.filter { it.item == SEARCH_HIT }.map { line.text.substring(it.start, it.end) }
         assertEquals(listOf("品質係数"), marked)
+    }
+
+    /** §29.6: a slide or a sheet of a file read from its package is labelled as one; no `page_kind` is a PDF page. */
+    @Test
+    fun slidesAndSheetsAreLabelled() {
+        fun hit(extra: String) = Codec.snake.decodeFromString(
+            DriveSearchHitOut.serializer(),
+            """{"item":$item,"path":[],"location_kind":"workspace","match":"content","snippet":[{"text":"x","hit":true}]$extra}""",
+        )
+        val slide = hit(""","page":12,"page_kind":"slide"""")
+        assertEquals("slide", slide.pageKind)
+        assertEquals(R.string.drive_search_slide, drivePageLabel(slide))
+        assertEquals(R.string.drive_search_sheet, drivePageLabel(hit(""","page":2,"page_kind":"sheet"""")))
+        assertEquals(R.string.drive_search_page, drivePageLabel(hit(""","page":3""")))
+        assertNull(hit(""","page":null,"page_kind":null""").pageKind)
     }
 
     @Test
