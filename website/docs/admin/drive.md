@@ -172,15 +172,32 @@ Nextcloud で消したファイルは Taylis に残します（表に出ます�
 
     結果に「読んだ数・索引に入れた数・飛ばした数（スキャン・パスワード付き・大きすぎる・文字でない）・失敗の数」と、
     「more files are left」（まだ残りがある）が出ます。残りがあれば同じコマンドをもう一度流します。
-- **Word / Excel / PowerPoint** はプレビューの PDF から読むので、プレビューができてから読みます。Nextcloud から移したファイルは、
-  先に `generate-previews --drive` でプレビューを作ってください（`drive-index` の結果に「プレビューを待っているファイルの数」が出ます）。
-- **読めないもの**：スキャンした PDF（文字の読み取り（OCR）はまだしません）、パスワード付きの PDF、100 MB を超える PDF・テキスト。
-  1 つのファイルで索引に入れるのは最初の 1 MB の文字までです。
-- **失敗したものをもう一度**：`drive-index --retry-failed`（プレビューの失敗で読めなかった Office のファイルも、プレビューを作り直した後に
-  読み直します）。
+- **Word / Excel / PowerPoint**（docx・xlsx・pptx とマクロ付き・テンプレート、OpenDocument も）は、ファイルの中から文字の部分だけを
+  直に読みます。プレビューを待たず、大きさの上限もありません（1 GB を超える動画入りの PowerPoint でも、読むのはスライドの文字の
+  数百 KB だけです）。PowerPoint はスライドごと、Excel はシートごとに、検索の結果に「12 枚目」「シート 2」と出ます。
+- **古い形式の Word / Excel / PowerPoint**（doc・xls・ppt）と RTF はプレビューの PDF から読むので、プレビューができてから読みます。
+  Nextcloud から移したファイルは、先に `generate-previews --drive` でプレビューを作ってください（`drive-index` の結果に
+  「プレビューを待っているファイルの数」が出ます）。プレビューを作れない大きさ（50 MB 超）のものは待たずに飛ばします。
+- **読めないもの**：スキャンした PDF（文字の読み取り（OCR）はまだしません）、パスワード付きの PDF・Office のファイル、100 MB を超える
+  PDF・テキスト、50 MB を超える古い形式の Office のファイル。1 つのファイルで索引に入れるのは最初の 1 MB の文字までです。
+- **失敗したものをもう一度**：`drive-index --retry-failed`（プレビューの失敗や大きさで飛ばしたファイルも、プレビューを作り直した後・
+  上限を上げた後に読み直します）。
 - 上限は環境変数で変えられます：`DRIVE_TEXT_MAX_BYTES`（1 ファイルの文字、既定 1 MiB）、`DRIVE_TEXT_MAX_INPUT_BYTES`（読む PDF・
-  テキストの大きさ、既定 100 MB）、`DRIVE_TEXT_TIMEOUT_SECONDS`（1 ファイル、既定 120 秒）、`DRIVE_TEXT_ENABLED=false` で読むのを止めます
+  テキストの大きさ、既定 100 MB）、`DRIVE_TEXT_MAX_XML_BYTES`（Office のファイルの中で読む XML、既定 64 MB）、
+  `DRIVE_TEXT_TIMEOUT_SECONDS`（1 ファイル、既定 120 秒）、`DRIVE_TEXT_ENABLED=false` で読むのを止めます
   （止めても、もう読んだ分は探せます）。
+
+### 更新の後に（2026-10-25 の版から） { #drive-index-office }
+
+この版から Word / Excel / PowerPoint をプレビュー無しで読みます。更新すると、それまで「プレビューを待っている」まま読まれなかった
+ファイル（50 MB を超える PowerPoint など）と、プレビューの失敗で飛ばしたファイルを、サーバが空いている時に自動で読みます。
+すぐに済ませるなら、更新の後にもう一度流します（大きな PowerPoint でも 1 件 1 秒もかかりません）。
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python -m app.cli drive-index --limit 500
+```
+
+結果の「old Office file(s) … wait for their PDF preview」は古い形式（doc・xls・ppt・rtf）だけの数になり、大きすぎるものは数えません。
 
 ## バックアップ { #backup }
 

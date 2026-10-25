@@ -1957,8 +1957,11 @@ v0.1.70 の後の main のレビュー（`REVIEW-v0.1.70.md`、P1 4 件・P2 1 �
 
 - **読むもの**（今の版・ゴミ箱の外だけ）：
   - PDF：元のバイト列（`DRIVE_TEXT_MAX_INPUT_BYTES`、既定 100 MB まで）。
-  - Office（doc / docx / xls / xlsx / ppt / pptx / odt / ods / odp / rtf）：プレビューの PDF（PREVIEWS.md、`preview_pdf_key`）。プレビューが
+  - Word / Excel / PowerPoint（OOXML）と OpenDocument：2026-10-25 から**パッケージから直に**読む（§29.6）。プレビューを待たない。
+  - 古い Office（doc / xls / ppt / rtf）：プレビューの PDF（PREVIEWS.md、`preview_pdf_key`）。プレビューが
     `ready` になるまで待ち（行を作らない）、プレビューが `failed` なら `skipped`（`no_preview`）。converter をもう一度呼ばない。
+    プレビューが来ないもの（converter の上限 `PREVIEW_MAX_INPUT_BYTES` より大きい：`too_large`、プレビューが切ってある：`no_preview`）は
+    待たずに `skipped`（§29.6）。
   - テキスト・Markdown・CSV・TSV（拡張子 txt / text / md / markdown / csv / tsv、型が `application/octet-stream` か `text/*`）：最初の
     `DRIVE_TEXT_MAX_BYTES` だけ読み、UTF-8 → UTF-16（BOM）→ CP932（Excel の CSV）の順に読めたもの。NUL を含めば `not_text`。
   - 読まないもの：画像・動画・ZIP ほか（行を作らない）。**OCR はしない**：文字の層の無い PDF（スキャン）は `skipped`（`no_text`、
@@ -2002,7 +2005,7 @@ v0.1.70 の後の main のレビュー（`REVIEW-v0.1.70.md`、P1 4 件・P2 1 �
 | 項目 | 決めたこと | 理由 |
 | --- | --- | --- |
 | 文字の取り出し | pypdfium2（既に依存、プレビューの描画と同じ）。新しい依存もイメージの変更も無い | poppler の `pdftotext` は app のイメージに apt で足す要があり、pdfminer.six は純 Python で大きな PDF が遅い。PDFium は日本語の CMap も読む（手元の LibreOffice の PDF で確かめた） |
-| Office | プレビューの PDF から読む | converter（LibreOffice）を 2 度動かさない。ページの番号がビューアの PDF と同じになる |
+| Office | プレビューの PDF から読む（2026-10-25 から古い形式だけ。OOXML / ODF はパッケージから直に、§29.6） | converter（LibreOffice）を 2 度動かさない。ページの番号がビューアの PDF と同じになる。直に読むのは、converter の上限を超える大きなファイルがいつまでも読まれなかったため |
 | 置き場所 | 版ごとの表 `drive_texts`（今の版だけ行がある） | §12 の案のとおり。名前の索引と分け、本文の大きさが `drive_items` の一覧を重くしない。将来の `drive_text_embeddings` の元 |
 | API | 新しいエンドポイントではなく `content` のパラメータ | 権限・カーソル・速度制限・時間切れが同じ。古い端末は送らないので前と同じ答え |
 | スニペット | 文字の部品の配列（`{text, hit}`） | HTML を送らない（端末で組み立てるので XSS が無い）。位置（UTF-16・書記素・コードポイント）の数え方の違いが端末ごとに出ない |
@@ -2044,6 +2047,72 @@ v0.1.70 の後の main のレビュー（`REVIEW-v0.1.70.md`、P1 4 件・P2 1 �
 - 会話の添付・キャンバスの添付の中身（ドライブのファイルだけ）。古い版の中身。
 - ⌘K への中身の検索、スマホでそのページから開くこと、PDF のビューアの中で語に印を付けること。
 - 意味検索（`drive_text_embeddings`）。
+- Word のヘッダー・フッター・脚注、Excel のセルのコメント・数値、PowerPoint の SmartArt・グラフの中の文字（§29.6）。
+
+### 29.6 Office のファイルをパッケージから直に読む（2026-10-25）
+
+**本番で見つかったこと**：PowerPoint 126 件（平均約 150 MB、最大 1.7 GB、うち 13 件は型が `application/zip` で名前が .pptx）が
+converter の上限（`PREVIEW_MAX_INPUT_BYTES`、50 MB）を超えてプレビューが作られず、§29.1 の「Office はプレビューの後」の決まりで
+いつまでも読まれず、`drive-index` は「プレビューを待っている」と数え続けた。
+
+- **読むもの**（`drive/office_text.py`、標準ライブラリだけ：zipfile と expat を流しで。木を作らず、部品を丸ごと持たない）：
+  - pptx / pptm / potx / ppsx：スライドを `ppt/presentation.xml` の `p:sldIdLst` の順に（`ppt/_rels/presentation.xml.rels` で
+    部品へ。無ければ slideN.xml の番号順）、各スライドの `a:t`、続けてそのノート（スライドの rels の notesSlide）。フィールド
+    （`a:fld`：スライド番号・日付）と `mc:Fallback`（図形の古い形の写し）は除く。**1 スライド 1 ページ**（`page_unit = 'slide'`）。
+  - docx / docm / dotx：パッケージの rels が言う本体（ふつう `word/document.xml`）の `w:t`、段落ごとに改行、タブ・改行は空白・改行。
+    ページは無い（Word のページは組んだ後にしか無い）：`page_starts` は null。
+  - xlsx / xlsm / xltx：`xl/sharedStrings.xml`（読み仮名 `rPh` は除く）と、ワークシートを `xl/workbook.xml` の順に、文字のセル
+    （共有文字列・インライン・数式の文字の結果）。数値・日付・真偽は文字でないので入れない。セルは空白、行は改行。**1 シート 1 ページ**
+    （`'sheet'`）。
+  - odt / ods / odp（とテンプレート）：`content.xml` の `text:p` / `text:h`。odp は `draw:page` ごと（`'slide'`）、ods は `table:table`
+    ごと（`'sheet'`）。
+  - 正規化・1 MiB の上限は PDF と同じ（`pdf_text.clean`・`cut`、各ページの間は改行 1 つ）。
+- **種類の判定**：型が OOXML / ODF のもの、または型が ZIP / OLE / octet-stream（スニファが決められなかった）で拡張子が上のもの
+  （zip 型の .pptx もここ）。どの形かはパッケージの中（`[Content_Types].xml` と `_rels/.rels` の officeDocument、ODF は
+  `mimetype`）で決める。中が OOXML でも ODF でもない ZIP は `skipped`（`unsupported`）。
+- **オブジェクトストアから少しずつ**：`RangedReader`（`seek` / `tell` / `read` のできるファイル、BlobStore の範囲の読み出し
+  （M160 の `stream(key, start, end)`）を 32 KiB の塊で、最大 4 MiB の LRU の塊のキャッシュ）。zipfile は末尾・中央ディレクトリと
+  開いた部品だけを読むので、動画・画像（`ppt/media`）は 1 バイトも読まない。抽出はワーカースレッドで（`asyncio.to_thread`）、
+  スレッドの読み出しは `run_coroutine_threadsafe` でイベントループの BlobStore を呼ぶ。手元の実物で 393 MB・64 スライドの pptx が
+  **読んだのは 340 KB（11 回の範囲の読み出し）、0.03 秒**。テストの 40 MB の pptx（動画がスライドの間）は 36 KB・2 回。
+- **守り**：パッケージが CFB（OLE）なら暗号化した OOXML（Office はパスワード付きのファイルをこれで包む）として `skipped`
+  （`encrypted`）、zip の暗号化の部品も同じ。展開して読む XML は 1 ファイル合計 `DRIVE_TEXT_MAX_XML_BYTES`（既定 64 MB）まで
+  （部品の言う大きさに関わらず、実際に展開したバイトで数える：zip bomb はここで止まり、読めた分で `truncated`）。中央ディレクトリは
+  1 回の読み出し 8 MB まで、オブジェクトから読むのは合計でその上限の 2 倍まで。DOCTYPE（OOXML / ODF には無い。実体の展開）は
+  `failed`（`unreadable`）。壊れた zip・XML も `unreadable`。時間は `DRIVE_TEXT_TIMEOUT_SECONDS`（読み出しと XML の塊ごとに
+  確かめ、過ぎれば `failed`（`timeout`））。オブジェクトストアの失敗は今までどおり `read_failed` で 5 分後に再試行。
+- **待つ数の直し**：`drive-index` の「wait for their PDF preview」は、古い Office でプレビューがまだ来うるもの（プレビューが有効で
+  converter があり、大きさが上限以内）だけを数える。来ないものは loop が取って `skipped`（`too_large` / `no_preview`）。
+  `--retry-failed` は `failed`・`no_preview` に加えて `too_large` も読み直す（上限を上げた後のため）。
+- **保存と API**：`drive_texts.page_unit`（移行 0122、`slide` / `sheet`、null は PDF のページ）。`GET /search/drive` のヒットに
+  `page_kind`（`page` / `slide` / `sheet`、`page` が null なら null）。古い端末は `page_kind` を知らず「N ページ目」と出す（害は無い）。
+  移行 0122 は `no_preview` の行を消す（OOXML / ODF は読み直され、古い Office はすぐまた `no_preview` になる）。
+- **端末**：Desktop / Web は「中身 · 12 枚目」「中身 · シート 2」（`drive/snippet.ts` の `pageLabel`）、iOS（`DriveSnippetLine.pageLabel`）・
+  Android（`drivePageLabel`）も同じ文言。開く時にページへ飛ぶのは `page_kind` が `page`（か無い）の時だけ：スライド・シートは
+  プレビューのページと一致するとは限らず（隠しスライド・シートの印刷の分け方）、プレビューが無いこともある。
+- **Word のページを失うこと**：docx はこれまでプレビューの PDF のページ（開くとそのページから）があった。直に読むと無くなるが、
+  大きさ・プレビューの成否・時刻によって答えが変わらないことを選んだ。前に読んだ行（プレビューから）はそのまま残る。
+
+#### デプロイの後（本番）
+
+1. デプロイすると移行 0122 が流れ、loop が空き時間に読み始める（何もしなくても進む）。
+2. 早く済ませるなら：`… exec app python -m app.cli drive-index --limit 500` を「more files are left」が出なくなるまで。
+   見込み：大きな pptx 126 件は 1 件あたり数百 KB〜数 MB の読み出しと 1 秒未満の処理（VPS で 2〜3 倍としても）で、**合わせて数分**。
+   チャットのプレビューを先に通す待ちが入れば、その分だけ延びる。
+3. 結果の「rows: ready … skipped …」と、「old Office file(s) … wait for their PDF preview」が古い形式だけの数になったことを見る。
+
+#### 確かめたこと
+
+- pytest：`tests/test_drive_office_text.py`（スライドの順・ノート・フィールドを除くこと、`sldIdLst` の無い時の番号順、docx の段落と
+  `mc:Fallback`、xlsx の共有文字列・読み仮名・インライン・数式の文字・シートの順、odp、文字の上限と XML の上限（30 MB の XML を
+  圧縮した zip bomb）、CFB → `encrypted`、壊れた zip・ZIP でないもの・Office でない ZIP・DOCTYPE・時間切れ、中央ディレクトリと
+  読み出しの上限、40 MB の pptx で読むのが 512 KB 未満（36 KB）・ストアの失敗は再試行、種類の判定、loop と検索（スライド・シートの
+  番号と `page_kind`、zip 型の .pptx、docx は null、名前の一致、ほかの人のマイドライブは見えない）、待つ数（大きすぎる ppt は
+  `too_large`、プレビューが切ってあれば `no_preview`、`--retry-failed`））、`tests/test_drive_texts.py`（古い doc はプレビューの後、
+  docx は直に）。全体 -n 4・ruff・ruff format --check・mypy。
+- 手元の実物（pptx 4 件・xlsx 3 件・docx 2 件）で読めること、393 MB の pptx の読み出しの量。
+- vitest（`driveSnippet.test.tsx`）と全体、`tsc --noEmit`。iOS：`DriveSnippetTests`・`LocalizationTests`・ビルド。Android：`DriveSnippetTest`、
+  `compileDebugKotlin`・`testDebugUnitTest`・`lintDebug`。
 
 ## 30. スマホのアップロードとプレビュー（iOS / Android、2026-10-24）
 
