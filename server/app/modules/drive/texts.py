@@ -2,9 +2,14 @@
 
 What is read (the current version of a file outside the trash, only):
 - a PDF: its own bytes (up to DRIVE_TEXT_MAX_INPUT_BYTES), in a child process (pdf_text.py);
-- an Office file: the PDF its preview made (PREVIEWS.md); it waits until the preview is ready
-  (the preview loop or `generate-previews --drive` makes it), and is skipped when the preview
-  failed;
+- a Word / Excel / PowerPoint (OOXML: docx, xlsx, pptx and their macro / template forms) or
+  OpenDocument file: straight from the package (office_text.py, §29.6), whatever its size, in a
+  worker thread through ranged reads of the object (the central directory and the text parts
+  only); slides and sheets are its pages;
+- a legacy Office file (doc / xls / ppt / rtf): the PDF its preview made (PREVIEWS.md); it waits
+  until the preview is ready (the preview loop or `generate-previews --drive` makes it), and is
+  skipped when the preview failed (`no_preview`) or cannot be made (`too_large` for the
+  converter, `no_preview` with previews off);
 - a plain text, Markdown, CSV or TSV file: its first bytes, decoded in the app (UTF-8, UTF-16
   with a BOM, else Shift_JIS / CP932, the encoding of Japanese CSVs from Excel).
 Nothing is read from images, videos, archives and the rest. There is no OCR: a scanned PDF (no
@@ -24,10 +29,12 @@ out, at most MAX_ATTEMPTS times. A try writes its result only while the row is s
 
 import asyncio
 import codecs
+import concurrent.futures
 import json
 import logging
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -51,6 +58,7 @@ from app.modules.attachments.preview_kinds import (
     PDF_TYPE,
     source_kind,
 )
+from app.modules.drive import office_text
 from app.modules.drive.models import DriveFileVersion, DriveItem, DriveText
 
 log = logging.getLogger("app.drive.texts")
@@ -65,17 +73,61 @@ MIN_CHARS_PER_PAGE = 2
 MIN_CHARS = 4
 TEXT_EXTENSIONS = frozenset({"txt", "text", "md", "markdown", "csv", "tsv"})
 OCTET = "application/octet-stream"
+# §29.6: read straight from the package (office_text.py). Lower case (kind_of compares so).
+PACKAGE_TYPES = frozenset(
+    {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+        "application/vnd.ms-word.document.macroenabled.12",
+        "application/vnd.ms-word.template.macroenabled.12",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+        "application/vnd.ms-excel.sheet.macroenabled.12",
+        "application/vnd.ms-excel.template.macroenabled.12",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.presentationml.template",
+        "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+        "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+        "application/vnd.ms-powerpoint.template.macroenabled.12",
+        "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+        "application/vnd.oasis.opendocument.text",
+        "application/vnd.oasis.opendocument.text-template",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.oasis.opendocument.spreadsheet-template",
+        "application/vnd.oasis.opendocument.presentation",
+        "application/vnd.oasis.opendocument.presentation-template",
+    }
+)
+PACKAGE_EXTENSIONS = frozenset(
+    {
+        *("docx", "docm", "dotx", "dotm"),
+        *("xlsx", "xlsm", "xltx", "xltm"),
+        *("pptx", "pptm", "potx", "potm", "ppsx", "ppsm"),
+        *("odt", "ott", "ods", "ots", "odp", "otp"),
+    }
+)
+# §29: through the PDF preview (the converter reads them; nothing here does).
+LEGACY_TYPES = frozenset(t for t in OFFICE_TYPES if t not in PACKAGE_TYPES)
+LEGACY_EXTENSIONS = frozenset(OFFICE_EXTENSIONS - PACKAGE_EXTENSIONS)
 
 
 def kind_of(content_type: str, name: str) -> str | None:
-    """'pdf', 'office', 'text' or None (nothing to read in this file)."""
+    """'pdf', 'package' (OOXML / ODF, read directly), 'office' (legacy, through the preview),
+    'text' or None (nothing to read in this file). By the sniffed type; when the sniffer could
+    only say "a ZIP / OLE container" (a pptx whose first members are large is stored as
+    application/zip), by the name's extension. Which kind of package it is, the package itself
+    tells (office_text.extract)."""
+    content_type = content_type.lower()
+    _, dot, ext = name.rpartition(".")
+    if content_type in PACKAGE_TYPES or (
+        content_type in CONTAINER_TYPES and dot and ext.lower() in PACKAGE_EXTENSIONS
+    ):
+        return "package"
     kind = source_kind(content_type, name)
     if kind == "pdf":
         return "pdf"
     if kind is not None:
         return "office"
-    _, dot, ext = name.rpartition(".")
-    content_type = content_type.lower()
     if (
         dot
         and ext.lower() in TEXT_EXTENSIONS
@@ -93,16 +145,33 @@ def _extensions(values: frozenset[str] | set[str]) -> str:
     return "|".join(sorted(values))
 
 
+# Written in SQL with kind_of's rules (kind_of decides again for the row it took).
+_PACKAGE = f"""
+    (lower(a.content_type) IN ({_quoted(PACKAGE_TYPES)})
+     OR (a.content_type IN ({_quoted(CONTAINER_TYPES)})
+         AND lower(i.name) ~ '\\.({_extensions(PACKAGE_EXTENSIONS)})$'))
+"""
+_LEGACY = f"""
+    (a.content_type IN ({_quoted(LEGACY_TYPES)})
+     OR (a.content_type IN ({_quoted(CONTAINER_TYPES)})
+         AND lower(i.name) ~ '\\.({_extensions(LEGACY_EXTENSIONS)})$'))
+"""
+# A legacy Office file can still get its preview: previews are on with a converter
+# (:can_preview) and the file is within the converter's limit (:preview_max). One that cannot
+# (2026-10-25: 126 presentations of up to 1.7 GB waited "for their preview" for ever) is not
+# waited for: it is taken and recorded as skipped.
+_PREVIEW_COMING = """
+    (a.preview_status IN ('none', 'pending')
+     AND CAST(:can_preview AS boolean) AND a.size_bytes <= :preview_max)
+"""
 # The current versions of files outside the trash that are ready to be read and have no row
-# yet: PDFs, Office files whose preview is ready (or failed: recorded as skipped), plain text
-# files. Written in SQL with kind_of's rules (kind_of decides again for the row it took).
+# yet: PDFs, OOXML / ODF packages, legacy Office files whose preview is ready, failed or will
+# not come (recorded as skipped), plain text files.
 _READABLE = f"""
     (a.content_type = '{PDF_TYPE}'
      OR (a.content_type = '{OCTET}' AND lower(i.name) LIKE '%.pdf')
-     OR (a.preview_status IN ('ready', 'failed')
-         AND (a.content_type IN ({_quoted(set(OFFICE_TYPES))})
-              OR (a.content_type IN ({_quoted(CONTAINER_TYPES)})
-                  AND lower(i.name) ~ '\\.({_extensions(OFFICE_EXTENSIONS)})$')))
+     OR {_PACKAGE}
+     OR ({_LEGACY} AND NOT {_PREVIEW_COMING})
      OR ((a.content_type = '{OCTET}' OR a.content_type LIKE 'text/%')
          AND lower(i.name) ~ '\\.({_extensions(TEXT_EXTENSIONS)})$'))
 """
@@ -120,7 +189,9 @@ _CANDIDATE = text(
     FOR UPDATE OF v SKIP LOCKED
     """
 )
-# Office files that wait for their preview (none yet: an import; or still being made).
+# Legacy Office files that wait for a preview that can still come (none yet: an import; or
+# still being made). OOXML / ODF files never wait (§29.6), nor do the ones too large for the
+# converter.
 _WAITING_FOR_PREVIEWS = text(
     f"""
     SELECT count(*)
@@ -129,12 +200,16 @@ _WAITING_FOR_PREVIEWS = text(
     JOIN attachments a ON a.id = v.attachment_id
     WHERE i.kind = 'file' AND i.trashed_at IS NULL AND a.status <> 'deleted'
       AND NOT EXISTS (SELECT 1 FROM drive_texts t WHERE t.version_id = v.id)
-      AND a.preview_status IN ('none', 'pending')
-      AND (a.content_type IN ({_quoted(set(OFFICE_TYPES))})
-           OR (a.content_type IN ({_quoted(CONTAINER_TYPES)})
-               AND lower(i.name) ~ '\\.({_extensions(OFFICE_EXTENSIONS)})$'))
+      AND {_LEGACY} AND {_PREVIEW_COMING}
     """
 )
+
+
+def _preview_params(settings: Settings) -> dict[str, Any]:
+    return {
+        "can_preview": settings.previews_enabled and bool(settings.preview_converter_url),
+        "preview_max": settings.preview_max_input_bytes,
+    }
 
 
 def _lease(settings: Settings) -> timedelta:
@@ -173,7 +248,7 @@ async def claim(db: AsyncSession, settings: Settings) -> Claimed | None:
         claimed = Claimed(due.version_id, due.attempts)
         await db.commit()
         return claimed
-    found = (await db.execute(_CANDIDATE)).first()
+    found = (await db.execute(_CANDIDATE, _preview_params(settings))).first()
     if found is None:
         await db.rollback()
         return None
@@ -198,6 +273,7 @@ class Extracted:
     page_starts: list[int] | None = None
     pages: int | None = None
     truncated: bool = False
+    page_unit: str | None = None  # slide | sheet; None: PDF pages (or no pages)
 
 
 class Retry(Exception):
@@ -295,14 +371,102 @@ async def read_text_file(blobs: BlobStore, key: str, size: int, settings: Settin
     return Extracted("ready", body=capped, truncated=truncated)
 
 
+async def _range(blobs: BlobStore, key: str, start: int, end: int) -> bytes:
+    data = bytearray()
+    async for chunk in blobs.stream(key, start, end):
+        data.extend(chunk)
+    return bytes(data)
+
+
+@dataclass(frozen=True)
+class PackageRead:
+    extracted: Extracted
+    fetched: int  # bytes of the object read
+    requests: int  # ranged reads
+
+
+async def read_package(
+    blobs: BlobStore, key: str, settings: Settings, *, size: int | None = None
+) -> PackageRead:
+    """§29.6: an OOXML / ODF file's text, straight from the package, in a worker thread. The
+    thread reads the object through ranged reads run on this event loop (the BlobStore is
+    async); zipfile asks only for the end of the file, the central directory and the members
+    it opens. The whole read is bounded by DRIVE_TEXT_TIMEOUT_SECONDS (checked between reads)."""
+    try:
+        if size is None:
+            size = await blobs.head(key)
+    except Exception as exc:
+        raise Retry(f"could not read the file: {exc}") from exc
+    if size is None:
+        raise Retry("the object is missing")
+    loop = asyncio.get_running_loop()
+    deadline = time.monotonic() + settings.drive_text_timeout_seconds
+
+    def fetch(start: int, end: int) -> bytes:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise office_text.Stop("timeout")
+        future = asyncio.run_coroutine_threadsafe(_range(blobs, key, start, end), loop)
+        try:
+            return future.result(timeout=left)
+        except concurrent.futures.TimeoutError as exc:
+            future.cancel()
+            raise office_text.Stop("timeout") from exc
+        except Exception as exc:
+            raise office_text.StoreError(str(exc)) from exc
+
+    reader = office_text.RangedReader(
+        fetch, size, max_fetch=2 * settings.drive_text_max_xml_bytes, deadline=deadline
+    )
+
+    def work() -> office_text.PackageText:
+        try:
+            return office_text.extract(
+                reader,
+                max_bytes=settings.drive_text_max_bytes,
+                max_xml_bytes=settings.drive_text_max_xml_bytes,
+                deadline=deadline,
+            )
+        except office_text.Stop as stop:  # a read outside a member (the end of the zip)
+            return office_text.PackageText("failed", stop.reason)
+
+    try:
+        found = await asyncio.to_thread(work)
+    except office_text.StoreError as exc:
+        raise Retry(f"could not read the file: {exc}") from exc
+    if found.status == "failed":
+        log.warning("the text of the package %s: %s", key, found.reason)
+    return PackageRead(
+        Extracted(
+            found.status,
+            found.reason,
+            body=found.body,
+            page_starts=found.page_starts,
+            pages=found.pages,
+            truncated=found.truncated,
+            page_unit=found.page_unit,
+        ),
+        fetched=reader.fetched,
+        requests=reader.requests,
+    )
+
+
 async def extract(
     blobs: BlobStore, settings: Settings, kind: str, attachment: Attachment
 ) -> Extracted:
     if kind == "text":
         # Only the start is read (the cap), whatever the file's size.
         return await read_text_file(blobs, attachment.storage_key, attachment.size_bytes, settings)
+    if kind == "package":
+        read = await read_package(
+            blobs, attachment.storage_key, settings, size=attachment.size_bytes
+        )
+        return read.extracted
     if kind == "office":
         if attachment.preview_status != "ready" or not attachment.preview_pdf_key:
+            # Too large for the converter, a preview that failed, or previews are off.
+            if attachment.size_bytes > settings.preview_max_input_bytes:
+                return Extracted("skipped", "too_large")
             return Extracted("skipped", "no_preview")
         key = attachment.preview_pdf_key
     else:
@@ -372,6 +536,7 @@ async def process_one(
         row.body = result.body
         row.page_starts = result.page_starts
         row.pages = result.pages
+        row.page_unit = result.page_unit
         row.truncated = result.truncated
         row.next_at = None
         row.extracted_at = utcnow()
@@ -419,11 +584,12 @@ class IndexResult:
 
 
 async def retry_failed(db: AsyncSession) -> int:
-    """Rows that failed, or were skipped for want of a preview, are read again (their rows go)."""
+    """Rows that failed, or were skipped for want of a preview or for their size (a limit may
+    have been raised since), are read again (their rows go)."""
     result = await db.execute(
         delete(DriveText).where(
             (DriveText.status == "failed")
-            | ((DriveText.status == "skipped") & (DriveText.reason == "no_preview"))
+            | ((DriveText.status == "skipped") & DriveText.reason.in_(("no_preview", "too_large")))
         )
     )
     await db.commit()
@@ -462,9 +628,12 @@ async def index_stored(
         elif status == "working":
             result.retrying += 1
     async with session_factory() as db:
-        result.remaining = (await db.execute(_CANDIDATE)).first() is not None
+        params = _preview_params(settings)
+        result.remaining = (await db.execute(_CANDIDATE, params)).first() is not None
         await db.rollback()
-        result.waiting_for_previews = int((await db.execute(_WAITING_FOR_PREVIEWS)).scalar_one())
+        result.waiting_for_previews = int(
+            (await db.execute(_WAITING_FOR_PREVIEWS, params)).scalar_one()
+        )
         await db.rollback()
     return result
 

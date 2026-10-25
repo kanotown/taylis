@@ -253,6 +253,7 @@ class DriveSnippetPart(BaseModel):
 
 
 DriveMatch = Literal["name", "content", "both"]
+DrivePageKind = Literal["page", "slide", "sheet"]
 
 
 class DriveSearchHitOut(BaseModel):
@@ -266,9 +267,15 @@ class DriveSearchHitOut(BaseModel):
     # §29: the text around the first word found inside the file (about 30 characters before it
     # and 90 after, spaces folded, "…" where cut), in pieces; null when only the name matched.
     snippet: list[DriveSnippetPart] | None = None
-    # §29: the page of the PDF (an Office file: of its PDF preview) the snippet is on, from 1;
-    # null for a plain text file or a name match.
+    # §29: the page of the PDF (a legacy Office file: of its PDF preview) the snippet is on,
+    # from 1; null for a plain text file, a Word file read from its package (§29.6) or a name
+    # match. §29.6: for a presentation or a spreadsheet read from its package, the slide or the
+    # sheet (page_kind says which).
     page: int | None = None
+    # §29.6 (2026-10-25): what `page` counts: "page" (a PDF page: the document viewer opens
+    # there), "slide" (「12 枚目」) or "sheet"; null when `page` is. Older clients read every
+    # `page` as a PDF page.
+    page_kind: DrivePageKind | None = None
 
 
 class DriveSearchOut(BaseModel):

@@ -769,3 +769,10 @@ async def _add_snippets(
         if window.page_starts:
             at = window.found if window.found is not None else 0
             hit.page = max(1, bisect.bisect_right(window.page_starts, at))
+            hit.page_kind = (
+                "slide"
+                if window.page_unit == "slide"
+                else "sheet"
+                if window.page_unit == "sheet"
+                else "page"
+            )
