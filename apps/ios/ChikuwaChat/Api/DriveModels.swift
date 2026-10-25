@@ -87,8 +87,10 @@ struct DriveSearchHitOut: Codable, Equatable {
     var match: String? = nil
     /// §29: the text around the match inside the file, in pieces; `hit` pieces are the words found.
     var snippet: [DriveSnippetPart]? = nil
-    /// §29: the PDF page the snippet is on (from 1).
+    /// §29: the PDF page the snippet is on (from 1); §29.6: a slide or a sheet, as `pageKind` says.
     var page: Int? = nil
+    /// §29.6: what `page` counts: `page`, `slide`, `sheet`; nil from a server before it (a PDF page).
+    var pageKind: String? = nil
 
     /// The snippet as one line (nil for a name match).
     var snippetText: String? {

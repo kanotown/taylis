@@ -17108,6 +17108,38 @@
         }
       }
     },
+    "%lld 枚目" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slide %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 张幻灯片"
+          }
+        }
+      }
+    },
+    "シート %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sheet %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作表 %lld"
+          }
+        }
+      }
+    },
     "中身" : {
       "localizations" : {
         "en" : {

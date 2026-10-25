@@ -523,6 +523,22 @@ final class DriveSnippetTests: XCTestCase {
         XCTAssertEqual(marked, ["品質係数"])
     }
 
+    /// §29.6: a slide or a sheet of a file read from its package is labelled as one; no `page_kind` is a PDF page.
+    func testSlidesAndSheetsAreLabelled() throws {
+        func hit(_ extra: String) throws -> DriveSearchHitOut {
+            let json = #"{"item":"# + item + #","path":[],"location_kind":"workspace","match":"content","snippet":[{"text":"x","hit":true}]"# + extra + "}"
+            return try JSON.snakeDecoder.decode(DriveSearchHitOut.self, from: Data(json.utf8))
+        }
+        let slide = try hit(#","page":12,"page_kind":"slide""#)
+        XCTAssertEqual(slide.pageKind, "slide")
+        XCTAssertEqual(DriveSnippetLine.pageLabel(slide), tr("\(12) 枚目"))
+        XCTAssertEqual(DriveSnippetLine.pageLabel(try hit(#","page":2,"page_kind":"sheet""#)), tr("シート \(2)"))
+        XCTAssertEqual(DriveSnippetLine.pageLabel(try hit(#","page":3"#)), tr("\(3) ページ目"))
+        XCTAssertNil(DriveSnippetLine.pageLabel(try hit(#","page":null,"page_kind":null"#)))
+        let line = try XCTUnwrap(DriveSnippetLine.text(slide))
+        XCTAssertTrue(String(line.characters).contains(tr("\(12) 枚目")))
+    }
+
     func testANameHitOrAnOlderServerHasNoSnippet() throws {
         let json = #"{"items":[{"item":"# + item + #","path":[],"location_kind":"workspace"}],"next_cursor":null}"#
         let hit = try XCTUnwrap(try JSON.snakeDecoder.decode(DriveSearchOut.self, from: Data(json.utf8)).items.first)
