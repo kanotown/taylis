@@ -661,13 +661,23 @@ struct DriveSearchList: View {
     }
 }
 
-/// A drive search hit's snippet (docs/DRIVE.md §29): 「中身 · 2 ページ」, then the text with the found words in bold
-/// on a yellow tint. Plain text pieces from the server, never markup.
+/// A drive search hit's snippet (docs/DRIVE.md §29): 「中身 · 2 ページ目」 (§29.6: 「12 枚目」 for a slide, 「シート 2」
+/// for a sheet), then the text with the found words in bold on a yellow tint. Plain text pieces from the server, never
+/// markup.
 enum DriveSnippetLine {
+    static func pageLabel(_ hit: DriveSearchHitOut) -> String? {
+        guard let page = hit.page else { return nil }
+        switch hit.pageKind {
+        case "slide": return tr("\(page) 枚目")
+        case "sheet": return tr("シート \(page)")
+        default: return tr("\(page) ページ目")
+        }
+    }
+
     static func text(_ hit: DriveSearchHitOut) -> AttributedString? {
         guard let parts = hit.snippet, !parts.isEmpty else { return nil }
         var label = AttributedString(tr("中身"))
-        if let page = hit.page { label += AttributedString(" · " + tr("\(page) ページ目")) }
+        if let page = pageLabel(hit) { label += AttributedString(" · " + page) }
         label += AttributedString("  ")
         label.foregroundColor = .secondary
         var line = label
