@@ -10343,6 +10343,8 @@ export interface components {
             match: "name" | "content" | "both";
             /** Page */
             page?: number | null;
+            /** Page Kind */
+            page_kind?: ("page" | "slide" | "sheet") | null;
             /** Path */
             path: components["schemas"]["DriveCrumb"][];
             /** Snippet */

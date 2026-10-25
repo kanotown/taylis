@@ -3563,6 +3563,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "search.drive.none": "没有与“{q}”匹配的文件或文件夹",
   "search.drive.inside": "内容",
   "search.drive.page": "第 {page} 页",
+  "search.drive.slide": "第 {page} 张幻灯片",
+  "search.drive.sheet": "工作表 {page}",
   // M163 (docs/DRIVE.md §9, §17.4): external share links, their admin section and the public page.
   "drive.share.open": "共享链接",
   "drive.share.title": "“{name}”的共享链接",
