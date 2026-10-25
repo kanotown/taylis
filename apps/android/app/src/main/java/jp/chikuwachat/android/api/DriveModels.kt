@@ -93,8 +93,10 @@ data class DriveSearchHitOut(
     val match: String? = null,
     /** §29: the text around the match inside the file, in pieces; `hit` pieces are the words found. */
     val snippet: List<DriveSnippetPart>? = null,
-    /** §29: the PDF page the snippet is on (from 1). */
+    /** §29: the PDF page the snippet is on (from 1); §29.6: a slide or a sheet, as [pageKind] says. */
     val page: Int? = null,
+    /** §29.6: what [page] counts: `page`, `slide`, `sheet`; null from a server before it (a PDF page). */
+    val pageKind: String? = null,
 ) {
     /** The snippet as one line (null for a name match). */
     val snippetText: String? get() = snippet?.takeIf { it.isNotEmpty() }?.joinToString("") { it.text }

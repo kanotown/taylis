@@ -3,6 +3,7 @@ package jp.chikuwachat.android.ui
 import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.annotation.StringRes
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -404,7 +405,7 @@ private fun DriveFolder(
                         DriveRow(controller, hit.item, subtitle = DriveNames.pathLine(hit.path, hit.locationKind), onClick = { open(hit.item) }, onDetails = { details = hit.item })
                         // §29: the words around a match inside the file, under the name (past the picture).
                         val inside = stringResource(R.string.drive_search_inside)
-                        val page = hit.page?.let { stringResource(R.string.drive_search_page, it) }
+                        val page = hit.page?.let { stringResource(drivePageLabel(hit), it) }
                         driveSnippet(hit, inside, page, MaterialTheme.colorScheme.onSurfaceVariant)?.let { snippet ->
                             Text(
                                 snippet, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -506,6 +507,17 @@ private fun DriveRow(controller: AppController, item: DriveItemOut, subtitle: St
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.combinedClickableCompat(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier =
     combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick)
+
+/**
+ * §29.6: the string for a hit's `page`: 「12 枚目」 for a slide, 「シート 2」 for a sheet, else 「3 ページ目」 (a PDF page; an
+ * older server sends no `page_kind`).
+ */
+@StringRes
+internal fun drivePageLabel(hit: DriveSearchHitOut): Int = when (hit.pageKind) {
+    "slide" -> R.string.drive_search_slide
+    "sheet" -> R.string.drive_search_sheet
+    else -> R.string.drive_search_page
+}
 
 /**
  * docs/DRIVE.md §29: a drive search hit's snippet — 「中身 · 2 ページ目」 dimmed, then the server's plain text pieces with

@@ -17,6 +17,8 @@
     <string name="drive_no_results">「%1$s」に一致するファイルやフォルダはありません</string>
     <string name="drive_search_inside">中身</string>
     <string name="drive_search_page">%1$d ページ目</string>
+    <string name="drive_search_slide">%1$d 枚目</string>
+    <string name="drive_search_sheet">シート %1$d</string>
     <string name="drive_sort_by">並べ替え：%1$s</string>
     <string name="drive_sort_name">名前</string>
     <string name="drive_sort_modified">更新日時</string>

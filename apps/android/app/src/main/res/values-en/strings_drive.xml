@@ -16,6 +16,8 @@
     <string name="drive_no_results">No file or folder matches “%1$s”</string>
     <string name="drive_search_inside">Inside</string>
     <string name="drive_search_page">Page %1$d</string>
+    <string name="drive_search_slide">Slide %1$d</string>
+    <string name="drive_search_sheet">Sheet %1$d</string>
     <string name="drive_sort_by">Sort: %1$s</string>
     <string name="drive_sort_name">Name</string>
     <string name="drive_sort_modified">Modified</string>
