@@ -3563,6 +3563,8 @@ export const ja = {
   "search.drive.none": "「{q}」に一致するファイルやフォルダはありません",
   "search.drive.inside": "中身",
   "search.drive.page": "{page} ページ目",
+  "search.drive.slide": "{page} 枚目",
+  "search.drive.sheet": "シート {page}",
   // M163 (docs/DRIVE.md §9, §17.4): external share links, their admin section and the public page.
   "drive.share.open": "共有リンク",
   "drive.share.title": "「{name}」の共有リンク",

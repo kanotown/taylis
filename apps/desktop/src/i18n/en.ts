@@ -3563,6 +3563,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "search.drive.none": "No file or folder matches “{q}”",
   "search.drive.inside": "Inside",
   "search.drive.page": "Page {page}",
+  "search.drive.slide": "Slide {page}",
+  "search.drive.sheet": "Sheet {page}",
   // M163 (docs/DRIVE.md §9, §17.4): external share links, their admin section and the public page.
   "drive.share.open": "Share link",
   "drive.share.title": "Share links of “{name}”",

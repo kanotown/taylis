@@ -7,7 +7,8 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DriveItemOut, DriveSearchHitOut, DriveSearchOut } from "../src/api/types";
-import { matchedInside, openPage, snippetPieces } from "../src/drive/snippet";
+import { matchedInside, openPage, pageLabel, snippetPieces } from "../src/drive/snippet";
+import { t } from "../src/i18n";
 import type { AppController } from "../src/state/app";
 import { DriveResults } from "../src/ui/DriveSearch";
 import { DriveSnippet } from "../src/ui/DriveSnippet";
@@ -61,6 +62,13 @@ describe("snippet helpers", () => {
     expect(openPage({ match: "content", page: 1 })).toBeNull(); // the first page is where it opens anyway
     expect(openPage({ match: "name", page: 3 })).toBeNull();
     expect(openPage(null)).toBeNull();
+    // §29.6: a slide or a sheet read from the package is no page of the preview (which may not exist).
+    expect(openPage({ ...CONTENT_HIT, page: 12, page_kind: "slide" })).toBeNull();
+    expect(openPage({ ...CONTENT_HIT, page: 2, page_kind: "sheet" })).toBeNull();
+    expect(openPage({ ...CONTENT_HIT, page: 4, page_kind: "page" })).toBe(4);
+    expect(pageLabel({ page: 12, page_kind: "slide" })).toEqual({ key: "search.drive.slide", page: 12 });
+    expect(pageLabel({ page: 3 })).toEqual({ key: "search.drive.page", page: 3 });
+    expect(pageLabel({ page: null, page_kind: null })).toBeNull();
   });
 });
 
@@ -71,6 +79,17 @@ describe("DriveSnippet", () => {
     expect(marks).toEqual(["品質係数"]);
     expect(container.textContent).toContain("…共振器の品質係数は予想よりも高く…");
     expect(container.textContent).toMatch(/2/);
+  });
+
+  it("names a slide or a sheet (§29.6), a page when the server does not say", () => {
+    const slide = render(<DriveSnippet hit={{ ...CONTENT_HIT, page: 12, page_kind: "slide" }} />);
+    expect(slide.container.textContent).toContain(t("search.drive.slide", { page: 12 }));
+    cleanup();
+    const sheet = render(<DriveSnippet hit={{ ...CONTENT_HIT, page: 2, page_kind: "sheet" }} />);
+    expect(sheet.container.textContent).toContain(t("search.drive.sheet", { page: 2 }));
+    cleanup();
+    const old = render(<DriveSnippet hit={{ ...CONTENT_HIT, page: 3 }} />);
+    expect(old.container.textContent).toContain(t("search.drive.page", { page: 3 }));
   });
 
   it("shows nothing for a name match", () => {
