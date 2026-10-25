@@ -1135,7 +1135,8 @@ async def _drive_index(limit: int, retry_failed: bool, chat_wait_seconds: float)
             print(f"waited {result.waited_seconds:.0f} s for the chat's previews")
         if result.waiting_for_previews:
             print(
-                f"{result.waiting_for_previews} Office file(s) wait for their PDF preview "
+                f"{result.waiting_for_previews} old Office file(s) (doc / xls / ppt / rtf) wait for "
+                "their PDF preview "
                 "(generate-previews --drive makes them; they are read afterwards)"
             )
         async with db.session_factory() as session:

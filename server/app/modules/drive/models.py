@@ -213,8 +213,11 @@ class DriveText(Base):
     reason: Mapped[str | None] = mapped_column(String(32))
     body: Mapped[str] = mapped_column(Text, default="", server_default="")
     # PDFs: where each page's text begins in body (characters), and how many pages there are.
+    # §29.6 (migration 0122): presentations and spreadsheets read from the package count slides
+    # and sheets instead (page_unit "slide" / "sheet"; null: the PDF's pages).
     page_starts: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
     pages: Mapped[int | None] = mapped_column(Integer)
+    page_unit: Mapped[str | None] = mapped_column(String(8))
     truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     next_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -666,11 +666,13 @@ class TextWindow:
     found: int | None
     length: int
     page_starts: list[int] | None
+    # §29.6: what page_starts count ("slide", "sheet"; None: PDF pages).
+    page_unit: str | None = None
 
 
 _TEXT_WINDOWS = text(
     """
-    SELECT t.item_id, p.pos, char_length(t.body) AS length, t.page_starts,
+    SELECT t.item_id, p.pos, char_length(t.body) AS length, t.page_starts, t.page_unit,
            substr(t.body, greatest(coalesce(p.pos, 1) - :before, 1), :width) AS piece,
            greatest(coalesce(p.pos, 1) - :before, 1) AS piece_start
     FROM drive_texts t
@@ -714,6 +716,7 @@ async def drive_text_windows(
             found=None if row.pos is None else int(row.pos) - 1,
             length=int(row.length),
             page_starts=list(row.page_starts) if row.page_starts is not None else None,
+            page_unit=row.page_unit,
         )
         for row in rows
     }

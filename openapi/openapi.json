@@ -9917,6 +9917,22 @@
             ],
             "title": "Page"
           },
+          "page_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "page",
+                  "slide",
+                  "sheet"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Kind"
+          },
           "path": {
             "items": {
               "$ref": "#/components/schemas/DriveCrumb"

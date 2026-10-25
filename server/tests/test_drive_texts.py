@@ -110,8 +110,9 @@ def test_clean_joins_japanese_lines_and_folds_widths() -> None:
 def test_kinds_and_decoding() -> None:
     assert texts.kind_of("application/pdf", "a.PDF") == "pdf"
     assert texts.kind_of("application/octet-stream", "paper.pdf") == "pdf"
-    assert texts.kind_of(DOCX, "a.docx") == "office"
-    assert texts.kind_of("application/zip", "old.docx") == "office"
+    assert texts.kind_of(DOCX, "a.docx") == "package"  # §29.6: read from the package
+    assert texts.kind_of("application/zip", "old.docx") == "package"
+    assert texts.kind_of("application/msword", "old.doc") == "office"
     assert texts.kind_of("application/octet-stream", "memo.md") == "text"
     assert texts.kind_of("application/octet-stream", "data.CSV") == "text"
     assert texts.kind_of("application/zip", "memo.txt") is None
@@ -302,12 +303,12 @@ async def test_new_versions_restores_and_purges(
     assert await row_of(db, first["id"]) is None
 
 
-async def test_office_files_are_read_through_their_preview(
+async def test_legacy_office_files_are_read_through_their_preview(
     app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:
     class Converter:
         async def to_pdf(self, source: Path, kind: str, dest: Path) -> None:
-            assert kind == "docx"
+            assert kind == "doc"
             dest.write_bytes(fixture("report.pdf"))  # noqa: ASYNC240 - a local temporary file
 
     drive_settings(app, previews_enabled=True, preview_converter_url="http://converter:3000")
@@ -315,8 +316,16 @@ async def test_office_files_are_read_through_their_preview(
     owner = await make_user(db, "owner")
     as_user(owner)
     root = await workspace_root(client)
-    doc = await upload(client, root, "報告書.docx", fixture("report.docx"))
-    # The preview is not made yet: the file waits (no row), nothing else is read.
+    # An old Word file (an OLE container; the converter is a fake that answers report.pdf).
+    old_word = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 4096
+    doc = await upload(client, root, "報告書.doc", old_word)
+    # A docx is read from its package at once (§29.6), its preview not waited for.
+    new = await upload(client, root, "新しい報告書.docx", fixture("report.docx"))
+    assert await index_all(app) == 1
+    assert (await row_of(db, new["id"])).status == "ready"  # type: ignore[union-attr]
+    found = (await search(client, "品質係数"))["items"]
+    assert [h["item"]["id"] for h in found] == [new["id"]] and found[0]["page"] is None
+    # The doc's preview is not made yet: it waits (no row), nothing else is read.
     assert await index_all(app) == 0
     result = await texts.index_stored(
         app.state.db.session_factory, settings_of(app), app.state.blobs, limit=10
@@ -327,8 +336,9 @@ async def test_office_files_are_read_through_their_preview(
     ):
         pass
     assert await index_all(app) == 1
-    hit = (await search(client, "品質係数"))["items"]
-    assert [h["item"]["id"] for h in hit] == [doc["id"]] and hit[0]["page"] == 2
+    hits = {h["item"]["id"]: h for h in (await search(client, "品質係数"))["items"]}
+    assert set(hits) == {doc["id"], new["id"]}
+    assert (hits[doc["id"]]["page"], hits[doc["id"]]["page_kind"]) == (2, "page")
 
 
 async def test_backfill_is_resumable_and_idempotent(
