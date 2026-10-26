@@ -38,6 +38,15 @@ object Permalink {
     /** The drive item id when `url` is a drive link on `baseUrl` (another server's /d/ is a plain link). */
     fun driveId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/d/")
 
+    /**
+     * M173 (docs/LENDING.md §13.5, §17.8): an equipment item, `<server>/eq/<item_id>` (the QR code on its label; `/e/` is
+     * an event's).
+     */
+    fun equipmentUrl(baseUrl: String, itemId: String): String = baseUrl.trimEnd('/') + "/eq/" + itemId
+
+    /** The item id when `url` is an equipment link on `baseUrl` (another server's /eq/ is a plain link). */
+    fun equipmentId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/eq/")
+
     private fun idAfter(baseUrl: String, url: String, path: String): String? {
         val prefix = baseUrl.trimEnd('/') + path
         if (!url.startsWith(prefix, ignoreCase = true)) return null

@@ -960,6 +960,8 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
   `done = false`）は行の下に「許可していない」「確認した」を置き、判断の後は `activity.updated` で「対応済み」になる。開いている間の
   `lending.notice` はバナー（サーバの文をそのまま。DND 中は出さない）。
 - **サーバへの指摘**：なし（L1〜L3 の API のままで足りた）。
+- **L7 の後（§17.8）**：`lending.updated`・`lending.notice` の後の数は `GET /lending/summary` から読む（`scope=mine`・`scope=active`
+  から数え直すのは 404 の古いサーバだけ）。再接続は bootstrap の数をそのまま使う。メッセージの中の `/eq/<id>` は「備品」で開く。
 
 ### 17.6 L6（M172、Android、2026-10-26）
 
@@ -1003,7 +1005,8 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 
 サーバへの気づき（直していない）：bootstrap の `lending` だけを読む API が無いため、端末は数を貸し出しの一覧から数え直している
 （`GET /lending/summary` のようなものがあれば、備品係の端末が `scope=active` を毎回読まなくて済む）。
-→ L7 で `GET /lending/summary` を足した（§5.1・§17.7）。
+→ L7 で `GET /lending/summary` を足した（§5.1・§17.7）。L7 の後、Android もこれを読むようにした（§17.8。`LendingSummary.of` は
+404 の古いサーバのときだけ使う）。メッセージの中の `/eq/<id>` も「備品」で開く。
 
 ### 17.7 L7（M173、CSV と QR のラベル、2026-10-26）
 
@@ -1021,7 +1024,7 @@ Desktop / Web：`ui/LendingCsv.tsx`（「管理 → CSV」と取り込みのダ�
   重なっていた。`/eq/`（equipment）はサーバの頁（`pages.py`）にも Web の入口（`routes.ts`）にも無かった。サーバの頁は中身を明かさない
   （`/m/`・`/d/` と同じ）。Caddy の後ろでは知らない道は Web を読むので、ブラウザで開くと Web がログインの後に「備品」のその備品を開く。
 - **スマホのアプリはリンクを開かない**：iOS・Android にはユニバーサルリンク / App Links が無い（§13.5 のとおり）。OS のカメラで読むと
-  ブラウザの Web が開く。アプリのメッセージの中の `/eq/` のリンクを「備品」で開くのは、`/d/`・`/e/` と同じ形で後で足せる（今はふつうのリンク）。
+  ブラウザの Web が開く。アプリのメッセージの中の `/eq/` のリンクは L7 の後に「備品」で開くようにした（§17.8）。
 - **書き出し**：`lending.*` の他の API と同じく備品係（`403 lending_keeper_required`、ゲストは `403 guest_restricted`、オフは 409）。
   名前の順（一覧と同じ）。表計算が数式と読むセル（`=`・`+`・`-`・`@`・タブ・CR で始まる）は前に `'` を付ける。状態は日本語の言葉
   （貸出可・貸出中・修理中・廃棄）、「許可が要る」は「要る」「要らない」か空欄（分類の既定）、「最長の日数」は数か空欄（既定）、
@@ -1051,8 +1054,7 @@ Desktop / Web：`ui/LendingCsv.tsx`（「管理 → CSV」と取り込みのダ�
   延滞になるのは日付の変わり目だが、端末に知らせるのは朝の時刻（それまでは bootstrap と開いた画面が正しい数を読む）。
 - **`GET /lending/summary`**：bootstrap の `lending` と同じ値（同じ関数）。Desktop / Web のエンジンは `lending.updated` の後にこれだけを読む
   （オフ・ゲストの 409 / 403 は null として「備品」を隠す）。M173 より前のサーバ（`404 not_found`）では M170 のやり方（設定と貸し出しの
-  一覧から数える）に戻る。**iOS・Android は今も貸し出しの一覧から数えている**（§17.5・§17.6）。この API に替えれば備品係の端末が
-  `scope=active` を毎回読まなくて済む（後で）。
+  一覧から数える）に戻る。iOS・Android も L7 の後にこの API に替えた（§17.8）。
 - **QR**：`qrcode-generator` 2.0.4（Kazuhiko Arase、MIT、依存なし、ESM と型付き、2025-08 の版に固定）。Desktop にもサーバにも JS の QR の
   ライブラリは無かった（2 段階認証の QR はサーバの Python の `qrcode` が PNG で返す）。リンクは端末が知っているサーバのアドレス
   （Web は `location.origin`）から作るので、サーバで作るより素直（サーバは `PUBLIC_BASE_URL` が無いと自分の外のアドレスを知らない）。
@@ -1065,3 +1067,25 @@ Desktop / Web：`ui/LendingCsv.tsx`（「管理 → CSV」と取り込みのダ�
 - **取り込みの画面**：「管理 → CSV」の「取り込む…」でファイルを選ぶと dry run を送り、ダイアログに件数・新しい分類・行のエラー・
   差分の表（既定は「新しく作る」「変える」の行だけ、「変わらない行も表示」で全部）。エラーがあるあいだ「取り込む」は押せない。当てる
   ときの 400 は行のエラーとして同じダイアログに出す。
+
+### 17.8 L7 の後の手直し（iOS・Android、2026-10-26）
+
+サーバ・Desktop / Web は変えていない。iOS：`LendingApi.lendingSummary()`（`Api/LendingModels.swift`）、`LendingHub.loadSummary()`・
+`summaryRoute`、`LendingRules.isMissingRoute`、`EquipmentLink`（`UI/Permalink.swift`）、`MessageBodyView` の `equipmentLinks`、
+`AppController.openEquipmentLink`。Android：`LendingApi.lendingSummary()`（`ApiClient`）、`SyncEngine.reloadLending` の
+`lendingSummaryRoute`、`LendingSummary.isMissingRoute`、`Permalink.equipmentId`・`equipmentUrl`、`MessageBody` の `onOpenEquipment`、
+`AppController.openEquipmentLink`。テストは iOS `LendingTests`、Android `LendingTest`。
+
+- **タイルの数**：`lending.updated`・`lending.notice`（朝の催促は `lending.updated` を伴わないことがある）の後（300 ms にまとめる）は
+  `GET /lending/summary` を読み、その値をそのまま使う。`409 lending_disabled`・`403 guest_restricted` は bootstrap の null と同じに扱い、
+  「備品」を隠す（iOS は設定も捨て、次の `settings: true` で読み直す）。再接続（2 回目以降の bootstrap）は bootstrap の数を使い、
+  summary を読み直さない（開いた画面の一覧は今までどおり読み直す）。
+- **古いサーバ**：`404 not_found`（か 405）なら M173 より前のサーバとして覚え、それからは M171・M172 のやり方（`scope=mine` と、
+  備品係は `scope=active` から数える）に戻る。summary を読むのは端末ごとに 1 回だけで、404 を毎回待たない。ほかの失敗（ネットワーク・
+  5xx）は数をそのままにし、次の bootstrap が正す。備品係の端末は summary が読めるあいだ `scope=active` を数のためには読まない。
+- **`/eq/<item_id>` のリンク**：ログインしているサーバの `/eq/` で、UUID のものだけ（大文字小文字・クエリ・フラグメントは問わない。
+  `/e/` の予定のリンクとは重ならない）。「備品」が自分に有効なあいだは「📦 備品を開く」（書いた人のラベルがあればそれ）として描き、
+  押すとそのワークスペースのホームのタブに「備品」→ その備品を積む（知らせのタップと同じ道）。無効なあいだ（オフ・ゲスト・ボット・
+  M167 より前のサーバ）はふつうのリンクのまま（ブラウザの Web が開く）。描いた後にオフになっていれば、押したときにブラウザで開く。
+  見えない備品・消えた備品は備品の画面がいつものエラーを出す。リンクを描くのは会話のメッセージ（スレッドを含む）だけで、
+  キャンバス・ページ・AI の答えではふつうのリンクのまま。

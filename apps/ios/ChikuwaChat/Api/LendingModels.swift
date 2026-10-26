@@ -456,6 +456,9 @@ struct LendingUnavailable: Error, Equatable {
 @MainActor
 protocol LendingApi: AnyObject {
     func lendingSettings() async throws -> LendingSettingsOut
+    /// M173: the bootstrap's `lending` on its own; nil where the bootstrap has null (off, guests). A server before M173
+    /// throws 404 not_found.
+    func lendingSummary() async throws -> LendingSummaryOut?
     func lendingCategories() async throws -> [LendingCategoryOut]
     func lendingItems() async throws -> [LendingItemOut]
     func lendingItem(_ id: String) async throws -> LendingItemOut
@@ -475,6 +478,16 @@ extension ApiClient: LendingApi {
     // MARK: 備品 (M171, docs/LENDING.md §5)
 
     func lendingSettings() async throws -> LendingSettingsOut { try await requestJSON("GET", "/api/v1/lending/settings") }
+
+    /// M173 (docs/LENDING.md §5.1): the numbers after lending.updated. 409 lending_disabled (off) and 403
+    /// guest_restricted are nil, as the bootstrap's null; 404 not_found (a server before M173) is thrown.
+    func lendingSummary() async throws -> LendingSummaryOut? {
+        do {
+            return try await requestJSON("GET", "/api/v1/lending/summary") as LendingSummaryOut
+        } catch ApiError.api(_, let code, _) where code == "lending_disabled" || code == "guest_restricted" {
+            return nil
+        }
+    }
 
     func lendingCategories() async throws -> [LendingCategoryOut] { try await requestJSON("GET", "/api/v1/lending/categories") }
 

@@ -2212,6 +2212,19 @@ final class AppController {
         if let event = await loadCalendarEvent(eventId) { eventLink = .event(event) }
     }
 
+    /// M173 (docs/LENDING.md §17.8): an equipment link tapped in a message of this workspace: the item over 「備品」 on
+    /// the home tab (where a notice's tap lands). Lending turned off since the text was drawn: the link as it is (the
+    /// browser's Web), as for any other link: that URL is returned for the system to open (nil: opened here).
+    func openEquipmentLink(_ itemId: String) -> URL? {
+        guard lending?.enabled == true else {
+            guard let api else { return nil }
+            return URL(string: EquipmentLink.url(base: api.baseUrl, itemId: itemId))
+        }
+        KeyboardBehavior.dismiss()
+        PushCenter.shared.pendingLending = .item(itemId)
+        return nil
+    }
+
     // MARK: slash commands (M13b)
 
     /// Runs a command typed in the composer; false when it could not (the reason is in `error`).

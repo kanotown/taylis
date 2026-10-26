@@ -26,6 +26,9 @@ import jp.chikuwachat.android.ui.HomeTiles
 import jp.chikuwachat.android.ui.LendingRules
 import jp.chikuwachat.android.ui.MainNav
 import jp.chikuwachat.android.ui.NavItems
+import jp.chikuwachat.android.ui.Permalink
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import jp.chikuwachat.android.ui.Route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -283,8 +286,9 @@ class LendingTest {
         assertEquals(before + 1, store.lendingRevision)
     }
 
-    @Test fun bootstrapThenLendingUpdatedReadsTheNumbersAgainAndNoticesReachTheApp() = runBlocking {
+    @Test fun anOlderServerHasTheNumbersWorkedOutFromTheLoans() = runBlocking {
         val server = FakeServer()
+        server.lendingSummaryRoute = false // a server before M173: GET /lending/summary is 404
         val alice = server.addUser("alice"); val bob = server.addUser("bob")
         server.createChannel("general", alice.id)
         server.lendingSettings = LendingSettingsOut(enabled = true)
@@ -317,6 +321,83 @@ class LendingTest {
         server.noticeLending(bob.id, "📦 「カメラ A」は今日が返す日です。")
         engine.idle()
         assertEquals(listOf("📦 「カメラ A」は今日が返す日です。"), notices)
+        assertEquals(1, server.lendingSummaryReads) // asked once, then the loans
         engine.stop(); scope.cancel()
+    }
+
+    @Test fun lendingUpdatedAndANoticeReadTheSummaryAndOffHidesTheTile() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        server.createChannel("general", alice.id)
+        server.lendingSettings = LendingSettingsOut(enabled = true, isKeeper = true, keeperOverdueDays = 3)
+        server.lendingLoans = listOf(loan("l1", bob.id), loan("l2", alice.id, overdue = 4))
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(bob.id), server.connector(bob.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); engine.idle()
+        assertEquals(1, store.lending?.keeperAttentionCount)
+        // lending.updated: the summary, no loans read (a keeper read every active loan before M173).
+        server.lendingLoans = listOf(loan("l1", bob.id, overdue = 1), loan("l2", alice.id, overdue = 4))
+        val reads = server.lendingLoanReads.size
+        server.publishLending()
+        engine.idle()
+        delay(600)
+        assertEquals(1, server.lendingSummaryReads)
+        assertEquals(1, store.lending?.myOverdueCount)
+        assertEquals(emptyList<String>(), server.lendingLoanReads.drop(reads))
+        // lending.notice (the morning's reminder, no lending.updated): the numbers again.
+        server.lendingLoans = listOf(loan("l1", bob.id, overdue = 1))
+        server.noticeLending(bob.id, "⏰")
+        engine.idle()
+        delay(600)
+        assertEquals(2, server.lendingSummaryReads)
+        assertEquals(0, store.lending?.keeperAttentionCount)
+        // Turned off: 409 lending_disabled is null, the tile goes.
+        server.lendingSettings = LendingSettingsOut(enabled = false)
+        server.publishLending(settings = true)
+        engine.idle()
+        delay(600)
+        assertNull(store.lending)
+        assertEquals(emptyList<String>(), server.lendingLoanReads.drop(reads))
+        engine.stop(); scope.cancel()
+    }
+
+    @Test fun theSummaryRequestOffGuestsAndAnOlderServer() = runBlocking {
+        val answers = ArrayDeque(listOf(
+            200 to """{"enabled": true, "is_keeper": false, "my_active_count": 1, "my_overdue_count": 1, "keeper_attention_count": 0, "settings_updated_at": "2026-10-26T00:00:00Z"}""",
+            409 to """{"error": {"code": "lending_disabled", "message": "off"}}""",
+            403 to """{"error": {"code": "guest_restricted", "message": "guests"}}""",
+            404 to """{"error": {"code": "not_found", "message": "Not Found"}}""",
+        ))
+        val paths = ArrayList<String>()
+        val http = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            paths += chain.request().url.encodedPath
+            val (code, body) = answers.removeFirst()
+            okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1).code(code).message("x")
+                .body(body.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val client = ApiClient("http://server", http)
+        val summary = client.lendingSummary()
+        assertEquals(1, summary?.myOverdueCount)
+        assertEquals("2026-10-26T00:00:00Z", summary?.settingsUpdatedAt)
+        assertNull(client.lendingSummary()) // off
+        assertNull(client.lendingSummary()) // a guest
+        val old = runCatching { client.lendingSummary() }.exceptionOrNull()
+        assertTrue(old != null && LendingSummary.isMissingRoute(old))
+        assertEquals(List(4) { "/api/v1/lending/summary" }, paths)
+        assertFalse(LendingSummary.isMissingRoute(ApiException.Api(404, "lending_item_not_found", "")))
+        assertFalse(LendingSummary.isMissingRoute(ApiException.Network(java.io.IOException("x"))))
+    }
+
+    @Test fun equipmentLinksOfThisServer() {
+        val base = "https://chat.example.com"
+        val id = "0c9a1f0e-1b2c-4d3e-8f40-5a6b7c8d9e0f"
+        assertEquals(id, Permalink.equipmentId(base, "https://chat.example.com/eq/$id"))
+        assertEquals(id, Permalink.equipmentId("$base/", "HTTPS://CHAT.EXAMPLE.COM/eq/${id.uppercase()}?x=1#y"))
+        assertNull(Permalink.equipmentId(base, "https://chat.example.com/eq/not-an-id"))
+        assertNull(Permalink.equipmentId(base, "https://other.example.com/eq/$id"))
+        assertNull(Permalink.equipmentId(base, "https://chat.example.com/e/$id")) // an event's
+        assertNull(Permalink.eventId(base, "https://chat.example.com/eq/$id"))
+        assertEquals("https://chat.example.com/eq/$id", Permalink.equipmentUrl("$base/", id))
     }
 }

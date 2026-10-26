@@ -721,6 +721,13 @@ class ApiClient(
 
     override suspend fun lendingSettings(): LendingSettingsOut = request("GET", "/api/v1/lending/settings")
 
+    /** M173: the tile's numbers; 409 lending_disabled (off) and 403 guest_restricted are null, a 404 (before M173) is thrown. */
+    override suspend fun lendingSummary(): LendingSummaryOut? = try {
+        request<LendingSummaryOut>("GET", "/api/v1/lending/summary")
+    } catch (e: ApiException.Api) {
+        if (e.code == "lending_disabled" || e.code == "guest_restricted") null else throw e
+    }
+
     override suspend fun lendingLoans(scope: String): List<LendingLoanOut> = request("GET", "/api/v1/lending/loans?scope=$scope")
 
     /** Every item but the retired ones, by name (not paged: 2,000 at most); the app filters them itself. */

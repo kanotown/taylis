@@ -704,6 +704,8 @@ fun MessageRow(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id, linkContext) } },
                         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
                         onOpenEvent = { id -> controller.scope.launch { controller.openEventLink(id) } },
+                        // M173 (docs/LENDING.md §17.8): while lending is on for me; otherwise the link stays a plain one.
+                        onOpenEquipment = if (store.lending != null) { id -> controller.openEquipmentLink(id) } else null,
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                         canvasCard = { canvasId -> CanvasLinkCard(controller, canvasId, version) },  // M58
                         jumbo = true,  // M101

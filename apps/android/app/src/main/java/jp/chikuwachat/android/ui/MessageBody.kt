@@ -102,6 +102,8 @@ fun MessageBody(
     onOpenUser: ((String) -> Unit)? = null,
     /** Event links on this server (`<base>/e/<id>`, the 「予定」 bot's) open the event in place. */
     onOpenEvent: ((String) -> Unit)? = null,
+    /** M173: equipment links on this server (`<base>/eq/<id>`) open the item in 「備品」; null (lending off): a plain link. */
+    onOpenEquipment: ((String) -> Unit)? = null,
 ) {
     if (jumbo) {
         val only = remember(text, version, customEmoji) { EmojiOnly.parse(text, customEmoji) }
@@ -110,7 +112,7 @@ fun MessageBody(
             return
         }
     }
-    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations, onOpenUser, onOpenEvent)
+    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations, onOpenUser, onOpenEvent, onOpenEquipment)
     // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
     // row on screen again).
     val blocks = remember(text) { parseBlocks(text) }
@@ -206,6 +208,8 @@ fun bodyInline(
     onOpenUser: ((String) -> Unit)? = null,
     /** Event links on this server (`<base>/e/<id>`) open the event in place. */
     onOpenEvent: ((String) -> Unit)? = null,
+    /** M173: equipment links on this server (`<base>/eq/<id>`) open the item in 「備品」. */
+    onOpenEquipment: ((String) -> Unit)? = null,
 ): BodyInline {
     // The Store's maps change in place, so `version` is read here on purpose: the Compose compiler leaves a parameter the
     // body never reads out of the skip check, and the body was never drawn again when only the maps had changed (custom
@@ -267,6 +271,7 @@ fun bodyInline(
                     val page = jp.chikuwachat.android.sync.WikiLinks.idOf(token.url) ?: internalBase?.let { Permalink.pageId(it, token.url) }
                     val file = jp.chikuwachat.android.sync.WikiLinks.attachmentOf(token.url)
                     val drive = internalBase?.let { Permalink.driveId(it, token.url) }
+                    val equipment = internalBase?.let { Permalink.equipmentId(it, token.url) }
                     val written = token.label?.takeIf { it != token.url }
                     if (page != null) {
                         val label = docLinks?.label?.invoke(page)
@@ -298,6 +303,10 @@ fun bodyInline(
                     } else if (event != null && onOpenEvent != null) {
                         withLink(LinkAnnotation.Clickable("event:$event", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenEvent(event) }) {
                             append("📅 " + (token.label?.takeIf { it != token.url } ?: L10n.str(R.string.common_open_event)))
+                        }
+                    } else if (equipment != null && onOpenEquipment != null) {
+                        withLink(LinkAnnotation.Clickable("equipment:$equipment", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenEquipment(equipment) }) {
+                            append("📦 " + (token.label?.takeIf { it != token.url } ?: L10n.str(R.string.lending_open_item)))
                         }
                     } else withLink(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),

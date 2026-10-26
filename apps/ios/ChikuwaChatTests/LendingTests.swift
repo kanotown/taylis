@@ -256,6 +256,41 @@ final class LendingTests: XCTestCase {
         XCTAssertEqual(requests.last?.request.url?.absoluteString, "http://server/api/v1/lending/loans?scope=approved")
     }
 
+    func testTheSummaryRequestOffAndAnOlderServer() async throws {
+        var answer: (Int, String) = (200, """
+        {"enabled": true, "is_keeper": false, "my_active_count": 1, "my_overdue_count": 1, "keeper_attention_count": 0,
+         "settings_updated_at": "2026-10-26T00:00:00Z"}
+        """)
+        var paths: [String] = []
+        StubProtocol.handler = { request in
+            paths.append(request.url!.path)
+            return (answer.0, Data(answer.1.utf8))
+        }
+        defer { StubProtocol.handler = nil }
+        let client = makeClient()
+        let summary = try await client.lendingSummary()
+        XCTAssertEqual(paths, ["/api/v1/lending/summary"])
+        XCTAssertEqual(summary?.myOverdueCount, 1)
+        XCTAssertEqual(summary?.settingsUpdatedAt, "2026-10-26T00:00:00Z")
+        // Off, and a guest: null, as in the bootstrap.
+        answer = (409, #"{"error": {"code": "lending_disabled", "message": "off"}}"#)
+        let off = try await client.lendingSummary()
+        XCTAssertNil(off)
+        answer = (403, #"{"error": {"code": "guest_restricted", "message": "guest"}}"#)
+        let guest = try await client.lendingSummary()
+        XCTAssertNil(guest)
+        // A server before M173: thrown, and known as a missing route.
+        answer = (404, #"{"error": {"code": "not_found", "message": "Not Found"}}"#)
+        do {
+            _ = try await client.lendingSummary()
+            XCTFail("404")
+        } catch {
+            XCTAssertTrue(LendingRules.isMissingRoute(error))
+        }
+        XCTAssertFalse(LendingRules.isMissingRoute(ApiError.api(status: 404, code: "lending_item_not_found", message: "")))
+        XCTAssertFalse(LendingRules.isMissingRoute(ApiError.network(URLError(.timedOut))))
+    }
+
     func testSomeoneElseWasFirst() async throws {
         StubProtocol.handler = { _ in
             (409, Data("""
@@ -326,6 +361,87 @@ final class LendingTests: XCTestCase {
         await guest.loadItems()
         XCTAssertFalse(guest.enabled)
         XCTAssertEqual(guestApi.itemReads, 0)
+    }
+
+    func testTheNumbersComeFromTheSummaryAfterAnEventOrANotice() async throws {
+        let api = FakeLendingApi()
+        api.summaryError = nil
+        api.summary = LendingSummaryOut(enabled: true, isKeeper: true, myActiveCount: 1, myOverdueCount: 1, keeperAttentionCount: 2)
+        api.settings = LendingSettingsOut(enabled: true, keeperIds: ["me"], isKeeper: true)
+        let hub = LendingHub(api: api)
+        hub.debounce = .zero
+        hub.bootstrap(LendingSummaryOut(enabled: true, isKeeper: true, myActiveCount: 1, myOverdueCount: 1, keeperAttentionCount: 0))
+        try await waitUntil { hub.settings != nil }
+        XCTAssertEqual(hub.tileCount, 1)
+
+        // lending.updated: the summary's numbers, not a count of the loans (the keeper reads no scope=active).
+        api.mine = []
+        var before = hub.changes
+        hub.applyUpdated(.object(["item_ids": .array([]), "categories": .bool(false), "settings": .bool(false)]))
+        try await waitUntil { hub.changes > before }
+        XCTAssertEqual(api.summaryReads, 1)
+        XCTAssertEqual(hub.summaryRoute, true)
+        XCTAssertEqual(hub.tileCount, 3)
+        XCTAssertEqual(api.activeReads, 0)
+
+        // lending.notice (the morning's reminder comes with no lending.updated): read again.
+        api.summary = LendingSummaryOut(enabled: true, isKeeper: true, myActiveCount: 1, myOverdueCount: 0, keeperAttentionCount: 0)
+        before = hub.changes
+        hub.applyNotice(LendingNotice(itemId: "n1", lendingItemId: "i1", loanId: "l1", role: "borrower", text: "⏰"))
+        try await waitUntil { hub.changes > before }
+        XCTAssertEqual(api.summaryReads, 2)
+        XCTAssertEqual(hub.tileCount, 0)
+
+        // A reconnect: the bootstrap's numbers, no second read of them.
+        hub.bootstrap(LendingSummaryOut(enabled: true, isKeeper: true, myActiveCount: 1, myOverdueCount: 2, keeperAttentionCount: 0))
+        XCTAssertEqual(hub.tileCount, 2)
+        try await waitUntil { api.mineReads >= 3 }
+        XCTAssertEqual(api.summaryReads, 2)
+        XCTAssertEqual(hub.tileCount, 2)
+
+        // Turned off: 409 lending_disabled is nil, the tile goes.
+        api.summary = nil
+        before = hub.changes
+        hub.applyUpdated(.object(["settings": .bool(false)]))
+        try await waitUntil { hub.changes > before }
+        XCTAssertFalse(hub.enabled)
+        XCTAssertEqual(hub.tileCount, 0)
+    }
+
+    func testAnOlderServerCountsFromTheLoans() async throws {
+        let api = FakeLendingApi()  // GET /lending/summary answers 404 not_found
+        api.settings = LendingSettingsOut(enabled: true, keeperIds: ["me"], keeperOverdueDays: 3, isKeeper: true)
+        api.active = [LendingLoanOut(id: "a", itemId: "i", itemName: "x", borrowerId: "u1", dueOn: "2026-10-20", overdueDays: 5)]
+        let hub = LendingHub(api: api)
+        hub.debounce = .zero
+        hub.bootstrap(LendingSummaryOut(enabled: true, isKeeper: true, myActiveCount: 1, myOverdueCount: 0, keeperAttentionCount: 0))
+        try await waitUntil { hub.settings != nil }
+        let before = hub.changes
+        hub.applyUpdated(.object(["settings": .bool(false)]))
+        try await waitUntil { hub.changes > before }
+        XCTAssertEqual(hub.summaryRoute, false)
+        XCTAssertEqual(hub.tileCount, 2)  // my overdue loan (mine) + the keeper's 5 days past due (active)
+        XCTAssertGreaterThan(api.activeReads, 0)
+        // Asked once: the next event goes straight to the loans.
+        let again = hub.changes
+        hub.applyUpdated(.object(["settings": .bool(false)]))
+        try await waitUntil { hub.changes > again }
+        XCTAssertEqual(api.summaryReads, 1)
+    }
+
+    func testEquipmentLinksOfThisServer() {
+        let base = URL(string: "https://chat.example.com")!
+        let id = "0c9a1f0e-1b2c-4d3e-8f40-5a6b7c8d9e0f"
+        XCTAssertEqual(EquipmentLink.itemId(base: base, url: "https://chat.example.com/eq/\(id)"), id)
+        XCTAssertEqual(EquipmentLink.itemId(base: URL(string: "https://chat.example.com/")!, url: "HTTPS://CHAT.EXAMPLE.COM/eq/\(id.uppercased())?x=1#y"), id)
+        XCTAssertNil(EquipmentLink.itemId(base: base, url: "https://chat.example.com/eq/not-an-id"))
+        XCTAssertNil(EquipmentLink.itemId(base: base, url: "https://other.example.com/eq/\(id)"))
+        XCTAssertNil(EquipmentLink.itemId(base: base, url: "https://chat.example.com/e/\(id)"))  // an event's
+        XCTAssertNil(EventLink.eventId(base: base, url: "https://chat.example.com/eq/\(id)"))
+        XCTAssertNil(EquipmentLink.itemId(base: nil, url: "https://chat.example.com/eq/\(id)"))
+        XCTAssertEqual(EquipmentLink.url(base: URL(string: "https://chat.example.com/")!, itemId: id), "https://chat.example.com/eq/\(id)")
+        XCTAssertEqual(EquipmentLink.internalLink(itemId: id)?.scheme, EquipmentLink.scheme)
+        XCTAssertEqual(EquipmentLink.internalLink(itemId: id)?.host, id)
     }
 
     func testTheKeepersAttention() {
@@ -405,10 +521,22 @@ final class FakeLendingApi: LendingApi {
     var settings = LendingSettingsOut(enabled: true, tz: "Asia/Tokyo")
     var items = [LendingItemOut(id: "i1", name: "カメラ A", status: "available")]
     var mine = [LendingLoanOut(id: "l1", itemId: "i1", itemName: "カメラ A", borrowerId: "me", dueOn: "2026-10-20", overdueDays: 6)]
+    var active: [LendingLoanOut] = []
     var borrowError: Error?
+    /// GET /lending/summary: a server before M173 unless a test clears the error.
+    var summary: LendingSummaryOut?
+    var summaryError: Error? = ApiError.api(status: 404, code: "not_found", message: "Not Found")
     private(set) var itemReads = 0
+    private(set) var summaryReads = 0
+    private(set) var mineReads = 0
+    private(set) var activeReads = 0
 
     func lendingSettings() async throws -> LendingSettingsOut { settings }
+    func lendingSummary() async throws -> LendingSummaryOut? {
+        summaryReads += 1
+        if let summaryError { throw summaryError }
+        return summary
+    }
     func lendingCategories() async throws -> [LendingCategoryOut] { [] }
     func lendingItems() async throws -> [LendingItemOut] {
         itemReads += 1
@@ -418,7 +546,11 @@ final class FakeLendingApi: LendingApi {
         guard let item = items.first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "lending_item_not_found", message: "") }
         return item
     }
-    func lendingLoans(scope: String) async throws -> [LendingLoanOut] { scope == "mine" ? mine : [] }
+    func lendingLoans(scope: String) async throws -> [LendingLoanOut] {
+        if scope == "mine" { mineReads += 1 }
+        if scope == "active" { activeReads += 1 }
+        return scope == "mine" ? mine : scope == "active" ? active : []
+    }
     func lendingLoan(_ id: String) async throws -> LendingLoanOut {
         guard let loan = mine.first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "lending_loan_not_found", message: "") }
         return loan

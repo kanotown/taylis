@@ -3453,6 +3453,20 @@ class AppController(private val app: Application) {
         bringWorkspace { pendingLending = target }
     }
 
+    /**
+     * M173 (docs/LENDING.md §17.8): an equipment link (`<server>/eq/<id>`) tapped in a message of this workspace: the item
+     * over 「備品」 on the home tab, as a notice's tap. Lending turned off since the row was drawn: the link in the browser
+     * (the Web), as any other link.
+     */
+    fun openEquipmentLink(itemId: String) {
+        if (store.lending == null) {
+            val base = serverBase ?: return
+            if (!jp.chikuwachat.android.ui.Calls.open(app, jp.chikuwachat.android.ui.Permalink.equipmentUrl(base, itemId))) error = L10n.str(R.string.app_controller_couldnt_open_the_browser)
+            return
+        }
+        pendingLending = jp.chikuwachat.android.platform.LendingTarget(itemId = itemId, loanId = null)
+    }
+
     /** M172: the bar's title of an item or loan page (its name, once read). */
     val lendingTitles = androidx.compose.runtime.mutableStateMapOf<String, String>()
 

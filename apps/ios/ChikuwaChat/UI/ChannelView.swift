@@ -1193,8 +1193,13 @@ struct MessageRow: View {
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
                                     onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [], jumbo: true,
                                     userLinks: present != nil && !message.pending,
-                                    driveLabel: controller.drive.map { hub in { hub.linkState($0) } })
+                                    driveLabel: controller.drive.map { hub in { hub.linkState($0) } },
+                                    equipmentLinks: controller.lending?.enabled == true)
                         .environment(\.openURL, OpenURLAction { url in
+                            if url.scheme == EquipmentLink.scheme, let id = url.host {  // M173: an equipment item
+                                if let web = controller.openEquipmentLink(id) { return .systemAction(web) }
+                                return .handled
+                            }
                             if url.scheme == DriveLink.scheme, let id = url.host {  // M166: a drive file or folder
                                 Task { await controller.openDriveLink(id) }
                                 return .handled

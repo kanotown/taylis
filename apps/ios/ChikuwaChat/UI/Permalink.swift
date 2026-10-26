@@ -130,3 +130,33 @@ enum EventLink {
     /// The in-app link put into a body's attributed text; the row's `openURL` handler opens the event.
     static func internalLink(eventId: String) -> URL? { URL(string: "\(scheme)://\(eventId)") }
 }
+
+/// M173 (docs/LENDING.md §13.5, §17.8): an equipment item's link, `<server>/eq/<item_id>` (the QR code on its label;
+/// `/e/` is an event's), recognised only for the server we are logged into. It opens in 「備品」 while lending is on for
+/// me; otherwise it stays a plain link (the browser's Web opens the item).
+enum EquipmentLink {
+    static let scheme = "chikuwa-equipment"
+    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
+
+    /// The item id when `url` is an equipment link on `base` (case-insensitive prefix, query / fragment ignored).
+    static func itemId(base: URL?, url: String) -> String? {
+        guard let base else { return nil }
+        var prefix = base.absoluteString
+        while prefix.hasSuffix("/") { prefix.removeLast() }
+        prefix += "/eq/"
+        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
+        var id = String(url.dropFirst(prefix.count))
+        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
+        let range = NSRange(location: 0, length: (id as NSString).length)
+        return uuid.firstMatch(in: id, range: range) != nil ? id.lowercased() : nil
+    }
+
+    static func url(base: URL, itemId: String) -> String {
+        var text = base.absoluteString
+        while text.hasSuffix("/") { text.removeLast() }
+        return text + "/eq/" + itemId
+    }
+
+    /// The in-app link put into a body's attributed text; the row's `openURL` handler opens the item.
+    static func internalLink(itemId: String) -> URL? { URL(string: "\(scheme)://\(itemId)") }
+}
