@@ -176,6 +176,18 @@ struct MainNavigation: Equatable {
         if layout == .split { split = [.list(id)]; youSheet = false } else { paths[.home] = [.list(id)]; tab = .home }
     }
 
+    /// M171: an equipment notice: on the home tab over 「備品」 (Back: its list), or in the detail column.
+    mutating func landLending(_ screen: LendingScreen, listId: String) {
+        let path: [MainRoute] = [.list(listId), .lending(screen)]
+        if layout == .split {
+            split = path
+            youSheet = false
+        } else {
+            paths[.home] = path
+            tab = .home
+        }
+    }
+
     /// M122: a page from a notification: on the home tab over 「ドキュメント」 (Back: the tree), or in the detail column.
     mutating func landPage(_ pageId: String, docsId: String) {
         if layout == .split {
@@ -238,7 +250,7 @@ struct MainNavigation: Equatable {
             guard let index = path.firstIndex(where: {
                 switch $0 {
                 case .channel(let id), .thread(let id, _): gone(id)
-                case .list, .page, .drive: false
+                case .list, .page, .drive, .lending: false
                 }
             }) else { return path }
             return Array(path[..<index])

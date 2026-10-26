@@ -301,7 +301,8 @@ enum SidebarOrder {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
-        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, drive, canvases, docs, attendance, actions
+        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, lending, files, drive, canvases, docs, attendance,
+             actions
 
         /// M111: the key in apps/shared/nav-items.json (UserMe.nav_items).
         var navKey: String { self == .times ? "times-feed" : rawValue }
@@ -329,6 +330,7 @@ struct HomeTile: Identifiable, Equatable {
         case .tasks: tr("タスク")
         case .deadlines: tr("締切")
         case .reservations: tr("予約")
+        case .lending: tr("備品")
         case .files: tr("ファイル")
         case .drive: tr("ドライブ")
         case .canvases: tr("キャンバス")
@@ -349,6 +351,7 @@ struct HomeTile: Identifiable, Equatable {
         case .tasks: "checklist"
         case .deadlines: "calendar.badge.exclamationmark"
         case .reservations: "ticket"
+        case .lending: "shippingbox"
         case .files: "doc.on.doc"
         case .drive: "externaldrive"
         case .canvases: "doc.text"
@@ -370,6 +373,7 @@ struct HomeTile: Identifiable, Equatable {
         case .tasks: MyTasksView.selectionId
         case .deadlines: DeadlinesView.selectionId
         case .reservations: ReservationsView.selectionId
+        case .lending: LendingView.selectionId
         case .files: FilesView.selectionId
         case .drive: DriveLocationsView.selectionId
         case .canvases: CanvasesView.selectionId
@@ -386,6 +390,7 @@ struct HomeTile: Identifiable, Equatable {
         case .threads: return count == 0 ? tr("未読なし") : alert ? tr("未読 \(count) 件、メンションあり") : tr("未読 \(count) 件")
         case .reminders: return count == 0 ? tr("通知済みなし") : tr("通知済み \(count) 件")
         case .reservations: return count == 0 ? tr("作業なし") : tr("担当者の作業 \(count) 件")
+        case .lending: return tr("延滞 \(count) 件")
         case .attendance: return tr("在室 \(count) 人")
         default: return tr("\(count) 件")
         }
@@ -404,13 +409,16 @@ struct HomeTile: Identifiable, Equatable {
     /// M143 (docs/ACTIONS.md §9.2): 操作 (key "actions", after 在室状況) only while the buttons are on and I may press one
     /// (`actions`): no number.
     /// M166 (docs/DRIVE.md §26): ドライブ (key "drive", after ファイル) while the server has the drive (`drive`): no number.
+    /// M171 (docs/LENDING.md §12.1): 備品 (key "lending", after 予約) while the feature is on for me (`lending`, its number:
+    /// my overdue loans and, for keepers, those needing their attention; red; none at 0).
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?,
                       reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false,
-                      drive: Bool = false, timesUnread: Bool = true) -> [HomeTile] {
+                      drive: Bool = false, lending: Int? = nil, timesUnread: Bool = true) -> [HomeTile] {
         let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations, docs: docs,
-                        attendance: attendance, actions: actions, drive: drive, timesUnread: timesUnread)
+                        attendance: attendance, actions: actions, drive: drive, lending: lending, timesUnread: timesUnread)
         let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
-        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil, actions: actions, drive: drive))
+        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil, actions: actions, drive: drive,
+                                                                              lending: lending != nil))
             .compactMap { byKey[$0] }
     }
 
@@ -421,7 +429,7 @@ struct HomeTile: Identifiable, Equatable {
 
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
                       reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil, actions: Bool = false,
-                      drive: Bool = false, timesUnread: Bool = true) -> [HomeTile] {
+                      drive: Bool = false, lending: Int? = nil, timesUnread: Bool = true) -> [HomeTile] {
         var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, timesUnread: timesUnread)
         if drive, let at = row.firstIndex(where: { $0.kind == .files }) {
             row.insert(HomeTile(kind: .drive, count: nil, alert: false), at: at + 1)
@@ -432,6 +440,9 @@ struct HomeTile: Identifiable, Equatable {
         if let reservations, let at = row.firstIndex(where: { $0.kind == .deadlines }) {
             row.insert(HomeTile(kind: .reservations, count: reservations.operates ? reservations.todos : nil,
                                 alert: reservations.todos > 0), at: at + 1)
+        }
+        if let lending, let at = row.lastIndex(where: { $0.kind == .reservations || $0.kind == .deadlines }) {
+            row.insert(HomeTile(kind: .lending, count: lending > 0 ? lending : nil, alert: lending > 0), at: at + 1)
         }
         if let attendance { row.append(HomeTile(kind: .attendance, count: attendance, alert: false)) }
         if actions { row.append(HomeTile(kind: .actions, count: nil, alert: false)) }

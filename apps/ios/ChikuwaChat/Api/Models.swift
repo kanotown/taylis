@@ -1049,6 +1049,9 @@ struct BootstrapOut: Codable {
     var attendance: AttendanceBoardOut? = nil
     /// M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press; nil for guests, while off and from a server before M143.
     var actions: ActionListOut? = nil
+    /// M171 (docs/LENDING.md §5.1): 「備品」 for me — whether it is on, my counts; nil for guests, while off and from a
+    /// server before M167.
+    var lending: LendingSummaryOut? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message
@@ -1071,6 +1074,8 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     var reservation: ActivityReservation? = nil
     /// M122: a `page_mention` / `page_shared` item's page (asked for with `include=page_mention,page_shared`).
     var page: ActivityPage? = nil
+    /// M171: a `lending` item's notice (asked for with `include=lending`).
+    var lending: ActivityLending? = nil
     /// 2026-10-06 (MOBILE_UI.md §6.4): the server's verdict — read by the activity's read position, or (a mention or a
     /// thread reply) read in its conversation, or a done reservation to-do; since 2026-10-07 also opened since it
     /// happened. nil from a server before it.
@@ -1087,6 +1092,7 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     var id: String {
         if let canvas { return "canvas_mention:\(canvas.itemId)" }
         if let reservation { return "reservation:\(reservation.itemId)" }
+        if let lending { return "lending:\(lending.itemId)" }
         if let page { return "\(kind):\(page.itemId)" }
         return "\(kind):\(message?.id ?? "")"
     }
@@ -1094,10 +1100,11 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     /// The conversation the row is in.
     var channelId: String? { canvas?.channelId ?? message?.channelId }
 
-    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, page, read, itemId = "id" }
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, page, lending, read, itemId = "id" }
 
     init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil,
-         reservation: ActivityReservation? = nil, page: ActivityPage? = nil, itemId: String? = nil, read: Bool? = nil) {
+         reservation: ActivityReservation? = nil, page: ActivityPage? = nil, lending: ActivityLending? = nil, itemId: String? = nil,
+         read: Bool? = nil) {
         self.itemId = itemId
         self.read = read
         self.kind = kind
@@ -1108,6 +1115,7 @@ struct ActivityItem: Codable, Equatable, Identifiable {
         self.canvas = canvas
         self.reservation = reservation
         self.page = page
+        self.lending = lending
     }
 
     /// A canvas item needs its canvas, every other kind its message: an item with neither (a kind of a newer server,
@@ -1121,6 +1129,10 @@ struct ActivityItem: Codable, Equatable, Identifiable {
             message = nil
         } else if kind == "reservation" {
             reservation = try c.decode(ActivityReservation.self, forKey: .reservation)
+            canvas = nil
+            message = nil
+        } else if kind == "lending" {
+            lending = try c.decode(ActivityLending.self, forKey: .lending)
             canvas = nil
             message = nil
         } else if kind == "page_mention" || kind == "page_shared" {

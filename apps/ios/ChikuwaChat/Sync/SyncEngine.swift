@@ -182,6 +182,8 @@ final class SyncEngine {
     @ObservationIgnored private(set) var ai: AiHub!
     /// M166 (docs/DRIVE.md §14, §26): whether the server has the drive, the drives and the open folders' signals.
     @ObservationIgnored private(set) var drive: DriveHub!
+    /// M171 (docs/LENDING.md §9, §12.3): 「備品」 — the summary, the settings, the ledger and the loans once read.
+    @ObservationIgnored private(set) var lending: LendingHub!
 
     /// error frame codes that mean the auth frame was refused (a close 4001 follows).
     private static let authRefusals: Set<String> = ["auth_required", "token_expired", "invalid_token", "session_revoked", "session_expired",
@@ -209,6 +211,10 @@ final class SyncEngine {
         tasks.onNotice = { [weak self] notice in self?.onTaskNotice?(notice) }
         ai = AiHub(api: api as? AiApi)
         drive = DriveHub(api: api as? DriveApi)
+        lending = LendingHub(api: api as? LendingApi)
+        lending.isPerson = { [weak store] in ["admin", "manager", "member"].contains(store?.me?.role ?? "") }
+        lending.isDeactivated = { [weak store] id in store?.users[id]?.deactivatedAt != nil }
+        lending.onNotice = { [weak self] notice in self?.onLendingNotice?(notice) }
         store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
         store.onStalePreview = { [weak self] channelId in Task { await self?.refreshLastMessage(channelId) } }
     }
@@ -687,6 +693,7 @@ final class SyncEngine {
         let wikiFeed = bootstrap.wiki
         Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
         Task { await self.drive.bootstrap() }  // M166: the drives again; open folders read again after a gap
+        lending.bootstrap(bootstrap.lending)  // M171: the tile; after a gap what was read again
         onBadge?(store.badgeCount)
         onWidgetData?()
     }
@@ -852,6 +859,11 @@ final class SyncEngine {
         case "attendance.config_updated":
             // M140: the switch, the rule or the states changed; what I may do differs per person, so the event is empty.
             scheduleAttendanceReload()
+        case "lending.updated":  // M171 (docs/LENDING.md §9): no contents (what one sees differs per person): read again
+            lending.applyUpdated(frame.data)
+        case "lending.notice":  // M171: an activity item for me (a due date, the teacher's to-do, a return I waited for)
+            scheduleActivityRefresh()
+            if let notice = try? frame.data.decode(LendingNotice.self) { lending.applyNotice(notice) }
         case "reservation.notice":  // M112: an activity item for me (an operator's to-do, or news of my own reservation)
             scheduleActivityRefresh()
             if let notice = try? frame.data.decode(ReservationNotice.self) { onReservationNotice?(notice) }
@@ -1200,6 +1212,8 @@ final class SyncEngine {
     var onWikiNotice: ((WikiNotice, Bool) -> Void)?
     /// M112: reservation.notice while the app is open (the server pushes to phones not on screen).
     var onReservationNotice: ((ReservationNotice) -> Void)?
+    /// M171: lending.notice while the app is open (the server pushes to phones not on screen).
+    var onLendingNotice: ((LendingNotice) -> Void)?
 
     /// M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events).
     func loadScheduled() async {

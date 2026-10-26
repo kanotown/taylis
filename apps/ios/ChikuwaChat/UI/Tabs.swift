@@ -16,6 +16,8 @@ enum MainRoute: Hashable {
     case page(String)
     /// M166 (docs/DRIVE.md §26): a drive's folder, over 「ドライブ」 (each folder opened goes on the stack: Back is up).
     case drive(String)
+    /// M171 (docs/LENDING.md §12.3): a screen of 「備品」 over its list (an item, a loan, the overdue or active loans).
+    case lending(LendingScreen)
 }
 
 /// The tab badges (the same rules on the three clients, IMPLEMENTATION_PLAN.md M34 (6)). Pure over the store's

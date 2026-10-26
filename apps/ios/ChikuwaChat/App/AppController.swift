@@ -653,6 +653,7 @@ final class AppController {
         // M73: a canvas mention while the app is open, worded like the push; the notice opens the canvas.
         engine.onCanvasMention = { [weak self] mention, _ in self?.sayCanvasMention(mention) }
         engine.onReservationNotice = { [weak self] notice in self?.sayReservationNotice(notice) }
+        engine.onLendingNotice = { [weak self] notice in self?.sayLendingNotice(notice) }
         engine.onWikiNotice = { [weak self] notice, shared in self?.sayWikiNotice(notice, shared: shared) }
         // L8: the Times feed keeps its rows with the live message events (TIMES_FEED.md §5).
         timesFeed = TimesFeedModel()
@@ -879,6 +880,12 @@ final class AppController {
         if payload.opensPage, let pageId = payload.pageId {
             // M122 (docs/WIKI.md §9.3, kind = page): the page, on the home tab over 「ドキュメント」.
             PushCenter.shared.pendingPage = pageId
+            engine?.reconnectNow()
+            return
+        }
+        if payload.opensLending {
+            // M171 (docs/LENDING.md §8.3, kind = lending): 「備品」 on the home tab, at the loan → the item → the overdue list.
+            PushCenter.shared.pendingLending = LendingRules.target(loanId: payload.loanId, itemId: payload.lendingItemId)
             engine?.reconnectNow()
             return
         }
@@ -1551,6 +1558,16 @@ final class AppController {
         guard !DND.isActive(currentMe?.asPublic) else { return }
         self.notice = "🎫 " + notice.text
     }
+
+    /// M171: an equipment notice while the app is open: the banner (its words start with the server's 📦 / ⏰ / 🔑 …; the
+    /// activity lists it too).
+    func sayLendingNotice(_ notice: LendingNotice) {
+        guard !DND.isActive(currentMe?.asPublic) else { return }
+        self.notice = notice.text
+    }
+
+    /// M171: 「備品」 (nil before the first connection).
+    var lending: LendingHub? { engine?.lending }
 
     /// A booking (start on the hour, `hours` long).
     @discardableResult

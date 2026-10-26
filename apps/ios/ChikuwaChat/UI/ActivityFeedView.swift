@@ -69,12 +69,19 @@ struct ActivityFeedView: View {
                 } else {
                     ForEach(items) { item in
                         let unread = isUnread(item)
-                        Button { open(item) } label: {
-                            ActivityRowView(controller: controller, item: item, unread: unread)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button { open(item) } label: {
+                                ActivityRowView(controller: controller, item: item, unread: unread)
+                            }
+                            .buttonStyle(.plain)
+                            // M171 (docs/LENDING.md §17.3): the teacher's to-do has its two buttons on the row.
+                            if let lending = item.lending, lending.isOpenApproval, let loanId = lending.loanId {
+                                LendingDecisionButtons(controller: controller, loanId: loanId, decisions: ["denied", "confirmed"])
+                                    .padding(.leading, 56)
+                            }
                         }
-                        .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 16))
-                        .listRowBackground(unread && item.reservation?.done != true ? Color.accentColor.opacity(0.08) : nil)
+                        .listRowBackground(unread && !ActivityRules.isDone(item) ? Color.accentColor.opacity(0.08) : nil)
                     }
                     if list?.cursor != nil {
                         Button("さらに読み込む") { Task { await load(filter, more: true) } }
@@ -179,7 +186,7 @@ struct ActivityFeedView: View {
     /// The row's dot (ActivityRules.isUnread): against the read position held now, the items opened here or on another
     /// device, and this device's read positions in the conversations. A to-do done has none.
     private func isUnread(_ item: ActivityItem) -> Bool {
-        guard item.reservation?.done != true else { return false }
+        guard !ActivityRules.isDone(item) else { return false }
         return ActivityRules.isUnread(item, readAt: store.activity?.readAt, conversationRead: readInConversation(item),
                                       openedAt: item.itemId.flatMap { store.openedActivityItems[$0] })
     }
@@ -233,14 +240,14 @@ struct ActivityRowView: View {
         let conversation = item.channelId.flatMap { store.channel($0) }.map { channelTitle($0, store: store) } ?? ""
         let place = conversation.isEmpty && item.page == nil ? "" : ActivityRules.whereText(item, conversation: conversation)
         // M112: a to-do another operator handled (or no longer needed) is done: dimmed, 「対応済み」.
-        let done = item.reservation?.done == true
+        let done = ActivityRules.isDone(item)
         HStack(alignment: .top, spacing: 8) {
             Circle()
                 .fill(unread && !done ? Color.accentColor : Color.clear)
                 .frame(width: 8, height: 8)
                 .padding(.top, 16)
-            if item.reservation != nil {
-                Text("🎫").font(.system(size: 20)).frame(width: 40, height: 40)
+            if item.reservation != nil || item.lending != nil {
+                Text(item.lending != nil ? "📦" : "🎫").font(.system(size: 20)).frame(width: 40, height: 40)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             } else {
                 avatars(nameOf)
@@ -269,7 +276,7 @@ struct ActivityRowView: View {
                     CustomEmoji.excerpt(excerpt, controller: controller)
                         .font(.subheadline)
                         .foregroundStyle(unread ? .primary : .secondary)
-                        .lineLimit(item.reservation != nil ? 3 : 2)
+                        .lineLimit(item.reservation != nil || item.lending != nil ? 3 : 2)
                         .strikethrough(done)
                 }
             }

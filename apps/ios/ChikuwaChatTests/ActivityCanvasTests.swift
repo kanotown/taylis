@@ -108,7 +108,7 @@ final class ActivityCanvasTests: XCTestCase {
         XCTAssertEqual(requests.map { "\($0.method) \($0.path)" },
                        ["GET /api/v1/activity", "GET /api/v1/activity/summary", "PUT /api/v1/activity/read", "GET /api/v1/sync/bootstrap"])
         // M112: reservation notices too; M122: wiki pages.
-        let kinds = ["canvas_mention", "reservation", "page_mention", "page_shared"]
+        let kinds = ["canvas_mention", "reservation", "page_mention", "page_shared", "lending"]
         let include = kinds.map { URLQueryItem(name: "include", value: $0) }
         XCTAssertEqual(requests[0].query, [URLQueryItem(name: "filter", value: "mentions"), URLQueryItem(name: "limit", value: "50"),
                                            URLQueryItem(name: "cursor", value: "2026-10-02T01:00:00Z")] + include)

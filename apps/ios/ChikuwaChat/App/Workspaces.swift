@@ -89,6 +89,10 @@ struct PushPayload: Equatable, Sendable {
     var canvasId: String?
     /// M122: a wiki page that newly mentions me or was shared with me (`kind = page`, docs/WIKI.md §9.3).
     var pageId: String? = nil
+    /// M171: an equipment notice's item and loan (`kind = lending`, docs/LENDING.md §8.3); both nil for the keepers'
+    /// morning summary.
+    var lendingItemId: String? = nil
+    var loanId: String? = nil
 
     init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil,
          kind: String? = nil, eventId: String? = nil, taskId: String? = nil, canvasId: String? = nil) {
@@ -111,6 +115,9 @@ struct PushPayload: Equatable, Sendable {
 
     /// M112: a reservation notice opens 「予約」.
     var opensReservations: Bool { kind == "reservation" }
+
+    /// M171: an equipment notice opens 「備品」 at the loan, else the item, else the overdue list.
+    var opensLending: Bool { kind == "lending" }
 
     /// M73: a canvas mention opens that canvas (its conversation's 「キャンバス」 tab).
     var opensCanvas: Bool { kind == "canvas" && canvasId != nil }
@@ -136,6 +143,8 @@ struct PushPayload: Equatable, Sendable {
         taskId = text("task_id")
         canvasId = text("canvas_id")
         pageId = text("page_id")
+        lendingItemId = text("lending_item_id")
+        loanId = text("loan_id")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }
