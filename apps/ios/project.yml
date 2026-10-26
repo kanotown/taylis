@@ -64,7 +64,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "129"
+        CFBundleVersion: "130"
         UILaunchScreen: {}
         # Every orientation, as on the iPad: the iPhone Duo's inner display runs apps side by side and turns all the way
         # round (MOBILE_UI.md §26); other iPhones never turn upside down, whatever this says. No UIRequiresFullScreen.
@@ -116,7 +116,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "129"
+        CFBundleVersion: "130"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
@@ -149,7 +149,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "129"
+        CFBundleVersion: "130"
         TaylisAppGroup: group.jp.chikuwachat.ios
         TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
         # The servers may be plain HTTP on a LAN (as in the app's Info.plist).
@@ -200,7 +200,7 @@ targets:
       properties:
         CFBundleDisplayName: Taylis
         CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "129"
+        CFBundleVersion: "130"
         TaylisAppGroup: group.jp.chikuwachat.ios
         TaylisKeychainGroup: $(AppIdentifierPrefix)jp.chikuwachat.ios.shared
         # The servers may be plain HTTP on a LAN (as in the app's Info.plist).
