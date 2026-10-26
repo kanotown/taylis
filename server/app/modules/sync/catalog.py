@@ -177,6 +177,8 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     ),
     # M167 (docs/LENDING.md §9): the 備品 ledger changed; re-read it. No content.
     lending_events.LENDING_UPDATED: (lending_events.LendingUpdatedData, "all", False),
+    # M169 (docs/LENDING.md §8, §9): a new equipment notice for me (the activity badge, a banner).
+    lending_events.LENDING_NOTICE: (lending_events.LendingNoticeData, "user", False),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

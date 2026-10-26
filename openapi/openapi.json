@@ -1383,10 +1383,21 @@
               "canvas_mention",
               "reservation",
               "page_mention",
-              "page_shared"
+              "page_shared",
+              "lending"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "lending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityLending"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "message": {
             "anyOf": [
@@ -1456,6 +1467,106 @@
           "item_ids"
         ],
         "title": "ActivityItemsReadIn",
+        "type": "object"
+      },
+      "ActivityLending": {
+        "description": "A lending item's notice (M169, docs/LENDING.md §8.2): it opens the equipment page at the\nloan (or the item; the keepers' morning summary opens the overdue list). The teacher's\nto-do (`role: approver`) is `done` once they decided, or 14 days after the return.",
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "boolean"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
+          },
+          "done_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done By"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Name"
+          },
+          "lending_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lending Item Id"
+          },
+          "loan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Id"
+          },
+          "role": {
+            "enum": [
+              "borrower",
+              "approver",
+              "keeper",
+              "watcher"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "lending_item_id",
+          "loan_id",
+          "item_name",
+          "role",
+          "text",
+          "done",
+          "done_at",
+          "done_by"
+        ],
+        "title": "ActivityLending",
         "type": "object"
       },
       "ActivityListOut": {
@@ -13722,8 +13833,14 @@
             "title": "Updated At",
             "type": "string"
           },
+          "watcher_count": {
+            "default": 0,
+            "description": "How many people asked to be told when it is returned (the extend dialog's 「この備品を待っている人がいます」)",
+            "title": "Watcher Count",
+            "type": "integer"
+          },
           "watching": {
-            "description": "Whether I asked to be told when it is returned (L3)",
+            "description": "Whether I asked to be told when it is returned",
             "title": "Watching",
             "type": "boolean"
           }
@@ -13976,7 +14093,7 @@
             "type": "string"
           },
           "watching": {
-            "description": "Whether I asked to be told when it is returned (L3)",
+            "description": "Whether I asked to be told when it is returned",
             "title": "Watching",
             "type": "boolean"
           }
@@ -14466,6 +14583,38 @@
           "details_hidden"
         ],
         "title": "LendingLoanOut",
+        "type": "object"
+      },
+      "LendingPermissionIn": {
+        "additionalProperties": false,
+        "description": "The teacher's 「許可していない」 (denied) or 「確認した」 (confirmed), §5.3.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "denied",
+              "confirmed"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An optional word from the teacher (at most 200 characters)",
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "LendingPermissionIn",
         "type": "object"
       },
       "LendingReturnIn": {
@@ -26107,7 +26256,7 @@
     },
     "/api/v1/activity": {
       "get": {
-        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and\nmentions); with `include=reservation`, reservation notices (M112, under all).",
+        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and\nmentions); with `include=reservation`, reservation notices (M112, under all); with\n`include=lending`, equipment notices (M169, under all).",
         "operationId": "list_activity_api_v1_activity_get",
         "parameters": [
           {
@@ -26156,13 +26305,13 @@
             }
           },
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -26210,13 +26359,13 @@
         "operationId": "mark_activity_items_read_api_v1_activity_items_read_put",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -26274,13 +26423,13 @@
         "operationId": "mark_activity_read_api_v1_activity_read_put",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -26338,13 +26487,13 @@
         "operationId": "activity_summary_api_v1_activity_summary_get",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -40029,6 +40178,88 @@
         ]
       }
     },
+    "/api/v1/lending/items/{item_id}/watch": {
+      "delete": {
+        "description": "Idempotent.",
+        "operationId": "unwatch_item_api_v1_lending_items__item_id__watch_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unwatch Item",
+        "tags": [
+          "lending"
+        ]
+      },
+      "put": {
+        "description": "「返却されたら知らせる」: I am told once when it is returned (or back from repair), then\nthe watch goes; mine also goes when I borrow it. Idempotent. 409 lending_item_unavailable\nfor a retired item.",
+        "operationId": "watch_item_api_v1_lending_items__item_id__watch_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Watch Item",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
     "/api/v1/lending/loans": {
       "get": {
         "description": "mine: my active loans by due date, then my last 50 returned. active: every active loan by\ndue date. overdue (keepers, else 403 lending_keeper_required): past due, longest first.\napproved: the loans naming me as the teacher (active, or returned in the last 14 days).\nPurpose, permission and return note are null for those who may not see them.",
@@ -40190,6 +40421,65 @@
           }
         ],
         "summary": "Extend Loan",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/loans/{loan_id}/permission": {
+      "post": {
+        "description": "The teacher named on the loan only (403 lending_not_approver, administrators and keepers\ntoo): `denied` (「許可していない」: the borrower and the keepers are told, and the borrower can\nno longer extend) or `confirmed` (「確認した」). 409 lending_permission_not_required for a\nloan that needed none, 409 lending_loan_closed from 14 days after the return. The same\ndecision again: no change; the other one may follow (both are kept).",
+        "operationId": "decide_permission_api_v1_lending_loans__loan_id__permission_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "loan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Loan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingPermissionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingLoanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Permission",
         "tags": [
           "lending"
         ]

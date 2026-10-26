@@ -187,6 +187,9 @@ class APNsPushProvider:
             "pool_id": payload.get("pool_id"),
             # kind page (M120): the wiki page to open.
             "page_id": payload.get("page_id"),
+            # kind lending (M169): the equipment item and the loan to open.
+            "lending_item_id": payload.get("lending_item_id"),
+            "loan_id": payload.get("loan_id"),
         }
         if payload.get("sender_id"):
             # kind message (§16): the sender and the conversation for the extension.
@@ -322,6 +325,8 @@ class FCMPushProvider:
                 "canvas_id",
                 "pool_id",
                 "page_id",
+                "lending_item_id",
+                "loan_id",
                 "seq",
                 "title",
                 "subtitle",

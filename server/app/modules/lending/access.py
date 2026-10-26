@@ -1,13 +1,13 @@
 """Who may use and keep the 備品 (equipment) ledger (docs/LENDING.md §3). Plain rules on loaded
-rows, in one place: the service, the bootstrap, the attachments' read check and (from L3) the
-activity list, the WebSocket audience and the push planner use the same ones."""
+rows, in one place: the service, the bootstrap, the attachments' read check, the activity list
+(L3), the WebSocket audience and the push planner use the same ones."""
 
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.roles import PERSON_ROLES, has_capability
-from app.modules.lending.models import LendingItem, LendingLoan, LendingSettings
+from app.modules.lending.models import LendingItem, LendingLoan, LendingNotice, LendingSettings
 from app.modules.users.models import User
 
 
@@ -60,3 +60,29 @@ async def can_read_photo(db: AsyncSession, actor: User, item_id: uuid.UUID) -> b
     if not may_see_ledger(actor, settings):
         return False
     return await db.get(LendingItem, item_id) is not None
+
+
+def may_read(user: User, notice: LendingNotice, settings: LendingSettings | None) -> bool:
+    """Whether `user` may see this notice of theirs now (§8.3): while they see the ledger; a
+    keepers' notice (names, items and days of others) only while they keep the equipment."""
+    if notice.user_id != user.id or not may_see_ledger(user, settings):
+        return False
+    return notice.role != "keeper" or can_keep(user, settings)
+
+
+async def may_deliver(db: AsyncSession, notice_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    """For the WebSocket audience and the push planner: the notice still exists, its reader may
+    read it now, and a borrower's reminder (`due:<loan>:<due_on>:<n>`) is still about an active
+    loan due that day (a return or an extension made it moot)."""
+    notice = await db.get(LendingNotice, notice_id, populate_existing=True)
+    if notice is None:
+        return False
+    user = await db.get(User, user_id, populate_existing=True)
+    settings = await db.get(LendingSettings, True, populate_existing=True)
+    if user is None or not may_read(user, notice, settings):
+        return False
+    if notice.key.startswith("due:") and notice.loan_id is not None:
+        loan = await db.get(LendingLoan, notice.loan_id, populate_existing=True)
+        due_on = notice.key.split(":")[2]
+        return loan is not None and loan.status == "active" and loan.due_on.isoformat() == due_on
+    return True

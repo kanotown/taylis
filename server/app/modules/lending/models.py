@@ -1,5 +1,5 @@
 """備品 (equipment lending, M167, docs/LENDING.md §4): the settings, the categories, the items,
-each item's history (0123) and the loans (0124, M168). The notices and watches (0125) come in L3."""
+each item's history (0123), the loans (0124, M168), the notices and the watches (0125, M169)."""
 
 import uuid
 from datetime import date, datetime
@@ -15,10 +15,11 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
-    text,
 )
+from sqlalchemy import text as sql_text  # (LendingNotice has a column named text)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,31 +45,33 @@ class LendingSettings(Base):
     __tablename__ = "lending_settings"
 
     singleton: Mapped[bool] = mapped_column(Boolean, primary_key=True, default=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sql_text("false"))
     keeper_ids: Mapped[list[uuid.UUID]] = mapped_column(
-        ARRAY(Uuid), default=list, server_default=text("'{}'::uuid[]")
+        ARRAY(Uuid), default=list, server_default=sql_text("'{}'::uuid[]")
     )
     # The longest loan when neither the item nor its category says (days from today, 1-365).
     default_max_days: Mapped[int] = mapped_column(
-        Integer, default=DEFAULT_MAX_DAYS, server_default=text(str(DEFAULT_MAX_DAYS))
+        Integer, default=DEFAULT_MAX_DAYS, server_default=sql_text(str(DEFAULT_MAX_DAYS))
     )
     # How often a borrower may extend a loan themself (0-10; keepers are not limited).
     max_extensions: Mapped[int] = mapped_column(
-        Integer, default=DEFAULT_MAX_EXTENSIONS, server_default=text(str(DEFAULT_MAX_EXTENSIONS))
+        Integer,
+        default=DEFAULT_MAX_EXTENSIONS,
+        server_default=sql_text(str(DEFAULT_MAX_EXTENSIONS)),
     )
     # Days past the due date before the keepers are told (1-30).
     keeper_overdue_days: Mapped[int] = mapped_column(
         Integer,
         default=DEFAULT_KEEPER_OVERDUE_DAYS,
-        server_default=text(str(DEFAULT_KEEPER_OVERDUE_DAYS)),
+        server_default=sql_text(str(DEFAULT_KEEPER_OVERDUE_DAYS)),
     )
     # The morning notices' time (minutes from midnight in `tz`).
     notice_minute: Mapped[int] = mapped_column(
-        Integer, default=DEFAULT_NOTICE_MINUTE, server_default=text(str(DEFAULT_NOTICE_MINUTE))
+        Integer, default=DEFAULT_NOTICE_MINUTE, server_default=sql_text(str(DEFAULT_NOTICE_MINUTE))
     )
     # The zone of the due dates and of the notices' time (docs/LENDING.md §8.1).
     tz: Mapped[str] = mapped_column(
-        String(64), default=DEFAULT_TZ, server_default=text(f"'{DEFAULT_TZ}'")
+        String(64), default=DEFAULT_TZ, server_default=sql_text(f"'{DEFAULT_TZ}'")
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
@@ -91,7 +94,7 @@ class LendingCategory(Base):
     name_key: Mapped[str] = mapped_column(Text, unique=True)
     position: Mapped[int] = mapped_column(Integer)
     requires_permission: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false")
+        Boolean, default=False, server_default=sql_text("false")
     )
     # NULL = lending_settings.default_max_days.
     max_days: Mapped[int | None] = mapped_column(Integer)
@@ -127,7 +130,7 @@ class LendingItem(Base):
         ForeignKey("attachments.id", ondelete="SET NULL")
     )
     status: Mapped[str] = mapped_column(
-        String(16), default="available", server_default=text("'available'")
+        String(16), default="available", server_default=sql_text("'available'")
     )
     # Why it is in repair or retired (keepers).
     status_note: Mapped[str | None] = mapped_column(String(200))
@@ -171,7 +174,7 @@ class LendingItem(Base):
             "lending_items_code_uniq",
             "code_key",
             unique=True,
-            postgresql_where=text("code_key IS NOT NULL AND status <> 'retired'"),
+            postgresql_where=sql_text("code_key IS NOT NULL AND status <> 'retired'"),
         ),
         Index("lending_items_category_idx", "category_id", "name"),
     )
@@ -195,10 +198,10 @@ class LendingItemEvent(Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     details: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, server_default=text("'{}'::jsonb")
+        JSONB, default=dict, server_default=sql_text("'{}'::jsonb")
     )
 
-    __table_args__ = (Index("lending_item_events_item_idx", "item_id", text("id DESC")),)
+    __table_args__ = (Index("lending_item_events_item_idx", "item_id", sql_text("id DESC")),)
 
 
 class LendingLoan(Base):
@@ -222,7 +225,7 @@ class LendingLoan(Base):
     due_on: Mapped[date] = mapped_column(Date)
     original_due_on: Mapped[date] = mapped_column(Date)
     # The borrower's own extensions (a keeper's date changes are not counted).
-    extension_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    extension_count: Mapped[int] = mapped_column(Integer, default=0, server_default=sql_text("0"))
     purpose: Mapped[str] = mapped_column(String(200))
     permission_required: Mapped[bool] = mapped_column(Boolean)
     approver_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
@@ -261,10 +264,64 @@ class LendingLoan(Base):
             "lending_loans_active_uniq",
             "item_id",
             unique=True,
-            postgresql_where=text("status = 'active'"),
+            postgresql_where=sql_text("status = 'active'"),
         ),
         Index("lending_loans_request_uniq", "borrower_id", "client_request_id", unique=True),
         Index("lending_loans_borrower_idx", "borrower_id", "status", "due_on"),
-        Index("lending_loans_due_idx", "due_on", postgresql_where=text("status = 'active'")),
-        Index("lending_loans_item_idx", "item_id", text("borrowed_at DESC")),
+        Index("lending_loans_due_idx", "due_on", postgresql_where=sql_text("status = 'active'")),
+        Index("lending_loans_item_idx", "item_id", sql_text("borrowed_at DESC")),
+    )
+
+
+NOTICE_ROLES = ("borrower", "approver", "keeper", "watcher")
+
+
+class LendingNotice(Base):
+    """An activity item of kind lending (docs/LENDING.md §8, 0125): a notice to one person, once
+    per `key` (§8.2's table), written with a `lending.notice` event (the push) in the change's
+    own transaction. `role` is why the person gets it: borrower (their own loan), approver (the
+    teacher's to-do `permission:<loan>`, done once they decide or 14 days after the return),
+    keeper (the 備品係, or the administrators when there is none) or watcher (「返却を知らせる」).
+    `text` is written in the reader's language (M115). Only the teacher's to-do has a done state."""
+
+    __tablename__ = "lending_notices"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lending_items.id", ondelete="CASCADE")
+    )
+    loan_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lending_loans.id", ondelete="CASCADE")
+    )
+    key: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(12))
+    text: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    done_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="lending_notices_user_key_uniq"),
+        CheckConstraint(
+            "role IN ('borrower', 'approver', 'keeper', 'watcher')", name="lending_notices_role"
+        ),
+        Index("lending_notices_user_idx", "user_id", sql_text("at DESC")),
+    )
+
+
+class LendingWatch(Base):
+    """「返却されたら知らせる」 (§6.7): told once when the item comes back (returned, or out of
+    repair), then removed; my own watch goes when I borrow the item."""
+
+    __tablename__ = "lending_watches"
+
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("lending_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

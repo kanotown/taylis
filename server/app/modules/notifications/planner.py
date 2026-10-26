@@ -25,6 +25,9 @@ from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.emoji import repository as emoji_repo
 from app.modules.groups import service as groups
+from app.modules.lending import access as lending_access
+from app.modules.lending.events import LENDING_NOTICE
+from app.modules.lending.models import LendingNotice
 from app.modules.messages import repository as messages_repo
 from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_CREATED
@@ -103,6 +106,9 @@ class PushPlanner:
             return
         if event.event_type == RESERVATION_NOTICE:
             await self.handle_reservation(db, event)
+            return
+        if event.event_type == LENDING_NOTICE:
+            await self.handle_lending(db, event)
             return
         if event.event_type in (wiki_events.WIKI_MENTIONED, wiki_events.WIKI_SHARED):
             await self.handle_page_notice(db, event)
@@ -587,6 +593,72 @@ class PushPlanner:
                 body=(item.text if self.settings.push_include_content else hidden)[:240],
                 badge=badge,
                 collapse_key=f"reservation:{item.id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
+        for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=None,
+                message_id=None,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_lending(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """M169 (LENDING.md §8.3): an equipment notice for me. Not during DND (pause or quiet
+        hours; not sent again later: the morning reminder comes again tomorrow), not while I am
+        on another device; not once the item is done (the teacher decided), the reminder moot
+        (returned or extended) or I may no longer read it (a keepers' summary after I stopped
+        keeping the equipment). The same loan's notices replace each other on the phone
+        (`lending:loan:<loan>`), the keepers' summaries too (`lending:overdue`)."""
+        data = event.payload
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or user.deactivated_at is not None or dnd_active(user, now):
+            return
+        if self.is_active(user_id):
+            return
+        item = await db.get(LendingNotice, uuid.UUID(str(data["item_id"])))
+        if item is None or item.done_at is not None:
+            return
+        if not await lending_access.may_deliver(db, item.id, user_id):
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+        if item.loan_id is not None:
+            collapse_key = f"lending:loan:{item.loan_id}"
+        elif item.item_id is not None:
+            collapse_key = f"lending:item:{item.item_id}"
+        else:
+            collapse_key = "lending:overdue"
+
+        def build(lc: str) -> dict[str, Any]:
+            # The item's text is written in the person's language already (docs/I18N.md).
+            hidden = i18n.t("push.lending.hidden", lc)
+            return PushPayload(
+                kind="lending",
+                workspace_id=workspace_id,
+                lending_item_id=item.item_id,
+                loan_id=item.loan_id,
+                seq=None,
+                title=i18n.t("push.lending.title", lc),
+                subtitle=None,
+                body=(item.text if self.settings.push_include_content else hidden)[:240],
+                badge=badge,
+                collapse_key=collapse_key,
                 sent_at=now,
             ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
 

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser, require_capability
-from app.modules.lending import loans, service
+from app.modules.lending import loans, notices, service
 from app.modules.lending.schemas import (
     HISTORY_LIMIT_MAX,
     LendingApproversOut,
@@ -21,6 +21,7 @@ from app.modules.lending.schemas import (
     LendingItemStatusIn,
     LendingItemUpdate,
     LendingLoanOut,
+    LendingPermissionIn,
     LendingReturnIn,
     LendingSettingsOut,
     LendingSettingsUpdate,
@@ -32,7 +33,8 @@ router = APIRouter(tags=["lending"])
 
 LendingManager = Annotated[User, Depends(require_capability("lending.manage"))]
 
-# docs/LENDING.md §5 (M167 = L1: the ledger; M168 = L2: the loans). Every person (not guests or
+# docs/LENDING.md §5 (M167 = L1: the ledger; M168 = L2: the loans; M169 = L3: the teacher's
+# decision and the watches). Every person (not guests or
 # bots: 403 guest_restricted) sees the ledger while the workspace has the feature on (else 409
 # lending_disabled, except for the settings); the 備品係 (keepers) and the holders of
 # lending.manage change it (403 lending_keeper_required).
@@ -148,6 +150,24 @@ async def item_history(
     return await service.history(db, user, item_id, before=before, limit=limit)
 
 
+@router.put("/lending/items/{item_id}/watch", status_code=204)
+async def watch_item(item_id: UUID, user: CurrentUser, db: Db) -> Response:
+    """「返却されたら知らせる」: I am told once when it is returned (or back from repair), then
+    the watch goes; mine also goes when I borrow it. Idempotent. 409 lending_item_unavailable
+    for a retired item."""
+    settings = await service.require_ledger(db, user)
+    await notices.watch(db, user, settings, item_id)
+    return Response(status_code=204)
+
+
+@router.delete("/lending/items/{item_id}/watch", status_code=204)
+async def unwatch_item(item_id: UUID, user: CurrentUser, db: Db) -> Response:
+    """Idempotent."""
+    await service.require_ledger(db, user)
+    await notices.unwatch(db, user, item_id)
+    return Response(status_code=204)
+
+
 @router.get("/lending/approvers", response_model=LendingApproversOut)
 async def list_approvers(user: CurrentUser, db: Db) -> LendingApproversOut:
     """Who may be named as the teacher who gave permission: the roster's @faculty (everyone
@@ -206,3 +226,15 @@ async def extend_loan(
     365 days ahead (reason past / too_long), not counted. 409 lending_loan_closed once returned.
     The same date again: no change."""
     return await loans.extend(db, user, loan_id, body)
+
+
+@router.post("/lending/loans/{loan_id}/permission", response_model=LendingLoanOut)
+async def decide_permission(
+    loan_id: UUID, body: LendingPermissionIn, user: CurrentUser, db: Db
+) -> LendingLoanOut:
+    """The teacher named on the loan only (403 lending_not_approver, administrators and keepers
+    too): `denied` (「許可していない」: the borrower and the keepers are told, and the borrower can
+    no longer extend) or `confirmed` (「確認した」). 409 lending_permission_not_required for a
+    loan that needed none, 409 lending_loan_closed from 14 days after the return. The same
+    decision again: no change; the other one may follow (both are kept)."""
+    return await loans.decide(db, user, loan_id, body)

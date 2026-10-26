@@ -21,7 +21,7 @@ Include = Query(
     default=[],
     description=(
         "Extra kinds this client shows (repeat for several): canvas_mention (M76), "
-        "reservation (M112), page_mention and page_shared (M120). "
+        "reservation (M112), page_mention and page_shared (M120), lending (M169). "
         "Unknown values are ignored."
     ),
 )
@@ -38,7 +38,8 @@ async def list_activity(
 ) -> ActivityListOut:
     """Mentions of me, reactions to my messages and replies in threads I follow, newest first
     (M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and
-    mentions); with `include=reservation`, reservation notices (M112, under all)."""
+    mentions); with `include=reservation`, reservation notices (M112, under all); with
+    `include=lending`, equipment notices (M169, under all)."""
     return await service.list_activity(
         db, user, kind=filter, cursor=cursor, limit=limit, include=include
     )

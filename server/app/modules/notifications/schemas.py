@@ -37,6 +37,7 @@ class PushPayload(BaseModel):
         "canvas",
         "reservation",
         "page",
+        "lending",
         "test",
     ] = "message"
     # Which deployment sent it (WORKSPACES.md §5): the app opens that workspace on a tap.
@@ -53,6 +54,10 @@ class PushPayload(BaseModel):
     pool_id: UUID | None = None
     # kind page (M120, docs/WIKI.md §9.3): the wiki page that mentions me or was shared with me.
     page_id: UUID | None = None
+    # kind lending (M169, docs/LENDING.md §8.3): the equipment item and the loan (opens the
+    # equipment page at the loan; both null for the keepers' morning summary: the overdue list).
+    lending_item_id: UUID | None = None
+    loan_id: UUID | None = None
     seq: int | None = None
     title: str = Field(max_length=120)
     subtitle: str | None = Field(default=None, max_length=120)

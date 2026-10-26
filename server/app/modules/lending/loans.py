@@ -7,9 +7,10 @@ deadlock): two people borrowing the same item are served one after the other and
 `on_loan` (409 lending_item_unavailable); the partial unique index `lending_loans_active_uniq` is
 the last guard behind the lock. A retry of a borrow with the same `client_request_id` returns the
 same loan (200). Each change writes the item's history, the audit row for a keeper's act on someone
-else's loan (§10) and a `lending.updated` (audience all, no content) in the same transaction.
+else's loan (§10), its notices (notices.py, L3) and a `lending.updated` (audience all, no content)
+in the same transaction.
 
-The teacher's decision (confirmed / denied), the notices and the watches come in L3 (M169)."""
+L3 (M169) adds the teacher's decision (`decide`: confirmed / denied, §5.3)."""
 
 import uuid
 from datetime import date, timedelta
@@ -26,7 +27,7 @@ from app.core.time import utcnow
 from app.modules.audit import service as audit
 from app.modules.groups.models import UserGroup, UserGroupMember
 from app.modules.lab.models import LabProfile
-from app.modules.lending import access, service
+from app.modules.lending import access, notices, service
 from app.modules.lending.models import (
     LendingCategory,
     LendingItem,
@@ -41,6 +42,7 @@ from app.modules.lending.schemas import (
     LendingBorrowIn,
     LendingExtendIn,
     LendingLoanOut,
+    LendingPermissionIn,
     LendingReturnIn,
     LoanScope,
 )
@@ -324,6 +326,7 @@ async def borrow(
     if self_approved:
         details["self_approved"] = True
     await service.record(db, item, actor, "borrowed", details, loan_id=loan.id)
+    await notices.on_borrow(db, actor, item, loan, notices.change_for(actor, now))
     await service.emit(db, item_ids=[item.id])
     await db.commit()
     return await _loan_out(db, loan, actor, settings), True
@@ -390,6 +393,7 @@ async def return_loan(
                 "condition": data.condition,
             },
         )
+    await notices.on_return(db, actor, item, loan, settings, notices.change_for(actor, now))
     await service.emit(db, item_ids=[item.id])
     await db.commit()
     return await _loan_out(db, loan, actor, settings)
@@ -468,6 +472,71 @@ async def extend(
     loan.due_on = new
     loan.updated_at = utcnow()
     await service.record(db, item, actor, kind, details, loan_id=loan.id)
+    if kind == "due_changed" and actor.id != loan.borrower_id:
+        await notices.on_due_changed(db, actor, item, loan, notices.change_for(actor))
+    await service.emit(db, item_ids=[item.id])
+    await db.commit()
+    return await _loan_out(db, loan, actor, settings)
+
+
+# --- the teacher's decision (§5.3, §8.2) -----------------------------------------------------
+
+
+async def decide(
+    db: AsyncSession, actor: User, loan_id: uuid.UUID, data: LendingPermissionIn
+) -> LendingLoanOut:
+    """「許可していない」 (denied) or 「確認した」 (confirmed) by the teacher named on the loan
+    only: 409 lending_permission_not_required for a loan that needed none, 403
+    lending_not_approver for anyone else (administrators and keepers too), 409
+    lending_loan_closed 14 days after the return. The same decision again: no change. Either way
+    round may be changed later (both are kept in the history and the audit). The teacher's to-do
+    is done; a denial tells the borrower and the keepers."""
+    settings = await service.require_ledger(db, actor)
+    loan = await db.get(LendingLoan, loan_id)
+    if loan is None:
+        raise _loan_not_found()
+    if not loan.permission_required:
+        raise conflict(
+            "lending_permission_not_required", "This loan did not need a teacher's permission"
+        )
+    if loan.approver_id != actor.id:
+        raise forbidden("lending_not_approver", "Only the teacher named on the loan can do this")
+    item = await service.locked_item(db, loan.item_id)
+    locked = await db.get(LendingLoan, loan_id, with_for_update=True, populate_existing=True)
+    assert locked is not None  # loans are never deleted
+    loan = locked
+    now = utcnow()
+    closes = timedelta(days=APPROVER_DAYS_AFTER_RETURN)
+    if loan.returned_at is not None and loan.returned_at + closes < now:
+        raise conflict("lending_loan_closed", "The loan was returned more than 14 days ago")
+    if loan.permission_state == data.decision:
+        out = await _loan_out(db, loan, actor, settings)
+        await db.commit()
+        return out
+    before = loan.permission_state
+    loan.permission_state = data.decision
+    loan.permission_decided_at = now
+    loan.permission_note = data.note
+    loan.updated_at = now
+    kind = "permission_denied" if data.decision == "denied" else "permission_confirmed"
+    details = {"from": before, "to": data.decision}
+    await service.record(db, item, actor, kind, details, loan_id=loan.id)
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="lending_loan.permission_decided",
+        target_type="lending_loan",
+        target_id=loan.id,
+        details={
+            "item_id": str(item.id),
+            "borrower_id": str(loan.borrower_id),
+            **details,
+            "note": data.note,
+        },
+    )
+    change = notices.change_for(actor, now)
+    await notices.on_decision(db, actor, item, loan, settings, change)
+    await notices.announce_done(db, change)
     await service.emit(db, item_ids=[item.id])
     await db.commit()
     return await _loan_out(db, loan, actor, settings)
