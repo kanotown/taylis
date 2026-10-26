@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.ConfirmationNumber
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Folder
@@ -172,7 +173,8 @@ fun HomeScreen(
             attendance = AttendanceRules.shown(store.attendance, store.me?.role),
             actions = ActionRules.shown(store.actions, store.me?.role),
             timesUnread = TimesFeed.hasUnread(store.channels.values),
-            drive = driveOn)
+            drive = driveOn,
+            lending = store.lending?.let { HomeTiles.LendingTile(LendingRules.tileCount(it)) }) // M172
     }
     // M24: offer to make my times until I have one (joined or not: a times I left is in the channel browser).
     val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }
@@ -378,6 +380,7 @@ private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.TASKS -> Icons.Default.Checklist
     HomeTile.DEADLINES -> Icons.Default.AlarmOn
     HomeTile.RESERVATIONS -> Icons.Outlined.ConfirmationNumber
+    HomeTile.LENDING -> Icons.Outlined.Inventory2
     HomeTile.ATTENDANCE -> Icons.Outlined.MeetingRoom
     HomeTile.ACTIONS -> Icons.Outlined.TouchApp
     HomeTile.FILES -> Icons.Outlined.Folder

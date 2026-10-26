@@ -491,6 +491,30 @@ class Store(private val persistence: Persistence? = null) {
         reservationPools?.let { list -> setReservationPools(list.filter { it.id != poolId }) }
     }
     /**
+     * M172 (docs/LENDING.md §5.1, §12.1): 「備品」's numbers (the bootstrap's `lending`, then read again after
+     * lending.updated); null for guests, while the feature is off and from a server before M167 (no tile then).
+     */
+    var lending: jp.chikuwachat.android.api.LendingSummaryOut? = null
+        private set
+    fun setLending(summary: jp.chikuwachat.android.api.LendingSummaryOut?) {
+        lending = summary?.takeIf { it.enabled && me?.role != "guest" }
+        emit()
+    }
+    /** M172: the settings as last read (the due dates' zone, the extension limit, whether I keep the equipment); not persisted. */
+    var lendingSettings: jp.chikuwachat.android.api.LendingSettingsOut? = null
+        private set
+    fun setLendingSettings(settings: jp.chikuwachat.android.api.LendingSettingsOut?) {
+        lendingSettings = settings
+        emit()
+    }
+    /** M172: counts lending.updated (after its 300 ms burst) and my own changes: an open 「備品」 page reads again when it moves. */
+    var lendingRevision = 0
+        private set
+    fun bumpLending() {
+        lendingRevision += 1
+        emit()
+    }
+    /**
      * M140 (docs/PRESENCE.md §4): the 在室状況 board (not persisted); null for guests, while it is off and from a server
      * before M140. From the bootstrap, attendance.updated (one row) and GET /attendance (attendance.config_updated).
      */

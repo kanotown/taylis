@@ -656,6 +656,14 @@ fun MainScreen(controller: AppController) {
             jp.chikuwachat.android.widget.WidgetScreen.TASKS -> MainTabs.landMyTasks(tabs)
         }
     }
+    // M172 (docs/LENDING.md §8.3): a tapped lending notice: its loan / item over 「備品」 on the home tab, or the overdue list.
+    LaunchedEffect(controller.pendingLending) {
+        val target = controller.pendingLending ?: return@LaunchedEffect
+        controller.pendingLending = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = MainTabs.landLending(tabs, target.itemId, target.loanId)
+    }
     // M112: a tapped reservation notice (or an activity row): 「予約」 on the home tab.
     LaunchedEffect(controller.pendingReservations) {
         if (!controller.pendingReservations) return@LaunchedEffect
@@ -829,6 +837,9 @@ fun MainScreen(controller: AppController) {
                         pane == Route.Tasks -> Text(stringResource(R.string.common_tasks))
                         pane == Route.Deadlines -> Text(stringResource(R.string.common_deadlines))
                         pane == Route.Reservations -> Text(stringResource(R.string.common_reservations))
+                        pane is Route.Lending -> Text(
+                            LendingRules.barTitle(pane, controller.lendingTitles), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        ) // M172
                         pane == Route.Attendance -> Text(stringResource(R.string.common_attendance))
                         pane == Route.Actions -> Text(stringResource(R.string.actions_nav))
                         // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
@@ -1202,6 +1213,15 @@ fun MainScreen(controller: AppController) {
                 } else if (pane == Route.Reservations) {
                     // M112 (RESERVATIONS.md §6): per pool mine, 予約する / 今すぐ, the operators' to-do and a day's hours.
                     ReservationsPane(controller, version)
+                } else if (pane is Route.Lending) {
+                    // M172 (LENDING.md §12.3): the list, an item, a loan; each page is a route (back returns to the one under it).
+                    key(pane) {
+                        LendingPane(
+                            controller, version, pane,
+                            onOpenItem = { id -> focusManager.clearFocus(); stack = MainNav.openLending(stack, itemId = id) },
+                            onOpenLoan = { id -> focusManager.clearFocus(); stack = MainNav.openLending(stack, loanId = id) },
+                        )
+                    }
                 } else if (pane == Route.Attendance) {
                     // M140 (PRESENCE.md §9): my one-tap buttons and note, my own states, the board by state.
                     AttendancePane(controller, version)
@@ -1255,6 +1275,15 @@ fun MainScreen(controller: AppController) {
                         // stack, like the message rows (back returns here). A conversation the store does not know yet
                         // lands like the canvas push (M73) once it does.
                         onOpenReservations = { controller.pendingReservations = true },
+                        // M172: a lending row opens its loan / item on this tab's stack (the keepers' summary: the overdue list).
+                        onOpenLending = { itemId, loanId ->
+                            controller.messageFocus = null
+                            stack = when {
+                                loanId != null -> MainNav.openLending(stack, loanId = loanId)
+                                itemId != null -> MainNav.openLending(stack, itemId = itemId)
+                                else -> stack + Route.Lending(overdue = true)
+                            }
+                        },
                         // M122: a page row opens the page on this tab's stack (back returns here).
                         onOpenPage = { pageId ->
                             controller.messageFocus = null
@@ -1301,6 +1330,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.TASKS -> Route.Tasks
                                     HomeTile.DEADLINES -> Route.Deadlines
                                     HomeTile.RESERVATIONS -> Route.Reservations
+                                    HomeTile.LENDING -> Route.Lending() // M172
                                     HomeTile.ATTENDANCE -> Route.Attendance
                                     HomeTile.ACTIONS -> Route.Actions
                                     HomeTile.FILES -> Route.Files()

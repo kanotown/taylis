@@ -32,6 +32,8 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +86,8 @@ object ActivityText {
         // 「佐藤 が」 but 「佐藤 ほか 2 人が」 (MOBILE_UI.md §6.4).
         // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
         item.reservation?.let { return it.poolName.ifEmpty { L10n.str(R.string.common_reservations) } + if (it.operator) L10n.str(R.string.activity_screen_operator_task) else L10n.str(R.string.activity_screen_reservation) }
+        // M172 (docs/LENDING.md §12.1): 「カメラ A · 備品」, 「カメラ A · 許可の確認」 (the teacher's to-do), 「備品 · 備品係」 (the summary).
+        item.lending?.let { return LendingRules.activityLead(it) }
         // M122 (docs/WIKI.md §9.3): 「佐藤 が「題名」であなたをメンションしました」 / 「佐藤 が「題名」を共有しました」.
         item.page?.let { page ->
             val title = page.title.ifBlank { L10n.str(R.string.docs_untitled) }
@@ -118,6 +122,7 @@ object ActivityText {
     /** Where a tapped row goes: its message (a reply in its thread), or a canvas item's canvas (M77). */
     fun target(item: ActivityItem): ActivityTarget? {
         if (item.reservation != null) return ActivityTarget.Reservations
+        item.lending?.let { return ActivityTarget.Lending(it.lendingItemId, it.loanId) } // M172
         item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return ActivityTarget.Canvas(it.channelId, it.canvasId) }
         item.page?.let { return ActivityTarget.Page(it.pageId) } // M122
         return item.message?.let { ActivityTarget.Message(it) }
@@ -154,6 +159,7 @@ object ActivityText {
      */
     fun excerpt(item: ActivityItem, blanked: Set<String>, messageLine: (MessageOut) -> String): String {
         item.reservation?.let { return it.text } // M112
+        item.lending?.let { return it.text } // M172: the server's line in my language
         item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return if (it.itemId in blanked) "" else it.excerpt }
         item.page?.let { return if (it.itemId in blanked) "" else it.excerpt } // M122: a mention's line; a share has none
         return item.message?.let(messageLine) ?: ""
@@ -169,6 +175,8 @@ sealed interface ActivityTarget {
     data object Reservations : ActivityTarget
     /** M122 (docs/WIKI.md §9.3): a page of 「ドキュメント」, on the activity tab's stack. */
     data class Page(val pageId: String) : ActivityTarget
+    /** M172: 「備品」 at the loan, else the item, else (both null: the keepers' summary) the overdue list. */
+    data class Lending(val itemId: String?, val loanId: String?) : ActivityTarget
 }
 
 /**
@@ -204,6 +212,7 @@ internal class ActivityFeed(
     fun unread(item: ActivityItem, store: Store): Boolean {
         val reservation = item.reservation
         if (reservation != null && (reservation.done || reservation.itemId in store.blankedActivityItems)) return false
+        if (LendingRules.activityDone(item.lending, store.blankedActivityItems)) return false // M172
         return ActivityRules.showsUnread(
             item, store.activity?.readAt, conversationRule,
             serverRead = item.key in readInConversation,
@@ -300,6 +309,8 @@ fun ActivityScreen(
     onOpenReservations: () -> Unit = {},
     /** M122: a page row (a mention in a page, a page shared with me) opens the page. */
     onOpenPage: (String) -> Unit = {},
+    /** M172: a lending row opens its loan (else its item, else the overdue list). */
+    onOpenLending: (itemId: String?, loanId: String?) -> Unit = { _, _ -> },
 ) {
     val store = controller.store
     if (store.activity == null) {
@@ -314,6 +325,14 @@ fun ActivityScreen(
     }
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
+    // M172: the teacher's decision asked from a row (the loan and denied / confirmed), confirmed in a dialog.
+    var deciding by remember { mutableStateOf<Pair<String, String>?>(null) }
+    deciding?.let { (loanId, decision) ->
+        LendingDecisionDialog(controller, loanId, decision, onDone = {
+            deciding = null
+            scope.launch { feed.refresh() }
+        }, onDismiss = { deciding = null })
+    }
     LaunchedEffect(segment) { feed.load(segment.filter) }
     LaunchedEffect(trigger) {
         if (feed.trigger == trigger) return@LaunchedEffect
@@ -426,8 +445,13 @@ fun ActivityScreen(
                                         is ActivityTarget.Canvas -> onOpenCanvas(target.channelId, target.canvasId)
                                         ActivityTarget.Reservations -> onOpenReservations()
                                         is ActivityTarget.Page -> onOpenPage(target.pageId)
+                                        is ActivityTarget.Lending -> onOpenLending(target.itemId, target.loanId)
                                         null -> Unit
                                     }
+                                },
+                                // M172 (LENDING.md §17.3): the teacher's to-do has 「許可していない」 / 「確認した」 on the row.
+                                onDecide = item.lending?.takeIf { LendingRules.showsDecision(it, store.blankedActivityItems) }?.loanId?.let { loanId ->
+                                    { decision: String -> controller.markActivityItemsRead(item); deciding = loanId to decision }
                                 },
                             )
                             HorizontalDivider()
@@ -464,6 +488,8 @@ private fun EmptyActivity(segment: ActivitySegment) {
 private fun ActivityRow(
     item: ActivityItem, store: Store, version: Int, now: ZonedDateTime, unread: Boolean,
     onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit, onClick: () -> Unit,
+    /** M172: the teacher's open to-do: 「許可していない」 (denied) / 「確認した」 (confirmed) under the line. */
+    onDecide: ((String) -> Unit)? = null,
 ) {
     val name: (String) -> String? = { id -> store.users[id]?.displayName }
     val lead = remember(version, item) { ActivityText.lead(item, name) }
@@ -475,7 +501,9 @@ private fun ActivityRow(
     val page = item.page // M122
     // M112: a to-do another operator handled (or no longer needed) is done: dimmed, 「対応済み」 (activity.updated names it).
     val reservation = item.reservation
-    val done = reservation != null && (reservation.done || reservation.itemId in store.blankedActivityItems)
+    val lending = item.lending // M172
+    val done = (reservation != null && (reservation.done || reservation.itemId in store.blankedActivityItems)) ||
+        LendingRules.activityDone(lending, store.blankedActivityItems)
     val excerpt = remember(version, item) {
         ActivityText.excerpt(item, store.blankedActivityItems) { messageLine(it.body, it.attachments, store) }
     }
@@ -498,9 +526,9 @@ private fun ActivityRow(
             if (unread && !done) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) })
         }
         Box {
-            if (reservation != null) {
+            if (reservation != null || lending != null) {
                 Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                    Text("🎫", style = MaterialTheme.typography.titleMedium)
+                    Text(if (lending != null) "📦" else "🎫", style = MaterialTheme.typography.titleMedium)
                 }
             } else {
                 ActorFaces(item.actorIds, name)
@@ -531,13 +559,30 @@ private fun ActivityRow(
             if (where.isNotEmpty()) {
                 Text(where, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (excerpt.isNotEmpty()) {
+            if (excerpt.isNotEmpty() && lending != null) {
+                // M172 (LENDING.md §11): the server's line is plain text (names and purposes never become markup).
+                Text(
+                    excerpt, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    color = if (shownUnread) androidx.compose.ui.graphics.Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            } else if (excerpt.isNotEmpty()) {
                 // Custom emoji as their pictures and `:shortcode:`s as glyphs, as in the message (2026-10-05: `:ckw-yay:`).
                 EmojiLineText(
                     excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium,
                     if (shownUnread) androidx.compose.ui.graphics.Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant,
                     Modifier.padding(top = 2.dp), maxLines = if (canvas != null || page != null) 2 else 3,
                 )
+            }
+            if (onDecide != null) {
+                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onDecide("denied") }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                        Text(stringResource(R.string.lending_not_approved), style = MaterialTheme.typography.labelLarge)
+                    }
+                    TextButton(onClick = { onDecide("confirmed") }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                        Text(stringResource(R.string.lending_confirm), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
             }
         }
     }

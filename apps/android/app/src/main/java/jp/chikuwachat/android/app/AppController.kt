@@ -1283,6 +1283,15 @@ class AppController(private val app: Application) {
                 if (!dndActive(store)) notify(workspace(), null, L10n.str(R.string.common_reservations), text, key = "reservation:${notice.itemId}", reservations = true)
             }
         }
+        // M172 (docs/LENDING.md §8.3): an equipment notice while the app is open: the banner (the server's line starts with
+        // its 📦 / ⏰ / 🔑) and a local notification worded like the push, under the push's key (the push is not shown then).
+        engine.onLendingNotice = { notice ->
+            this.notice = notice.text
+            if (!dndActive(store)) {
+                val target = jp.chikuwachat.android.platform.LendingTarget(notice.lendingItemId, notice.loanId)
+                notify(workspace(), null, L10n.str(R.string.lending_title), notice.text, key = jp.chikuwachat.android.ui.LendingRules.notificationKey(target), lending = target)
+            }
+        }
         engine.onNotify = { message, channel ->
             // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
             if (!dndActive(store)) {
@@ -1373,7 +1382,7 @@ class AppController(private val app: Application) {
     private fun notify(
         entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
         reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false,
-        conversation: ConversationNote? = null, pageId: String? = null,
+        conversation: ConversationNote? = null, pageId: String? = null, lending: jp.chikuwachat.android.platform.LendingTarget? = null,
     ) {
         val named = workspaces.size >= 2
         if (conversation != null && channelId != null) {
@@ -1396,7 +1405,7 @@ class AppController(private val app: Application) {
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
             messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId, taskId = taskId,
-            canvasId = canvasId, reservations = reservations, pageId = pageId,
+            canvasId = canvasId, reservations = reservations, pageId = pageId, lending = lending,
         )
     }
 
@@ -1450,7 +1459,7 @@ class AppController(private val app: Application) {
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
                 // §15: a test push is what the reader just asked for: shown even with the app open and the socket live.
                 if (message.shown && (message.isTest || (!live && !reading)) && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId, lending = message.lendingTarget)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -1459,7 +1468,7 @@ class AppController(private val app: Application) {
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (message.shown && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId, lending = message.lendingTarget)
             }
         }
     }
@@ -3430,6 +3439,30 @@ class AppController(private val app: Application) {
         pendingWorkspaceKey = workspaceKey
         pendingReservations = true
         bringWorkspace { pendingReservations = true }
+    }
+
+    // --- 備品 (M172, docs/LENDING.md §12.3) ------------------------------------------------------------------
+
+    /** M172: the main screen should open 「備品」 at this loan / item / the overdue list (a tapped notification). */
+    var pendingLending by mutableStateOf<jp.chikuwachat.android.platform.LendingTarget?>(null)
+
+    /** M172: a tapped lending notification: its workspace comes on screen, then 「備品」 on the home tab at its target. */
+    fun openLendingFromNotification(workspaceKey: String?, target: jp.chikuwachat.android.platform.LendingTarget) {
+        pendingWorkspaceKey = workspaceKey
+        pendingLending = target
+        bringWorkspace { pendingLending = target }
+    }
+
+    /** M172: the bar's title of an item or loan page (its name, once read). */
+    val lendingTitles = androidx.compose.runtime.mutableStateMapOf<String, String>()
+
+    /**
+     * M172: one 「備品」 call; the page or the sheet shows the failure itself (LendingRules.errorText). A change the server
+     * accepted bumps [Store.lendingRevision] so the pages read again (the lending.updated event follows, for the badge).
+     */
+    suspend fun <T> lendingCall(changes: Boolean = false, call: suspend (ApiClient) -> T): Result<T> {
+        val client = api ?: return Result.failure(ApiException.Network(IllegalStateException("signed out")))
+        return attempt { call(client) }.onSuccess { if (changes) store.bumpLending() }
     }
 
     /** Runs one call that answers with the pool and puts it in the store; an error goes to the banner. */

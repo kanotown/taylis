@@ -74,7 +74,7 @@ class ApiClient(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi,
-    jp.chikuwachat.android.sync.DriveWriteApi {
+    jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -716,6 +716,55 @@ class ApiClient(
 
     /** The pools I see, with today's and the coming bookings, the queue, the holders and (operators) the to-do. */
     override suspend fun reservationPools(): List<PoolOut> = request("GET", "/api/v1/reservation-pools")
+
+    // --- 備品 (M172, docs/LENDING.md §5) ---------------------------------------------------------------------
+
+    override suspend fun lendingSettings(): LendingSettingsOut = request("GET", "/api/v1/lending/settings")
+
+    override suspend fun lendingLoans(scope: String): List<LendingLoanOut> = request("GET", "/api/v1/lending/loans?scope=$scope")
+
+    /** Every item but the retired ones, by name (not paged: 2,000 at most); the app filters them itself. */
+    suspend fun lendingItems(): List<LendingItemOut> = request("GET", "/api/v1/lending/items")
+
+    /** One item with its last 5 loans and how many wait for it (404 lending_item_not_found). */
+    suspend fun lendingItem(itemId: String): LendingItemOut = request("GET", "/api/v1/lending/items/$itemId")
+
+    suspend fun lendingCategories(): List<LendingCategoryOut> = request("GET", "/api/v1/lending/categories")
+
+    suspend fun lendingLoan(loanId: String): LendingLoanOut = request("GET", "/api/v1/lending/loans/$loanId")
+
+    suspend fun lendingApprovers(): LendingApproversOut = request("GET", "/api/v1/lending/approvers")
+
+    /**
+     * 「借りる」 (§5.3, §7.2): 201, or 200 with the same loan for a retry with the same [clientRequestId] — a retry after a
+     * network failure sends the same one. 409 lending_item_unavailable (details: status, borrower_id, due_on), 400
+     * lending_due_invalid / lending_permission_required / lending_approver_invalid.
+     */
+    suspend fun borrowLending(itemId: String, clientRequestId: String, dueOn: String, purpose: String, permissionConfirmed: Boolean, approverId: String?): LendingLoanOut =
+        request("POST", "/api/v1/lending/items/$itemId/borrow", borrowLendingBody(clientRequestId, dueOn, purpose, permissionConfirmed, approverId))
+
+    /** 「返す」: `condition` ok / issue (a note is required with issue, 422). Already returned: 200 with the loan as it is. */
+    suspend fun returnLending(loanId: String, condition: String, note: String?): LendingLoanOut =
+        request("POST", "/api/v1/lending/loans/$loanId/return", buildJsonObject {
+            put("condition", condition)
+            put("note", note?.let { JsonPrimitive(it) } ?: JsonNull)
+        })
+
+    /** 「延長」: 400 lending_due_invalid (reason not_later / too_long), 409 lending_extend_limit / lending_permission_denied. */
+    suspend fun extendLending(loanId: String, dueOn: String): LendingLoanOut =
+        request("POST", "/api/v1/lending/loans/$loanId/extend", buildJsonObject { put("due_on", dueOn) })
+
+    /** The teacher's 「許可していない」 (denied) / 「確認した」 (confirmed); 403 lending_not_approver, 409 lending_loan_closed. */
+    suspend fun decideLending(loanId: String, decision: String, note: String?): LendingLoanOut =
+        request("POST", "/api/v1/lending/loans/$loanId/permission", buildJsonObject {
+            put("decision", decision)
+            put("note", note?.let { JsonPrimitive(it) } ?: JsonNull)
+        })
+
+    /** 「返却されたら知らせる」 on (PUT) or off (DELETE); both idempotent (204). */
+    suspend fun watchLending(itemId: String, on: Boolean) {
+        requestRaw(if (on) "PUT" else "DELETE", "/api/v1/lending/items/$itemId/watch", null, auth = true, retry401 = true)
+    }
 
     // --- 在室状況 (M140, docs/PRESENCE.md §3) ------------------------------------------------------------
 
@@ -1412,6 +1461,15 @@ class ApiClient(
     companion object {
         /** M93: the workspace icon of `version`; the version in the query keeps a new icon from being cached away. */
         fun serverIconPath(version: String): String = "/api/v1/server/icon?v=" + java.net.URLEncoder.encode(version, "UTF-8")
+
+        /** POST /lending/items/{id}/borrow's body (§5.3); the approver only when one is named. */
+        fun borrowLendingBody(clientRequestId: String, dueOn: String, purpose: String, permissionConfirmed: Boolean, approverId: String?): JsonObject = buildJsonObject {
+            put("client_request_id", clientRequestId)
+            put("due_on", dueOn)
+            put("purpose", purpose)
+            put("permission_confirmed", permissionConfirmed)
+            if (approverId != null) put("approver_id", approverId)
+        }
 
         /** PUT /attendance/me's body: the state and the note (null = none). The app's buttons and the home-screen widget. */
         fun setMyAttendanceBody(stateId: String, note: String?): kotlinx.serialization.json.JsonObject = buildJsonObject {

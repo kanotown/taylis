@@ -151,6 +151,10 @@ object MainTabs {
     fun landReservations(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openReservations(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
 
+    /** M172: a lending notice (`kind = lending`): the home tab shows its loan / item over 「備品」, or the overdue list. */
+    fun landLending(state: TabStacks, itemId: String?, loanId: String?): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.landLending(rootStack(MainTab.HOME), itemId, loanId)).copy(selected = MainTab.HOME)
+
     /** M122: a page's notification (`kind = page`, WIKI.md §9.3): the home tab shows the page over 「ドキュメント」. */
     fun landPage(state: TabStacks, pageId: String): TabStacks =
         withStack(state, MainTab.HOME, MainNav.landPage(rootStack(MainTab.HOME), pageId)).copy(selected = MainTab.HOME)

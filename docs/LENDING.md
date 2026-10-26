@@ -884,3 +884,46 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 /lending/loans/{id}/permission`。`scope=approved` の一覧にも）、`lending.notice` でバッジを読み直しバナー、`activity.updated` で読み直し、
 プッシュの `kind = lending` のタップ（`lending_item_id`・`loan_id`）、備品の詳細の「返却されたら知らせる」（`watching`・`PUT / DELETE …/watch`）
 と延長のダイアログの `watcher_count`。
+
+### 17.6 L6（M172、Android、2026-10-26）
+
+`apps/android`：`api/LendingModels.kt`（`LendingSettingsOut`・`LendingSummaryOut`・`LendingCategoryOut`・`LendingItemOut`（詳細の
+`recent_loans`・`watcher_count` も同じ型）・`LendingLoanOut`・`LendingApproversOut`・`LendingNotice`・`ActivityLending`）、`ApiClient` の
+`/lending/*`、`sync/LendingApi.kt`（エンジンが読み直す設定と貸し出し、`LendingSummary.of`）、`Store.lending`・`lendingSettings`・
+`lendingRevision`、`ui/Lending.kt`（`LendingRules` と画面・ダイアログ）、`Route.Lending`、タイル `HomeTile.LENDING`、アクティビティの行、
+`PushMessage` の `kind = lending`、`Notifier` と `MainActivity` のタップ、`strings_lending.xml`（ja・en・zh-Hans）。テストは `LendingTest`。
+
+決めたこと（Desktop の L4・iOS の L5 と合わせるとよいもの）：
+
+- **タイル**：bootstrap の `lending` が null でないあいだだけ（`NavItems.implemented(lending = …)`）。数は `my_overdue_count`（備品係なら
+  `keeper_attention_count` を足す）で、1 以上のときだけ赤で出す（0 のときは数を出さない）。`apps/shared/nav-items.json` に `lending`
+  （両方の形、既定の順は予約の次）を足した。L4・L5 も同じ項目を足すので、合わせるときは 1 つにする。
+- **数の読み直し**：サーバには bootstrap の `lending` だけを返す API が無いので、`lending.updated` の後（300 ms にまとめる）は
+  `GET /lending/loans?scope=mine`（備品係なら `scope=active` も）から `LendingSummary.of` で数え直す（`keeper_attention_count` は
+  `overdue_days ≥ keeper_overdue_days` か、借りた人が無効化されている貸出中。§17.2 と同じ対象）。`settings: true` のとき・まだ設定を
+  知らないときは `GET /lending/settings` も読み、オフならタイルを消す。次の bootstrap がいつも正す。
+- **画面**：一覧（検索は名前・管理番号・置き場所、NFKC で全角も当たる。分類・状態のチップ、上に自分の貸出中）・貸出中・自分（自分の
+  貸出中・許可を求められた貸し出し（`scope=approved`）・最近の返却）・延滞（備品係だけ、見るだけ）の 4 つのチップ。行は色の点と文字で
+  状態を出す（太い色の帯は使わない）。開いているページは `Store.lendingRevision`（`lending.updated` の後と自分の操作の後に進む）で読み直す。
+- **延滞の一覧**：§12.3 はスマホに延滞の一覧を出さないとしていたが、備品係のまとめ（`lending_item_id`・`loan_id` が両方 null）の
+  タップ先に要るので、備品係にだけ**見るだけ**の延滞（`scope=overdue`）を出した。行から貸し出しを開ける。代わりの返却は貸し出しの
+  詳細の「代わりに返却を記録」（確かめのダイアログで、本人に知らせが届くことを書く）。日付の変更（範囲外）・連絡はしない。
+- **借りる**：返す日はワークスペースのゾーン（設定の `tz`）の今日〜今日 + `max_days`（既定は最長、範囲外の日はカレンダーで選べない）。
+  許可が要る備品は `GET /lending/approvers` を読み、`self_approved` なら印の欄を隠す。教員は指導教員を先頭に名前の順（7 人以上で検索）、
+  指導教員を既定で選ぶ。`client_request_id` はダイアログを開いたときに 1 つ作り、送り直し（ネットワークの失敗の後など）も同じものを送る。
+  `409 lending_item_unavailable` は `details` から「〇〇 さんが先に借りました（10/30 まで）」・自分なら「すでに借りています」・修理中なら
+  その旨を出し、備品を読み直す。
+- **教員の判断**：貸し出しの詳細（教員本人で、貸出中か返却から 14 日以内）と、アクティビティの教員の作業の行（`role = approver`・
+  済んでいない）に「許可していない」「確認した」を置く。どちらも確かめのダイアログを出し、「許可していない」は一言（任意、200 字）を
+  付けられる。今の判断と同じボタンは出さない（切り替えはできる）。
+- **アクティビティ**：`include=lending` をすべてのアクティビティの呼び出しに付けた。行の見出しは「備品名 · 自分の貸し出し / 許可の確認 /
+  備品係 / 返却の知らせ」、本文はサーバの 1 行をプレーンテキストで（絵文字のショートコードも解かない）。教員の作業は済んだら
+  「対応済み」で薄くし、未読に数えない（予約と同じ）。押すと `loan_id` → `lending_item_id` → 延滞の一覧の順に開く。
+- **通知**：FCM の `kind = lending` は会話が無くても通知にする。キーはサーバの `collapse_key`（無ければ `lending:loan:<id>` /
+  `lending:item:<id>` / `lending:overdue`）。アプリが開いていてソケットがつながっているときは、`lending.notice` からバナーと同じキーの
+  ローカル通知（DND・おやすみ時間の間は出さない）。タップはそのワークスペースに切り替えて、ホームのタブに「備品」→ 貸し出し（無ければ備品、
+  両方無ければ延滞の一覧）を積む。
+- 台帳の編集・分類・設定・CSV は出さない（一覧の下に「Desktop / Web で管理します」）。新しい依存は足していない。
+
+サーバへの気づき（直していない）：bootstrap の `lending` だけを読む API が無いため、端末は数を貸し出しの一覧から数え直している
+（`GET /lending/summary` のようなものがあれば、備品係の端末が `scope=active` を毎回読まなくて済む）。
