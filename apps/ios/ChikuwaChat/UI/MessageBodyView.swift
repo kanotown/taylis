@@ -755,7 +755,7 @@ struct MessageBodyView: View {
             let size = CustomEmoji.size(of: emoji, height: EmojiOnly.Jumbo.stamp)
             Group {
                 if let still = emojiImages[emoji.id] {
-                    EmojiImage(still: still, animation: emojiAnimations[emoji.id])
+                    EmojiImage(still: still, animation: emojiAnimations[emoji.id], size: size)
                 } else {
                     Color.clear.onAppear { onNeedEmojiImage?(emoji) }
                 }

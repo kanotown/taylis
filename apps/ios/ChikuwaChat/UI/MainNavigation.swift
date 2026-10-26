@@ -78,7 +78,8 @@ struct MainNavigation: Equatable {
     var split: [MainRoute] = []
     /// The split: 自分 (settings) as a sheet over it.
     var youSheet = false
-    /// A thread for the conversation to open once it shows (a reply's notification, a revealed reply, a layout change).
+    /// A thread for the conversation to open once it shows (a layout change). A reply's notification or a revealed
+    /// reply goes on the phone's stack as its own screen, and to the split's pane at once (`openPane`).
     var pendingThread: ThreadRef?
     /// The thread open in the front conversation, as the conversation reports it (carried across a layout change).
     var openThread: ThreadRef?
@@ -131,7 +132,16 @@ struct MainNavigation: Equatable {
             tab = target
             return
         }
-        if let parentId { pendingThread = ThreadRef(channelId: channelId, parentId: parentId) }
+        if let parentId { openPane(ThreadRef(channelId: channelId, parentId: parentId)) }
+    }
+
+    /// The split: a thread landed on (`land`, `show`) opens in the pane in the same change as its conversation. Handed
+    /// to the conversation (`pendingThread`) it opened the pane only once the conversation had been drawn: the
+    /// conversation showed alone first (2026-10-27). In the split the conversation keeps no thread of its own (the pane
+    /// is its thread, ChannelView `threadInPane`), so nothing else has to know.
+    private mutating func openPane(_ thread: ThreadRef) {
+        pendingThread = nil
+        openThread = thread
     }
 
     /// A revealed message (a list row: the activity, mentions, saved, the Times feed): its conversation over this tab's
@@ -140,7 +150,7 @@ struct MainNavigation: Equatable {
     mutating func show(_ channelId: String, parentId: String?, on tab: MainTab) {
         if layout == .split {
             split.append(.channel(channelId))
-            if let parentId { pendingThread = ThreadRef(channelId: channelId, parentId: parentId) } // its pane
+            if let parentId { openPane(ThreadRef(channelId: channelId, parentId: parentId)) }
         } else {
             paths[tab, default: []] += Self.conversation(channelId, thread: parentId)
         }

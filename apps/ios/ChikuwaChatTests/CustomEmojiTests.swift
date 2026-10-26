@@ -644,3 +644,75 @@ final class EmojiImageCacheTests: XCTestCase {
         XCTAssertEqual(try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(json.utf8)).imageVersion, "abc")
     }
 }
+
+/// 2026-10-27 (「よく使う」 on a dark background): a custom emoji with a thin white outline shimmered in the picker's 30 pt
+/// cells. A still is shown from a copy at the pixels it takes, made once per size.
+final class CustomEmojiDisplayTests: XCTestCase {
+    private func pixels(_ image: CGSize, _ box: CGSize, _ scale: CGFloat) -> [Int] {
+        let (width, height) = CustomEmoji.displayPixels(imageSize: image, box: box, scale: scale)
+        return [width, height]
+    }
+
+    func testDisplayPixelsFitTheBoxInWholePixels() {
+        XCTAssertEqual(pixels(CGSize(width: 48, height: 48), CGSize(width: 30, height: 30), 3), [90, 90])
+        XCTAssertEqual(pixels(CGSize(width: 144, height: 48), CGSize(width: 30, height: 30), 3), [90, 30]) // 3:1
+        XCTAssertEqual(pixels(CGSize(width: 144, height: 48), CGSize(width: 48, height: 16), 3), [144, 48]) // a chip
+        XCTAssertEqual(pixels(CGSize(width: 48, height: 48), CGSize(width: 30, height: 30), 2), [60, 60])
+        XCTAssertEqual(pixels(CGSize(width: 70, height: 48), CGSize(width: 30, height: 30), 3), [90, 62])
+        XCTAssertEqual(pixels(.zero, CGSize(width: 30, height: 30), 3), [1, 1])
+    }
+
+    func testAStillIsShownFromACopyAtItsPixelsMadeOncePerSize() throws {
+        let still = CustomEmoji.inlineImage(UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { context in
+            UIColor.orange.setFill(); context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        })
+        let copies = try XCTUnwrap(CustomEmoji.DisplayCopies.of(still))
+        let cell = CustomEmoji.displayed(still, fitting: CGSize(width: 30, height: 30), scale: 3)
+        XCTAssertEqual(cell.cgImage?.width, 90)
+        XCTAssertEqual(cell.cgImage?.height, 90)
+        XCTAssertEqual(cell.size, CGSize(width: 30, height: 30)) // shown at its own size: no scaling on screen
+        XCTAssertTrue(CustomEmoji.displayed(still, fitting: CGSize(width: 30, height: 30), scale: 3) === cell)
+        let chip = CustomEmoji.displayed(still, fitting: CGSize(width: 16, height: 16), scale: 3)
+        XCTAssertEqual(chip.cgImage?.height, 48)
+        XCTAssertEqual(copies.count, 2)
+
+        // Not a still (an animation's frame, a pack's tab icon): the same pixels at the fitted size, nothing kept.
+        let frame = UIGraphicsImageRenderer(size: CGSize(width: 36, height: 36)).image { _ in }
+        XCTAssertNil(CustomEmoji.DisplayCopies.of(frame))
+        let shown = CustomEmoji.displayed(frame, fitting: CGSize(width: 30, height: 30), scale: 3)
+        XCTAssertEqual(shown.cgImage?.height, frame.cgImage?.height)
+        XCTAssertEqual(shown.size.height, 30, accuracy: 0.01)
+    }
+
+    /// A 512 px picture with a 4 px white ring, as uploaded, read and shown in a picker cell (30 pt at 3×): the ring is
+    /// there evenly on every row it crosses (a pixel-skipping scale-down leaves gaps in it).
+    func testAThinOutlineSurvivesEvenly() throws {
+        let side: CGFloat = 512
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let source = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+            UIColor.white.setStroke()
+            context.cgContext.setLineWidth(4)
+            context.cgContext.stroke(CGRect(x: 40, y: 40, width: side - 80, height: side - 80))
+        }
+        let decoded = try XCTUnwrap(CustomEmoji.decode(try XCTUnwrap(source.pngData())))
+        XCTAssertNotNil(CustomEmoji.DisplayCopies.of(decoded.still))
+        let cell = try XCTUnwrap(CustomEmoji.displayed(decoded.still, fitting: CGSize(width: 30, height: 30), scale: 3).cgImage)
+        XCTAssertEqual(cell.width, 90)
+        let alpha = try alphas(cell)
+        // The ring's left side: in each row between its top and bottom sides, the strongest pixel near x = 7.
+        let ringRows = (12..<78).map { y in (3..<12).map { alpha[y * cell.width + $0] }.max() ?? 0 }
+        let weakest = try XCTUnwrap(ringRows.min()), strongest = try XCTUnwrap(ringRows.max())
+        XCTAssertGreaterThan(weakest, 0.2)
+        XCTAssertGreaterThan(weakest / strongest, 0.8, "the ring fades on some rows: \(ringRows)")
+    }
+
+    private func alphas(_ image: CGImage) throws -> [CGFloat] {
+        let width = image.width, height = image.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try XCTUnwrap(CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return (0..<(width * height)).map { CGFloat(bytes[$0 * 4 + 3]) / 255 }
+    }
+}

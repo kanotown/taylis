@@ -1280,7 +1280,7 @@ struct MessageRow: View {
                                         // M100: a wide one (at most 3:1) or a text emoji's pill is wider, as high.
                                         let box = CustomEmoji.size(of: custom, height: 16)
                                         if let image = store.emojiImages[custom.id] {
-                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: box.width, height: 16)
+                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id], size: box).frame(width: box.width, height: 16)
                                         } else {
                                             // Its room until the image comes: `:name:` there made the chip wider and the
                                             // chips re-wrapped, changing the row's height (CustomEmoji.text).
