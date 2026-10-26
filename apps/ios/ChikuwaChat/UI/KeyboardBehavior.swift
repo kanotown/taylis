@@ -4,8 +4,9 @@ import UIKit
 /// How a conversation (a channel or a thread) lives with the keyboard, as in Slack and Messages:
 /// - the list's bottom edge stays as its height changes (the keyboard, the input growing, the typing line, a Japanese
 ///   keyboard's candidate row) because the list is upside down (UpsideDownList.swift, M36): nothing here moves it;
-/// - a tap on the list closes the keyboard (`dismissesKeyboardOnTap`), and does nothing else on a message (which a tap
-///   otherwise opens the thread of); dragging the list closes it too (`conversationDismissesKeyboard`).
+/// - a tap on the list closes the keyboard (`dismissesKeyboardOnTap`), and does nothing else: not on a message (which a
+///   tap otherwise opens the thread of), nor on its avatar, name, reactions, links or attachments (`TapsWaitForKeyboard`);
+///   a long press still opens the message's actions. Dragging the list closes it too (`conversationDismissesKeyboard`).
 /// A swipe back is left to UIKit, which slides the keyboard away with the screen: closing it as the swipe starts
 /// removed the keyboard's room at once while UIKit kept the keyboard on screen, and the input went behind it.
 enum KeyboardBehavior {
@@ -13,21 +14,88 @@ enum KeyboardBehavior {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
-    /// Whether the keyboard is up, from its coming until it has gone: a tap on a message while it is only closes it
-    /// (`dismissesKeyboardOnTap`). Until it has gone, not until it starts going: the list's tap may close it before the
-    /// row sees the same tap.
+    /// Whether the keyboard is up (a hardware keyboard's bar included), from its coming until it has gone: the swipe
+    /// back keeps its room meanwhile (`keepsKeyboardRoomWhileSwipingBack`). The rows' taps follow `SoftKeyboard`.
     private(set) static var isUp = false
     private static var observers: [NSObjectProtocol] = []
 
-    /// Follows the keyboard from the app's start (`isUp`).
+    /// Follows the keyboard from the app's start (`isUp`, `SoftKeyboard`).
     static func watch() {
         guard observers.isEmpty else { return }
         let center = NotificationCenter.default
+        let soft = SoftKeyboard.shared
         observers = [
-            center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in isUp = true },
-            center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { _ in isUp = false },
+            center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { note in
+                isUp = true
+                soft.willChange(to: note)
+            },
+            center.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { soft.willChange(to: $0) },
+            center.addObserver(forName: UIResponder.keyboardDidChangeFrameNotification, object: nil, queue: .main) { soft.didChange(to: $0) },
+            center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { _ in
+                isUp = false
+                soft.didHide()
+            },
         ]
     }
+}
+
+/// Whether the on-screen keyboard is up, from its coming until it has gone, for the views that redraw with it
+/// (`TapsWaitForKeyboard`). Unlike `KeyboardBehavior.isUp` it stays false with a hardware keyboard: an iPad's keyboard
+/// shows only its shortcut bar then (some 55–70 pt), and a tap on the list has no keyboard to close first, so it acts.
+@Observable
+final class SoftKeyboard {
+    static let shared = SoftKeyboard()
+    private(set) var onScreen = false
+
+    /// Taller than an iPad's shortcut bar or the candidate bar of a hardware keyboard; lower than any on-screen keyboard
+    /// (an iPhone's is 216 pt and up, landscape included).
+    static let minimumHeight: CGFloat = 120
+
+    /// How much of the screen the keyboard's frame covers, from the bottom; 0 off screen (going, or a hardware keyboard).
+    static func coveredHeight(frame: CGRect, screen: CGRect) -> CGFloat {
+        guard !frame.isEmpty, !screen.isEmpty else { return 0 }
+        return max(0, screen.intersection(frame).height)
+    }
+
+    static func isSoftKeyboard(frame: CGRect, screen: CGRect) -> Bool { coveredHeight(frame: frame, screen: screen) >= minimumHeight }
+
+    /// Up as soon as an on-screen keyboard is on its way (before the tap that may close it).
+    func willChange(to note: Notification) {
+        if let up = Self.isSoftKeyboard(note), up, !onScreen { onScreen = true }
+    }
+
+    /// Down only once it has gone: the list's tap closes it as the same tap ends on the row, which must not act then.
+    /// A frame that settles small (a hardware keyboard connected while it was up) puts it down too.
+    func didChange(to note: Notification) {
+        if let up = Self.isSoftKeyboard(note), up != onScreen { onScreen = up }
+    }
+
+    func didHide() { if onScreen { onScreen = false } }
+
+    private static func isSoftKeyboard(_ note: Notification) -> Bool? {
+        guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return nil }
+        // The notification's object is the screen the keyboard is on (iOS 16+); its frame is in that screen's space.
+        let screen = (note.object as? UIScreen)?.bounds ?? UIScreen.main.bounds
+        return isSoftKeyboard(frame: frame, screen: screen)
+    }
+}
+
+/// The row's own controls (avatar, name, reactions, links, attachments, cards, buttons) take no touch while the on-screen
+/// keyboard is up: the first tap on the list only closes the keyboard (user report 2026-10-26: a tap on an avatar closed
+/// the keyboard and opened the profile). Put inside the row's gestures: the row keeps its long press (the actions) and its
+/// tap, which `tapped()` ignores meanwhile, and the scroll view keeps its drag and its tap that closes the keyboard. Its own
+/// small view, so only it redraws when the keyboard comes and goes, not the rows' bodies.
+struct TapsWaitForKeyboard: ViewModifier {
+    private var keyboard = SoftKeyboard.shared
+
+    func body(content: Content) -> some View {
+        content.allowsHitTesting(!keyboard.onScreen)
+    }
+}
+
+extension View {
+    /// `TapsWaitForKeyboard`: no taps on what is inside while the on-screen keyboard is up.
+    func tapsWaitForKeyboard() -> some View { modifier(TapsWaitForKeyboard()) }
 }
 
 extension View {

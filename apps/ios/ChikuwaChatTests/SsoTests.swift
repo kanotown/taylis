@@ -264,8 +264,15 @@ final class SsoTests: XCTestCase {
         return image
     }
 
+    /// A device that signed in to this server before (the login form starts from it; a fresh install starts empty).
+    private static func lastUsedServer(_ server: String) -> UserDefaults {
+        let defaults = UserDefaults(suiteName: "sso-snapshot-\(UUID().uuidString)")!
+        defaults.set(server, forKey: Workspaces.legacyServerKey)
+        return defaults
+    }
+
     func testLoginScreenOffersGoogleWhenTheServerDoes() throws {
-        let controller = AppController(defaults: UserDefaults(suiteName: "sso-snapshot-\(UUID().uuidString)")!)
+        let controller = AppController(defaults: Self.lastUsedServer("http://127.0.0.1:8000"))
         var asked: [String] = []
         _ = try render(LoginView(controller: controller, offersGoogle: { asked.append($0); return .google }),
                        size: CGSize(width: 393, height: 852), name: "M48-login-google-ios.png")
@@ -273,7 +280,7 @@ final class SsoTests: XCTestCase {
     }
 
     func testLoginScreenNamesTheOrganisation() throws {
-        let controller = AppController(defaults: UserDefaults(suiteName: "sso-snapshot-\(UUID().uuidString)")!)
+        let controller = AppController(defaults: Self.lastUsedServer("https://chat.example.ac.jp"))
         _ = try render(LoginView(controller: controller, offersGoogle: { _ in GoogleButtonText(domains: ["example.ac.jp"], label: nil) }),
                        size: CGSize(width: 393, height: 852), name: "M48-login-org-ios.png")
     }

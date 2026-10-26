@@ -14256,6 +14256,22 @@
         }
       }
     },
+    "サーバを入力してください" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the server's address"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入服务器地址"
+          }
+        }
+      }
+    },
     "サーバの更新後に使えるようになります。" : {
       "localizations" : {
         "en" : {
