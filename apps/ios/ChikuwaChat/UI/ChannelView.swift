@@ -504,7 +504,7 @@ struct ChannelView: View {
                                     .id(row.id) // the row key (scrollTo), "unread" for the divider
                                 }
                                 if let channel {
-                                    conversationTop(channel).upsideDown()
+                                    conversationTop(channel).tapsWaitForKeyboard().upsideDown()
                                 }
                             }
                             .scrollTargetLayout()
@@ -1069,10 +1069,10 @@ struct MessageRow: View {
         show(.actions)
     }
 
-    /// A tap on the message opens its thread (Slack; testers, 2026-09-29), to read or to reply. With the keyboard up the
-    /// tap only closes it, as a tap on the list always did (`dismissesKeyboardOnTap`).
+    /// A tap on the message opens its thread (Slack; testers, 2026-09-29), to read or to reply. With the on-screen keyboard
+    /// up the tap only closes it, as a tap on the list always did (`dismissesKeyboardOnTap`, `TapsWaitForKeyboard`).
     private func tapped() {
-        guard !message.pending, !KeyboardBehavior.isUp else { return }
+        guard !message.pending, !SoftKeyboard.shared.onScreen else { return }
         if let onTap { return onTap() }
         onOpenThread?()
     }
@@ -1127,6 +1127,7 @@ struct MessageRow: View {
         } else if Moderation.folds(message, blocked: store.blockedUsers, revealed: controller.revealedBlocked) {
             // M104 (MODERATION.md §4): someone I blocked, folded until I ask to see it.
             BlockedMessageRow(margin: margin) { controller.revealedBlocked.insert(message.id) }
+                .tapsWaitForKeyboard()
         } else {
             personRow
         }
@@ -1328,6 +1329,10 @@ struct MessageRow: View {
                 }
             }
         }
+        // With the on-screen keyboard up, a tap on the avatar, the name, a reaction, a link or an attachment only closes
+        // the keyboard, as a tap elsewhere on the list (user report 2026-10-26). The long press and the row's tap below
+        // still see it.
+        .tapsWaitForKeyboard()
         .padding(.vertical, compact ? 4 : 5)
         .padding(.horizontal, margin)
         // The row is as wide as the list: a press right of a short message is on it. It was only as wide as its text,

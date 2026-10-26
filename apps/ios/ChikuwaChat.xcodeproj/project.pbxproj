@@ -400,6 +400,7 @@
 		FB99B6642BA7103F31C51E20 /* AttendanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0815AEE82FDCF4CB67CEE9D9 /* AttendanceTests.swift */; };
 		FEDDC0F643516E74169B0597 /* PollTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC003D2126376F0BCBAEB48E /* PollTests.swift */; };
 		FF91D7B337478DE41D4D5486 /* UnreadRangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CCFFE89EA1C7A2E59262F2 /* UnreadRangeTests.swift */; };
+		FF9D2CB3C41CAF3587021A53 /* KeyboardTapsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0549D9B3415DDE4468F61F45 /* KeyboardTapsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -459,6 +460,7 @@
 		039C2CD24CF9BF1005C6FE9D /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
 		040510582EF3182E66D21640 /* ChannelIntroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelIntroView.swift; sourceTree = "<group>"; };
 		048A41BC92EAD6644AFA7294 /* FakeServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeServer.swift; sourceTree = "<group>"; };
+		0549D9B3415DDE4468F61F45 /* KeyboardTapsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardTapsTests.swift; sourceTree = "<group>"; };
 		067D57885D2336C0C964A251 /* WidgetSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSupport.swift; sourceTree = "<group>"; };
 		077BAA18AE1DE4842DBDBF82 /* AiAskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiAskView.swift; sourceTree = "<group>"; };
 		07D8A4F50BC0B068CD23CCC7 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -1057,6 +1059,7 @@
 				0FB071937EF97C9E53923BC8 /* InviteTests.swift */,
 				22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */,
 				8D9ACB4BFB7A7A3A492C1346 /* JumpMatchTests.swift */,
+				0549D9B3415DDE4468F61F45 /* KeyboardTapsTests.swift */,
 				9E4933062A8AD409720383F2 /* LayoutCarryTests.swift */,
 				50DE1D835B6EBD8B20D17856 /* LendingTests.swift */,
 				41D8FE044BFBF564E1DC7816 /* LinksTests.swift */,
@@ -1647,6 +1650,7 @@
 				8BF7B083F5758F11D1414F33 /* InviteTests.swift in Sources */,
 				0B30BA10FE1F85A93BEEE644 /* IsoDatesTests.swift in Sources */,
 				A704AFE4B109C39DE0DAE477 /* JumpMatchTests.swift in Sources */,
+				FF9D2CB3C41CAF3587021A53 /* KeyboardTapsTests.swift in Sources */,
 				A4E33A1758892181352EB6BD /* LayoutCarryTests.swift in Sources */,
 				5BB703D5D5BC5D1A6F9660F0 /* LendingTests.swift in Sources */,
 				DFB917EDBAFE20528E406E4C /* LinksTests.swift in Sources */,

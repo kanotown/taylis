@@ -376,6 +376,7 @@ struct ThreadView: View {
                         }
                     }
                     .font(.footnote).padding(.horizontal, Self.margin)
+                    .tapsWaitForKeyboard()
                 }
             }
             .upsideDown()

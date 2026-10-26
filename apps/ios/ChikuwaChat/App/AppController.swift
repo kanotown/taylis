@@ -167,9 +167,11 @@ final class AppController {
     /// The 今日の予定・締切 widget's reload, asked once for a burst of changes (AppController+TodayWidget.swift).
     @ObservationIgnored var todayWidgetReload: Task<Void, Never>?
 
-    /// The login form starts from the workspace to sign back in to, else the last one used on this device.
+    /// The login form starts from the workspace to sign back in to, else the last one used on this device; on a fresh
+    /// install it is empty, with the field's placeholder as the hint (2026-10-26: it showed a developer's
+    /// http://127.0.0.1:8000, which a new user had to clear).
     var loginServer: String {
-        activeWorkspace?.serverUrl ?? lastSignIn?.server ?? defaults.string(forKey: Workspaces.legacyServerKey) ?? "http://127.0.0.1:8000"
+        activeWorkspace?.serverUrl ?? lastSignIn?.server ?? defaults.string(forKey: Workspaces.legacyServerKey) ?? ""
     }
 
     var loginUsername: String {
@@ -472,6 +474,7 @@ final class AppController {
     /// The form's address, normalized and asked for GET /server. Adding a workspace needs a ChikuwaChat answer, and a
     /// workspace registered already (same workspace_id or address) is opened instead: one account per server.
     private func signInTarget(_ input: String, adding: Bool) async -> SignInTarget {
+        if input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .done(.failed(tr("サーバを入力してください"))) }
         guard let normalized = Workspaces.normalize(input) else { return .done(.failed(tr("サーバ URL が正しくありません"))) }
         // A registered address keeps its spelling: it names the Keychain item and the local store.
         var serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
