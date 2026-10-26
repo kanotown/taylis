@@ -46,6 +46,11 @@ TABLES = [
     "action_invocations",
     "actions",
     "action_settings",
+    # M167: the categories have no foreign key to users (the items and the settings row do).
+    "lending_item_events",
+    "lending_items",
+    "lending_categories",
+    "lending_settings",
     # M120: no foreign key to users, so not emptied by the CASCADE below.
     "wiki_tombstones",
     "wiki_feed_state",

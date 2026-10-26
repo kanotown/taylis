@@ -44,6 +44,17 @@ class Attachment(Base):
     drive_item_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("drive_items.id", ondelete="SET NULL")
     )
+    # M167 (docs/LENDING.md §4.3): an equipment item's photo. message_id, channel_id, canvas_id,
+    # page_id and drive_item_id stay NULL; every person reads it while the feature is on.
+    # (use_alter: lending_items.photo_attachment_id points back here.)
+    lending_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "lending_items.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="attachments_lending_item_id_fkey",
+        )
+    )
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     filename: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
@@ -100,6 +111,11 @@ class Attachment(Base):
             "attachments_drive_item_idx",
             "drive_item_id",
             postgresql_where=text("drive_item_id IS NOT NULL"),
+        ),
+        Index(
+            "attachments_lending_item_idx",
+            "lending_item_id",
+            postgresql_where=text("lending_item_id IS NOT NULL"),
         ),
         Index(
             "attachments_preview_queue_idx",

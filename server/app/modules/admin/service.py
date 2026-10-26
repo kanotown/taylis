@@ -23,6 +23,7 @@ from app.modules.auth import service as auth
 from app.modules.drive import service as drive
 from app.modules.groups import service as groups
 from app.modules.lab import service as lab
+from app.modules.lending import service as lending
 from app.modules.moderation.models import UserBlock
 from app.modules.sso import repository as sso_repo
 from app.modules.totp import service as totp
@@ -353,6 +354,7 @@ async def anonymize_in_tx(
     await sso_repo.forget_user_in_tx(db, user.id)  # M48: Google no longer signs in as it
     await lab.forget_in_tx(db, admin, user.id)  # the roster line, research topic included (M23)
     await actions.forget_in_tx(db, user.id)  # M143: off every button's list of people
+    await lending.forget_in_tx(db, user.id)  # M167: no longer one of the 備品係
     await attendance.forget_in_tx(db, user.id)  # M140: 在室状況 row, log, own states, deliveries
     # M120 (docs/WIKI.md §4.5): pages shared with the person by name no longer name them.
     await wiki.remove_user_grants_in_tx(db, user.id)

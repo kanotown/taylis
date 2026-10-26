@@ -166,6 +166,8 @@ PROBES: list[Probe] = [
     Probe("GET", "/admin/wiki/pages", A),
     Probe("POST", f"/admin/wiki/pages/{X}/takeover", A),
     Probe("DELETE", f"/admin/wiki/pages/{X}", A),
+    # M167 (docs/LENDING.md §3.1): the 備品 switch and keepers.
+    Probe("PATCH", "/admin/lending/settings", A, {"enabled": True}),
 ]
 
 

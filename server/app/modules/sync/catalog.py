@@ -23,6 +23,7 @@ from app.modules.emoji import events as emoji_events
 from app.modules.favorites import events as favorite_events
 from app.modules.groups import events as group_events
 from app.modules.lab import events as lab_events
+from app.modules.lending import events as lending_events
 from app.modules.messages import events as message_events
 from app.modules.moderation import events as moderation_events
 from app.modules.notifications import events as notification_events
@@ -174,6 +175,8 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "user",
         False,
     ),
+    # M167 (docs/LENDING.md §9): the 備品 ledger changed; re-read it. No content.
+    lending_events.LENDING_UPDATED: (lending_events.LendingUpdatedData, "all", False),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

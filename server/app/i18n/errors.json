@@ -716,6 +716,121 @@
    "en": "This can't be changed because no owner would be left.",
    "zh-Hans": "无法更改，因为将没有任何所有者。"
   },
+  "lending_approver_invalid": {
+   "ja": "この人は許可した教員として選べません",
+   "en": "This person can't be chosen as the approving teacher.",
+   "zh-Hans": "无法选择此人作为许可教师。"
+  },
+  "lending_category_in_use": {
+   "ja": "備品が残っている分類は削除できません",
+   "en": "This category still has items and can't be deleted.",
+   "zh-Hans": "此分类中仍有设备，无法删除。"
+  },
+  "lending_category_name_taken": {
+   "ja": "同じ名前の分類があります",
+   "en": "A category with this name already exists.",
+   "zh-Hans": "已存在同名分类。"
+  },
+  "lending_category_not_found": {
+   "ja": "分類が見つかりません",
+   "en": "Category not found.",
+   "zh-Hans": "未找到该分类。"
+  },
+  "lending_code_taken": {
+   "ja": "この管理番号はほかの備品で使われています",
+   "en": "Another item already has this control number.",
+   "zh-Hans": "此管理编号已被其他设备使用。"
+  },
+  "lending_csv_invalid": {
+   "ja": "CSV にエラーがあります。行ごとのエラーを確かめてください",
+   "en": "The CSV has errors. Check the errors for each line.",
+   "zh-Hans": "CSV 有错误。请查看每行的错误。"
+  },
+  "lending_disabled": {
+   "ja": "備品の機能はこのワークスペースでは使えません",
+   "en": "Equipment lending is turned off in this workspace.",
+   "zh-Hans": "此工作区未启用设备借用功能。"
+  },
+  "lending_due_invalid": {
+   "ja": "返す日が正しくありません（過去の日付か、最長の日数を超えています）",
+   "en": "The return date is not valid (in the past or beyond the longest loan).",
+   "zh-Hans": "归还日期无效（已过去或超过最长借用天数）。"
+  },
+  "lending_extend_limit": {
+   "ja": "延長できる回数を超えています。備品係に相談してください",
+   "en": "You can't extend this loan any more. Ask an equipment keeper.",
+   "zh-Hans": "已超过可延期次数。请联系设备管理员。"
+  },
+  "lending_item_has_history": {
+   "ja": "貸し出しのあった備品は削除できません。廃棄にしてください",
+   "en": "An item that has been lent can't be deleted. Retire it instead.",
+   "zh-Hans": "有借用记录的设备无法删除。请改为报废。"
+  },
+  "lending_item_not_found": {
+   "ja": "備品が見つかりません",
+   "en": "Equipment item not found.",
+   "zh-Hans": "未找到该设备。"
+  },
+  "lending_item_on_loan": {
+   "ja": "貸出中の備品の状態は変えられません。先に返却を記録してください",
+   "en": "This item is on loan. Record its return first.",
+   "zh-Hans": "此设备已借出，无法更改状态。请先登记归还。"
+  },
+  "lending_item_unavailable": {
+   "ja": "この備品は今は借りられません（貸出中・修理中・廃棄）",
+   "en": "This item can't be borrowed right now (on loan, in repair or retired).",
+   "zh-Hans": "此设备目前无法借用（借出中、维修中或已报废）。"
+  },
+  "lending_keeper_invalid": {
+   "ja": "備品係に選べない人が含まれています（無効・ゲスト・ボット）",
+   "en": "Some people can't be equipment keepers (deactivated, guests or bots).",
+   "zh-Hans": "包含无法设为设备管理员的人（已停用、访客或机器人）。"
+  },
+  "lending_keeper_required": {
+   "ja": "備品係と管理者だけができる操作です",
+   "en": "Only equipment keepers and admins can do this.",
+   "zh-Hans": "只有设备管理员和管理员可以执行此操作。"
+  },
+  "lending_loan_closed": {
+   "ja": "この貸し出しはもう終わっています",
+   "en": "This loan has already ended.",
+   "zh-Hans": "此次借用已结束。"
+  },
+  "lending_loan_not_found": {
+   "ja": "貸し出しが見つかりません",
+   "en": "Loan not found.",
+   "zh-Hans": "未找到该借用记录。"
+  },
+  "lending_not_approver": {
+   "ja": "この貸し出しで選ばれた教員だけができる操作です",
+   "en": "Only the teacher chosen for this loan can do this.",
+   "zh-Hans": "只有此次借用所选的教师可以执行此操作。"
+  },
+  "lending_not_yours": {
+   "ja": "借りた本人と備品係だけができる操作です",
+   "en": "Only the borrower and equipment keepers can do this.",
+   "zh-Hans": "只有借用人和设备管理员可以执行此操作。"
+  },
+  "lending_permission_denied": {
+   "ja": "教員が「許可していない」とした貸し出しは延長できません",
+   "en": "The teacher said they did not approve this loan, so it can't be extended.",
+   "zh-Hans": "教师已表示未许可此次借用，无法延期。"
+  },
+  "lending_permission_not_required": {
+   "ja": "この貸し出しには教員の許可は要りません",
+   "en": "This loan doesn't need a teacher's approval.",
+   "zh-Hans": "此次借用无需教师许可。"
+  },
+  "lending_permission_required": {
+   "ja": "この備品を借りるには「教員の許可を得た」の印と、許可した教員が必要です",
+   "en": "This item needs a teacher's approval: tick the box and choose the teacher.",
+   "zh-Hans": "借用此设备需要教师许可：请勾选并选择许可的教师。"
+  },
+  "lending_photo_invalid": {
+   "ja": "写真には自分でアップロードした画像（JPEG・PNG・WebP・HEIC）を使ってください",
+   "en": "Use an image you uploaded yourself (JPEG, PNG, WebP or HEIC) as the photo.",
+   "zh-Hans": "请使用自己上传的图片（JPEG、PNG、WebP 或 HEIC）作为照片。"
+  },
   "link_not_found": {
    "ja": "リンクが見つかりません",
    "en": "Link not found.",
@@ -1300,6 +1415,16 @@
    "ja": "1 人が追加できるフィードは 20 件までです",
    "en": "You can add up to 20 feeds.",
    "zh-Hans": "每人最多可添加 20 个订阅源。"
+  },
+  "too_many_lending_categories": {
+   "ja": "分類の数が上限に達しています",
+   "en": "There are too many categories.",
+   "zh-Hans": "分类数量已达上限。"
+  },
+  "too_many_lending_items": {
+   "ja": "備品の数が上限に達しています",
+   "en": "The equipment list is full.",
+   "zh-Hans": "设备数量已达上限。"
   },
   "too_many_links": {
    "ja": "リンクは 30 件までです",

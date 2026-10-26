@@ -2088,6 +2088,7 @@ CREATE TABLE attachments (
   message_id     uuid REFERENCES messages(id),      -- bind 時に設定
   channel_id     uuid REFERENCES channels(id),      -- bind 時に設定。アクセス制御はこの列で判定
   page_id        uuid REFERENCES wiki_pages(id) ON DELETE SET NULL,  -- M120: ページの画像・ファイル (message_id・channel_id・canvas_id は NULL。ページの view で読む)
+  lending_item_id uuid REFERENCES lending_items(id) ON DELETE SET NULL,  -- M167: 備品の写真 (ほかの参照は NULL。機能が有効な間、人なら読める。docs/LENDING.md §4.3)
   status         text NOT NULL DEFAULT 'pending',   -- 'pending' | 'attached' | 'deleted'
   filename       text NOT NULL,                     -- 元のファイル名 (表示用。パス区切りは除去)
   content_type   text NOT NULL,                     -- サーバ側で sniff した値
@@ -2441,6 +2442,28 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 - 押すと `pending` の行を書いてコミットし、トランザクションの外で中継を 1 回呼び、結果・監査（`action.invoked`）・任意の通知を 1 トランザクションで書く。outbox は使わない（再送しないため）。
 - 匿名化（`admin.anonymize`）でその人を全ボタンの `allowed_user_ids` から外す（`actions.forget_in_tx`）。押した記録は残る。
 - 移行 0107：`actions.provides_status`（boolean、既定 false）。組（`group_label`、無ければボタン自身）の状態をこのボタンの中継に尋ねる。組に 1 つまでをサーバが確かめる（`409 action_status_source_taken`）。状態の答えは DB に残さない（プロセスの中で 30 秒覚えるだけ。ACTIONS.md §12）。
+
+### lending_*（備品の台帳、M167、docs/LENDING.md §4、移行 0123）
+
+移行 0123（L1）。列と制約は LENDING.md §4.1 のとおり。貸し出し `lending_loans` は 0124（L2）、知らせと見守りは 0125（L3）で足す。
+
+- `lending_settings`：1 行（無ければ既定値でオフ）。`enabled`（既定 false）、`keeper_ids`（備品係、uuid の配列 20 人まで。外部キーは無く、
+  使うときに有効な人（admin・manager・member）だけを数える）、`default_max_days` 14（1〜365）、`max_extensions` 2（0〜10）、
+  `keeper_overdue_days` 3（1〜30）、`notice_minute` 540（0〜1439）、`tz` 'Asia/Tokyo'、`updated_at`・`updated_by`。
+- `lending_categories`：50 個まで。`name`（40 文字）と `name_key`（NFC + casefold、UNIQUE）、`position`（0 から詰めて並べ直す）、
+  `requires_permission`（分類の備品の既定）、`max_days`（NULL = 設定の既定）。外部キーで users を指さないので、テストの TRUNCATE に名前で入れる。
+- `lending_items`：2,000 個まで（廃棄を含む）。`category_id`（ON DELETE RESTRICT：備品が 1 つでも残る分類は消せない）、`code` と `code_key`
+  （NFC + casefold、前後の空白を除く。部分一意索引 `lending_items_code_uniq` は廃棄していないものの中だけ）、`location`、`notes`（2,000 字）、
+  `photo_attachment_id`（ON DELETE SET NULL）、`status`（available / on_loan / in_repair / retired、CHECK）と `status_note`（200 字。
+  貸出可に戻すと空にする）、`requires_permission`・`max_days`（NULL = 分類 → 設定の既定）、`current_loan_id`（`status = 'on_loan'` のときだけ。
+  CHECK。外部キーは 0124）。
+- `lending_item_events`：備品ごとの履歴（id は UUIDv7 で、`GET /lending/items/{id}/history?before=` のカーソル）。`kind` は L1 で
+  created・updated（`details.fields` と、短い項目の `changes {from, to}`。メモと写真は項目名だけ）・status（`details {from, to, note}`）。
+  貸し出しの目的・返却のメモは入れない。備品を消すと一緒に消える（消せるのは 1 度も貸していない備品だけ）。
+- `attachments.lending_item_id`（ON DELETE SET NULL、部分索引）：備品の写真（`status = attached`、`message_id`・`channel_id` などは NULL）。
+  読めるのは機能が有効な間の人（admin・manager・member）だけ（`get_for_access` の枝、§「attachments」）。写真を替える・外す・備品を消すと
+  前の添付は `deleted` になり、添付の GC がバイト列を消す。0123 の downgrade は写真の添付を `deleted` にしてから列を落とす。
+- 匿名化（`admin.anonymize`）でその人を `keeper_ids` から外す（`lending.forget_in_tx`）。
 
 ### import_refs (移行元の対応、M18・M87・M125)
 

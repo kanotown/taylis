@@ -68,6 +68,17 @@ def set_drive_access_check(check: DriveReadable | None) -> None:
     _drive_readable = check
 
 
+# M167 (docs/LENDING.md §4.3): whether someone can see an equipment item's photo
+# (lending.access.can_read_photo, handed over by main.py). Unset: such a photo is never served.
+LendingReadable = Callable[[AsyncSession, User, uuid.UUID], Awaitable[bool]]
+_lending_readable: LendingReadable | None = None
+
+
+def set_lending_access_check(check: LendingReadable | None) -> None:
+    global _lending_readable
+    _lending_readable = check
+
+
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 READ_CHUNK = 1024 * 1024
 # An upload larger than this is spooled to a temporary file rather than held in memory.
@@ -280,6 +291,33 @@ async def bind_to_canvas_in_tx(
         attachment.attached_at = now
     await db.flush()
     return rows
+
+
+async def bind_to_lending_item_in_tx(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    *,
+    lending_item_id: uuid.UUID,
+    content_types: frozenset[str],
+) -> Attachment | None:
+    """M167 (docs/LENDING.md §4.3): an equipment item's photo, the actor's own pending upload of
+    one of `content_types`. None when it cannot be used (someone else's, already bound to
+    something, not such an image): the caller answers 400 lending_photo_invalid."""
+    rows = await repo.get_many(db, [attachment_id], for_update=True)
+    attachment = rows[0] if rows else None
+    if (
+        attachment is None
+        or attachment.uploader_id != actor_id
+        or attachment.status != "pending"
+        or attachment.content_type not in content_types
+    ):
+        return None
+    attachment.lending_item_id = lending_item_id
+    attachment.status = "attached"
+    attachment.attached_at = utcnow()
+    await db.flush()
+    return attachment
 
 
 async def bind_to_page_in_tx(
@@ -510,7 +548,7 @@ async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID
     who reads it before joining: M27), pending → uploader only, deleted → 404. A canvas's image
     (M42) → the conversation's members only, like the canvas itself (CANVAS.md §4.7). A wiki page's
     file (M120) → whoever can read the page. A drive file's version (M160) → whoever can read the
-    drive item."""
+    drive item. An equipment item's photo (M167) → every person while the 備品 feature is on."""
     attachment = await repo.get(db, attachment_id)
     if attachment is None or attachment.status == "deleted":
         raise not_found("attachment_not_found", "Attachment not found")
@@ -523,6 +561,14 @@ async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID
         # item (not in the trash); for anyone else it does not exist.
         if _drive_readable is None or not await _drive_readable(
             db, actor, attachment.drive_item_id
+        ):
+            raise not_found("attachment_not_found", "Attachment not found")
+        return attachment
+    if attachment.lending_item_id is not None:
+        # M167 (docs/LENDING.md §4.3): an equipment item's photo, read like the ledger (every
+        # person while the feature is on); for anyone else it does not exist.
+        if _lending_readable is None or not await _lending_readable(
+            db, actor, attachment.lending_item_id
         ):
             raise not_found("attachment_not_found", "Attachment not found")
         return attachment
