@@ -26,6 +26,7 @@ from app.modules.channels.schemas import (
     MemberOut,
     MembershipOut,
 )
+from app.modules.lending import access as lending_access
 from app.modules.moderation import blocks
 from app.modules.reads import service as reads
 from app.modules.reads.schemas import ReadMark, ReadStateOut
@@ -105,6 +106,7 @@ ROSTER_UPDATED = "roster.updated"  # the lab roster (M23): not for guests either
 ATTENDANCE_EVENTS = ("attendance.updated", "attendance.config_updated")
 ACTIONS_UPDATED = "actions.updated"  # 操作ボタン (M143): guests never press
 RESERVATION_NOTICE = "reservation.notice"  # re-checked at delivery (review v0.1.37 #2)
+LENDING_NOTICE = "lending.notice"  # likewise (M169: a keepers' notice names others' loans)
 
 
 async def _user_event_audience(db: AsyncSession, subject: uuid.UUID) -> list[uuid.UUID]:
@@ -153,6 +155,12 @@ async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audien
         ):
             # An operator's to-do (names, addresses) queued for someone who can no longer
             # operate the pool: not sent (review v0.1.37 #2).
+            return Audience(kind="users", ids=())
+        if event.event_type == LENDING_NOTICE and not await lending_access.may_deliver(
+            db, uuid.UUID(str(event.payload["item_id"])), event.audience_id
+        ):
+            # A keepers' notice for someone who no longer keeps the equipment, or a reminder made
+            # moot by a return or an extension before the relay ran (LENDING.md §8.3).
             return Audience(kind="users", ids=())
         return Audience(kind="users", ids=(event.audience_id,))
     if event.audience_type == "session" and event.audience_id is not None:

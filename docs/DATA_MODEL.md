@@ -2443,9 +2443,9 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 - 匿名化（`admin.anonymize`）でその人を全ボタンの `allowed_user_ids` から外す（`actions.forget_in_tx`）。押した記録は残る。
 - 移行 0107：`actions.provides_status`（boolean、既定 false）。組（`group_label`、無ければボタン自身）の状態をこのボタンの中継に尋ねる。組に 1 つまでをサーバが確かめる（`409 action_status_source_taken`）。状態の答えは DB に残さない（プロセスの中で 30 秒覚えるだけ。ACTIONS.md §12）。
 
-### lending_*（備品の台帳と貸し出し、M167・M168、docs/LENDING.md §4、移行 0123・0124）
+### lending_*（備品の台帳と貸し出し、M167〜M169、docs/LENDING.md §4、移行 0123〜0125）
 
-移行 0123（L1）と 0124（L2、貸し出し `lending_loans`）。列と制約は LENDING.md §4.1 のとおり。知らせと見守りは 0125（L3）で足す。
+移行 0123（L1）と 0124（L2、貸し出し `lending_loans`）と 0125（L3、知らせ `lending_notices` と見守り `lending_watches`）。列と制約は LENDING.md §4.1 のとおり。
 
 - `lending_settings`：1 行（無ければ既定値でオフ）。`enabled`（既定 false）、`keeper_ids`（備品係、uuid の配列 20 人まで。外部キーは無く、
   使うときに有効な人（admin・manager・member）だけを数える）、`default_max_days` 14（1〜365）、`max_extensions` 2（0〜10）、
@@ -2460,12 +2460,13 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 - `lending_item_events`：備品ごとの履歴（id は UUIDv7 で、`GET /lending/items/{id}/history?before=` のカーソル）。`kind` は L1 で
   created・updated（`details.fields` と、短い項目の `changes {from, to}`。メモと写真は項目名だけ）・status（`details {from, to, note}`）。
   L2 で borrowed（`details {due_on}`、教員が自分で借りたら `self_approved: true`）・extended と due_changed（`details {from, to}`。
-  due_changed は備品係が変えたもの）・returned（`details {condition, by_keeper}`）。`loan_id` は 0124 から `lending_loans(id)` への外部キー。
+  due_changed は備品係が変えたもの）・returned（`details {condition, by_keeper}`）。L3 で permission_denied と permission_confirmed
+  （`details {from, to}`、教員の判断。一言は貸し出しの行の `permission_note` と監査に）。`loan_id` は 0124 から `lending_loans(id)` への外部キー。
   貸し出しの目的・許可した教員・返却のメモは入れない。備品を消すと一緒に消える（消せるのは貸し出しの行が 1 つも無い備品だけ）。
 - `lending_loans`（0124）：貸し出し。`item_id`（ON DELETE RESTRICT）・`borrower_id`・`client_request_id`（端末が作る冪等のキー）・
   `status`（active / returned）・`borrowed_at`・`due_on` と `original_due_on`（`lending_settings.tz` の日付）・`extension_count`（本人の延長だけ
   数える）・`purpose`（200 字）・`permission_required`（借りた時点の値）・`approver_id`・`permission_state`（NULL / claimed / confirmed / denied。
-  L2 は claimed まで）・`permission_decided_at`・`permission_note`・`returned_at`・`returned_by`・`return_condition`（ok / issue）・`return_note`
+  L3 の `POST /lending/loans/{id}/permission` が confirmed / denied を書く）・`permission_decided_at`・`permission_note`・`returned_at`・`returned_by`・`return_condition`（ok / issue）・`return_note`
   （500 字）。CHECK は §4.1 の 5 つ。部分一意索引 `lending_loans_active_uniq (item_id) WHERE status = 'active'`（貸出中は備品に 1 つ。備品の行の
   `FOR UPDATE` の後ろの最後の守り）、一意索引 `lending_loans_request_uniq (borrower_id, client_request_id)`（送り直しは同じ行）、
   `lending_loans_borrower_idx`・`lending_loans_due_idx`（貸出中の返す日、L3 の worker）・`lending_loans_item_idx`（最近の貸し出し）。消さない。
@@ -2474,6 +2475,14 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 - `attachments.lending_item_id`（ON DELETE SET NULL、部分索引）：備品の写真（`status = attached`、`message_id`・`channel_id` などは NULL）。
   読めるのは機能が有効な間の人（admin・manager・member）だけ（`get_for_access` の枝、§「attachments」）。写真を替える・外す・備品を消すと
   前の添付は `deleted` になり、添付の GC がバイト列を消す。0123 の downgrade は写真の添付を `deleted` にしてから列を落とす。
+- `lending_notices`（0125）：アクティビティの項目（種類 `lending`、`reservation_notices` と同じ形）。`user_id`（ON DELETE CASCADE）・`item_id`・
+  `loan_id`（どちらも ON DELETE CASCADE、備品係の朝のまとめは両方 NULL）・`key`（200 字。LENDING.md §8.2 の表のキー：`permission:<loan>`・
+  `denied:<loan>`・`due:<loan>:<due_on>:<n>`・`overdue:<日付>`・`issue:<loan>`・`returned_by_keeper:<loan>`・`due_changed:<loan>:<due_on>`・
+  `watch:<item>:<loan>`・`watch:<item>:repair:<履歴の id>`）・`role`（borrower / approver / keeper / watcher、CHECK）・`text`（受け取る人の言語、
+  M115）・`at`・`done_at`・`done_by`（教員の作業 `permission:<loan>` だけ。判断したとき、返却から 14 日を過ぎたとき）。UNIQUE `(user_id, key)`
+  （1 人 1 キー 1 回。worker が 2 つ動いても 1 回）、索引 `lending_notices_user_idx (user_id, at DESC)`。
+- `lending_watches`（0125）：「返却されたら知らせる」。主キー `(item_id, user_id)`（どちらも ON DELETE CASCADE）・`created_at`。返却（か修理中 →
+  貸出可）で全員に知らせて消す。自分が借りたときに自分の行を消す。
 - 匿名化（`admin.anonymize`）でその人を `keeper_ids` から外す（`lending.forget_in_tx`）。
 
 ### import_refs (移行元の対応、M18・M87・M125)

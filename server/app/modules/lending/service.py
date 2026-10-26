@@ -25,7 +25,7 @@ from app.modules.attachments import service as attachments
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.schemas import to_attachment_out
 from app.modules.audit import service as audit
-from app.modules.lending import access
+from app.modules.lending import access, notices
 from app.modules.lending.events import LENDING_UPDATED
 from app.modules.lending.models import (
     DEFAULT_KEEPER_OVERDUE_DAYS,
@@ -516,6 +516,7 @@ def _item_out(
     photos: dict[uuid.UUID, Attachment],
     settings: LendingSettings,
     loan: LendingLoanBriefOut | None,
+    watching: bool,
 ) -> LendingItemOut:
     category = categories.get(item.category_id) if item.category_id else None
     permission, permission_source, days, days_source = _effective(item, category, settings)
@@ -535,7 +536,7 @@ def _item_out(
         max_days=days,
         max_days_source=days_source,
         loan=loan,
-        watching=False,
+        watching=watching,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -562,12 +563,13 @@ async def _outs(
         rows = await db.execute(select(LendingLoan).where(LendingLoan.id.in_(loan_ids)))
         loans = {r.id: r for r in rows.scalars().all()}
     today = today_in(settings)
+    watched = await notices.watched(db, actor.id, [i.id for i in items])
 
     def brief(item: LendingItem) -> LendingLoanBriefOut | None:
         loan = loans.get(item.current_loan_id) if item.current_loan_id else None
         return loan_brief(loan, today, actor, settings) if loan is not None else None
 
-    return [_item_out(i, categories, photos, settings, brief(i)) for i in items]
+    return [_item_out(i, categories, photos, settings, brief(i), i.id in watched) for i in items]
 
 
 RECENT_LOANS = 5
@@ -585,7 +587,11 @@ async def _detail(
     )
     today = today_in(settings)
     recent = [loan_brief(r, today, actor, settings) for r in rows.scalars().all()]
-    return LendingItemDetailOut(**out.model_dump(), recent_loans=recent)
+    return LendingItemDetailOut(
+        **out.model_dump(),
+        recent_loans=recent,
+        watcher_count=await notices.watcher_count(db, item.id),
+    )
 
 
 async def item_detail(
@@ -682,19 +688,19 @@ async def record(
     details: dict[str, Any],
     *,
     loan_id: uuid.UUID | None = None,
-) -> None:
+) -> LendingItemEvent:
     """One line of the item's history."""
-    db.add(
-        LendingItemEvent(
-            item_id=item.id,
-            loan_id=loan_id,
-            kind=kind,
-            actor_id=actor.id,
-            at=utcnow(),
-            details=details,
-        )
+    event = LendingItemEvent(
+        item_id=item.id,
+        loan_id=loan_id,
+        kind=kind,
+        actor_id=actor.id,
+        at=utcnow(),
+        details=details,
     )
+    db.add(event)
     await db.flush()
+    return event
 
 
 def _item_audit(item: LendingItem) -> dict[str, Any]:
@@ -850,7 +856,9 @@ async def set_status(
     item.updated_by = actor.id
     item.updated_at = utcnow()
     details = {"from": before, "to": data.status, "note": note}
-    await record(db, item, actor, "status", details)
+    event = await record(db, item, actor, "status", details)
+    if before == "in_repair" and data.status == "available":
+        await notices.on_repaired(db, actor, item, event.id)
     await audit.record_in_tx(
         db,
         actor_id=actor.id,

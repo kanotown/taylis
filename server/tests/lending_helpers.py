@@ -9,7 +9,7 @@ import pytest
 from httpx import AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.lending import loans, service
+from app.modules.lending import loans, notices, service
 from app.modules.users.models import User
 from tests.helpers import make_user
 from tests.test_lending_ledger import API, Lab, _code, _ok
@@ -38,6 +38,7 @@ def freeze(monkeypatch: pytest.MonkeyPatch) -> Clock:
     frozen = Clock(NOON_JST)
     monkeypatch.setattr(service, "utcnow", frozen)
     monkeypatch.setattr(loans, "utcnow", frozen)
+    monkeypatch.setattr(notices, "utcnow", frozen)
     return frozen
 
 

@@ -9,6 +9,8 @@ from sqlalchemy.orm import aliased
 from app.modules.activity.models import ActivityItemRead, CanvasMention, item_read
 from app.modules.canvases.models import Canvas
 from app.modules.channels.models import ChannelMember
+from app.modules.lending import notices as lending_notices
+from app.modules.lending.models import LendingNotice
 from app.modules.messages.models import Message, Reaction, mentions_of, timeline_filter
 from app.modules.moderation.blocks import not_blocked_by
 from app.modules.reads.models import ReadState
@@ -234,13 +236,15 @@ async def unread(
     *,
     canvas: bool = False,
     reservation: bool = False,
+    lending: bool | None = None,
 ) -> tuple[int, bool]:
     """(items after `since`, capped; whether a mention is among them). Mentions and thread replies
     count only while their message is unread in its conversation too (`read_by`, 2026-10-06);
     no item counts once opened (`item_read`, 2026-10-07).
     `canvas`: canvas mention
     items count too (M76), as mentions. `reservation`: reservation notices not done (M112), as
-    mentions too (they are addressed to me)."""
+    mentions too (they are addressed to me). `lending`: equipment notices not done (M169), as
+    mentions likewise; None leaves them out, else whether the keepers' ones are mine to read."""
     mention_count = await db.scalar(
         select(func.count()).select_from(
             _mentions(user_id)
@@ -306,7 +310,19 @@ async def unread(
             )
             or 0
         )
-    mentioned = (mention_count or 0) + canvas_count + reservation_count
+    lending_count = 0
+    if lending is not None:
+        lending_count = (
+            await db.scalar(
+                select(func.count()).select_from(
+                    lending_notices.unread_notices(user_id, since, lending)
+                    .limit(UNREAD_CAP)
+                    .subquery()
+                )
+            )
+            or 0
+        )
+    mentioned = (mention_count or 0) + canvas_count + reservation_count + lending_count
     total = mentioned + (reply_count or 0) + (reaction_count or 0)
     return min(total, UNREAD_CAP), mentioned > 0
 
@@ -331,7 +347,7 @@ async def own_items(
     """Which of these ids name an activity item of the user that may still be unread: a message in
     a conversation they are in (mention / thread_reply after `since`, or their own message: a
     reaction item, whose time is its newest reaction's), or one of their canvas mentions, wiki
-    notices or reservation notices after `since`. Anything else is not stored."""
+    notices, reservation notices or lending notices after `since`. Anything else is not stored."""
     if not ids:
         return []
     found: set[uuid.UUID] = set(
@@ -352,6 +368,7 @@ async def own_items(
         (CanvasMention.id, CanvasMention.user_id, CanvasMention.at),
         (WikiNotice.id, WikiNotice.user_id, WikiNotice.at),
         (ReservationNotice.id, ReservationNotice.user_id, ReservationNotice.at),
+        (LendingNotice.id, LendingNotice.user_id, LendingNotice.at),
     ):
         stmt = select(id_col).where(id_col.in_(ids), user_col == actor.id, at_col > since)
         found |= set((await db.execute(stmt)).scalars().all())

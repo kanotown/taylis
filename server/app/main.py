@@ -76,6 +76,7 @@ from app.modules.invites.router import router as invites_router
 from app.modules.lab import service as lab_service
 from app.modules.lab.router import router as lab_router
 from app.modules.lending import access as lending_access
+from app.modules.lending import notices as lending_notices
 from app.modules.lending.router import router as lending_router
 from app.modules.link_previews.fetcher import build_feed_fetcher, build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
@@ -360,7 +361,8 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """Posts scheduled messages (M12d) and fires reminders (M12e), calendar alarms (M51) and
     task due dates (M55) whose time has come; posts recurring posts and nudges those who have
     not submitted to a collection past its due time (L6, M59); posts deadlines' advance notices
-    (L5, M85); tells holders and operators what a reservation pool's queue needs (M99)."""
+    (L5, M85); tells holders and operators what a reservation pool's queue needs (M99); writes
+    the equipment reminders and the keepers' summary of the morning (M169, LENDING.md §8.4)."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -406,6 +408,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await reservations.tick(session)
             except Exception:
                 log.exception("reservation notices failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await lending_notices.tick(session)
+            except Exception:
+                log.exception("lending notices failed")
 
 
 async def _feed_loop(app: FastAPI, stop: asyncio.Event) -> None:

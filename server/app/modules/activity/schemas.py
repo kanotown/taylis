@@ -14,6 +14,7 @@ ActivityKind = Literal[
     "reservation",
     "page_mention",
     "page_shared",
+    "lending",
 ]
 ActivityFilter = Literal["all", "mentions", "reactions", "threads"]
 # M76 (CANVAS.md §20): canvas_mention items only go to clients that name the kind in `include`
@@ -21,6 +22,7 @@ ActivityFilter = Literal["all", "mentions", "reactions", "threads"]
 # ignored, so a newer client may name kinds an older server does not have.
 # M112 (RESERVATIONS.md §5): reservation items likewise only with `include=reservation`.
 # M120 (docs/WIKI.md §9.3): page_mention / page_shared likewise, by name each.
+# M169 (LENDING.md §8.3): lending items likewise only with `include=lending`.
 
 
 class ActivityCanvas(BaseModel):
@@ -74,9 +76,31 @@ class ActivityReservation(BaseModel):
     done_by: UUID | None
 
 
+class ActivityLending(BaseModel):
+    """A lending item's notice (M169, docs/LENDING.md §8.2): it opens the equipment page at the
+    loan (or the item; the keepers' morning summary opens the overdue list). The teacher's
+    to-do (`role: approver`) is `done` once they decided, or 14 days after the return."""
+
+    item_id: UUID
+    # The equipment item and the loan (both null for the keepers' summary; loan_id null for an
+    # item back from repair).
+    lending_item_id: UUID | None
+    loan_id: UUID | None
+    # The item's name now (null for the summary).
+    item_name: str | None
+    # Why I got it: borrower (my own loan), approver (I am the teacher named), keeper (I keep
+    # the equipment, or I am an administrator and nobody does), watcher (I asked to be told).
+    role: Literal["borrower", "approver", "keeper", "watcher"]
+    # The notice as one line of plain text (written by the server in my language).
+    text: str
+    done: bool
+    done_at: datetime | None
+    done_by: UUID | None
+
+
 class ActivityItem(BaseModel):
     # The item's id (2026-10-07): the message's for mention / thread_reply / reaction, else the
-    # canvas / page / reservation item's `item_id`. PUT /activity/items/read takes it.
+    # canvas / page / reservation / lending item's `item_id`. PUT /activity/items/read takes it.
     id: UUID
     kind: ActivityKind
     # When it happened: the message's time, a reaction's (the newest on that message), or the
@@ -90,6 +114,8 @@ class ActivityItem(BaseModel):
     reservation: ActivityReservation | None = None
     # page_mention / page_shared only (M120): the page.
     page: ActivityPage | None = None
+    # lending only (M169): the notice.
+    lending: ActivityLending | None = None
     # Who did it: the sender, or everyone who reacted (not me).
     actor_ids: list[UUID]
     # A reaction item's emoji (the distinct ones on my message by others).
@@ -97,8 +123,8 @@ class ActivityItem(BaseModel):
     # Read (MOBILE_UI.md §6.4): `at` is not after read_at, or I opened the item since it
     # happened (PUT /activity/items/read, 2026-10-07), or the item's message is read in its
     # conversation (mention / thread_reply: the channel's read position for a timeline row, the
-    # thread's for a reply; 2026-10-06), or a reservation to-do is done. The unread dot and the
-    # badge follow it. Null from a server before 2026-10-06: compare `at` with read_at.
+    # thread's for a reply; 2026-10-06), or a reservation (lending) to-do is done. The unread dot
+    # and the badge follow it. Null from a server before 2026-10-06: compare `at` with read_at.
     read: bool | None = None
 
 

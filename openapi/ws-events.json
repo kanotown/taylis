@@ -3484,6 +3484,76 @@
         "type": "object"
       }
     },
+    "lending.notice": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "`lending.notice` (user): a new activity item of kind lending for me (§8.2): news about my\nown loan, the teacher's to-do, the keepers' notices, or an item I watched coming back. The\npush; clients refresh the activity badge and may show a banner.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "item_id": {
+            "description": "The activity item (GET /activity's id)",
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "lending_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The equipment item",
+            "title": "Lending Item Id"
+          },
+          "loan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The loan (null for the keepers' morning summary)",
+            "title": "Loan Id"
+          },
+          "role": {
+            "enum": [
+              "borrower",
+              "approver",
+              "keeper",
+              "watcher"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "lending_item_id",
+          "loan_id",
+          "role",
+          "text",
+          "at"
+        ],
+        "title": "LendingNoticeData",
+        "type": "object"
+      }
+    },
     "lending.updated": {
       "audience": "all",
       "consumes_seq": false,

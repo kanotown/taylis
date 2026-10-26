@@ -19,12 +19,14 @@ from app.modules.activity.schemas import (
     ActivityFilter,
     ActivityItem,
     ActivityItemsReadData,
+    ActivityLending,
     ActivityListOut,
     ActivityPage,
     ActivityReadData,
     ActivityReservation,
     ActivitySummaryOut,
 )
+from app.modules.lending import notices as lending_notices
 from app.modules.messages.models import Message
 from app.modules.messages.service import messages_out
 from app.modules.reads import service as reads
@@ -54,6 +56,8 @@ def _item_key(item: ActivityItem) -> tuple[datetime, str, str]:
         ref = item.reservation.item_id
     elif item.page:
         ref = item.page.item_id
+    elif item.lending:
+        ref = item.lending.item_id
     return item.at, item.kind, str(ref)
 
 
@@ -135,6 +139,30 @@ async def list_activity(
                     read=notice.at <= read_at or notice.done_at is not None,
                 )
             )
+    if "lending" in include and kind == "all":
+        for lending_notice, item_name in await lending_notices.notices_for(
+            db, actor, before=cursor, limit=limit
+        ):
+            items.append(
+                ActivityItem(
+                    id=lending_notice.id,
+                    kind="lending",
+                    at=lending_notice.at,
+                    lending=ActivityLending(
+                        item_id=lending_notice.id,
+                        lending_item_id=lending_notice.item_id,
+                        loan_id=lending_notice.loan_id,
+                        item_name=item_name,
+                        role=lending_notice.role,  # type: ignore[arg-type]
+                        text=lending_notice.text,
+                        done=lending_notice.done_at is not None,
+                        done_at=lending_notice.done_at,
+                        done_by=lending_notice.done_by,
+                    ),
+                    actor_ids=[],
+                    read=lending_notice.at <= read_at or lending_notice.done_at is not None,
+                )
+            )
     # Mentions and replies already read in their conversation are read here too (2026-10-06).
     mention_rows: list[Message] = []
     reply_rows: list[Message] = []
@@ -210,6 +238,7 @@ async def summary(
         actor.activity_read_at,
         canvas="canvas_mention" in include,
         reservation="reservation" in include,
+        lending=await lending_notices.reader_scope(db, actor) if "lending" in include else None,
     )
     # M120: wiki notices are addressed to me, so they count as mentions (the red badge).
     pages = await repo.unread_page_notices(

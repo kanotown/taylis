@@ -1,6 +1,6 @@
 # LENDING（備品の貸し出し）
 
-2026-10-26 の設計。**L1（M167、台帳・サーバ）と L2（M168、貸し出し・サーバ）を実装（2026-10-26、移行 0123・0124、§17）。L3〜L7 はこれから。** マイルストーンは L1〜L7
+2026-10-26 の設計。**L1（M167、台帳・サーバ）・L2（M168、貸し出し・サーバ）・L3（M169、許可と知らせ・サーバ）を実装（2026-10-26、移行 0123〜0125、§17）。L4〜L7 はこれから。** マイルストーンは L1〜L7
 （§16。M 番号は仮に M167〜M173、移行は 0123〜0125。並行する作業と重なれば振り直す）。§15 の質問は利用者がすべて推めのとおりに
 決めた（2026-10-26）。
 
@@ -253,9 +253,10 @@ CREATE TABLE lending_notices (                        -- アクティビティ�
   role                   varchar(12) NOT NULL,          -- 'borrower' | 'approver' | 'keeper' | 'watcher'
   text                   text NOT NULL,                 -- 受け取る人の言語で書いた 1 行（M115）
   at                     timestamptz NOT NULL,
-  done_at                timestamptz,                   -- 作業の済み（教員の判断・備品係のまとめの対応）
+  done_at                timestamptz,                   -- 教員の作業の済み（判断したとき・返却から 14 日。ほかの知らせは済みを持たない）
   done_by                uuid REFERENCES users(id) ON DELETE SET NULL,
-  UNIQUE (user_id, key)
+  UNIQUE (user_id, key),
+  CHECK (role IN ('borrower', 'approver', 'keeper', 'watcher'))
 );
 CREATE INDEX lending_notices_user_idx ON lending_notices (user_id, at DESC);
 
@@ -316,7 +317,7 @@ bootstrap に **`lending: LendingSummaryOut | null`**（ゲストと、オフの
 | `PATCH /lending/categories/{id}` | 同じ項目の一部と `position`。既定の変更は、その分類で値を持たない備品のこれからの貸し出しに効く（貸出中のものは変えない） |
 | `DELETE /lending/categories/{id}` (204) | 備品が残っていれば `409 lending_category_in_use`（`details.item_count`） |
 | `GET /lending/items` | `ItemOut[]`。既定は廃棄を除くすべて（`?include_retired=true` で含める）。名前の順（`core/collation` の日本語の並び）。**ページに分けない**（2,000 個まで、§4.1）。端末が手元で絞り込む（分類・状態・文字） |
-| `GET /lending/items/{id}` | `ItemDetailOut`（`ItemOut` + 最近の貸し出し 5 件 + 見守りの有無） |
+| `GET /lending/items/{id}` | `ItemDetailOut`（`ItemOut` + 最近の貸し出し 5 件 + 見守りの有無 + 見守っている人の数 `watcher_count`（延長のダイアログの「待っている人がいます（2 人）」、§6.5）） |
 | `POST /lending/items` (201) | `{name, category_id?, code?, location?, notes?, requires_permission?, max_days?, photo_attachment_id?}`。備品係。管理番号の重複は `409 lending_code_taken`（`details.existing_id`）、2,001 個目は `409 too_many_lending_items` |
 | `PATCH /lending/items/{id}` | 同じ項目の一部（null で外す）。備品係。`status` はここでは変えない |
 | `POST /lending/items/{id}/status` | `{status: available \| in_repair \| retired, note?}`。備品係。貸出中は `409 lending_item_on_loan`（先に返却を記録する）。廃棄から戻すときに管理番号が使われていれば `409 lending_code_taken`。同じ状態なら何もしない |
@@ -431,7 +432,8 @@ permission_decided_at?, permission_note?, returned_at, returned_by, return_condi
 
 1. 「返す」：状態（問題なし / 問題あり）と、問題ありならメモ（必須）。問題なしでもメモは書ける（「充電器は棚の箱へ」）。
 2. 貸し出しの行（`returned`）・備品の状態（`available`、`current_loan_id` を空に）・履歴 `returned`・知らせ（問題あり → 備品係、
-   見守り → その人たち、教員の未済の作業 → 済み）・`lending.updated` を 1 つのトランザクションで。
+   代わりの記録 → 本人、見守り → その人たち）・`lending.updated` を 1 つのトランザクションで。教員の作業（`permission:<loan>`）は
+   返却では済みにしない：判断は返却から 14 日までできる（§5.3）ので、判断したときか 14 日を過ぎたときに済みにする（§8.2・§8.4）。
 3. 備品係が代わりに記録するとき（棚に戻っていたのに押し忘れ）は、確かめのダイアログを出し、本人に「備品係の 〇〇 さんが返却を
    記録しました」と知らせる。
 4. 物が実際に棚にあるかは Taylis は確かめない（予約と同じく、ボタンは「そうした」という記録）。
@@ -490,6 +492,7 @@ permission_decided_at?, permission_note?, returned_at, returned_by, return_condi
 | 備品係が代わりに返却を記録 | 借りた人 | `returned_by_keeper:<loan>` | 「✅ 備品係の 〇〇 さんが「カメラ A」の返却を記録しました。」 |
 | 備品係が返す日を変えた | 借りた人 | `due_changed:<loan>:<due_on>` | 「🗓 備品係の 〇〇 さんが「カメラ A」の返す日を 11/15 に変えました。」 |
 | 見守っていた備品が返却された | 見守った人 | `watch:<item>:<loan>` | 「📦 「カメラ A」が返却されました。今は借りられます。」 |
+| 見守っていた備品の修理が終わった（修理中 → 貸出可） | 見守った人 | `watch:<item>:repair:<履歴の id>` | 「📦 「カメラ A」の修理が終わりました。今は借りられます。」 |
 
 - 前日・当日・毎朝のキーは返す日を含むので、延長すれば新しい日付のキーになり、前日の知らせからやり直す。返却・延長で
   知らせの要らなくなった時刻のものは出さない（送る直前に貸し出しを確かめる）。
@@ -519,10 +522,12 @@ permission_decided_at?, permission_note?, returned_at, returned_by, return_condi
 - **`lending.tick`**：リマインダー・予約と同じ scheduled のループ（`SCHEDULED_SEND_INTERVAL_SECONDS`、15 秒、`main.py` の
   `_scheduled_send_loop` に 1 つ足す）。機能がオフなら何もしない。
   1. 今の時刻がそのゾーンの `notice_minute` より前なら何もしない（その日の朝の分はまだ）。
-  2. 返す日が明日以前の貸出中（`lending_loans_due_idx`）を、貸し出しの行の `FOR UPDATE SKIP LOCKED` で 100 件ずつ取り、
-     今日のキー（`due:<loan>:<due_on>:<今日 − due_on>`）が `lending_notices` に無ければ書く（同じトランザクションで outbox）。
+  2. 返す日が明日以前の貸出中で、今日のキー（`due:<loan>:<due_on>:<今日 − due_on>`）がまだ `lending_notices` に無いものを
+     1 回に 100 件まで選び（残りは次の周期）、貸し出しの行を `FOR UPDATE SKIP LOCKED` で取って 1 件ずつのトランザクションで書く
+     （同じトランザクションで outbox）。今朝の時刻より後に借りた・返す日を変えた貸し出しはその日は書かない（決めたばかりなので、
+     次の朝から）。
   3. 備品係のまとめ：今日の `overdue:<日付>` を、まだ受け取っていない備品係（いなければ管理者）に書く。対象が無ければ書かない。
-  4. 教員の作業で返却から 14 日を過ぎたものを済みにする。
+  4. 教員の作業で返却から 14 日を過ぎたものを済みにする（これは朝の時刻によらず、周期ごとに）。
 - **取りこぼしの扱い**：サーバが止まっていて朝を過ぎても、その日のうちに動けばその日の分を出す。**前の日の分は出さない**（キーが
   今日の日付だけなので、3 日止まっていても「5 日過ぎています」の 1 つだけ。DEADLINES.md §4 の「いちばん近い 1 件」と同じ考え）。
 - キーは `(user_id, key)` で一意なので、worker が 2 つ動いても、同じ周期に 2 回動いても 1 回だけ。
@@ -819,3 +824,63 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 - bootstrap の数：`my_active_count`・`my_overdue_count`（返す日 < 今日）、`keeper_attention_count`（備品係だけ。`今日 − due_on ≥
   keeper_overdue_days` か借りた人が無効化されている貸出中）。L3 の備品係のまとめは同じ対象にする。
 - 備品の `updated_at`・`updated_by` は貸し出しでは変えない（台帳の編集の記録のまま）。
+
+### 17.3 L3（M169、2026-10-26）
+
+移行 0125（`lending_notices`・`lending_watches`。§4.1 に `role` の CHECK を足した）、`app/modules/lending/notices.py`（知らせを書く
+`notify`、借りる・返す・延長・修理から戻すときの知らせ、教員の判断の知らせ、見守り、worker の `tick`、アクティビティの読み出し）、
+`loans.decide`（`POST /lending/loans/{id}/permission`）、`access.may_read`・`access.may_deliver`、`PUT / DELETE /lending/items/{id}/watch`、
+アクティビティの `include=lending`（`activity/service.py`・`repository.py`）、`lending.notice`（`sync/catalog.py`、WebSocket の audience で
+`may_deliver`）、PushPlanner の `handle_lending`、`main.py` の scheduled のループに `lending.tick`、`i18n/messages.json` の `lending.*` と
+`push.lending.*`。テストは `tests/test_lending_notices.py` と `tests/test_lending_permission.py` の判断の流れ（`tests/lending_helpers.freeze` は
+`notices.utcnow` も止める）。
+
+設計から決めたこと・変えたこと（端末の段階が知っておくこと）：
+
+- **判断の API**：`POST /lending/loans/{id}/permission {decision: denied | confirmed, note?}` → `LendingLoanOut`（入力は `LendingPermissionIn`、
+  `note` は 200 字まで、空白だけは null）。検査の順は 404 → 許可の要らない貸し出し `409 lending_permission_not_required` → 教員でない
+  `403 lending_not_approver`（管理者・備品係も）→ 返却から 14 日を過ぎた `409 lending_loan_closed` → 同じ判断なら何もしない（`note` も
+  変えない）。別の判断に変えると `permission_note` はその時の一言で置き換わる（無ければ null）。履歴 `permission_denied` /
+  `permission_confirmed`（`details {from, to}`）、監査 `lending_loan.permission_decided {item_id, borrower_id, from, to, note}`、
+  `lending.updated`。教員の作業は判断で済み（`done_by` は教員）、`activity.updated` を教員に。
+- **「許可していない」の知らせ**は `denied:<loan>` の 1 回だけ（否定 → 確認 → 否定でも 2 回目は送らない）。借りた人の文の末尾に教員の
+  一言（「一言：…」）を付ける。備品係（いなければ管理者）には一言を付けない。「確認した」は誰にも送らない（§8.2 のとおり）。
+- **知らせの宛先の決まり**：押した本人には送らない（見ているので）。教員が備品係でもある・備品係が代わりに返して問題ありを記録した、
+  などのときは本人の分を書かない。無効化された人・ゲスト・ボットには書かない。備品係は `keeper_ids` の有効な人（順番どおり）、1 人も
+  いなければ `lending.manage` を持つ有効な人（管理者）。
+- **アクティビティの項目**（`ActivityItem.kind = "lending"`、`include=lending` を付けた端末だけ。`filter=all` のときだけ）：
+  `lending: ActivityLending {item_id, lending_item_id, loan_id, item_name, role, text, done, done_at, done_by}`。`item_id` は項目の id
+  （`ActivityItem.id` と同じ、`PUT /activity/items/read` に渡す）、`lending_item_id`・`loan_id` は開く先（備品係のまとめは両方 null、
+  修理から戻った見守りは `loan_id` だけ null）、`item_name` は今の備品の名前（まとめは null）、`role` は borrower / approver / keeper /
+  watcher。済んでいない項目は**メンションと同じく赤いバッジ**に数える（予約と同じ）。`read` は `at ≤ read_at`、開いた、または済み。
+  備品係あての項目は今も備品係である人にだけ返し（`may_read`）、機能がオフ・ゲスト・ボットには 1 件も返さない。
+- **`lending.notice`**（user）：`{item_id, lending_item_id, loan_id, role, text, at}`。WebSocket の audience と PushPlanner の両方で
+  `may_deliver`（項目がある・読む権利がある・催促 `due:` なら貸し出しがまだ貸出中でその返す日のまま）を確かめ、外れたら配らない。
+- **プッシュ**（`kind = lending`）：`PushPayload` に `lending_item_id`・`loan_id` を足した（APNs の本体と FCM の data にも）。タイトル
+  「備品」、本文は項目の 1 行（`PUSH_INCLUDE_CONTENT=false` なら「備品のお知らせがあります」）、`channel_id` は null。`collapse_key` は
+  `lending:loan:<loan_id>`、修理から戻った見守りは `lending:item:<item_id>`、備品係のまとめは `lending:overdue`。DND・おやすみ時間・
+  別の端末でアクティブなら出さず、後で送り直さない。済んだ項目（判断の後に計画した教員の作業）も出さない。
+- **worker の `lending.tick`**（§8.4 を直した）：1 回の周期で催促の候補を 100 件まで選び、1 件ずつのトランザクションで書く。**今朝の
+  `notice_minute` より後に借りた・返す日を変えた貸し出しはその日の催促を出さない**（借りてすぐ「今日が返す日です」が届かないように）。
+  教員の作業の 14 日の締め切りは朝の時刻によらず周期ごとに見る。機能がオフの間は何もしない（締め切りも見ない）。
+- **備品係のまとめ**：`notices.attention_loans`（`keeper_attention_count` と同じ対象。過ぎた日数の多い順）。10 件まで名前を挙げて
+  「ほか N 件」。全部が `keeper_overdue_days` 以上の延滞なら §8.2 の文、無効化された人の貸し出しが混ざれば「⏰ 備品係の確認が要る
+  貸し出しが N 件あります：…」（無効化された人は「（無効化されたアカウント）」、過ぎていれば日数も）。項目は作業にしない（済みは無い）。
+- **見守り**：`PUT /lending/items/{id}/watch`（204、冪等）は廃棄していない備品ならどの状態でも置ける（貸出可のときは次の返却を待つ）。
+  廃棄は `409 lending_item_unavailable`（`details.status`）、知らない備品は 404。`DELETE` も冪等（204）。どちらも `lending.updated` は
+  出さない（変わるのは呼んだ人の `watching` だけ）。返却（`watch:<item>:<loan>`）と修理中 → 貸出可（`watch:<item>:repair:<履歴の id>`）で
+  全員に知らせて消す。借りた人自身の見守りは借りたときに消す。`LendingItemOut.watching` は呼んだ人の値、`LendingItemDetailOut` に
+  `watcher_count`（§5.2 に足した）。
+- **文**：`i18n/messages.json` の `lending.*`（ja / en / zh-Hans）。備品は「名前（管理番号）」、日付は「月/日」（ワークスペースのゾーン）、
+  人は「〇〇 さん」（en・zh-Hans は名前だけ）。名前・目的・メモは `escape_text`（メンションの構文にならない）、返却のメモは 1 行にして
+  200 字まで。
+- **§6.6 を直した**：返却で教員の作業を済みにすると、返却から 14 日まで押せる判断（§5.3）が画面から消えるため、済みにするのは判断した
+  とき・14 日を過ぎたときだけにした（§8.2・§8.4 のとおり）。§4.1 の `done_at` の注の「備品係のまとめの対応」も、§8.2（まとめは作業に
+  しない）と食い違っていたので直した。
+
+**端末（L4〜L6）に要るもの**：`GET /activity` と `/activity/summary`・`PUT /activity/read`・`PUT /activity/items/read` に `include=lending`、
+`ActivityLending` の行（📦 など文の先頭の絵文字はサーバの文に入っている。押すと `loan_id` の貸し出し → 無ければ `lending_item_id` の備品 →
+両方 null なら延滞の一覧）、教員の作業（`role = approver`・`done = false`）の行に「許可していない」「確認した」（`POST
+/lending/loans/{id}/permission`。`scope=approved` の一覧にも）、`lending.notice` でバッジを読み直しバナー、`activity.updated` で読み直し、
+プッシュの `kind = lending` のタップ（`lending_item_id`・`loan_id`）、備品の詳細の「返却されたら知らせる」（`watching`・`PUT / DELETE …/watch`）
+と延長のダイアログの `watcher_count`。

@@ -230,7 +230,7 @@ class LendingItemOut(BaseModel):
     max_days: int = Field(description="In effect (item → category → settings)")
     max_days_source: Source
     loan: LendingLoanBriefOut | None = Field(description="The active loan (null unless on_loan)")
-    watching: bool = Field(description="Whether I asked to be told when it is returned (L3)")
+    watching: bool = Field(description="Whether I asked to be told when it is returned")
     created_at: datetime
     updated_at: datetime
 
@@ -238,6 +238,11 @@ class LendingItemOut(BaseModel):
 class LendingItemDetailOut(LendingItemOut):
     recent_loans: list[LendingLoanBriefOut] = Field(
         default_factory=list, description="The last 5 loans (the active one too), newest first"
+    )
+    watcher_count: int = Field(
+        default=0,
+        description="How many people asked to be told when it is returned (the extend dialog's "
+        "「この備品を待っている人がいます」)",
     )
 
 
@@ -451,6 +456,29 @@ class LendingApproversOut(BaseModel):
     )
 
 
+Decision = Literal["denied", "confirmed"]
+NoticeRole = Literal["borrower", "approver", "keeper", "watcher"]
+PERMISSION_NOTE_MAX = 200
+
+
+class LendingPermissionIn(BaseModel):
+    """The teacher's 「許可していない」 (denied) or 「確認した」 (confirmed), §5.3."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Decision
+    note: str | None = Field(
+        default=None,
+        max_length=PERMISSION_NOTE_MAX * 2,
+        description="An optional word from the teacher (at most 200 characters)",
+    )
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, value: str | None) -> str | None:
+        return _notes(value, PERMISSION_NOTE_MAX)
+
+
 # --- events (§9) ------------------------------------------------------------------------------
 
 
@@ -462,3 +490,16 @@ class LendingUpdatedData(BaseModel):
     item_ids: list[UUID] = Field(default_factory=list)
     categories: bool = False
     settings: bool = False
+
+
+class LendingNoticeData(BaseModel):
+    """`lending.notice` (user): a new activity item of kind lending for me (§8.2): news about my
+    own loan, the teacher's to-do, the keepers' notices, or an item I watched coming back. The
+    push; clients refresh the activity badge and may show a banner."""
+
+    item_id: UUID = Field(description="The activity item (GET /activity's id)")
+    lending_item_id: UUID | None = Field(description="The equipment item")
+    loan_id: UUID | None = Field(description="The loan (null for the keepers' morning summary)")
+    role: NoticeRole
+    text: str
+    at: datetime
