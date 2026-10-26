@@ -1,11 +1,11 @@
-"""備品 (equipment lending) API shapes (docs/LENDING.md §5.1, §5.2, §9)."""
+"""備品 (equipment lending) API shapes (docs/LENDING.md §5.1-§5.3, §9)."""
 
 import unicodedata
 from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.messages.schemas import strip_control_chars
@@ -24,12 +24,23 @@ LOCATION_MAX = 80
 NOTES_MAX = 2000
 STATUS_NOTE_MAX = 200
 HISTORY_LIMIT_MAX = 100
+PURPOSE_MAX = 200
+RETURN_NOTE_MAX = 500
+# A keeper may set a due date up to this many days from today (§5.3).
+KEEPER_MAX_DAYS = 365
+# The teacher's decision and the scope=approved list stay open this long after the return (§5.3).
+APPROVER_DAYS_AFTER_RETURN = 14
+# scope=mine: the returned loans after the active ones.
+MINE_RETURNED_LIMIT = 50
 
 ItemStatus = Literal["available", "on_loan", "in_repair", "retired"]
 # What a keeper may set by hand (on_loan comes from borrowing, L2).
 SettableStatus = Literal["available", "in_repair", "retired"]
 Source = Literal["item", "category", "default"]
 PermissionState = Literal["claimed", "confirmed", "denied"]
+LoanStatus = Literal["active", "returned"]
+ReturnCondition = Literal["ok", "issue"]
+LoanScope = Literal["mine", "active", "overdue", "approved"]
 
 
 def clean_line(value: str) -> str:
@@ -60,14 +71,14 @@ def _optional(value: str | None, limit: int) -> str | None:
     return cleaned or None
 
 
-def _notes(value: str | None) -> str | None:
+def _notes(value: str | None, limit: int = NOTES_MAX) -> str | None:
     """Several lines: NFC, trimmed; blank = none."""
     if value is None:
         return None
     cleaned = unicodedata.normalize("NFC", value.replace("\r\n", "\n")).strip()
     cleaned = "".join(ch for ch in cleaned if ch in "\n\t" or unicodedata.category(ch) != "Cc")
-    if len(cleaned) > NOTES_MAX:
-        raise ValueError(f"At most {NOTES_MAX} characters")
+    if len(cleaned) > limit:
+        raise ValueError(f"At most {limit} characters")
     return cleaned or None
 
 
@@ -188,14 +199,20 @@ class LendingCategoryUpdate(BaseModel):
 
 
 class LendingLoanBriefOut(BaseModel):
-    """Who has an item and until when (no purpose or notes). From L2."""
+    """Who has (had) an item and until when: the item's `loan` and `recent_loans`. No purpose or
+    notes; `permission_state` only for those who see a loan's details (else null)."""
 
     id: UUID
     borrower_id: UUID
     borrowed_at: datetime
     due_on: date
-    overdue_days: int
+    overdue_days: int = Field(description="Days past due_on in the workspace's zone (0 if not)")
     permission_state: PermissionState | None
+    status: LoanStatus
+    returned_at: datetime | None
+    return_condition: ReturnCondition | None = Field(
+        description="How it came back (the 🔧 mark for issue is shown to everyone)"
+    )
 
 
 class LendingItemOut(BaseModel):
@@ -212,9 +229,7 @@ class LendingItemOut(BaseModel):
     requires_permission_source: Source
     max_days: int = Field(description="In effect (item → category → settings)")
     max_days_source: Source
-    loan: LendingLoanBriefOut | None = Field(
-        description="The active loan (from L2; null until then)"
-    )
+    loan: LendingLoanBriefOut | None = Field(description="The active loan (null unless on_loan)")
     watching: bool = Field(description="Whether I asked to be told when it is returned (L3)")
     created_at: datetime
     updated_at: datetime
@@ -222,7 +237,7 @@ class LendingItemOut(BaseModel):
 
 class LendingItemDetailOut(LendingItemOut):
     recent_loans: list[LendingLoanBriefOut] = Field(
-        default_factory=list, description="The last 5 loans, newest first (from L2)"
+        default_factory=list, description="The last 5 loans (the active one too), newest first"
     )
 
 
@@ -335,6 +350,105 @@ class LendingItemEventOut(BaseModel):
 class LendingItemHistoryOut(BaseModel):
     events: list[LendingItemEventOut] = Field(description="Newest first")
     next_before: UUID | None = Field(description="Pass as `before` for older ones (null: no more)")
+
+
+# --- loans (§5.3) -----------------------------------------------------------------------------
+
+
+class LendingBorrowIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_request_id: UUID = Field(
+        description="Made by the client once per borrow; a retry sends the same one (§7.2)"
+    )
+    due_on: date = Field(
+        description="The return date in the workspace's zone (today … today + the item's max_days)"
+    )
+    purpose: str = Field(min_length=1, max_length=PURPOSE_MAX, examples=["学会発表の撮影"])
+    permission_confirmed: bool = Field(
+        default=False, description="「教員の許可を得た」 (needed when the item requires permission)"
+    )
+    approver_id: UUID | None = Field(
+        default=None, description="The teacher who gave it (one of GET /lending/approvers)"
+    )
+
+    @field_validator("purpose")
+    @classmethod
+    def _purpose(cls, value: str) -> str:
+        return _required(value, PURPOSE_MAX)
+
+
+class LendingReturnIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    condition: ReturnCondition
+    note: str | None = Field(
+        default=None, max_length=RETURN_NOTE_MAX * 2, description="Required with `issue`"
+    )
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, value: str | None) -> str | None:
+        return _notes(value, RETURN_NOTE_MAX)
+
+    @model_validator(mode="after")
+    def _issue_needs_note(self) -> "LendingReturnIn":
+        if self.condition == "issue" and not self.note:
+            raise ValueError("Describe the issue in `note`")
+        return self
+
+
+class LendingExtendIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    due_on: date = Field(description="The new return date in the workspace's zone")
+
+
+class LendingLoanOut(BaseModel):
+    """A loan. The fields marked "hidden" are null for anyone but the borrower, the teacher named
+    (approver_id), the keepers and the administrators (`details_hidden: true`, §3.2)."""
+
+    id: UUID
+    item_id: UUID
+    item_name: str
+    item_code: str | None
+    borrower_id: UUID
+    status: LoanStatus
+    borrowed_at: datetime
+    due_on: date
+    original_due_on: date
+    overdue_days: int = Field(description="Days past due_on in the workspace's zone (0 if not)")
+    extension_count: int = Field(description="The borrower's own extensions so far")
+    can_extend: bool = Field(
+        description="Whether I may extend it now (the borrower within the limits, or a keeper)"
+    )
+    latest_due_on: date = Field(
+        description="The latest date the borrower may extend to (today + the item's max_days)"
+    )
+    purpose: str | None = Field(description="Hidden")
+    permission_required: bool
+    approver_id: UUID | None = Field(description="Hidden")
+    permission_state: PermissionState | None = Field(description="Hidden")
+    permission_decided_at: datetime | None = Field(description="Hidden")
+    permission_note: str | None = Field(description="Hidden")
+    returned_at: datetime | None
+    returned_by: UUID | None
+    return_condition: ReturnCondition | None
+    return_note: str | None = Field(description="Hidden")
+    details_hidden: bool
+
+
+class LendingApproversOut(BaseModel):
+    """Who may be named as the teacher who gave permission (§6.4)."""
+
+    user_ids: list[UUID] = Field(
+        description="The active members of @faculty (everyone active when the roster's group "
+        "is missing or empty), never me"
+    )
+    suggested_ids: list[UUID] = Field(description="My supervisor (lab roster) when a candidate")
+    self_approved: bool = Field(
+        description="I am on @faculty: borrowing needs no permission for me"
+    )
 
 
 # --- events (§9) ------------------------------------------------------------------------------

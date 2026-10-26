@@ -13220,6 +13220,93 @@
         "title": "LastMessageOut",
         "type": "object"
       },
+      "LendingApproversOut": {
+        "description": "Who may be named as the teacher who gave permission (§6.4).",
+        "properties": {
+          "self_approved": {
+            "description": "I am on @faculty: borrowing needs no permission for me",
+            "title": "Self Approved",
+            "type": "boolean"
+          },
+          "suggested_ids": {
+            "description": "My supervisor (lab roster) when a candidate",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Suggested Ids",
+            "type": "array"
+          },
+          "user_ids": {
+            "description": "The active members of @faculty (everyone active when the roster's group is missing or empty), never me",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "user_ids",
+          "suggested_ids",
+          "self_approved"
+        ],
+        "title": "LendingApproversOut",
+        "type": "object"
+      },
+      "LendingBorrowIn": {
+        "additionalProperties": false,
+        "properties": {
+          "approver_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The teacher who gave it (one of GET /lending/approvers)",
+            "title": "Approver Id"
+          },
+          "client_request_id": {
+            "description": "Made by the client once per borrow; a retry sends the same one (§7.2)",
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "due_on": {
+            "description": "The return date in the workspace's zone (today … today + the item's max_days)",
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "permission_confirmed": {
+            "default": false,
+            "description": "「教員の許可を得た」 (needed when the item requires permission)",
+            "title": "Permission Confirmed",
+            "type": "boolean"
+          },
+          "purpose": {
+            "examples": [
+              "学会発表の撮影"
+            ],
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "due_on",
+          "purpose"
+        ],
+        "title": "LendingBorrowIn",
+        "type": "object"
+      },
       "LendingCategoryCreate": {
         "additionalProperties": false,
         "properties": {
@@ -13361,6 +13448,22 @@
           }
         },
         "title": "LendingCategoryUpdate",
+        "type": "object"
+      },
+      "LendingExtendIn": {
+        "additionalProperties": false,
+        "properties": {
+          "due_on": {
+            "description": "The new return date in the workspace's zone",
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "due_on"
+        ],
+        "title": "LendingExtendIn",
         "type": "object"
       },
       "LendingItemCreate": {
@@ -13519,7 +13622,7 @@
                 "type": "null"
               }
             ],
-            "description": "The active loan (from L2; null until then)"
+            "description": "The active loan (null unless on_loan)"
           },
           "location": {
             "anyOf": [
@@ -13572,7 +13675,7 @@
             ]
           },
           "recent_loans": {
-            "description": "The last 5 loans, newest first (from L2)",
+            "description": "The last 5 loans (the active one too), newest first",
             "items": {
               "$ref": "#/components/schemas/LendingLoanBriefOut"
             },
@@ -13780,7 +13883,7 @@
                 "type": "null"
               }
             ],
-            "description": "The active loan (from L2; null until then)"
+            "description": "The active loan (null unless on_loan)"
           },
           "location": {
             "anyOf": [
@@ -14038,7 +14141,7 @@
         "type": "object"
       },
       "LendingLoanBriefOut": {
-        "description": "Who has an item and until when (no purpose or notes). From L2.",
+        "description": "Who has (had) an item and until when: the item's `loan` and `recent_loans`. No purpose or\nnotes; `permission_state` only for those who see a loan's details (else null).",
         "properties": {
           "borrowed_at": {
             "format": "date-time",
@@ -14061,6 +14164,7 @@
             "type": "string"
           },
           "overdue_days": {
+            "description": "Days past due_on in the workspace's zone (0 if not)",
             "title": "Overdue Days",
             "type": "integer"
           },
@@ -14079,6 +14183,42 @@
               }
             ],
             "title": "Permission State"
+          },
+          "return_condition": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ok",
+                  "issue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How it came back (the 🔧 mark for issue is shown to everyone)",
+            "title": "Return Condition"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "returned"
+            ],
+            "title": "Status",
+            "type": "string"
           }
         },
         "required": [
@@ -14087,9 +14227,276 @@
           "borrowed_at",
           "due_on",
           "overdue_days",
-          "permission_state"
+          "permission_state",
+          "status",
+          "returned_at",
+          "return_condition"
         ],
         "title": "LendingLoanBriefOut",
+        "type": "object"
+      },
+      "LendingLoanOut": {
+        "description": "A loan. The fields marked \"hidden\" are null for anyone but the borrower, the teacher named\n(approver_id), the keepers and the administrators (`details_hidden: true`, §3.2).",
+        "properties": {
+          "approver_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hidden",
+            "title": "Approver Id"
+          },
+          "borrowed_at": {
+            "format": "date-time",
+            "title": "Borrowed At",
+            "type": "string"
+          },
+          "borrower_id": {
+            "format": "uuid",
+            "title": "Borrower Id",
+            "type": "string"
+          },
+          "can_extend": {
+            "description": "Whether I may extend it now (the borrower within the limits, or a keeper)",
+            "title": "Can Extend",
+            "type": "boolean"
+          },
+          "details_hidden": {
+            "title": "Details Hidden",
+            "type": "boolean"
+          },
+          "due_on": {
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "extension_count": {
+            "description": "The borrower's own extensions so far",
+            "title": "Extension Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Code"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_name": {
+            "title": "Item Name",
+            "type": "string"
+          },
+          "latest_due_on": {
+            "description": "The latest date the borrower may extend to (today + the item's max_days)",
+            "format": "date",
+            "title": "Latest Due On",
+            "type": "string"
+          },
+          "original_due_on": {
+            "format": "date",
+            "title": "Original Due On",
+            "type": "string"
+          },
+          "overdue_days": {
+            "description": "Days past due_on in the workspace's zone (0 if not)",
+            "title": "Overdue Days",
+            "type": "integer"
+          },
+          "permission_decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hidden",
+            "title": "Permission Decided At"
+          },
+          "permission_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hidden",
+            "title": "Permission Note"
+          },
+          "permission_required": {
+            "title": "Permission Required",
+            "type": "boolean"
+          },
+          "permission_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "claimed",
+                  "confirmed",
+                  "denied"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hidden",
+            "title": "Permission State"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hidden",
+            "title": "Purpose"
+          },
+          "return_condition": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ok",
+                  "issue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Condition"
+          },
+          "return_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hidden",
+            "title": "Return Note"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "returned_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned By"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "returned"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "item_name",
+          "item_code",
+          "borrower_id",
+          "status",
+          "borrowed_at",
+          "due_on",
+          "original_due_on",
+          "overdue_days",
+          "extension_count",
+          "can_extend",
+          "latest_due_on",
+          "purpose",
+          "permission_required",
+          "approver_id",
+          "permission_state",
+          "permission_decided_at",
+          "permission_note",
+          "returned_at",
+          "returned_by",
+          "return_condition",
+          "return_note",
+          "details_hidden"
+        ],
+        "title": "LendingLoanOut",
+        "type": "object"
+      },
+      "LendingReturnIn": {
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "enum": [
+              "ok",
+              "issue"
+            ],
+            "title": "Condition",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required with `issue`",
+            "title": "Note"
+          }
+        },
+        "required": [
+          "condition"
+        ],
+        "title": "LendingReturnIn",
         "type": "object"
       },
       "LendingSettingsOut": {
@@ -38981,6 +39388,33 @@
         ]
       }
     },
+    "/api/v1/lending/approvers": {
+      "get": {
+        "description": "Who may be named as the teacher who gave permission: the roster's @faculty (everyone\nactive without a roster), never me; my supervisor first in `suggested_ids`.",
+        "operationId": "list_approvers_api_v1_lending_approvers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingApproversOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Approvers",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
     "/api/v1/lending/categories": {
       "get": {
         "description": "In the keepers' order.",
@@ -39399,6 +39833,65 @@
         ]
       }
     },
+    "/api/v1/lending/items/{item_id}/borrow": {
+      "post": {
+        "description": "201 with the new loan; 200 with the same loan for a retry (same client_request_id). 409\nlending_item_unavailable (details: status, and loan_id, borrower_id, due_on when on loan:\nsomeone, maybe I, has it), 400 lending_due_invalid (details.reason: past / too_long,\ndetails.latest), 400 lending_permission_required (tick it and name the teacher) /\nlending_approver_invalid, 409 idempotency_conflict (the id was used for another item).",
+        "operationId": "borrow_api_v1_lending_items__item_id__borrow_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingBorrowIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingLoanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Borrow",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
     "/api/v1/lending/items/{item_id}/history": {
       "get": {
         "description": "The item's history, newest first; `before` = the previous page's `next_before`.",
@@ -39531,6 +40024,231 @@
           }
         ],
         "summary": "Set Status",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/loans": {
+      "get": {
+        "description": "mine: my active loans by due date, then my last 50 returned. active: every active loan by\ndue date. overdue (keepers, else 403 lending_keeper_required): past due, longest first.\napproved: the loans naming me as the teacher (active, or returned in the last 14 days).\nPurpose, permission and return note are null for those who may not see them.",
+        "operationId": "list_loans_api_v1_lending_loans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "mine",
+              "enum": [
+                "mine",
+                "active",
+                "overdue",
+                "approved"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LendingLoanOut"
+                  },
+                  "title": "Response List Loans Api V1 Lending Loans Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Loans",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/loans/{loan_id}": {
+      "get": {
+        "operationId": "get_loan_api_v1_lending_loans__loan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "loan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Loan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingLoanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Loan",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/loans/{loan_id}/extend": {
+      "post": {
+        "description": "The borrower: later than now, up to latest_due_on, at most max_extensions times (409\nlending_extend_limit), not after the teacher denied (409 lending_permission_denied); 400\nlending_due_invalid (details.reason: not_later / too_long). A keeper: any date from today to\n365 days ahead (reason past / too_long), not counted. 409 lending_loan_closed once returned.\nThe same date again: no change.",
+        "operationId": "extend_loan_api_v1_lending_loans__loan_id__extend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "loan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Loan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingExtendIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingLoanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Extend Loan",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/loans/{loan_id}/return": {
+      "post": {
+        "description": "The borrower, or a keeper recording it on their behalf (403 lending_not_yours). `issue`\nneeds a note (422). Already returned: no change (200, the loan as it is).",
+        "operationId": "return_loan_api_v1_lending_loans__loan_id__return_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "loan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Loan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingReturnIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingLoanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Return Loan",
         "tags": [
           "lending"
         ]
