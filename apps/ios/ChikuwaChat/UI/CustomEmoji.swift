@@ -19,17 +19,27 @@ struct EmojiAnimation {
 }
 
 /// Shows a custom emoji's image, moving when it is animated.
+/// `size`: the box it is shown in (points). A still one is then drawn from a copy made once at the pixels it takes there
+/// (`CustomEmoji.displayed`), not the stored 48 pt picture scaled down by the GPU each frame: in the picker's 30 pt cells
+/// on a dark background a thin white outline shimmered (2026-10-27, 「よく使う」). An animated one's frames are scaled
+/// with high-quality filtering (they change every few frames anyway; copies of each would cost far more memory).
 struct EmojiImage: View {
     let still: UIImage
     var animation: EmojiAnimation? = nil
+    var size: CGSize? = nil
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         if let animation {
             TimelineView(.animation(minimumInterval: 0.04)) { context in
-                Image(uiImage: animation.frame(at: context.date.timeIntervalSinceReferenceDate)).resizable().scaledToFit()
+                Image(uiImage: animation.frame(at: context.date.timeIntervalSinceReferenceDate))
+                    .resizable().interpolation(.high).antialiased(true).scaledToFit()
             }
+        } else if let size, size.width > 0, size.height > 0 {
+            // At its own size (no `resizable`): one image pixel per screen pixel.
+            Image(uiImage: CustomEmoji.displayed(still, fitting: size, scale: displayScale))
         } else {
-            Image(uiImage: still).resizable().scaledToFit()
+            Image(uiImage: still).resizable().interpolation(.high).antialiased(true).scaledToFit()
         }
     }
 }
@@ -106,26 +116,39 @@ enum CustomEmoji {
     /// stamp (`Jumbo.stamp`, docs/EMOJI.md §7), where 48 pt was blurred.
     static let packStoredHeight: CGFloat = 60
 
-    /// A copy scaled to `storedHeight` (keeps GIF's first frame; animation is out of scope).
-    static func inlineImage(_ image: UIImage, height storedHeight: CGFloat = storedHeight) -> UIImage {
-        var scale = storedHeight / max(image.size.height, 1)
+    /// The stored copy's box (`storedHeight` high, at most 3:1) and the picture's size inside it, centred, for a picture
+    /// of `size` (any unit: only its ratio counts).
+    static func storedFit(_ size: CGSize, height storedHeight: CGFloat) -> (box: CGSize, drawn: CGSize) {
+        var scale = storedHeight / max(size.height, 1)
         // M100: at most 3:1 (`size(of:height:)`); a wider one is fitted, centred, into that box.
-        let width = min(max(image.size.width * scale, 1), storedHeight * wideMax)
-        scale = min(scale, width / max(image.size.width, 1))
-        let drawn = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let size = CGSize(width: width, height: storedHeight)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in
+        let width = min(max(size.width * scale, 1), storedHeight * wideMax)
+        scale = min(scale, width / max(size.width, 1))
+        return (CGSize(width: width, height: storedHeight), CGSize(width: size.width * scale, height: size.height * scale))
+    }
+
+    /// A copy scaled to `storedHeight` (keeps GIF's first frame; animation is out of scope). It is a still: shown
+    /// smaller, it is drawn from copies at the pixels it takes (`displayed`).
+    static func inlineImage(_ image: UIImage, height storedHeight: CGFloat = storedHeight) -> UIImage {
+        let (size, drawn) = storedFit(image.size, height: storedHeight)
+        let still = UIGraphicsImageRenderer(size: size).image { context in
+            context.cgContext.interpolationQuality = .high
             image.draw(in: CGRect(origin: CGPoint(x: (size.width - drawn.width) / 2, y: (size.height - drawn.height) / 2), size: drawn))
         }
+        DisplayCopies.attach(to: still)
+        return still
     }
 
     /// The still image, and for an animated GIF (or APNG / WebP) its frames too (at most 120; a frame with no delay
     /// shows for 0.1 s, as browsers do). Frames are drawn at `animatedHeight`, lighter than the still one.
+    /// The still is read by ImageIO already at the stored copy's pixels (`thumbnail`), which averages every source pixel:
+    /// a 512 px picture drawn straight into 144 px skipped some of them, and a thin outline came out broken.
     static func decode(_ data: Data, pack: Bool = false) -> (still: UIImage, animation: EmojiAnimation?)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0,
               let first = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-        let still = inlineImage(UIImage(cgImage: first), height: pack ? packStoredHeight : storedHeight)
+        let height = pack ? packStoredHeight : storedHeight
+        let drawn = storedFit(CGSize(width: first.width, height: first.height), height: height).drawn
+        let pixels = Int((max(drawn.width, drawn.height) * UIGraphicsImageRendererFormat.preferred().scale).rounded(.up))
+        let still = inlineImage(UIImage(cgImage: thumbnail(source, maxPixels: pixels) ?? first), height: height)
         let count = min(CGImageSourceGetCount(source), 120)
         guard count > 1 else { return (still, nil) }
         var frames: [UIImage] = [], ends: [TimeInterval] = [], elapsed: TimeInterval = 0
@@ -138,12 +161,92 @@ enum CustomEmoji {
         return (still, frames.count > 1 ? EmojiAnimation(frames: frames, ends: ends) : nil)
     }
 
+    /// The first image of `source` at most `maxPixels` on its longer side (never enlarged), read by ImageIO.
+    static func thumbnail(_ source: CGImageSource, maxPixels: Int) -> CGImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(maxPixels, 1),
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
     static let animatedHeight: CGFloat = 36
 
     private static func draw(_ image: UIImage, height: CGFloat) -> UIImage {
         let scale = height / max(image.size.height, 1)
         let size = CGSize(width: max(image.size.width * scale, 1), height: height)
-        return UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        return UIGraphicsImageRenderer(size: size).image { context in
+            context.cgContext.interpolationQuality = .high
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    // MARK: shown smaller than stored (2026-10-27)
+
+    /// The whole pixels a picture of `imageSize` takes fitted into `box` (points, its ratio kept) at `scale`.
+    static func displayPixels(imageSize: CGSize, box: CGSize, scale: CGFloat) -> (width: Int, height: Int) {
+        guard imageSize.width > 0, imageSize.height > 0 else { return (1, 1) }
+        let fit = min(box.width / imageSize.width, box.height / imageSize.height)
+        return (max(Int((imageSize.width * fit * scale).rounded()), 1), max(Int((imageSize.height * fit * scale).rounded()), 1))
+    }
+
+    /// `image` to show at its own size fitted into `box` (points) on a screen of `scale`. A still (`inlineImage`, a text
+    /// emoji's pill) comes as a copy drawn once at exactly those pixels and kept with it, so the screen shows it pixel
+    /// for pixel: the GPU's scaling of the 144 px picture into a 90 px cell dropped some pixels of a thin outline, other
+    /// ones at each move by a fraction of a pixel, and on a dark background the outline shimmered (2026-10-27). Any other
+    /// image (an animation's frame) comes as the same pixels at that size.
+    static func displayed(_ image: UIImage, fitting box: CGSize, scale: CGFloat) -> UIImage {
+        let (width, height) = displayPixels(imageSize: image.size, box: box, scale: scale)
+        guard let cgImage = image.cgImage else { return image }
+        guard let copies = DisplayCopies.of(image) else {
+            return UIImage(cgImage: cgImage, scale: CGFloat(cgImage.height) * scale / CGFloat(height), orientation: .up)
+        }
+        if cgImage.width == width && cgImage.height == height && image.scale == scale { return image }
+        return copies.copy(width: width, height: height) {
+            guard let scaled = downsampled(cgImage, width: width, height: height) else { return nil }
+            return UIImage(cgImage: scaled, scale: scale, orientation: .up)
+        } ?? UIImage(cgImage: cgImage, scale: CGFloat(cgImage.height) * scale / CGFloat(height), orientation: .up)
+    }
+
+    /// `image` redrawn at `width` × `height` pixels with high-quality filtering.
+    static func downsampled(_ image: CGImage, width: Int, height: Int) -> CGImage? {
+        let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
+
+    /// The copies of one still at the pixel sizes it is shown at, kept with the still itself (they go with it when the
+    /// store lets it go, a new picture has new ones). Few sizes each: the picker's cells, a reaction chip, a line of text.
+    final class DisplayCopies: @unchecked Sendable {
+        private let lock = NSLock()
+        private var bySize: [Int: UIImage] = [:]
+        private static var key: UInt8 = 0
+
+        static func attach(to image: UIImage) {
+            objc_setAssociatedObject(image, &key, DisplayCopies(), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+
+        static func of(_ image: UIImage) -> DisplayCopies? { objc_getAssociatedObject(image, &key) as? DisplayCopies }
+
+        /// How many sizes are kept (tests).
+        var count: Int { lock.lock(); defer { lock.unlock() }; return bySize.count }
+
+        func copy(width: Int, height: Int, make: () -> UIImage?) -> UIImage? {
+            let key = width << 20 | height
+            lock.lock()
+            if let hit = bySize[key] { lock.unlock(); return hit }
+            lock.unlock()
+            guard let made = make() else { return nil }
+            lock.lock()
+            bySize[key] = made
+            lock.unlock()
+            return made
+        }
     }
 
     private static func delay(_ source: CGImageSource, _ index: Int) -> TimeInterval {
@@ -158,10 +261,15 @@ enum CustomEmoji {
         return seconds < 0.02 ? 0.1 : seconds
     }
 
-    /// The same pixels at `height` points (Text(Image) takes an image at its own size).
+    /// The image at `height` points (Text(Image) takes an image at its own size): a still as its copy at those pixels
+    /// (`displayed`), anything else (an animation's frame) as the same pixels.
     static func sized(_ image: UIImage, height: CGFloat) -> UIImage {
         guard let cgImage = image.cgImage, height > 0 else { return image }
-        return UIImage(cgImage: cgImage, scale: CGFloat(cgImage.height) / height, orientation: .up)
+        guard DisplayCopies.of(image) != nil, image.size.height > 0 else {
+            return UIImage(cgImage: cgImage, scale: CGFloat(cgImage.height) / height, orientation: .up)
+        }
+        let box = CGSize(width: image.size.width * height / image.size.height, height: height)
+        return displayed(image, fitting: box, scale: UIGraphicsImageRendererFormat.preferred().scale)
     }
 
     /// A Text made of runs and inline images. Until an image is cached its place is held by a blank of the image's own
@@ -247,6 +355,7 @@ enum CustomEmoji {
         let key = "\(emoji.color ?? "gray")|\(dark)|\(emoji.label ?? emoji.name)" as NSString
         if let cached = pills.object(forKey: key) { return cached }
         let pill = drawTextPill(emoji, dark: dark)
+        DisplayCopies.attach(to: pill)
         pills.setObject(pill, forKey: key)
         return pill
     }
@@ -314,7 +423,7 @@ struct ReactionGlyph: View {
             let box = CustomEmoji.size(of: custom, height: height)
             Group {
                 if let image = store.emojiImages[custom.id] {
-                    EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: box.width, height: height)
+                    EmojiImage(still: image, animation: store.emojiAnimations[custom.id], size: box).frame(width: box.width, height: height)
                 } else {
                     Color.clear.frame(width: box.width, height: height)
                         .onAppear { controller.loadEmojiImage(custom) }

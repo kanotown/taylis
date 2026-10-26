@@ -47,7 +47,8 @@ final class EmojiAnimationTests: XCTestCase {
 }
 
 final class CustomEmojiSizeTests: XCTestCase {
-    /// The cached copy is drawn tall, then shown at any height from the same pixels (a heading's emoji grows).
+    /// The cached copy is drawn tall, then shown at any height (a heading's emoji grows), from a copy at that height's
+    /// pixels made once (2026-10-27: scaled by the GPU, a thin outline shimmered).
     func testTheCachedImageShowsAtTheHeightAsked() {
         let source = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 32)).image { context in
             UIColor.orange.setFill(); context.fill(CGRect(x: 0, y: 0, width: 64, height: 32))
@@ -59,6 +60,12 @@ final class CustomEmojiSizeTests: XCTestCase {
         XCTAssertEqual(body.size.height, 20, accuracy: 0.01)
         XCTAssertEqual(body.size.width, 40, accuracy: 0.5)
         XCTAssertEqual(heading.size.height, 32, accuracy: 0.01)
-        XCTAssertEqual(heading.cgImage?.height, stored.cgImage?.height) // no new drawing
+        let scale = UIGraphicsImageRendererFormat.preferred().scale
+        XCTAssertEqual(heading.cgImage?.height, Int(32 * scale)) // one image pixel per screen pixel
+        XCTAssertEqual(body.cgImage?.height, Int(20 * scale))
+        XCTAssertTrue(CustomEmoji.sized(stored, height: 32) === heading) // drawn once per height
+        // An animation's frame (no copies kept with it) stays the same pixels.
+        let frame = UIGraphicsImageRenderer(size: CGSize(width: 36, height: 36)).image { _ in }
+        XCTAssertEqual(CustomEmoji.sized(frame, height: 20).cgImage?.height, frame.cgImage?.height)
     }
 }

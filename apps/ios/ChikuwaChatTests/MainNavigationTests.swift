@@ -133,7 +133,58 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertTrue(split.paths.isEmpty) // the tabs' stacks are not touched
         split.land("general", isDm: false, parentId: "p1")
         XCTAssertEqual(split.split, [.channel("general")])
-        XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1")) // in the pane
+        // In the pane at once, with the conversation: not handed to it to open once drawn (2026-10-27).
+        XCTAssertEqual(split.openThread, ThreadRef(channelId: "general", parentId: "p1"))
+        XCTAssertNil(split.pendingThread)
+        split.frontChanged() // MainView's onChange of the front conversation keeps it: it is that conversation's
+        XCTAssertEqual(split.openThread, ThreadRef(channelId: "general", parentId: "p1"))
+        split.land("random", isDm: false) // another conversation: its pane closes
+        split.frontChanged()
+        XCTAssertNil(split.openThread)
+    }
+
+    /// A search result in a thread (2026-10-27): its conversation and the thread pushed in one change, the thread in front
+    /// (Back: the conversation, then the results); a top-level message, its conversation alone.
+    func testASearchResultInAThreadPushesTheThreadWithItsConversation() {
+        let (reply, thread) = SearchRoute.screens(messageId: "m2", channelId: "general", parentId: "p1")
+        XCTAssertEqual(reply, SearchRoute(messageId: "m2", channelId: "general"))
+        XCTAssertEqual(thread, SearchThreadRoute(channelId: "general", parentId: "p1"))
+        let (top, none) = SearchRoute.screens(messageId: "m1", channelId: "general", parentId: nil)
+        XCTAssertEqual(top, SearchRoute(messageId: "m1", channelId: "general"))
+        XCTAssertNil(none)
+    }
+
+    /// The search screen's open conversation: the result's while its conversation or thread shows, whichever of the two
+    /// a Back makes appear or disappear first; the one behind the search once both have gone.
+    @MainActor
+    func testTheSearchScreensOpenConversationFollowsItsScreens() async {
+        let server = FakeServer()
+        let me = server.addUser("me")
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: me.id), connect: server.connector(for: me.id), wsUrl: URL(string: "ws://fake")!,
+                                store: Store(), getAccessToken: { "t" }, options: options)
+        engine.currentChannelId = "behind"
+        let shown = SearchShownConversations()
+        await shown.appeared("general", engine: engine) // the thread, pushed with its conversation: only it appears
+        XCTAssertEqual(engine.currentChannelId, "general")
+        // Back to the conversation: it appears before the thread has gone…
+        await shown.appeared("general", engine: engine)
+        shown.disappeared("general", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "general")
+        shown.disappeared("general", engine: engine) // Back to the results
+        XCTAssertEqual(engine.currentChannelId, "behind")
+        XCTAssertEqual(shown.shown, [])
+
+        // …or after.
+        await shown.appeared("random", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "random")
+        shown.disappeared("random", engine: engine)
+        await shown.appeared("random", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "random")
+        shown.disappeared("random", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "behind")
+        XCTAssertEqual(shown.shown, [])
     }
 
     /// 「スレッド」's conversation link (and 「チャンネルを開く」): the thread's parent revealed in its conversation's
@@ -211,7 +262,8 @@ final class MainNavigationTests: XCTestCase {
         split.select(.list(MainNavigation.activityId))
         split.show("general", parentId: "p1", on: .home)
         XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
-        XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+        XCTAssertEqual(split.openThread, ThreadRef(channelId: "general", parentId: "p1"))
+        XCTAssertNil(split.pendingThread)
     }
 
     /// An activity row of a reply (2026-10-09): the thread alone over the activity, Back returns to the activity in one
@@ -231,7 +283,8 @@ final class MainNavigationTests: XCTestCase {
         split.select(.list(MainNavigation.activityId))
         split.showFromActivity("general", parentId: "p1", on: .activity)
         XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
-        XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+        XCTAssertEqual(split.openThread, ThreadRef(channelId: "general", parentId: "p1"))
+        XCTAssertNil(split.pendingThread)
 
         // Wider (an iPad's window): the thread goes to its conversation's pane.
         var wider = navigation(.tabs)

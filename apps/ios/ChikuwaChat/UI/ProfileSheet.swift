@@ -331,7 +331,8 @@ struct StatusGlyph: View {
         let store = controller.store
         if let custom = Self.custom(emoji, in: store.customEmoji) {
             if let image = store.emojiImages[custom.id] {
-                EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: size, height: size)
+                EmojiImage(still: image, animation: store.emojiAnimations[custom.id], size: CGSize(width: size, height: size))
+                    .frame(width: size, height: size)
             } else {
                 Text(emoji).lineLimit(1).onAppear { controller.loadEmojiImage(custom) }
             }

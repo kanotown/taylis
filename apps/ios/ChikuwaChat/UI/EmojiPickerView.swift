@@ -287,7 +287,7 @@ struct EmojiPickerView: View {
         Button { pick(":\(emoji.name):") } label: {
             Group {
                 if let image = images[emoji.id] {
-                    EmojiImage(still: image, animation: animations[emoji.id])
+                    EmojiImage(still: image, animation: animations[emoji.id], size: CGSize(width: side, height: side))
                 } else {
                     ProgressView().controlSize(.mini)
                 }
@@ -306,7 +306,7 @@ struct EmojiPickerView: View {
         let size = CustomEmoji.size(of: emoji, height: 24)
         Button { pick(":\(emoji.name):") } label: {
             Group {
-                if let image = images[emoji.id] { Image(uiImage: image).resizable().scaledToFit() } else { Color.clear }
+                if let image = images[emoji.id] { EmojiImage(still: image, size: size) } else { Color.clear }
             }
             .frame(width: size.width, height: size.height)
             .padding(4)

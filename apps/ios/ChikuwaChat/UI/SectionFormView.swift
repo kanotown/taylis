@@ -78,8 +78,9 @@ struct SectionIcon: View {
                     LetterBadge(text: letter.text, color: letter.color, size: size)
                 } else if let name = CustomEmoji.name(of: emoji), let custom = controller.store.customEmoji[name] {
                     if let image = controller.store.emojiImages[custom.id] {
-                        EmojiImage(still: image, animation: controller.store.emojiAnimations[custom.id])
-                            .frame(width: CustomEmoji.size(of: custom, height: size).width, height: size)
+                        let box = CustomEmoji.size(of: custom, height: size)
+                        EmojiImage(still: image, animation: controller.store.emojiAnimations[custom.id], size: box)
+                            .frame(width: box.width, height: size)
                     } else {
                         Text(emoji).font(.system(size: size * 0.6)).lineLimit(1).onAppear { controller.loadEmojiImage(custom) }
                     }

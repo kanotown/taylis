@@ -6,7 +6,43 @@ import UIKit
 struct SearchRoute: Hashable {
     let messageId: String
     let channelId: String
-    let parentId: String?
+
+    /// The screens a result pushes at once (MOBILE_UI.md §6.2): its conversation, and for a reply its thread over it, so
+    /// the thread slides in alone and Back goes to the conversation, then to the results (as a reply's notification
+    /// lands, MainNavigation.land). The conversation used to open the thread itself once it had appeared: it slid in
+    /// first and the thread came over it a moment later (2026-10-27, 「スレッドが直接開いてほしい」).
+    static func screens(messageId: String, channelId: String, parentId: String?) -> (SearchRoute, SearchThreadRoute?) {
+        (SearchRoute(messageId: messageId, channelId: channelId), parentId.map { SearchThreadRoute(channelId: channelId, parentId: $0) })
+    }
+}
+
+/// A reply's thread, pushed over its conversation inside the search screen (`SearchRoute.screens`).
+struct SearchThreadRoute: Hashable {
+    let channelId: String
+    let parentId: String
+}
+
+/// The conversations the search screen shows (a result's, a reply's thread over it): the engine's open conversation is
+/// the one on screen while any shows, and the one behind the search again once none does (notifications, §7). Kept for
+/// the whole screen rather than per view: a thread popped back to its conversation may disappear after that
+/// conversation has appeared again.
+@MainActor
+final class SearchShownConversations {
+    private(set) var shown: [String] = []
+    private var previous: String?
+
+    func appeared(_ channelId: String, engine: SyncEngine?) async {
+        guard let engine else { return }
+        if shown.isEmpty { previous = engine.currentChannelId }
+        shown.append(channelId)
+        if engine.currentChannelId != channelId { await engine.openChannel(channelId) }
+    }
+
+    func disappeared(_ channelId: String, engine: SyncEngine?) {
+        if let index = shown.lastIndex(of: channelId) { shown.remove(at: index) }
+        guard let engine, shown.isEmpty, engine.currentChannelId == channelId else { return }
+        engine.currentChannelId = previous
+    }
 }
 
 enum SearchTab: String, CaseIterable, Identifiable {
@@ -233,6 +269,7 @@ struct SearchView: View {
 
     @State private var model = SearchModel()
     @State private var path = NavigationPath()
+    @State private var shown = SearchShownConversations()
     @State private var text = ""
     @State private var tokens: [SearchToken] = []
     @State private var searchPresented = false
@@ -288,7 +325,17 @@ struct SearchView: View {
                     }
                 }
                 .navigationDestination(for: SearchRoute.self) { route in
-                    SearchConversationView(controller: controller, route: route)
+                    SearchConversationView(controller: controller, route: route, shown: shown)
+                }
+                .navigationDestination(for: SearchThreadRoute.self) { route in
+                    SearchThreadView(controller: controller, route: route, shown: shown, onOpenConversation: {
+                        // The header's conversation link (§6.7): back to the conversation under it, at the parent.
+                        Task {
+                            if await controller.revealMessage(id: route.parentId, channelId: route.channelId, parentId: nil), !path.isEmpty {
+                                path.removeLast()
+                            }
+                        }
+                    })
                 }
                 .navigationDestination(for: SearchCanvasRoute.self) { route in
                     CanvasOpenView(controller: controller, canvasId: route.canvasId, onTrashed: { if !path.isEmpty { path.removeLast() } })
@@ -543,7 +590,11 @@ struct SearchView: View {
         Task {
             guard await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) else { return }
             revealed.insert(messageId)
-            path.append(SearchRoute(messageId: messageId, channelId: channelId, parentId: parentId))
+            let (conversation, thread) = SearchRoute.screens(messageId: messageId, channelId: channelId, parentId: parentId)
+            var next = path  // one change: both screens pushed together, the top one sliding in
+            next.append(conversation)
+            if let thread { next.append(thread) }
+            path = next
         }
     }
 }
@@ -1011,19 +1062,13 @@ struct SearchResultRow: View {
     }
 }
 
-/// A result's conversation inside the search screen, focused on the message (a reply opens its thread).
+/// A result's conversation inside the search screen, focused on the message. A reply's thread is pushed over it at
+/// once (`SearchRoute.screens`); a thread opened from here goes over it as in any conversation.
 struct SearchConversationView: View {
     @Bindable var controller: AppController
     let route: SearchRoute
+    let shown: SearchShownConversations
     @State private var threadId: String?
-    @State private var previous: String?
-    @State private var opened = false
-
-    init(controller: AppController, route: SearchRoute) {
-        self.controller = controller
-        self.route = route
-        _threadId = State(initialValue: route.parentId)
-    }
 
     var body: some View {
         Group {
@@ -1034,16 +1079,35 @@ struct SearchConversationView: View {
             }
         }
         .task {
-            guard !opened, let engine = controller.engine else { return }
-            opened = true
-            previous = engine.currentChannelId
             controller.reopenDmIfClosed(route.channelId)  // M141 (SYNC_PROTOCOL.md §7.9)
-            await engine.openChannel(route.channelId)
+            await shown.appeared(route.channelId, engine: controller.engine)
         }
-        .onDisappear {
-            // Back to the results: the conversation behind the search is the open one again (notifications, §7).
-            if let engine = controller.engine, engine.currentChannelId == route.channelId { engine.currentChannelId = previous }
+        // Back to the results: the conversation behind the search is the open one again (notifications, §7).
+        .onDisappear { shown.disappeared(route.channelId, engine: controller.engine) }
+    }
+}
+
+/// A reply's thread over its conversation inside the search screen (`SearchRoute.screens`): Back shows the
+/// conversation, then the results.
+struct SearchThreadView: View {
+    @Bindable var controller: AppController
+    let route: SearchThreadRoute
+    let shown: SearchShownConversations
+    let onOpenConversation: () -> Void
+
+    var body: some View {
+        Group {
+            if controller.store.channel(route.channelId) != nil {
+                ThreadView(controller: controller, channelId: route.channelId, parentId: route.parentId, onOpenConversation: onOpenConversation)
+            } else {
+                ContentUnavailableView("会話を開けません", systemImage: "bubble.left", description: Text("この会話のメンバーではなくなった可能性があります。"))
+            }
         }
+        .task {
+            controller.reopenDmIfClosed(route.channelId)
+            await shown.appeared(route.channelId, engine: controller.engine)
+        }
+        .onDisappear { shown.disappeared(route.channelId, engine: controller.engine) }
     }
 }
 
