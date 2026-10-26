@@ -1,6 +1,6 @@
 # LENDING（備品の貸し出し）
 
-2026-10-26 の設計。**L1（M167、台帳・サーバ）・L2（M168、貸し出し・サーバ）・L3（M169、許可と知らせ・サーバ）を実装（2026-10-26、移行 0123〜0125、§17）。L4（M170、Desktop / Web）・L5（M171、iOS）・L6（M172、Android）も実装（2026-10-26、§17.4〜§17.6）。残りは L7（CSV と QR のラベル）。** マイルストーンは L1〜L7
+2026-10-26 の設計。**L1（M167、台帳・サーバ）・L2（M168、貸し出し・サーバ）・L3（M169、許可と知らせ・サーバ）を実装（2026-10-26、移行 0123〜0125、§17）。L4（M170、Desktop / Web）・L5（M171、iOS）・L6（M172、Android）も実装（2026-10-26、§17.4〜§17.6）。L7（M173、CSV と QR のラベル）も実装（2026-10-26、移行なし、§17.7）。L1〜L7 のすべてを実装した。** マイルストーンは L1〜L7
 （§16。M 番号は仮に M167〜M173、移行は 0123〜0125。並行する作業と重なれば振り直す）。§15 の質問は利用者がすべて推めのとおりに
 決めた（2026-10-26）。
 
@@ -40,7 +40,7 @@ ROLES.md §2（権限の表）、LAB.md（名簿の教員・指導教員）、PU
 - **端末**：Desktop / Web はすべて（台帳の管理を含む）。iOS・Android は見る・借りる・返す・延長・自分の貸し出し・教員の
   「許可していない」「確認した」（教員はスマホで知らせを受けることが多いため）。台帳の編集はしない。
 - **v1 では作らない**：先の日付の取り置き（予約）、消耗品、ゲストの利用、分類ごとの見える人の制限、アプリ内の QR の読み取り。
-  **後の段階で作る**：CSV の取り込み・書き出しと、QR のラベル（備品のリンク `/e/<id>` を印刷する）（L7、§13）。
+  **後の段階で作る**：CSV の取り込み・書き出しと、QR のラベル（備品のリンク `/eq/<id>` を印刷する）（L7、§13。2026-10-26 に実装、§17.7）。
 
 ## 1. 目標と非目標
 
@@ -308,6 +308,9 @@ CREATE TABLE lending_watches (                        -- 「返却を知らせ�
 bootstrap に **`lending: LendingSummaryOut | null`**（ゲストと、オフのときは null。ACTIONS.md の `actions` と同じ）：
 `{enabled, is_keeper, my_active_count, my_overdue_count, keeper_attention_count, settings_updated_at}`。タイル・ナビの数字（§12.1）に使う。
 
+**`GET /lending/summary`**（L7）：bootstrap の `lending` と同じ `LendingSummaryOut` だけを返す（`lending.updated` の後に端末が数を読み直すため）。
+bootstrap が null のところは、ゲスト・ボットは `403 guest_restricted`、機能がオフなら `409 lending_disabled`（ほかの台帳の API と同じ）。
+
 ### 5.2 分類と備品
 
 | | |
@@ -355,8 +358,8 @@ permission_decided_at?, permission_note?, returned_at, returned_by, return_condi
 
 | | |
 | --- | --- |
-| `GET /lending/items/export.csv` | 備品係。UTF-8（BOM 付き、Excel のため）。列は `管理番号, 名前, 分類, 置き場所, 状態, 許可が要る, 最長の日数, 付属品とメモ, 借りている人, 返す日` |
-| `POST /lending/items/import?dry_run=true` | 備品係。multipart の CSV（1 MB・2,000 行まで）。管理番号で既存と突き合わせ、無ければ作る（分類は名前で、無ければ作る）。`{created, updated, unchanged, errors: [{line, code, message}]}`。`dry_run=false` で同じ内容を 1 つのトランザクションで当てる（エラーが 1 つでもあれば `400 lending_csv_invalid` で何も当てない）。状態・貸し出しは取り込まない。監査 `lending_import.applied` |
+| `GET /lending/items/export.csv` | 備品係。UTF-8（BOM 付き、Excel のため）。列は `管理番号, 名前, 分類, 置き場所, 状態, 許可が要る, 最長の日数, 付属品とメモ, 借りている人, 返す日`。既定は廃棄を除く（`?include_retired=true` で含める）。「許可が要る」「最長の日数」は備品そのものの値（空欄 = 分類・設定の既定） |
+| `POST /lending/items/import?dry_run=true` | 備品係。multipart の CSV（`file`、1 MB・データ 2,000 行まで、UTF-8（BOM の有無を問わない）か Shift_JIS）。管理番号で既存と突き合わせ（管理番号の無い行は管理番号の無い備品と名前で）、無ければ作る（分類は名前で、無ければ作る）。`LendingImportOut {dry_run, created, updated, unchanged, skipped, new_categories, rows, errors: [{line, code, message}]}`（§17.7）。`dry_run=false` で同じ内容を 1 つのトランザクションで当てる（エラーが 1 つでもあれば `400 lending_csv_invalid`、`details.errors` で何も当てない）。状態・貸し出しは取り込まない（状態が「廃棄」の行は飛ばす）。監査 `lending_import.applied` |
 
 ### 5.5 エラーの一覧（`apps/shared/errors.json` に足す、ja / en / zh-Hans）
 
@@ -537,7 +540,7 @@ permission_decided_at?, permission_note?, returned_at, returned_by, return_condi
 
 | type | audience | seq | data |
 | --- | --- | --- | --- |
-| `lending.updated` | all | — | `{item_ids, categories, settings}`。備品・貸し出し・分類（`item_ids` は空で `categories: true`）・設定（`settings: true`）が変わった。中身は人によって違う（目的などの見える範囲）ので載せず、端末は `GET /lending/items`（設定なら `GET /lending/settings`、bootstrap の `lending` も）を読み直す。続けて届いたものは 300 ms で 1 回にまとめる。ゲストにも届きうるが中身は無い（予約の `reservation.updated` と同じ） |
+| `lending.updated` | all | — | `{item_ids, categories, settings}`。備品・貸し出し・分類（`item_ids` は空で `categories: true`）・設定（`settings: true`）が変わった。L7 から朝の `lending.tick` も、返す日の当日・過ぎた貸し出しの催促を書いた周期に 1 つだけ送る（`item_ids` はその備品。延滞の数と「N 日過ぎ」が変わるため）。中身は人によって違う（目的などの見える範囲）ので載せず、端末は `GET /lending/items`（設定なら `GET /lending/settings`）と数（`GET /lending/summary`、L7）を読み直す。続けて届いたものは 300 ms で 1 回にまとめる。ゲストにも届きうるが中身は無い（予約の `reservation.updated` と同じ） |
 | `lending.notice` | user | — | `{item_id, lending_item_id, loan_id, role, text, at}`。自分あての知らせ（アクティビティの項目 `item_id`）。バッジを読み直し、開いている端末はバナー / 通知を出す |
 | `activity.updated` | user | — | 既存。教員の作業が済んだとき `{item_ids}` |
 
@@ -672,10 +675,10 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 
 ### 13.5 QR のラベル（L7）
 
-- 備品のリンク `<server>/e/<item_id>`：`pages.py` に案内ページ（`/m/`・`/c/`・`/d/` と同じ形、中身を明かさない）、Web はそのまま
-  「備品」のその詳細を開く。会話に貼るとカード（DRIVE.md §25 の `/d/` のカードと同じ作り）は後で。
+- 備品のリンク `<server>/eq/<item_id>`：`pages.py` に案内ページ（`/m/`・`/c/`・`/d/` と同じ形、中身を明かさない）、Web はそのまま
+  「備品」のその詳細を開く。（当初は `/e/<item_id>` としていたが、`/e/` は予定のリンク（CALENDAR.md §11）なので L7 で `/eq/` に直した。）会話に貼るとカード（DRIVE.md §25 の `/d/` のカードと同じ作り）は後で。
 - Desktop / Web の「管理 → QR のラベル」で、選んだ備品の QR（リンク）・名前・管理番号を A4 のラベルの格子に並べて印刷する。QR の
-  符号化は小さな関数を `apps/desktop` に持つ（依存を足すかは L7 で決める。足すなら 1 つ、バージョンを固定したもの）。
+  符号化は `qrcode-generator`（2.0.4 に固定）で行列だけを作り、SVG は `apps/desktop` で描く（§17.7）。
 - スマホは OS のカメラで読むとブラウザの Web が開く（アプリは開かない：ユニバーサルリンク / App Links は今無い）。アプリ内の
   読み取り（iOS の VisionKit `DataScannerViewController`、Android は標準の API が無く ML Kit が要る）は後で。
 
@@ -734,7 +737,7 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 | **L4** Desktop / Web | M170 | nav-items の `lending`、一覧・詳細・借りる / 返す / 延長のダイアログ・貸出中・自分・延滞・管理（分類・備品の編集・写真）・設定のタブ、アクティビティの 📦 の行とデスクトップの通知、`lending.updated` の読み直し | tsc・vitest（§14）。Web と macOS のアプリで、2 つのブラウザから同じ備品を同時に借りて片方に「先に借りました」が出る、許可の要る備品を借りて教員のアカウントに知らせが届き「許可していない」で借りた人と備品係に届くことを手で確かめる |
 | **L5** iOS | M171 | ホームのタイル、一覧・詳細・借りる / 返す / 延長のシート、自分の貸し出し、教員の判断、アクティビティの行とプッシュのタップ（`kind = lending`） | xcodebuild のビルドと `LendingTests`。実機でプッシュのタップからその貸し出しが開く |
 | **L6** Android | M172 | L5 と同じ（Compose）。FCM の `kind = lending` の通知と、フォアグラウンドのローカル通知 | Gradle のビルドと `LendingTest`。エミュレータ（ChikuwaChat_Pixel_9）で借りる・返す・延長、通知のタップ |
-| **L7** CSV と QR のラベル | M173 | `export.csv`・`import`（dry run と当てる、§5.4）、Desktop の取り込みの画面（差分の表）、`/e/<id>` の案内ページと Web の遷移、QR のラベルの印刷 | pytest：取り込みの冪等（2 回目は unchanged）、数式の注入の防ぎ、行のエラー。Desktop で 300 行の CSV を取り込み、ラベルを印刷してスマホのカメラで読むと Web のその備品が開く |
+| **L7** CSV と QR のラベル | M173 | `export.csv`・`import`（dry run と当てる、§5.4）、Desktop の取り込みの画面（差分の表）、`/eq/<id>` の案内ページと Web の遷移、QR のラベルの印刷 | pytest：取り込みの冪等（2 回目は unchanged）、数式の注入の防ぎ、行のエラー。Desktop で 300 行の CSV を取り込み、ラベルを印刷してスマホのカメラで読むと Web のその備品が開く |
 
 - 使い始められるのは L4 の後（台帳を作って Desktop / Web で借りる・返すができ、知らせも届く）。L5・L6 は並行してよい。L7 は台帳を
   スプレッドシートから移すときに要るので、利用者の今の表の大きさ次第で L4 の直後に回す。
@@ -1000,3 +1003,65 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 
 サーバへの気づき（直していない）：bootstrap の `lending` だけを読む API が無いため、端末は数を貸し出しの一覧から数え直している
 （`GET /lending/summary` のようなものがあれば、備品係の端末が `scope=active` を毎回読まなくて済む）。
+→ L7 で `GET /lending/summary` を足した（§5.1・§17.7）。
+
+### 17.7 L7（M173、CSV と QR のラベル、2026-10-26）
+
+サーバ：`app/modules/lending/csvio.py`（書き出しと取り込み）、`GET /lending/items/export.csv`・`POST /lending/items/import`・`GET /lending/summary`
+（`router.py`。`export.csv` は `/lending/items/{item_id}` より前に置く）、`app/core/pages.py` の `/eq/{item_id}`、`notices.tick` の
+`lending.updated`、`i18n/messages.json` の `lending.csv.*`（行のエラーの文、ja / en / zh-Hans）、`infra/Caddyfile`（取り込みは 2 MB まで通す。
+ほかの `/api/*` の 1 MB では 1 MB の CSV に multipart の分が乗って切られる）。移行なし。テストは `tests/test_lending_csv.py`。
+Desktop / Web：`ui/LendingCsv.tsx`（「管理 → CSV」と取り込みのダイアログ）、`ui/LendingLabels.tsx`（「管理 → QR のラベル」）、
+`ui/permalink.ts` の `equipmentLink`・`parseEquipmentLink`、`ui/routes.ts` の `/eq/`、メッセージの中の備品のリンク（「備品を開く」）、
+エンジンの数の読み直しを `GET /lending/summary` に。テストは `tests/lendingCsv.test.tsx`。
+
+決めたこと（スマホと後の段階が知っておくこと）：
+
+- **リンクの接頭辞は `/eq/`**：§13.5 の `/e/` は予定のリンク（CALENDAR.md §11、Web の入口と Desktop のメッセージの中のリンク）と
+  重なっていた。`/eq/`（equipment）はサーバの頁（`pages.py`）にも Web の入口（`routes.ts`）にも無かった。サーバの頁は中身を明かさない
+  （`/m/`・`/d/` と同じ）。Caddy の後ろでは知らない道は Web を読むので、ブラウザで開くと Web がログインの後に「備品」のその備品を開く。
+- **スマホのアプリはリンクを開かない**：iOS・Android にはユニバーサルリンク / App Links が無い（§13.5 のとおり）。OS のカメラで読むと
+  ブラウザの Web が開く。アプリのメッセージの中の `/eq/` のリンクを「備品」で開くのは、`/d/`・`/e/` と同じ形で後で足せる（今はふつうのリンク）。
+- **書き出し**：`lending.*` の他の API と同じく備品係（`403 lending_keeper_required`、ゲストは `403 guest_restricted`、オフは 409）。
+  名前の順（一覧と同じ）。表計算が数式と読むセル（`=`・`+`・`-`・`@`・タブ・CR で始まる）は前に `'` を付ける。状態は日本語の言葉
+  （貸出可・貸出中・修理中・廃棄）、「許可が要る」は「要る」「要らない」か空欄（分類の既定）、「最長の日数」は数か空欄（既定）、
+  借りている人は表示名、返す日は ISO の日付。列の見出しは日本語に固定（読む人の言語によらない）。
+- **取り込み**：
+  - 列は見出しで探す（順は自由）。日本語の見出しのほか英語（`code`・`name`・`category`・`location`・`status`・`requires_permission`・
+    `max_days`・`notes`）も読む。「名前」の列は必須。**ファイルにある列だけ**を比べて書く（空のセルはその項目を空にする。列が無ければ
+    今のまま）。「借りている人」「返す日」は読まない。「状態」は「廃棄」（`retired`）の行を飛ばす（`skipped`）ためだけに読む。
+  - 突き合わせ：管理番号（NFC + casefold）で廃棄していない備品と。管理番号の無い行は、管理番号の無い廃棄していない備品と名前で。
+    同じ名前の候補が 2 つ以上なら `name_ambiguous`。ファイルの中で管理番号・（管理番号の無い）名前が重なれば 2 つ目が
+    `code_duplicate` / `name_duplicate`（そうしないと 2 回目の取り込みが決まらない）。
+  - 値：「許可が要る」は 要る / はい / yes / true / 1 / ○ と 要らない / いいえ / no / false / 0 / ×、空欄・「既定」は既定。「最長の日数」は
+    1〜365（「14 日」「14 days」も）。文字の長さは API と同じ上限（`too_long`）。分類は 50 個まで、備品は（廃棄を含めて）2,000 個まで。
+    書き出しが付けた `'` は外す（書き出したものをそのまま取り込むと、すべて「変わらない」）。
+  - 文字コードは UTF-8（BOM の有無を問わない）、読めなければ Shift_JIS（cp932、日本語の Excel の保存の既定）。ファイル全体の誤り
+    （1 MB を超える・データが 2,001 行以上・文字コード・CSV として読めない・「名前」の列が無い・データが無い）は dry run でも
+    `400 lending_csv_invalid` で、`details.errors` に `line: 0` の 1 件。
+  - 応答 `LendingImportOut`：`rows` はエラーの無い行（`line`・`action`（created / updated / unchanged / skipped）・`item_id`（dry run の新しい
+    備品は null）・`name`・`code`・`changes: [{field, before, after}]`。`field` は name / category / location / notes / requires_permission /
+    max_days、値は文字（許可は "true" / "false"、日数は数字、空は null））。`errors` の `message` は読む人の言語（`Accept-Language` か本人の設定）。
+  - 当てるとき：分類・備品の advisory lock を取り、**全部の備品の行を `FOR UPDATE`** で読んでから突き合わせ直す（dry run の後の変更も
+    見る）。エラーがあれば何も書かずに 400。変わるものが無ければ何も書かない（監査・イベントも無し）。新しい分類は並びの最後に
+    （既定の許可・日数なし、監査 `lending_category.created`、`details.via = import`）。備品は履歴 `created` / `updated`（`details.via = import`）、
+    監査は `lending_import.applied`（件数と作った分類）の 1 行だけ。`lending.updated` は 1 つ（変えた備品の id、分類を作れば `categories: true`）。
+- **`lending.tick` の `lending.updated`**：その周期に返す日の当日・過ぎた催促（`due:…:<n>`、n ≥ 0）を書いた貸し出しがあれば、周期の
+  終わりに 1 つだけ（`item_ids` はその備品）。前日の催促だけでは送らない。催促は 1 人 1 キー 1 回なので、同じ朝の 2 回目の周期は送らない。
+  延滞になるのは日付の変わり目だが、端末に知らせるのは朝の時刻（それまでは bootstrap と開いた画面が正しい数を読む）。
+- **`GET /lending/summary`**：bootstrap の `lending` と同じ値（同じ関数）。Desktop / Web のエンジンは `lending.updated` の後にこれだけを読む
+  （オフ・ゲストの 409 / 403 は null として「備品」を隠す）。M173 より前のサーバ（`404 not_found`）では M170 のやり方（設定と貸し出しの
+  一覧から数える）に戻る。**iOS・Android は今も貸し出しの一覧から数えている**（§17.5・§17.6）。この API に替えれば備品係の端末が
+  `scope=active` を毎回読まなくて済む（後で）。
+- **QR**：`qrcode-generator` 2.0.4（Kazuhiko Arase、MIT、依存なし、ESM と型付き、2025-08 の版に固定）。Desktop にもサーバにも JS の QR の
+  ライブラリは無かった（2 段階認証の QR はサーバの Python の `qrcode` が PNG で返す）。リンクは端末が知っているサーバのアドレス
+  （Web は `location.origin`）から作るので、サーバで作るより素直（サーバは `PUBLIC_BASE_URL` が無いと自分の外のアドレスを知らない）。
+  誤り訂正は M。行列だけを使い、SVG のパスは自分で描く。
+- **ラベル**：A4 の 24 面（3 × 8、70 × 37 mm、`@page { size: A4; margin: 0 }`）。左に QR（29 mm）、右に名前（太字、3 行まで）と管理番号。
+  廃棄を除く備品から選ぶ（分類で絞り込み、既定はすべて）。「印刷」はこのページで `window.print()`（印刷の間はアプリを隠してラベルだけを
+  出す）。「HTML で保存」は同じシートの HTML を保存する（アプリの窓から印刷できない環境のため。ブラウザで倍率 100%・余白なしで印刷）。
+  手で確かめたこと：書き出した HTML をヘッドレス Chrome で A4 に描き、OpenCV の QR の読み取りで 5 つのリンクがすべて読めた。
+  スマホのカメラで読む手順と、macOS / Windows のアプリの `window.print()` は確かめていない。
+- **取り込みの画面**：「管理 → CSV」の「取り込む…」でファイルを選ぶと dry run を送り、ダイアログに件数・新しい分類・行のエラー・
+  差分の表（既定は「新しく作る」「変える」の行だけ、「変わらない行も表示」で全部）。エラーがあるあいだ「取り込む」は押せない。当てる
+  ときの 400 は行のエラーとして同じダイアログに出す。

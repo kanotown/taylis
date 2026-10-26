@@ -479,6 +479,65 @@ class LendingPermissionIn(BaseModel):
         return _notes(value, PERMISSION_NOTE_MAX)
 
 
+# --- CSV (§5.4, L7) ---------------------------------------------------------------------------
+
+# The import takes a file of at most this many bytes and data rows.
+CSV_MAX_BYTES = 1024 * 1024
+CSV_MAX_ROWS = 2000
+ImportAction = Literal["created", "updated", "unchanged", "skipped"]
+
+
+class LendingImportChangeOut(BaseModel):
+    """One field an imported row changes, as text for the diff table (null: empty)."""
+
+    field: Literal["name", "category", "location", "notes", "requires_permission", "max_days"]
+    before: str | None
+    after: str | None
+
+
+class LendingImportRowOut(BaseModel):
+    line: int = Field(description="The line of the file the row starts on (the header is 1)")
+    action: ImportAction = Field(
+        description="created (a new item), updated, unchanged, skipped (a retired row: 廃棄)"
+    )
+    item_id: UUID | None = Field(
+        description="The item matched or created (null for a new item in a dry run, and for "
+        "skipped rows)"
+    )
+    name: str
+    code: str | None
+    changes: list[LendingImportChangeOut] = Field(default_factory=list)
+
+
+class LendingImportErrorOut(BaseModel):
+    line: int = Field(description="The line of the file (0: the file as a whole)")
+    code: str = Field(
+        description="name_required | too_long | permission_invalid | max_days_invalid | "
+        "code_duplicate | name_duplicate | name_ambiguous | too_many_items | "
+        "too_many_categories (rows); too_large | too_many_rows | encoding | no_name_column | "
+        "empty (the file). Unknown codes may come"
+    )
+    message: str = Field(description="In the reader's language")
+
+
+class LendingImportOut(BaseModel):
+    """What an import does (dry run) or did. Items are matched by control number, else (no
+    number) by name among the items without one; a second import of the same file reports every
+    row unchanged."""
+
+    dry_run: bool
+    created: int
+    updated: int
+    unchanged: int
+    skipped: int
+    new_categories: list[str] = Field(description="Categories the import creates (by name)")
+    rows: list[LendingImportRowOut] = Field(description="Every data row, in the file's order")
+    errors: list[LendingImportErrorOut] = Field(
+        description="Nothing is applied while there is one (dry_run=false answers 400 "
+        "lending_csv_invalid with details.errors)"
+    )
+
+
 # --- events (§9) ------------------------------------------------------------------------------
 
 

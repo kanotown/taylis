@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CalendarDays, MessageSquareText } from "lucide-react";
+import { CalendarDays, MessageSquareText, Package } from "lucide-react";
 import type { CustomEmojiOut, GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { type Block, type ListItem, paragraphLayout, parseBlocks, type Token } from "./markdown";
@@ -7,7 +7,7 @@ import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
 import { CanvasLinkCard } from "./CanvasLinkCard";
-import { attachmentRefId, pageRefId, parseCanvasLink, parseDriveLink, parseEventLink, parsePageLink, parsePermalink } from "./permalink";
+import { attachmentRefId, pageRefId, parseCanvasLink, parseDriveLink, parseEquipmentLink, parseEventLink, parsePageLink, parsePermalink } from "./permalink";
 import { DriveLinkCard } from "./DriveLinkCard";
 import { FileLinkChip, PageLinkChip } from "./PageLinkChip";
 import { openExternalLink } from "../platform/external";
@@ -309,6 +309,25 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
               }}
             >
               <CalendarDays size={13} /> {token.label && token.label !== token.url ? token.label : t("schedule.openEvent")}
+            </button>
+          );
+        }
+        // M173 (docs/LENDING.md §13.5): an equipment item's link (its label's QR code) opens it in 「備品」.
+        const equipmentId = internalBase && controller ? parseEquipmentLink(internalBase, token.url) : null;
+        if (equipmentId && controller) {
+          return (
+            <button
+              key={i}
+              type="button"
+              data-equipment-link={equipmentId}
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 align-baseline text-[13px] leading-5 text-accent hover:bg-accent-soft/40"
+              title={token.url}
+              onClick={(event) => {
+                event.stopPropagation();
+                controller.requestOpenLending({ itemId: equipmentId, loanId: null });
+              }}
+            >
+              <Package size={13} /> {token.label && token.label !== token.url ? token.label : t("lending.openItem")}
             </button>
           );
         }

@@ -1,9 +1,11 @@
 """Pages outside the API: the permalink landing pages for messages (M12b), canvases (M42), wiki
-pages (M120) and drive items (M165), and the invite page (M12h).
+pages (M120), drive items (M165) and equipment items (M173), and the invite page (M12h).
 
 A permalink is `<server>/m/<message_id>`, `<server>/c/<canvas_id>`, `<server>/p/<page_id>`
-(a wiki page: GET /api/v1/wiki/pages/{id}, 404 for whoever cannot read it) or
-`<server>/d/<item_id>` (a drive file or folder: GET /api/v1/drive/items/{id}, 404 likewise).
+(a wiki page: GET /api/v1/wiki/pages/{id}, 404 for whoever cannot read it),
+`<server>/d/<item_id>` (a drive file or folder: GET /api/v1/drive/items/{id}, 404 likewise) or
+`<server>/eq/<item_id>` (an equipment item, the QR code on its label: GET
+/api/v1/lending/items/{id}).
 The apps recognise it in message bodies and open the message or canvas in place, reading it
 through the API, which checks the membership (a canvas: GET /api/v1/canvases/{id}, 403 / 404
 for others). A browser lands here and learns nothing about the target (no auth, no lookup, not
@@ -92,6 +94,14 @@ async def drive_permalink(item_id: str) -> HTMLResponse:
     """The landing page for a drive item's permalink (M165, docs/DRIVE.md §13.1): nothing about
     the file or folder, not even whether it exists."""
     return _landing(item_id, "ドライブのファイル", "見られるのは、そのドライブを使える人だけです")
+
+
+@router.get("/eq/{item_id}", response_class=HTMLResponse, include_in_schema=False)
+async def lending_item_link(item_id: str) -> HTMLResponse:
+    """The landing page of an equipment item's link (M173, docs/LENDING.md §13.5), printed as a
+    QR code on its label: nothing about the item, not even whether it exists. (`/e/` is a
+    calendar event's link, CALENDAR.md §11.)"""
+    return _landing(item_id, "備品", "見られるのは、そのワークスペースのメンバーだけです")
 
 
 _INVITE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,128}$")

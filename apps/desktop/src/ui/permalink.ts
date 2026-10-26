@@ -71,9 +71,19 @@ export function driveLinksIn(baseUrl: string, text: string): string[] {
   return [...found];
 }
 
-function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/" | "/e/" | "/d/"): string | null {
+/** M173 (docs/LENDING.md §13.5): an equipment item's link `<server>/eq/<id>`, the QR code on its label (`/e/` is an event's). */
+export function equipmentLink(baseUrl: string, itemId: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/eq/${itemId}`;
+}
+
+export function parseEquipmentLink(baseUrl: string, url: string): string | null {
+  return parseLink(baseUrl, url, "/eq/");
+}
+
+function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/" | "/e/" | "/d/" | "/eq/"): string | null {
   const base = baseUrl.replace(/\/+$/, "");
-  if (url.slice(0, base.length + 3).toLowerCase() !== (base + prefix).toLowerCase()) return null;
-  const id = url.slice(base.length + 3).replace(/[/?#].*$/, "");
+  const head = base.length + prefix.length;
+  if (url.slice(0, head).toLowerCase() !== (base + prefix).toLowerCase()) return null;
+  const id = url.slice(head).replace(/[/?#].*$/, "");
   return UUID.test(id) ? id.toLowerCase() : null;
 }

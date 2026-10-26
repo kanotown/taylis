@@ -5041,6 +5041,20 @@
         "title": "Body_add_emoji_api_v1_emoji_post",
         "type": "object"
       },
+      "Body_import_items_api_v1_lending_items_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_items_api_v1_lending_items_import_post",
+        "type": "object"
+      },
       "Body_import_pack_api_v1_emoji_packs_import_post": {
         "properties": {
           "archive": {
@@ -13575,6 +13589,203 @@
           "due_on"
         ],
         "title": "LendingExtendIn",
+        "type": "object"
+      },
+      "LendingImportChangeOut": {
+        "description": "One field an imported row changes, as text for the diff table (null: empty).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "field": {
+            "enum": [
+              "name",
+              "category",
+              "location",
+              "notes",
+              "requires_permission",
+              "max_days"
+            ],
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "LendingImportChangeOut",
+        "type": "object"
+      },
+      "LendingImportErrorOut": {
+        "properties": {
+          "code": {
+            "description": "name_required | too_long | permission_invalid | max_days_invalid | code_duplicate | name_duplicate | name_ambiguous | too_many_items | too_many_categories (rows); too_large | too_many_rows | encoding | no_name_column | empty (the file). Unknown codes may come",
+            "title": "Code",
+            "type": "string"
+          },
+          "line": {
+            "description": "The line of the file (0: the file as a whole)",
+            "title": "Line",
+            "type": "integer"
+          },
+          "message": {
+            "description": "In the reader's language",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "code",
+          "message"
+        ],
+        "title": "LendingImportErrorOut",
+        "type": "object"
+      },
+      "LendingImportOut": {
+        "description": "What an import does (dry run) or did. Items are matched by control number, else (no\nnumber) by name among the items without one; a second import of the same file reports every\nrow unchanged.",
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "errors": {
+            "description": "Nothing is applied while there is one (dry_run=false answers 400 lending_csv_invalid with details.errors)",
+            "items": {
+              "$ref": "#/components/schemas/LendingImportErrorOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "new_categories": {
+            "description": "Categories the import creates (by name)",
+            "items": {
+              "type": "string"
+            },
+            "title": "New Categories",
+            "type": "array"
+          },
+          "rows": {
+            "description": "Every data row, in the file's order",
+            "items": {
+              "$ref": "#/components/schemas/LendingImportRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "created",
+          "updated",
+          "unchanged",
+          "skipped",
+          "new_categories",
+          "rows",
+          "errors"
+        ],
+        "title": "LendingImportOut",
+        "type": "object"
+      },
+      "LendingImportRowOut": {
+        "properties": {
+          "action": {
+            "description": "created (a new item), updated, unchanged, skipped (a retired row: 廃棄)",
+            "enum": [
+              "created",
+              "updated",
+              "unchanged",
+              "skipped"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/LendingImportChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item matched or created (null for a new item in a dry run, and for skipped rows)",
+            "title": "Item Id"
+          },
+          "line": {
+            "description": "The line of the file the row starts on (the header is 1)",
+            "title": "Line",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "action",
+          "item_id",
+          "name",
+          "code"
+        ],
+        "title": "LendingImportRowOut",
         "type": "object"
       },
       "LendingItemCreate": {
@@ -39837,6 +40048,110 @@
         ]
       }
     },
+    "/api/v1/lending/items/export.csv": {
+      "get": {
+        "description": "Keepers (L7, §5.4): 管理番号, 名前, 分類, 置き場所, 状態, 許可が要る (要る / 要らない /\nempty: the category's default), 最長の日数 (empty: the default), 付属品とメモ, 借りている人,\n返す日. A cell a spreadsheet would read as a formula starts with `'`.",
+        "operationId": "export_items_api_v1_lending_items_export_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "UTF-8 with a BOM"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Items",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/items/import": {
+      "post": {
+        "description": "Keepers (L7, §5.4): a CSV of the export's columns (by header; UTF-8 or Shift_JIS, at most\n1 MB and 2,000 rows). Items are matched by control number, else by name among those without\none; missing ones and missing categories are created; the status and the loans are not\nimported, rows marked 廃棄 are skipped. `dry_run` (the default) only reports; false applies\nall of it in one transaction, or nothing: 400 lending_csv_invalid (details.errors: line,\ncode, message) while any row has an error. A file the server cannot read at all is 400\nlending_csv_invalid with one error on line 0.",
+        "operationId": "import_items_api_v1_lending_items_import_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_items_api_v1_lending_items_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Items",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
     "/api/v1/lending/items/{item_id}": {
       "delete": {
         "description": "Keepers. 409 lending_item_has_history for an item that was ever lent (retire it).",
@@ -40566,6 +40881,33 @@
           }
         ],
         "summary": "Get Settings",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/summary": {
+      "get": {
+        "description": "The bootstrap's `lending` on its own (L7, §5.1): the numbers of the 「備品」 item, read\nagain after lending.updated. 403 guest_restricted for guests and bots, 409 lending_disabled\nwhile off (where the bootstrap has null).",
+        "operationId": "get_summary_api_v1_lending_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Summary",
         "tags": [
           "lending"
         ]

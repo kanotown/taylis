@@ -1,12 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 
 from app.core.db import Db
+from app.core.errors import request_locale
+from app.core.time import utcnow
 from app.modules.auth.deps import CurrentUser, require_capability
-from app.modules.lending import loans, notices, service
+from app.modules.lending import csvio, loans, notices, service
 from app.modules.lending.schemas import (
+    CSV_MAX_BYTES,
     HISTORY_LIMIT_MAX,
     LendingApproversOut,
     LendingBorrowIn,
@@ -14,6 +17,7 @@ from app.modules.lending.schemas import (
     LendingCategoryOut,
     LendingCategoryUpdate,
     LendingExtendIn,
+    LendingImportOut,
     LendingItemCreate,
     LendingItemDetailOut,
     LendingItemHistoryOut,
@@ -25,6 +29,7 @@ from app.modules.lending.schemas import (
     LendingReturnIn,
     LendingSettingsOut,
     LendingSettingsUpdate,
+    LendingSummaryOut,
     LoanScope,
 )
 from app.modules.users.models import User
@@ -54,6 +59,14 @@ async def update_settings(
     unknown, deactivated, a guest or a bot; more than 20 keepers, numbers out of range and unknown
     zones are 422."""
     return await service.update_settings(db, actor, body)
+
+
+@router.get("/lending/summary", response_model=LendingSummaryOut)
+async def get_summary(user: CurrentUser, db: Db) -> LendingSummaryOut:
+    """The bootstrap's `lending` on its own (L7, §5.1): the numbers of the 「備品」 item, read
+    again after lending.updated. 403 guest_restricted for guests and bots, 409 lending_disabled
+    while off (where the bootstrap has null)."""
+    return await service.summary(db, user)
 
 
 @router.get("/lending/categories", response_model=list[LendingCategoryOut])
@@ -97,6 +110,51 @@ async def list_items(
     """Every item (retired ones with `include_retired`) in the Japanese name order, not paged
     (at most 2,000): clients filter by category, status and text themselves."""
     return await service.list_items(db, user, include_retired=include_retired)
+
+
+# Before /lending/items/{item_id}: "export.csv" is not an item id.
+@router.get(
+    "/lending/items/export.csv",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {}}, "description": "UTF-8 with a BOM"}},
+)
+async def export_items(
+    user: CurrentUser,
+    db: Db,
+    include_retired: Annotated[bool, Query()] = False,
+) -> Response:
+    """Keepers (L7, §5.4): 管理番号, 名前, 分類, 置き場所, 状態, 許可が要る (要る / 要らない /
+    empty: the category's default), 最長の日数 (empty: the default), 付属品とメモ, 借りている人,
+    返す日. A cell a spreadsheet would read as a formula starts with `'`."""
+    content = await csvio.export_csv(db, user, include_retired=include_retired)
+    stamp = utcnow().strftime("%Y%m%d")
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="equipment-{stamp}.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/lending/items/import", response_model=LendingImportOut)
+async def import_items(
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    file: UploadFile = File(...),
+    dry_run: Annotated[bool, Query()] = True,
+) -> LendingImportOut:
+    """Keepers (L7, §5.4): a CSV of the export's columns (by header; UTF-8 or Shift_JIS, at most
+    1 MB and 2,000 rows). Items are matched by control number, else by name among those without
+    one; missing ones and missing categories are created; the status and the loans are not
+    imported, rows marked 廃棄 are skipped. `dry_run` (the default) only reports; false applies
+    all of it in one transaction, or nothing: 400 lending_csv_invalid (details.errors: line,
+    code, message) while any row has an error. A file the server cannot read at all is 400
+    lending_csv_invalid with one error on line 0."""
+    raw = await file.read(CSV_MAX_BYTES + 1)
+    return await csvio.import_items(db, user, raw, dry_run=dry_run, locale=request_locale(request))
 
 
 @router.post("/lending/items", response_model=LendingItemDetailOut, status_code=201)
