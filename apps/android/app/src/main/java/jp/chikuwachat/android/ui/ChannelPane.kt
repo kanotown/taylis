@@ -605,7 +605,7 @@ fun MessageRow(
         onLongClick = if (message.pending || readOnly) null else ({ menuOpen = true }),
         // A tap on a message in the channel opens its thread, to read or to reply (Slack; testers, 2026-09-29; a grouped
         // row showed its time before, which its gutter shows now). With the keyboard up the tap only closes it
-        // (closesKeyboardOnTap), as on iOS.
+        // (closesKeyboardOnTap consumes it, so this does not run; the check stays for a tap the list did not see).
         onClick = {
             if (!message.pending && onTap != null) onTap()
             else if (!message.pending && onOpenThread != null && !KeyboardBehavior.upAtTouch) onOpenThread()

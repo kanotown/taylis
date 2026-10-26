@@ -50,7 +50,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n jp.chikuwachat.android/.MainActivity
 ```
 
-ログイン画面のサーバ URL 既定値は `http://10.0.2.2:8000` (エミュレータから見たホスト機)。
+ログイン画面のサーバ URL は空（2026-10-26 から既定値を入れない）。エミュレータではホスト機の `http://10.0.2.2:8000` を入れる。
 実機では Mac の LAN アドレス (`http://192.168.x.x:8000`) を入れる。
 平文 HTTP は開発用に `usesCleartextTraffic` で許可している (iOS の ATS 設定と同じ)。本番は Caddy で TLS 終端する (SECURITY.md)。
 

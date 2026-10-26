@@ -80,6 +80,7 @@
     <string name="app_controller_text_copied_2">已复制正文</string>
     <string name="app_controller_the_destination_channel">目标频道</string>
     <string name="app_controller_the_file_is_too_large_limit">文件过大 (上限 %1$s)</string>
+    <string name="app_controller_enter_the_server_url">请输入服务器 URL</string>
     <string name="app_controller_the_server_url_is_not_valid">服务器 URL 不正确</string>
     <string name="app_controller_there_is_no_public_channel_called">没有名为 #%1$s 的公开频道</string>
     <string name="app_controller_there_is_no_user_called">没有名为 %1$s 的用户</string>

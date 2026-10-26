@@ -53,4 +53,21 @@ class KeyboardBehaviorTest {
         val layout = Layout(2000, listOf(Item(0, 0, 400)), 1)
         assertNull(KeyboardBehavior.keepBottomScroll(layout, layout))
     }
+
+    // A tap on the list while the on-screen keyboard is up only closes it (2026-10-26): nothing in the row fires.
+    @Test
+    fun aTapWithTheKeyboardUpOnlyClosesIt() {
+        assertEquals(KeyboardBehavior.TapOutcome.CLOSE_ONLY, KeyboardBehavior.tapOutcome(true, moved = false, heldMillis = 80, longPressMillis = 400, multiTouch = false))
+        // No keyboard (or a hardware one, which has no inset): the row, the avatar, a link get the tap.
+        assertEquals(KeyboardBehavior.TapOutcome.CLEAR_FOCUS, KeyboardBehavior.tapOutcome(false, moved = false, heldMillis = 80, longPressMillis = 400, multiTouch = false))
+    }
+
+    @Test
+    fun dragsLongPressesAndPinchesAreLeftAlone() {
+        for (up in listOf(true, false)) {
+            assertEquals(KeyboardBehavior.TapOutcome.NONE, KeyboardBehavior.tapOutcome(up, moved = true, heldMillis = 80, longPressMillis = 400, multiTouch = false))
+            assertEquals(KeyboardBehavior.TapOutcome.NONE, KeyboardBehavior.tapOutcome(up, moved = false, heldMillis = 600, longPressMillis = 400, multiTouch = false))
+            assertEquals(KeyboardBehavior.TapOutcome.NONE, KeyboardBehavior.tapOutcome(up, moved = false, heldMillis = 80, longPressMillis = 400, multiTouch = true))
+        }
+    }
 }

@@ -81,6 +81,7 @@
     <string name="app_controller_text_copied_2">Text copied</string>
     <string name="app_controller_the_destination_channel">the destination channel</string>
     <string name="app_controller_the_file_is_too_large_limit">The file is too large (limit %1$s)</string>
+    <string name="app_controller_enter_the_server_url">Enter the server URL</string>
     <string name="app_controller_the_server_url_is_not_valid">The server URL is not valid</string>
     <string name="app_controller_there_is_no_public_channel_called">There is no public channel called #%1$s</string>
     <string name="app_controller_there_is_no_user_called">There is no user called %1$s</string>

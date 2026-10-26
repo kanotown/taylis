@@ -366,8 +366,11 @@ class AppController(private val app: Application) {
             false
         } catch (e: Exception) { report(e); false }
     }
-    /** What the login form starts from: the workspace it signs in to, else the last server and user. */
-    var savedServer = DEFAULT_SERVER
+    /**
+     * What the login form starts from: the workspace it signs in to, else the last server and user. Empty on a fresh
+     * install: no address is prefilled (the field shows a placeholder; 2026-10-26, it was the emulator's host before).
+     */
+    var savedServer = ""
         private set
     var savedUsername = ""
         private set
@@ -642,13 +645,13 @@ class AppController(private val app: Application) {
         val legacyServer = secrets.setting(SERVER_KEY)
         val legacyUsername = secrets.setting(USERNAME_KEY)
         val saved = Workspaces.load(prefs) ?: run {
-            val server = legacyServer ?: DEFAULT_SERVER
+            val server = legacyServer ?: ""
             val hasSession = !legacyUsername.isNullOrEmpty() && secrets.secret(account(server, legacyUsername)) != null
             Workspaces.migrate(server, legacyUsername, hasSession).also { Workspaces.save(prefs, it.entries, it.active) }
         }
         workspaces = saved.entries
         activeKey = saved.active
-        savedServer = legacyServer ?: DEFAULT_SERVER
+        savedServer = legacyServer ?: ""
         savedUsername = legacyUsername ?: ""
         workspacesLoaded = true
         widgetWorkspacesChanged()
@@ -885,10 +888,15 @@ class AppController(private val app: Application) {
         // In the controller's scope: the form goes away half-way (the workspace it opens replaces it).
         scope.launch { loginNow(server, username, password, totpCode) }.join()
 
+    /** Why a sign-in form's server address is refused: none entered, or not a URL. */
+    private fun serverUrlProblem(server: String): String =
+        if (server.isBlank()) L10n.str(R.string.app_controller_enter_the_server_url)
+        else L10n.str(R.string.app_controller_the_server_url_is_not_valid)
+
     private suspend fun loginNow(server: String, username: String, password: String, totpCode: String?) {
         val normalized = Workspaces.normalizeServerUrl(server)
         if (normalized == null) {
-            error = L10n.str(R.string.app_controller_the_server_url_is_not_valid)
+            error = serverUrlProblem(server)
             return
         }
         busy = true
@@ -973,7 +981,7 @@ class AppController(private val app: Application) {
     private suspend fun beginGoogleSignInNow(server: String): String? {
         val normalized = Workspaces.normalizeServerUrl(server)
         if (normalized == null) {
-            error = L10n.str(R.string.app_controller_the_server_url_is_not_valid)
+            error = serverUrlProblem(server)
             return null
         }
         busy = true
@@ -4021,8 +4029,6 @@ class AppController(private val app: Application) {
         const val USERNAME_KEY = "username"
         /** M48: the pending Google sign-in's secret name (never an account's `server|username`). */
         const val SSO_PENDING_KEY = "sso.pending"
-        // 10.0.2.2 is the host machine from the Android emulator.
-        const val DEFAULT_SERVER = "http://10.0.2.2:8000"
     }
 }
 
