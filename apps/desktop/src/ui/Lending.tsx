@@ -15,6 +15,8 @@ import type { AttachmentOut, LendingApproversOut, LendingCategoryOut, LendingIte
 import { t } from "../i18n";
 import type { AppController } from "../state/app";
 import { useAttachmentImage } from "./Attachments";
+import { LendingCsvSection } from "./LendingCsv";
+import { LendingLabelsSection } from "./LendingLabels";
 import { BackButton, useCompact } from "./compact";
 import { useStoreUpdates } from "./hooks";
 import {
@@ -219,7 +221,7 @@ export function LendingView({ controller }: { controller: AppController }) {
                 ) : shown === "overdue" ? (
                   <LoansTab controller={controller} scope="overdue" settings={settings} today={today} revision={ledger.revision} onOpenItem={openItem} onChanged={() => void ledger.reload()} />
                 ) : shown === "manage" ? (
-                  <ManageTab controller={controller} settings={settings} categories={categories} onChanged={() => void ledger.reload()} onOpenItem={openItem} />
+                  <ManageTab controller={controller} settings={settings} items={items} categories={categories} onChanged={() => void ledger.reload()} onOpenItem={openItem} />
                 ) : (
                   <LendingSettingsForm controller={controller} settings={settings} onSaved={() => void ledger.reload()} />
                 )}
@@ -1309,10 +1311,11 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 
 // --- 管理 -------------------------------------------------------------------------------------------------------
 
-/** Keepers (§12.2): the categories (add, rename, defaults, order, delete) and adding an item. */
-function ManageTab({ controller, settings, categories, onChanged, onOpenItem }: {
+/** Keepers (§12.2): the categories (add, rename, defaults, order, delete), adding an item, the CSV and the QR labels (L7). */
+function ManageTab({ controller, settings, items, categories, onChanged, onOpenItem }: {
   controller: AppController;
   settings: LendingSettingsOut;
+  items: LendingItemOut[];
   categories: LendingCategoryOut[];
   onChanged: () => void;
   onOpenItem: (itemId: string) => void;
@@ -1350,7 +1353,8 @@ function ManageTab({ controller, settings, categories, onChanged, onOpenItem }: 
           </ul>
         )}
       </Section>
-      <p className="text-xs text-muted">{t("lending.csvLater")}</p>
+      <LendingCsvSection controller={controller} onChanged={onChanged} />
+      <LendingLabelsSection controller={controller} items={items} categories={categories} />
       {editing !== null && <CategoryDialog controller={controller} category={editing === "new" ? null : editing} settings={settings} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); }} />}
       {adding && <ItemDialog controller={controller} item={null} settings={settings} categories={categories} onClose={() => setAdding(false)} onSaved={(saved) => { setAdding(false); onChanged(); onOpenItem(saved.id); }} />}
       {deleting && (

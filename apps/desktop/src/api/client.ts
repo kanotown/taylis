@@ -10,7 +10,7 @@ import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralR
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
-import type { LendingApproversOut, LendingBorrowIn, LendingCategoryCreate, LendingCategoryOut, LendingCategoryUpdate, LendingItemCreate, LendingItemDetailOut, LendingItemHistoryOut, LendingItemOut, LendingItemStatusIn, LendingItemUpdate, LendingLoanOut, LendingLoanScope, LendingPermissionIn, LendingReturnIn, LendingSettingsOut, LendingSettingsUpdate } from "./types";
+import type { LendingApproversOut, LendingBorrowIn, LendingCategoryCreate, LendingCategoryOut, LendingCategoryUpdate, LendingImportOut, LendingItemCreate, LendingItemDetailOut, LendingItemHistoryOut, LendingItemOut, LendingItemStatusIn, LendingItemUpdate, LendingLoanOut, LendingLoanScope, LendingPermissionIn, LendingReturnIn, LendingSettingsOut, LendingSettingsUpdate, LendingSummaryOut } from "./types";
 import type { DriveItemLinksOut, DriveShareEventListOut,DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
 
 /**
@@ -2332,6 +2332,34 @@ export class ApiClient {
   /** Every person (also while the feature is off); guests 403 guest_restricted. */
   lendingSettings(): Promise<LendingSettingsOut> {
     return this.request("GET", "/api/v1/lending/settings");
+  }
+
+  /**
+   * M173: the bootstrap's `lending` on its own (the numbers after lending.updated). null where the bootstrap has null:
+   * 409 lending_disabled (off) and 403 guest_restricted. A server before M173 answers 404 not_found: that is thrown.
+   */
+  async lendingSummary(): Promise<LendingSummaryOut | null> {
+    try {
+      return await this.request<LendingSummaryOut>("GET", "/api/v1/lending/summary");
+    } catch (error) {
+      if (error instanceof ApiError && (error.code === "lending_disabled" || error.code === "guest_restricted")) return null;
+      throw error;
+    }
+  }
+
+  /** M173 (keepers): the ledger as CSV, UTF-8 with a BOM (formulas defused). */
+  exportLendingItems(includeRetired = false): Promise<Blob> {
+    return this.fetchBlob(`/api/v1/lending/items/export.csv${includeRetired ? "?include_retired=true" : ""}`);
+  }
+
+  /**
+   * M173 (keepers): a CSV of the export's columns. `dryRun` only reports what would change; false applies all of it or
+   * nothing (400 lending_csv_invalid, details.errors). A file the server cannot read at all is 400 lending_csv_invalid too.
+   */
+  importLendingItems(file: Blob, dryRun: boolean, name = "equipment.csv"): Promise<LendingImportOut> {
+    const form = new FormData();
+    form.append("file", file, name);
+    return this.postForm(`/api/v1/lending/items/import?dry_run=${dryRun}`, form);
   }
 
   /** `lending.manage` (403 admin_required); 400 lending_keeper_invalid (details.user_ids). */

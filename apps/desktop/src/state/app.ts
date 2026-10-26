@@ -256,7 +256,9 @@ export class AppController {
   private entryEvent: string | null = null;
   /** M165: a `/d/<id>` drive link opened in the browser. */
   private entryDrive: string | null = null;
-  /** The browser opened this page at a link (/m/, /c/, /p/, /e/, /d/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
+  /** M173: an `/eq/<id>` equipment link (the QR code on a label) opened in the browser. */
+  private entryEquipment: string | null = null;
+  /** The browser opened this page at a link (/m/, /c/, /p/, /e/, /d/, /eq/): MOBILE_UI.md §19.4 puts it in a tab of its own. */
   openedAtLink = false;
 
   private takeEntryPath(): void {
@@ -268,6 +270,7 @@ export class AppController {
     else if (entry.kind === "page") this.entryPage = entry.id;
     else if (entry.kind === "event") this.entryEvent = entry.id;
     else if (entry.kind === "drive") this.entryDrive = entry.id;
+    else if (entry.kind === "equipment") this.entryEquipment = entry.id;
     else this.entryMessage = entry.id;
     history.replaceState(null, "", "/");
   }
@@ -285,6 +288,9 @@ export class AppController {
     const driveId = this.entryDrive;
     this.entryDrive = null;
     if (driveId) await this.openDriveLink(driveId);
+    const equipmentId = this.entryEquipment;
+    this.entryEquipment = null;
+    if (equipmentId) this.requestOpenLending({ itemId: equipmentId, loanId: null });
     const id = this.entryMessage;
     if (!id) return;
     this.entryMessage = null;

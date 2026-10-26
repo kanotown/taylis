@@ -715,6 +715,10 @@ export type LendingReturnIn = components["schemas"]["LendingReturnIn"];
 export type LendingPermissionIn = components["schemas"]["LendingPermissionIn"];
 export type LendingApproversOut = components["schemas"]["LendingApproversOut"];
 export type ActivityLending = components["schemas"]["ActivityLending"];
+export type LendingImportOut = components["schemas"]["LendingImportOut"];
+export type LendingImportRowOut = components["schemas"]["LendingImportRowOut"];
+export type LendingImportErrorOut = components["schemas"]["LendingImportErrorOut"];
+export type LendingImportChangeOut = components["schemas"]["LendingImportChangeOut"];
 export type LendingItemStatus = LendingItemOut["status"];
 export type LendingLoanScope = "mine" | "active" | "overdue" | "approved";
 /** `lending.notice` (ws-events.json): a new activity item of kind lending for me. */

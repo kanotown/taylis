@@ -4230,6 +4230,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lending/items/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Items
+         * @description Keepers (L7, §5.4): 管理番号, 名前, 分類, 置き場所, 状態, 許可が要る (要る / 要らない /
+         *     empty: the category's default), 最長の日数 (empty: the default), 付属品とメモ, 借りている人,
+         *     返す日. A cell a spreadsheet would read as a formula starts with `'`.
+         */
+        get: operations["export_items_api_v1_lending_items_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/items/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Items
+         * @description Keepers (L7, §5.4): a CSV of the export's columns (by header; UTF-8 or Shift_JIS, at most
+         *     1 MB and 2,000 rows). Items are matched by control number, else by name among those without
+         *     one; missing ones and missing categories are created; the status and the loans are not
+         *     imported, rows marked 廃棄 are skipped. `dry_run` (the default) only reports; false applies
+         *     all of it in one transaction, or nothing: 400 lending_csv_invalid (details.errors: line,
+         *     code, message) while any row has an error. A file the server cannot read at all is 400
+         *     lending_csv_invalid with one error on line 0.
+         */
+        post: operations["import_items_api_v1_lending_items_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lending/items/{item_id}": {
         parameters: {
             query?: never;
@@ -4469,6 +4517,28 @@ export interface paths {
          * @description The switch, the keepers and the defaults, and whether I am a keeper (also while off).
          */
         get: operations["get_settings_api_v1_lending_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Summary
+         * @description The bootstrap's `lending` on its own (L7, §5.1): the numbers of the 「備品」 item, read
+         *     again after lending.updated. 403 guest_restricted for guests and bots, 409 lending_disabled
+         *     while off (where the bootstrap has null).
+         */
+        get: operations["get_summary_api_v1_lending_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8883,6 +8953,11 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** Body_import_items_api_v1_lending_items_import_post */
+        Body_import_items_api_v1_lending_items_import_post: {
+            /** File */
+            file: string;
+        };
         /** Body_import_pack_api_v1_emoji_packs_import_post */
         Body_import_pack_api_v1_emoji_packs_import_post: {
             /** Archive */
@@ -12099,6 +12174,97 @@ export interface components {
              * @description The new return date in the workspace's zone
              */
             due_on: string;
+        };
+        /**
+         * LendingImportChangeOut
+         * @description One field an imported row changes, as text for the diff table (null: empty).
+         */
+        LendingImportChangeOut: {
+            /** After */
+            after: string | null;
+            /** Before */
+            before: string | null;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "name" | "category" | "location" | "notes" | "requires_permission" | "max_days";
+        };
+        /** LendingImportErrorOut */
+        LendingImportErrorOut: {
+            /**
+             * Code
+             * @description name_required | too_long | permission_invalid | max_days_invalid | code_duplicate | name_duplicate | name_ambiguous | too_many_items | too_many_categories (rows); too_large | too_many_rows | encoding | no_name_column | empty (the file). Unknown codes may come
+             */
+            code: string;
+            /**
+             * Line
+             * @description The line of the file (0: the file as a whole)
+             */
+            line: number;
+            /**
+             * Message
+             * @description In the reader's language
+             */
+            message: string;
+        };
+        /**
+         * LendingImportOut
+         * @description What an import does (dry run) or did. Items are matched by control number, else (no
+         *     number) by name among the items without one; a second import of the same file reports every
+         *     row unchanged.
+         */
+        LendingImportOut: {
+            /** Created */
+            created: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Errors
+             * @description Nothing is applied while there is one (dry_run=false answers 400 lending_csv_invalid with details.errors)
+             */
+            errors: components["schemas"]["LendingImportErrorOut"][];
+            /**
+             * New Categories
+             * @description Categories the import creates (by name)
+             */
+            new_categories: string[];
+            /**
+             * Rows
+             * @description Every data row, in the file's order
+             */
+            rows: components["schemas"]["LendingImportRowOut"][];
+            /** Skipped */
+            skipped: number;
+            /** Unchanged */
+            unchanged: number;
+            /** Updated */
+            updated: number;
+        };
+        /** LendingImportRowOut */
+        LendingImportRowOut: {
+            /**
+             * Action
+             * @description created (a new item), updated, unchanged, skipped (a retired row: 廃棄)
+             * @enum {string}
+             */
+            action: "created" | "updated" | "unchanged" | "skipped";
+            /** Changes */
+            changes?: components["schemas"]["LendingImportChangeOut"][];
+            /** Code */
+            code: string | null;
+            /**
+             * Item Id
+             * @description The item matched or created (null for a new item in a dry run, and for skipped rows)
+             */
+            item_id: string | null;
+            /**
+             * Line
+             * @description The line of the file the row starts on (the header is 1)
+             */
+            line: number;
+            /** Name */
+            name: string;
         };
         /** LendingItemCreate */
         LendingItemCreate: {
@@ -25284,6 +25450,72 @@ export interface operations {
             };
         };
     };
+    export_items_api_v1_lending_items_export_csv_get: {
+        parameters: {
+            query?: {
+                include_retired?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description UTF-8 with a BOM */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_items_api_v1_lending_items_import_post: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_items_api_v1_lending_items_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_item_api_v1_lending_items__item_id__get: {
         parameters: {
             query?: never;
@@ -25724,6 +25956,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LendingSettingsOut"];
+                };
+            };
+        };
+    };
+    get_summary_api_v1_lending_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingSummaryOut"];
                 };
             };
         };

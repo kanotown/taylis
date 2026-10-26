@@ -124,5 +124,20 @@
   "lending.returned_by_keeper": {"ja": "✅ 備品係の {keeper}が「{item}」の返却を記録しました。", "en": "✅ Equipment keeper {keeper} recorded the return of “{item}”.", "zh-Hans": "✅ 设备管理员 {keeper} 登记了“{item}”的归还。"},
   "lending.due_changed": {"ja": "🗓 備品係の {keeper}が「{item}」の返す日を {due} に変えました。", "en": "🗓 Equipment keeper {keeper} changed the return date of “{item}” to {due}.", "zh-Hans": "🗓 设备管理员 {keeper} 将“{item}”的归还日期改为 {due}。"},
   "lending.watch.returned": {"ja": "📦 「{item}」が返却されました。今は借りられます。", "en": "📦 “{item}” has been returned and can be borrowed now.", "zh-Hans": "📦 “{item}”已归还，现在可以借用。"},
-  "lending.watch.repaired": {"ja": "📦 「{item}」の修理が終わりました。今は借りられます。", "en": "📦 “{item}” is back from repair and can be borrowed now.", "zh-Hans": "📦 “{item}”已修好，现在可以借用。"}
+  "lending.watch.repaired": {"ja": "📦 「{item}」の修理が終わりました。今は借りられます。", "en": "📦 “{item}” is back from repair and can be borrowed now.", "zh-Hans": "📦 “{item}”已修好，现在可以借用。"},
+  "lending.csv.name_required": {"ja": "「{column}」が空です。", "en": "“{column}” is empty.", "zh-Hans": "“{column}”为空。"},
+  "lending.csv.too_long": {"ja": "「{column}」が長すぎます（{limit} 字まで）。", "en": "“{column}” is too long (at most {limit} characters).", "zh-Hans": "“{column}”过长（最多 {limit} 个字符）。"},
+  "lending.csv.permission_invalid": {"ja": "「{column}」は「要る」「要らない」か空欄（分類の既定）にしてください（「{value}」）。", "en": "“{column}” must be 要る (yes), 要らない (no) or empty for the category’s default (got “{value}”).", "zh-Hans": "“{column}”请填写“要る”（需要）、“要らない”（不需要）或留空（类别的默认值）（当前为“{value}”）。"},
+  "lending.csv.max_days_invalid": {"ja": "「{column}」は 1〜365 の数か空欄（既定）にしてください（「{value}」）。", "en": "“{column}” must be a number from 1 to 365, or empty for the default (got “{value}”).", "zh-Hans": "“{column}”请填写 1〜365 的数字或留空（默认值）（当前为“{value}”）。"},
+  "lending.csv.code_duplicate": {"ja": "管理番号「{code}」が {first} 行目にもあります。", "en": "Control number “{code}” is also on line {first}.", "zh-Hans": "管理编号“{code}”在第 {first} 行也出现了。"},
+  "lending.csv.name_duplicate": {"ja": "管理番号の無い「{name}」が {first} 行目にもあります。区別できるように管理番号を付けてください。", "en": "“{name}” without a control number is also on line {first}. Give them control numbers to tell them apart.", "zh-Hans": "没有管理编号的“{name}”在第 {first} 行也出现了。请添加管理编号以便区分。"},
+  "lending.csv.name_ambiguous": {"ja": "台帳に管理番号の無い「{name}」が {count} 個あります。どれのことか決まらないので、管理番号を付けてください。", "en": "The ledger has {count} items named “{name}” without a control number. Give this one a control number to say which it is.", "zh-Hans": "台账中有 {count} 个没有管理编号的“{name}”。无法确定是哪一个，请添加管理编号。"},
+  "lending.csv.too_many_items": {"ja": "備品は {limit} 個までです。", "en": "At most {limit} items.", "zh-Hans": "设备最多 {limit} 个。"},
+  "lending.csv.too_many_categories": {"ja": "分類は {limit} 個までです（「{name}」を作れません）。", "en": "At most {limit} categories (“{name}” cannot be added).", "zh-Hans": "类别最多 {limit} 个（无法创建“{name}”）。"},
+  "lending.csv.too_large": {"ja": "ファイルは 1 MB までです。", "en": "The file must be at most 1 MB.", "zh-Hans": "文件最大 1 MB。"},
+  "lending.csv.too_many_rows": {"ja": "データの行は {limit} 行までです。", "en": "At most {limit} data rows.", "zh-Hans": "数据行最多 {limit} 行。"},
+  "lending.csv.encoding": {"ja": "文字コードを読めません。UTF-8 か Shift_JIS の CSV にしてください。", "en": "The text encoding cannot be read. Save the CSV as UTF-8 or Shift_JIS.", "zh-Hans": "无法读取字符编码。请将 CSV 保存为 UTF-8 或 Shift_JIS。"},
+  "lending.csv.unreadable": {"ja": "CSV として読めません。", "en": "The file cannot be read as CSV.", "zh-Hans": "无法作为 CSV 读取。"},
+  "lending.csv.no_name_column": {"ja": "1 行目に「名前」の列がありません。", "en": "The first line has no “名前” (name) column.", "zh-Hans": "第 1 行没有“名前”（名称）列。"},
+  "lending.csv.empty": {"ja": "データの行がありません。", "en": "There are no data rows.", "zh-Hans": "没有数据行。"}
 }

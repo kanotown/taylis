@@ -52,7 +52,12 @@ from app.events.outbox import write_outbox
 from app.modules.activity.events import ACTIVITY_UPDATED, ActivityUpdatedData
 from app.modules.activity.models import item_read
 from app.modules.lending import access
-from app.modules.lending.events import LENDING_NOTICE, LendingNoticeData
+from app.modules.lending.events import (
+    LENDING_NOTICE,
+    LENDING_UPDATED,
+    LendingNoticeData,
+    LendingUpdatedData,
+)
 from app.modules.lending.models import (
     LendingItem,
     LendingItemEvent,
@@ -541,10 +546,11 @@ def _due_text(item: LendingItem, loan: LendingLoan, days: int) -> Text:
 
 async def _remind_borrowers(
     db: AsyncSession, settings: LendingSettings, now: datetime, today: date
-) -> int:
+) -> tuple[int, list[uuid.UUID]]:
     """The borrowers' reminders of today (the day before, the due date, every morning after) not
     written yet. A loan borrowed, or given its due date, after this morning's time waits for
-    tomorrow (they have just chosen the date)."""
+    tomorrow (they have just chosen the date). Also returns the items of the loans reminded on or
+    after their due date: their overdue days (and the clients' numbers) changed."""
     morning = _morning(settings, today)
     days = literal(today) - LendingLoan.due_on
     key = func.concat(_due_key(), cast(days, String))
@@ -574,6 +580,7 @@ async def _remind_borrowers(
     candidates = list(rows.scalars().all())
     await db.rollback()
     written = 0
+    due_items: list[uuid.UUID] = []
     for loan_id in candidates:
         try:
             loan = (
@@ -604,11 +611,26 @@ async def _remind_borrowers(
                 loan_id=loan.id,
             )
             await db.commit()
-            written += row is not None
+            if row is not None:
+                written += 1
+                if n >= 0:
+                    due_items.append(item.id)
         except Exception:
             await db.rollback()
             log.exception("lending loan %s: the reminder failed", loan_id)
-    return written
+    return written, due_items
+
+
+async def _announce_due(db: AsyncSession, item_ids: list[uuid.UUID]) -> None:
+    """One `lending.updated` for the run's reminders on or after the due date (§9, L7): the
+    morning is when a loan turns overdue for the clients (their overdue counts, the list's
+    「N 日過ぎ」), and the reminders' own `lending.notice` reaches the borrower only. One event a
+    run at most, however many loans."""
+    data = LendingUpdatedData(item_ids=list(dict.fromkeys(item_ids)))
+    await write_outbox(
+        db, event_type=LENDING_UPDATED, audience_type="all", payload=data.model_dump(mode="json")
+    )
+    await db.commit()
 
 
 async def attention_loans(
@@ -751,7 +773,8 @@ async def tick(db: AsyncSession, *, now: datetime | None = None) -> int:
         await db.rollback()
         return done
     assert settings is not None
-    done += await _remind_borrowers(db, settings, now, today)
+    written, due_items = await _remind_borrowers(db, settings, now, today)
+    done += written
     try:
         settings = await _settings(db)
         if access.is_enabled(settings):
@@ -760,6 +783,12 @@ async def tick(db: AsyncSession, *, now: datetime | None = None) -> int:
     except Exception:
         await db.rollback()
         log.exception("lending: the keepers' summary failed")
+    if due_items:
+        try:
+            await _announce_due(db, due_items)
+        except Exception:
+            await db.rollback()
+            log.exception("lending: announcing the due loans failed")
     await db.rollback()
     return done
 

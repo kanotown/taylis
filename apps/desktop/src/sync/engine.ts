@@ -3,7 +3,7 @@
  * §9 optimistic send, §5 heartbeat and reconnect). Transport is injected so the same code runs
  * in Tauri (WebSocket API) and in tests (fake server).
  */
-import { ApiError, isRetryable } from "../api/errors";
+import { ApiError, isMissingRoute, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
@@ -79,7 +79,9 @@ export interface SyncApi {
   attendance?(): Promise<AttendanceBoardOut>;
   /** M143: the 操作ボタン I may press (docs/ACTIONS.md §7.1). Optional (older fakes). */
   actions?(): Promise<ActionListOut>;
-  /** M170: 「備品」's settings and loans (docs/LENDING.md §5), for its numbers after lending.updated. Optional (older fakes). */
+  /** M173: the bootstrap's `lending` on its own (GET /lending/summary; null while off or for guests). Optional (older fakes). */
+  lendingSummary?(): Promise<LendingSummaryOut | null>;
+  /** M170: 「備品」's settings and loans (docs/LENDING.md §5), for its numbers from a server before M173. Optional (older fakes). */
   lendingSettings?(): Promise<LendingSettingsOut>;
   lendingLoans?(scope?: "mine" | "active" | "overdue" | "approved"): Promise<LendingLoanOut[]>;
   /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
@@ -1549,13 +1551,26 @@ export class SyncEngine {
   }
 
   /**
-   * M170 (docs/LENDING.md §5.1): the bootstrap's `lending` numbers, worked out again after lending.updated: the settings
-   * (on / off, am I a keeper), my loans, and for keepers every active loan. A server before M167 answers 404: nothing.
+   * M173 (docs/LENDING.md §5.1): the bootstrap's `lending` numbers after lending.updated, from GET /lending/summary (null
+   * while off). A server before M173 has no such route: the numbers are worked out as M170 did, from the settings (on or
+   * off, am I a keeper), my loans and, for keepers, every active loan. A server before M167 answers 404 there: nothing.
    */
   async loadLendingSummary(): Promise<void> {
     const api = this.deps.api;
-    if (!api.lendingSettings || !api.lendingLoans) return;
     const seq = ++this.lendingReadSeq;
+    if (api.lendingSummary) {
+      try {
+        const summary = await api.lendingSummary();
+        if (seq === this.lendingReadSeq) this.deps.store.setLending(summary);
+        return;
+      } catch (err) {
+        if (!isMissingRoute(err)) {
+          console.warn("could not load the lending numbers", err);
+          return;
+        }
+      }
+    }
+    if (!api.lendingSettings || !api.lendingLoans) return;
     try {
       const settings = await api.lendingSettings();
       if (!settings.enabled) {

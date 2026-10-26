@@ -63,6 +63,16 @@
 		reverse_proxy app:8000
 	}
 
+	# The equipment CSV import (M173, docs/LENDING.md §5.4): a file of up to 1 MB (the app checks it) plus the multipart
+	# overhead, which the 1 MB below would cut off.
+	@lendingimport path /api/v1/lending/items/import
+	handle @lendingimport {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy app:8000
+	}
+
 	# The drive's resumable uploads (M160, docs/DRIVE.md §6, §9.6): one part of 16 MiB (DRIVE_PART_BYTES) per request,
 	# the body checked by the app (size and SHA-256). Everything else of the drive is JSON under the 1 MB below.
 	@driveparts path_regexp ^/api/v1/drive/uploads/[^/]+/parts/[0-9]+$

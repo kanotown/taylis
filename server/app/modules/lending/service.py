@@ -240,6 +240,16 @@ async def bootstrap(db: AsyncSession, actor: User) -> LendingSummaryOut | None:
     )
 
 
+async def summary(db: AsyncSession, actor: User) -> LendingSummaryOut:
+    """`GET /lending/summary` (L7): the bootstrap's `lending` on its own, for the clients' numbers
+    after lending.updated. 403 guest_restricted, 409 lending_disabled where the bootstrap says
+    null."""
+    await require_ledger(db, actor)
+    out = await bootstrap(db, actor)
+    assert out is not None
+    return out
+
+
 async def forget_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
     """For the admin module: an anonymized person is no longer a keeper (their loans stay, under
     the anonymized name)."""
@@ -302,6 +312,10 @@ async def _keeper(db: AsyncSession, actor: User) -> LendingSettings:
     settings = await require_ledger(db, actor)
     _require_keeper(actor, settings)
     return settings
+
+
+# For csvio.py (L7): the same check.
+require_keeper = _keeper
 
 
 # --- categories (§5.2) ------------------------------------------------------------------------
