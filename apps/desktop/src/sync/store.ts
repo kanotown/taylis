@@ -1,6 +1,6 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceLook, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActionListOut, ActionStatusListOut, ActionStatusOut, ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
+import type { ActionListOut, ActionStatusListOut, ActionStatusOut, ActivitySummaryOut, AttendanceBoardOut, AttendanceEntryOut, CanvasMeta, LendingSummaryOut, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 import { statusKey } from "../ui/actions";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
@@ -219,6 +219,22 @@ export class Store {
     const held = this.actionStatuses.get(key);
     if (held && held.fetched_at > status.fetched_at) return;
     this.actionStatuses = new Map(this.actionStatuses).set(key, status);
+    this.emit();
+  }
+  /**
+   * M170 (docs/LENDING.md §5.1, §12.1): 「備品」's numbers (not persisted); null for guests and bots, while the feature is
+   * off, and on a server before M167. From the bootstrap, and worked out again from GET /lending/settings and the loans
+   * after lending.updated (there is no summary route). `lendingRevision` counts the lending.updated bursts: an open page
+   * reads its lists again when it moves.
+   */
+  lending: LendingSummaryOut | null = null;
+  lendingRevision = 0;
+  setLending(summary: LendingSummaryOut | null): void {
+    this.lending = summary && summary.enabled ? summary : null;
+    this.emit();
+  }
+  noteLendingChanged(): void {
+    this.lendingRevision += 1;
     this.emit();
   }
   /** One person's row (attendance.updated, or my own change). False when the state is not known here (read again). */
@@ -856,6 +872,14 @@ export class Store {
   eraseActivityExcerpts(itemIds: readonly string[]): void {
     if (itemIds.length === 0) return;
     this.erasedActivityItems = new Set([...this.erasedActivityItems, ...itemIds]);
+    this.doneActivityItems = new Set([...this.doneActivityItems, ...itemIds]);
+    this.activityEdits += 1;
+    this.emit();
+  }
+
+  /** M170: to-dos I just handled here (a teacher's decision); activity.updated confirms them from the server. */
+  noteActivityItemsDone(itemIds: readonly string[]): void {
+    if (itemIds.length === 0) return;
     this.doneActivityItems = new Set([...this.doneActivityItems, ...itemIds]);
     this.activityEdits += 1;
     this.emit();

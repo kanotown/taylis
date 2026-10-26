@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowLeft, ArrowRight, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, ChevronDown, DoorOpen, FileText, Files, HardDrive, Hash, Keyboard, ListTodo, Lock, Megaphone, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Pin, Search, Star, Ticket, Timer, Users, Zap } from "lucide-react";
+import { AlarmClock, ArrowLeft, ArrowRight, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, ChevronDown, DoorOpen, FileText, Files, HardDrive, Hash, Keyboard, ListTodo, Lock, Megaphone, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Package, Pin, Search, Star, Ticket, Timer, Users, Zap } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -18,6 +18,8 @@ import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
 import { FeedsDialog } from "./ChannelFeeds";
 import { ReservationsView } from "./Reservations";
+import { LendingView } from "./Lending";
+import { lendingBadgeCount } from "./lendingRules";
 import { AttendanceView } from "./AttendanceView";
 import { pressable } from "./actions";
 import { ActionsView } from "./ActionsView";
@@ -103,8 +105,9 @@ import { canManageChannelByRight } from "./roles";
 // "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
 // "docs" (M121): 「ドキュメント」, the Docs tree and a page (WIKI.md §9.1).
 // "attendance" (M140): 「在室状況」, the workspace's board (docs/PRESENCE.md §7).
+// "lending" (M170): 「備品」, the workspace's equipment lending (docs/LENDING.md §12.2).
 // "drive" (M161): 「ドライブ」, the locations and their folders (docs/DRIVE.md §17).
-const CENTRE_VIEWS = ["channel", "threads", "saved", "activity", "drafts", "files", "reminders", "search", "canvases", "calendar", "tasks", "deadlines", "times", "reservations", "docs", "attendance", "actions", "drive"] as const;
+const CENTRE_VIEWS = ["channel", "threads", "saved", "activity", "drafts", "files", "reminders", "search", "canvases", "calendar", "tasks", "deadlines", "times", "reservations", "lending", "docs", "attendance", "actions", "drive"] as const;
 type CentreView = (typeof CENTRE_VIEWS)[number];
 const CONVERSATION_TABS: readonly ConversationTab[] = ["messages", "canvas", "events", "tasks", "drive", "pins", "files"];
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
@@ -747,6 +750,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
     openView("reservations");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.openReservationsRequest]);
+  // M170: an equipment notification (or activity row) asked for 「備品」 (the page itself goes to the loan or item).
+  const lendingAsk = controller.openLendingRequest?.seq;
+  const lendingAsked = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (lendingAsk === undefined || lendingAsk === lendingAsked.current) return;
+    lendingAsked.current = lendingAsk;
+    openView("lending", false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lendingAsk]);
   useEffect(() => {
     const request = controller.openTaskRequest;
     if (!request) return;
@@ -879,7 +891,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions" | "drive") => {
+  /** `toggle`: pressing the open page's item again goes back to the conversation (not for a notification's request). */
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "lending" | "docs" | "attendance" | "actions" | "drive", toggle = true) => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -889,7 +902,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPinsOpen(false);
     resetConversation();
     setPane("main");
-    setView((v) => (v === next && !compactRef.current ? "channel" : next));
+    setView((v) => (v === next && toggle && !compactRef.current ? "channel" : next));
   };
 
   const openThreads = () => {
@@ -956,6 +969,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
     // M112: a reservation notice opens 「予約」.
     if (item.reservation) {
       openView("reservations");
+      return;
+    }
+    // M170: an equipment notice opens 「備品」 at its loan, else its item, else (the keepers' summary) the overdue list.
+    if (item.lending) {
+      controller.requestOpenLending({ itemId: item.lending.lending_item_id, loanId: item.lending.loan_id });
       return;
     }
     // M121: a page mention or a page shared with me opens the page.
@@ -1320,6 +1338,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       case "deadlines": return viewItem(t("nav.deadlines"), Timer);
       case "times": return viewItem(t("sidebar.timesFeed"), Newspaper);
       case "reservations": return viewItem(t("nav.reservations"), Ticket);
+      case "lending": return viewItem(t("nav.lending"), Package);
       case "attendance": return viewItem(t("nav.attendance"), DoorOpen);
       case "actions": return viewItem(t("nav.actions"), Zap);
       case "docs": {
@@ -1565,6 +1584,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onReservations={store.reservationPools ? () => openView("reservations") : undefined}
       reservationsActive={view === "reservations"}
       reservationsCount={reservationTodoCount(store.reservationPools)}
+      onLending={store.lending ? () => openView("lending") : undefined}
+      lendingActive={view === "lending"}
+      lendingCount={lendingBadgeCount(store.lending)}
       onAttendance={store.attendance ? () => openView("attendance") : undefined}
       attendanceActive={view === "attendance"}
       attendanceCount={store.attendance ? inRoomCount(store.attendance, store.users.values()) : 0}
@@ -1724,6 +1746,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <DeadlinesView controller={controller} />
       ) : view === "reservations" ? (
         <ReservationsView controller={controller} />
+      ) : view === "lending" ? (
+        <LendingView controller={controller} />
       ) : view === "attendance" ? (
         <AttendanceView controller={controller} />
       ) : view === "actions" ? (
@@ -2180,6 +2204,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onTasks={() => openView("tasks")}
           onDeadlines={() => openView("deadlines")}
           onReservations={store.reservationPools ? () => openView("reservations") : undefined}
+          onLending={store.lending ? () => openView("lending") : undefined}
           onAttendance={store.attendance ? () => openView("attendance") : undefined}
           onActions={pressable(store.actions).length ? () => openView("actions") : undefined}
           onBrowse={() => setDialog("browse")}

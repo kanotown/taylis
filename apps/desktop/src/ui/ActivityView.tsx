@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ActivityFilter, ActivityItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { MessageState, ThreadEntry } from "../sync/types";
-import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, newestActivityAt, type ReadPositions } from "./activity";
+import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isDoneActivity, isShownActivity, newestActivityAt, type ReadPositions } from "./activity";
 import { Avatar } from "./Avatar";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { fullTimestamp } from "./format";
@@ -16,6 +16,7 @@ import { dmTimeLabel } from "./mobileTabs";
 import { Button, cn } from "./primitives";
 import { ThreadsView } from "./ThreadsView";
 import { EmojiText } from "./UserPopover";
+import { DenyDialog } from "./Lending";
 import { t } from "../i18n";
 
 export type ActivitySegment = "mentions" | "threads";
@@ -136,7 +137,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
   // another device), and what I read in its conversation or thread (here or on another device) take the dot at once.
   const readAt = summary?.read_at ?? null;
   const positions: ReadPositions = { channel: (id) => store.getChannel(id)?.lastReadSeq, thread: (id) => store.threadReadSeqs.get(id) };
-  const unreadOf = (item: ActivityItem) => isActivityUnread(item, readAt, { listReadAt: list?.readAt, positions, opened: store.openedActivityItems }) && !(item.reservation && (item.reservation.done || store.doneActivityItems.has(item.reservation.item_id)));
+  const unreadOf = (item: ActivityItem) => isActivityUnread(item, readAt, { listReadAt: list?.readAt, positions, opened: store.openedActivityItems }) && !isDoneActivity(item, store.doneActivityItems);
   const items = (list?.items ?? []).filter((item) => !unreadOnly || unreadOf(item));
   return (
     <section aria-label={t("nav.activity")} className="flex min-h-0 flex-1 flex-col bg-canvas">
@@ -218,6 +219,7 @@ const KIND_ICON = {
 /** What a row quotes: the message's opening words, or (a canvas mention, M76) the line around the mention. */
 function activityExcerpt(item: ActivityItem, controller: AppController): string {
   if (item.reservation) return item.reservation.text; // M112
+  if (item.lending) return item.lending.text; // M170 (the line starts with its own emoji)
   // An erased canvas revision blanks the excerpt (`activity.updated`, review v0.1.22 #3), even in a list already loaded.
   if (item.canvas) return controller.store.erasedActivityItems.has(item.canvas.item_id) ? "" : item.canvas.excerpt;
   if (item.page) return controller.store.erasedActivityItems.has(item.page.item_id) ? "" : item.page.excerpt; // M121
@@ -243,8 +245,10 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
   const fallbackActor = item.message?.sender_id ?? "";
   // page_mention / page_shared (M121) and canvas mentions show a page glyph.
   const kindIcon = item.kind === "mention" || item.kind === "thread_reply" || item.kind === "reaction" ? KIND_ICON[item.kind] : null;
-  // M112: a to-do another operator handled (or no longer needed) is done: greyed with 「対応済み」.
-  const done = !!item.reservation && (item.reservation.done || store.doneActivityItems.has(item.reservation.item_id));
+  // M112: a to-do another operator handled (or no longer needed) is done: greyed with 「対応済み」. M170: a teacher's
+  // permission check is done once they decided (or 14 days after the return).
+  const done = isDoneActivity(item, store.doneActivityItems);
+  if (item.lending) return <LendingActivityRow controller={controller} item={item} unread={unread} done={done} onOpen={onOpen} />;
   if (item.reservation) {
     return (
       <button
@@ -321,6 +325,68 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
         {excerpt && <span className={cn("mt-0.5 line-clamp-2 text-[13.5px] leading-snug", unread ? "text-ink/85" : "text-muted")}><EmojiText controller={controller} text={item.kind === "reaction" ? t("common.quoted", { text: excerpt }) : excerpt} /></span>}
       </span>
     </button>
+  );
+}
+
+/**
+ * M170 (docs/LENDING.md §12.1, §17.3): an equipment notice, 📦; it opens 「備品」 at its loan (or item). The teacher's
+ * to-do (`role: approver`, not done) also has 「許可していない」 and 「確認した」 under it.
+ */
+function LendingActivityRow({ controller, item, unread, done, onOpen }: { controller: AppController; item: ActivityItem; unread: boolean; done: boolean; onOpen: () => void }) {
+  const store = controller.store;
+  const lending = item.lending!;
+  const nameOf = (id: string) => store.users.get(id)?.display_name ?? t("common.member");
+  const { who, what } = activityHeadline(item, nameOf);
+  const [denying, setDenying] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const asks = lending.role === "approver" && !done && !!lending.loan_id;
+  const finished = () => {
+    store.noteActivityItemsDone([lending.item_id]);
+    void controller.markActivityItemsRead([item]);
+  };
+  const confirm = async () => {
+    if (!lending.loan_id || !controller.api) return;
+    setBusy(true);
+    try {
+      await controller.api.decideLendingPermission(lending.loan_id, { decision: "confirmed" });
+      finished();
+    } catch (error) {
+      controller.setError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div data-activity="lending" data-unread={unread || undefined} data-done={done || undefined} className={cn("md:rounded-xl", unread && !done && "bg-accent-soft/40", done && "opacity-60")}>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`${unread ? `${t("sidebar.unread")} ` : ""}${activityHeadlineText(item, nameOf)}${done ? ` · ${t("activity.done")}` : ""}`}
+        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl"
+      >
+        <span className="flex w-2.5 shrink-0 justify-center pt-4" aria-hidden="true">
+          {unread && !done && <span className="h-2 w-2 rounded-full bg-accent" />}
+        </span>
+        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-[20px]">📦</span>
+        <span className="min-w-0 flex-1 pl-1">
+          <span className="flex items-baseline gap-2">
+            <span className={cn("min-w-0 flex-1 truncate text-[14px]", unread && !done ? "font-semibold text-ink" : "text-ink/75")}><strong className={unread && !done ? "font-bold" : "font-medium"}>{who}</strong>{what}</span>
+            {done && <span className="shrink-0 text-xs text-muted">{t("activity.done")}</span>}
+            <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
+          </span>
+          <span className={cn("mt-0.5 line-clamp-3 text-[13.5px] leading-snug", unread && !done ? "text-ink/85" : "text-muted")}>{lending.text}</span>
+        </span>
+      </button>
+      {asks && (
+        <div className="flex flex-wrap gap-2 pb-2.5 pl-[4.25rem] pr-3" data-lending-decision>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setDenying(true)}>{t("lending.deny")}</Button>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => void confirm()}>{t("lending.confirm")}</Button>
+        </div>
+      )}
+      {denying && lending.loan_id && (
+        <DenyDialog controller={controller} loanId={lending.loan_id} itemName={lending.item_name ?? t("nav.lending")} onClose={() => setDenying(false)} onDone={() => { setDenying(false); finished(); }} />
+      )}
+    </div>
   );
 }
 

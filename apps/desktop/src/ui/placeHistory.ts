@@ -8,7 +8,7 @@ import type { SearchParams } from "./search";
  * Pure: MainScreen records the place on screen with `visit` and moves with `go`.
  */
 
-export type PlaceView = "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs" | "attendance" | "actions" | "drive";
+export type PlaceView = "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "lending" | "docs" | "attendance" | "actions" | "drive";
 
 /** docs/DRIVE.md §27: where 「ドライブ」 is — a location's folder, or its trash. */
 export interface DrivePlace {

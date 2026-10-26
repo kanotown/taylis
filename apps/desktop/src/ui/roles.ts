@@ -23,6 +23,7 @@ export type Capability =
   | "attendance.manage"
   | "attendance.configure"
   | "reservations.manage"
+  | "lending.manage"
   | "reports.manage"
   | "reports.read_private"
   | "workspace.settings"
@@ -45,7 +46,7 @@ export function capabilitiesOf(me: Me): ReadonlySet<string> {
 const ALL: ReadonlySet<string> = new Set<Capability>([
   "users.view", "users.view_private", "users.edit_profile", "users.manage", "invites.manage", "roster.manage", "lab.rollover",
   "channels.manage", "channels.manage_any", "channels.make_public", "channels.moderate", "emoji.manage", "templates.manage",
-  "attendance.manage", "attendance.configure", "reservations.manage", "reports.manage", "reports.read_private",
+  "attendance.manage", "attendance.configure", "reservations.manage", "lending.manage", "reports.manage", "reports.read_private",
   "workspace.settings", "groups.manage", "integrations.manage", "ai.manage", "analytics.view", "docs.admin", "drive.admin",
 ]);
 
@@ -53,7 +54,7 @@ export function hasCapability(me: Me, capability: Capability): boolean {
   return capabilitiesOf(me).has(capability);
 }
 
-export type AdminTab = "users" | "analytics" | "reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates" | "docs" | "drive" | "attendance" | "actions";
+export type AdminTab = "users" | "analytics" | "reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates" | "docs" | "drive" | "attendance" | "actions" | "lending";
 
 /** Which capability opens each tab of 「管理」 (docs/ROLES.md §7); the workspace tab also for the default channels. */
 const TAB_NEEDS: Record<AdminTab, Capability[]> = {
@@ -74,6 +75,8 @@ const TAB_NEEDS: Record<AdminTab, Capability[]> = {
   emoji: ["emoji.manage"],
   "canvas-templates": ["templates.manage"],
   docs: ["docs.admin"],
+  // M170 (docs/LENDING.md §12.2): 「備品」's switch, keepers and defaults (also on the page's 「設定」 tab).
+  lending: ["lending.manage"],
   // M162 (docs/DRIVE.md §11.2): the drive's usage and quotas.
   drive: ["drive.admin"],
 };

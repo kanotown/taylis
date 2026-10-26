@@ -78,7 +78,7 @@ describe("the rules", () => {
     const keys = (list: NavItem[] | null) => list?.map((item) => item.key);
     // Before 「アクティビティ」: the phones' times-feed and the items this client does not draw keep their slots.
     const moved = navItemsAfterPlaceDrop(null, DESKTOP_NAV_KEYS, "saved", "activity", false);
-    expect(keys(moved)).toEqual(["threads", "saved", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "times-feed", "attendance", "actions"]);
+    expect(keys(moved)).toEqual(["threads", "saved", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "lending", "reservations", "times-feed", "attendance", "actions"]); // M170: 「備品」 (not drawn here) keeps its slot
     expect(moved!.every((item) => item.visible)).toBe(true);
     // After a target; the phones' visibility and an unknown key are kept.
     const stored: NavItem[] = [{ key: "future", visible: true }, ...fullNavItems(null).map((item) => (item.key === "files" ? { ...item, visible: false } : item))];

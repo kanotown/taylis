@@ -15,7 +15,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadsReadAllOut, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
-import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, AttendanceEntryOut, NotificationTest, ReservationNotice } from "../api/types";
+import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, AttendanceEntryOut, LendingLoanOut, LendingNotice, LendingSettingsOut, LendingSummaryOut, NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
@@ -79,6 +79,9 @@ export interface SyncApi {
   attendance?(): Promise<AttendanceBoardOut>;
   /** M143: the 操作ボタン I may press (docs/ACTIONS.md §7.1). Optional (older fakes). */
   actions?(): Promise<ActionListOut>;
+  /** M170: 「備品」's settings and loans (docs/LENDING.md §5), for its numbers after lending.updated. Optional (older fakes). */
+  lendingSettings?(): Promise<LendingSettingsOut>;
+  lendingLoans?(scope?: "mine" | "active" | "overdue" | "approved"): Promise<LendingLoanOut[]>;
   /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
   listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
   getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
@@ -197,6 +200,8 @@ export interface EngineDeps {
   onCanvasMention?: (mention: CanvasMentioned, channel: ChannelState) => void;
   /** M112: reservation.notice, an activity item about reservations for me (the server pushes to phones). */
   onReservationNotice?: (notice: ReservationNotice) => void;
+  /** M170: lending.notice, an activity item about equipment for me (the server pushes to phones). */
+  onLendingNotice?: (notice: LendingNotice) => void;
   /** M121: a Docs page newly mentions me, or was shared with me by name (the server pushes to phones). */
   onWikiNotice?: (notice: WikiNotice) => void;
   /** PUSH_NOTIFICATIONS.md §15: notification.test, a test notification I asked for (here or on another device). */
@@ -278,6 +283,9 @@ export class SyncEngine {
   private reservationReload: ReturnType<typeof setTimeout> | null = null;
   /** M140: attendance.config_updated comes in bursts (a reorder, several edits): one read for them. */
   private attendanceReload: ReturnType<typeof setTimeout> | null = null;
+  /** M170: lending.updated comes once per change (docs/LENDING.md §9: a burst is one read after 300 ms). */
+  private lendingReload: ReturnType<typeof setTimeout> | null = null;
+  private lendingReadSeq = 0;
   /** M143: actions.updated comes in bursts too (a reorder, several edits): one read for them. */
   private actionsReload: ReturnType<typeof setTimeout> | null = null;
   /** Review v0.1.37 #6: the newest reservation read started, and the one whose answer is shown. */
@@ -810,6 +818,10 @@ export class SyncEngine {
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
     store.setAttendance(bootstrap.attendance ?? null); // M140: null for guests, while off, before M140
     store.setActions(bootstrap.actions ?? null); // M143: null for guests, while off, before M143
+    // M170: null for guests, while off, before M167; an open 「備品」 page reads again (changes while away, §9).
+    this.lendingReadSeq += 1;
+    store.setLending(bootstrap.lending ?? null);
+    store.noteLendingChanged();
     this.wiki.applyBootstrap(bootstrap.wiki); // M121: the Docs tree (read, or caught up from its feed)
     void this.loadScheduled();
     void this.loadReminders();
@@ -1034,6 +1046,18 @@ export class SyncEngine {
         // M112: an activity item for me (an operator's to-do, or news of my own reservation): the badge, a banner.
         this.scheduleActivityRefresh();
         this.deps.onReservationNotice?.(frame.data as unknown as ReservationNotice);
+        return;
+      case "lending.updated":
+        // M170 (docs/LENDING.md §9): the ledger, a loan or the settings changed; what one may see differs per person,
+        // so the event is empty: the open page reads again, and the numbers are worked out again.
+        this.scheduleLendingReload();
+        return;
+      case "lending.notice":
+        // M170: an activity item for me (my loan, the teacher's to-do, the keepers', a watched item back). The morning's
+        // reminders come with no lending.updated, yet a loan may have just become overdue: the numbers are read again.
+        this.scheduleActivityRefresh();
+        this.scheduleLendingReload();
+        this.deps.onLendingNotice?.(frame.data as unknown as LendingNotice);
         return;
       case "draft.updated":
         this.drafts.applyEvent(frame.data as unknown as DraftUpdated);
@@ -1512,6 +1536,38 @@ export class SyncEngine {
       this.actionsReload = null;
       if (this.status === "online") void this.loadActions();
     }, 300);
+  }
+
+  private scheduleLendingReload(): void {
+    if (this.lendingReload !== null) return;
+    this.lendingReload = setTimeout(() => {
+      this.lendingReload = null;
+      if (this.status !== "online") return;
+      this.deps.store.noteLendingChanged();
+      void this.loadLendingSummary();
+    }, 300);
+  }
+
+  /**
+   * M170 (docs/LENDING.md §5.1): the bootstrap's `lending` numbers, worked out again after lending.updated: the settings
+   * (on / off, am I a keeper), my loans, and for keepers every active loan. A server before M167 answers 404: nothing.
+   */
+  async loadLendingSummary(): Promise<void> {
+    const api = this.deps.api;
+    if (!api.lendingSettings || !api.lendingLoans) return;
+    const seq = ++this.lendingReadSeq;
+    try {
+      const settings = await api.lendingSettings();
+      if (!settings.enabled) {
+        if (seq === this.lendingReadSeq) this.deps.store.setLending(null);
+        return;
+      }
+      const [mine, active] = await Promise.all([api.lendingLoans("mine"), settings.is_keeper ? api.lendingLoans("active") : Promise.resolve([])]);
+      if (seq !== this.lendingReadSeq) return; // a newer read (or a bootstrap) answered meanwhile
+      this.deps.store.setLending(lendingSummaryOf(settings, mine, active, (id) => !!this.deps.store.users.get(id)?.deactivated_at));
+    } catch (err) {
+      console.warn("could not load the lending numbers", err);
+    }
   }
 
   private scheduleAttendanceReload(): void {
@@ -2476,6 +2532,23 @@ function loadedRange(page: HistoryOut): Pick<ChannelState, "oldestLoadedSeq" | "
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * M170 (docs/LENDING.md §5.1, §17.2): the bootstrap's `lending` from the settings and the loans, as the server counts it:
+ * my loans not returned and those past due; for keepers, the active loans at least `keeper_overdue_days` past due or of
+ * a deactivated person.
+ */
+export function lendingSummaryOf(settings: LendingSettingsOut, mine: readonly LendingLoanOut[], active: readonly LendingLoanOut[], deactivated: (userId: string) => boolean): LendingSummaryOut {
+  const open = mine.filter((loan) => loan.status === "active");
+  return {
+    enabled: settings.enabled,
+    is_keeper: settings.is_keeper,
+    my_active_count: open.length,
+    my_overdue_count: open.filter((loan) => loan.overdue_days > 0).length,
+    keeper_attention_count: settings.is_keeper ? active.filter((loan) => loan.status === "active" && (loan.overdue_days >= settings.keeper_overdue_days || deactivated(loan.borrower_id))).length : 0,
+    settings_updated_at: settings.updated_at ?? null,
+  };
 }
 
 function defaultId(): string {
