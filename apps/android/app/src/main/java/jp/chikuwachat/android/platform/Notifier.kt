@@ -63,9 +63,11 @@ class Notifier(private val context: Context) {
         reservations: Boolean = false,
         /** M122: a page's notice (a mention, a page shared with me): the tap opens the page. */
         pageId: String? = null,
+        /** M172: an equipment notice: the tap opens its loan, item or (the keepers' summary) the overdue list. */
+        lending: LendingTarget? = null,
     ) {
         if (!permitted) return
-        val pending = contentIntent(channelId, key, workspace, messageId, parentId, reveal, eventId, taskId, canvasId, reservations, pageId)
+        val pending = contentIntent(channelId, key, workspace, messageId, parentId, reveal, eventId, taskId, canvasId, reservations, pageId, lending)
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -150,6 +152,7 @@ class Notifier(private val context: Context) {
     private fun contentIntent(
         channelId: String?, key: String, workspace: String?, messageId: String?, parentId: String?, reveal: Boolean = false,
         eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false, pageId: String? = null,
+        lending: LendingTarget? = null,
     ): PendingIntent {
         // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -160,6 +163,11 @@ class Notifier(private val context: Context) {
             if (canvasId != null) putExtra(EXTRA_CANVAS_ID, canvasId)
             if (reservations) putExtra(EXTRA_RESERVATIONS, true)
             if (pageId != null) putExtra(EXTRA_PAGE_ID, pageId)
+            if (lending != null) {
+                putExtra(EXTRA_LENDING, true)
+                lending.itemId?.let { putExtra(EXTRA_LENDING_ITEM_ID, it) }
+                lending.loanId?.let { putExtra(EXTRA_LOAN_ID, it) }
+            }
             if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
             if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
             if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
@@ -234,6 +242,10 @@ class Notifier(private val context: Context) {
         const val EXTRA_CANVAS_ID = "canvas_id"
         const val EXTRA_PAGE_ID = "page_id"
         const val EXTRA_RESERVATIONS = "reservations"
+        /** M172: an equipment notice, with its item and loan when it has them. */
+        const val EXTRA_LENDING = "lending"
+        const val EXTRA_LENDING_ITEM_ID = "lending_item_id"
+        const val EXTRA_LOAN_ID = "loan_id"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
         /** Notifications are told apart by their tag (the key); the id is the same for all. */

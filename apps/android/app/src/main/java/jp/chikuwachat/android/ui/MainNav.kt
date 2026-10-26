@@ -90,6 +90,15 @@ sealed interface Route {
     @Serializable @SerialName("reservations")
     data object Reservations : Pane { override val keptUnderConversation get() = true }
 
+    /**
+     * M172 (docs/LENDING.md §12.3): 「備品」. No ids: the list (the home's tile), on its [overdue] segment for a keeper's
+     * morning summary; [itemId]: one item; [loanId]: one loan. Each page opened is a route of its own (back returns).
+     */
+    @Serializable @SerialName("lending")
+    data class Lending(val itemId: String? = null, val loanId: String? = null, val overdue: Boolean = false) : Pane {
+        override val keptUnderConversation get() = true
+    }
+
     /** M140 (docs/PRESENCE.md §9): 「在室状況」, from the home's tile (while the board is on); a person opens the profile card. */
     @Serializable @SerialName("attendance")
     data object Attendance : Pane { override val keptUnderConversation get() = true }
@@ -301,6 +310,22 @@ object MainNav {
     /** M112: 「予約」 over the home's list (a tapped notice); one already open stays as it is. */
     fun openReservations(stack: List<Route>): List<Route> =
         if (top(stack) == Route.Reservations) stack else stack.filter { it is Route.Root } + Route.Reservations
+
+    /** M172: an item or a loan of 「備品」 over what is on screen (a row, an activity row); the same page on top stays. */
+    fun openLending(stack: List<Route>, itemId: String? = null, loanId: String? = null): List<Route> {
+        val route = Route.Lending(itemId = itemId, loanId = loanId)
+        return if (top(stack) == route) stack else stack + route
+    }
+
+    /**
+     * M172 (docs/LENDING.md §17.3): a lending notice from outside the page: the list over the tab's root, then the loan
+     * (else the item); a notice with neither (the keepers' summary) opens the list on its overdue segment.
+     */
+    fun landLending(stack: List<Route>, itemId: String?, loanId: String?): List<Route> = when {
+        loanId != null -> listOf(rootOf(stack), Route.Lending(), Route.Lending(loanId = loanId))
+        itemId != null -> listOf(rootOf(stack), Route.Lending(), Route.Lending(itemId = itemId))
+        else -> listOf(rootOf(stack), Route.Lending(overdue = true))
+    }
 
     /** M56: 「タスク」 over the home's list (the tile, or a personal task's notification); one already open stays as it is. */
     fun openMyTasks(stack: List<Route>): List<Route> =

@@ -1,5 +1,11 @@
 package jp.chikuwachat.android.platform
 
+/**
+ * M172 (docs/LENDING.md §8.3, §17.3): where a lending notice's tap goes — the loan, else the item, else (both null: the
+ * keepers' morning summary) the overdue list.
+ */
+data class LendingTarget(val itemId: String?, val loanId: String?)
+
 /** The data-only FCM message the server sends (PUSH_NOTIFICATIONS.md §5); keys are all strings. */
 data class PushMessage(
     val kind: String,
@@ -34,6 +40,9 @@ data class PushMessage(
     val senderName: String? = null,
     val senderAvatar: String? = null,
     val channelType: String? = null,
+    /** M172 (docs/LENDING.md §8.3): an equipment notice's item and loan (`kind = lending`; both null for the keepers' summary). */
+    val lendingItemId: String? = null,
+    val loanId: String? = null,
     /** 2026-10-15: whom the server sent it to (the device's owner); absent from older servers. */
     val recipientId: String? = null,
 ) {
@@ -54,11 +63,17 @@ data class PushMessage(
     /** M112: a reservation notice (an operator's to-do, or news of my own reservation): the tap opens 「予約」. */
     val isReservation: Boolean get() = kind == "reservation"
 
+    /** M172: an equipment notice; the tap opens the loan, else the item, else (the keepers' summary) the overdue list. */
+    val isLending: Boolean get() = kind == "lending"
+
+    /** M172: what a lending notification's tap opens (null for any other kind). */
+    val lendingTarget: LendingTarget? get() = if (isLending) LendingTarget(lendingItemId, loanId) else null
+
     /** §15: 「テスト通知を送る」: no conversation; the tap only opens the app. */
     val isTest: Boolean get() = kind == "test"
 
     /** Whether it becomes a notification: a conversation's, or a calendar alarm's / a task's / a test's (which have no conversation). */
-    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest || isReservation || isPage)
+    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest || isReservation || isPage || isLending)
 
     /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
     val isReaction: Boolean get() = kind == "reaction"
@@ -102,6 +117,8 @@ data class PushMessage(
         "page" -> collapseKey ?: pageId?.let { "page:$it" }
         // M112: one per notice ("reservation:<item id>", the server's collapse key).
         "reservation" -> collapseKey ?: "reservation"
+        // M172: one per loan ("lending:loan:<loan id>", the server's collapse key): the next morning's reminder replaces it.
+        "lending" -> collapseKey ?: loanId?.let { "lending:loan:$it" } ?: lendingItemId?.let { "lending:item:$it" } ?: "lending:overdue"
         // §15: one test notification at a time (the server's collapse key is "test").
         "test" -> collapseKey ?: "test"
         else -> channelId
@@ -131,6 +148,8 @@ data class PushMessage(
                 senderAvatar = data["sender_avatar"]?.takeIf { it.isNotBlank() },
                 channelType = data["channel_type"]?.takeIf { it.isNotBlank() },
                 recipientId = data["recipient_id"]?.takeIf { it.isNotBlank() },
+                lendingItemId = data["lending_item_id"]?.takeIf { it.isNotBlank() },
+                loanId = data["loan_id"]?.takeIf { it.isNotBlank() },
             )
         }
     }

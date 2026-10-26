@@ -303,6 +303,61 @@ class SyncEngine(
     }
 
     /**
+     * M172 (docs/LENDING.md §9): the settings (the zone of the due dates, the extension limit, keeper or not), read after
+     * a bootstrap that has the feature on and when lending.updated says `settings`. A failure keeps what was read.
+     */
+    suspend fun loadLendingSettings(): jp.chikuwachat.android.api.LendingSettingsOut? {
+        val lendingApi = api as? LendingApi ?: return null
+        if (store.me?.role == "guest") return null
+        return runCatching { lendingApi.lendingSettings() }.onSuccess { store.setLendingSettings(it) }
+            .onFailure { Log.w("SyncEngine", "could not read the lending settings", it) }.getOrNull()
+    }
+
+    /**
+     * M172: the tile's numbers worked out again after lending.updated (the event carries no content: what one sees differs
+     * per person). The settings are read again when the event says so or nothing is known yet (turned on elsewhere).
+     */
+    suspend fun reloadLending(settingsChanged: Boolean) {
+        val lendingApi = api as? LendingApi ?: return
+        if (store.me?.role == "guest") return
+        val settings = (if (settingsChanged || store.lendingSettings == null) loadLendingSettings() else store.lendingSettings) ?: return
+        if (!settings.enabled) {
+            store.setLending(null)
+            store.bumpLending()
+            return
+        }
+        runCatching {
+            val mine = lendingApi.lendingLoans("mine")
+            val active = if (settings.isKeeper) lendingApi.lendingLoans("active") else null
+            LendingSummary.of(settings, mine, active) { id -> store.users[id]?.deactivatedAt != null }
+        }.onSuccess { store.setLending(it) }.onFailure { Log.w("SyncEngine", "could not read the loans", it) }
+        store.bumpLending()
+    }
+
+    private var lendingReload: Job? = null
+    private var lendingDirty = false
+    private var lendingSettingsDirty = false
+
+    /** lending.updated comes in bursts (a borrow writes the item, the loan, the notices): one read 300 ms after the last. */
+    private fun scheduleLendingReload(settings: Boolean) {
+        lendingDirty = true
+        if (settings) lendingSettingsDirty = true
+        if (lendingReload?.isActive == true) return
+        lendingReload = scope.launch {
+            while (lendingDirty) {
+                kotlinx.coroutines.delay(300)
+                lendingDirty = false
+                val withSettings = lendingSettingsDirty
+                lendingSettingsDirty = false
+                reloadLending(withSettings)
+            }
+        }
+    }
+
+    /** M172: lending.notice while the app is open (the server pushes to phones not on screen). */
+    var onLendingNotice: ((jp.chikuwachat.android.api.LendingNotice) -> Unit)? = null
+
+    /**
      * M140 (docs/PRESENCE.md §4): GET /attendance (the page opening, attendance.config_updated, a row of an unknown
      * state); `enabled: false` (turned off) clears the board. Guests have none (403): not asked. An answer that started
      * before one already kept is dropped, as for the pools.
@@ -813,6 +868,10 @@ class SyncEngine(
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
         scope.launch { loadReservationPools() } // M112
+        // M172: the 「備品」 numbers (null for guests, while off, before M167); an open page reads again (missed events).
+        store.setLending(bootstrap.lending)
+        if (bootstrap.lending != null) scope.launch { loadLendingSettings() }
+        store.bumpLending()
     }
 
     /**
@@ -953,6 +1012,14 @@ class SyncEngine(
                 scheduleActivityRefresh()
                 runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.ReservationNotice.serializer(), frame.data) }
                     .onSuccess { notice -> onReservationNotice?.invoke(notice) }
+            }
+            // M172 (docs/LENDING.md §9): the ledger or a loan changed (no content: what one sees differs per person).
+            "lending.updated" -> scheduleLendingReload(settings = frame.data.bool("settings") == true)
+            "lending.notice" -> {
+                // M172: an activity item for me (my loan, the teacher's to-do, the keepers', an item I watched).
+                scheduleActivityRefresh()
+                runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.LendingNotice.serializer(), frame.data) }
+                    .onSuccess { notice -> onLendingNotice?.invoke(notice) }
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
             // M122 (SYNC_PROTOCOL.md §17): the tree's feed moved (what changed differs per person: read it), a page changed.

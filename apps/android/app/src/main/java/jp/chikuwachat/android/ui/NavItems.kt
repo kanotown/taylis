@@ -31,6 +31,8 @@ object NavItems {
         Entry("tasks", L10n.str(R.string.common_tasks), visible = true, platforms = BOTH),
         Entry("deadlines", L10n.str(R.string.common_deadlines), visible = true, platforms = BOTH),
         Entry("reservations", L10n.str(R.string.common_reservations), visible = true, platforms = BOTH),
+        // M170 / M172 (docs/LENDING.md §12.1): 「備品」 after 予約, implemented only while the workspace has it on (not for guests).
+        Entry("lending", L10n.str(R.string.lending_title), visible = true, platforms = BOTH),
         // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and I am not a guest).
         Entry("attendance", L10n.str(R.string.common_attendance), visible = true, platforms = BOTH),
         // M143 (docs/ACTIONS.md §9): 「操作」, implemented only while the buttons are on and I may press one.
@@ -38,8 +40,8 @@ object NavItems {
     )
 
     val order: Map<Platform, List<String>> = mapOf(
-        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"),
-        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "drive", "canvases", "docs", "activity", "attendance", "actions"),
+        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "lending", "saved", "times-feed", "attendance", "actions"),
+        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "lending", "files", "drive", "canvases", "docs", "activity", "attendance", "actions"),
     )
 
     /**
@@ -50,9 +52,11 @@ object NavItems {
     val implemented: List<String> get() = implemented(attendance = false)
 
     /** M166 (docs/DRIVE.md §26): 「ドライブ」 only once the server answered GET /drive/locations (it has the drive). */
-    fun implemented(attendance: Boolean, actions: Boolean = false, drive: Boolean = false): List<String> =
+    /** M172 (docs/LENDING.md §12.1): 「備品」 only while the workspace has it on (bootstrap's `lending`, never a guest's). */
+    fun implemented(attendance: Boolean, actions: Boolean = false, drive: Boolean = false, lending: Boolean = false): List<String> =
         HomeTile.entries.filter {
-            (attendance || it != HomeTile.ATTENDANCE) && (actions || it != HomeTile.ACTIONS) && (drive || it != HomeTile.DRIVE)
+            (attendance || it != HomeTile.ATTENDANCE) && (actions || it != HomeTile.ACTIONS) && (drive || it != HomeTile.DRIVE) &&
+                (lending || it != HomeTile.LENDING)
         }.map { it.navKey }
 
     private val byKey = catalogue.associateBy { it.key }

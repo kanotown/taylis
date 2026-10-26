@@ -637,6 +637,8 @@ data class BootstrapOut(
     val attendance: AttendanceBoardOut? = null,
     /** M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press; null for guests, while off, and from a server before M143. */
     val actions: ActionListOut? = null,
+    /** M172 (docs/LENDING.md §5.1): the 「備品」 tile's numbers; null for guests, while off, and from a server before M167. */
+    val lending: LendingSummaryOut? = null,
 )
 
 /**
@@ -875,6 +877,8 @@ data class ActivityItem(
     val reservation: ActivityReservation? = null,
     /** M122 (docs/WIKI.md §9.3): a page_mention / page_shared item's page (asked for with `include=page_mention` / `page_shared`). */
     val page: ActivityPage? = null,
+    /** M172 (docs/LENDING.md §8.2): an equipment notice (asked for with `include=lending`). */
+    val lending: ActivityLending? = null,
     /**
      * 2026-10-06 (MOBILE_UI.md §6.4): whether the server counts the item read: not newer than the activity read
      * position, or (a mention, a thread reply) read in its conversation or thread. Null from an older server: the
@@ -890,7 +894,7 @@ data class ActivityItem(
 ) {
     /** One row per kind and message (a reaction row is per message, whoever reacts next); a canvas one per item. */
     val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: reservation?.let { "reservation:${it.itemId}" }
-        ?: page?.let { "$kind:${it.itemId}" } ?: "$kind:${message?.id}"
+        ?: page?.let { "$kind:${it.itemId}" } ?: lending?.let { "lending:${it.itemId}" } ?: "$kind:${message?.id}"
 
     /** Whether this device can show the item: a kind it knows, with the part that kind needs. */
     val isShown: Boolean get() = when (kind) {
@@ -898,6 +902,7 @@ data class ActivityItem(
         "canvas_mention" -> canvas != null
         "reservation" -> reservation != null
         "page_mention", "page_shared" -> page != null
+        "lending" -> lending != null
         else -> false
     }
 
@@ -922,7 +927,7 @@ data class ActivityCanvas(
 /** M77 (CANVAS.md §20.3): the kinds beyond M39's this device reads, sent on every activity call (`include=`). */
 object ActivityInclude {
     /** M112: reservation notices too. */
-    val VALUES = listOf("canvas_mention", "reservation", "page_mention", "page_shared")
+    val VALUES = listOf("canvas_mention", "reservation", "page_mention", "page_shared", "lending")
 
     /** `name=canvas_mention&name=reservation&…` (M122: the pages' two kinds too). */
     fun query(name: String): String = VALUES.joinToString("&") { "$name=$it" }

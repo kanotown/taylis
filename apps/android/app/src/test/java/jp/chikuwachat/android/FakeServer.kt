@@ -169,10 +169,30 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi,
+        jp.chikuwachat.android.sync.LendingApi {
         override suspend fun me(): UserMe {
             maybeFail()
             return meOf(userId)
+        }
+
+        // --- M172 備品: the settings and the loans the engine reads after lending.updated ---
+
+        override suspend fun lendingSettings(): jp.chikuwachat.android.api.LendingSettingsOut {
+            maybeFail(); lendingSettingsReads += 1
+            if (users.getValue(userId).role == "guest") throw ApiException.Api(403, "guest_restricted", "guests")
+            return lendingSettings
+        }
+
+        override suspend fun lendingLoans(scope: String): List<jp.chikuwachat.android.api.LendingLoanOut> {
+            maybeFail(); lendingLoanReads += scope
+            if (!lendingSettings.enabled) throw ApiException.Api(409, "lending_disabled", "off")
+            return when (scope) {
+                "mine" -> lendingLoans.filter { it.borrowerId == userId }
+                "active" -> lendingLoans.filter { it.status == "active" }
+                "overdue" -> if (lendingSettings.isKeeper) lendingLoans.filter { it.overdueDays > 0 } else throw ApiException.Api(403, "lending_keeper_required", "keepers")
+                else -> lendingLoans.filter { it.approverId == userId }
+            }
         }
 
         // --- M69 iCal feeds (CALENDAR.md §10.3, §10.6): 5 per person, the URL only in the answer that makes one ---
@@ -750,6 +770,29 @@ class FakeServer {
         emit(nonGuests(), event("attendance.updated", null, null, Codec.snake.encodeToJsonElement(jp.chikuwachat.android.api.AttendanceEntryOut.serializer(), entry) as JsonObject))
     }
 
+    /** M172: 備品 (off by default, as the server); the loans of everyone (mine = the caller's). */
+    var lendingSettings = jp.chikuwachat.android.api.LendingSettingsOut(enabled = false)
+    var lendingLoans: List<jp.chikuwachat.android.api.LendingLoanOut> = emptyList()
+    /** GET /lending/loans calls, by scope. */
+    val lendingLoanReads = ArrayList<String>()
+    var lendingSettingsReads = 0
+
+    /** M172: lending.updated to everyone (no content), as the server sends after any ledger or loan change. */
+    fun publishLending(settings: Boolean = false) {
+        emit(users.keys.toSet(), event("lending.updated", null, null, buildJsonObject {
+            put("item_ids", kotlinx.serialization.json.JsonArray(emptyList()))
+            put("categories", false)
+            put("settings", settings)
+        }))
+    }
+
+    /** M172: a lending notice for one person (an activity item; the app shows a banner and a local notification). */
+    fun noticeLending(userId: String, text: String, loanId: String? = "loan-1") {
+        emit(setOf(userId), event("lending.notice", null, null, buildJsonObject {
+            put("item_id", "ln1"); put("lending_item_id", "item-1"); put("loan_id", loanId); put("role", "borrower"); put("text", text); put("at", "2026-10-26T00:00:00Z")
+        }))
+    }
+
     /** M143: the 操作ボタン (off by default, as the server); every non-guest may press all of them here. */
     var actionList = jp.chikuwachat.android.api.ActionListOut(enabled = false)
     var actionsReads = 0
@@ -1321,6 +1364,8 @@ class FakeServer {
             workspaceSettings = workspaceSettings,
             attendance = if (user.role == "guest" || !attendance.enabled) null else attendanceBoard(),
             actions = if (user.role == "guest" || !actionList.enabled) null else actionListFor(userId),
+            lending = if (user.role == "guest" || !lendingSettings.enabled) null
+            else jp.chikuwachat.android.sync.LendingSummary.of(lendingSettings, lendingLoans.filter { it.borrowerId == userId }, lendingLoans) { false },
         )
     }
 

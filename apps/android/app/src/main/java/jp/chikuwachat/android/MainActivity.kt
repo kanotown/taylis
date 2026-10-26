@@ -102,6 +102,14 @@ class MainActivity : ComponentActivity() {
             controller.openTaskFromNotification(workspace, channel, taskId)
             return
         }
+        // M172 (docs/LENDING.md §8.3): an equipment notice opens its loan, else its item, else the overdue list.
+        if (intent?.getBooleanExtra(Notifier.EXTRA_LENDING, false) == true) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            val target = jp.chikuwachat.android.platform.LendingTarget(intent.getStringExtra(Notifier.EXTRA_LENDING_ITEM_ID), intent.getStringExtra(Notifier.EXTRA_LOAN_ID))
+            listOf(Notifier.EXTRA_LENDING, Notifier.EXTRA_LENDING_ITEM_ID, Notifier.EXTRA_LOAN_ID, Notifier.EXTRA_WORKSPACE).forEach { intent.removeExtra(it) }
+            controller.openLendingFromNotification(workspace, target)
+            return
+        }
         // M112: a reservation notice opens 「予約」.
         if (intent?.getBooleanExtra(Notifier.EXTRA_RESERVATIONS, false) == true) {
             val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)

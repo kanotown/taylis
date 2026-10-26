@@ -334,6 +334,11 @@ enum class HomeTile(private val labelRes: Int?) {
     DEADLINES(R.string.common_deadlines),
     /** M112 (RESERVATIONS.md §6): the workspace's reservation pools, after 締切; the to-dos due in the pools I operate. */
     RESERVATIONS(R.string.common_reservations),
+    /**
+     * M172 (docs/LENDING.md §12.1): 「備品」, after 予約; only while the workspace has it on (never for a guest). The number
+     * is my overdue loans, plus for a keeper the loans needing their attention; red, shown only when there are some.
+     */
+    LENDING(R.string.lending_title),
     FILES(R.string.common_files),
     /** M166 (docs/DRIVE.md §26): 「ドライブ」, read only, after ファイル; only while the server has the drive; no number. */
     DRIVE(R.string.drive_title),
@@ -368,18 +373,21 @@ object HomeTiles {
     /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?, reservations: ReservationTile? = null,
-        attendance: Boolean = false, actions: Boolean = false, timesUnread: Boolean = true, drive: Boolean = false,
+        attendance: Boolean = false, actions: Boolean = false, timesUnread: Boolean = true, drive: Boolean = false, lending: LendingTile? = null,
     ): List<TileState> {
-        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions, timesUnread, drive).associateBy { it.tile.navKey }
-        return NavItems.tileKeys(navItems, NavItems.implemented(attendance, actions, drive)).mapNotNull { byKey[it] }
+        val byKey = tiles(threads, drafts, saved, firedReminders, reservations, attendance, actions, timesUnread, drive, lending).associateBy { it.tile.navKey }
+        return NavItems.tileKeys(navItems, NavItems.implemented(attendance, actions, drive, lending = lending != null)).mapNotNull { byKey[it] }
     }
+
+    /** M172: 備品 while the workspace has it on: the number to show (my overdue loans, and a keeper's attention count). */
+    data class LendingTile(val count: Int)
 
     /** M112: 予約 once the server answered the pools: the to-dos due (shown only for an operator, red when any). */
     data class ReservationTile(val todos: Int, val operates: Boolean)
 
     fun tiles(
         threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null, attendance: Boolean = false,
-        actions: Boolean = false, timesUnread: Boolean = true, drive: Boolean = false,
+        actions: Boolean = false, timesUnread: Boolean = true, drive: Boolean = false, lending: LendingTile? = null,
     ): List<TileState> {
         val row = base(threads, drafts, saved, firedReminders, timesUnread).toMutableList()
         if (drive) row.add(row.indexOfFirst { it.tile == HomeTile.FILES } + 1, TileState(HomeTile.DRIVE, null)) // M166
@@ -388,6 +396,11 @@ object HomeTiles {
         if (reservations != null) {
             val at = row.indexOfFirst { it.tile == HomeTile.DEADLINES }
             row.add(at + 1, TileState(HomeTile.RESERVATIONS, if (reservations.operates) reservations.todos else null, alert = reservations.todos > 0))
+        }
+        if (lending != null) {
+            // M172: after 予約 (or 締切 without it), as in apps/shared/nav-items.json.
+            val at = row.indexOfFirst { it.tile == HomeTile.RESERVATIONS }.takeIf { it >= 0 } ?: row.indexOfFirst { it.tile == HomeTile.DEADLINES }
+            row.add(at + 1, TileState(HomeTile.LENDING, lending.count.takeIf { it > 0 }, alert = lending.count > 0))
         }
         return row
     }
@@ -413,6 +426,7 @@ object HomeTiles {
             HomeTile.THREADS -> L10n.str(R.string.common_unread_2, count)
             HomeTile.REMINDERS -> L10n.str(R.string.channels_notified, count)
             HomeTile.RESERVATIONS -> L10n.str(R.string.channels_operator_tasks, count)
+            HomeTile.LENDING -> L10n.str(R.string.lending_tile_overdue, count)
             else -> L10n.str(R.string.common_count_items, count)
         }
         return L10n.str(R.string.common_pair, state.tile.label, number) + if (state.alert && state.tile == HomeTile.THREADS) L10n.str(R.string.common_has_mentions) else ""
