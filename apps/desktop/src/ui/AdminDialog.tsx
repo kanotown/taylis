@@ -12,6 +12,7 @@ import { ReportsTab } from "./AdminReportsTab";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
 import { AdminDocsTab } from "./AdminDocsTab";
 import { AdminDriveTab } from "./AdminDriveTab";
+import { LendingAdminTab } from "./Lending";
 import { EmojiAdminTab } from "./customEmoji";
 import { GroupsTab } from "./GroupsTab";
 import { InvitesTab } from "./InvitesTab";
@@ -66,6 +67,7 @@ export function AdminBody({ controller, className }: { controller: AppController
       ["canvas-templates", t("admin.tab.canvasTemplates")],
       ...(docs ? [["docs", t("nav.docs")]] : []),
       ["drive", t("nav.drive")],
+      ["lending", t("admin.tab.lending")],
     ] as Array<[Tab, string]>
   ).filter(([value]) => allowed(value));
   const [tab, setTab] = useState<Tab>(tabs[0]?.[0] ?? "users");
@@ -87,7 +89,7 @@ export function AdminBody({ controller, className }: { controller: AppController
         ))}
       </UnderlineTabRow>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tabs.length === 0 ? null : shown === "attendance" ? <AttendanceAdminTab controller={controller} /> : shown === "actions" ? <ActionsAdminTab controller={controller} /> : shown === "ai" ? <AiTab controller={controller} /> : shown === "analytics" ? <AnalyticsTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : shown === "docs" ? <AdminDocsTab controller={controller} /> : shown === "drive" ? <AdminDriveTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+        {tabs.length === 0 ? null : shown === "attendance" ? <AttendanceAdminTab controller={controller} /> : shown === "actions" ? <ActionsAdminTab controller={controller} /> : shown === "ai" ? <AiTab controller={controller} /> : shown === "analytics" ? <AnalyticsTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : shown === "docs" ? <AdminDocsTab controller={controller} /> : shown === "drive" ? <AdminDriveTab controller={controller} /> : shown === "lending" ? <LendingAdminTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
     </div>
   );

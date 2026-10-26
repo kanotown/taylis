@@ -10,13 +10,14 @@ import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralR
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
+import type { LendingApproversOut, LendingBorrowIn, LendingCategoryCreate, LendingCategoryOut, LendingCategoryUpdate, LendingItemCreate, LendingItemDetailOut, LendingItemHistoryOut, LendingItemOut, LendingItemStatusIn, LendingItemUpdate, LendingLoanOut, LendingLoanScope, LendingPermissionIn, LendingReturnIn, LendingSettingsOut, LendingSettingsUpdate } from "./types";
 import type { DriveItemLinksOut, DriveShareEventListOut,DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
  * counts them in the badge, only to clients that name them; an older server ignores the parameter).
  */
-export const ACTIVITY_INCLUDE = ["canvas_mention", "reservation", "page_mention", "page_shared"] as const;
+export const ACTIVITY_INCLUDE = ["canvas_mention", "reservation", "page_mention", "page_shared", "lending"] as const;
 /** M112: ACTIVITY_INCLUDE as repeated query parameters (`include=canvas_mention&include=reservation`). */
 const includeQuery = (name: string): string => ACTIVITY_INCLUDE.map((kind) => `${name}=${kind}`).join("&");
 
@@ -2324,6 +2325,100 @@ export class ApiClient {
   /** cancel (取り消す) / return (返却する) / assign (割り当てた) / remove (外した). */
   reservationAction(reservationId: string, action: "cancel" | "return" | "assign" | "remove"): Promise<PoolOut> {
     return this.request("POST", `/api/v1/reservations/${reservationId}/${action}`);
+  }
+
+  // --- equipment lending (M167–M170, docs/LENDING.md §5) ---------------------------------
+
+  /** Every person (also while the feature is off); guests 403 guest_restricted. */
+  lendingSettings(): Promise<LendingSettingsOut> {
+    return this.request("GET", "/api/v1/lending/settings");
+  }
+
+  /** `lending.manage` (403 admin_required); 400 lending_keeper_invalid (details.user_ids). */
+  updateLendingSettings(body: LendingSettingsUpdate): Promise<LendingSettingsOut> {
+    return this.request("PATCH", "/api/v1/admin/lending/settings", body);
+  }
+
+  lendingCategories(): Promise<LendingCategoryOut[]> {
+    return this.request("GET", "/api/v1/lending/categories");
+  }
+
+  createLendingCategory(body: LendingCategoryCreate): Promise<LendingCategoryOut> {
+    return this.request("POST", "/api/v1/lending/categories", body);
+  }
+
+  updateLendingCategory(categoryId: string, body: LendingCategoryUpdate): Promise<LendingCategoryOut> {
+    return this.request("PATCH", `/api/v1/lending/categories/${categoryId}`, body);
+  }
+
+  deleteLendingCategory(categoryId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/lending/categories/${categoryId}`);
+  }
+
+  /** Every item (not paged, at most 2,000) in the Japanese name order; the client filters. */
+  lendingItems(includeRetired = false): Promise<LendingItemOut[]> {
+    return this.request("GET", `/api/v1/lending/items${includeRetired ? "?include_retired=true" : ""}`);
+  }
+
+  lendingItem(itemId: string): Promise<LendingItemDetailOut> {
+    return this.request("GET", `/api/v1/lending/items/${itemId}`);
+  }
+
+  createLendingItem(body: LendingItemCreate): Promise<LendingItemDetailOut> {
+    return this.request("POST", "/api/v1/lending/items", body);
+  }
+
+  updateLendingItem(itemId: string, body: LendingItemUpdate): Promise<LendingItemDetailOut> {
+    return this.request("PATCH", `/api/v1/lending/items/${itemId}`, body);
+  }
+
+  setLendingItemStatus(itemId: string, body: LendingItemStatusIn): Promise<LendingItemDetailOut> {
+    return this.request("POST", `/api/v1/lending/items/${itemId}/status`, body);
+  }
+
+  deleteLendingItem(itemId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/lending/items/${itemId}`);
+  }
+
+  lendingItemHistory(itemId: string, before?: string | null, limit = 50): Promise<LendingItemHistoryOut> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (before) params.set("before", before);
+    return this.request("GET", `/api/v1/lending/items/${itemId}/history?${params}`);
+  }
+
+  /** 「返却されたら知らせる」 on / off (idempotent, 204). */
+  setLendingWatch(itemId: string, watching: boolean): Promise<void> {
+    return this.request(watching ? "PUT" : "DELETE", `/api/v1/lending/items/${itemId}/watch`);
+  }
+
+  lendingApprovers(): Promise<LendingApproversOut> {
+    return this.request("GET", "/api/v1/lending/approvers");
+  }
+
+  /** 201 a new loan, 200 the same loan for a retry with the same client_request_id (§7.2). */
+  borrowLendingItem(itemId: string, body: LendingBorrowIn): Promise<LendingLoanOut> {
+    return this.request("POST", `/api/v1/lending/items/${itemId}/borrow`, body);
+  }
+
+  lendingLoans(scope: LendingLoanScope = "mine"): Promise<LendingLoanOut[]> {
+    return this.request("GET", `/api/v1/lending/loans?scope=${scope}`);
+  }
+
+  lendingLoan(loanId: string): Promise<LendingLoanOut> {
+    return this.request("GET", `/api/v1/lending/loans/${loanId}`);
+  }
+
+  returnLendingLoan(loanId: string, body: LendingReturnIn): Promise<LendingLoanOut> {
+    return this.request("POST", `/api/v1/lending/loans/${loanId}/return`, body);
+  }
+
+  extendLendingLoan(loanId: string, dueOn: string): Promise<LendingLoanOut> {
+    return this.request("POST", `/api/v1/lending/loans/${loanId}/extend`, { due_on: dueOn });
+  }
+
+  /** The teacher named on the loan: 「許可していない」 (denied) or 「確認した」 (confirmed). */
+  decideLendingPermission(loanId: string, body: LendingPermissionIn): Promise<LendingLoanOut> {
+    return this.request("POST", `/api/v1/lending/loans/${loanId}/permission`, body);
   }
 
   // --- workflows (M94, docs/WORKFLOWS.md §4) ---------------------------------------------

@@ -828,7 +828,7 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
   if (!me || me.nav_items === undefined) return null;
   const full = fullNavItems(me.nav_items);
   // M140: 「在室状況」 only while the workspace has the board on; M143: 「操作」 only while I may press a button.
-  const implemented = desktopNavKeys(!!controller.store.attendance, pressable(controller.store.actions).length > 0);
+  const implemented = desktopNavKeys(!!controller.store.attendance, pressable(controller.store.actions).length > 0, !!controller.store.lending);
   const shown = shownNavItems(full, "desktop", implemented);
   const save = (list: typeof full | null) => void controller.setNavItems(list);
   // 2026-10-12 (MOBILE_UI.md §18.2): where each place stands, apart from the phones' visibility (users.desktop_places).

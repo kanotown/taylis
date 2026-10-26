@@ -34,6 +34,8 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   { key: "tasks", label: "タスク", visible: true, platforms: ["desktop", "mobile"] },
   { key: "deadlines", label: "締切", visible: true, platforms: ["desktop", "mobile"] },
   { key: "reservations", label: "予約", visible: true, platforms: ["desktop", "mobile"] },
+  // M170 (docs/LENDING.md §12.1): 「備品」, implemented only while the workspace has lending on (bootstrap `lending`).
+  { key: "lending", label: "備品", visible: true, platforms: ["desktop", "mobile"] },
   // M140 (docs/PRESENCE.md): 「在室状況」, implemented only while the workspace has the board on.
   { key: "attendance", label: "在室状況", visible: true, platforms: ["desktop", "mobile"] },
   // M143 (docs/ACTIONS.md §9): 「操作」, implemented only while the buttons are on and I may press one (phones later).
@@ -41,8 +43,8 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
 ];
 
 export const NAV_ORDER: Readonly<Record<NavPlatform, readonly string[]>> = {
-  desktop: ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed", "attendance", "actions"],
-  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "drive", "canvases", "docs", "activity", "attendance", "actions"],
+  desktop: ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "lending", "saved", "times-feed", "attendance", "actions"],
+  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "lending", "files", "drive", "canvases", "docs", "activity", "attendance", "actions"],
 };
 
 /** The items this client draws in its sidebar (M112: 「予約」 with its page). */
@@ -50,11 +52,11 @@ export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "draf
 
 /**
  * The items implemented here now: 「在室状況」 (M140) only while the workspace has the board on, 「操作」 (M143) only while
- * the buttons are on and I may press at least one.
+ * the buttons are on and I may press at least one, 「備品」 (M170) only while the workspace has lending on.
  */
-export function desktopNavKeys(attendance: boolean, actions = false): readonly string[] {
-  if (!attendance && !actions) return DESKTOP_NAV_KEYS;
-  return [...DESKTOP_NAV_KEYS, ...(attendance ? ["attendance"] : []), ...(actions ? ["actions"] : [])];
+export function desktopNavKeys(attendance: boolean, actions = false, lending = false): readonly string[] {
+  if (!attendance && !actions && !lending) return DESKTOP_NAV_KEYS;
+  return [...DESKTOP_NAV_KEYS, ...(lending ? ["lending"] : []), ...(attendance ? ["attendance"] : []), ...(actions ? ["actions"] : [])];
 }
 
 const byKey = new Map(NAV_CATALOGUE.map((item) => [item.key, item]));
@@ -74,6 +76,7 @@ const LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   tasks: "nav.tasks",
   deadlines: "nav.deadlines",
   reservations: "nav.reservations",
+  lending: "nav.lending",
   attendance: "nav.attendance",
   actions: "nav.actions",
 };

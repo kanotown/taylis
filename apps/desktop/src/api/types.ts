@@ -693,3 +693,42 @@ export interface DriveChanged {
 export interface DriveUploadUpdated {
   upload: DriveUploadOut;
 }
+
+/** M170 (docs/LENDING.md §5): 「備品」, the workspace's equipment lending. */
+export type LendingSettingsOut = components["schemas"]["LendingSettingsOut"];
+export type LendingSettingsUpdate = components["schemas"]["LendingSettingsUpdate"];
+export type LendingSummaryOut = components["schemas"]["LendingSummaryOut"];
+export type LendingCategoryOut = components["schemas"]["LendingCategoryOut"];
+export type LendingCategoryCreate = components["schemas"]["LendingCategoryCreate"];
+export type LendingCategoryUpdate = components["schemas"]["LendingCategoryUpdate"];
+export type LendingItemOut = components["schemas"]["LendingItemOut"];
+export type LendingItemDetailOut = components["schemas"]["LendingItemDetailOut"];
+export type LendingItemCreate = components["schemas"]["LendingItemCreate"];
+export type LendingItemUpdate = components["schemas"]["LendingItemUpdate"];
+export type LendingItemStatusIn = components["schemas"]["LendingItemStatusIn"];
+export type LendingItemEventOut = components["schemas"]["LendingItemEventOut"];
+export type LendingItemHistoryOut = components["schemas"]["LendingItemHistoryOut"];
+export type LendingLoanBriefOut = components["schemas"]["LendingLoanBriefOut"];
+export type LendingLoanOut = components["schemas"]["LendingLoanOut"];
+export type LendingBorrowIn = components["schemas"]["LendingBorrowIn"];
+export type LendingReturnIn = components["schemas"]["LendingReturnIn"];
+export type LendingPermissionIn = components["schemas"]["LendingPermissionIn"];
+export type LendingApproversOut = components["schemas"]["LendingApproversOut"];
+export type ActivityLending = components["schemas"]["ActivityLending"];
+export type LendingItemStatus = LendingItemOut["status"];
+export type LendingLoanScope = "mine" | "active" | "overdue" | "approved";
+/** `lending.notice` (ws-events.json): a new activity item of kind lending for me. */
+export interface LendingNotice {
+  item_id: string;
+  lending_item_id: string | null;
+  loan_id: string | null;
+  role: "borrower" | "approver" | "keeper" | "watcher";
+  text: string;
+  at: string;
+}
+/** `lending.updated` (ws-events.json): the ledger changed; it carries no content. */
+export interface LendingUpdated {
+  item_ids?: string[];
+  categories?: boolean;
+  settings?: boolean;
+}

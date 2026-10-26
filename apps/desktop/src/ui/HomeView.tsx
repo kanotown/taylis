@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, BookOpen, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, DoorOpen, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Ticket, Timer, Zap } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, BookOpen, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, DoorOpen, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Package, Plus, Search, SquarePen, Ticket, Timer, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -10,6 +10,7 @@ import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuie
 import { useOpenSelfNotes } from "./DmListView";
 import { homeSections } from "./home";
 import { reservationTodoCount } from "./reservationPools";
+import { lendingBadgeCount } from "./lendingRules";
 import { inRoomCount } from "./attendance";
 import { hasUnreadFeed } from "../sync/timesFeed";
 import { channelTitle, myDisplayName } from "./MainScreen";
@@ -50,6 +51,8 @@ export interface HomeViewProps {
   onDeadlines?: () => void;
   /** M112: 「予約」 (once the server answered the pools). */
   onReservations?: () => void;
+  /** M170: 「備品」, while the workspace has lending on. */
+  onLending?: () => void;
   /** M140: 「在室状況」, while the workspace has the board on. */
   onAttendance?: () => void;
   /** M143: 「操作」 (only while the buttons are on and I may press one). */
@@ -275,7 +278,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onAttendance, on
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onDocs, onCalendar, onTasks, onDeadlines, onReservations, onAttendance, onActions }: HomeViewProps) {
+function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onDocs, onCalendar, onTasks, onDeadlines, onReservations, onLending, onAttendance, onActions }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -297,6 +300,8 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
     // M143: 「操作」 — the 操作ボタン I may press (no count).
     ...(onActions ? [{ key: "actions", label: t("nav.actions"), icon: <Zap size={20} />, count: null, danger: false, onClick: onActions }] : []),
     ...(onReservations ? [{ key: "reservations", label: t("nav.reservations"), icon: <Ticket size={20} />, count: store.reservationPools?.some((p) => p.can_operate) ? reservationTodoCount(store.reservationPools) : null, danger: true, onClick: onReservations }] : []),
+    // M170: 「備品」 — red: my overdue loans, and for keepers the loans that need them (docs/LENDING.md §12.1).
+    ...(onLending && store.lending ? [{ key: "lending", label: t("nav.lending"), icon: <Package size={20} />, count: lendingBadgeCount(store.lending) || null, danger: true, onClick: onLending }] : []),
     { key: "files", label: t("nav.files"), icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
     ...(onCanvases ? [{ key: "canvases", label: t("nav.canvases"), icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
     ...(onDocs ? [{ key: "docs", label: t("nav.docs"), icon: <BookOpen size={20} />, count: null, danger: false, onClick: onDocs }] : []),

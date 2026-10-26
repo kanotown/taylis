@@ -2435,6 +2435,13 @@ export class AppController {
           void this.openFromNotification(session.serverUrl, () => this.requestOpenReservations());
         });
       },
+      // M170 (docs/LENDING.md §12.1): an equipment notice; a click opens 「備品」 at the loan (or the item, or the overdue list).
+      onLendingNotice: (notice) => {
+        if (this.quiet(session)) return;
+        void notify(this.notificationTitle(session, t("nav.lending")), notice.text, () => {
+          void this.openFromNotification(session.serverUrl, () => this.requestOpenLending({ itemId: notice.lending_item_id, loanId: notice.loan_id }));
+        });
+      },
       // §15: a test notification asked for on another device of mine (this one showed its own when the button was pressed).
       onTestNotification: (test) => {
         if (session.testShownAt !== undefined && Date.now() - session.testShownAt < TEST_ECHO_MS) return;
@@ -2620,6 +2627,17 @@ export class AppController {
 
   requestOpenReservations(): void {
     this.openReservationsRequest += 1;
+    this.emit();
+  }
+
+  /**
+   * M170: the main screen should open 「備品」 (a notification, an activity item) at a loan, else an item, else (both
+   * null: the keepers' morning summary) the overdue list. `seq` tells two requests for the same place apart.
+   */
+  openLendingRequest: { seq: number; itemId: string | null; loanId: string | null } | null = null;
+
+  requestOpenLending(target: { itemId: string | null; loanId: string | null }): void {
+    this.openLendingRequest = { seq: (this.openLendingRequest?.seq ?? 0) + 1, ...target };
     this.emit();
   }
 

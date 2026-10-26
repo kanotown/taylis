@@ -5,7 +5,7 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, ThreadsReadAllOut, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
-import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
+import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, LendingLoanOut, LendingSettingsOut, LendingSummaryOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
@@ -1025,6 +1025,20 @@ export class FakeServer {
   /** M143: the 操作ボタン (bootstrap `actions`, GET /actions); null = off. */
   actions: ActionListOut | null = null;
 
+  /** M170: 「備品」 (bootstrap `lending`; null = off), and what GET /lending/settings and /lending/loans answer. */
+  lending: LendingSummaryOut | null = null;
+  lendingSettings: LendingSettingsOut | null = null;
+  lendingLoans: Partial<Record<"mine" | "active" | "overdue" | "approved", LendingLoanOut[]>> = {};
+  lendingReads = 0;
+
+  /** M170: lending.updated to everyone, lending.notice to one person. */
+  emitLendingUpdated(data: Record<string, unknown> = { item_ids: [] }): void {
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "lending.updated", ts: now(), channel_id: null, seq: null, data });
+  }
+  noticeLending(userId: string, text: string, loanId: string | null = "loan1"): void {
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "lending.notice", ts: now(), channel_id: null, seq: null, data: { item_id: `n${this.eventId}`, lending_item_id: "item1", loan_id: loanId, role: "borrower", text, at: now() } } as EventFrame);
+  }
+
   /** M143: actions.updated to everyone. */
   emitActionsUpdated(): void {
     this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "actions.updated", ts: now(), channel_id: null, seq: null, data: {} });
@@ -1698,6 +1712,7 @@ export class FakeServer {
           ...(this.activityEnabled ? { activity: this.activitySummary(userId) } : {}),
           ...(this.attendance ? { attendance: this.attendance } : {}),
           ...(this.actions ? { actions: this.actions } : {}),
+          ...(this.lending ? { lending: this.lending } : {}),
         };
       },
       ...(this.activityEnabled
@@ -1851,6 +1866,12 @@ export class FakeServer {
       },
       attendance: async () => this.attendance ?? { enabled: false, states: [], entries: [], can_personalize: false },
       actions: async () => this.actions ?? { enabled: false, show_on_attendance: false, actions: [] },
+      lendingSettings: async () => {
+        this.lendingReads += 1;
+        if (!this.lendingSettings) throw new ApiError(404, "not_found", "Not found");
+        return this.lendingSettings;
+      },
+      lendingLoans: async (scope = "mine") => this.lendingLoans[scope] ?? [],
       reservationPools: async () => {
         maybeFail();
         this.poolReads += 1;

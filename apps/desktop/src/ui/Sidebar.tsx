@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, ArrowUp, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, HardDrive, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
+import { AlarmClock, ArrowDown, ArrowUp, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, DoorOpen, Ellipsis, Eye, FileText, Files, FolderPlus, HardDrive, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookPen, NotebookText, Package, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users, WifiOff, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
@@ -83,6 +83,10 @@ interface Props {
   reservationsActive?: boolean;
   /** To-dos due in the pools I operate. */
   reservationsCount?: number;
+  /** M170: 「備品」 (only while the workspace has lending on); the red number is my overdue loans, and the keepers'. */
+  onLending?: () => void;
+  lendingActive?: boolean;
+  lendingCount?: number;
   /** M140: 「在室状況」 (only while the workspace has the board on); the number is who is in the room. */
   onAttendance?: () => void;
   attendanceActive?: boolean;
@@ -106,7 +110,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onDrive, driveActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction, onOpenInNewTab, onPlaceInNewTab }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onDrive, driveActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onLending, lendingActive = false, lendingCount = 0, onAttendance, attendanceActive = false, attendanceCount = 0, onActions, actionsActive = false, onReadAll, onReminders, remindersActive = false, onArrangePlaces, onChannelAction, onOpenInNewTab, onPlaceInNewTab }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -167,7 +171,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M111: the menu items in my order (UserMe.nav_items; the order is shared with the phones). M140: 「在室状況」 while the
   // workspace has the board on. 2026-10-12 (MOBILE_UI.md §18.2): each stands where I put it (UserMe.desktop_places: the
   // rail, a sidebar row, or only under 「その他」), not by nav_items' `visible` (the phones' tiles).
-  const implementedNav = desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0);
+  const implementedNav = desktopNavKeys(!!store.attendance, pressable(store.actions).length > 0, !!store.lending && !!onLending);
   const navItems = shownNavItems(fullNavItems(me?.nav_items), "desktop", implementedNav);
   const desktopPlaces = me?.desktop_places;
   const railOn = railShown(desktopPlaces);
@@ -181,7 +185,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     if (next) void controller.setNavItems(next);
   } : undefined;
   // My own conversation is highlighted in the rail only while no page covers it.
-  const pageOpen = threadsActive || activityActive || draftsActive || savedActive || filesActive || driveActive || canvasesActive || docsActive || calendarActive || tasksActive || deadlinesActive || reservationsActive || attendanceActive || actionsActive || remindersActive || timesFeedActive;
+  const pageOpen = threadsActive || activityActive || draftsActive || savedActive || filesActive || driveActive || canvasesActive || docsActive || calendarActive || tasksActive || deadlinesActive || reservationsActive || lendingActive || attendanceActive || actionsActive || remindersActive || timesFeedActive;
   const icon = (Icon: typeof Bell) => <Icon size={20} strokeWidth={1.9} />;
   const count = (n: number) => (n > 99 ? "99+" : String(n));
   const place = (key: string): Place | null => {
@@ -230,6 +234,12 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         return onReservations ? {
           key, label: t("nav.reservations"), icon: icon(Ticket), onSelect: onReservations, active: reservationsActive, hint: t("sidebar.reservationsTitle"),
           badge: reservationsCount > 0 ? { text: count(reservationsCount), tone: "danger" } : null,
+        } : null;
+      case "lending":
+        // M170 (docs/LENDING.md §12.1): while lending is on; red for my overdue loans and those the keepers must see to.
+        return onLending ? {
+          key, label: t("nav.lending"), icon: icon(Package), onSelect: onLending, active: lendingActive, hint: t("sidebar.lendingTitle"),
+          badge: lendingCount > 0 ? { text: count(lendingCount), tone: "danger" } : null,
         } : null;
       case "attendance":
         // M140: while the workspace has the board on; a quiet count of who is in the room.

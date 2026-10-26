@@ -82,7 +82,8 @@ export interface paths {
          * List Activity
          * @description Mentions of me, reactions to my messages and replies in threads I follow, newest first
          *     (M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and
-         *     mentions); with `include=reservation`, reservation notices (M112, under all).
+         *     mentions); with `include=reservation`, reservation notices (M112, under all); with
+         *     `include=lending`, equipment notices (M169, under all).
          */
         get: operations["list_activity_api_v1_activity_get"];
         put?: never;
@@ -918,6 +919,28 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/lending/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Settings
+         * @description `lending.manage`. 400 lending_keeper_invalid (details.user_ids) for a keeper added who is
+         *     unknown, deactivated, a guest or a bot; more than 20 keepers, numbers out of range and unknown
+         *     zones are 422.
+         */
+        patch: operations["update_settings_api_v1_admin_lending_settings_patch"];
         trace?: never;
     };
     "/api/v1/admin/reports": {
@@ -4108,6 +4131,352 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lending/approvers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Approvers
+         * @description Who may be named as the teacher who gave permission: the roster's @faculty (everyone
+         *     active without a roster), never me; my supervisor first in `suggested_ids`.
+         */
+        get: operations["list_approvers_api_v1_lending_approvers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Categories
+         * @description In the keepers' order.
+         */
+        get: operations["list_categories_api_v1_lending_categories_get"];
+        put?: never;
+        /**
+         * Create Category
+         * @description Keepers. 409 lending_category_name_taken (details.existing_id), too_many_lending_categories
+         *     (details.limit: 50).
+         */
+        post: operations["create_category_api_v1_lending_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Category
+         * @description Keepers. 409 lending_category_in_use (details.item_count) while items (retired ones too)
+         *     are in it.
+         */
+        delete: operations["delete_category_api_v1_lending_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Category
+         * @description Keepers. A new default applies to the coming loans of the items without their own value
+         *     (loans already made keep theirs).
+         */
+        patch: operations["update_category_api_v1_lending_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/lending/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Items
+         * @description Every item (retired ones with `include_retired`) in the Japanese name order, not paged
+         *     (at most 2,000): clients filter by category, status and text themselves.
+         */
+        get: operations["list_items_api_v1_lending_items_get"];
+        put?: never;
+        /**
+         * Create Item
+         * @description Keepers. 409 lending_code_taken (details.existing_id; among the items not retired),
+         *     too_many_lending_items (details.limit: 2,000), 404 lending_category_not_found, 400
+         *     lending_photo_invalid (not my own new upload of a JPEG, PNG, WebP or HEIC image).
+         */
+        post: operations["create_item_api_v1_lending_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item */
+        get: operations["get_item_api_v1_lending_items__item_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Item
+         * @description Keepers. 409 lending_item_has_history for an item that was ever lent (retire it).
+         */
+        delete: operations["delete_item_api_v1_lending_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Item
+         * @description Keepers. null clears a field (`photo_attachment_id: null` removes the photo; a replaced or
+         *     removed photo is deleted). The status changes through /status.
+         */
+        patch: operations["update_item_api_v1_lending_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/lending/items/{item_id}/borrow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Borrow
+         * @description 201 with the new loan; 200 with the same loan for a retry (same client_request_id). 409
+         *     lending_item_unavailable (details: status, and loan_id, borrower_id, due_on when on loan:
+         *     someone, maybe I, has it), 400 lending_due_invalid (details.reason: past / too_long,
+         *     details.latest), 400 lending_permission_required (tick it and name the teacher) /
+         *     lending_approver_invalid, 409 idempotency_conflict (the id was used for another item).
+         */
+        post: operations["borrow_api_v1_lending_items__item_id__borrow_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/items/{item_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Item History
+         * @description The item's history, newest first; `before` = the previous page's `next_before`.
+         */
+        get: operations["item_history_api_v1_lending_items__item_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/items/{item_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Status
+         * @description Keepers: available / in_repair / retired with an optional reason. 409 lending_item_on_loan
+         *     while lent; lending_code_taken back from retired when its number was given again meanwhile.
+         *     The same status and reason again: no change.
+         */
+        post: operations["set_status_api_v1_lending_items__item_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/items/{item_id}/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Watch Item
+         * @description 「返却されたら知らせる」: I am told once when it is returned (or back from repair), then
+         *     the watch goes; mine also goes when I borrow it. Idempotent. 409 lending_item_unavailable
+         *     for a retired item.
+         */
+        put: operations["watch_item_api_v1_lending_items__item_id__watch_put"];
+        post?: never;
+        /**
+         * Unwatch Item
+         * @description Idempotent.
+         */
+        delete: operations["unwatch_item_api_v1_lending_items__item_id__watch_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/loans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Loans
+         * @description mine: my active loans by due date, then my last 50 returned. active: every active loan by
+         *     due date. overdue (keepers, else 403 lending_keeper_required): past due, longest first.
+         *     approved: the loans naming me as the teacher (active, or returned in the last 14 days).
+         *     Purpose, permission and return note are null for those who may not see them.
+         */
+        get: operations["list_loans_api_v1_lending_loans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/loans/{loan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Loan */
+        get: operations["get_loan_api_v1_lending_loans__loan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/loans/{loan_id}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extend Loan
+         * @description The borrower: later than now, up to latest_due_on, at most max_extensions times (409
+         *     lending_extend_limit), not after the teacher denied (409 lending_permission_denied); 400
+         *     lending_due_invalid (details.reason: not_later / too_long). A keeper: any date from today to
+         *     365 days ahead (reason past / too_long), not counted. 409 lending_loan_closed once returned.
+         *     The same date again: no change.
+         */
+        post: operations["extend_loan_api_v1_lending_loans__loan_id__extend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/loans/{loan_id}/permission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Permission
+         * @description The teacher named on the loan only (403 lending_not_approver, administrators and keepers
+         *     too): `denied` (「許可していない」: the borrower and the keepers are told, and the borrower can
+         *     no longer extend) or `confirmed` (「確認した」). 409 lending_permission_not_required for a
+         *     loan that needed none, 409 lending_loan_closed from 14 days after the return. The same
+         *     decision again: no change; the other one may follow (both are kept).
+         */
+        post: operations["decide_permission_api_v1_lending_loans__loan_id__permission_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/loans/{loan_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return Loan
+         * @description The borrower, or a keeper recording it on their behalf (403 lending_not_yours). `issue`
+         *     needs a note (422). Already returned: no change (200, the loan as it is).
+         */
+        post: operations["return_loan_api_v1_lending_loans__loan_id__return_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lending/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The switch, the keepers and the defaults, and whether I am a keeper (also while off).
+         */
+        get: operations["get_settings_api_v1_lending_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/link-previews": {
         parameters: {
             query?: never;
@@ -7224,7 +7593,8 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention" | "reservation" | "page_mention" | "page_shared";
+            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention" | "reservation" | "page_mention" | "page_shared" | "lending";
+            lending?: components["schemas"]["ActivityLending"] | null;
             message?: components["schemas"]["MessageOut"] | null;
             page?: components["schemas"]["ActivityPage"] | null;
             /** Read */
@@ -7235,6 +7605,38 @@ export interface components {
         ActivityItemsReadIn: {
             /** Item Ids */
             item_ids: string[];
+        };
+        /**
+         * ActivityLending
+         * @description A lending item's notice (M169, docs/LENDING.md §8.2): it opens the equipment page at the
+         *     loan (or the item; the keepers' morning summary opens the overdue list). The teacher's
+         *     to-do (`role: approver`) is `done` once they decided, or 14 days after the return.
+         */
+        ActivityLending: {
+            /** Done */
+            done: boolean;
+            /** Done At */
+            done_at: string | null;
+            /** Done By */
+            done_by: string | null;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Item Name */
+            item_name: string | null;
+            /** Lending Item Id */
+            lending_item_id: string | null;
+            /** Loan Id */
+            loan_id: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "borrower" | "approver" | "keeper" | "watcher";
+            /** Text */
+            text: string;
         };
         /** ActivityListOut */
         ActivityListOut: {
@@ -8608,6 +9010,7 @@ export interface components {
              * @default []
              */
             groups: components["schemas"]["GroupOut"][];
+            lending?: components["schemas"]["LendingSummaryOut"] | null;
             limits: components["schemas"]["Limits"];
             me: components["schemas"]["UserMe"];
             /**
@@ -11577,6 +11980,649 @@ export interface components {
             seq: number;
             /** Type */
             type: string;
+        };
+        /**
+         * LendingApproversOut
+         * @description Who may be named as the teacher who gave permission (§6.4).
+         */
+        LendingApproversOut: {
+            /**
+             * Self Approved
+             * @description I am on @faculty: borrowing needs no permission for me
+             */
+            self_approved: boolean;
+            /**
+             * Suggested Ids
+             * @description My supervisor (lab roster) when a candidate
+             */
+            suggested_ids: string[];
+            /**
+             * User Ids
+             * @description The active members of @faculty (everyone active when the roster's group is missing or empty), never me
+             */
+            user_ids: string[];
+        };
+        /** LendingBorrowIn */
+        LendingBorrowIn: {
+            /**
+             * Approver Id
+             * @description The teacher who gave it (one of GET /lending/approvers)
+             */
+            approver_id?: string | null;
+            /**
+             * Client Request Id
+             * Format: uuid
+             * @description Made by the client once per borrow; a retry sends the same one (§7.2)
+             */
+            client_request_id: string;
+            /**
+             * Due On
+             * Format: date
+             * @description The return date in the workspace's zone (today … today + the item's max_days)
+             */
+            due_on: string;
+            /**
+             * Permission Confirmed
+             * @description 「教員の許可を得た」 (needed when the item requires permission)
+             * @default false
+             */
+            permission_confirmed: boolean;
+            /**
+             * Purpose
+             * @example 学会発表の撮影
+             */
+            purpose: string;
+        };
+        /** LendingCategoryCreate */
+        LendingCategoryCreate: {
+            /** Max Days */
+            max_days?: number | null;
+            /**
+             * Name
+             * @example カメラ
+             */
+            name: string;
+            /**
+             * Requires Permission
+             * @default false
+             */
+            requires_permission: boolean;
+        };
+        /** LendingCategoryOut */
+        LendingCategoryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Count
+             * @description Items in the category, the retired ones included (they keep it from being deleted)
+             */
+            item_count: number;
+            /**
+             * Max Days
+             * @description null: the settings' default_max_days
+             */
+            max_days: number | null;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /**
+             * Requires Permission
+             * @description The default of the category's items
+             */
+            requires_permission: boolean;
+        };
+        /**
+         * LendingCategoryUpdate
+         * @description Any of the fields. `max_days: null` falls back to the settings' default; `name` and
+         *     `requires_permission` null are unchanged. `position`: the place in the order, from 0 (the
+         *     others move along).
+         */
+        LendingCategoryUpdate: {
+            /** Max Days */
+            max_days?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Requires Permission */
+            requires_permission?: boolean | null;
+        };
+        /** LendingExtendIn */
+        LendingExtendIn: {
+            /**
+             * Due On
+             * Format: date
+             * @description The new return date in the workspace's zone
+             */
+            due_on: string;
+        };
+        /** LendingItemCreate */
+        LendingItemCreate: {
+            /** Category Id */
+            category_id?: string | null;
+            /**
+             * Code
+             * @example CAM-02
+             */
+            code?: string | null;
+            /**
+             * Location
+             * @example 301 棚 2
+             */
+            location?: string | null;
+            /**
+             * Max Days
+             * @description null: the category's, then the settings' default
+             */
+            max_days?: number | null;
+            /**
+             * Name
+             * @example カメラ A
+             */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Photo Attachment Id
+             * @description My own pending upload (POST /attachments) of an image
+             */
+            photo_attachment_id?: string | null;
+            /**
+             * Requires Permission
+             * @description null: the category's default
+             */
+            requires_permission?: boolean | null;
+        };
+        /** LendingItemDetailOut */
+        LendingItemDetailOut: {
+            /** Category Id */
+            category_id: string | null;
+            /** Code */
+            code: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description The active loan (null unless on_loan) */
+            loan: components["schemas"]["LendingLoanBriefOut"] | null;
+            /** Location */
+            location: string | null;
+            /**
+             * Max Days
+             * @description In effect (item → category → settings)
+             */
+            max_days: number;
+            /**
+             * Max Days Source
+             * @enum {string}
+             */
+            max_days_source: "item" | "category" | "default";
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            photo: components["schemas"]["AttachmentOut"] | null;
+            /**
+             * Recent Loans
+             * @description The last 5 loans (the active one too), newest first
+             */
+            recent_loans?: components["schemas"]["LendingLoanBriefOut"][];
+            /**
+             * Requires Permission
+             * @description In effect (item → category → false)
+             */
+            requires_permission: boolean;
+            /**
+             * Requires Permission Source
+             * @enum {string}
+             */
+            requires_permission_source: "item" | "category" | "default";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "on_loan" | "in_repair" | "retired";
+            /** Status Note */
+            status_note: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Watcher Count
+             * @description How many people asked to be told when it is returned (the extend dialog's 「この備品を待っている人がいます」)
+             * @default 0
+             */
+            watcher_count: number;
+            /**
+             * Watching
+             * @description Whether I asked to be told when it is returned
+             */
+            watching: boolean;
+        };
+        /** LendingItemEventOut */
+        LendingItemEventOut: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @description created | updated | status (L1); borrowed | extended | returned | due_changed (L2); permission_denied | permission_confirmed (L3). Unknown kinds may come
+             */
+            kind: string;
+            /** Loan Id */
+            loan_id: string | null;
+        };
+        /** LendingItemHistoryOut */
+        LendingItemHistoryOut: {
+            /**
+             * Events
+             * @description Newest first
+             */
+            events: components["schemas"]["LendingItemEventOut"][];
+            /**
+             * Next Before
+             * @description Pass as `before` for older ones (null: no more)
+             */
+            next_before: string | null;
+        };
+        /** LendingItemOut */
+        LendingItemOut: {
+            /** Category Id */
+            category_id: string | null;
+            /** Code */
+            code: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description The active loan (null unless on_loan) */
+            loan: components["schemas"]["LendingLoanBriefOut"] | null;
+            /** Location */
+            location: string | null;
+            /**
+             * Max Days
+             * @description In effect (item → category → settings)
+             */
+            max_days: number;
+            /**
+             * Max Days Source
+             * @enum {string}
+             */
+            max_days_source: "item" | "category" | "default";
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            photo: components["schemas"]["AttachmentOut"] | null;
+            /**
+             * Requires Permission
+             * @description In effect (item → category → false)
+             */
+            requires_permission: boolean;
+            /**
+             * Requires Permission Source
+             * @enum {string}
+             */
+            requires_permission_source: "item" | "category" | "default";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "on_loan" | "in_repair" | "retired";
+            /** Status Note */
+            status_note: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Watching
+             * @description Whether I asked to be told when it is returned
+             */
+            watching: boolean;
+        };
+        /** LendingItemStatusIn */
+        LendingItemStatusIn: {
+            /**
+             * Note
+             * @description Why (in repair, retired); cleared when the item becomes available
+             */
+            note?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "in_repair" | "retired";
+        };
+        /**
+         * LendingItemUpdate
+         * @description Any of the fields; null clears one (`name` null: unchanged). The status changes through
+         *     POST /lending/items/{id}/status.
+         */
+        LendingItemUpdate: {
+            /** Category Id */
+            category_id?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Max Days */
+            max_days?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Photo Attachment Id */
+            photo_attachment_id?: string | null;
+            /** Requires Permission */
+            requires_permission?: boolean | null;
+        };
+        /**
+         * LendingLoanBriefOut
+         * @description Who has (had) an item and until when: the item's `loan` and `recent_loans`. No purpose or
+         *     notes; `permission_state` only for those who see a loan's details (else null).
+         */
+        LendingLoanBriefOut: {
+            /**
+             * Borrowed At
+             * Format: date-time
+             */
+            borrowed_at: string;
+            /**
+             * Borrower Id
+             * Format: uuid
+             */
+            borrower_id: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Overdue Days
+             * @description Days past due_on in the workspace's zone (0 if not)
+             */
+            overdue_days: number;
+            /** Permission State */
+            permission_state: ("claimed" | "confirmed" | "denied") | null;
+            /**
+             * Return Condition
+             * @description How it came back (the 🔧 mark for issue is shown to everyone)
+             */
+            return_condition: ("ok" | "issue") | null;
+            /** Returned At */
+            returned_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "returned";
+        };
+        /**
+         * LendingLoanOut
+         * @description A loan. The fields marked "hidden" are null for anyone but the borrower, the teacher named
+         *     (approver_id), the keepers and the administrators (`details_hidden: true`, §3.2).
+         */
+        LendingLoanOut: {
+            /**
+             * Approver Id
+             * @description Hidden
+             */
+            approver_id: string | null;
+            /**
+             * Borrowed At
+             * Format: date-time
+             */
+            borrowed_at: string;
+            /**
+             * Borrower Id
+             * Format: uuid
+             */
+            borrower_id: string;
+            /**
+             * Can Extend
+             * @description Whether I may extend it now (the borrower within the limits, or a keeper)
+             */
+            can_extend: boolean;
+            /** Details Hidden */
+            details_hidden: boolean;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /**
+             * Extension Count
+             * @description The borrower's own extensions so far
+             */
+            extension_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Code */
+            item_code: string | null;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Item Name */
+            item_name: string;
+            /**
+             * Latest Due On
+             * Format: date
+             * @description The latest date the borrower may extend to (today + the item's max_days)
+             */
+            latest_due_on: string;
+            /**
+             * Original Due On
+             * Format: date
+             */
+            original_due_on: string;
+            /**
+             * Overdue Days
+             * @description Days past due_on in the workspace's zone (0 if not)
+             */
+            overdue_days: number;
+            /**
+             * Permission Decided At
+             * @description Hidden
+             */
+            permission_decided_at: string | null;
+            /**
+             * Permission Note
+             * @description Hidden
+             */
+            permission_note: string | null;
+            /** Permission Required */
+            permission_required: boolean;
+            /**
+             * Permission State
+             * @description Hidden
+             */
+            permission_state: ("claimed" | "confirmed" | "denied") | null;
+            /**
+             * Purpose
+             * @description Hidden
+             */
+            purpose: string | null;
+            /** Return Condition */
+            return_condition: ("ok" | "issue") | null;
+            /**
+             * Return Note
+             * @description Hidden
+             */
+            return_note: string | null;
+            /** Returned At */
+            returned_at: string | null;
+            /** Returned By */
+            returned_by: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "returned";
+        };
+        /**
+         * LendingPermissionIn
+         * @description The teacher's 「許可していない」 (denied) or 「確認した」 (confirmed), §5.3.
+         */
+        LendingPermissionIn: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "denied" | "confirmed";
+            /**
+             * Note
+             * @description An optional word from the teacher (at most 200 characters)
+             */
+            note?: string | null;
+        };
+        /** LendingReturnIn */
+        LendingReturnIn: {
+            /**
+             * Condition
+             * @enum {string}
+             */
+            condition: "ok" | "issue";
+            /**
+             * Note
+             * @description Required with `issue`
+             */
+            note?: string | null;
+        };
+        /**
+         * LendingSettingsOut
+         * @description The workspace's 備品 settings (readable by every person, also while off).
+         */
+        LendingSettingsOut: {
+            /**
+             * Default Max Days
+             * @description The longest loan when the item and its category do not say (days from today)
+             */
+            default_max_days: number;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Is Keeper
+             * @description Whether I am a keeper (or have lending.manage)
+             */
+            is_keeper: boolean;
+            /**
+             * Keeper Ids
+             * @description The 備品係 the administrators chose (as saved; only the active people among them act as keepers)
+             */
+            keeper_ids: string[];
+            /**
+             * Keeper Overdue Days
+             * @description Days past the due date before the keepers are told
+             */
+            keeper_overdue_days: number;
+            /**
+             * Max Extensions
+             * @description How often a borrower may extend a loan themself
+             */
+            max_extensions: number;
+            /**
+             * Notice Minute
+             * @description The morning notices' time (minutes from midnight in `tz`)
+             */
+            notice_minute: number;
+            /**
+             * Tz
+             * @description The zone of the due dates and the notices' time
+             */
+            tz: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * LendingSettingsUpdate
+         * @description Any of the settings (null or absent: unchanged).
+         */
+        LendingSettingsUpdate: {
+            /** Default Max Days */
+            default_max_days?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Keeper Ids */
+            keeper_ids?: string[] | null;
+            /** Keeper Overdue Days */
+            keeper_overdue_days?: number | null;
+            /** Max Extensions */
+            max_extensions?: number | null;
+            /** Notice Minute */
+            notice_minute?: number | null;
+            /** Tz */
+            tz?: string | null;
+        };
+        /**
+         * LendingSummaryOut
+         * @description The bootstrap's `lending` (null for guests and bots and while the feature is off): the
+         *     numbers of the 「備品」 tile and navigation item (§12.1).
+         */
+        LendingSummaryOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Is Keeper */
+            is_keeper: boolean;
+            /**
+             * Keeper Attention Count
+             * @description For keepers: loans at least keeper_overdue_days past due, and loans of deactivated people (0 for others)
+             */
+            keeper_attention_count: number;
+            /**
+             * My Active Count
+             * @description My loans not returned yet
+             */
+            my_active_count: number;
+            /**
+             * My Overdue Count
+             * @description Those of them past their due date
+             */
+            my_overdue_count: number;
+            /** Settings Updated At */
+            settings_updated_at: string | null;
         };
         /** Limits */
         Limits: {
@@ -15948,7 +16994,7 @@ export interface operations {
                 filter?: "all" | "mentions" | "reactions" | "threads";
                 cursor?: string | null;
                 limit?: number;
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -15980,7 +17026,7 @@ export interface operations {
     mark_activity_items_read_api_v1_activity_items_read_put: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -16016,7 +17062,7 @@ export interface operations {
     mark_activity_read_api_v1_activity_read_put: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -16052,7 +17098,7 @@ export interface operations {
     activity_summary_api_v1_activity_summary_get: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120), lending (M169). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -17664,6 +18710,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_admin_lending_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingSettingsOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -24000,6 +25079,651 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_approvers_api_v1_lending_approvers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingApproversOut"];
+                };
+            };
+        };
+    };
+    list_categories_api_v1_lending_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingCategoryOut"][];
+                };
+            };
+        };
+    };
+    create_category_api_v1_lending_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingCategoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_category_api_v1_lending_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_category_api_v1_lending_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingCategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_api_v1_lending_items_get: {
+        parameters: {
+            query?: {
+                include_retired?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_item_api_v1_lending_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_api_v1_lending_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_item_api_v1_lending_items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_item_api_v1_lending_items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    borrow_api_v1_lending_items__item_id__borrow_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingBorrowIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingLoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    item_history_api_v1_lending_items__item_id__history_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingItemHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_status_api_v1_lending_items__item_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingItemStatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watch_item_api_v1_lending_items__item_id__watch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unwatch_item_api_v1_lending_items__item_id__watch_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_loans_api_v1_lending_loans_get: {
+        parameters: {
+            query?: {
+                scope?: "mine" | "active" | "overdue" | "approved";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingLoanOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_loan_api_v1_lending_loans__loan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingLoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extend_loan_api_v1_lending_loans__loan_id__extend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingExtendIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingLoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_permission_api_v1_lending_loans__loan_id__permission_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingPermissionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingLoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    return_loan_api_v1_lending_loans__loan_id__return_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LendingReturnIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingLoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_lending_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LendingSettingsOut"];
                 };
             };
         };
