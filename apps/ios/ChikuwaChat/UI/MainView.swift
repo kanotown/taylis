@@ -336,6 +336,12 @@ struct MainView: View {
             PushCenter.shared.pendingReservations = false
             nav.landList(ReservationsView.selectionId)
         }
+        .onChange(of: PushCenter.shared.pendingLending, initial: true) { _, screen in
+            // M171: a tapped equipment notice: the loan (else the item, else the overdue list) over 「備品」 on the home tab.
+            guard let screen else { return }
+            PushCenter.shared.pendingLending = nil
+            nav.landLending(screen, listId: LendingView.selectionId)
+        }
         .onChange(of: PushCenter.shared.pendingAttendance, initial: true) { _, pending in
             // The 在室状況 widget was tapped: 「在室状況」, as its pill's 「在室状況を開く」.
             guard pending else { return }
@@ -518,6 +524,7 @@ struct MainView: View {
         case .thread(let id, _)?: id
         case .page?: DocsView.selectionId
         case .drive?: DriveLocationsView.selectionId
+        case .lending?: LendingView.selectionId
         case nil: nil
         }
     }
@@ -603,6 +610,11 @@ struct MainView: View {
             // M122: a page that mentions me or was shared with me: the page on this tab's stack.
             if let page = item.page {
                 nav.openPage(page.pageId, on: tab)
+                return
+            }
+            // M171: an equipment notice opens its loan (else the item, else the overdue list) on this tab's stack.
+            if let lending = item.lending {
+                nav.push(.lending(LendingRules.target(loanId: lending.loanId, itemId: lending.lendingItemId)), on: tab)
                 return
             }
             // M112: a reservation notice opens 「予約」 on this tab's stack.
@@ -788,6 +800,9 @@ struct MainView: View {
             // M166: a drive's folder; its folders (and the steps of its path) go on this stack.
             DriveFolderView(controller: controller, folderId: folderId, onOpenFolder: { nav.openDriveFolder($0, on: tab) })
                 .id(folderId)
+        case .lending(let screen):
+            // M171: an item, a loan, the overdue or the active loans of 「備品」; their rows go on this stack.
+            LendingScreenView(controller: controller, screen: screen)
         case .thread(let channelId, let parentId):
             // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation. From the
             // activity it is pushed alone (MainNavigation.showFromActivity): Back goes to the activity.
@@ -864,6 +879,8 @@ struct MainView: View {
             DeadlinesView(controller: controller)  // M86: a row opens the deadline over the list, on this stack
         case ReservationsView.selectionId:
             ReservationsView(controller: controller)  // M112
+        case LendingView.selectionId:
+            LendingView(controller: controller)  // M171: its rows push .lending screens on this stack
         case AttendanceView.selectionId:
             AttendanceView(controller: controller)  // M140
         case ActionsView.selectionId:
@@ -910,7 +927,8 @@ private extension String {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
          TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId,
-         DocsView.selectionId, AttendanceView.selectionId, ActionsView.selectionId, DriveLocationsView.selectionId].contains(self)
+         DocsView.selectionId, AttendanceView.selectionId, ActionsView.selectionId, DriveLocationsView.selectionId,
+         LendingView.selectionId].contains(self)
     }
 }
 

@@ -598,7 +598,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// M77 (CANVAS.md §20.3): the kinds beyond M39's this build shows, sent on every activity call (the list, the badge,
     /// marking read and bootstrap's `activity_include`) so the badge counts what the list shows. A server before M76
     /// ignores it.
-    static let activityInclude = ["canvas_mention", "reservation", "page_mention", "page_shared"]  // M112: reservation notices; M122: pages
+    static let activityInclude = ["canvas_mention", "reservation", "page_mention", "page_shared", "lending"]  // M112: reservation notices; M122: pages; M171: equipment
 
     private static var activityIncludeItems: [URLQueryItem] { activityInclude.map { URLQueryItem(name: "include", value: $0) } }
 
@@ -1321,8 +1321,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     }
 
     /// M124: the database calls (Sync/WikiDatabases.swift) go through the same transport.
-    func requestJSON<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil) async throws -> T {
-        try await request(method, path, body: body)
+    /// M171: `onError` turns an error's status and body into the call's own error (as `request`'s; nil: the usual ApiError).
+    func requestJSON<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil,
+                                   onError: ((Int, Data) -> Error?)? = nil) async throws -> T {
+        try await request(method, path, body: body, onError: onError)
     }
 
     /// M140: a call answered with no body (204), for the calls kept in other files (Api/AttendanceModels.swift).

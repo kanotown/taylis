@@ -44,6 +44,70 @@
       },
       "shouldTranslate" : false
     },
+    " · 備品係" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · equipment keeper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · 设备管理员"
+          }
+        }
+      }
+    },
+    " · 許可の確認" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · permission check"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · 许可确认"
+          }
+        }
+      }
+    },
+    " · 貸し出し" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · loan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · 借用"
+          }
+        }
+      }
+    },
+    " · 返却の知らせ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · return notice"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · 归还通知"
+          }
+        }
+      }
+    },
     " が「%@」を共有しました" : {
       "localizations" : {
         "en" : {
@@ -56,6 +120,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : " 与你共享了“%@”"
+          }
+        }
+      }
+    },
+    "%@ · %lld 日過ぎ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %lld days overdue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 已逾期 %lld 天"
           }
         }
       }
@@ -92,6 +172,22 @@
         }
       }
     },
+    "%@ さんが先に借りました%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ borrowed it first%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已先借走%@"
+          }
+        }
+      }
+    },
     "%@ さんが通話を始めました" : {
       "localizations" : {
         "en" : {
@@ -104,6 +200,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 发起了通话"
+          }
+        }
+      }
+    },
+    "%@ さんは、あなたの許可を得たとしています。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ says you gave permission."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 表示已获得你的许可。"
           }
         }
       }
@@ -142,6 +254,134 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ まで延ばせます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can be extended until %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最多可延长至 %@"
+          }
+        }
+      }
+    },
+    "%@ を借りる" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrow %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借用 %@"
+          }
+        }
+      }
+    },
+    "%@ を延長" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extend %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "延长 %@"
+          }
+        }
+      }
+    },
+    "%@ を返す" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还 %@"
+          }
+        }
+      }
+    },
+    "%@〜（%@ まで）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ – (due %@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 起（至 %@）"
+          }
+        }
+      }
+    },
+    "%@（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@（%@）"
+          }
+        }
+      }
+    },
+    "%@（指導教員）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (supervisor)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@（指导教师）"
+          }
+        }
+      }
+    },
+    "%lld 回" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld times"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 次"
           }
         }
       }
@@ -254,6 +494,86 @@
         }
       }
     },
+    "「%@」を借りました（%@ まで）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrowed “%@” (due %@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已借用“%@”（至 %@）"
+          }
+        }
+      }
+    },
+    "「%@」を返しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Returned “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已归还“%@”"
+          }
+        }
+      }
+    },
+    "「許可していない」と記録しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recorded “I did not approve”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已记录“未许可”"
+          }
+        }
+      }
+    },
+    "「許可していない」を押すと、借りた人と備品係に知らせます。「確認した」は誰にも知らせません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“I did not approve” tells the borrower and the equipment keepers. “Confirm” tells no one."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按“未许可”会通知借用人和设备管理员。“已确认”不会通知任何人。"
+          }
+        }
+      }
+    },
+    "あと %lld 回延長できます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can be extended %lld more times"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还可以延长 %lld 次"
+          }
+        }
+      }
+    },
     "あなたが読めない行へのリンクがあります（変更しても残ります）" : {
       "localizations" : {
         "en" : {
@@ -266,6 +586,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含你无法读取的行的链接（修改时会保留）"
+          }
+        }
+      }
+    },
+    "あなたの許可を得たとして借りられた備品です。許可していなければ「許可していない」を押してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment borrowed saying you approved. If you did not, press “I did not approve”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借用人表示已获得你的许可而借用的设备。如果你没有许可，请按“未许可”。"
+          }
+        }
+      }
+    },
+    "あなたは教員なので、許可の印は要りません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You are a teacher: no permission mark is needed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你是教师，无需许可标记。"
           }
         }
       }
@@ -334,6 +686,38 @@
         }
       }
     },
+    "この備品は今は借りられません（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This item cannot be borrowed now (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备目前无法借用（%@）"
+          }
+        }
+      }
+    },
+    "この備品を待っている人がいます（%lld 人）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "People are waiting for this item (%lld)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有人在等待此设备（%lld 人）"
+          }
+        }
+      }
+    },
     "この月の行はありません" : {
       "localizations" : {
         "en" : {
@@ -366,6 +750,38 @@
         }
       }
     },
+    "この貸し出しを見る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View this loan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看此借用"
+          }
+        }
+      }
+    },
+    "これ以上は延長できません。備品係に相談してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It cannot be extended any further. Ask an equipment keeper."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法再延长。请联系设备管理员。"
+          }
+        }
+      }
+    },
     "ご意見・要望" : {
       "localizations" : {
         "en" : {
@@ -378,6 +794,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "意见与建议"
+          }
+        }
+      }
+    },
+    "すでに借りています" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You have already borrowed it"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已借用此设备"
+          }
+        }
+      }
+    },
+    "すべての状態" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All states"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有状态"
           }
         }
       }
@@ -942,6 +1390,22 @@
         }
       }
     },
+    "メモ（必須）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Note (required)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "备注（必填）"
+          }
+        }
+      }
+    },
     "メンションと DM の未読の数と、その会話。" : {
       "localizations" : {
         "en" : {
@@ -1038,6 +1502,22 @@
         }
       }
     },
+    "レンズキャップがありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The lens cap is missing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "镜头盖不见了"
+          }
+        }
+      }
+    },
     "一覧は %@ 時点" : {
       "localizations" : {
         "en" : {
@@ -1050,6 +1530,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "列表截至 %@"
+          }
+        }
+      }
+    },
+    "一言（任意）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A word (optional)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言（可选）"
           }
         }
       }
@@ -1130,6 +1626,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前处于此状态的人保持不变。"
+          }
+        }
+      }
+    },
+    "今の返す日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current due date"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前归还日"
           }
         }
       }
@@ -1262,6 +1774,38 @@
         }
       }
     },
+    "付属品とメモ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accessories and notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配件和备注"
+          }
+        }
+      }
+    },
+    "代わりに返却を記録する・返す日を変えるのは Desktop / Web で行います。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recording a return for someone or changing a due date is done on the desktop / web."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代为记录归还或更改归还日请在桌面版 / 网页版进行。"
+          }
+        }
+      }
+    },
     "作ると行のページが開きます。" : {
       "localizations" : {
         "en" : {
@@ -1374,6 +1918,86 @@
         }
       }
     },
+    "修理中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In repair"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "维修中"
+          }
+        }
+      }
+    },
+    "借りた人" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrower"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借用人"
+          }
+        }
+      }
+    },
+    "借りた人と備品係に知らせます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The borrower and the equipment keepers are told."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将通知借用人和设备管理员。"
+          }
+        }
+      }
+    },
+    "借りた日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrowed on"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借用日"
+          }
+        }
+      }
+    },
+    "借りる" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrow"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借用"
+          }
+        }
+      }
+    },
     "値" : {
       "localizations" : {
         "en" : {
@@ -1402,6 +2026,118 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑值"
+          }
+        }
+      }
+    },
+    "備品" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备"
+          }
+        }
+      }
+    },
+    "備品はまだありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No equipment yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有设备"
+          }
+        }
+      }
+    },
+    "備品は使われていません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment is not in use"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未启用设备功能"
+          }
+        }
+      }
+    },
+    "備品係に知らせます。どこに問題があるかを書いてください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The equipment keepers are told. Write what is wrong."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将通知设备管理员。请写明问题所在。"
+          }
+        }
+      }
+    },
+    "備品係の %@ さん" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment keeper %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备管理员 %@"
+          }
+        }
+      }
+    },
+    "備品（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备（%@）"
+          }
+        }
+      }
+    },
+    "充電器は棚の箱へ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charger put in the box on the shelf"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "充电器放在架子上的盒子里"
           }
         }
       }
@@ -1566,6 +2302,38 @@
         }
       }
     },
+    "台帳の編集は Desktop / Web で行います。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The ledger is edited on the desktop / web."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备台账请在桌面版 / 网页版编辑。"
+          }
+        }
+      }
+    },
+    "台帳の編集は Desktop / Web で行います。時間で使う枠は「予約」へ。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The ledger is edited on the desktop / web. Slots used by the hour are under “Reservations”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备台账请在桌面版 / 网页版编辑。按小时使用的名额请到“预约”。"
+          }
+        }
+      }
+    },
     "名前を付けて行を作ります。" : {
       "localizations" : {
         "en" : {
@@ -1594,6 +2362,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "为新行命名。创建后会打开该行的页面。"
+          }
+        }
+      }
+    },
+    "名前・管理番号" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name or asset number"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称・管理编号"
+          }
+        }
+      }
+    },
+    "問題あり" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有问题"
+          }
+        }
+      }
+    },
+    "問題なし" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No problem"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有问题"
           }
         }
       }
@@ -1870,6 +2686,22 @@
         }
       }
     },
+    "学会発表の撮影" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filming a conference talk"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄学会发表"
+          }
+        }
+      }
+    },
     "学内" : {
       "localizations" : {
         "en" : {
@@ -1914,6 +2746,214 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已回家"
+          }
+        }
+      }
+    },
+    "廃棄" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retired"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已报废"
+          }
+        }
+      }
+    },
+    "延滞 %lld 件" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld overdue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逾期 %lld 件"
+          }
+        }
+      }
+    },
+    "延滞の一覧" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overdue loans"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逾期列表"
+          }
+        }
+      }
+    },
+    "延長できる回数を使い切りました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No extensions left"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "延长次数已用完"
+          }
+        }
+      }
+    },
+    "当日中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Same day"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当天"
+          }
+        }
+      }
+    },
+    "当日中に返します" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return it the same day"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当天归还"
+          }
+        }
+      }
+    },
+    "教員が「許可していない」とした貸し出しは延長できません。返却して相談してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A loan the teacher did not approve cannot be extended. Return it and talk it over."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教师表示未许可的借用无法延长。请归还后再商量。"
+          }
+        }
+      }
+    },
+    "教員が「許可していない」としました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The teacher did not approve"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教师表示未许可"
+          }
+        }
+      }
+    },
+    "教員が確認しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The teacher confirmed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教师已确认"
+          }
+        }
+      }
+    },
+    "教員の一言" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The teacher’s note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教师的留言"
+          }
+        }
+      }
+    },
+    "教員の確認" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teacher’s check"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教师确认"
+          }
+        }
+      }
+    },
+    "教員の許可を得た" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A teacher approved this"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已获得教师许可"
+          }
+        }
+      }
+    },
+    "教員の許可を得た（申告）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A teacher approved this (self-reported)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已获得教师许可（自行申报）"
           }
         }
       }
@@ -1994,6 +3034,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建行"
+          }
+        }
+      }
+    },
+    "新しい返す日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New due date"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新的归还日"
           }
         }
       }
@@ -2154,6 +3210,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最后编辑者"
+          }
+        }
+      }
+    },
+    "最近の貸し出し" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent loans"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近的借用"
+          }
+        }
+      }
+    },
+    "最長" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Longest"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最长"
+          }
+        }
+      }
+    },
+    "最長 %lld 日（%@ まで）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up to %lld days (until %@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最长 %lld 天（至 %@）"
           }
         }
       }
@@ -2382,6 +3486,38 @@
         }
       }
     },
+    "目的" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purpose"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用途"
+          }
+        }
+      }
+    },
+    "目的：%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purpose: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用途：%@"
+          }
+        }
+      }
+    },
     "相手のデータベースを読めません" : {
       "localizations" : {
         "en" : {
@@ -2398,6 +3534,22 @@
         }
       }
     },
+    "確認した" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已确认"
+          }
+        }
+      }
+    },
     "空" : {
       "localizations" : {
         "en" : {
@@ -2410,6 +3562,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "空"
+          }
+        }
+      }
+    },
+    "管理者が Desktop / Web でオンにします" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An admin turns it on on the desktop / web"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由管理员在桌面版 / 网页版开启"
           }
         }
       }
@@ -2474,6 +3642,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "进行编辑"
+          }
+        }
+      }
+    },
+    "置き場所" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Location"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存放位置"
           }
         }
       }
@@ -2554,6 +3738,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "我的状态"
+          }
+        }
+      }
+    },
+    "自分の貸し出し" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My loans"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的借用"
           }
         }
       }
@@ -2766,6 +3966,102 @@
         }
       }
     },
+    "記録した人" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recorded by"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录人"
+          }
+        }
+      }
+    },
+    "許可した教員" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approving teacher"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可的教师"
+          }
+        }
+      }
+    },
+    "許可していない" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I did not approve"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未许可"
+          }
+        }
+      }
+    },
+    "許可していないとしますか？" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as not approved?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要标记为未许可吗？"
+          }
+        }
+      }
+    },
+    "許可を求められた貸し出し" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loans naming you as the teacher"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求你许可的借用"
+          }
+        }
+      }
+    },
+    "該当する備品はありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matching equipment"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有符合条件的设备"
+          }
+        }
+      }
+    },
     "読める行が見つかりません" : {
       "localizations" : {
         "en" : {
@@ -2782,6 +4078,86 @@
         }
       }
     },
+    "貸し出し" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借用"
+          }
+        }
+      }
+    },
+    "貸出中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On loan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借出中"
+          }
+        }
+      }
+    },
+    "貸出中の一覧" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Items on loan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借出列表"
+          }
+        }
+      }
+    },
+    "貸出中の備品はありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing is on loan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有借出中的设备"
+          }
+        }
+      }
+    },
+    "貸出可" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Available"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可借用"
+          }
+        }
+      }
+    },
     "輪講" : {
       "localizations" : {
         "en" : {
@@ -2794,6 +4170,134 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "轮讲"
+          }
+        }
+      }
+    },
+    "返した日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Returned on"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还日"
+          }
+        }
+      }
+    },
+    "返す" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还"
+          }
+        }
+      }
+    },
+    "返す日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Due date"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还日"
+          }
+        }
+      }
+    },
+    "返す日を %@ にしました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Due date changed to %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还日已改为 %@"
+          }
+        }
+      }
+    },
+    "返す日を過ぎた貸し出しはありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No overdue loans"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有逾期的借用"
+          }
+        }
+      }
+    },
+    "返却" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还"
+          }
+        }
+      }
+    },
+    "返却されたとき（修理が終わったとき）に 1 回知らせます。順番や取り置きにはなりません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You are told once when it is returned (or back from repair). It does not hold it for you."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还时（维修完成时）通知一次。不会为你排队或保留。"
+          }
+        }
+      }
+    },
+    "返却されたら知らせる" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notify me when returned"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归还后通知我"
           }
         }
       }
@@ -2894,6 +4398,22 @@
         }
       }
     },
+    "選んだ教員に知らせが届きます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The teacher you choose is told."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选教师会收到通知。"
+          }
+        }
+      }
+    },
     "選択肢がありません（パソコンでフルアクセスの人が作れます）" : {
       "localizations" : {
         "en" : {
@@ -2906,6 +4426,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有选项（拥有完全访问权限的人可在电脑上添加）"
+          }
+        }
+      }
+    },
+    "（%@ まで）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (until %@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（至 %@）"
+          }
+        }
+      }
+    },
+    "（%@、%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (%@, %@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（%@，%@）"
+          }
+        }
+      }
+    },
+    "（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（%@）"
           }
         }
       }
@@ -31819,6 +33387,41 @@
         }
       }
     },
+    "📦" : {
+      "shouldTranslate" : false
+    },
+    "🔑 教員の許可が要る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔑 Needs a teacher’s permission"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔑 需要教师许可"
+          }
+        }
+      }
+    },
+    "🔑 許可が要る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔑 Needs permission"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔑 需要许可"
+          }
+        }
+      }
+    },
     "🔒" : {
       "shouldTranslate" : false
     },
@@ -31962,6 +33565,25 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@：%2$@%3$@"
+          }
+        }
+      }
+    },
+    "🔧" : {
+      "shouldTranslate" : false
+    },
+    "🔧 問題あり" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔧 Problem"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔧 有问题"
           }
         }
       }

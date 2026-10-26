@@ -16,7 +16,8 @@ protocol ActivityApi: AnyObject {
 enum ActivityRules {
     /// The filters in the order the tab shows them (the GET /activity `filter` values).
     static let filters = ["all", "mentions", "threads", "reactions"]
-    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention", "reservation", "page_mention", "page_shared"]
+    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention", "reservation", "page_mention", "page_shared",
+                                     "lending"]
 
     static func filterLabel(_ filter: String) -> String {
         switch filter {
@@ -120,7 +121,8 @@ enum ActivityRules {
     static func append(_ held: [ActivityItem], _ page: [ActivityItem]) -> [ActivityItem] {
         var keys = Set(held.map(\.id))
         var rows = held
-        for item in page where kinds.contains(item.kind) && (item.message != nil || item.canvas != nil || item.reservation != nil || item.page != nil)
+        for item in page where kinds.contains(item.kind)
+            && (item.message != nil || item.canvas != nil || item.reservation != nil || item.page != nil || item.lending != nil)
             && !keys.contains(item.id) {
             keys.insert(item.id)
             rows.append(item)
@@ -134,6 +136,11 @@ enum ActivityRules {
         // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
         if let reservation = item.reservation {
             return (reservation.poolName.isEmpty ? tr("予約") : reservation.poolName, reservation.operator ? tr(" · 担当者の作業") : tr(" · 予約"))
+        }
+        // M171: an equipment notice — the item (「備品」 for the keepers' summary) and why it came to me.
+        if let lending = item.lending {
+            let name = lending.itemName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return (name.isEmpty ? tr("備品") : name, LendingRules.roleText(lending.role))
         }
         let name = item.actorIds.first.map(nameOf) ?? tr("誰か")
         switch item.kind {
@@ -174,6 +181,7 @@ enum ActivityRules {
     static func excerpt(_ item: ActivityItem, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
         if let canvas = item.canvas { return canvas.excerpt }
         if let reservation = item.reservation { return reservation.text }  // M112
+        if let lending = item.lending { return lending.text }  // M171
         if let page = item.page { return page.excerpt }  // M122
         guard let message = item.message else { return "" }
         return excerpt(message, users: users, groups: groups)
@@ -198,12 +206,22 @@ enum ActivityRules {
                 next.reservation?.done = true
                 return next
             }
+            // M171: the teacher decided (here, on another device) or 14 days passed since the return: done.
+            if let lending = item.lending, itemIds.contains(lending.itemId), !lending.done {
+                var next = item
+                next.lending?.done = true
+                return next
+            }
             guard let canvas = item.canvas, itemIds.contains(canvas.itemId), !canvas.excerpt.isEmpty else { return item }
             var next = item
             next.canvas?.excerpt = ""
             return next
         }
     }
+
+    /// A to-do that is done (a reservation operator's, M112; the teacher's 「許可していない」 / 「確認した」, M171): no dot,
+    /// dimmed, 「対応済み」.
+    static func isDone(_ item: ActivityItem) -> Bool { item.reservation?.done == true || item.lending?.done == true }
 
     /// The row's second line: the conversation, 「#c のスレッド」 for a reply, 「#c のキャンバス」 for a canvas.
     static func whereText(_ item: ActivityItem, conversation: String) -> String {

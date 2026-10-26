@@ -29,6 +29,8 @@ enum NavItems {
         Entry(key: "tasks", label: tr("タスク"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "deadlines", label: tr("締切"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "reservations", label: tr("予約"), visible: true, platforms: [.desktop, .mobile]),
+        // M170 / M171 (docs/LENDING.md §12.1): implemented only while the workspace has 備品 on (and never for a guest).
+        Entry(key: "lending", label: tr("備品"), visible: true, platforms: [.desktop, .mobile]),
         // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and never for a guest).
         Entry(key: "attendance", label: tr("在室状況"), visible: true, platforms: [.desktop, .mobile]),
         // M143 (docs/ACTIONS.md §9): implemented only while the buttons are on and I may press one (never for a guest).
@@ -36,10 +38,10 @@ enum NavItems {
     ] }
 
     static let order: [Platform: [String]] = [
-        .desktop: ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved",
-                   "times-feed", "attendance", "actions"],
-        .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "drive", "canvases",
-                  "docs", "activity", "attendance", "actions"],
+        .desktop: ["threads", "activity", "drafts", "reminders", "files", "drive", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations",
+                   "lending", "saved", "times-feed", "attendance", "actions"],
+        .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "lending", "files", "drive",
+                  "canvases", "docs", "activity", "attendance", "actions"],
     ]
 
     /// The tiles this app has (「予約」 joins when its page exists). アクティビティ is the phone's tab and the iPad
@@ -47,9 +49,12 @@ enum NavItems {
     /// 「操作」 (M143) only while the buttons are on and I may press one.
     static var implemented: [String] { implemented(attendance: false) }
 
-    /// M166: 「ドライブ」 only while the server has the drive (GET /drive/locations answered).
-    static func implemented(attendance: Bool, actions: Bool = false, drive: Bool = false) -> [String] {
-        HomeTile.Kind.allCases.filter { (attendance || $0 != .attendance) && (actions || $0 != .actions) && (drive || $0 != .drive) }.map(\.navKey)
+    /// M166: 「ドライブ」 only while the server has the drive (GET /drive/locations answered). M171: 「備品」 only while the
+    /// workspace has it on for me.
+    static func implemented(attendance: Bool, actions: Bool = false, drive: Bool = false, lending: Bool = false) -> [String] {
+        HomeTile.Kind.allCases.filter {
+            (attendance || $0 != .attendance) && (actions || $0 != .actions) && (drive || $0 != .drive) && (lending || $0 != .lending)
+        }.map(\.navKey)
     }
 
     private static let byKey = Dictionary(uniqueKeysWithValues: catalogue.map { ($0.key, $0) })
@@ -110,7 +115,7 @@ struct HomeTilesSettingsView: View {
     private var implemented: [String] {
         NavItems.implemented(attendance: controller.store.attendance != nil && !controller.isGuest,
                              actions: ActionRules.visible(controller.store.actions, role: (controller.store.me ?? controller.me)?.role),
-                             drive: controller.drive?.available == true)
+                             drive: controller.drive?.available == true, lending: controller.lending?.enabled == true)
     }
 
     var body: some View {

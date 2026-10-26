@@ -21,6 +21,8 @@ final class PushCenter {
     var pendingTasks = false
     /// M112: a tapped reservation notice: MainView opens 「予約」.
     var pendingReservations = false
+    /// M171: a tapped equipment notice: MainView opens 「備品」 at the loan, the item or the overdue list.
+    var pendingLending: LendingScreen?
     /// M122: a tapped page notification: MainView opens the page (over 「ドキュメント」 on the home tab).
     var pendingPage: String?
     /// The 在室状況 widget was tapped: MainView opens 「在室状況」 (AppController.openWidgetLink).
@@ -84,6 +86,7 @@ final class PushCenter {
         pendingCalendar = false
         pendingTasks = false
         pendingReservations = false
+        pendingLending = nil
         pendingPage = nil
         pendingAttendance = false
         pendingTap = nil

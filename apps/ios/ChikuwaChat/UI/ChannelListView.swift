@@ -271,6 +271,7 @@ struct ChannelListView: View {
                                  },
                                  actions: ActionRules.visible(store.actions, role: (store.me ?? controller.me)?.role),
                                  drive: controller.drive?.available == true,
+                                 lending: controller.lending.flatMap { $0.enabled ? $0.tileCount : nil },  // M171
                                  timesUnread: TimesFeedList.hasUnread(store.channels.values))
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {

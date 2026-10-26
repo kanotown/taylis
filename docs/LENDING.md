@@ -885,6 +885,38 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 プッシュの `kind = lending` のタップ（`lending_item_id`・`loan_id`）、備品の詳細の「返却されたら知らせる」（`watching`・`PUT / DELETE …/watch`）
 と延長のダイアログの `watcher_count`。
 
+### 17.5 L5（M171、iOS、2026-10-26）
+
+`Api/LendingModels.swift`（型・`LendingApi`・`LendingUnavailable`）、`Sync/LendingHub.swift`（SyncEngine の `lending`）、`UI/LendingRules.swift`
+（純粋な規則）、`UI/LendingViews.swift`（画面とシート）。ホームのタイル「備品」（`HomeTile.Kind.lending`、アイコン `shippingbox`、iPad の
+サイドバーにも）、`MainRoute.lending(LendingScreen)`（備品・貸し出し・延滞・貸出中の画面を一覧の上に積む）、アクティビティの 📦 の行と
+プッシュのタップ。テストは `ChikuwaChatTests/LendingTests.swift`。
+
+決めたこと（Android・Desktop と揃えるとよいこと）：
+
+- **端末は台帳を持たない**（§9）：`LendingHub` は bootstrap の `lending`（タイルの有無と数）、設定（ゾーン・延長の回数）、開いた画面が読んだ
+  一覧だけを持つ。`lending.updated` は 300 ms でまとめて、設定（`settings: true` のとき）・自分の貸し出し・読んだことのある一覧（備品・
+  許可を求められた・貸出中・延滞）を読み直し、開いている備品・貸し出しの画面も読み直す。再接続（2 回目以降の bootstrap）でも同じ。
+- **タイルの数**：bootstrap の `my_overdue_count`（＋備品係なら `keeper_attention_count`）から始め、`lending.updated` の後は読み直した
+  `scope=mine`（と備品係は `scope=active` から `keeper_overdue_days` 以上か無効化された人の貸し出し）で数え直す。bootstrap を読み直さない。
+  0 のときは数を出さない（暗くもしない）。機能がオフ・ゲスト・ボット・古いサーバでは出さない（設定の `lending.updated` で出入りする）。
+- **返す日はワークスペースのゾーンの日付**：日付の選択（`DatePicker`）に `lending_settings.tz` のカレンダーとゾーンを渡し、「今日」も
+  そのゾーンで数える（端末のゾーンが違っても日がずれない）。借りるの既定は最長の日、延長は「今の返す日の次の日（過ぎていれば今日）」〜
+  `latest_due_on`。
+- **送り直し**：`client_request_id` は借りるシートを開いたときに 1 つ作り、閉じるまで同じものを送る（ネットワークの失敗の後に押しても
+  2 つ目の貸し出しにならない）。`409 lending_item_unavailable` は `details` を読んで「〇〇 さんが先に借りました（10/30 (金) まで）」/
+  「すでに借りています」/「この備品は今は借りられません（修理中）」と出し、一覧と詳細を読み直す。
+- **スマホで押せるもの**：借りる（貸出可、ゲスト不可）・自分の貸し出しの返す / 延長・見守り（廃棄でなく、自分が借りていないもの）・
+  教員の判断（その貸し出しの教員だけ。申告中は 2 つ、確認済みは「許可していない」、否定済みは「確認した」）。「許可していない」は
+  確かめのアラートで一言（任意、200 字）を書ける。備品係の代わりの返却・日付の変更は出さない（「Desktop / Web で行います」）。
+- **延滞の一覧はスマホにも読むだけで置いた**（§12.3 は「出さない」だったが、備品係のまとめの知らせ（`loan_id`・`lending_item_id` が
+  どちらも null）を押した先が要るため）。備品係にだけ一覧の画面に行を出し、目的も見せる。「貸出中の一覧」（`scope=active`）は全員に。
+- **知らせの開き方**：アクティビティの行・プッシュとも `loan_id` → その貸し出し、無ければ `lending_item_id` → その備品、両方無ければ
+  延滞の一覧。プッシュは home のタブ（iPad は詳細の列）に「備品」の一覧を置いてその上に開く。教員の作業の行（`role = approver`・
+  `done = false`）は行の下に「許可していない」「確認した」を置き、判断の後は `activity.updated` で「対応済み」になる。開いている間の
+  `lending.notice` はバナー（サーバの文をそのまま。DND 中は出さない）。
+- **サーバへの指摘**：なし（L1〜L3 の API のままで足りた）。
+
 ### 17.6 L6（M172、Android、2026-10-26）
 
 `apps/android`：`api/LendingModels.kt`（`LendingSettingsOut`・`LendingSummaryOut`・`LendingCategoryOut`・`LendingItemOut`（詳細の
