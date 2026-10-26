@@ -80,6 +80,7 @@
     <string name="app_controller_text_copied_2">本文をコピーしました</string>
     <string name="app_controller_the_destination_channel">送り先のチャンネル</string>
     <string name="app_controller_the_file_is_too_large_limit">ファイルが大きすぎます（上限 %1$s）</string>
+    <string name="app_controller_enter_the_server_url">サーバ URL を入力してください</string>
     <string name="app_controller_the_server_url_is_not_valid">サーバ URL が正しくありません</string>
     <string name="app_controller_there_is_no_public_channel_called">#%1$s という公開チャンネルはありません</string>
     <string name="app_controller_there_is_no_user_called">%1$s というユーザーはいません</string>
