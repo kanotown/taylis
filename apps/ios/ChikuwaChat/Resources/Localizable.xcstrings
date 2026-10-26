@@ -2078,6 +2078,22 @@
         }
       }
     },
+    "備品を開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the item"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开设备"
+          }
+        }
+      }
+    },
     "備品係に知らせます。どこに問題があるかを書いてください。" : {
       "localizations" : {
         "en" : {

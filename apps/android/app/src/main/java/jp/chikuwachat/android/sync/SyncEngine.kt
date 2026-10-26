@@ -313,14 +313,39 @@ class SyncEngine(
             .onFailure { Log.w("SyncEngine", "could not read the lending settings", it) }.getOrNull()
     }
 
+    /** M173: whether the server has GET /lending/summary (null until asked; false after its 404: the loans count, as M172). */
+    private var lendingSummaryRoute: Boolean? = null
+
     /**
-     * M172: the tile's numbers worked out again after lending.updated (the event carries no content: what one sees differs
-     * per person). The settings are read again when the event says so or nothing is known yet (turned on elsewhere).
+     * M172: the tile's numbers again after lending.updated / lending.notice (the event carries no content: what one sees
+     * differs per person). The settings are read again when the event says so or nothing is known yet (turned on
+     * elsewhere). M173 (docs/LENDING.md §5.1, §17.8): the numbers are GET /lending/summary (null while off: the tile
+     * goes); a server before M173 (404) has them worked out from my loans and, for keepers, every active loan.
      */
     suspend fun reloadLending(settingsChanged: Boolean) {
         val lendingApi = api as? LendingApi ?: return
         if (store.me?.role == "guest") return
-        val settings = (if (settingsChanged || store.lendingSettings == null) loadLendingSettings() else store.lendingSettings) ?: return
+        var settingsRead = false
+        if (lendingSummaryRoute != false) {
+            if (settingsChanged) { loadLendingSettings(); settingsRead = true }
+            val read = runCatching { lendingApi.lendingSummary() }
+            val error = read.exceptionOrNull()
+            if (error == null) {
+                lendingSummaryRoute = true
+                val summary = read.getOrNull()
+                store.setLending(summary)
+                if (summary?.enabled == true && store.lendingSettings?.enabled != true && !settingsRead) loadLendingSettings()
+                store.bumpLending()
+                return
+            }
+            if (!LendingSummary.isMissingRoute(error)) {
+                Log.w("SyncEngine", "could not read the lending numbers", error) // kept; the next bootstrap corrects them
+                store.bumpLending()
+                return
+            }
+            lendingSummaryRoute = false
+        }
+        val settings = (if ((settingsChanged && !settingsRead) || store.lendingSettings == null) loadLendingSettings() else store.lendingSettings) ?: return
         if (!settings.enabled) {
             store.setLending(null)
             store.bumpLending()
@@ -1016,8 +1041,10 @@ class SyncEngine(
             // M172 (docs/LENDING.md §9): the ledger or a loan changed (no content: what one sees differs per person).
             "lending.updated" -> scheduleLendingReload(settings = frame.data.bool("settings") == true)
             "lending.notice" -> {
-                // M172: an activity item for me (my loan, the teacher's to-do, the keepers', an item I watched).
+                // M172: an activity item for me (my loan, the teacher's to-do, the keepers', an item I watched). M173: the
+                // morning's reminders come with no lending.updated, yet a loan may have just become overdue: the numbers too.
                 scheduleActivityRefresh()
+                scheduleLendingReload(settings = false)
                 runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.LendingNotice.serializer(), frame.data) }
                     .onSuccess { notice -> onLendingNotice?.invoke(notice) }
             }

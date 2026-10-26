@@ -184,6 +184,13 @@ class FakeServer {
             return lendingSettings
         }
 
+        override suspend fun lendingSummary(): jp.chikuwachat.android.api.LendingSummaryOut? {
+            maybeFail(); lendingSummaryReads += 1
+            if (!lendingSummaryRoute) throw ApiException.Api(404, "not_found", "Not Found") // a server before M173
+            if (users.getValue(userId).role == "guest" || !lendingSettings.enabled) return null // 403 / 409: the client's null
+            return jp.chikuwachat.android.sync.LendingSummary.of(lendingSettings, lendingLoans.filter { it.borrowerId == userId }, lendingLoans) { false }
+        }
+
         override suspend fun lendingLoans(scope: String): List<jp.chikuwachat.android.api.LendingLoanOut> {
             maybeFail(); lendingLoanReads += scope
             if (!lendingSettings.enabled) throw ApiException.Api(409, "lending_disabled", "off")
@@ -776,6 +783,9 @@ class FakeServer {
     /** GET /lending/loans calls, by scope. */
     val lendingLoanReads = ArrayList<String>()
     var lendingSettingsReads = 0
+    /** M173: GET /lending/summary exists (false: a server before M173 answers 404) and how often it was read. */
+    var lendingSummaryRoute = true
+    var lendingSummaryReads = 0
 
     /** M172: lending.updated to everyone (no content), as the server sends after any ledger or loan change. */
     fun publishLending(settings: Boolean = false) {

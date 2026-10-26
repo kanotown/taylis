@@ -19,7 +19,8 @@ final class LendingHub {
     private(set) var approvedLoans: [LendingLoanOut]?
     private(set) var activeLoans: [LendingLoanOut]?
     private(set) var overdueLoans: [LendingLoanOut]?
-    /// The tile's parts, from the summary, then from the loans read since.
+    /// The tile's parts, from the bootstrap's summary, then from GET /lending/summary after lending.updated /
+    /// lending.notice (M173); from the loans read since on a server before M173.
     private(set) var myOverdue = 0
     private(set) var keeperAttention = 0
     /// Bumped when what is shown may have changed: open screens read their item or loan again.
@@ -29,6 +30,9 @@ final class LendingHub {
     @ObservationIgnored private var bootstraps = 0
     @ObservationIgnored private var reload: Task<Void, Never>?
     @ObservationIgnored private var pendingSettings = false
+    /// M173: whether the server has GET /lending/summary (nil until asked; false after its 404: the numbers are counted
+    /// from my loans and, for keepers, every active loan, as M171 did).
+    @ObservationIgnored private(set) var summaryRoute: Bool?
     /// Reads may overlap (bootstrap's and an event's): an answer that started before one already kept is dropped.
     @ObservationIgnored private var reads: [String: Int] = [:]
     @ObservationIgnored private var kept: [String: Int] = [:]
@@ -62,6 +66,8 @@ final class LendingHub {
     /// After every bootstrap: the summary; the settings once (and when they changed); after a gap, what was read again.
     func bootstrap(_ summary: LendingSummaryOut?) {
         bootstraps += 1
+        _ = begin("summary")  // a summary read before this answers older numbers
+        kept["summary"] = reads["summary"]
         self.summary = summary
         myOverdue = summary?.myOverdueCount ?? 0
         keeperAttention = summary?.keeperAttentionCount ?? 0
@@ -74,7 +80,7 @@ final class LendingHub {
         let again = bootstraps > 1
         Task {
             if settingsStale { await self.loadSettings() }
-            if again { await self.refresh() }
+            if again { await self.refresh(numbers: false) }  // the bootstrap's numbers are new
         }
     }
 
@@ -87,9 +93,12 @@ final class LendingHub {
     }
 
     /// `lending.notice`: the banner; the teacher's list reads again (a new loan names me).
+    /// The morning's reminders come without lending.updated, yet a loan may have just become overdue: the numbers too.
     func applyNotice(_ notice: LendingNotice) {
         onNotice?(notice)
-        if notice.role == "approver", isPerson() { Task { await self.loadApproved() } }
+        guard isPerson(), api != nil else { return }
+        if notice.role == "approver" { Task { await self.loadApproved() } }
+        scheduleRefresh()
     }
 
     private func scheduleRefresh() {
@@ -102,12 +111,15 @@ final class LendingHub {
         }
     }
 
-    /// Reads again what may have changed: the settings when they did, my loans (the tile), and whatever was read before.
-    func refresh() async {
+    /// Reads again what may have changed: the settings when they did, the numbers (`numbers`, GET /lending/summary),
+    /// my loans and whatever was read before. On a server before M173 the numbers come from my loans and, for keepers,
+    /// every active loan.
+    func refresh(numbers: Bool = true) async {
         if pendingSettings || settings == nil {
             pendingSettings = false
             await loadSettings()
         }
+        if numbers { await loadSummary() }
         guard settings?.enabled ?? summary?.enabled ?? false else {
             changes += 1
             return
@@ -115,7 +127,7 @@ final class LendingHub {
         await loadMine()
         if items != nil { await loadItems() }
         if approvedLoans != nil { await loadApproved() }
-        if activeLoans != nil || isKeeper { await loadActive() }
+        if activeLoans != nil || (isKeeper && countsFromLoans) { await loadActive() }
         if overdueLoans != nil, isKeeper { try? await loadOverdue() }
         changes += 1
     }
@@ -131,6 +143,28 @@ final class LendingHub {
         guard read > kept[key, default: 0] else { return false }
         kept[key] = read
         return true
+    }
+
+    /// The numbers are counted from the loans read (a server before M173).
+    private var countsFromLoans: Bool { summaryRoute == false }
+
+    /// M173 (docs/LENDING.md §5.1, §17.8): the bootstrap's `lending` again. nil (off, 409 lending_disabled) hides the
+    /// tile: the settings are read again when lending.updated says they changed. 404 (a server before M173): from now
+    /// on the loans count. Another failure keeps the numbers (the next bootstrap corrects them).
+    func loadSummary() async {
+        guard let api, isPerson(), summaryRoute != false else { return }
+        let read = begin("summary")
+        do {
+            let out = try await api.lendingSummary()
+            summaryRoute = true
+            guard keep("summary", read) else { return }
+            summary = out
+            myOverdue = out?.myOverdueCount ?? 0
+            keeperAttention = out?.keeperAttentionCount ?? 0
+            if out?.enabled != true { settings = nil }
+        } catch {
+            if LendingRules.isMissingRoute(error) { summaryRoute = false }
+        }
     }
 
     func loadSettings() async {
@@ -164,7 +198,7 @@ final class LendingHub {
         let read = begin("mine")
         guard let list = try? await api.lendingLoans(scope: "mine"), keep("mine", read) else { return }
         myLoans = list
-        myOverdue = list.filter { $0.isActive && $0.overdueDays > 0 }.count
+        if countsFromLoans { myOverdue = list.filter { $0.isActive && $0.overdueDays > 0 }.count }
     }
 
     func loadApproved() async {
@@ -180,7 +214,7 @@ final class LendingHub {
         let read = begin("active")
         guard let list = try? await api.lendingLoans(scope: "active"), keep("active", read) else { return }
         activeLoans = list
-        if isKeeper, let settings {
+        if countsFromLoans, isKeeper, let settings {
             keeperAttention = LendingRules.keeperAttention(list, keeperOverdueDays: settings.keeperOverdueDays, deactivated: isDeactivated)
         }
     }

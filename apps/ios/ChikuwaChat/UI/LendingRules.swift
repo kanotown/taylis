@@ -232,6 +232,12 @@ enum LendingRules {
         return ErrorMessages.text(for: error)
     }
 
+    /// M173: a route this server does not have (404 not_found, or 405): GET /lending/summary of a server before M173.
+    static func isMissingRoute(_ error: Error) -> Bool {
+        guard case ApiError.api(let status, let code, _) = error else { return false }
+        return (status == 404 && code == "not_found") || status == 405
+    }
+
     // MARK: notices
 
     /// Where a notice (an activity row, a push) opens.

@@ -687,6 +687,9 @@ struct MessageBodyView: View {
     /// 「表示できないファイル」, or 「ドライブのファイル」 while not known — and an in-app link the row opens. nil (a
     /// screen that does not open drive links): the plain link.
     var driveLabel: ((String) -> DriveHub.LinkState?)? = nil
+    /// M173 (docs/LENDING.md §17.8): an equipment link (`<server>/eq/<id>`) reads 「📦 備品を開く」 and opens in 「備品」.
+    /// false (lending off or not for me, or a screen that does not open it): the plain link.
+    var equipmentLinks = false
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -1025,6 +1028,12 @@ struct MessageBodyView: View {
                 // A calendar event of this server (the 「予定」 bot's announcement) opens in the app.
                 var attributed = AttributedString("📅 " + ((label != nil && label != url) ? label! : tr("予定を開く")))
                 attributed.link = EventLink.internalLink(eventId: id)
+                return Text(attributed)
+            }
+            if equipmentLinks, let id = EquipmentLink.itemId(base: internalBase, url: url) {
+                // M173: an equipment item of this server (its label's QR code) opens in 「備品」.
+                var attributed = AttributedString("📦 " + ((label != nil && label != url) ? label! : tr("備品を開く")))
+                attributed.link = EquipmentLink.internalLink(itemId: id)
                 return Text(attributed)
             }
             if let id = Permalink.messageId(base: internalBase, url: url) {
