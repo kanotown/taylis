@@ -1,7 +1,8 @@
 # LENDING（備品の貸し出し）
 
-2026-10-26 の設計。**本書は設計だけで、コードはまだ無い。** マイルストーンは L1〜L7（§16。M 番号は仮に M167〜M173、移行は
-0123〜0125。並行する作業と重なれば振り直す）。
+2026-10-26 の設計。**L1（M167、台帳・サーバ）を実装（2026-10-26、移行 0123、§17）。L2〜L7 はこれから。** マイルストーンは L1〜L7
+（§16。M 番号は仮に M167〜M173、移行は 0123〜0125。並行する作業と重なれば振り直す）。§15 の質問は利用者がすべて推めのとおりに
+決めた（2026-10-26）。
 
 利用者（研究室の教員）の要望（2026-10-26）：研究室の PC・カメラ・本などを、メンバーが**自分で借りて自分で返す**ようにしたい。
 貸し出しは数日〜数週間。今は紙やスプレッドシートで管理していて、誰が何を持っているか・返っていないものがすぐにはわからない。
@@ -300,7 +301,7 @@ CREATE TABLE lending_watches (                        -- 「返却を知らせ�
 
 | | |
 | --- | --- |
-| `GET /lending/settings` | `LendingSettingsOut {enabled, keeper_ids, default_max_days, max_extensions, keeper_overdue_days, notice_minute, tz, is_keeper}`。人なら誰でも（機能がオフでも読める。ゲストは `403 guest_restricted`） |
+| `GET /lending/settings` | `LendingSettingsOut {enabled, keeper_ids, default_max_days, max_extensions, keeper_overdue_days, notice_minute, tz, is_keeper, updated_at}`。人なら誰でも（機能がオフでも読める。ゲストは `403 guest_restricted`） |
 | `PATCH /admin/lending/settings` | 上の項目の一部（`is_keeper` を除く）。`lending.manage`（`403 admin_required`）。`keeper_ids` に無効・ゲスト・ボット・知らない人がいれば `400 lending_keeper_invalid`（`details.user_ids`）、21 人目は 422。範囲外の数・知らないゾーンは 422。監査 `lending_settings.updated`、`lending.updated {settings: true}` |
 
 bootstrap に **`lending: LendingSummaryOut | null`**（ゲストと、オフのときは null。ACTIONS.md の `actions` と同じ）：
@@ -325,8 +326,8 @@ bootstrap に **`lending: LendingSummaryOut | null`**（ゲストと、オフの
 | `GET /lending/approvers` | 教員の候補（§6.4）`{user_ids, suggested_ids}`（`suggested_ids` は呼んだ人の指導教員） |
 
 `ItemOut`：`id, name, category_id, code, location, notes, photo (AttachmentOut | null), status, status_note, requires_permission
-（実際の値）, requires_permission_source（item / category / default）, max_days（実際の値）, loan (LoanBriefOut | null), watching,
-created_at, updated_at`。`LoanBriefOut`：`id, borrower_id, borrowed_at, due_on, overdue_days, permission_state`（目的などは載せない）。
+（実際の値）, requires_permission_source（item / category / default）, max_days（実際の値）, max_days_source（item / category / default）,
+loan (LoanBriefOut | null), watching, created_at, updated_at`。`LoanBriefOut`：`id, borrower_id, borrowed_at, due_on, overdue_days, permission_state`（目的などは載せない）。
 
 ### 5.3 貸し出し
 
@@ -528,7 +529,7 @@ null（`details_hidden: true`）。
 
 | type | audience | seq | data |
 | --- | --- | --- | --- |
-| `lending.updated` | all | — | `{item_ids, settings}`。備品・貸し出し・分類（`item_ids` は空で `categories: true`）・設定（`settings: true`）が変わった。中身は人によって違う（目的などの見える範囲）ので載せず、端末は `GET /lending/items`（設定なら `GET /lending/settings`、bootstrap の `lending` も）を読み直す。続けて届いたものは 300 ms で 1 回にまとめる。ゲストにも届きうるが中身は無い（予約の `reservation.updated` と同じ） |
+| `lending.updated` | all | — | `{item_ids, categories, settings}`。備品・貸し出し・分類（`item_ids` は空で `categories: true`）・設定（`settings: true`）が変わった。中身は人によって違う（目的などの見える範囲）ので載せず、端末は `GET /lending/items`（設定なら `GET /lending/settings`、bootstrap の `lending` も）を読み直す。続けて届いたものは 300 ms で 1 回にまとめる。ゲストにも届きうるが中身は無い（予約の `reservation.updated` と同じ） |
 | `lending.notice` | user | — | `{item_id, lending_item_id, loan_id, role, text, at}`。自分あての知らせ（アクティビティの項目 `item_id`）。バッジを読み直し、開いている端末はバナー / 通知を出す |
 | `activity.updated` | user | — | 既存。教員の作業が済んだとき `{item_ids}` |
 
@@ -730,3 +731,39 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 - 使い始められるのは L4 の後（台帳を作って Desktop / Web で借りる・返すができ、知らせも届く）。L5・L6 は並行してよい。L7 は台帳を
   スプレッドシートから移すときに要るので、利用者の今の表の大きさ次第で L4 の直後に回す。
 - 見積もりの目安：L1 3 日、L2 3 日、L3 4 日、L4 1 週、L5・L6 各 4 日、L7 3 日。
+
+## 17. L1 の実装（M167、2026-10-26）
+
+`app/modules/lending/`（`models`・`access`・`schemas`・`service`・`router`・`events`）、移行 0123（downgrade は写真の添付を `deleted`
+にしてから表を落とす）、`lending.manage`（`app/core/roles.py`、管理者だけ）、`attachments.lending_item_id` と `get_for_access` の枝
+（`attachments.set_lending_access_check`、main.py で `lending.access.can_read_photo` を渡す）、bootstrap の `lending`、`lending.updated`、
+監査、`apps/shared/errors.json`。テストは `tests/test_lending_ledger.py`（と `tests/test_roles.py` の表に `PATCH /admin/lending/settings`）。
+
+設計から決めたこと・変えたこと（後の段階が知っておくこと）：
+
+- **OpenAPI の型の名前には `Lending` を付けた**：`LendingCategoryOut`・`LendingCategoryCreate`・`LendingCategoryUpdate`・`LendingItemOut`・
+  `LendingItemDetailOut`・`LendingItemCreate`・`LendingItemUpdate`・`LendingItemStatusIn`・`LendingItemEventOut`・`LendingItemHistoryOut`・
+  `LendingLoanBriefOut`（本書の `CategoryOut`・`ItemOut` などはこれのこと。ほかのモジュールの型と混ざらないように）。L2 の
+  `LoanOut` も `LendingLoanOut` にする。
+- `LendingItemOut` に **`max_days_source`**（item / category / default）を足した。編集フォームの「分類の既定（30 日）/ 日数」に要る
+  （`requires_permission_source` と同じ形）。備品の値そのものは「source が item のときの値」。
+- `POST /lending/items`（201）・`PATCH /lending/items/{id}`・`POST /lending/items/{id}/status` は **`LendingItemDetailOut`** を返す
+  （`recent_loans` は L2 まで空、`loan` は null、`watching` は L3 まで false）。
+- 分類の `item_count` は**廃棄を含む**数（分類の削除を止めるのと同じ数え方。`409 lending_category_in_use` の `details.item_count` と一致）。
+- 分類の `PATCH {position}` は 0 からの位置：その場所に入れ、ほかを詰めて 0, 1, 2… に並べ直す。
+- `POST …/status`：同じ状態・同じ理由なら何もしない。同じ状態で理由だけ違えば理由を変えて履歴 `status` に残す。貸出可に戻すと
+  `status_note` は空。貸出中は `409 lending_item_on_loan`（`details.loan_id`）。
+- 「貸し出しが 1 度でもあれば消せない」は、L1 では履歴に `borrowed` があるか（と貸出中か）で見る。L2 は `lending_loans` に行が
+  あるかで見てよい（どちらでも同じ答え）。
+- `PATCH /admin/lending/settings` の `keeper_ids` は、**新しく足した人だけ**を確かめる（無効・ゲスト・ボット・知らない人で
+  `400 lending_keeper_invalid`）。前から一覧にいて後で無効化された人は残してよい（数えないだけ）。21 人以上は 422。
+- 写真：自分の **pending** のアップロードで、sniff した型が JPEG・PNG・WebP・HEIC のものだけ（GIF は不可）。それ以外・他人の・もう
+  何かに付いた添付・知らない id は `400 lending_photo_invalid`。同じ id をもう一度送っても何もしない。
+- 機能がオフの間は、管理者・備品係にも台帳の API は `409 lending_disabled`（設定の読み書きだけ通る）。写真も 404。
+- ゲストとボットは `403 guest_restricted`（`GET /lending/settings` も）。台帳の操作で備品係でない人は `403 lending_keeper_required`。
+- 備品・分類の作成と管理番号の変更・状態の変更は、トランザクションの advisory lock（`lending_items` / `lending_categories`）で
+  順に並べ、上限と一意の検査が食い違わないようにした。L2 の `borrow` は備品の行の `FOR UPDATE` → 貸し出しの行の順（§7.1）。
+- `errors.json` には §5.5 の**すべて**のコード（L2・L3・L7 のものも）を入れた。端末（L4〜L6）は文言をそのまま使える。
+- bootstrap の `lending` の数（`my_active_count` など）は L2 まで 0。`keeper_attention_count` は備品係だけに数える（ほかは 0）。
+- 匿名化で `keeper_ids` から外す（`lending.forget_in_tx`、`lending.updated {settings: true}`）。
+- Desktop の `ui/roles.ts` の権限の一覧には `lending.manage` をまだ足していない（L4 で足す）。

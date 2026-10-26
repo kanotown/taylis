@@ -109,6 +109,9 @@
   `attendance.updated`（1 人の行）と `attendance.config_updated`（`GET /attendance` を読み直す）で届く。
 - `actions`（M143、docs/ACTIONS.md §7.1）は自分が押せる操作ボタン `{ enabled, show_on_attendance, actions: [ActionOut] }`。
   ゲスト・ボットと、管理者がオフにしているときは null（M143 より前のサーバは送らない）。変化は `actions.updated`（`GET /actions` を読み直す）で届く。
+- `lending`（M167、docs/LENDING.md §5.1）は「備品」のタイルとナビの数字 `{ enabled, is_keeper, my_active_count, my_overdue_count, keeper_attention_count, settings_updated_at }`。
+  ゲスト・ボットと、機能がオフのときは null（M167 より前のサーバは送らない）。数は貸し出し（L2、M168）から入り、それまではいつも 0。
+  変化は `lending.updated` で届き、`settings: true` なら `GET /lending/settings` と次の bootstrap で読み直す。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -301,6 +304,7 @@
 | `attendance.updated` | all（guest を除く） | — | `{ user_id, state_id, since, note, source, log_id }`（M140、docs/PRESENCE.md §4）。ある人の在室状況が変わった。`user_id` の行を置き換える。`state_id` を知らなければ `GET /attendance` を読み直す。`log_id` は端末では使わない |
 | `attendance.config_updated` | all（guest を除く） | — | `{}`（M140）。在室状況の有効・無効、自分用の状態の規則、状態（ワークスペース・個人）が変わった。人ごとに違う（`can_personalize`）ので中身は無い。`GET /attendance` を読み直す（300 ms でまとめる。`enabled: false` ならボードを消す） |
 | `actions.updated` | all（guest を除く） | — | `{}`（M143、docs/ACTIONS.md §8）。操作ボタンの設定かボタンが変わった。押せるボタンは人ごとに違うので中身は無い。`GET /actions` を読み直す（続けて届いたものは 300 ms でまとめる） |
+| `lending.updated` | all | — | `{ item_ids, categories, settings }`（M167、docs/LENDING.md §9）。備品の台帳が変わった：備品（`item_ids`。登録・編集・写真・状態・削除、L2 から貸し出し）、分類（`item_ids` は空で `categories: true`）、設定（`settings: true`）。見える項目が人によって違う（L2 から目的など）ので中身は載せない。端末は `GET /lending/items`（`categories` なら `GET /lending/categories`、`settings` なら `GET /lending/settings` と bootstrap の `lending`）を読み直す（続けて届いたものは 300 ms で 1 回にまとめる）。ゲストにも届きうるが中身は無い（`reservation.updated` と同じ）。自分あての知らせ `lending.notice`（user）は L3（M169）で足す |
 | `actions.status_updated` | 組のボタンを 1 つでも押せる人（outbox の audience `action`） | — | `ActionStatusOut`（M143、docs/ACTIONS.md §12.3）。操作する機器の状態。押した数秒後の再読か、状態が変わったとき。`fetched_at` が手元より古ければ捨てる。再接続の後は `GET /actions/status` で揃える |
 | `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join, icon_version, in_app_calls, calls_enabled, meeting_base_url } }` (M88、docs/MEMBERSHIP.md §3。`in_app_calls` は M130、`calls_enabled` / `meeting_base_url` はいつも false / null。docs/CALLS.md)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
 | `call.started` / `call.updated` / `call.ended` | channel | — | `{ call: CallOut }` (M130、docs/CALLS.md §5.3)。`CallOut` = `{ id, channel_id, message_id, started_by, started_at, ended_at, participants: [{ user_id, joined_at }], participant_count, peak_participants }`。通話が始まった / 人が入った・抜けた / 終わった。会話の「通話中 (n)」を id で置き換える (ended なら外す)。seq は無く取りこぼしうるので、再接続のあとは bootstrap の `active_calls` か `GET /calls?active=true` で置き換える。通話の記録はメッセージの側 (終わると `message.updated` の change `call`) |

@@ -22,6 +22,7 @@ from app.modules.feeds import models as _feed_models
 from app.modules.groups import models as _group_models
 from app.modules.importer import models as _import_models
 from app.modules.invites import models as _invite_models
+from app.modules.lending import models as _lending_models
 from app.modules.messages import models as _message_models
 from app.modules.moderation import models as _moderation_models
 from app.modules.notifications import models as _notification_models
@@ -60,6 +61,7 @@ __all__ = [
     "_group_models",
     "_import_models",
     "_invite_models",
+    "_lending_models",
     "_message_models",
     "_moderation_models",
     "_notification_models",

@@ -5227,6 +5227,16 @@
             "title": "Groups",
             "type": "array"
           },
+          "lending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LendingSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "limits": {
             "$ref": "#/components/schemas/Limits"
           },
@@ -13208,6 +13218,1099 @@
           "created_at"
         ],
         "title": "LastMessageOut",
+        "type": "object"
+      },
+      "LendingCategoryCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "max_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Days"
+          },
+          "name": {
+            "examples": [
+              "カメラ"
+            ],
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_permission": {
+            "default": false,
+            "title": "Requires Permission",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LendingCategoryCreate",
+        "type": "object"
+      },
+      "LendingCategoryOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "description": "Items in the category, the retired ones included (they keep it from being deleted)",
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "max_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: the settings' default_max_days",
+            "title": "Max Days"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "requires_permission": {
+            "description": "The default of the category's items",
+            "title": "Requires Permission",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "requires_permission",
+          "max_days",
+          "item_count"
+        ],
+        "title": "LendingCategoryOut",
+        "type": "object"
+      },
+      "LendingCategoryUpdate": {
+        "additionalProperties": false,
+        "description": "Any of the fields. `max_days: null` falls back to the settings' default; `name` and\n`requires_permission` null are unchanged. `position`: the place in the order, from 0 (the\nothers move along).",
+        "properties": {
+          "max_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Days"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "requires_permission": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Permission"
+          }
+        },
+        "title": "LendingCategoryUpdate",
+        "type": "object"
+      },
+      "LendingItemCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              "CAM-02"
+            ],
+            "title": "Code"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              "301 棚 2"
+            ],
+            "title": "Location"
+          },
+          "max_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: the category's, then the settings' default",
+            "title": "Max Days"
+          },
+          "name": {
+            "examples": [
+              "カメラ A"
+            ],
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "photo_attachment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "My own pending upload (POST /attachments) of an image",
+            "title": "Photo Attachment Id"
+          },
+          "requires_permission": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: the category's default",
+            "title": "Requires Permission"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LendingItemCreate",
+        "type": "object"
+      },
+      "LendingItemDetailOut": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "loan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LendingLoanBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The active loan (from L2; null until then)"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "max_days": {
+            "description": "In effect (item → category → settings)",
+            "title": "Max Days",
+            "type": "integer"
+          },
+          "max_days_source": {
+            "enum": [
+              "item",
+              "category",
+              "default"
+            ],
+            "title": "Max Days Source",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recent_loans": {
+            "description": "The last 5 loans, newest first (from L2)",
+            "items": {
+              "$ref": "#/components/schemas/LendingLoanBriefOut"
+            },
+            "title": "Recent Loans",
+            "type": "array"
+          },
+          "requires_permission": {
+            "description": "In effect (item → category → false)",
+            "title": "Requires Permission",
+            "type": "boolean"
+          },
+          "requires_permission_source": {
+            "enum": [
+              "item",
+              "category",
+              "default"
+            ],
+            "title": "Requires Permission Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "on_loan",
+              "in_repair",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Note"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "watching": {
+            "description": "Whether I asked to be told when it is returned (L3)",
+            "title": "Watching",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category_id",
+          "code",
+          "location",
+          "notes",
+          "photo",
+          "status",
+          "status_note",
+          "requires_permission",
+          "requires_permission_source",
+          "max_days",
+          "max_days_source",
+          "loan",
+          "watching",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LendingItemDetailOut",
+        "type": "object"
+      },
+      "LendingItemEventOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "created | updated | status (L1); borrowed | extended | returned | due_changed (L2); permission_denied | permission_confirmed (L3). Unknown kinds may come",
+            "title": "Kind",
+            "type": "string"
+          },
+          "loan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "loan_id",
+          "actor_id",
+          "at",
+          "details"
+        ],
+        "title": "LendingItemEventOut",
+        "type": "object"
+      },
+      "LendingItemHistoryOut": {
+        "properties": {
+          "events": {
+            "description": "Newest first",
+            "items": {
+              "$ref": "#/components/schemas/LendingItemEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `before` for older ones (null: no more)",
+            "title": "Next Before"
+          }
+        },
+        "required": [
+          "events",
+          "next_before"
+        ],
+        "title": "LendingItemHistoryOut",
+        "type": "object"
+      },
+      "LendingItemOut": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "loan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LendingLoanBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The active loan (from L2; null until then)"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "max_days": {
+            "description": "In effect (item → category → settings)",
+            "title": "Max Days",
+            "type": "integer"
+          },
+          "max_days_source": {
+            "enum": [
+              "item",
+              "category",
+              "default"
+            ],
+            "title": "Max Days Source",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requires_permission": {
+            "description": "In effect (item → category → false)",
+            "title": "Requires Permission",
+            "type": "boolean"
+          },
+          "requires_permission_source": {
+            "enum": [
+              "item",
+              "category",
+              "default"
+            ],
+            "title": "Requires Permission Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "on_loan",
+              "in_repair",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Note"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "watching": {
+            "description": "Whether I asked to be told when it is returned (L3)",
+            "title": "Watching",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category_id",
+          "code",
+          "location",
+          "notes",
+          "photo",
+          "status",
+          "status_note",
+          "requires_permission",
+          "requires_permission_source",
+          "max_days",
+          "max_days_source",
+          "loan",
+          "watching",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LendingItemOut",
+        "type": "object"
+      },
+      "LendingItemStatusIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why (in repair, retired); cleared when the item becomes available",
+            "title": "Note"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "in_repair",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LendingItemStatusIn",
+        "type": "object"
+      },
+      "LendingItemUpdate": {
+        "additionalProperties": false,
+        "description": "Any of the fields; null clears one (`name` null: unchanged). The status changes through\nPOST /lending/items/{id}/status.",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "max_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Days"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "photo_attachment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Attachment Id"
+          },
+          "requires_permission": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Permission"
+          }
+        },
+        "title": "LendingItemUpdate",
+        "type": "object"
+      },
+      "LendingLoanBriefOut": {
+        "description": "Who has an item and until when (no purpose or notes). From L2.",
+        "properties": {
+          "borrowed_at": {
+            "format": "date-time",
+            "title": "Borrowed At",
+            "type": "string"
+          },
+          "borrower_id": {
+            "format": "uuid",
+            "title": "Borrower Id",
+            "type": "string"
+          },
+          "due_on": {
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "overdue_days": {
+            "title": "Overdue Days",
+            "type": "integer"
+          },
+          "permission_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "claimed",
+                  "confirmed",
+                  "denied"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission State"
+          }
+        },
+        "required": [
+          "id",
+          "borrower_id",
+          "borrowed_at",
+          "due_on",
+          "overdue_days",
+          "permission_state"
+        ],
+        "title": "LendingLoanBriefOut",
+        "type": "object"
+      },
+      "LendingSettingsOut": {
+        "description": "The workspace's 備品 settings (readable by every person, also while off).",
+        "properties": {
+          "default_max_days": {
+            "description": "The longest loan when the item and its category do not say (days from today)",
+            "title": "Default Max Days",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "is_keeper": {
+            "description": "Whether I am a keeper (or have lending.manage)",
+            "title": "Is Keeper",
+            "type": "boolean"
+          },
+          "keeper_ids": {
+            "description": "The 備品係 the administrators chose (as saved; only the active people among them act as keepers)",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Keeper Ids",
+            "type": "array"
+          },
+          "keeper_overdue_days": {
+            "description": "Days past the due date before the keepers are told",
+            "title": "Keeper Overdue Days",
+            "type": "integer"
+          },
+          "max_extensions": {
+            "description": "How often a borrower may extend a loan themself",
+            "title": "Max Extensions",
+            "type": "integer"
+          },
+          "notice_minute": {
+            "description": "The morning notices' time (minutes from midnight in `tz`)",
+            "title": "Notice Minute",
+            "type": "integer"
+          },
+          "tz": {
+            "description": "The zone of the due dates and the notices' time",
+            "title": "Tz",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "enabled",
+          "keeper_ids",
+          "default_max_days",
+          "max_extensions",
+          "keeper_overdue_days",
+          "notice_minute",
+          "tz",
+          "is_keeper"
+        ],
+        "title": "LendingSettingsOut",
+        "type": "object"
+      },
+      "LendingSettingsUpdate": {
+        "additionalProperties": false,
+        "description": "Any of the settings (null or absent: unchanged).",
+        "properties": {
+          "default_max_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Max Days"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "keeper_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keeper Ids"
+          },
+          "keeper_overdue_days": {
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keeper Overdue Days"
+          },
+          "max_extensions": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Extensions"
+          },
+          "notice_minute": {
+            "anyOf": [
+              {
+                "maximum": 1439.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Minute"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "title": "LendingSettingsUpdate",
+        "type": "object"
+      },
+      "LendingSummaryOut": {
+        "description": "The bootstrap's `lending` (null for guests and bots and while the feature is off): the\nnumbers of the 「備品」 tile and navigation item (§12.1).",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "is_keeper": {
+            "title": "Is Keeper",
+            "type": "boolean"
+          },
+          "keeper_attention_count": {
+            "description": "For keepers: loans at least keeper_overdue_days past due, and loans of deactivated people (0 for others)",
+            "title": "Keeper Attention Count",
+            "type": "integer"
+          },
+          "my_active_count": {
+            "description": "My loans not returned yet",
+            "title": "My Active Count",
+            "type": "integer"
+          },
+          "my_overdue_count": {
+            "description": "Those of them past their due date",
+            "title": "My Overdue Count",
+            "type": "integer"
+          },
+          "settings_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settings Updated At"
+          }
+        },
+        "required": [
+          "enabled",
+          "is_keeper",
+          "my_active_count",
+          "my_overdue_count",
+          "keeper_attention_count",
+          "settings_updated_at"
+        ],
+        "title": "LendingSummaryOut",
         "type": "object"
       },
       "Limits": {
@@ -27516,6 +28619,54 @@
         ]
       }
     },
+    "/api/v1/admin/lending/settings": {
+      "patch": {
+        "description": "`lending.manage`. 400 lending_keeper_invalid (details.user_ids) for a keeper added who is\nunknown, deactivated, a guest or a bot; more than 20 keepers, numbers out of range and unknown\nzones are 422.",
+        "operationId": "update_settings_api_v1_admin_lending_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Settings",
+        "tags": [
+          "lending",
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/reports": {
       "get": {
         "description": "Reports, newest first (administrators): of messages, and since M119 of people and\ngeneral reports / feedback (`kind`; those have no message or channel).",
@@ -37827,6 +38978,588 @@
         "summary": "Put Line",
         "tags": [
           "lab"
+        ]
+      }
+    },
+    "/api/v1/lending/categories": {
+      "get": {
+        "description": "In the keepers' order.",
+        "operationId": "list_categories_api_v1_lending_categories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LendingCategoryOut"
+                  },
+                  "title": "Response List Categories Api V1 Lending Categories Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Categories",
+        "tags": [
+          "lending"
+        ]
+      },
+      "post": {
+        "description": "Keepers. 409 lending_category_name_taken (details.existing_id), too_many_lending_categories\n(details.limit: 50).",
+        "operationId": "create_category_api_v1_lending_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingCategoryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Category",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/categories/{category_id}": {
+      "delete": {
+        "description": "Keepers. 409 lending_category_in_use (details.item_count) while items (retired ones too)\nare in it.",
+        "operationId": "delete_category_api_v1_lending_categories__category_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Category Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Category",
+        "tags": [
+          "lending"
+        ]
+      },
+      "patch": {
+        "description": "Keepers. A new default applies to the coming loans of the items without their own value\n(loans already made keep theirs).",
+        "operationId": "update_category_api_v1_lending_categories__category_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Category Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingCategoryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Category",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/items": {
+      "get": {
+        "description": "Every item (retired ones with `include_retired`) in the Japanese name order, not paged\n(at most 2,000): clients filter by category, status and text themselves.",
+        "operationId": "list_items_api_v1_lending_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LendingItemOut"
+                  },
+                  "title": "Response List Items Api V1 Lending Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Items",
+        "tags": [
+          "lending"
+        ]
+      },
+      "post": {
+        "description": "Keepers. 409 lending_code_taken (details.existing_id; among the items not retired),\ntoo_many_lending_items (details.limit: 2,000), 404 lending_category_not_found, 400\nlending_photo_invalid (not my own new upload of a JPEG, PNG, WebP or HEIC image).",
+        "operationId": "create_item_api_v1_lending_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Item",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/items/{item_id}": {
+      "delete": {
+        "description": "Keepers. 409 lending_item_has_history for an item that was ever lent (retire it).",
+        "operationId": "delete_item_api_v1_lending_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Item",
+        "tags": [
+          "lending"
+        ]
+      },
+      "get": {
+        "operationId": "get_item_api_v1_lending_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Item",
+        "tags": [
+          "lending"
+        ]
+      },
+      "patch": {
+        "description": "Keepers. null clears a field (`photo_attachment_id: null` removes the photo; a replaced or\nremoved photo is deleted). The status changes through /status.",
+        "operationId": "update_item_api_v1_lending_items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingItemUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Item",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/items/{item_id}/history": {
+      "get": {
+        "description": "The item's history, newest first; `before` = the previous page's `next_before`.",
+        "operationId": "item_history_api_v1_lending_items__item_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingItemHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Item History",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/items/{item_id}/status": {
+      "post": {
+        "description": "Keepers: available / in_repair / retired with an optional reason. 409 lending_item_on_loan\nwhile lent; lending_code_taken back from retired when its number was given again meanwhile.\nThe same status and reason again: no change.",
+        "operationId": "set_status_api_v1_lending_items__item_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LendingItemStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Status",
+        "tags": [
+          "lending"
+        ]
+      }
+    },
+    "/api/v1/lending/settings": {
+      "get": {
+        "description": "The switch, the keepers and the defaults, and whether I am a keeper (also while off).",
+        "operationId": "get_settings_api_v1_lending_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LendingSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "lending"
         ]
       }
     },

@@ -22,6 +22,7 @@ from app.modules.emoji import service as emoji
 from app.modules.favorites import service as favorites
 from app.modules.groups import service as groups
 from app.modules.lab import service as lab
+from app.modules.lending import service as lending
 from app.modules.messages import service as messages
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.moderation import blocks
@@ -103,6 +104,7 @@ async def bootstrap(
         active_calls=await calls.active_calls(db, actor),
         attendance=await attendance.bootstrap(db, actor),
         actions=await actions.bootstrap(db, actor),
+        lending=await lending.bootstrap(db, actor),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

@@ -3484,6 +3484,35 @@
         "type": "object"
       }
     },
+    "lending.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "description": "`lending.updated` (all): the ledger changed. Carries no content (what a person may see\ndiffers): re-read GET /lending/items (GET /lending/categories when `categories`, GET\n/lending/settings and the bootstrap's `lending` when `settings`).",
+        "properties": {
+          "categories": {
+            "default": false,
+            "title": "Categories",
+            "type": "boolean"
+          },
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "settings": {
+            "default": false,
+            "title": "Settings",
+            "type": "boolean"
+          }
+        },
+        "title": "LendingUpdatedData",
+        "type": "object"
+      }
+    },
     "message.created": {
       "audience": "channel",
       "consumes_seq": true,

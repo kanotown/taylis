@@ -13,6 +13,7 @@ from app.modules.drafts.schemas import DraftOut
 from app.modules.emoji.schemas import CustomEmojiOut, EmojiPackOut
 from app.modules.groups.schemas import GroupOut
 from app.modules.lab.schemas import LabProfileOut
+from app.modules.lending.schemas import LendingSummaryOut
 from app.modules.sidebar.schemas import SidebarDefaultOut, SidebarSectionOut
 from app.modules.templates.schemas import TemplateOut
 from app.modules.threads.schemas import ThreadSummary
@@ -89,6 +90,9 @@ class BootstrapOut(BaseModel):
     # M143 (docs/ACTIONS.md §7.1): the 操作ボタン I may press; null for guests, bots and while the
     # feature is off. Changes arrive as actions.updated (then GET /actions).
     actions: ActionListOut | None = None
+    # M167 (docs/LENDING.md §5.1): the 備品 numbers; null for guests, bots and while the feature
+    # is off. Changes arrive as lending.updated (then GET /lending/items, GET /lending/settings).
+    lending: LendingSummaryOut | None = None
 
 
 class UnreadSummaryOut(BaseModel):

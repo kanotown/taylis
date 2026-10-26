@@ -75,6 +75,8 @@ from app.modules.groups.router import router as groups_router
 from app.modules.invites.router import router as invites_router
 from app.modules.lab import service as lab_service
 from app.modules.lab.router import router as lab_router
+from app.modules.lending import access as lending_access
+from app.modules.lending.router import router as lending_router
 from app.modules.link_previews.fetcher import build_feed_fetcher, build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages import service as messages_service
@@ -648,6 +650,7 @@ def build_api_router() -> APIRouter:
     api.include_router(recurring_router)
     api.include_router(feeds_router)
     api.include_router(reservations_router)
+    api.include_router(lending_router)
     api.include_router(workflows_router)
     api.include_router(emoji_router)
     api.include_router(templates_router)
@@ -708,6 +711,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M160 (docs/DRIVE.md §4.1): a drive file's versions are read by whoever can read the item,
     # and its preview's progress is announced to the drive (the drive depends on attachments).
     attachments_service.set_drive_access_check(drive_access.can_read_item)
+    # M167 (docs/LENDING.md §4.3): an equipment item's photo is read like the ledger.
+    attachments_service.set_lending_access_check(lending_access.can_read_photo)
     previews.set_drive_change_hook(drive_events.media_changed_in_tx)
     # M65: an AI bot without allow_private stays out of private channels and DMs; channels does
     # not depend on ai, so its router gets the check here.
