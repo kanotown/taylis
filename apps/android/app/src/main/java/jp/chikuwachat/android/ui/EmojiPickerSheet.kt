@@ -62,7 +62,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.EmojiPackOut
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.width
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
@@ -262,8 +261,8 @@ fun EmojiPickerSheet(
                                     val firstImage = first?.let { version.let { _ -> images[it.id] } }
                                     if (tab == null && first != null && firstImage == null) onNeedImage?.invoke(first)
                                     when {
-                                        tab != null -> Image(tab, contentDescription = null, modifier = Modifier.size(30.dp))
-                                        firstImage != null -> Image(firstImage, contentDescription = null, modifier = Modifier.size(28.dp))
+                                        tab != null -> EmojiImage(tab, null, contentDescription = null, modifier = Modifier.size(30.dp))
+                                        firstImage != null -> EmojiImage(firstImage, null, contentDescription = null, modifier = Modifier.size(28.dp))
                                         else -> Text(pack.name.take(2), style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
