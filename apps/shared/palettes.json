@@ -1,0 +1,109 @@
+{
+  "_comment": "「テーマの色」 (apps/desktop/src/ui/theme.ts PALETTES, the --p-* blocks in apps/desktop/src/app.css): the brand colours of each palette in light and dark. sidebar / sidebar-fg: the desktop sidebar and its text (the phones may use them for headers or not at all); accent: the accent as text and lines (links, selected icons, focus); accent-solid: the fill under white text (primary buttons, the send button, badges); accent-soft: a light tint (selected rows). Both modes meet WCAG AA (4.5:1) for accent on the canvas and white on accent-solid (desktop tests/theme.test.ts). The desktop test tests/palettes.test.ts keeps this file equal to app.css. Order = the settings' order; the first is the default.",
+  "order": [
+    "taylis",
+    "indigo",
+    "green",
+    "purple",
+    "rose",
+    "gray"
+  ],
+  "palettes": {
+    "taylis": {
+      "light": {
+        "sidebar": "#3b2b21",
+        "sidebar-fg": "#efe7df",
+        "accent": "#8f5530",
+        "accent-solid": "#8f5530",
+        "accent-soft": "#f6ece3"
+      },
+      "dark": {
+        "sidebar": "#1d1611",
+        "sidebar-fg": "#e1d7ce",
+        "accent": "#dba67c",
+        "accent-solid": "#8f5530",
+        "accent-soft": "#3a2a1f"
+      }
+    },
+    "indigo": {
+      "light": {
+        "sidebar": "#2a2340",
+        "sidebar-fg": "#e0dce9",
+        "accent": "#5050c8",
+        "accent-solid": "#5050c8",
+        "accent-soft": "#ecebff"
+      },
+      "dark": {
+        "sidebar": "#14111c",
+        "sidebar-fg": "#d5d2df",
+        "accent": "#9a9af5",
+        "accent-solid": "#5050c8",
+        "accent-soft": "#2a2a4a"
+      }
+    },
+    "green": {
+      "light": {
+        "sidebar": "#1e3a2f",
+        "sidebar-fg": "#edf4f0",
+        "accent": "#2e7550",
+        "accent-solid": "#2e7550",
+        "accent-soft": "#e4f2ea"
+      },
+      "dark": {
+        "sidebar": "#111c17",
+        "sidebar-fg": "#cfded5",
+        "accent": "#6fcf98",
+        "accent-solid": "#2e7550",
+        "accent-soft": "#1d3a2b"
+      }
+    },
+    "purple": {
+      "light": {
+        "sidebar": "#3a2150",
+        "sidebar-fg": "#eae2f1",
+        "accent": "#7c3fb0",
+        "accent-solid": "#7c3fb0",
+        "accent-soft": "#f3eafb"
+      },
+      "dark": {
+        "sidebar": "#1a1124",
+        "sidebar-fg": "#dcd2e5",
+        "accent": "#c39af0",
+        "accent-solid": "#7c3fb0",
+        "accent-soft": "#35224a"
+      }
+    },
+    "rose": {
+      "light": {
+        "sidebar": "#4a1e2c",
+        "sidebar-fg": "#f1e1e6",
+        "accent": "#b02f50",
+        "accent-solid": "#b02f50",
+        "accent-soft": "#fbe9ee"
+      },
+      "dark": {
+        "sidebar": "#1f1015",
+        "sidebar-fg": "#e4d1d7",
+        "accent": "#f590a8",
+        "accent-solid": "#b02f50",
+        "accent-soft": "#4a1f2c"
+      }
+    },
+    "gray": {
+      "light": {
+        "sidebar": "#2c2e33",
+        "sidebar-fg": "#e6e8eb",
+        "accent": "#4f5b6b",
+        "accent-solid": "#4f5b6b",
+        "accent-soft": "#eceef2"
+      },
+      "dark": {
+        "sidebar": "#141518",
+        "sidebar-fg": "#d4d6da",
+        "accent": "#a9b4c4",
+        "accent-solid": "#556274",
+        "accent-soft": "#2b2f36"
+      }
+    }
+  }
+}
