@@ -1,6 +1,6 @@
 # LENDING（備品の貸し出し）
 
-2026-10-26 の設計。**L1（M167、台帳・サーバ）を実装（2026-10-26、移行 0123、§17）。L2〜L7 はこれから。** マイルストーンは L1〜L7
+2026-10-26 の設計。**L1（M167、台帳・サーバ）と L2（M168、貸し出し・サーバ）を実装（2026-10-26、移行 0123・0124、§17）。L3〜L7 はこれから。** マイルストーンは L1〜L7
 （§16。M 番号は仮に M167〜M173、移行は 0123〜0125。並行する作業と重なれば振り直す）。§15 の質問は利用者がすべて推めのとおりに
 決めた（2026-10-26）。
 
@@ -323,30 +323,32 @@ bootstrap に **`lending: LendingSummaryOut | null`**（ゲストと、オフの
 | `DELETE /lending/items/{id}` (204) | 備品係。貸し出しが 1 度でもあれば `409 lending_item_has_history`（廃棄にする） |
 | `GET /lending/items/{id}/history?before=<event_id>&limit=50` | `{events: ItemEventOut[], next_before}`（新しい順、カーソル） |
 | `PUT / DELETE /lending/items/{id}/watch` | 返却を知らせる（§6.7）。冪等（204） |
-| `GET /lending/approvers` | 教員の候補（§6.4）`{user_ids, suggested_ids}`（`suggested_ids` は呼んだ人の指導教員） |
+| `GET /lending/approvers` | 教員の候補（§6.4）`{user_ids, suggested_ids, self_approved}`（`suggested_ids` は呼んだ人の指導教員、`self_approved` は呼んだ人が `@faculty` で許可が要らないこと） |
 
 `ItemOut`：`id, name, category_id, code, location, notes, photo (AttachmentOut | null), status, status_note, requires_permission
 （実際の値）, requires_permission_source（item / category / default）, max_days（実際の値）, max_days_source（item / category / default）,
-loan (LoanBriefOut | null), watching, created_at, updated_at`。`LoanBriefOut`：`id, borrower_id, borrowed_at, due_on, overdue_days, permission_state`（目的などは載せない）。
+loan (LoanBriefOut | null), watching, created_at, updated_at`。`LoanBriefOut`：`id, borrower_id, borrowed_at, due_on, overdue_days, permission_state,
+status, returned_at, return_condition`（目的などは載せない。`permission_state` は §3.2 の見える人にだけ入り、ほかは null）。
 
 ### 5.3 貸し出し
 
 | | |
 | --- | --- |
-| `POST /lending/items/{id}/borrow` | `{client_request_id, due_on, purpose, permission_confirmed?, approver_id?}` → 201 `LoanOut`（送り直しは 200 で同じもの）。人（ゲスト不可）。状態が貸出可でなければ `409 lending_item_unavailable`（`details`: `status`、貸出中なら `loan_id`・`borrower_id`・`due_on`）。返す日が過去・最長を超えるなら `400 lending_due_invalid`（`details.reason`: past / too_long、`details.latest`）。許可が要るのに印か教員が無ければ `400 lending_permission_required`、教員が候補でない・自分・無効なら `400 lending_approver_invalid`。目的が空は 422 |
+| `POST /lending/items/{id}/borrow` | `{client_request_id, due_on, purpose, permission_confirmed?, approver_id?}` → 201 `LoanOut`（送り直しは 200 で同じもの）。人（ゲスト不可）。状態が貸出可でなければ `409 lending_item_unavailable`（`details`: `status`、貸出中なら `loan_id`・`borrower_id`・`due_on`）。返す日が過去・最長を超えるなら `400 lending_due_invalid`（`details.reason`: past / too_long、`details.latest`）。同じ `client_request_id` を別の備品に使うと `409 idempotency_conflict`。許可が要るのに印か教員が無ければ `400 lending_permission_required`、教員が候補でない・自分・無効なら `400 lending_approver_invalid`。目的が空は 422 |
 | `POST /lending/loans/{id}/return` | `{condition: ok \| issue, note?}`（`issue` のときは note が必須、422）。本人か備品係（ほかは `403 lending_not_yours`）。返却済みなら何もしない（200、今の `LoanOut`） |
-| `POST /lending/loans/{id}/extend` | `{due_on}`。本人：今の返す日より後で、今日 + 最長の日数まで、延長の回数が `max_extensions` まで（`409 lending_extend_limit`）。備品係：365 日先まで、回数を数えず、前にも戻せる（記録 `due_changed`、本人に知らせる）。教員が「許可していない」とした貸し出しは本人は延長できない（`409 lending_permission_denied`）。返却済みは `409 lending_loan_closed` |
+| `POST /lending/loans/{id}/extend` | `{due_on}`。本人：今の返す日より後で（`400 lending_due_invalid`、reason `not_later`）、今日 + 最長の日数まで（reason `too_long`）、延長の回数が `max_extensions` まで（`409 lending_extend_limit`）。備品係：今日から 365 日先まで（reason past / too_long）、回数を数えず、前にも戻せる（記録 `due_changed`、本人に知らせる）。同じ日付は何もしない。教員が「許可していない」とした貸し出しは本人は延長できない（`409 lending_permission_denied`）。返却済みは `409 lending_loan_closed` |
 | `POST /lending/loans/{id}/permission` | `{decision: denied \| confirmed, note?}`。その貸し出しの教員だけ（`403 lending_not_approver`）。許可が要らない貸し出しは `409 lending_permission_not_required`。返却から 14 日を過ぎたら `409 lending_loan_closed`。同じ判断の送り直しは何もしない。`confirmed` → `denied` には変えられる（後で気づいた）、`denied` → `confirmed` も変えられる（押し間違い。両方とも記録が残る） |
-| `GET /lending/loans?scope=mine` | 自分の貸し出し（貸出中を返す日の順、その後に返却済みを新しい順 50 件） |
+| `GET /lending/loans?scope=mine`（scope の既定） | 自分の貸し出し（貸出中を返す日の順、その後に返却済みを新しい順 50 件） |
 | `GET /lending/loans?scope=active` | 貸出中のすべて（返す日の順）。誰が何をいつまで（`LoanOut` の目的などは見える人にだけ） |
 | `GET /lending/loans?scope=overdue` | 返す日を過ぎたもの（過ぎた日数の多い順）。備品係（`403 lending_keeper_required`） |
 | `GET /lending/loans?scope=approved` | 自分が教員として選ばれた貸し出し（貸出中と、返却から 14 日以内） |
 | `GET /lending/loans/{id}` | 1 つ。見える人（台帳と同じ）。詳細の項目は §3.2 の規則で空にする |
 
-`LoanOut`：`id, item_id, borrower_id, borrowed_at, due_on, original_due_on, overdue_days, extension_count, can_extend, latest_due_on
-（本人が延ばせる最も後の日）, purpose?, permission_required, approver_id?, permission_state?, permission_decided_at?, permission_note?,
-returned_at, returned_by, return_condition?, return_note?, status`。`?` の項目は本人・教員・備品係・管理者にだけ入り、ほかの人には
-null（`details_hidden: true`）。
+`LoanOut`（OpenAPI では `LendingLoanOut`）：`id, item_id, item_name, item_code, borrower_id, borrowed_at, due_on, original_due_on, overdue_days,
+extension_count, can_extend, latest_due_on（本人が延ばせる最も後の日）, purpose?, permission_required, approver_id?, permission_state?,
+permission_decided_at?, permission_note?, returned_at, returned_by, return_condition, return_note?, status, details_hidden`。`?` の項目は
+本人・教員・備品係・管理者にだけ入り、ほかの人には null（`details_hidden: true`）。`return_condition`（ok / issue）は伏せない：履歴の 🔧 の
+印で全員にわかるもの（§3.2・Q6）で、伏せるのはメモだけ。
 
 ### 5.4 CSV（L7、§13.3）
 
@@ -405,14 +407,15 @@ null（`details_hidden: true`）。
    許可が要る備品なら「教員の許可を得た」の印と、許可した教員の選択（§6.4）。
 2. 送ると、サーバは備品の行をロックし、貸出可・返す日・許可を確かめて、貸し出しの行・備品の状態・履歴 `borrowed`・
    教員への知らせ（§8.2）・`lending.updated` を **1 つのトランザクション**で書く。
-3. 教員が自分で借りるとき（呼んだ人が教員の候補のとき、§6.4）は許可の印を求めない（`permission_required = false` とし、履歴の
-   `details.self_approved = true`）。
+3. 教員が自分で借りるとき（呼んだ人が名簿の `@faculty` の有効なメンバーのとき、§6.4）は許可の印を求めない（`permission_required = false`
+   とし、履歴の `details.self_approved = true`）。名簿の無いワークスペースの「人の全員が候補」（§6.4）では、誰も自分では許可できない
+   （全員が候補なので、候補であることで許可を省くと許可の要る備品が意味を失う）。
 
 ### 6.4 教員の候補
 
-- 名簿（LAB.md）の**管理グループ `position:faculty`（`@faculty`）のメンバー**で、有効な人。借りる人の指導教員（`lab_profiles.advisor_ids`）を
-  先頭に出す（`suggested_ids`）。
-- 名簿を使っていない（グループが無い・空の）ワークスペースでは、人（admin・manager・member）の全員から選ぶ。研究室以外での汎用の
+- 名簿（LAB.md）の**管理グループ `@faculty`（`user_groups.managed_key = 'faculty'`、名簿の `affiliation = faculty` の人）のメンバー**で、有効な人
+  （admin・manager・member）。借りる人の指導教員（`lab_profiles.supervisor_id`、1 人）が候補なら `suggested_ids` に入れる。
+- 名簿を使っていない（グループが無い・有効なメンバーがいない）ワークスペースでは、人（admin・manager・member）の全員から選ぶ。研究室以外での汎用の
   形。グループを設定で選べるようにするかは Q3。
 - 自分は選べない（`400 lending_approver_invalid`）。教員の候補でない人を API で直に送っても同じ。
 
@@ -732,7 +735,9 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
   スプレッドシートから移すときに要るので、利用者の今の表の大きさ次第で L4 の直後に回す。
 - 見積もりの目安：L1 3 日、L2 3 日、L3 4 日、L4 1 週、L5・L6 各 4 日、L7 3 日。
 
-## 17. L1 の実装（M167、2026-10-26）
+## 17. 実装の記録
+
+### 17.1 L1（M167、2026-10-26）
 
 `app/modules/lending/`（`models`・`access`・`schemas`・`service`・`router`・`events`）、移行 0123（downgrade は写真の添付を `deleted`
 にしてから表を落とす）、`lending.manage`（`app/core/roles.py`、管理者だけ）、`attachments.lending_item_id` と `get_for_access` の枝
@@ -767,3 +772,50 @@ keepers」「A teacher approved this」「I did not approve」「Confirm」「No
 - bootstrap の `lending` の数（`my_active_count` など）は L2 まで 0。`keeper_attention_count` は備品係だけに数える（ほかは 0）。
 - 匿名化で `keeper_ids` から外す（`lending.forget_in_tx`、`lending.updated {settings: true}`）。
 - Desktop の `ui/roles.ts` の権限の一覧には `lending.manage` をまだ足していない（L4 で足す）。
+
+### 17.2 L2（M168、2026-10-26）
+
+移行 0124（`lending_loans` と §4.1 の索引、`lending_items.current_loan_id` の外部キー（DEFERRABLE INITIALLY DEFERRED）と
+`lending_item_events.loan_id` の外部キー。downgrade は貸出中の備品を available に戻してから落とす）、`app/modules/lending/loans.py`（借りる・
+返す・延長・一覧・教員の候補）、`access.sees_loan_details`・`access.may_return`、`service.py` の備品の `loan`・`recent_loans`・bootstrap の数・
+削除の判定（`lending_loans` に行があるか）。テストは `tests/test_lending_loans.py`（2 つのセッションで同時に借りる・本人と備品係が同時に返す・
+部分一意索引）、`tests/test_lending_permission.py`、`tests/test_lending_access.py`（§3.2 の貸し出しの行）、共通の `tests/lending_helpers.py`
+（時刻を止める `freeze`）。
+
+設計から決めたこと・変えたこと（後の段階が知っておくこと）：
+
+- **API の形**：`POST /lending/items/{id}/borrow` → 201 / 200 の `LendingLoanOut`。`POST /lending/loans/{id}/return`・`/extend` →
+  `LendingLoanOut`。`GET /lending/loans?scope=mine|active|overdue|approved`（既定 mine）→ `LendingLoanOut[]`（ページに分けない）。
+  `GET /lending/loans/{id}` → `LendingLoanOut`。`GET /lending/approvers` → `LendingApproversOut {user_ids, suggested_ids, self_approved}`。
+  入力は `LendingBorrowIn`・`LendingReturnIn`・`LendingExtendIn`。
+- **`LendingLoanOut` に足したもの**：`item_name`・`item_code`（自分の貸し出し・延滞の一覧・アクティビティの行で、廃棄した備品も含めて
+  名前を出すため。台帳を読み直さなくてよい）と `details_hidden`。**`return_condition` は伏せない**（§5.3 を直した。🔧 の印は全員に見せる
+  という §3.2・Q6 と食い違っていた）。伏せるのは `purpose`・`approver_id`・`permission_state`・`permission_decided_at`・`permission_note`・
+  `return_note`。
+- **`LendingLoanBriefOut` に `status`・`returned_at`・`return_condition` を足した**（`recent_loans` で返却済みと 🔧 を出すため）。
+  `permission_state` は `LendingLoanOut` と同じ規則で伏せる（見えない人には null）。`overdue_days` は返却済みなら 0。
+- **教員が自分で借りる**のは `@faculty` の有効なメンバーだけ（§6.3 を直した）。名簿の無いワークスペースの「人の全員が候補」では誰も
+  自分で許可できない（そうしないと全員が許可なしで借りられる）。`GET /lending/approvers` の `self_approved` で端末は印の欄を隠せる。
+  候補の判定と `self_approved` は借りるときにサーバがもう一度確かめる。
+- **指導教員**は `lab_profiles.supervisor_id`（1 人）。§6.4 の `advisor_ids` は LAB.md の当初の設計の名前で、今の名簿には無い（§6.4 を直した）。
+- **教員の候補を直に送ったときの検査**：自分・候補でない・無効・ゲスト・ボット・知らない id はどれも `400 lending_approver_invalid`
+  （`details.approver_id`）。許可が要らない備品では `permission_confirmed`・`approver_id` を無視する（`permission_required = false`）。
+- **返す日の検査**：借りるとき `今日 ≤ due_on ≤ 今日 + 最長`（今日は `lending_settings.tz` の日付）。外れると `lending_due_invalid`
+  （`reason` past / too_long、`latest` はいつも本人の最長の日）。延長は本人なら `今の返す日 < due_on ≤ 今日 + 最長`（reason `not_later` を
+  足した）、備品係なら `今日 ≤ due_on ≤ 今日 + 365`（`latest` は 365 日先）。過去の日付へは備品係も変えられない。
+- **延長の検査の順**（本人）：返却済み（`409 lending_loan_closed`）→ 同じ日付（何もしない、200）→ 教員の否定（`409 lending_permission_denied`）
+  → 回数（`409 lending_extend_limit`）→ 日付（400）。**備品係が自分の貸し出し**を延ばすときは、本人の範囲に収まれば本人の延長（数える）、
+  外れれば備品係の変更（数えない・監査）になる。
+- **送り直し**：`client_request_id` は備品のロックの前と後の 2 回引く（同じ要求が同時に 2 つ来ても 2 つ目は 200）。一意の違反（ロックの外で
+  書かれた行など）は savepoint を戻して、同じ要求なら 200、そうでなければ `409 lending_item_unavailable` に変える。
+- **返却**：`by_keeper`（本人以外が押した）なら監査 `lending_loan.returned_by_keeper {item_id, borrower_id, condition}`。延長の監査は
+  `lending_loan.due_changed_by_keeper {item_id, borrower_id, from, to}`。本人の借りる・返す・延長は監査に書かない。
+- **見守りの消去・教員と本人への知らせ（§6.3 の 2、§6.6 の 2、§6.5）は L3**：L2 は貸し出しと履歴と `lending.updated` だけを書く。L3 は
+  `loans.borrow` / `return_loan` / `extend` の同じトランザクションに `lending_notices` と `lending.notice` を足す（関数の終わりの
+  `service.emit` の前）。
+- **`scope=approved`** は `approver_id` が自分のもの（貸出中と、返却から 14 日以内）。L2 では判断の API が無いので `permission_state` は
+  いつも claimed（L3 の `POST /lending/loans/{id}/permission` が confirmed / denied を書く。延長の拒否はもう `denied` を見ている）。
+- `can_extend` は呼んだ人にとっての値（本人は回数・最長・否定を見て、備品係は貸出中ならいつも true）。`latest_due_on` は誰が見ても本人の最長。
+- bootstrap の数：`my_active_count`・`my_overdue_count`（返す日 < 今日）、`keeper_attention_count`（備品係だけ。`今日 − due_on ≥
+  keeper_overdue_days` か借りた人が無効化されている貸出中）。L3 の備品係のまとめは同じ対象にする。
+- 備品の `updated_at`・`updated_by` は貸し出しでは変えない（台帳の編集の記録のまま）。

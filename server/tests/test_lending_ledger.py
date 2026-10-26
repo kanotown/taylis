@@ -18,7 +18,7 @@ from app.core.time import utcnow
 from app.events.models import OutboxEvent
 from app.modules.attachments.models import Attachment
 from app.modules.audit.models import AuditLog
-from app.modules.lending.models import LendingItem, LendingItemEvent
+from app.modules.lending.models import LendingItem, LendingLoan
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -36,6 +36,21 @@ async def _upload(client: AsyncClient, *, image: bool = True) -> str:
     response = await client.post(f"{API}/attachments", files={"file": file})
     assert response.status_code == 201, response.text
     return str(response.json()["id"])
+
+
+def _loan(item_id: uuid.UUID, borrower_id: uuid.UUID) -> LendingLoan:
+    today = utcnow().date()
+    return LendingLoan(
+        item_id=item_id,
+        borrower_id=borrower_id,
+        client_request_id=uuid.uuid4(),
+        status="active",
+        borrowed_at=utcnow(),
+        due_on=today,
+        original_due_on=today,
+        purpose="test",
+        permission_required=False,
+    )
 
 
 def _code(response: Response) -> str:
@@ -450,11 +465,14 @@ async def test_status_changes_and_history(
     assert [e["kind"] for e in rest["events"]] == ["created"] and rest["next_before"] is None
     assert rest["events"][0]["actor_id"] == str(lab.keeper.id)
 
-    # On loan (L2 sets it): the status cannot be changed by hand, nor the item deleted.
+    # On loan: the status cannot be changed by hand, nor the item deleted.
+    loan = _loan(uuid.UUID(item["id"]), lab.member.id)
+    db.add(loan)
+    await db.flush()
     await db.execute(
         update(LendingItem)
         .where(LendingItem.id == uuid.UUID(item["id"]))
-        .values(status="on_loan", current_loan_id=uuid.uuid4())
+        .values(status="on_loan", current_loan_id=loan.id)
     )
     await db.commit()
     as_user(lab.keeper)
@@ -472,11 +490,10 @@ async def test_delete_only_without_loans(
     await lab.enable()
     lent = await lab.item(name="貸したもの")
     fresh = await lab.item(name="新品")
-    db.add(
-        LendingItemEvent(
-            item_id=uuid.UUID(lent["id"]), kind="borrowed", actor_id=lab.member.id, at=utcnow()
-        )
-    )
+    # A loan returned long ago is enough.
+    returned = _loan(uuid.UUID(lent["id"]), lab.member.id)
+    returned.status, returned.returned_at = "returned", utcnow()
+    db.add(returned)
     await db.commit()
     as_user(lab.keeper)
     refused = await client.delete(f"{API}/lending/items/{lent['id']}")

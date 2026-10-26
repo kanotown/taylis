@@ -1,16 +1,19 @@
 """備品 (equipment lending, docs/LENDING.md). L1 (M167): the settings, the categories, the items,
-their photos and their history.
+their photos and their history. The loans (L2, M168) are in `loans.py`; the item views here show
+their briefs.
 
-Every change of an item locks its row first (`FOR UPDATE`; the loans of L2 lock the item and then
-the loan, in that order). Creating items or categories and giving a control number go through a
+Every change of an item locks its row first (`FOR UPDATE`; the loans lock the item and then the
+loan, in that order). Creating items or categories and giving a control number go through a
 transaction-scoped advisory lock, so the limits and the uniqueness checks see one another. Each
 change writes the item's history (`lending_item_events`), the audit row (§10) and a
 `lending.updated` (audience all, no content) in the same transaction."""
 
 import uuid
+from datetime import date
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.collation import name_key as collation_key
@@ -33,6 +36,7 @@ from app.modules.lending.models import (
     LendingCategory,
     LendingItem,
     LendingItemEvent,
+    LendingLoan,
     LendingSettings,
 )
 from app.modules.lending.schemas import (
@@ -48,6 +52,7 @@ from app.modules.lending.schemas import (
     LendingItemOut,
     LendingItemStatusIn,
     LendingItemUpdate,
+    LendingLoanBriefOut,
     LendingSettingsOut,
     LendingSettingsUpdate,
     LendingSummaryOut,
@@ -104,7 +109,7 @@ def _settings_out(row: LendingSettings | None, actor: User) -> LendingSettingsOu
     )
 
 
-async def _emit(
+async def emit(
     db: AsyncSession,
     *,
     item_ids: list[uuid.UUID] | None = None,
@@ -188,24 +193,49 @@ async def update_settings(
             target_id=None,
             details=changes,
         )
-        await _emit(db, settings=True)
+        await emit(db, settings=True)
     await db.commit()
     return _settings_out(row, actor)
 
 
 async def bootstrap(db: AsyncSession, actor: User) -> LendingSummaryOut | None:
-    """The bootstrap's `lending`: null for guests and bots and while the feature is off. The loan
-    counts come with the loans (L2)."""
+    """The bootstrap's `lending`: null for guests and bots and while the feature is off.
+    `keeper_attention_count` (keepers only) counts the active loans at least keeper_overdue_days
+    past due and those of deactivated borrowers: what the keepers' morning summary lists (§8.2)."""
     row = await _settings_row(db)
     if not access.may_see_ledger(actor, row):
         return None
     assert row is not None
+    today = today_in(row)
+    mine = await db.execute(
+        select(
+            func.count(),
+            func.count().filter(LendingLoan.due_on < today),
+        ).where(LendingLoan.borrower_id == actor.id, LendingLoan.status == "active")
+    )
+    active_count, overdue_count = mine.one()
+    keeper = access.can_keep(actor, row)
+    attention = 0
+    if keeper:
+        cutoff = date.fromordinal(today.toordinal() - row.keeper_overdue_days)
+        attention = (
+            await db.scalar(
+                select(func.count())
+                .select_from(LendingLoan)
+                .join(User, User.id == LendingLoan.borrower_id)
+                .where(
+                    LendingLoan.status == "active",
+                    or_(LendingLoan.due_on <= cutoff, User.deactivated_at.is_not(None)),
+                )
+            )
+            or 0
+        )
     return LendingSummaryOut(
         enabled=True,
-        is_keeper=access.can_keep(actor, row),
-        my_active_count=0,
-        my_overdue_count=0,
-        keeper_attention_count=0,
+        is_keeper=keeper,
+        my_active_count=active_count,
+        my_overdue_count=overdue_count,
+        keeper_attention_count=attention,
         settings_updated_at=row.updated_at,
     )
 
@@ -216,13 +246,44 @@ async def forget_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
     row = await _settings_row(db, for_update=True)
     if row is not None and user_id in row.keeper_ids:
         row.keeper_ids = [i for i in row.keeper_ids if i != user_id]
-        await _emit(db, settings=True)
+        await emit(db, settings=True)
+
+
+# --- dates and loan briefs (§4.2) ---------------------------------------------------------------
+
+
+def today_in(settings: LendingSettings) -> date:
+    """Today in the workspace's zone: due dates are dates there (§8.1)."""
+    return utcnow().astimezone(ZoneInfo(settings.tz)).date()
+
+
+def overdue_days(loan: LendingLoan, today: date) -> int:
+    if loan.status != "active":
+        return 0
+    return max(0, today.toordinal() - loan.due_on.toordinal())
+
+
+def loan_brief(
+    loan: LendingLoan, today: date, actor: User, settings: LendingSettings
+) -> LendingLoanBriefOut:
+    shown = access.sees_loan_details(actor, loan, settings)
+    return LendingLoanBriefOut(
+        id=loan.id,
+        borrower_id=loan.borrower_id,
+        borrowed_at=loan.borrowed_at,
+        due_on=loan.due_on,
+        overdue_days=overdue_days(loan, today),
+        permission_state=loan.permission_state if shown else None,  # type: ignore[arg-type]
+        status=loan.status,  # type: ignore[arg-type]
+        returned_at=loan.returned_at,
+        return_condition=loan.return_condition,  # type: ignore[arg-type]
+    )
 
 
 # --- who may --------------------------------------------------------------------------------
 
 
-async def _ledger(db: AsyncSession, actor: User) -> LendingSettings:
+async def require_ledger(db: AsyncSession, actor: User) -> LendingSettings:
     """403 guest_restricted for guests and bots, 409 lending_disabled while off."""
     _require_person(actor)
     row = await _settings_row(db)
@@ -238,7 +299,7 @@ def _require_keeper(actor: User, settings: LendingSettings) -> None:
 
 
 async def _keeper(db: AsyncSession, actor: User) -> LendingSettings:
-    settings = await _ledger(db, actor)
+    settings = await require_ledger(db, actor)
     _require_keeper(actor, settings)
     return settings
 
@@ -278,7 +339,7 @@ def _category_out(row: LendingCategory, counts: dict[uuid.UUID, int]) -> Lending
 
 
 async def list_categories(db: AsyncSession, actor: User) -> list[LendingCategoryOut]:
-    await _ledger(db, actor)
+    await require_ledger(db, actor)
     counts = await _item_counts(db)
     return [_category_out(c, counts) for c in await _ordered_categories(db)]
 
@@ -338,7 +399,7 @@ async def create_category(
         target_id=row.id,
         details=_category_audit(row),
     )
-    await _emit(db, categories=True)
+    await emit(db, categories=True)
     await db.commit()
     return _category_out(row, {})
 
@@ -381,7 +442,7 @@ async def update_category(
             target_id=row.id,
             details=changes,
         )
-        await _emit(db, categories=True)
+        await emit(db, categories=True)
     await db.commit()
     return _category_out(row, await _item_counts(db))
 
@@ -408,7 +469,7 @@ async def delete_category(db: AsyncSession, actor: User, category_id: uuid.UUID)
         details=_category_audit(row),
     )
     await db.delete(row)
-    await _emit(db, categories=True)
+    await emit(db, categories=True)
     await db.commit()
 
 
@@ -441,11 +502,20 @@ def _effective(
     return permission[0], permission[1], days[0], days[1]
 
 
+def effective(
+    item: LendingItem, category: LendingCategory | None, settings: LendingSettings
+) -> tuple[bool, int]:
+    """(requires_permission, max_days) in effect for the item (§4.2)."""
+    permission, _, days, _ = _effective(item, category, settings)
+    return permission, days
+
+
 def _item_out(
     item: LendingItem,
     categories: dict[uuid.UUID, LendingCategory],
     photos: dict[uuid.UUID, Attachment],
     settings: LendingSettings,
+    loan: LendingLoanBriefOut | None,
 ) -> LendingItemOut:
     category = categories.get(item.category_id) if item.category_id else None
     permission, permission_source, days, days_source = _effective(item, category, settings)
@@ -464,7 +534,7 @@ def _item_out(
         requires_permission_source=permission_source,
         max_days=days,
         max_days_source=days_source,
-        loan=None,
+        loan=loan,
         watching=False,
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -482,43 +552,72 @@ async def _categories_by_id(db: AsyncSession) -> dict[uuid.UUID, LendingCategory
 
 
 async def _outs(
-    db: AsyncSession, items: list[LendingItem], settings: LendingSettings
+    db: AsyncSession, items: list[LendingItem], settings: LendingSettings, actor: User
 ) -> list[LendingItemOut]:
     categories = await _categories_by_id(db)
     photos = await _photos(db, items)
-    return [_item_out(i, categories, photos, settings) for i in items]
+    loan_ids = [i.current_loan_id for i in items if i.current_loan_id is not None]
+    loans: dict[uuid.UUID, LendingLoan] = {}
+    if loan_ids:
+        rows = await db.execute(select(LendingLoan).where(LendingLoan.id.in_(loan_ids)))
+        loans = {r.id: r for r in rows.scalars().all()}
+    today = today_in(settings)
+
+    def brief(item: LendingItem) -> LendingLoanBriefOut | None:
+        loan = loans.get(item.current_loan_id) if item.current_loan_id else None
+        return loan_brief(loan, today, actor, settings) if loan is not None else None
+
+    return [_item_out(i, categories, photos, settings, brief(i)) for i in items]
+
+
+RECENT_LOANS = 5
 
 
 async def _detail(
-    db: AsyncSession, item: LendingItem, settings: LendingSettings
+    db: AsyncSession, item: LendingItem, settings: LendingSettings, actor: User
 ) -> LendingItemDetailOut:
-    (out,) = await _outs(db, [item], settings)
-    return LendingItemDetailOut(**out.model_dump(), recent_loans=[])
+    (out,) = await _outs(db, [item], settings, actor)
+    rows = await db.execute(
+        select(LendingLoan)
+        .where(LendingLoan.item_id == item.id)
+        .order_by(LendingLoan.borrowed_at.desc(), LendingLoan.id.desc())
+        .limit(RECENT_LOANS)
+    )
+    today = today_in(settings)
+    recent = [loan_brief(r, today, actor, settings) for r in rows.scalars().all()]
+    return LendingItemDetailOut(**out.model_dump(), recent_loans=recent)
+
+
+async def item_detail(
+    db: AsyncSession, item: LendingItem, settings: LendingSettings, actor: User
+) -> LendingItemDetailOut:
+    """For loans.py."""
+    return await _detail(db, item, settings, actor)
 
 
 async def list_items(
     db: AsyncSession, actor: User, *, include_retired: bool = False
 ) -> list[LendingItemOut]:
     """Every item in the Japanese name order (core/collation), not paged (at most 2,000)."""
-    settings = await _ledger(db, actor)
+    settings = await require_ledger(db, actor)
     stmt = select(LendingItem)
     if not include_retired:
         stmt = stmt.where(LendingItem.status != "retired")
     items = sorted(
         (await db.execute(stmt)).scalars().all(), key=lambda i: (collation_key(i.name), i.id)
     )
-    return await _outs(db, items, settings)
+    return await _outs(db, items, settings, actor)
 
 
 async def get_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> LendingItemDetailOut:
-    settings = await _ledger(db, actor)
+    settings = await require_ledger(db, actor)
     item = await db.get(LendingItem, item_id)
     if item is None:
         raise _item_not_found()
-    return await _detail(db, item, settings)
+    return await _detail(db, item, settings, actor)
 
 
-async def _locked_item(db: AsyncSession, item_id: uuid.UUID) -> LendingItem:
+async def locked_item(db: AsyncSession, item_id: uuid.UUID) -> LendingItem:
     item = await db.get(LendingItem, item_id, with_for_update=True, populate_existing=True)
     if item is None:
         raise _item_not_found()
@@ -575,16 +674,24 @@ async def _set_photo(
     return True
 
 
-async def _record(
+async def record(
     db: AsyncSession,
     item: LendingItem,
     actor: User,
     kind: str,
     details: dict[str, Any],
+    *,
+    loan_id: uuid.UUID | None = None,
 ) -> None:
+    """One line of the item's history."""
     db.add(
         LendingItemEvent(
-            item_id=item.id, kind=kind, actor_id=actor.id, at=utcnow(), details=details
+            item_id=item.id,
+            loan_id=loan_id,
+            kind=kind,
+            actor_id=actor.id,
+            at=utcnow(),
+            details=details,
         )
     )
     await db.flush()
@@ -630,7 +737,7 @@ async def create_item(
     await db.flush()
     if data.photo_attachment_id is not None:
         await _set_photo(db, actor, item, data.photo_attachment_id)
-    await _record(
+    await record(
         db,
         item,
         actor,
@@ -645,9 +752,9 @@ async def create_item(
         target_id=item.id,
         details=_item_audit(item),
     )
-    await _emit(db, item_ids=[item.id])
+    await emit(db, item_ids=[item.id])
     await db.commit()
-    return await _detail(db, item, settings)
+    return await _detail(db, item, settings, actor)
 
 
 def _str(value: uuid.UUID | None) -> str | None:
@@ -665,7 +772,7 @@ async def update_item(
     sent = data.model_fields_set
     if "code" in sent:
         await db.execute(_ITEMS_LOCK)
-    item = await _locked_item(db, item_id)
+    item = await locked_item(db, item_id)
     changes: dict[str, Any] = {}
     fields: list[str] = []
 
@@ -702,7 +809,7 @@ async def update_item(
     if fields:
         item.updated_by = actor.id
         item.updated_at = utcnow()
-        await _record(db, item, actor, "updated", {"fields": fields, "changes": changes})
+        await record(db, item, actor, "updated", {"fields": fields, "changes": changes})
         await audit.record_in_tx(
             db,
             actor_id=actor.id,
@@ -711,9 +818,9 @@ async def update_item(
             target_id=item.id,
             details={"fields": fields, "changes": changes},
         )
-        await _emit(db, item_ids=[item.id])
+        await emit(db, item_ids=[item.id])
     await db.commit()
-    return await _detail(db, item, settings)
+    return await _detail(db, item, settings, actor)
 
 
 async def set_status(
@@ -724,7 +831,7 @@ async def set_status(
     status and note again: no change."""
     settings = await _keeper(db, actor)
     await db.execute(_ITEMS_LOCK)
-    item = await _locked_item(db, item_id)
+    item = await locked_item(db, item_id)
     if item.status == "on_loan":
         raise conflict(
             "lending_item_on_loan",
@@ -734,7 +841,7 @@ async def set_status(
     note = None if data.status == "available" else data.note
     if data.status == item.status and note == item.status_note:
         await db.commit()
-        return await _detail(db, item, settings)
+        return await _detail(db, item, settings, actor)
     if item.status == "retired" and data.status != "retired":
         await _check_code(db, item.code_key, exclude=item.id)
     before = item.status
@@ -743,7 +850,7 @@ async def set_status(
     item.updated_by = actor.id
     item.updated_at = utcnow()
     details = {"from": before, "to": data.status, "note": note}
-    await _record(db, item, actor, "status", details)
+    await record(db, item, actor, "status", details)
     await audit.record_in_tx(
         db,
         actor_id=actor.id,
@@ -752,21 +859,17 @@ async def set_status(
         target_id=item.id,
         details=details,
     )
-    await _emit(db, item_ids=[item.id])
+    await emit(db, item_ids=[item.id])
     await db.commit()
-    return await _detail(db, item, settings)
+    return await _detail(db, item, settings, actor)
 
 
 async def delete_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> None:
     """Only an item that was never lent (409 lending_item_has_history: retire it instead). Its
     photo and history go with it."""
     await _keeper(db, actor)
-    item = await _locked_item(db, item_id)
-    lent = await db.scalar(
-        select(LendingItemEvent.id)
-        .where(LendingItemEvent.item_id == item.id, LendingItemEvent.kind == "borrowed")
-        .limit(1)
-    )
+    item = await locked_item(db, item_id)
+    lent = await db.scalar(select(LendingLoan.id).where(LendingLoan.item_id == item.id).limit(1))
     if lent is not None or item.status == "on_loan":
         raise conflict(
             "lending_item_has_history", "The item has been lent: retire it instead of deleting it"
@@ -782,7 +885,7 @@ async def delete_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> None
         details=_item_audit(item),
     )
     await db.delete(item)
-    await _emit(db, item_ids=[item.id])
+    await emit(db, item_ids=[item.id])
     await db.commit()
 
 
@@ -795,7 +898,7 @@ async def history(
     limit: int,
 ) -> LendingItemHistoryOut:
     """Newest first; `before` is the last event id of the previous page."""
-    await _ledger(db, actor)
+    await require_ledger(db, actor)
     if await db.get(LendingItem, item_id) is None:
         raise _item_not_found()
     stmt = select(LendingItemEvent).where(LendingItemEvent.item_id == item_id)

@@ -47,6 +47,7 @@ TABLES = [
     "actions",
     "action_settings",
     # M167: the categories have no foreign key to users (the items and the settings row do).
+    "lending_loans",
     "lending_item_events",
     "lending_items",
     "lending_categories",

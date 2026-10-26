@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.roles import PERSON_ROLES, has_capability
-from app.modules.lending.models import LendingItem, LendingSettings
+from app.modules.lending.models import LendingItem, LendingLoan, LendingSettings
 from app.modules.users.models import User
 
 
@@ -38,6 +38,19 @@ def can_keep(user: User, settings: LendingSettings | None) -> bool:
 def may_see_ledger(user: User, settings: LendingSettings | None) -> bool:
     """The ledger (items, categories, photos, history): every person while the feature is on."""
     return is_person(user) and is_enabled(settings)
+
+
+def sees_loan_details(user: User, loan: LendingLoan, settings: LendingSettings | None) -> bool:
+    """A loan's purpose, permission and return note (§3.2): the borrower, the teacher named on
+    it, the keepers and the administrators."""
+    if not is_person(user):
+        return False
+    return user.id in (loan.borrower_id, loan.approver_id) or can_keep(user, settings)
+
+
+def may_return(user: User, loan: LendingLoan, settings: LendingSettings | None) -> bool:
+    """The borrower, or a keeper recording it on their behalf."""
+    return is_person(user) and (user.id == loan.borrower_id or can_keep(user, settings))
 
 
 async def can_read_photo(db: AsyncSession, actor: User, item_id: uuid.UUID) -> bool:

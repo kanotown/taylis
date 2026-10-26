@@ -2443,9 +2443,9 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
 - 匿名化（`admin.anonymize`）でその人を全ボタンの `allowed_user_ids` から外す（`actions.forget_in_tx`）。押した記録は残る。
 - 移行 0107：`actions.provides_status`（boolean、既定 false）。組（`group_label`、無ければボタン自身）の状態をこのボタンの中継に尋ねる。組に 1 つまでをサーバが確かめる（`409 action_status_source_taken`）。状態の答えは DB に残さない（プロセスの中で 30 秒覚えるだけ。ACTIONS.md §12）。
 
-### lending_*（備品の台帳、M167、docs/LENDING.md §4、移行 0123）
+### lending_*（備品の台帳と貸し出し、M167・M168、docs/LENDING.md §4、移行 0123・0124）
 
-移行 0123（L1）。列と制約は LENDING.md §4.1 のとおり。貸し出し `lending_loans` は 0124（L2）、知らせと見守りは 0125（L3）で足す。
+移行 0123（L1）と 0124（L2、貸し出し `lending_loans`）。列と制約は LENDING.md §4.1 のとおり。知らせと見守りは 0125（L3）で足す。
 
 - `lending_settings`：1 行（無ければ既定値でオフ）。`enabled`（既定 false）、`keeper_ids`（備品係、uuid の配列 20 人まで。外部キーは無く、
   使うときに有効な人（admin・manager・member）だけを数える）、`default_max_days` 14（1〜365）、`max_extensions` 2（0〜10）、
@@ -2456,10 +2456,21 @@ manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれ
   （NFC + casefold、前後の空白を除く。部分一意索引 `lending_items_code_uniq` は廃棄していないものの中だけ）、`location`、`notes`（2,000 字）、
   `photo_attachment_id`（ON DELETE SET NULL）、`status`（available / on_loan / in_repair / retired、CHECK）と `status_note`（200 字。
   貸出可に戻すと空にする）、`requires_permission`・`max_days`（NULL = 分類 → 設定の既定）、`current_loan_id`（`status = 'on_loan'` のときだけ。
-  CHECK。外部キーは 0124）。
+  CHECK。0124 から `lending_loans(id)` への外部キー、DEFERRABLE INITIALLY DEFERRED）。
 - `lending_item_events`：備品ごとの履歴（id は UUIDv7 で、`GET /lending/items/{id}/history?before=` のカーソル）。`kind` は L1 で
   created・updated（`details.fields` と、短い項目の `changes {from, to}`。メモと写真は項目名だけ）・status（`details {from, to, note}`）。
-  貸し出しの目的・返却のメモは入れない。備品を消すと一緒に消える（消せるのは 1 度も貸していない備品だけ）。
+  L2 で borrowed（`details {due_on}`、教員が自分で借りたら `self_approved: true`）・extended と due_changed（`details {from, to}`。
+  due_changed は備品係が変えたもの）・returned（`details {condition, by_keeper}`）。`loan_id` は 0124 から `lending_loans(id)` への外部キー。
+  貸し出しの目的・許可した教員・返却のメモは入れない。備品を消すと一緒に消える（消せるのは貸し出しの行が 1 つも無い備品だけ）。
+- `lending_loans`（0124）：貸し出し。`item_id`（ON DELETE RESTRICT）・`borrower_id`・`client_request_id`（端末が作る冪等のキー）・
+  `status`（active / returned）・`borrowed_at`・`due_on` と `original_due_on`（`lending_settings.tz` の日付）・`extension_count`（本人の延長だけ
+  数える）・`purpose`（200 字）・`permission_required`（借りた時点の値）・`approver_id`・`permission_state`（NULL / claimed / confirmed / denied。
+  L2 は claimed まで）・`permission_decided_at`・`permission_note`・`returned_at`・`returned_by`・`return_condition`（ok / issue）・`return_note`
+  （500 字）。CHECK は §4.1 の 5 つ。部分一意索引 `lending_loans_active_uniq (item_id) WHERE status = 'active'`（貸出中は備品に 1 つ。備品の行の
+  `FOR UPDATE` の後ろの最後の守り）、一意索引 `lending_loans_request_uniq (borrower_id, client_request_id)`（送り直しは同じ行）、
+  `lending_loans_borrower_idx`・`lending_loans_due_idx`（貸出中の返す日、L3 の worker）・`lending_loans_item_idx`（最近の貸し出し）。消さない。
+  users への外部キーは ON DELETE を付けない（匿名化でも行は残る）ので、テストの TRUNCATE に名前で入れる。0124 の downgrade は貸出中の
+  備品を available に戻してから表を落とす（履歴の `loan_id` は値だけ残る）。
 - `attachments.lending_item_id`（ON DELETE SET NULL、部分索引）：備品の写真（`status = attached`、`message_id`・`channel_id` などは NULL）。
   読めるのは機能が有効な間の人（admin・manager・member）だけ（`get_for_access` の枝、§「attachments」）。写真を替える・外す・備品を消すと
   前の添付は `deleted` になり、添付の GC がバイト列を消す。0123 の downgrade は写真の添付を `deleted` にしてから列を落とす。
