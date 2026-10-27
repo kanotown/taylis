@@ -7,7 +7,9 @@ import { AiBadge } from "./ai";
 import { Avatar, presenceDotOf } from "./Avatar";
 import { selfNotesHint } from "./channels";
 import { pickerChannels, pickerPeople } from "./home";
+import { isImeKeyEvent, isPlainEnter } from "./ime";
 import { matchScore } from "./jumpMatch";
+import { moveInPicker } from "./pickerKeys";
 import { ConversationRowBody } from "./JumpView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { Button, cn, IconButton } from "./primitives";
@@ -30,6 +32,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     input.current?.focus();
   }, []);
@@ -74,9 +77,30 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
 
   const heading = (label: string) => <div className="px-4 pb-1 pt-3 text-[12px] font-semibold text-muted">{label}</div>;
   const nothing = !showSelf && (!showChannels || (mine.length === 0 && joinable.length === 0)) && people.length === 0 && bots.length === 0;
+  // Enter in the field picks the only row a query leaves (as the new-DM dialog's people search).
+  const rows: Array<() => void> = [
+    ...(showSelf && meId ? [() => void openDm([meId])] : []),
+    ...(showChannels ? [...mine, ...joinable].map((channel) => () => onOpen(channel.id)) : []),
+    ...[...people, ...bots].map((user) => () => toggle(user.id)),
+  ];
 
   return (
-    <section role="dialog" aria-label={t("home.newMessage")} className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
+    <section
+      role="dialog"
+      aria-label={t("home.newMessage")}
+      className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink"
+      onKeyDown={(e) => {
+        if (moveInPicker(e, list.current, input.current)) return;
+        if (e.key !== "Escape" || isImeKeyEvent(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Esc clears the query first, then closes.
+        if (text) {
+          setText("");
+          input.current?.focus();
+        } else onClose();
+      }}
+    >
       <div className="flex h-[52px] shrink-0 items-center gap-1 border-b border-line pl-2 pr-3">
         <IconButton label={t("common.back")} className="h-11 w-11" onClick={onClose}>
           <ArrowLeft size={20} />
@@ -109,6 +133,10 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Backspace" && !text && selected.length > 0) setSelected((s) => s.slice(0, -1));
+              else if (isPlainEnter(e) && query && rows.length === 1) {
+                e.preventDefault();
+                rows[0]!();
+              }
             }}
             placeholder={selected.length ? t("newMessage.addMore") : t("newMessage.to")}
             aria-label={t("newMessage.recipients")}
@@ -118,7 +146,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
         {selected.length > GROUP_MAX && <p className="mt-1.5 text-xs text-danger">{t("newMessage.groupMax", { max: GROUP_MAX })}</p>}
         {error && <p className="mt-1.5 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-6">
+      <div ref={list} className="min-h-0 flex-1 overflow-y-auto pb-6">
         {showSelf && meId && (
           <button type="button" data-pick="self" disabled={busy} onClick={() => void openDm([meId])} className={PICK_ROW}>
             <Avatar id={meId} name={myName} size={24} className="rounded-md text-[10px]" />

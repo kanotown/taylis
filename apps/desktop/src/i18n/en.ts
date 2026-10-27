@@ -1207,6 +1207,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "dialogs.addMembers": "Add members",
   "dialogs.membersLoadFailed": "Couldn't load the members",
   "dialogs.noOneToAdd": "There's nobody to add",
+  "dialogs.searchPeople": "Search by name or username",
+  "dialogs.noPeopleMatch": "No one matches",
   "dialogs.channelNameHint": "Lowercase letters, digits and hyphens work best",
   "dialogs.public": "Public",
   "dialogs.publicNote": "Anyone can join",

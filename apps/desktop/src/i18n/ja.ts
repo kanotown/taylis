@@ -1206,6 +1206,8 @@ export const ja = {
   "dialogs.addMembers": "メンバーを追加",
   "dialogs.membersLoadFailed": "メンバー一覧を読み込めませんでした",
   "dialogs.noOneToAdd": "追加できるユーザーはいません",
+  "dialogs.searchPeople": "名前やユーザー名で検索",
+  "dialogs.noPeopleMatch": "一致する人はいません",
   "dialogs.channelNameHint": "小文字の英数字とハイフンがおすすめです",
   "dialogs.public": "パブリック",
   "dialogs.publicNote": "誰でも参加できます",

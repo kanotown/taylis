@@ -1,13 +1,16 @@
 import { AiChannelNotice } from "./ai";
-import { Check, Crown, Hash, Lock, MoreHorizontal, NotebookPen, UserMinus } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { Check, Crown, Hash, Lock, MoreHorizontal, NotebookPen, Search, UserMinus, X } from "lucide-react";
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, boardDotSize, presenceLabel } from "./Avatar";
 import { myName, selfNotesHint } from "./channels";
-import { pickerPeople } from "./home";
+import { pickerPeople, searchPeople } from "./home";
+import { isImeKeyEvent, isPlainEnter } from "./ime";
+import { matchScore } from "./jumpMatch";
+import { moveInPicker } from "./pickerKeys";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { AttendanceChip } from "./AttendanceChip";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
@@ -23,31 +26,108 @@ interface DialogProps {
   onOpen: (channelId: string) => void;
 }
 
-/** Selectable user rows shared by the DM and add-member dialogs. */
-export function UserPicker({ users, selected, onToggle, empty }: { users: UserPublic[]; selected: string[]; onToggle: (id: string) => void; empty: string }) {
-  if (users.length === 0) return <p className="py-6 text-center text-sm text-muted">{empty}</p>;
+/** The query of a `UserPicker` search, kept by its dialog: Esc clears it first and only then closes the dialog. */
+export function usePickerSearch() {
+  const [query, setQuery] = useState("");
+  // Radix hears Esc on the document before the field does, so the dialog decides here.
+  const onEscapeKeyDown = (event: KeyboardEvent) => {
+    if (isImeKeyEvent(event)) event.preventDefault(); // cancelling a conversion
+    else if (query) {
+      event.preventDefault();
+      setQuery("");
+    }
+  };
+  return { query, onQueryChange: setQuery, onEscapeKeyDown };
+}
+
+/**
+ * Selectable user rows shared by the DM and add-member dialogs (and the admin's group editor, without `search`). With
+ * `search`, a field on top filters by the picker's rule (home.ts `searchPeople`: display name and username, NFKC,
+ * kana-insensitive, as ✏️ 新しいメッセージ); the chosen people stay visible as chips in the field. ↑↓ move between the
+ * field and the rows, Enter / Space toggle a row, Enter in the field toggles the only match, Backspace in an empty field
+ * takes the last chip off.
+ */
+export function UserPicker({ users, selected, onToggle, empty, search, children }: {
+  users: UserPublic[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  empty: string;
+  search?: { query: string; onQueryChange: (query: string) => void };
+  /** Rows between the search field and the list (the new-DM dialog's own DM). */
+  children?: ReactNode;
+}) {
+  const list = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  if (users.length === 0) return <>{children}<p className="py-6 text-center text-sm text-muted">{empty}</p></>;
+  const query = search?.query ?? "";
+  const shown = search ? searchPeople(query, users) : users;
+  const chosen = selected.map((id) => users.find((u) => u.id === id)).filter((u): u is UserPublic => !!u);
+
+  const onFieldKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (isPlainEnter(event) && query.trim() && shown.length === 1) {
+      event.preventDefault();
+      onToggle(shown[0]!.id);
+      search?.onQueryChange("");
+    } else if (event.key === "Backspace" && !query && chosen.length > 0 && !isImeKeyEvent(event)) {
+      onToggle(chosen[chosen.length - 1]!.id);
+    }
+  };
+
   return (
-    <ul className="max-h-72 overflow-y-auto rounded-xl border border-line">
-      {users.map((u) => {
-        const on = selected.includes(u.id);
-        return (
-          <li key={u.id}>
-            <button
-              type="button"
-              onClick={() => onToggle(u.id)}
-              aria-pressed={on}
-              className={cn("flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-panel", on && "bg-accent-soft/60")}
-            >
-              <Avatar id={u.id} name={u.display_name} size={28} />
-              <span className="flex-1 truncate">
-                {u.display_name} <span className="text-muted">@{u.username}</span>
-              </span>
-              <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", on ? "border-accent bg-accent-solid text-white" : "border-line")}>{on && <Check size={12} />}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <div ref={list} className="space-y-2" onKeyDown={(event) => { moveInPicker(event, list.current, input.current); }}>
+      {search && (
+        <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-xl border border-line bg-panel px-3 py-1.5 focus-within:border-accent">
+          <Search size={15} className="shrink-0 text-muted" aria-hidden="true" />
+          {chosen.map((u) => (
+            <span key={u.id} data-chip={u.id} className="flex items-center gap-1 rounded-lg bg-accent-soft py-0.5 pl-1 pr-1.5 text-[13px] text-ink">
+              <Avatar id={u.id} name={u.display_name} size={18} className="rounded text-[8px]" />
+              {u.display_name}
+              <button type="button" aria-label={t("workflow.removePerson", { name: u.display_name })} className="rounded text-muted hover:text-ink" onClick={() => onToggle(u.id)}>
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+          <input
+            ref={input}
+            autoFocus
+            type="search"
+            value={query}
+            onChange={(event) => search.onQueryChange(event.target.value)}
+            onKeyDown={onFieldKey}
+            placeholder={t("dialogs.searchPeople")}
+            aria-label={t("dialogs.searchPeople")}
+            className="min-w-24 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted [&::-webkit-search-cancel-button]:hidden"
+          />
+        </div>
+      )}
+      {children}
+      {shown.length === 0 ? (
+        <p role="status" className="py-6 text-center text-sm text-muted">{t("dialogs.noPeopleMatch")}</p>
+      ) : (
+        <ul className="max-h-72 overflow-y-auto rounded-xl border border-line">
+          {shown.map((u) => {
+            const on = selected.includes(u.id);
+            return (
+              <li key={u.id}>
+                <button
+                  type="button"
+                  data-pick="person"
+                  onClick={() => onToggle(u.id)}
+                  aria-pressed={on}
+                  className={cn("flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-panel focus-visible:bg-panel focus-visible:outline-none", on && "bg-accent-soft/60")}
+                >
+                  <Avatar id={u.id} name={u.display_name} size={28} />
+                  <span className="flex-1 truncate">
+                    {u.display_name} <span className="text-muted">@{u.username}</span>
+                  </span>
+                  <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", on ? "border-accent bg-accent-solid text-white" : "border-line")}>{on && <Check size={12} />}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -62,7 +142,11 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   const users = [...people, ...bots];
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const search = usePickerSearch();
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const myLabel = me ? myName(controller.store.users, me, controller.store.me) : "";
+  // My own DM as in ✏️ 新しいメッセージ: while nobody is picked and the query (if any) matches my name.
+  const showSelf = !!me && selected.length === 0 && (!search.query.trim() || matchScore(search.query, [myLabel, controller.store.me?.username ?? ""]) !== null);
 
   const create = () => open(selected);
   const open = async (userIds: string[]) => {
@@ -78,21 +162,23 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   };
 
   return (
-    <Modal onClose={onClose} title={t("sidebar.dms")} description={t("dialogs.newDmDescription")}>
+    <Modal onClose={onClose} onEscapeKeyDown={search.onEscapeKeyDown} title={t("sidebar.dms")} description={t("dialogs.newDmDescription")}>
       <div className="mt-4 space-y-3">
-        {/* A DM with only myself, titled with my name (as in Slack / Mattermost). */}
-        {me && (
-          <button
-            type="button"
-            onClick={() => void open([me])}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-panel"
-          >
-            <NotebookPen size={16} className="shrink-0 text-muted" />
-            <span className="shrink-0 font-medium">{myName(controller.store.users, me, controller.store.me)}</span>
-            <span className="min-w-0 truncate text-xs text-muted">{selfNotesHint()}</span>
-          </button>
-        )}
-        <UserPicker users={users} selected={selected} onToggle={toggle} empty={t("dialogs.noDmCandidates")} />
+        <UserPicker users={users} selected={selected} onToggle={toggle} empty={t("dialogs.noDmCandidates")} search={search}>
+          {/* A DM with only myself, titled with my name (as in Slack / Mattermost). */}
+          {showSelf && me && (
+            <button
+              type="button"
+              data-pick="self"
+              onClick={() => void open([me])}
+              className="flex w-full items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-panel focus-visible:bg-panel"
+            >
+              <NotebookPen size={16} className="shrink-0 text-muted" />
+              <span className="shrink-0 font-medium">{myLabel}</span>
+              <span className="min-w-0 truncate text-xs text-muted">{selfNotesHint()}</span>
+            </button>
+          )}
+        </UserPicker>
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -136,6 +222,7 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
     return () => { cancelled = true; };
   }, [controller, controller.api, channelId, attempt]);
 
+  const search = usePickerSearch();
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const add = async () => {
@@ -152,7 +239,7 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
   };
 
   return (
-    <Modal onClose={onClose} title={t("dialogs.addMembers")}>
+    <Modal onClose={onClose} onEscapeKeyDown={search.onEscapeKeyDown} title={t("dialogs.addMembers")}>
       <div className="mt-4 space-y-3">
         {loadError !== null ? (
           <div className="space-y-2 py-4 text-sm">
@@ -160,7 +247,7 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
             <p className="text-muted">{loadError}</p>
             <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</Button>
           </div>
-        ) : members === null ? <p role="status" className="py-6 text-center text-sm text-muted">{t("common.loading")}</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty={t("dialogs.noOneToAdd")} />}
+        ) : members === null ? <p role="status" className="py-6 text-center text-sm text-muted">{t("common.loading")}</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty={t("dialogs.noOneToAdd")} search={search} />}
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>

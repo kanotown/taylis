@@ -108,6 +108,15 @@ export function pickerPeople(query: string, users: Iterable<UserPublic>, meId: s
   return dmCandidates(query, [...users].filter((u) => u.id !== meId), aiBotIds);
 }
 
+/**
+ * The search of the new-DM and add-member dialogs (Dialogs.tsx `UserPicker`): the picker's rule (jump-match, as in
+ * ✏️ 新しいメッセージ) — the people, then the bots, each ranked; without a query everyone in the given order.
+ */
+export function searchPeople(query: string, users: readonly UserPublic[]): UserPublic[] {
+  if (!query.trim()) return [...users];
+  return [...rankPeople(query, users.filter((u) => u.role !== "bot")), ...rankPeople(query, users.filter((u) => u.role === "bot"))];
+}
+
 // --- the home sections (§6.1) -----------------------------------------------------------------
 
 export const HOME_DM_LIMIT = 5;
