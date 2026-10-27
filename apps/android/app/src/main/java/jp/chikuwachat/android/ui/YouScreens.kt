@@ -5,6 +5,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.height
@@ -280,7 +287,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
         SettingsPage.listed(isAdmin = me?.role == "admin").forEach { page ->
             val value = when (page) {
                 SettingsPage.NOTIFICATIONS -> NotificationLabels.overallLabel(me?.notificationDefault ?: NotificationLevels.MENTIONS)
-                SettingsPage.APPEARANCE -> controller.appearance.label
+                SettingsPage.APPEARANCE -> YouSettings.appearanceSummary(controller.appearance, controller.palette)
                 SettingsPage.WORKSPACES -> controller.workspaceName
                 else -> null
             }
@@ -622,6 +629,13 @@ private fun AppearanceScreen(controller: AppController, version: Int) {
                 RadioRow(value.label, selected = controller.appearance == value) { controller.changeAppearance(value) }
             }
         }
+        // 2026-10-27 (MOBILE_UI.md §27): pure black whenever dark is shown (the system's dark too).
+        SwitchRow(
+            stringResource(R.string.you_theme_black),
+            stringResource(R.string.you_theme_black_detail),
+            checked = controller.blackDark,
+        ) { controller.changeBlackDark(it) }
+        PaletteSection(controller)
         SectionTitle(stringResource(R.string.common_message))
         SwitchRow(
             stringResource(R.string.you_screens_group_consecutive_posts),
@@ -648,6 +662,64 @@ private fun AppearanceScreen(controller: AppController, version: Int) {
         // M111: likewise only against a server that knows `nav_items`.
         if (me != null && me.knowsNavItems) HomeTilesSection(controller, me)
     }
+}
+
+/**
+ * 「テーマの色」 (2026-10-27, MOBILE_UI.md §27): the desktop's palettes as accent circles (a check on the chosen one).
+ * With two or more workspaces, 「このワークスペースだけ」 / 「すべてのワークスペース」 above them (the desktop's scope):
+ * a swatch is written for the chosen scope; 「すべてのワークスペース」 makes the colour on screen everyone's (the
+ * workspaces' own choices are dropped).
+ */
+@Composable
+private fun PaletteSection(controller: AppController) {
+    SectionTitle(stringResource(R.string.you_theme_colour))
+    val current = controller.palette
+    val scope = controller.paletteScope
+    if (controller.workspaces.size >= 2) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            listOf(ThemeScope.WORKSPACE to stringResource(R.string.you_theme_this_workspace), ThemeScope.ALL to stringResource(R.string.you_theme_all_workspaces))
+                .forEachIndexed { index, (value, label) ->
+                    SegmentedButton(
+                        selected = scope == value, onClick = { if (scope != value) controller.changePalette(current, value) },
+                        shape = SegmentedButtonDefaults.itemShape(index, 2), label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+        }
+    }
+    val dark = controller.appearance.isDark(isSystemInDarkTheme())
+    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ThemePalette.entries.forEach { palette ->
+            val accent = PaletteColors.tones(palette, dark).accent
+            val chosen = palette == current
+            Column(
+                Modifier.width(76.dp).clip(RoundedCornerShape(8.dp))
+                    .selectable(selected = chosen, role = Role.RadioButton) { if (!chosen) controller.changePalette(palette, scope) }
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    Modifier.size(44.dp)
+                        .border(2.dp, if (chosen) MaterialTheme.colorScheme.onSurface else Color.Transparent, CircleShape)
+                        .padding(4.dp).clip(CircleShape).background(Color(accent)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (chosen) {
+                        val tick = if (ThemeColors.contrast(accent, 0xFFFFFFFF) >= 3.0) Color.White else Color.Black
+                        Icon(Icons.Default.Check, contentDescription = null, tint = tick, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Text(
+                    palette.label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2,
+                    color = if (chosen) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
+    val note = if (controller.workspaces.size >= 2 && scope == ThemeScope.WORKSPACE) {
+        stringResource(R.string.you_theme_workspace_note, controller.workspaceName)
+    } else stringResource(R.string.you_theme_colour_note)
+    Hint(note, Modifier.padding(top = 4.dp))
 }
 
 /**

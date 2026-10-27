@@ -1822,4 +1822,17 @@
     <string name="docs_wysiwyg_done">Close the keyboard</string>
     <string name="docs_wysiwyg_failed">WYSIWYG editing could not open. Markdown editing is available</string>
     <string name="docs_wysiwyg_unsupported">The bundled editor\'s version does not match the app. Markdown editing is available</string>
+    <string name="theme_palette_taylis">Taylis (chestnut)</string>
+    <string name="theme_palette_indigo">Indigo</string>
+    <string name="theme_palette_green">Green</string>
+    <string name="theme_palette_purple">Purple</string>
+    <string name="theme_palette_rose">Crimson</string>
+    <string name="theme_palette_gray">Gray</string>
+    <string name="you_theme_colour">Theme color</string>
+    <string name="you_theme_colour_note">The color of links, buttons and the selected row, in both light and dark.</string>
+    <string name="you_theme_this_workspace">This workspace only</string>
+    <string name="you_theme_all_workspaces">All workspaces</string>
+    <string name="you_theme_workspace_note">The theme color applies to “%1$s” only (each workspace can have its own).</string>
+    <string name="you_theme_black">Pure black dark mode</string>
+    <string name="you_theme_black_detail">In dark mode, a black background instead of dark gray (for OLED screens).</string>
 </resources>

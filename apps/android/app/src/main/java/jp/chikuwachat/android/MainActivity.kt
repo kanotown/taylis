@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
             // M100: text emoji pills are drawn for the look in effect (the setting or the system's).
             val dark = controller.appearance.isDark(isSystemInDarkTheme())
             LaunchedEffect(dark) { controller.textEmojiDark = dark }
-            ChikuwaTheme(controller.appearance) { AppRoot(controller) }
+            ChikuwaTheme(controller.appearance, controller.palette, controller.blackDark) { AppRoot(controller) }
         }
     }
 

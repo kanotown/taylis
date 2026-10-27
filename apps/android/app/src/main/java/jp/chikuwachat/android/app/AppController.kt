@@ -61,6 +61,7 @@ import jp.chikuwachat.android.api.TotpSetupOut
 import jp.chikuwachat.android.api.TotpStatusOut
 import jp.chikuwachat.android.api.LinkPreviewOut
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonNull
@@ -423,6 +424,34 @@ class AppController(private val app: Application) {
     fun changeAppearance(value: jp.chikuwachat.android.ui.Appearance) {
         jp.chikuwachat.android.ui.Appearance.write(prefs, value)
         appearance = value
+    }
+
+    /** Moved when 「テーマの色」 is written, so [palette] is read again. */
+    private var themeEpoch by mutableIntStateOf(0)
+
+    /**
+     * 2026-10-27 「テーマの色」 (MOBILE_UI.md §27): the workspace on screen's own, else the one for every workspace; kept on
+     * this device. Switching workspaces ([activeKey]) switches it at once.
+     */
+    val palette: jp.chikuwachat.android.ui.ThemePalette
+        get() = themeEpoch.let { jp.chikuwachat.android.ui.ThemePrefs.palette(prefs, activeKey) }
+
+    /** Whether the workspace on screen keeps a palette of its own (「このワークスペースだけ」). */
+    val paletteScope: jp.chikuwachat.android.ui.ThemeScope
+        get() = themeEpoch.let { jp.chikuwachat.android.ui.ThemePrefs.scope(prefs, activeKey) }
+
+    fun changePalette(value: jp.chikuwachat.android.ui.ThemePalette, scope: jp.chikuwachat.android.ui.ThemeScope) {
+        jp.chikuwachat.android.ui.ThemePrefs.write(prefs, value, scope, activeKey)
+        themeEpoch += 1
+    }
+
+    /** 「ダークを真っ黒にする」 (off by default): pure black behind everything whenever dark is shown. */
+    var blackDark by mutableStateOf(jp.chikuwachat.android.ui.ThemePrefs.black(prefs))
+        private set
+
+    fun changeBlackDark(on: Boolean) {
+        jp.chikuwachat.android.ui.ThemePrefs.writeBlack(prefs, on)
+        blackDark = on
     }
     /** M47: 「連続した投稿をまとめる」 (off by default), kept on this device; the open conversation redraws at once. */
     var groupPosts by mutableStateOf(jp.chikuwachat.android.ui.PostGrouping.read(prefs))
