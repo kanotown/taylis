@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import android.media.MediaPlayer
+import android.os.Build
+import android.view.WindowManager
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.Image
@@ -8,11 +10,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -23,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -37,8 +45,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import java.io.File
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.app.AppController
@@ -81,55 +92,74 @@ fun VideoViewer(
             error = controller.describe(e)
         }
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // Edge to edge (MOBILE_UI.md §22.7, user report 2026-10-27): the video is centred on the whole screen, not on what
+    // the status bar, the bar and the navigation bar leave (a landscape clip held upright had a taller black band above
+    // it). The bar lies over the black above the video, below the status bar.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val view = LocalView.current
+        val window = (view.parent as? DialogWindowProvider)?.window
+        DisposableEffect(window, view) {
+            // Over the camera's cutout too, so the window is the whole screen.
+            if (Build.VERSION.SDK_INT >= 28) window?.attributes = window?.attributes?.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            // Light icons over the black.
+            window?.let { WindowCompat.getInsetsController(it, view) }?.apply {
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
+            }
+            onDispose {}
+        }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.video_viewer_close_video), tint = Color.White) }
-                    FileNameText(attachment.filename, Modifier.weight(1f), color = Color.White)
-                    IconButton(onClick = { onOpenElsewhere?.invoke() ?: controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app), tint = Color.White) }
-                }
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    val clip = file
-                    val remote = url
-                    val frame = Modifier.aspectRatio(ratio)
-                    if ((clip != null || remote != null) && error == null) {
-                        AndroidView(
-                            factory = { context ->
-                                VideoView(context).apply {
-                                    val controls = MediaController(context)
-                                    controls.setAnchorView(this)
-                                    setMediaController(controls)
-                                    setOnPreparedListener { player ->
-                                        if (player.videoWidth > 0 && player.videoHeight > 0) ratio = player.videoWidth.toFloat() / player.videoHeight
-                                        start()
-                                    }
-                                    setOnInfoListener { _, what, _ ->
-                                        if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) playing = true
-                                        false
-                                    }
-                                    setOnErrorListener { _, _, _ -> error = L10n.str(R.string.video_viewer_couldnt_play_this_video); true }
-                                    if (remote != null) setVideoURI(android.net.Uri.parse(remote)) else setVideoPath(clip!!.path)
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                val clip = file
+                val remote = url
+                val frame = Modifier.aspectRatio(ratio)
+                if ((clip != null || remote != null) && error == null) {
+                    AndroidView(
+                        factory = { context ->
+                            VideoView(context).apply {
+                                val controls = MediaController(context)
+                                controls.setAnchorView(this)
+                                setMediaController(controls)
+                                setOnPreparedListener { player ->
+                                    if (player.videoWidth > 0 && player.videoHeight > 0) ratio = player.videoWidth.toFloat() / player.videoHeight
+                                    start()
                                 }
-                            },
-                            onRelease = { it.stopPlayback() },
-                            modifier = frame,
-                        )
+                                setOnInfoListener { _, what, _ ->
+                                    if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) playing = true
+                                    false
+                                }
+                                setOnErrorListener { _, _, _ -> error = L10n.str(R.string.video_viewer_couldnt_play_this_video); true }
+                                if (remote != null) setVideoURI(android.net.Uri.parse(remote)) else setVideoPath(clip!!.path)
+                            }
+                        },
+                        onRelease = { it.stopPlayback() },
+                        modifier = frame,
+                    )
+                }
+                if (error != null) {
+                    Column(Modifier.safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.video_viewer_couldnt_load_the_video), color = Color.White, style = MaterialTheme.typography.titleMedium)
+                        Text(error!!, Modifier.padding(vertical = 12.dp), color = Color.White)
+                        Button(onClick = { file = null; url = null; playing = false; attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
                     }
-                    if (error != null) {
-                        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(stringResource(R.string.video_viewer_couldnt_load_the_video), color = Color.White, style = MaterialTheme.typography.titleMedium)
-                            Text(error!!, Modifier.padding(vertical = 12.dp), color = Color.White)
-                            Button(onClick = { file = null; url = null; playing = false; attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
-                        }
-                    } else if (!playing) {
-                        // The poster over the player until its first frame (M79 spec item 5).
-                        Box(frame, contentAlignment = Alignment.Center) {
-                            picture?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
-                            CircularProgressIndicator(color = Color.White)
-                        }
+                } else if (!playing) {
+                    // The poster over the player until its first frame (M79 spec item 5).
+                    Box(frame, contentAlignment = Alignment.Center) {
+                        picture?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+                        CircularProgressIndicator(color = Color.White)
                     }
                 }
+            }
+            Row(
+                Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.video_viewer_close_video), tint = Color.White) }
+                FileNameText(attachment.filename, Modifier.weight(1f), color = Color.White)
+                IconButton(onClick = { onOpenElsewhere?.invoke() ?: controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app), tint = Color.White) }
             }
         }
     }

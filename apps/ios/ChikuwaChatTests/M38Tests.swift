@@ -156,24 +156,69 @@ final class M38Tests: XCTestCase {
         XCTAssertFalse(ViewerDismiss.shouldClose(offset: 60, velocity: 0, extent: 800))
     }
 
-    func testVideoTrackSizeIsReadFromAFile() async throws {
-        // A 2×4 frame movie written here: the header gives a portrait size.
+    /// A movie of `frames` frames (30 fps) of one grey written here.
+    private func writeMovie(width: Int, height: Int, frames: Int = 1, grey: UInt8 = 0) async throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("m38-\(UUID().uuidString).mov")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 128])
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height])
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: 64, kCVPixelBufferHeightKey as String: 128])
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height])
         writer.add(input)
         XCTAssertTrue(writer.startWriting())
         writer.startSession(atSourceTime: .zero)
         var buffer: CVPixelBuffer?
-        CVPixelBufferCreate(nil, 64, 128, kCVPixelFormatType_32BGRA, nil, &buffer)
-        while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 10_000_000) }
-        XCTAssertTrue(adaptor.append(try XCTUnwrap(buffer), withPresentationTime: .zero))
+        CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, nil, &buffer)
+        let frame = try XCTUnwrap(buffer)
+        CVPixelBufferLockBaseAddress(frame, [])
+        memset(CVPixelBufferGetBaseAddress(frame), Int32(grey), CVPixelBufferGetDataSize(frame))
+        CVPixelBufferUnlockBaseAddress(frame, [])
+        for index in 0..<frames {
+            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 10_000_000) }
+            XCTAssertTrue(adaptor.append(frame, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: 30)))
+        }
         input.markAsFinished()
         await writer.finishWriting()
+        return url
+    }
+
+    func testVideoTrackSizeIsReadFromAFile() async throws {
+        // A 2×4 frame movie written here: the header gives a portrait size.
+        let url = try await writeMovie(width: 64, height: 128)
         defer { try? FileManager.default.removeItem(at: url) }
         let size = await VideoFit.naturalSize(of: url)
         XCTAssertEqual(size, CGSize(width: 64, height: 128))
+    }
+
+    /// User report 2026-10-27 (MOBILE_UI.md §22.7): a landscape video held upright had a taller black bar above it than
+    /// below (it was centred under the header, in the safe area). It is centred on the whole screen, and the player's
+    /// own controls stay below the header.
+    func testALandscapeVideoIsCentredOnTheWholeScreen() async throws {
+        let url = try await writeMovie(width: 320, height: 180, frames: 300, grey: 0xD0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let attachment = AttachmentOut(id: "v", filename: "landscape.mov", contentType: "video/quicktime", sizeBytes: 1, width: 320,
+                                       height: 180, hasThumbnail: false, status: "attached", createdAt: "")
+        let host = UIHostingController(rootView: VideoViewer(attachment: attachment, url: url))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        func page(in controller: UIViewController) -> VideoPlayerPageController? {
+            (controller as? VideoPlayerPageController) ?? controller.children.lazy.compactMap { page(in: $0) }.first
+        }
+        var found: VideoPlayerPageController?
+        for _ in 0..<100 where found?.playerController.videoBounds.height ?? 0 == 0 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            found = page(in: host)
+        }
+        let player = try XCTUnwrap(found).playerController
+        let video = player.view.convert(player.videoBounds, to: window)
+        let above = video.minY, below = window.bounds.height - video.maxY
+        print("video viewer: window \(window.bounds.size), safe area \(window.safeAreaInsets), video \(video), bar above \(above), below \(below)")
+        XCTAssertGreaterThan(video.height, 0)
+        XCTAssertEqual(above, below, accuracy: 1)
+        XCTAssertEqual(video.width, window.bounds.width, accuracy: 1)
+        // The player's controls (its safe area) start below the header.
+        XCTAssertGreaterThanOrEqual(player.view.safeAreaInsets.top, window.safeAreaInsets.top + 44)
     }
 }
