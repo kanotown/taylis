@@ -92,7 +92,7 @@ AppRoot ─ MainScreen (Scaffold 1 つ、状態 25 個、BackHandler 6 個)
 | 16 | プル更新 | ホーム・DM・Activity | 一覧の一部だけ | 無し | 不要 | 小 | S |
 | 17 | ハプティクス | 長押し・リアクション | 無し | combinedClickable の既定のみ | 無し | 小 | S |
 | 18 | スワイプ | 一覧の既読・ミュートなど | お気に入りのみ | 無し | 無し | 小 | S |
-| 19 | 配色・ダーク | ブランド色 + テーマの選択 | OS に追従、システムの青 | Material You (壁紙色) | OS に追従、#5b5bd6 | 小〜中 | S |
+| 19 | 配色・ダーク | ブランド色 + テーマの選択 | OS に追従、システムの青 | Material You (壁紙色)。2026-10-27：テーマの色 6 色・真っ黒のダーク・ワークスペースごとの色（§27） | OS に追従、#5b5bd6 | 小〜中 | S |
 | 20 | 画面遷移 | プッシュ / 予測型「戻る」 | 有り (Nav) | **アニメーション無し** | 無し | 小 | S |
 
 「スワイプで返信」は Slack 本家には無い (LINE や Teams 系の操作)。iOS の「戻る」スワイプや表の横スクロールとぶつかるので、既定では入れない案にする (決定事項 7)。
@@ -1671,3 +1671,49 @@ Right）と画面は縦長になる。
   スクリーンショットはそうして撮った。
 - `xcrun simctl` には折りたたみの命令が無い（DeviceHub のウィンドウのボタンだけ）。`XCUIScreen.main` は外側の画面で、内側は
   `XCUIScreen.screens[1]`（2006 × 2852 と 1 画素小さい）。`simctl io <udid> screenshot --display=3` は 2007 × 2853。
+
+---
+
+## 27. テーマの色・真っ黒のダーク・ワークスペースごとの色（2026-10-27）
+
+Desktop の「テーマの色」（apps/desktop/README.md「表示：配色と文字の大きさ」）をスマホにも持ってくる。色の値は
+`apps/shared/palettes.json`（6 色、並びは設定の順、先頭が既定）が元で、Desktop の `tests/palettes.test.ts` が app.css と、各
+クライアントの試験がアプリの値と同じであることを確かめる。どれも端末ごとの設定で、サーバには保存しない（同期しない）。
+
+### 27.1 Android
+
+- **テーマの色**：Taylis（栗、既定）・藍・緑・紫・紅・グレー（名前は Desktop の `theme.palette.*` と同じ、日本語・英語・中国語）。
+  `ui/ThemeColors.kt` の `PaletteColors` が JSON の `accent`・`accent-solid`・`accent-soft` を持ち、`ThemeColorsTest` が JSON と
+  比べる（`sidebar` はスマホでは使わない）。それまでの #5b5bd6 の配色（M40）はやめ、既定は Taylis になる。端末の壁紙の色
+  （Material You）はアプリでは前から使っていないので、「端末の色」は足さない（ホーム画面のウィジェットは Android 12 から壁紙の
+  色のまま、それより前は既定のパレット）。
+- **Material 3 の役への割り当て**（`ThemeColors.roles`）：
+  - ライト：`primary` = `accent`（リンク・アイコン・スイッチ・送信ボタン）、その上は白（`accent` = `accent-solid`）。
+    `primaryContainer` は白に `accent` を 16 % 混ぜた淡い色（FAB・自分のリアクション）、`secondaryContainer`（選択中の行・
+    タブの印）は `accent-soft` に `accent` を 8 % 混ぜた色（`accent-soft` のままでは地の色とほぼ見分けられない）。
+  - ダーク：`primary` = 文字用の明るい `accent` で、その上の文字は `accent` を暗くした色。`primaryContainer` = `accent-solid`
+    で、その上は白。`secondaryContainer` = `accent-soft`。M3 のダークの決まり（明るい primary に暗い文字、塗りは
+    container）に合わせたので、送信ボタンなど `primary` の塗りは Desktop（ダークでも `accent-solid` に白）と違い明るい色になる。
+  - 地の色・文字・線（surface 系・outline）はグレーにアクセントを数 % 混ぜた色。エラーの赤・tertiary（オレンジ）・在室や
+    プレゼンスの色はパレットで変えない。
+  - `ThemeColorsTest` が 6 色 × ライト・ダーク・真っ黒で、文字の組（onPrimary / primary、onSurface / 各 container、リンクの
+    primary / surface など）の 4.5：1 と、primary・outline の 3：1 を確かめる。
+- **ダークを真っ黒にする**：「表示」の「端末に合わせる / ライト / ダーク」の下のスイッチ（初期値オフ）。ダークで表示している
+  とき（端末のダークも）だけ効く。`background`・`surface`・`surfaceDim`・`surfaceContainerLowest` が #000 になり、
+  `surfaceContainerLow`（ボトムシート）→ `surfaceContainer`（下のタブ）→ `High`（ホームのタイル・ダイアログなど）→
+  `Highest` → `surfaceBright` がごく暗いグレー（#101010〜#303030 にアクセントを少し）で一段ずつ明るくなり、黒の地から
+  離れて見える。上のバーと一覧・会話の地は黒のまま（入力欄は線で囲む）。アクセントと文字の色はダークと同じ。ステータスバーとナビゲーションバーは edge-to-edge で透けているので
+  地の黒がそのまま見え、アイコンはダークの色。ウィンドウの背景（画面の切り替えやキーボードの動きの間に見える）も
+  `background` に合わせる。
+- **ワークスペースごとの色**：ワークスペースが 2 つ以上のとき、テーマの色の上に「このワークスペースだけ」/「すべての
+  ワークスペース」（Desktop の `ThemeScope`）。「このワークスペースだけ」で選んだ色はそのワークスペースのもの、無いワーク
+  スペースは「すべて」の色。「すべてのワークスペース」に切り替えると画面の色が共通になり、各ワークスペースの色は消える
+  （Desktop と同じ）。ワークスペースを切り替えるとすぐ色が変わる（`AppController.palette` が `activeKey` から読む）。
+  「ワークスペースを追加」のログイン画面（開いているものが無い）では共通の色。
+- **保存**（SharedPreferences、`ThemePrefs`）：`theme.palette`（共通。既定なら無し）、`theme.palette.workspaces`（JSON、キーは
+  ワークスペースの一覧のキー＝サーバの URL）、`theme.black`（"on"、オフなら無し）。読めない値は既定。
+- **設定の画面**：テーマの色はアクセントの丸（選んだものにチェックと枠）と名前。「自分」の一覧の「表示」の行の右には
+  「Taylis（栗）」、端末に合わせないときは「Taylis（栗）・ダーク」のように出す。
+- **確かめたこと**：`./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`。エミュレータ（API 36）で Taylis と藍のダーク・
+  真っ黒、緑と Taylis のライト（ホーム・会話・入力欄・ボトムシート・ダイアログ・設定）、「このワークスペースだけ」で選んだ紫が
+  別のワークスペースに切り替えると共通の色に戻ること、「表示」の行の値、英語の画面。

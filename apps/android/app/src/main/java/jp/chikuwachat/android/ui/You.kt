@@ -89,6 +89,10 @@ object YouSettings {
     /** From this width (dp) the tab is two panes: the list, and the chosen screen beside it. */
     const val TWO_PANE_MIN_WIDTH = 600f
 
+    /** The 「表示」 row's value: the palette, then light / dark unless it follows the device (「Taylis（栗）・ダーク」). */
+    fun appearanceSummary(appearance: Appearance, palette: ThemePalette): String =
+        if (appearance == Appearance.SYSTEM) palette.label else "${palette.label}・${appearance.label}"
+
     fun twoPane(widthDp: Float): Boolean = widthDp >= TWO_PANE_MIN_WIDTH
 
     /** The second line under my name: 「@yamada · M2」. */

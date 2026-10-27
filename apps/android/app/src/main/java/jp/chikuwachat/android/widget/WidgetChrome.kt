@@ -55,13 +55,15 @@ import androidx.glance.unit.ColorProvider
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.app.Workspaces
 import jp.chikuwachat.android.platform.ConversationStyle
-import jp.chikuwachat.android.ui.BrandPalette
+import jp.chikuwachat.android.ui.ThemeColors
+import jp.chikuwachat.android.ui.ThemeMode
+import jp.chikuwachat.android.ui.ThemePalette
 import jp.chikuwachat.android.ui.Timeline
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * What the three home-screen widgets share, so they read as one family: Material You colours (the wallpaper's dynamic
- * colours from Android 12, the app's brand palette before), the system's widget corner radius, one frame with the same
+ * colours from Android 12, the default palette (Taylis) before), the system's widget corner radius, one frame with the same
  * padding, one header (the workspace's initial on a small tile + its name, an optional note on the right), avatars in
  * the app's colours, tinted pills and icons.
  */
@@ -74,11 +76,14 @@ internal object WidgetLook {
     /** Below this height a widget is a one-row one. */
     val SHORT_BELOW = 130.dp
 
+    private val light by lazy { ThemeColors.roles(ThemePalette.DEFAULT, ThemeMode.LIGHT) }
+    private val dark by lazy { ThemeColors.roles(ThemePalette.DEFAULT, ThemeMode.DARK) }
+
     private fun brand(role: String): ColorProvider = ColorProvider(
-        day = Color(BrandPalette.light.getValue(role)), night = Color(BrandPalette.dark.getValue(role)),
+        day = Color(light.getValue(role)), night = Color(dark.getValue(role)),
     )
 
-    /** Before Android 12 (no dynamic colours): the app's own palette, day and night. */
+    /** Before Android 12 (no dynamic colours): the default palette, day and night. */
     val fallback: ColorProviders by lazy {
         colorProviders(
             primary = brand("primary"), onPrimary = brand("onPrimary"),

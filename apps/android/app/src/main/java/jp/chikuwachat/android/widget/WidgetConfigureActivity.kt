@@ -73,7 +73,7 @@ class WidgetConfigureActivity : ComponentActivity() {
         val controller = (application as ChikuwaApp).controller
         val current = WidgetWorkspaces.read(this).choices[appWidgetId]
         setContent {
-            ChikuwaTheme(controller.appearance) {
+            ChikuwaTheme(controller.appearance, controller.palette, controller.blackDark) {
                 var options by remember { mutableStateOf<List<Workspace>?>(null) }
                 LaunchedEffect(Unit) { options = controller.widgetWorkspaces() }
                 val scope = rememberCoroutineScope()

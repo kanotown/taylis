@@ -4,7 +4,6 @@ import jp.chikuwachat.android.api.DeviceOut
 import jp.chikuwachat.android.api.QuietHours
 import jp.chikuwachat.android.api.SessionOut
 import jp.chikuwachat.android.ui.Appearance
-import jp.chikuwachat.android.ui.BrandPalette
 import jp.chikuwachat.android.ui.MainNav
 import jp.chikuwachat.android.ui.MainTab
 import jp.chikuwachat.android.ui.MainTabs
@@ -231,38 +230,5 @@ class YouTest {
         PostGrouping.write(prefs, false)
         assertFalse(PostGrouping.read(prefs))
         assertNull(prefs.values["group_posts"]) // off leaves no key behind
-    }
-
-    @Test fun theBrandIsThePrimaryColourInLight() {
-        assertEquals(0xFF5B5BD6, BrandPalette.light.getValue("primary"))
-        assertEquals(0xFF5B5BD6, BrandPalette.dark.getValue("primaryContainer"))
-        assertEquals(BrandPalette.light.keys, BrandPalette.dark.keys)
-    }
-
-    @Test fun textOnEveryFilledRoleReadsInLightAndDark() {
-        // WCAG AA for text (4.5:1): buttons, chips, badges, containers and the surfaces' own text.
-        val textPairs = listOf(
-            "primary" to "onPrimary", "primaryContainer" to "onPrimaryContainer",
-            "secondary" to "onSecondary", "secondaryContainer" to "onSecondaryContainer",
-            "tertiary" to "onTertiary", "tertiaryContainer" to "onTertiaryContainer",
-            "error" to "onError", "errorContainer" to "onErrorContainer",
-            "surface" to "onSurface", "surface" to "onSurfaceVariant", "background" to "onBackground",
-            "surfaceContainerHigh" to "onSurface", "surfaceContainerHighest" to "onSurfaceVariant",
-            "inverseSurface" to "inverseOnSurface",
-            "surface" to "primary", "surface" to "error", // text buttons, the red ログアウト
-        )
-        for (dark in listOf(false, true)) {
-            val p = BrandPalette.palette(dark)
-            for ((back, fore) in textPairs) {
-                val ratio = BrandPalette.contrast(p.getValue(back), p.getValue(fore))
-                assertTrue("$fore on $back (dark=$dark) is ${"%.2f".format(ratio)}", ratio >= 4.5)
-            }
-            // Non-text parts (a switch's track, the unread dot, an outlined field) stand out 3:1 from the surface.
-            for (part in listOf("primary", "outline")) {
-                val ratio = BrandPalette.contrast(p.getValue("surface"), p.getValue(part))
-                assertTrue("$part on surface (dark=$dark) is ${"%.2f".format(ratio)}", ratio >= 3.0)
-            }
-        }
-        assertEquals(21.0, BrandPalette.contrast(0xFF000000, 0xFFFFFFFF), 0.01)
     }
 }

@@ -102,7 +102,7 @@ class ShareActivity : ComponentActivity() {
         enableEdgeToEdge()
         model.start(read(intent), ownProviders())
         setContent {
-            ChikuwaTheme(controller.appearance) {
+            ChikuwaTheme(controller.appearance, controller.palette, controller.blackDark) {
                 ShareRoot(controller, model, onClose = { finish() }, onSent = { drive ->
                     Toast.makeText(this, if (drive) R.string.share_in_drive_started else R.string.share_in_started, Toast.LENGTH_SHORT).show()
                     finish()

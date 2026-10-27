@@ -1813,4 +1813,17 @@
     <string name="docs_wysiwyg_done">キーボードを閉じる</string>
     <string name="docs_wysiwyg_failed">見たまま編集を開けませんでした。Markdown で編集できます</string>
     <string name="docs_wysiwyg_unsupported">同梱のエディタのバージョンがアプリと合いません。Markdown で編集できます</string>
+    <string name="theme_palette_taylis">Taylis（栗）</string>
+    <string name="theme_palette_indigo">藍</string>
+    <string name="theme_palette_green">緑</string>
+    <string name="theme_palette_purple">紫</string>
+    <string name="theme_palette_rose">紅</string>
+    <string name="theme_palette_gray">グレー</string>
+    <string name="you_theme_colour">テーマの色</string>
+    <string name="you_theme_colour_note">リンク・ボタン・選択中の行の色。ライトとダークの両方に使われます</string>
+    <string name="you_theme_this_workspace">このワークスペースだけ</string>
+    <string name="you_theme_all_workspaces">すべてのワークスペース</string>
+    <string name="you_theme_workspace_note">テーマの色は「%1$s」だけに使われます（ワークスペースごとに変えられます）</string>
+    <string name="you_theme_black">ダークを真っ黒にする</string>
+    <string name="you_theme_black_detail">ダークのとき、背景を濃い灰色でなく黒にします（有機 EL の画面向け）</string>
 </resources>

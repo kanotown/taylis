@@ -1813,4 +1813,17 @@
     <string name="docs_wysiwyg_done">收起键盘</string>
     <string name="docs_wysiwyg_failed">无法打开所见即所得编辑。可以用 Markdown 编辑</string>
     <string name="docs_wysiwyg_unsupported">内置编辑器的版本与应用不一致。可以用 Markdown 编辑</string>
+    <string name="theme_palette_taylis">Taylis（栗色）</string>
+    <string name="theme_palette_indigo">靛蓝</string>
+    <string name="theme_palette_green">绿色</string>
+    <string name="theme_palette_purple">紫色</string>
+    <string name="theme_palette_rose">绯红</string>
+    <string name="theme_palette_gray">灰色</string>
+    <string name="you_theme_colour">主题颜色</string>
+    <string name="you_theme_colour_note">链接、按钮和选中行的颜色。浅色和深色模式都适用。</string>
+    <string name="you_theme_this_workspace">仅此工作区</string>
+    <string name="you_theme_all_workspaces">所有工作区</string>
+    <string name="you_theme_workspace_note">主题颜色仅用于“%1$s”（每个工作区可以不同）。</string>
+    <string name="you_theme_black">深色使用纯黑</string>
+    <string name="you_theme_black_detail">深色模式下背景为黑色而不是深灰色（适合 OLED 屏幕）。</string>
 </resources>
