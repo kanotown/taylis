@@ -336,7 +336,7 @@ struct ShareDriveFolderView: View {
             } label: {
                 Text("ここに保存").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.borderedProminent).tint(Color.taylisSolid)
             .padding()
             .background(.bar)
             .disabled(folders == nil && failure == nil)
@@ -416,7 +416,7 @@ struct ShareDriveSavingView: View {
                     .accessibilityIdentifier("share.driveCloseEarly")
             } else {
                 Button("閉じる") { model.close() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).tint(Color.taylisSolid)
                     .padding()
                     .accessibilityIdentifier("share.driveClose")
             }

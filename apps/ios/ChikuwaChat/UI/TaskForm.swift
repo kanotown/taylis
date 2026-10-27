@@ -405,7 +405,7 @@ struct TaskForm: View {
                 Button { Task { await setStatus(task, .done) } } label: {
                     Label("完了にする", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).prominentTint()
             }
             .controlSize(.large)
             .font(.body.weight(.semibold))

@@ -302,7 +302,7 @@ struct ChannelPreviewView: View {
                     } label: {
                         Text(joining ? "参加しています…" : "参加").frame(minWidth: 120)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).prominentTint()
                     .controlSize(.large)
                     .disabled(joining || channel == nil)
                 }
@@ -388,7 +388,7 @@ struct ChannelPreviewView: View {
                 } label: {
                     Text(joining ? "参加しています…" : "#\(channel?.channel.name ?? "") に参加する").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).prominentTint()
                 .controlSize(.large)
                 .disabled(joining || channel == nil)
             }

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MainView: View {
+    @Environment(\.themeColors) private var themeColors
     @Bindable var controller: AppController
     /// M34 (MOBILE_UI.md §5): four tabs, each with its own stack of screens, at a compact width; the iPad's sidebar and
     /// conversation at a regular one (§13). One state for both, carried across a change of size class.
@@ -573,7 +574,7 @@ struct MainView: View {
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 56, height: 56)
-                .background(Color.accentColor, in: Circle())
+                .background(themeColors.solid, in: Circle())
                 .shadow(color: .black.opacity(0.22), radius: 6, y: 3)
         }
         .buttonStyle(.plain)

@@ -4,6 +4,7 @@ import SwiftUI
 struct ChannelListView: View {
     @Bindable var controller: AppController
     @Binding var selection: String?
+    @Environment(\.themeColors) private var themeColors
     /// M37: 「移動・検索」 and 「すべての DM」 (the DM tab), which MainView shows.
     var onJump: () -> Void = {}
     var onAllDms: () -> Void = {}
@@ -520,7 +521,7 @@ struct ChannelListView: View {
 
     /// The sidebar's open row: a tinted rounded rectangle (as a selected List row); other rows keep the list's own.
     private var currentBackground: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.accentColor.opacity(0.18)).padding(.horizontal, 8)
+        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(themeColors.soft).padding(.horizontal, 8)
     }
 
     /// The sidebar's 「アクティビティ」 (the phone's tab), with its badge: red with a mention among its items.
@@ -534,7 +535,7 @@ struct ChannelListView: View {
                     Text(activity.count > 99 ? "99+" : "\(activity.count)")
                         .font(.caption2).bold().foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(activity.mention ? Color.red : Color.accentColor, in: Capsule())
+                        .background(activity.mention ? Color.red : themeColors.solid, in: Capsule())
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -590,7 +591,7 @@ struct ChannelListView: View {
                     Text("\(badge)")
                         .font(.caption2).bold().foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(channel.channel.isDm ? Color.accentColor : Color.red, in: Capsule())
+                        .background(channel.channel.isDm ? themeColors.solid : Color.red, in: Capsule())
                         .accessibilityLabel(channel.channel.isDm ? "未読 \(badge) 件" : "メンション \(badge) 件")
                 } else if unread {
                     Circle().fill(Color.accentColor).frame(width: 8, height: 8).accessibilityLabel("未読")

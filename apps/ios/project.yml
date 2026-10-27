@@ -98,7 +98,8 @@ targets:
         # (UISupportedInterfaceOrientations~ipad above, no UIRequiresFullScreen) and 13" iPad screenshots.
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # M40: the brand colour #5b5bd6 (a lighter #7f7ff2 in dark mode, as the web) for every control and UIKit view.
+        # The default 「テーマの色」 Taylis（栗）: #8f5530, #dba67c in dark mode (apps/shared/palettes.json), until RootView
+        # puts the chosen palette on the window (MOBILE_UI.md §27.2).
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
   # PUSH_NOTIFICATIONS.md §16: turns a message push into a communication notification with the sender's picture.

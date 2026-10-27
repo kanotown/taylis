@@ -13,6 +13,7 @@ private extension AppController {
 
 /// 「備品」: the list.
 struct LendingView: View {
+    @Environment(\.themeColors) private var themeColors
     static let selectionId = "lending"
     @Bindable var controller: AppController
     @State private var query = ""
@@ -156,7 +157,7 @@ struct LendingView: View {
             Text(title).font(.subheadline)
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .foregroundStyle(selected ? Color.white : Color.primary)
-                .background(selected ? Color.accentColor : Color(.tertiarySystemFill), in: Capsule())
+                .background(selected ? themeColors.solid : Color(.tertiarySystemFill), in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

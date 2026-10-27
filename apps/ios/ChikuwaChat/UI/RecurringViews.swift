@@ -182,6 +182,7 @@ enum RecurringFormTarget: Identifiable, Hashable {
 /// or 毎月 (a day) and the time, and 回収 — whom (チャンネルの全員, groups, people) and the due time (N days after, at a
 /// time). A new post takes this device's zone; an edited one keeps its own (named when it differs).
 struct RecurringPostForm: View {
+    @Environment(\.themeColors) private var themeColors
     @Bindable var controller: AppController
     let channel: ChannelState
     let post: RecurringPostOut?
@@ -281,7 +282,7 @@ struct RecurringPostForm: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(on ? Color.white : Color.primary)
                                 .frame(width: 38, height: 38)
-                                .background(on ? Color.accentColor : Color.secondary.opacity(0.12), in: Circle())
+                                .background(on ? themeColors.solid : Color.secondary.opacity(0.12), in: Circle())
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity)

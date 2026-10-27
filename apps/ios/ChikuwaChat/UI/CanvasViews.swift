@@ -48,7 +48,7 @@ struct CanvasPane: View {
                         .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     HStack {
                         if rights.create {
-                            Button { dialog = .new } label: { Label("キャンバスを作成", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                            Button { dialog = .new } label: { Label("キャンバスを作成", systemImage: "plus") }.buttonStyle(.borderedProminent).prominentTint()
                         }
                         Button { dialog = .trash } label: { Label("ゴミ箱", systemImage: "trash") }.buttonStyle(.bordered)
                     }
@@ -814,7 +814,7 @@ struct CanvasConflictSheet: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
                     if !tickOnly {
-                        Button { choose(.ours) } label: { Text("自分のバージョン").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
+                        Button { choose(.ours) } label: { Text("自分のバージョン").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).prominentTint()
                     }
                     Button { choose(.theirs) } label: { Text("相手のバージョン").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
                     if !tickOnly {
@@ -874,7 +874,7 @@ struct CanvasExpiredSheet: View {
                     if canOverwrite {
                         Button { dismiss(); Task { await saver.resolveExpired(keepMine: true) } } label: {
                             Text("自分の本文で上書き").frame(maxWidth: .infinity)
-                        }.buttonStyle(.borderedProminent)
+                        }.buttonStyle(.borderedProminent).prominentTint()
                     }
                     Button { dismiss(); Task { await saver.resolveExpired(keepMine: false) } } label: {
                         Text("今の本文にする").frame(maxWidth: .infinity)

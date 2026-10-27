@@ -379,6 +379,7 @@ struct RepeatPickerSection: View {
 
 /// 毎週's days, 日 to 土, each a round toggle.
 private struct WeekdayToggles: View {
+    @Environment(\.themeColors) private var themeColors
     @Binding var weekdays: [Int]
 
     var body: some View {
@@ -392,7 +393,7 @@ private struct WeekdayToggles: View {
                         .font(.footnote.weight(.medium))
                         .frame(maxWidth: .infinity, minHeight: 34)
                         .foregroundStyle(on ? Color.white : (CalendarMonthGrid.weekdayColor(day) ?? .primary))
-                        .background(Circle().fill(on ? Color.accentColor : Color.secondary.opacity(0.12)))
+                        .background(Circle().fill(on ? themeColors.solid : Color.secondary.opacity(0.12)))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("\(CalendarDates.weekdays[day])曜日")

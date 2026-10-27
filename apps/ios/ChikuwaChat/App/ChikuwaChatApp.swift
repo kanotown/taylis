@@ -45,9 +45,18 @@ struct RootView: View {
 
     /// The UI language (自分 → 表示 → 言語): a change rebuilds the screen in it.
     private var language = UILanguage.shared
+    /// 「テーマの色」 and 「ダークを真っ黒にする」 (MOBILE_UI.md §27.2): the workspace on screen's palette, at once on a
+    /// switch (the iPad's sidebar and the workspace switcher too).
+    private var themeSettings = ThemeSettings.shared
+    private var palette: AppPalette { themeSettings.choices.resolve(controller.activeServerUrl) }
 
     var body: some View {
         screen.preferredColorScheme(theme.colorScheme)
+            // `.tint` for the controls, the accent colour for `Color.accentColor` (links, icons, marks): both the palette's.
+            .tint(palette.accent)
+            .accentColor(palette.accent)
+            .environment(\.themeColors, ThemeColors(palette: palette))
+            .background(WindowThemer(palette: palette, black: themeSettings.black))
             .environment(\.locale, language.locale)
             .id(language.effective)
             .onChange(of: colorScheme, initial: true) { reportAppearance() }

@@ -291,7 +291,7 @@ private struct OutcomeView: View {
             if let message { message.multilineTextAlignment(.center).foregroundStyle(.secondary) }
             if let close {
                 Button("閉じる", action: close)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).tint(Color.taylisSolid)
                     .padding(.top, 6)
                     .accessibilityIdentifier("share.close")
             }

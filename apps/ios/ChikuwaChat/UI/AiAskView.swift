@@ -30,7 +30,7 @@ struct AiAskBar: View {
                 Button(action: onAsk) {
                     Label("AI に聞く", systemImage: "sparkles").font(.subheadline.weight(.semibold))
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).prominentTint()
                 .controlSize(.small)
                 .disabled(!canAsk)
                 Spacer(minLength: 0)
