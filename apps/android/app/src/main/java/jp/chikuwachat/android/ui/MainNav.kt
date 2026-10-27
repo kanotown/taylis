@@ -37,6 +37,13 @@ sealed interface Route {
     @Serializable @SerialName("you")
     data object You : Root
 
+    /**
+     * 2026-10-27 (MOBILE_UI.md §5): the 「検索」 tab. Never drawn itself: its stack always has the tab's own [Search] (the
+     * jump screen, §6.2) right over it ([MainTabs.stack]), what is opened from the search going on top.
+     */
+    @Serializable @SerialName("search_tab")
+    data object SearchHome : Root
+
     /** M40: a screen of the 自分 tab (a settings page), over its list or over another one ([SettingsPage.PASSWORD]). */
     @Serializable @SerialName("settings")
     data class Settings(val page: SettingsPage) : Route
@@ -301,7 +308,7 @@ object MainNav {
         val search = search(stack) ?: return openConversation(stack, channelId, parentId)
         val routes = if (parentId != null && !besideChannel) listOf(Route.Thread(channelId, parentId, ThreadFrom.SEARCH))
         else conversationRoutes(channelId, parentId, ThreadFrom.SEARCH)
-        return base(stack) + search.copy(expanded = false) + routes
+        return base(stack).filterNot { it is Route.Search } + search.copy(expanded = false) + routes
     }
 
     /** A thread opened from the conversation on screen (its timeline or its preview). */
@@ -467,10 +474,10 @@ object MainNav {
         stack.filterNot { it is Route.Settings } + Route.Settings(page)
 
     /** The search bar (M16b), over whatever is on screen; a search kept behind a conversation is replaced by it. */
-    fun openSearch(stack: List<Route>): List<Route> = stack.filterNot { it is Route.Search } + Route.Search()
+    fun openSearch(stack: List<Route>): List<Route> = withoutSearches(stack) + Route.Search()
 
     /** M37: the home's 「移動・検索」, full screen over the list (back closes it). */
-    fun openJump(stack: List<Route>): List<Route> = stack.filterNot { it is Route.Search } + Route.Search(jump = true)
+    fun openJump(stack: List<Route>): List<Route> = withoutSearches(stack) + Route.Search(jump = true)
 
     /** Back from the suggestions: to the results on screen, or out of search when there are none. */
     fun collapseSearch(stack: List<Route>): List<Route> {
@@ -500,7 +507,9 @@ object MainNav {
     fun channelGone(stack: List<Route>, channelId: String): List<Route> {
         val index = stack.indexOfFirst { refersTo(it, channelId) }
         if (index < 0) return stack
-        val below = stack.take(index).dropLastWhile { it is Route.Search }
+        // The 「検索」 tab's own search stays (its results, as back would show them).
+        val kept = if (index >= 2 && tabSearch(stack, 1)) 2 else 0
+        val below = stack.take(kept) + stack.subList(kept, index).dropLastWhile { it is Route.Search }
         val above = stack.drop(index + 1).filter { it is Route.Search }
         return (below + above).ifEmpty { listOf(rootOf(stack)) }
     }
@@ -542,9 +551,20 @@ object MainNav {
 
     private fun pop(stack: List<Route>): List<Route> = stack.dropLast(1).ifEmpty { listOf(rootOf(stack)) }
 
-    /** What stays under a conversation opened on top: the root (the channel list, a tab's screen) and the lists kept behind one. */
+    /**
+     * What stays under a conversation opened on top: the root (the channel list, a tab's screen), the lists kept behind
+     * one, and the 「検索」 tab's own search ([tabSearch]: back from the conversation returns to it).
+     */
     private fun base(stack: List<Route>): List<Route> =
-        stack.filter { it is Route.Root || (it is Route.Pane && it.keptUnderConversation) }.ifEmpty { listOf(rootOf(stack)) }
+        stack.filterIndexed { i, it -> it is Route.Root || (it is Route.Pane && it.keptUnderConversation) || tabSearch(stack, i) }
+            .ifEmpty { listOf(rootOf(stack)) }
+
+    /** Whether `stack[index]` is the 「検索」 tab's own search, right over its root (the tab's screen, never closed). */
+    fun tabSearch(stack: List<Route>, index: Int): Boolean =
+        index == 1 && stack.firstOrNull() == Route.SearchHome && stack.getOrNull(1) is Route.Search
+
+    /** The stack less its searches, the 「検索」 tab's own one kept. */
+    private fun withoutSearches(stack: List<Route>): List<Route> = stack.filterIndexed { i, it -> it !is Route.Search || tabSearch(stack, i) }
 
     private fun conversationRoutes(channelId: String, parentId: String?, from: ThreadFrom): List<Route> =
         listOfNotNull(Route.Channel(channelId), parentId?.let { Route.Thread(channelId, it, from) })

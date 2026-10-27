@@ -113,7 +113,8 @@ fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (Str
     }
     // The server allows nine members including me, so at most eight recipients.
     val maxRecipients = 8
-    val visible = users.filter { it.displayName.contains(query, ignoreCase = true) || it.username.contains(query, ignoreCase = true) }
+    // 2026-10-27: the jump screen's matching (kana / width / case folded), the ticked people kept on top while filtering.
+    val visible = remember(users, query, selected) { Jump.pickPeople(query, users, selected) }
     val recipients = selected.filter { id -> users.any { it.id == id } }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -169,15 +170,22 @@ fun AddMemberDialog(controller: AppController, channelId: String, onDismiss: () 
     var selected by remember { mutableStateOf(setOf<String>()) }
     var busy by remember { mutableStateOf(false) }
     val picked = selected.filter { id -> candidates.any { it.id == id } }
+    // 2026-10-27: a search field as the new-DM dialog's (the same matching; the ticked people stay on top).
+    var query by remember { mutableStateOf("") }
+    val visible = remember(candidates, query, selected) { Jump.pickPeople(query, candidates, selected) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.common_add_members)) },
         text = {
             Column {
+                if (candidates.isNotEmpty()) {
+                    OutlinedTextField(query, { query = it.take(80) }, label = { Text(stringResource(R.string.dialogs_search_by_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
                 when {
                     memberIds == null && error == null -> Text(stringResource(R.string.common_loading))
                     candidates.isEmpty() && error == null -> Text(stringResource(R.string.dialogs_no_users_to_add))
-                    else -> UserPicker(candidates, selected, enabled = !busy) { user ->
+                    visible.isEmpty() -> Text(stringResource(R.string.dialogs_no_matching_users), modifier = Modifier.padding(top = 8.dp))
+                    else -> UserPicker(visible, selected, enabled = !busy) { user ->
                         selected = if (user.id in selected) selected - user.id else selected + user.id
                     }
                 }
