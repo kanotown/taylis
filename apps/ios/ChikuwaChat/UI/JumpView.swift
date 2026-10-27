@@ -115,8 +115,16 @@ struct JumpView: View {
     static let rowHeight: CGFloat = 36
 
     @Bindable var controller: AppController
-    /// A conversation to open (MainView routes it: a DM on the DM tab, a channel on the home tab).
+    /// A conversation to open (the cover: MainView routes it, a DM on the DM tab, a channel on the home tab; the 検索 tab:
+    /// pushed on its stack).
     let onOpen: (String) -> Void
+    /// The 検索 tab's first screen (2026-10-27, SearchTabView): a message search (「"語" をメッセージ検索」, a recent
+    /// search) is handed to the tab, there is no 「キャンセル」 and the field is not focused when the tab shows. Nil (the
+    /// iPad's cover): the search shows here, in place of the list.
+    var onSearch: ((SearchParams) -> Void)? = nil
+    /// The 検索 tab: set to ask for the field's focus (the tab tapped again, the home's 「移動・検索」); set back once taken.
+    var focusRequest: Binding<Bool>? = nil
+    private var inTab: Bool { onSearch != nil }
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -136,7 +144,7 @@ struct JumpView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     JumpField(prompt: tr("会話や人に移動、メッセージを検索"), text: $text, focused: $focused) { searchMessages() }
-                    Button("キャンセル") { dismiss() }
+                    if !inTab { Button("キャンセル") { dismiss() } }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -151,7 +159,13 @@ struct JumpView: View {
             .onAppear {
                 recent = RecentConversations.read(key: controller.recentConversationKey)
                 recentSearches = RecentSearches.read(key: controller.recentSearchKey)
-                focused = true
+                if !inTab { focused = true }
+            }
+            .onChange(of: focusRequest?.wrappedValue ?? false, initial: true) { _, asked in
+                guard asked else { return }
+                focusRequest?.wrappedValue = false
+                // After the tab has come on screen (the home's 「移動・検索」 switches to it).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { focused = true }
             }
         }
     }
@@ -172,7 +186,7 @@ struct JumpView: View {
         if !recentSearches.isEmpty {
             Section {
                 ForEach(recentSearches, id: \.self) { params in
-                    Button { searching = params } label: {
+                    Button { search(params) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "clock").foregroundStyle(.secondary).frame(width: 24)
                             Text(describe(params)).lineLimit(1)
@@ -280,7 +294,69 @@ struct JumpView: View {
     private func searchMessages() {
         guard !query.isEmpty else { return }
         focused = false
-        searching = SearchParams(q: query)
+        search(SearchParams(q: query))
+    }
+
+    private func search(_ params: SearchParams) {
+        if let onSearch { onSearch(params) } else { searching = params }
+    }
+}
+
+/// The 検索 tab (MOBILE_UI.md §6.2, 2026-10-27; the same decisions as Android's §28.1): its first screen is 移動・検索
+/// (JumpView); a message search replaces it with the results (SearchView, 「戻る」 or the field's cancel back to the
+/// list). Everything opened from either goes on the tab's own stack (`MainNavigation.searchPath`): a conversation or a
+/// DM (not the home or DM tab), a result's conversation, a reply's thread alone. Showing the tab does not focus a field;
+/// MainView's `command` does (`SearchCommand`).
+struct SearchTabView: View {
+    @Bindable var controller: AppController
+    @Binding var path: [SearchStackRoute]
+    let command: SearchCommand
+    /// The results on screen instead of the list.
+    @State private var searching: SearchParams?
+    /// A new search over results already on screen: the results screen starts again.
+    @State private var searchSerial = 0
+    /// A fresh start empties the list's field (a new JumpView).
+    @State private var listSerial = 0
+    @State private var listFocus = false
+    @State private var resultsFocus = false
+    @State private var handled = 0
+    @State private var shown = SearchShownConversations()
+
+    var body: some View {
+        Group {
+            if let searching {
+                SearchView(controller: controller, initial: searching, tabPath: $path, focusRequest: $resultsFocus,
+                           onLeave: { self.searching = nil })
+                    .id(searchSerial)
+            } else {
+                NavigationStack(path: $path) {
+                    JumpView(controller: controller, onOpen: { path.append(.channel($0)) }, onSearch: { params in
+                        searchSerial += 1
+                        searching = params
+                    }, focusRequest: $listFocus)
+                    .id(listSerial)
+                    .toolbar(.hidden, for: .navigationBar)
+                    .background(SearchTabSwipeProbe())
+                    .navigationDestination(for: SearchStackRoute.self) { route in
+                        SearchStackScreen(controller: controller, route: route, shown: shown, path: $path)
+                    }
+                }
+            }
+        }
+        .onChange(of: command, initial: true) { _, next in
+            guard next.serial > handled else { return }
+            handled = next.serial
+            if next.fresh {
+                // The home's 「移動・検索」: what the tab had open closes; an empty field, focused.
+                path = []
+                searching = nil
+                listSerial += 1
+                listFocus = true
+            } else if path.isEmpty {
+                // The tab tapped again at its first screen: the field on screen, its words kept.
+                if searching != nil { resultsFocus = true } else { listFocus = true }
+            }
+        }
     }
 }
 

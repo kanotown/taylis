@@ -149,6 +149,18 @@ enum JumpMatch {
         if !normalize(query).isEmpty { return people(query, users: live, limit: live.count) }
         return live.filter { $0.id == meId }.map(\.id) + byName(live.filter { $0.id != meId })
     }
+
+    /// A list picking people (a new DM or group DM, members to add; 2026-10-27) filtered by its search field: without a
+    /// query `ids` as they are; with one, the people chosen already that do not match first (a choice never drops out
+    /// of sight while typing), then the matches ranked by the same rule as 「人」 (display name and username, kana and
+    /// width folded).
+    static func pickable(_ query: String, ids: [String], users: [String: UserPublic], selected: Set<String>) -> [String] {
+        guard !normalize(query).isEmpty else { return ids }
+        let known = ids.compactMap { users[$0] }
+        let matches = ranked(query, known)
+        let matched = Set(matches)
+        return ids.filter { selected.contains($0) && !matched.contains($0) } + matches
+    }
 }
 
 /// 「最近の会話」 (M37): the last ten conversations opened on this device, per workspace account (UserDefaults, a

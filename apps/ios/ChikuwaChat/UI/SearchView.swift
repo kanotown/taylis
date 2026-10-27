@@ -31,6 +31,57 @@ struct SearchThreadRoute: Hashable {
     /// The header's conversation link (§6.7): the conversation pushed over the thread at its parent, so Back returns to
     /// the thread, then to the results.
     var conversation: SearchRoute { SearchRoute(messageId: parentId, channelId: channelId) }
+
+    /// Back on the thread from its conversation (`conversation`): the parent's reveal there is let go, else the parent
+    /// stayed highlighted at the thread's top (2026-10-27). Another focus (a reply of this thread) stays.
+    static func clearsFocus(_ focus: AppController.MessageFocus?, back route: SearchThreadRoute) -> Bool {
+        guard let focus else { return false }
+        return focus.channelId == route.channelId && focus.messageId == route.parentId && focus.parentId == nil
+    }
+}
+
+/// A screen on the search's stack (the sheet's, or the 検索 tab's: MainView keeps that one, MOBILE_UI.md §6.2): a
+/// result's conversation, a reply's thread alone, a canvas, a page.
+enum SearchStackRoute: Hashable {
+    /// A conversation from the 検索 tab's 移動・検索 list (a conversation, a person's DM), at its newest messages.
+    case channel(String)
+    case conversation(SearchRoute)
+    case thread(SearchThreadRoute)
+    case canvas(SearchCanvasRoute)
+    case page(SearchPageRoute)
+
+    init(_ screen: SearchResultScreen) {
+        switch screen {
+        case .conversation(let route): self = .conversation(route)
+        case .thread(let route): self = .thread(route)
+        }
+    }
+
+    /// The conversation this screen shows (a thread's too): the 検索 tab's front conversation (MainNavigation).
+    var channelId: String? {
+        switch self {
+        case .channel(let id): id
+        case .conversation(let route): route.channelId
+        case .thread(let route): route.channelId
+        case .canvas, .page: nil
+        }
+    }
+
+    /// The tab bar leaves inside a conversation, a thread and a page, as on the other tabs (`MainRoute.hidesTabBar`).
+    var hidesTabBar: Bool {
+        switch self {
+        case .channel, .conversation, .thread, .page: true
+        case .canvas: false
+        }
+    }
+}
+
+/// What the 検索 tab is asked from outside (MainView), `serial` telling one request from the next: `fresh` (the home's
+/// 「移動・検索」, ⌘K, ⌘⇧F) closes what the tab had open and starts from an empty field, focused; otherwise (the tab tapped
+/// again at its first screen) the field on screen is focused, its words kept.
+struct SearchCommand: Equatable {
+    var serial = 0
+    var fresh = false
 }
 
 /// The conversations the search screen shows (a result's, a reply's thread, the thread's conversation pushed over it):
@@ -276,10 +327,17 @@ struct SearchView: View {
     var initial: SearchParams? = nil
     /// M78: the results tab `initial` shows first (the home's 「キャンバス」 searches the canvases' bodies).
     var initialTab: SearchTab? = nil
+    /// The 検索 tab (MOBILE_UI.md §6.2): its stack, kept by MainView (the tab tapped again pops it, the tab's front
+    /// conversation is the open one); nil: the sheet, with its own stack and 「閉じる」.
+    var tabPath: Binding<[SearchStackRoute]>? = nil
+    /// The 検索 tab: set to ask for the field's focus (the tab tapped again on the results); set back once taken.
+    var focusRequest: Binding<Bool>? = nil
+    /// The 検索 tab: back to its 移動・検索 list (the bar's 「戻る」, the field's cancel).
+    var onLeave: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var model = SearchModel()
-    @State private var path = NavigationPath()
+    @State private var ownPath: [SearchStackRoute] = []
     @State private var shown = SearchShownConversations()
     @State private var text = ""
     @State private var tokens: [SearchToken] = []
@@ -298,6 +356,12 @@ struct SearchView: View {
 
     private var store: Store { controller.store }
     private var recentKey: String { controller.recentSearchKey }
+    private var inTab: Bool { tabPath != nil }
+    private var pathBinding: Binding<[SearchStackRoute]> { tabPath ?? $ownPath }
+    private var path: [SearchStackRoute] {
+        get { pathBinding.wrappedValue }
+        nonmutating set { pathBinding.wrappedValue = newValue }
+    }
 
     /// The field (words and tokens) over the filters of the search on screen.
     private var draft: SearchParams {
@@ -307,11 +371,23 @@ struct SearchView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: pathBinding) {
             content
                 .navigationTitle("検索")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+                .toolbar {
+                    if let onLeave {
+                        // The 検索 tab: the results replaced its 移動・検索 list; this goes back to it.
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("戻る", systemImage: "chevron.backward") { onLeave() }
+                        }
+                    } else if !inTab {
+                        ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                    }
+                }
+                // The tab's root: the setting 「スワイプで戻る・進む」 switches this stack's content swipe back too (no
+                // left swipe here: nothing to bring back).
+                .background { if inTab { SearchTabSwipeProbe() } }
                 .searchable(text: $text, tokens: $tokens, isPresented: $searchPresented, placement: .navigationBarDrawer(displayMode: .always),
                             prompt: Text("メッセージ、人、チャンネルを検索")) { token in
                     Label(tokenTitle(token), systemImage: tokenImage(token))
@@ -324,8 +400,10 @@ struct SearchView: View {
                 }
                 .onChange(of: tokens) { _, value in tokensEdited(value) }
                 .onChange(of: searchPresented) { _, presented in
-                    // The field's cancel button: back to the start page (閉じる closes the screen).
+                    // The field's cancel button: back to the start page (閉じる closes the screen); in the 検索 tab back
+                    // to its 移動・検索 list.
                     guard !presented, path.isEmpty else { return }
+                    if let onLeave { return onLeave() }
                     if model.params != nil || !text.isEmpty || !tokens.isEmpty { reset() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -335,25 +413,8 @@ struct SearchView: View {
                         if path.isEmpty && picker == nil && searchPresented { editing = true }
                     }
                 }
-                .navigationDestination(for: SearchRoute.self) { route in
-                    SearchConversationView(controller: controller, route: route, shown: shown)
-                }
-                .navigationDestination(for: SearchThreadRoute.self) { route in
-                    SearchThreadView(controller: controller, route: route, shown: shown, onOpenConversation: {
-                        // The header's conversation link (§6.7): the conversation over the thread, at the parent (Back:
-                        // the thread). The thread was pushed alone, so there is no conversation under it to go back to.
-                        Task {
-                            guard await controller.revealMessage(id: route.parentId, channelId: route.channelId, parentId: nil) else { return }
-                            revealed.insert(route.parentId)
-                            path.append(route.conversation)
-                        }
-                    })
-                }
-                .navigationDestination(for: SearchCanvasRoute.self) { route in
-                    CanvasOpenView(controller: controller, canvasId: route.canvasId, onTrashed: { if !path.isEmpty { path.removeLast() } })
-                }
-                .navigationDestination(for: SearchPageRoute.self) { route in
-                    WikiPageScreen(controller: controller, pageId: route.pageId, onOpenPage: { path.append(SearchPageRoute(pageId: $0)) })
+                .navigationDestination(for: SearchStackRoute.self) { route in
+                    stackScreen(route)
                 }
                 // M71: the answer stays with the hub when the sheet goes (the row above the results brings it back); a
                 // cited message opens here like a result, once the sheet is gone.
@@ -368,7 +429,8 @@ struct SearchView: View {
                     }
                 }
         }
-        .overlay(alignment: .bottom) { ErrorToast(controller: controller) }
+        // The sheet covers MainView's toast; the tab has it already.
+        .overlay(alignment: .bottom) { if !inTab { ErrorToast(controller: controller) } }
         .sheet(item: $picker) { which in
             switch which {
             case .sender:
@@ -389,10 +451,28 @@ struct SearchView: View {
                 run(initial, remember: true)
             }
         }
+        .onChange(of: focusRequest?.wrappedValue ?? false, initial: true) { _, asked in
+            // The 検索 tab tapped again on these results: the field takes the keyboard, its words kept. Not at once:
+            // a field activated as its screen came up crashed inside UIKit (see `.task`).
+            guard asked else { return }
+            focusRequest?.wrappedValue = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard path.isEmpty else { return }
+                editing = true
+                searchPresented = true
+            }
+        }
         .onDisappear {
+            // The tab only goes behind another tab: what it shows stays as it was.
+            guard !inTab else { return }
             if let focus = controller.messageFocus, revealed.contains(focus.messageId) { controller.messageFocus = nil }
             controller.aiHub?.closeAsk() // M71: only the asker sees it, and only while the search is open
         }
+    }
+
+    /// A screen of the stack (`SearchStackRoute`).
+    private func stackScreen(_ route: SearchStackRoute) -> some View {
+        SearchStackScreen(controller: controller, route: route, shown: shown, path: pathBinding, onRevealed: { revealed.insert($0) })
     }
 
     @ViewBuilder
@@ -408,8 +488,8 @@ struct SearchView: View {
                               onUpdate: { change in update(change) },
                               onPick: { picker = $0 },
                               onOpen: { messageId, channelId, parentId in open(messageId: messageId, channelId: channelId, parentId: parentId) },
-                              onOpenCanvas: { canvas in path.append(SearchCanvasRoute(canvasId: canvas.id)) },
-                              onOpenPage: { id in path.append(SearchPageRoute(pageId: id)) },
+                              onOpenCanvas: { canvas in path.append(.canvas(SearchCanvasRoute(canvasId: canvas.id))) },
+                              onOpenPage: { id in path.append(.page(SearchPageRoute(pageId: id))) },
                               onAskSheet: { askSheet = $0 })
         } else {
             List { startRows }
@@ -602,10 +682,7 @@ struct SearchView: View {
         Task {
             guard await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) else { return }
             revealed.insert(messageId)
-            switch SearchRoute.screen(messageId: messageId, channelId: channelId, parentId: parentId) {
-            case .conversation(let route): path.append(route)
-            case .thread(let route): path.append(route)
-            }
+            path.append(SearchStackRoute(SearchRoute.screen(messageId: messageId, channelId: channelId, parentId: parentId)))
         }
     }
 }
@@ -1073,28 +1150,78 @@ struct SearchResultRow: View {
     }
 }
 
+/// A screen of the search's stack (`SearchStackRoute`), the sheet's or the 検索 tab's, without the tab bar inside a
+/// conversation, a thread or a page.
+struct SearchStackScreen: View {
+    @Bindable var controller: AppController
+    let route: SearchStackRoute
+    let shown: SearchShownConversations
+    @Binding var path: [SearchStackRoute]
+    /// A message revealed from here (the sheet lets its focus go when it closes).
+    var onRevealed: (String) -> Void = { _ in }
+
+    var body: some View {
+        content.modifier(HidesTabBar(when: route.hidesTabBar))
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch route {
+        case .channel(let id):
+            SearchConversationView(controller: controller, channelId: id, shown: shown)
+        case .conversation(let route):
+            SearchConversationView(controller: controller, channelId: route.channelId, shown: shown)
+        case .thread(let route):
+            SearchThreadView(controller: controller, route: route, shown: shown, onOpenConversation: {
+                // The header's conversation link (§6.7): the conversation over the thread, at the parent (Back:
+                // the thread). The thread was pushed alone, so there is no conversation under it to go back to.
+                Task {
+                    guard await controller.revealMessage(id: route.parentId, channelId: route.channelId, parentId: nil) else { return }
+                    onRevealed(route.parentId)
+                    path.append(.conversation(route.conversation))
+                }
+            })
+        case .canvas(let route):
+            CanvasOpenView(controller: controller, canvasId: route.canvasId, onTrashed: { if !path.isEmpty { path.removeLast() } })
+        case .page(let route):
+            WikiPageScreen(controller: controller, pageId: route.pageId, onOpenPage: { path.append(.page(SearchPageRoute(pageId: $0))) })
+        }
+    }
+}
+
+/// The 検索 tab's first screen: 「スワイプで戻る・進む」 switches its stack's content swipe back too (no left swipe here:
+/// there is no conversation to bring back).
+struct SearchTabSwipeProbe: View {
+    @AppStorage(SwipeNav.settingKey) private var swipeNavigation = true
+
+    var body: some View {
+        ForwardSwipeProbe(canForward: false, enabled: swipeNavigation, onChange: { _ in }, onEnd: { _ in })
+    }
+}
+
 /// A result's conversation inside the search screen, focused on the message (or a searched thread's conversation, at
-/// its parent). A thread opened from here goes over it as in any conversation.
+/// its parent; or one opened from the 検索 tab's 移動・検索 list). A thread opened from here goes over it as in any
+/// conversation.
 struct SearchConversationView: View {
     @Bindable var controller: AppController
-    let route: SearchRoute
+    let channelId: String
     let shown: SearchShownConversations
     @State private var threadId: String?
 
     var body: some View {
         Group {
-            if controller.store.channel(route.channelId) != nil {
-                ChannelView(controller: controller, channelId: route.channelId, pendingThreadId: $threadId)
+            if controller.store.channel(channelId) != nil {
+                ChannelView(controller: controller, channelId: channelId, pendingThreadId: $threadId)
             } else {
                 ContentUnavailableView("会話を開けません", systemImage: "bubble.left", description: Text("この会話のメンバーではなくなった可能性があります。"))
             }
         }
         .task {
-            controller.reopenDmIfClosed(route.channelId)  // M141 (SYNC_PROTOCOL.md §7.9)
-            await shown.appeared(route.channelId, engine: controller.engine)
+            controller.reopenDmIfClosed(channelId)  // M141 (SYNC_PROTOCOL.md §7.9)
+            await shown.appeared(channelId, engine: controller.engine)
         }
         // Back to the results: the conversation behind the search is the open one again (notifications, §7).
-        .onDisappear { shown.disappeared(route.channelId, engine: controller.engine) }
+        .onDisappear { shown.disappeared(channelId, engine: controller.engine) }
     }
 }
 
@@ -1105,6 +1232,8 @@ struct SearchThreadView: View {
     let route: SearchThreadRoute
     let shown: SearchShownConversations
     let onOpenConversation: () -> Void
+    /// Shown before: Back from the conversation its link pushed brings it on screen again.
+    @State private var appeared = false
 
     var body: some View {
         Group {
@@ -1113,6 +1242,10 @@ struct SearchThreadView: View {
             } else {
                 ContentUnavailableView("会話を開けません", systemImage: "bubble.left", description: Text("この会話のメンバーではなくなった可能性があります。"))
             }
+        }
+        .onAppear {
+            if appeared, SearchThreadRoute.clearsFocus(controller.messageFocus, back: route) { controller.messageFocus = nil }
+            appeared = true
         }
         .task {
             controller.reopenDmIfClosed(route.channelId)

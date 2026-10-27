@@ -18,6 +18,8 @@ struct ChannelListView: View {
         let selected: Bool
         let open: () -> Void
     }
+    /// The iPad's sidebar: 「検索」 as a row (the phone has its tab, 2026-10-27), opening the search sheet.
+    var onSearch: (() -> Void)? = nil
     /// M37 「未読をまとめる」 (replaces M12's 「未読だけ」 filter): unread conversations gather in a section of their own.
     @AppStorage(Self.groupUnreadKey) private var groupUnread = false
     static let groupUnreadKey = "home.groupUnread"
@@ -94,6 +96,7 @@ struct ChannelListView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             if let activity { activityRow(activity) }
+            if let onSearch { searchRow(onSearch) }
             tiles
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 .listRowSeparator(.hidden)
@@ -549,6 +552,25 @@ struct ChannelListView: View {
         .listRowInsets(Self.rowInsets)
         .listRowSeparator(.hidden)
         .listRowBackground(activity.selected ? currentBackground : nil)
+    }
+
+    /// The sidebar's 「検索」 (the phone's tab): the message search, as ⌘⇧F opens it.
+    private func searchRow(_ open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
+                Text("検索")
+                Spacer(minLength: 4)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("検索")
+        .accessibilityHint("メッセージを検索")
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
     }
 
     /// A row's insets: the row itself is 44 pt high (MOBILE_UI.md §6.1: one line, no topic).

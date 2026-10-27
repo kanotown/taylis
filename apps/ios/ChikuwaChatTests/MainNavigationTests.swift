@@ -154,6 +154,108 @@ final class MainNavigationTests: XCTestCase {
                        .conversation(SearchRoute(messageId: "m1", channelId: "general")))
     }
 
+    /// 2026-10-27 (MOBILE_UI.md §6.2): the 検索 tab keeps its own stack; its result's conversation or thread on top is the
+    /// front conversation (read and "open") while the tab is selected, and nothing of it once another tab is.
+    func testTheSearchTabsStackAndFrontConversation() {
+        var nav = navigation(.tabs)
+        nav.paths[.home] = [.channel("general")]
+        nav.tab = .search
+        XCTAssertNil(nav.frontChannelId) // the results
+        let thread = SearchThreadRoute(channelId: "random", parentId: "p1")
+        nav.searchPath = [SearchStackRoute(SearchRoute.screen(messageId: "m2", channelId: "random", parentId: "p1"))]
+        XCTAssertEqual(nav.searchPath, [.thread(thread)])
+        XCTAssertEqual(nav.frontChannelId, "random")
+        // The thread's 「#チャンネル」: the conversation over the thread, Back to the thread, then the results.
+        nav.searchPath.append(.conversation(thread.conversation))
+        XCTAssertEqual(nav.frontChannelId, "random")
+        nav.back()
+        XCTAssertEqual(nav.searchPath, [.thread(thread)])
+        nav.back()
+        XCTAssertEqual(nav.searchPath, [])
+        // A canvas or a page found: no conversation in front.
+        nav.searchPath = [.canvas(SearchCanvasRoute(canvasId: "c1"))]
+        XCTAssertNil(nav.frontChannelId)
+        nav.searchPath = [.conversation(SearchRoute(messageId: "m1", channelId: "random"))]
+        nav.tab = .home
+        XCTAssertEqual(nav.frontChannelId, "general")
+        XCTAssertEqual(nav.searchPath.count, 1) // kept behind the other tab
+    }
+
+    /// The selected tab tapped again: back to its first screen; the 検索 tab at its first screen focuses its field, inside
+    /// it pops to the results first.
+    func testTappingTheOpenTabAgain() {
+        var nav = navigation(.tabs)
+        nav.paths[.home] = [.channel("general"), .thread(channelId: "general", parentId: "p1")]
+        XCTAssertEqual(nav.reselect(.home), .popped)
+        XCTAssertEqual(nav.paths[.home], [])
+        XCTAssertEqual(nav.reselect(.home), MainNavigation.Reselect.none)
+
+        nav.tab = .search
+        nav.searchPath = [.thread(SearchThreadRoute(channelId: "general", parentId: "p1"))]
+        let before = nav.searchCommand
+        XCTAssertEqual(nav.reselect(.search), .popped)
+        XCTAssertEqual(nav.searchPath, [])
+        XCTAssertEqual(nav.searchCommand, before) // no focus while popping
+        XCTAssertEqual(nav.reselect(.search), .focusedSearch)
+        XCTAssertEqual(nav.searchCommand, SearchCommand(serial: before.serial + 1, fresh: false)) // the words kept
+        XCTAssertEqual(nav.reselect(.search), .focusedSearch)
+        XCTAssertEqual(nav.searchCommand.serial, before.serial + 2) // every tap asks again
+    }
+
+    /// The home's 「移動・検索」 (⌘K, ⌘⇧F) on the phone: the 検索 tab, what it had open closed, a fresh field.
+    func testOpeningTheSearchTab() {
+        var nav = navigation(.tabs)
+        nav.searchPath = [.channel("dm-1"), .thread(SearchThreadRoute(channelId: "dm-1", parentId: "p1"))]
+        nav.openSearch()
+        XCTAssertEqual(nav.tab, .search)
+        XCTAssertEqual(nav.searchPath, [])
+        XCTAssertEqual(nav.searchCommand, SearchCommand(serial: 1, fresh: true))
+        // A DM opened from the tab's list stays on the tab (not the DM tab), without the tab bar.
+        nav.searchPath = [.channel("dm-1")]
+        XCTAssertEqual(nav.tab, .search)
+        XCTAssertEqual(nav.frontChannelId, "dm-1")
+        XCTAssertTrue(SearchStackRoute.channel("dm-1").hidesTabBar)
+        nav.tab = .home
+        nav.openSearch()
+        XCTAssertEqual(nav.tab, .search)
+        XCTAssertEqual(nav.searchCommand, SearchCommand(serial: 2, fresh: true))
+        // Into the split (no 検索 tab): an empty detail column, MainView opens the search sheet.
+        nav.searchPath = [.conversation(SearchRoute(messageId: "m1", channelId: "general"))]
+        nav.setLayout(.split, isDm: isDm)
+        XCTAssertEqual(nav.split, [])
+        XCTAssertEqual(nav.searchPath, [])
+        nav.setLayout(.tabs, isDm: isDm)
+        XCTAssertEqual(nav.tab, .home)
+    }
+
+    /// MOBILE_UI.md §5 (2026-10-27): the tab bar shows on the lists and leaves in a conversation, a thread and a page,
+    /// whichever the entry (a thread from 「スレッド」, from the search, from the activity).
+    func testWhichScreensHideTheTabBar() {
+        XCTAssertTrue(MainRoute.channel("general").hidesTabBar)
+        XCTAssertTrue(MainRoute.thread(channelId: "general", parentId: "p1").hidesTabBar)
+        XCTAssertTrue(MainRoute.page("p").hidesTabBar)
+        XCTAssertFalse(MainRoute.list(ThreadsListView.selectionId).hidesTabBar)
+        XCTAssertFalse(MainRoute.drive("f").hidesTabBar)
+        XCTAssertFalse(MainRoute.lending(LendingRules.target(loanId: nil, itemId: "i")).hidesTabBar)
+        XCTAssertTrue(SearchStackRoute.conversation(SearchRoute(messageId: "m", channelId: "c")).hidesTabBar)
+        XCTAssertTrue(SearchStackRoute.thread(SearchThreadRoute(channelId: "c", parentId: "p")).hidesTabBar)
+        XCTAssertTrue(SearchStackRoute.page(SearchPageRoute(pageId: "p")).hidesTabBar)
+        XCTAssertFalse(SearchStackRoute.canvas(SearchCanvasRoute(canvasId: "c")).hidesTabBar)
+    }
+
+    /// Back on a searched thread from the conversation its link pushed: that reveal of the parent is let go (the parent
+    /// stayed highlighted at the thread's top); the thread's own reply focus is not.
+    func testBackOnASearchedThreadLetsTheParentsHighlightGo() {
+        let route = SearchThreadRoute(channelId: "general", parentId: "p1")
+        let parent = AppController.MessageFocus(channelId: "general", messageId: "p1", parentId: nil, context: [])
+        let reply = AppController.MessageFocus(channelId: "general", messageId: "r1", parentId: "p1", context: [])
+        let elsewhere = AppController.MessageFocus(channelId: "random", messageId: "p1", parentId: nil, context: [])
+        XCTAssertTrue(SearchThreadRoute.clearsFocus(parent, back: route))
+        XCTAssertFalse(SearchThreadRoute.clearsFocus(reply, back: route))
+        XCTAssertFalse(SearchThreadRoute.clearsFocus(elsewhere, back: route))
+        XCTAssertFalse(SearchThreadRoute.clearsFocus(nil, back: route))
+    }
+
     /// The search screen's open conversation: the result's while its thread or its conversation shows, whichever of the
     /// two a push or a Back makes appear or disappear first; the one behind the search once all have gone.
     @MainActor
