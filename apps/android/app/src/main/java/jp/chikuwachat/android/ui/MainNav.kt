@@ -48,7 +48,10 @@ sealed interface Route {
     @Serializable @SerialName("channel")
     data class Channel(val id: String, val tab: ConversationTab = ConversationTab.MESSAGES, val detailsOpen: Boolean = false, val canvasId: String? = null) : Route
 
-    /** A thread, always on top of its conversation's [Channel]; [from] says where back returns to. */
+    /**
+     * A thread, on top of its conversation's [Channel]; [from] says where back returns to. A search result's thread
+     * (2026-10-27) sits on the results alone (no [Channel] under it): [MainNav.conversation] is then its conversation.
+     */
     @Serializable @SerialName("thread")
     data class Thread(val channelId: String, val parentId: String, val from: ThreadFrom = ThreadFrom.CHANNEL) : Route
 
@@ -198,8 +201,22 @@ object MainNav {
     /** The stack's root screen (M34: each bottom tab has its own). */
     fun rootOf(stack: List<Route>): Route.Root = stack.firstOrNull() as? Route.Root ?: Route.ChannelList
 
-    /** The open conversation (the controller's open channel): kept while a search shows over it. */
-    fun conversation(stack: List<Route>): Route.Channel? = stack.lastOrNull { it is Route.Channel } as Route.Channel?
+    /**
+     * The open conversation (the controller's open channel): kept while a search shows over it. A thread with no
+     * conversation under it (a search result's, [openFromSearch]) is in its conversation all the same: the controller
+     * opens it (its notifications and read state as for a thread over its timeline).
+     */
+    fun conversation(stack: List<Route>): Route.Channel? = when (val last = stack.lastOrNull { it is Route.Channel || it is Route.Thread }) {
+        is Route.Channel -> last
+        is Route.Thread -> (stack.lastOrNull { it is Route.Channel } as Route.Channel?)?.takeIf { it.id == last.channelId } ?: Route.Channel(last.channelId)
+        else -> null
+    }
+
+    /** A thread on top with no conversation of its own under it (a search result's): its header link pushes the conversation. */
+    fun threadAlone(stack: List<Route>): Boolean {
+        val thread = top(stack) as? Route.Thread ?: return false
+        return (top(stack.dropLast(1)) as? Route.Channel)?.id != thread.channelId
+    }
 
     /** The thread open on top of the conversation (a search over it keeps it). */
     fun thread(stack: List<Route>): Route.Thread? = stack.lastOrNull { it is Route.Channel || it is Route.Thread } as? Route.Thread
@@ -212,11 +229,14 @@ object MainNav {
     /** The list replacing the channel list, on screen or behind a conversation. */
     fun pane(stack: List<Route>): Route.Pane? = stack.lastOrNull { it is Route.Pane } as Route.Pane?
 
-    /** The conversation on screen was opened from the search's results: 「検索結果に戻る」 shows, back returns to them. */
+    /**
+     * The conversation (or thread) on screen was opened from the search's results: 「検索結果に戻る」 shows, back returns
+     * to them.
+     */
     fun backToSearch(stack: List<Route>): Boolean {
         if (searching(stack)) return false
-        val channel = stack.indexOfLast { it is Route.Channel }
-        return channel > 0 && stack.subList(0, channel).any { it is Route.Search }
+        val conversation = stack.indexOfLast { it is Route.Channel || it is Route.Thread }
+        return conversation > 0 && stack.subList(0, conversation).any { it is Route.Search }
     }
 
     fun canGoBack(stack: List<Route>): Boolean = stack.size > 1
@@ -253,11 +273,15 @@ object MainNav {
      * conversation, so the thread just leaves: back from the conversation then goes where the thread's back went (the
      * conversation's own way back; the 「スレッド」 list or the activity it was opened from; the results). Nothing else on
      * top: the stack stays.
+     *
+     * A search result's thread sits on the results alone (2026-10-27): the conversation is pushed over it instead, so
+     * back returns to the thread, then the results.
      */
     fun openThreadConversation(stack: List<Route>): List<Route> {
         val thread = top(stack) as? Route.Thread ?: return stack
         val rest = stack.dropLast(1)
         val channel = top(rest) as? Route.Channel
+        if (thread.from == ThreadFrom.SEARCH && channel?.id != thread.channelId && rest.any { it is Route.Search }) return stack + Route.Channel(thread.channelId)
         return if (channel?.id == thread.channelId) replaceTop(rest, channel.copy(tab = ConversationTab.MESSAGES, detailsOpen = false))
         else rest.ifEmpty { listOf(rootOf(stack)) } + Route.Channel(thread.channelId)
     }
@@ -266,10 +290,18 @@ object MainNav {
     fun openDraft(stack: List<Route>, channelId: String, parentId: String?): List<Route> =
         openConversation(stack.filterNot { it is Route.Drafts }, channelId, parentId)
 
-    /** A search result: its conversation (or its thread, for a reply) around the message, the results kept behind it. */
-    fun openFromSearch(stack: List<Route>, channelId: String, parentId: String?): List<Route> {
+    /**
+     * A search result: its conversation (or its thread, for a reply) around the message, the results kept behind it.
+     * A reply's thread sits on the results alone (2026-10-27, MOBILE_UI.md §6.7): back (the system's too) returns to
+     * them, and the thread's header link pushes its conversation over it. `besideChannel` (three panes, where the
+     * thread has a pane of its own next to its conversation): the conversation goes under the thread, back still
+     * returning to the results ([back]).
+     */
+    fun openFromSearch(stack: List<Route>, channelId: String, parentId: String?, besideChannel: Boolean = false): List<Route> {
         val search = search(stack) ?: return openConversation(stack, channelId, parentId)
-        return base(stack) + search.copy(expanded = false) + conversationRoutes(channelId, parentId, ThreadFrom.SEARCH)
+        val routes = if (parentId != null && !besideChannel) listOf(Route.Thread(channelId, parentId, ThreadFrom.SEARCH))
+        else conversationRoutes(channelId, parentId, ThreadFrom.SEARCH)
+        return base(stack) + search.copy(expanded = false) + routes
     }
 
     /** A thread opened from the conversation on screen (its timeline or its preview). */
@@ -408,7 +440,11 @@ object MainNav {
             // The list is back as it was: the conversation under the thread goes too.
             ThreadFrom.LIST -> pop(stack).let { rest -> if ((top(rest) as? Route.Channel)?.id == top.channelId) pop(rest) else rest }
             // The result itself: to the results (a newer search replaced them: to its conversation).
-            ThreadFrom.SEARCH -> if (stack.any { it is Route.Search }) returnToSearch(stack) else pop(stack)
+            ThreadFrom.SEARCH -> when {
+                stack.any { it is Route.Search } -> returnToSearch(stack)
+                (top(pop(stack)) as? Route.Channel)?.id == top.channelId -> pop(stack)
+                else -> replaceTop(stack, Route.Channel(top.channelId))
+            }
         }
         is Route.Pane, is Route.Settings -> pop(stack)
         is Route.Root -> stack
@@ -479,7 +515,8 @@ object MainNav {
         if (index < 0) return stack
         val thread = stack[index] as Route.Thread
         val under = stack.take(index)
-        if (under.none { it is Route.Channel }) return under.ifEmpty { listOf(rootOf(stack)) } + Route.Channel(thread.channelId)
+        val toResults = thread.from == ThreadFrom.SEARCH && under.any { it is Route.Search }
+        if (under.none { it is Route.Channel } && !toResults && index == stack.lastIndex) return under.ifEmpty { listOf(rootOf(stack)) } + Route.Channel(thread.channelId)
         return if (index == stack.lastIndex) back(stack) else stack.filterIndexed { i, _ -> i != index }
     }
 

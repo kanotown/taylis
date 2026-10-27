@@ -350,10 +350,24 @@ class MainTabsTest {
         assertEquals(listOf(Route.ChannelList, Route.Search(words, expanded = false), Route.Channel("c1")), MainTabs.stack(channel))
         assertTrue(MainNav.backToSearch(MainTabs.stack(channel)))
         // A DM: on the DM tab; home keeps the results for when it comes back.
-        val dm = MainTabs.landFromSearch(searched, MainTab.DM, "d1", "p1")
+        val dm = MainTabs.landFromSearch(searched, MainTab.DM, "d1", null)
         assertEquals(MainTab.DM, dm.selected)
-        assertEquals(listOf(Route.DmList, Route.Channel("d1"), Route.Thread("d1", "p1")), MainTabs.stack(dm))
+        assertEquals(listOf(Route.DmList, Route.Channel("d1")), MainTabs.stack(dm))
         assertEquals(listOf(Route.ChannelList, Route.Search(words, expanded = false)), MainTabs.stack(dm, MainTab.HOME))
+        // A DM's reply (2026-10-27): its thread over the results where the search is, so back returns to them.
+        val dmReply = MainTabs.landFromSearch(searched, MainTab.DM, "d1", "p1")
+        assertEquals(MainTab.HOME, dmReply.selected)
+        assertEquals(listOf(Route.ChannelList, Route.Search(words, expanded = false), Route.Thread("d1", "p1", ThreadFrom.SEARCH)), MainTabs.stack(dmReply))
+        assertEquals("d1", MainTabs.openConversation(dmReply)?.id)
+        assertEquals(listOf(Route.ChannelList, Route.Search(words, expanded = false)), MainTabs.stack(MainTabs.back(dmReply)))
+        assertEquals(listOf(Route.DmList), MainTabs.stack(dmReply, MainTab.DM))
+        // Three panes: the conversation under the thread (both panes show), back still to the results.
+        val wide = MainTabs.landFromSearch(searched, MainTab.HOME, "c1", "p1", besideChannel = true)
+        assertEquals(
+            listOf(Route.ChannelList, Route.Search(words, expanded = false), Route.Channel("c1"), Route.Thread("c1", "p1", ThreadFrom.SEARCH)),
+            MainTabs.stack(wide),
+        )
+        assertEquals(listOf(Route.ChannelList, Route.Search(words, expanded = false)), MainTabs.stack(MainTabs.back(wide)))
     }
 
     @Test

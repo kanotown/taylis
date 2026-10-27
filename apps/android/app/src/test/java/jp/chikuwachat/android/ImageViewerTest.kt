@@ -1,11 +1,14 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.ui.ImageChrome
 import jp.chikuwachat.android.ui.ImageDismiss
 import jp.chikuwachat.android.ui.ImageDismiss.Gesture.PULL
 import jp.chikuwachat.android.ui.ImageDismiss.Gesture.TRANSFORM
 import jp.chikuwachat.android.ui.imagePanLimit
 import jp.chikuwachat.android.ui.imageSampleSize
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImageViewerTest {
@@ -36,5 +39,16 @@ class ImageViewerTest {
         assertEquals(TRANSFORM, ImageDismiss.decide(dx = 0f, dy = -20f, scale = 1f, pointers = 1))  // upwards
         assertEquals(TRANSFORM, ImageDismiss.decide(dx = 0f, dy = 20f, scale = 2.5f, pointers = 1)) // zoomed: pans
         assertEquals(TRANSFORM, ImageDismiss.decide(dx = 0f, dy = 20f, scale = 1f, pointers = 2))   // a pinch
+    }
+
+    @Test fun aTapTogglesTheBarsButNotWhileTalkBackExploresNorBeforeThePhotoIsThere() {
+        assertFalse(ImageChrome.toggled(wanted = true, touchExploration = false))
+        assertTrue(ImageChrome.toggled(wanted = false, touchExploration = false))
+        assertTrue(ImageChrome.toggled(wanted = true, touchExploration = true))
+        assertFalse(ImageChrome.shown(wanted = false, touchExploration = false, loaded = true))
+        assertTrue(ImageChrome.shown(wanted = true, touchExploration = false, loaded = true))
+        // TalkBack turned on while hidden: the controls come back; loading or an error: they stay.
+        assertTrue(ImageChrome.shown(wanted = false, touchExploration = true, loaded = true))
+        assertTrue(ImageChrome.shown(wanted = false, touchExploration = false, loaded = false))
     }
 }
