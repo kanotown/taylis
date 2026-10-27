@@ -14,13 +14,13 @@
 :root {
   --p-sidebar: #3b2b21;
   --p-sidebar-fg: #efe7df;
-  --p-accent: #8f5530;
-  --p-accent-solid: #8f5530;
+  --p-accent: #7a4526;
+  --p-accent-solid: #7a4526;
   --p-accent-soft: #f6ece3;
   --p-sidebar-dark: #1d1611;
   --p-sidebar-fg-dark: #e1d7ce;
-  --p-accent-dark: #dba67c;
-  --p-accent-solid-dark: #8f5530;
+  --p-accent-dark: #e6b48a;
+  --p-accent-solid-dark: #7a4526;
   --p-accent-soft-dark: #3a2a1f;
 }
 /* 藍: the colours before 「テーマの色」 (the accent a little darker for white text). */

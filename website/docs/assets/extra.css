@@ -1,21 +1,21 @@
-/* Taylis brand colours (the desktop app's default "Taylis" palette: sidebar #3b2b21, accent #8f5530,
-   accent text on dark #dba67c). */
+/* Taylis brand colours (the desktop app's default "Taylis" palette: sidebar #3b2b21, accent #7a4526,
+   accent text on dark #e6b48a). */
 :root > * {
   --md-primary-fg-color: #3b2b21;
   --md-primary-fg-color--light: #5a4334;
   --md-primary-fg-color--dark: #2a1e17;
   --md-primary-bg-color: #ffffff;
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
-  --md-accent-fg-color: #8f5530;
-  --md-accent-fg-color--transparent: rgba(143, 85, 48, 0.1);
-  --md-typeset-a-color: #8f5530;
+  --md-accent-fg-color: #7a4526;
+  --md-accent-fg-color--transparent: rgba(122, 69, 38, 0.1);
+  --md-typeset-a-color: #7a4526;
 }
 
 [data-md-color-scheme="slate"] {
   --md-primary-fg-color: #3b2b21;
-  --md-accent-fg-color: #dba67c;
+  --md-accent-fg-color: #e6b48a;
   --md-accent-fg-color--transparent: rgba(219, 166, 124, 0.12);
-  --md-typeset-a-color: #dba67c;
+  --md-typeset-a-color: #e6b48a;
   --md-default-bg-color: #1e1915;
 }
 

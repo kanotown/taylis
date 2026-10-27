@@ -38,8 +38,8 @@ enum AppPalette: String, CaseIterable, Identifiable {
     var dark: Tones { Self.table[self]!.dark }
 
     private static let table: [AppPalette: (light: Tones, dark: Tones)] = [
-        .taylis: (Tones(sidebar: 0x3b2b21, sidebarFg: 0xefe7df, accent: 0x8f5530, accentSolid: 0x8f5530, accentSoft: 0xf6ece3),
-                  Tones(sidebar: 0x1d1611, sidebarFg: 0xe1d7ce, accent: 0xdba67c, accentSolid: 0x8f5530, accentSoft: 0x3a2a1f)),
+        .taylis: (Tones(sidebar: 0x3b2b21, sidebarFg: 0xefe7df, accent: 0x7a4526, accentSolid: 0x7a4526, accentSoft: 0xf6ece3),
+                  Tones(sidebar: 0x1d1611, sidebarFg: 0xe1d7ce, accent: 0xe6b48a, accentSolid: 0x7a4526, accentSoft: 0x3a2a1f)),
         .indigo: (Tones(sidebar: 0x2a2340, sidebarFg: 0xe0dce9, accent: 0x5050c8, accentSolid: 0x5050c8, accentSoft: 0xecebff),
                   Tones(sidebar: 0x14111c, sidebarFg: 0xd5d2df, accent: 0x9a9af5, accentSolid: 0x5050c8, accentSoft: 0x2a2a4a)),
         .green: (Tones(sidebar: 0x1e3a2f, sidebarFg: 0xedf4f0, accent: 0x2e7550, accentSolid: 0x2e7550, accentSoft: 0xe4f2ea),
