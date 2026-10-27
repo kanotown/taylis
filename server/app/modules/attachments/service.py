@@ -80,6 +80,17 @@ def set_lending_access_check(check: LendingReadable | None) -> None:
 
 
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+# The registered name a file's bytes are served under where the sniffer (`filetype`) answers an
+# old one (docs/PREVIEWS.md §13): the macOS WKWebView refuses a FLAC served as audio/x-flac
+# (MediaError 4) and plays it as audio/flac (measured 2026-10-28, macOS 26.6). The stored
+# content_type (and the API's) stays as sniffed.
+SERVED_TYPES = {"audio/x-flac": "audio/flac"}
+
+
+def served_type(content_type: str) -> str:
+    return SERVED_TYPES.get(content_type.lower(), content_type)
+
+
 READ_CHUNK = 1024 * 1024
 # An upload larger than this is spooled to a temporary file rather than held in memory.
 SPOOL_MAX_BYTES = 8 * 1024 * 1024
@@ -593,7 +604,7 @@ def content_headers(attachment: Attachment, *, inline: bool) -> dict[str, str]:
     return {
         "Content-Disposition": f'{disposition}; filename="{ascii_name}"; '
         f"filename*=UTF-8''{quote(attachment.filename)}",
-        "Content-Type": attachment.content_type,
+        "Content-Type": served_type(attachment.content_type),
         "Content-Length": str(attachment.size_bytes),
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, max-age=3600",

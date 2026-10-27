@@ -8,7 +8,7 @@
  * Downloads are plain links (the browser's own download, which resumes a broken one); the bytes always come as an
  * attachment. Nothing on the page links away from it (no Referer leaves it either: Referrer-Policy no-referrer).
  */
-import { ChevronRight, Download, File, FileArchive, FileImage, FileSpreadsheet, FileText, FileVideo, Folder, KeyRound, Loader2, Presentation, Eye } from "lucide-react";
+import { ChevronRight, Download, File, FileArchive, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Folder, KeyRound, Loader2, Presentation, Eye } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
@@ -21,7 +21,7 @@ import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "../ui
 import { ShareApi } from "./api";
 
 const ICONS: Record<DriveIconKind, typeof File> = {
-  folder: Folder, image: FileImage, video: FileVideo, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
+  folder: Folder, image: FileImage, video: FileVideo, audio: FileAudio, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
 };
 
 function ItemIcon({ item, size = 18 }: { item: SharedItemOut; size?: number }) {

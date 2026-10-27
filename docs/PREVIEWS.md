@@ -324,3 +324,49 @@ Range の URL で再生して調べた。分かったことと直したこと：
 - **残るもの**：メッセージの動画は全部を取ってから再生するので、大きい動画（上限 100 MB）は読み込みの表示の間待つ。途中で接続が切れると
   「読み込めません」と再試行になる。デスクトップのドライブの大きな動画も Blob で全部読む。アプリでも Range で流すには添付のチケット
   （`<video>` が Bearer を送れないため）と Tauri の CSP の `media-src` に API の配信元を足すことが要る（今回はしていない）。
+
+## 13. 音声をその場で再生する（Desktop / Web、2026-10-28）
+
+報告：デスクトップで WAV などの音声ファイルを聴けない（クリックするとダウンロードされる）。Slack の音声の添付のように、メッセージの中と
+ドライブのビューアで再生できるようにした。
+
+- **何を音声とするか**（`ui/attachmentLayout.ts` の `mediaKind`）：`audio/*`（MIDI は楽譜なので除く。ファイルの行のまま）と、
+  サーバが調べて映像が無かった動画（`video/*` で `width` が無く `duration_ms` がある：音だけの mp4・webm。前は黒い動画のタイルだった）。
+  サーバはアップロードの中身から型を決める（`filetype`。拡張子とブラウザの申告は使わない）。WAV は `audio/x-wav`、MP3 は `audio/mpeg`、
+  M4A は `audio/mp4`、AAC（ADTS）は `audio/aac`、Ogg（Vorbis・Opus）は `audio/ogg`、FLAC は `audio/x-flac`、AIFF は `audio/x-aiff`。
+  音だけの WebM（ブラウザの録音）は `video/webm`、ブランドが `isom` の音だけの mp4 は `video/mp4` になり、上の「映像の無い動画」で音声になる。
+  添付の型の許可リストは無い（どのファイルも上げられる）ので、API の形は変えていない（`content_type` で分かる）。長さ（`duration_ms`）は
+  動画だけがサーバで測られる。音声の長さは読み込んでから出す（作らなかった：音声も ffprobe に通すこと）。
+- **メッセージ**（`ui/AudioPlayer.tsx`）：1 行のプレーヤー。再生 / 一時停止、名前（1 行目すべて）、シークバーと「0:12 / 1:05」、
+  ダウンロードのボタン。名前を押してもダウンロードしない。読み込む前は時刻の場所に大きさを出す。バイトは最初に再生したときに取る
+  （動画と同じ `fetchBlob` で Bearer をつけて Blob の URL にする。`<audio>` も Authorization を送れないため。`ui/useMediaSource.ts`）。
+  入力欄で送る前のファイルは押すと音声のビューアで開く（前はダウンロード）。
+- **ドライブ**（`ui/DriveViewer.tsx`・`drive/listing.ts` の `viewerKind` が `audio`）：プレビューで音声のビューア（`AudioViewer`）を開き、
+  すぐ再生する。Web はダウンロードのチケットの URL を Range で流し、チケットが切れたら動画と同じく取り直してその位置から続ける（§12）。
+  ← → で同じフォルダの前後のファイルへ。種類のアイコンは音声（青緑）。
+- **同時に 1 つ**（`ui/playbackFocus.ts`）：音声の行・音声のビューア・動画のビューアのどれかが再生を始めると、前に鳴っていたものを止める。
+- **キー**：行にフォーカスがあるとき Space で再生 / 一時停止（ボタンの上ではボタンの働き）。ビューアではボタンと入力欄の外ならどこでも。
+  シークバーは ← → で動く。
+- **再生できないとき**：読み込む前の MediaError 3・4 は「この音声はこの端末では再生できません。ダウンロードして開いてください」
+  （再試行なし、ダウンロードのボタンはそのまま）。取得の失敗と、一度読めた後のエラーは「音声を読み込めませんでした」と再試行（§12 と同じ分け方）。
+- **どの形式が鳴るか**（2026-10-28 に測った。ffmpeg で作った 3 秒のファイルを Blob の URL にして `loadedmetadata` か `error` を見た）：
+
+  | 形式（サーバの型） | macOS の WKWebView（macOS 26.6、アプリ） | Chrome 156（WebView2 と同じ Chromium） |
+  | --- | --- | --- |
+  | WAV PCM 16 / 24 bit・96 kHz・float32（`audio/x-wav`） | 鳴る | 鳴る |
+  | WAV IMA ADPCM | 鳴る | 鳴らない（MediaError 4） |
+  | MP3（ID3 あり・なし）、M4A、AAC（ADTS） | 鳴る | 鳴る |
+  | Ogg Vorbis、Ogg Opus（`audio/ogg`）、WebM Opus（`video/webm`） | 鳴る | 鳴る |
+  | FLAC（`audio/x-flac`） | **鳴らない**（MediaError 4）。`audio/flac` なら鳴る | 鳴る |
+  | AIFF（`audio/x-aiff`） | 鳴る | 鳴らない（MediaError 4） |
+
+  → サーバは FLAC を **`audio/flac` で配る**（`attachments/service.py` の `served_type`。`/attachments/{id}/content`・
+  `/drive/items/{id}/content`・`/drive/download/{token}`・共有リンク）。保存した型と API の `content_type` は `audio/x-flac` のまま。
+  WKWebView は Playwright の WebKit ではなく、本物の `WKWebView` を Swift で開いて確かめた（Playwright の WebKit は FLAC も鳴らしたので、
+  アプリの代わりにならない）。Windows の WebView2 は Edge の Chromium なので Chrome と同じと見ている（Windows では未確認）。
+  鳴らない形式（Windows の AIFF・ADPCM の WAV、Ogg を扱えない古い macOS の WebKit など）は上の文言とダウンロードになる。
+- **自動再生**：ビューアは開いた操作のあとで Blob を取ってから `play()` する。拒まれた（`NotAllowedError`）ときは止まったままにして、
+  もう一度押せばすぐ鳴る（バイトはもうある）。Chrome・WebKit（Playwright）では最初の押下で鳴った。
+- **iOS・Android**（今回は変えていない。コードを読んだ結果）：どちらもその場では再生しない。iOS は音声をファイルの行に出し、押すと
+  ダウンロードして Quick Look で開く（`AttachmentPreview.allows` にある mp3・wav・aac・m4a・aiff は Quick Look の中で再生、
+  ogg・opus・flac は共有シート）。Android はファイルの行で、押すとキャッシュに落として `ACTION_VIEW` で別のアプリに渡す。

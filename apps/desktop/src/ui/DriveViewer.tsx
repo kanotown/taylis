@@ -1,8 +1,9 @@
 /**
  * A drive file in the app's own viewers (M161, docs/DRIVE.md §17.2): photos (Lightbox), videos (VideoViewer; on the
- * Web it plays from a download ticket, with Range, instead of fetching the whole clip first) and PDF / Office files
+ * Web it plays from a download ticket, with Range, instead of fetching the whole clip first), sounds (AudioViewer, the
+ * same way; PREVIEWS.md §13) and PDF / Office files
  * (PdfViewer). The viewers' download buttons go the drive's way (controller.downloadAttachment knows a drive file).
- * ← → step to the folder's previous and next viewable file (photos and videos; in a PDF the keys scroll).
+ * ← → step to the folder's previous and next viewable file (photos, videos and sounds; in a PDF the keys scroll).
  *
  * §27 (2026-10-22): a document never turns into a download. A PDF opens from its preview when that is made, else from
  * its own bytes (an imported PDF has none until it is asked for). An Office file without a preview asks the server to
@@ -16,7 +17,7 @@ import type { AppController } from "../state/app";
 import { ticketUrl } from "../drive/download";
 import { asAttachment, documentSource, stepItem, viewerKind } from "../drive/listing";
 import { isWeb } from "../platform/env";
-import { Lightbox, VideoViewer } from "./Attachments";
+import { AudioViewer, Lightbox, VideoViewer } from "./Attachments";
 import { type PdfHold, PdfViewer } from "./DocumentPreview";
 
 /** How often a preview being made is looked at again (drive.changed usually says it first). */
@@ -52,9 +53,11 @@ export function DriveViewer({ controller, item, siblings, onStep, onClose, page 
   }, [kind, siblings, item.id, onStep]);
   if (!attachment || !kind) return null;
   if (kind === "image") return <Lightbox key={item.id} attachment={attachment} controller={controller} onClose={onClose} />;
-  if (kind === "video") {
+  if (kind === "video" || kind === "audio") {
     const api = controller.api;
     const stream = isWeb() && api ? async () => ticketUrl(api.baseUrl, (await api.driveDownloadTicket(item.id)).url) : undefined;
+    // 2026-10-28 (PREVIEWS.md §13): a sound plays in the viewer too (it used to show the details, then download).
+    if (kind === "audio") return <AudioViewer key={item.id} attachment={attachment} controller={controller} onClose={onClose} stream={stream} />;
     return <VideoViewer key={item.id} attachment={attachment} controller={controller} onClose={onClose} stream={stream} />;
   }
   return <DriveDocument key={item.id} controller={controller} item={item} onClose={onClose} page={page ?? null} />;

@@ -1,27 +1,26 @@
-import { Download, ExternalLink, FileText, Film, HardDriveDownload, Loader2, Play, X } from "lucide-react";
+import { Download, ExternalLink, FileText, Film, HardDriveDownload, Loader2, Music, Play, X } from "lucide-react";
 import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { DocumentCard } from "./DocumentPreview";
-import { documentPreviewState, fitBox, formatDuration, groupAttachments, hasPoster, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
+import { documentPreviewState, fitBox, formatDuration, formatSize, groupAttachments, hasPoster, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
-import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
+import { knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
 import { type PlaybackProblem, playbackProblem, showsNoPicture, STREAM_RENEWALS_MAX, STREAM_STALL_MS, STREAM_TICKET_STALE_MS } from "./videoPlayback";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
 import { isTauri } from "../platform/env";
 import { driveFileOf } from "../drive/listing";
+import { AudioPlayer } from "./AudioPlayer";
+import { claimPlayback } from "./playbackFocus";
+import { useMediaSource } from "./useMediaSource";
 // Loaded when asked for: the viewers are in the share page's bundle too (share.html), which has no drive dialogs.
 const SaveToDriveDialog = lazy(() => import("./DriveConversation").then((module) => ({ default: module.SaveToDriveDialog })));
 
-export function formatSize(bytes: number): string {
-  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
+export { formatSize };
 
 /**
  * Images show their thumbnail (fetched with the bearer token), videos a tile in their own shape that plays in the
@@ -38,7 +37,7 @@ export function AttachmentList({ attachments, controller, downloadable = true }:
   downloadable?: boolean;
 }) {
   if (attachments.length === 0) return null;
-  const { photos, videos, files } = groupAttachments(attachments);
+  const { photos, videos, audios, files } = groupAttachments(attachments);
   return (
     <div data-attachments="" className="mt-1.5 flex flex-col items-start gap-2">
       {photoLayout(photos.length) === "row" ? (
@@ -51,6 +50,12 @@ export function AttachmentList({ attachments, controller, downloadable = true }:
       {videos.length > 0 && (
         <div data-video-row="" className="flex max-w-full flex-wrap items-start gap-1.5">
           {videos.map((attachment) => <VideoTile key={attachment.id} attachment={attachment} controller={controller} downloadable={downloadable} />)}
+        </div>
+      )}
+      {audios.length > 0 && (
+        // 2026-10-28 (docs/PREVIEWS.md §13): a sound plays in its row; it used to download.
+        <div data-audio-row="" className="flex max-w-full flex-col items-start gap-1.5">
+          {audios.map((attachment) => <AudioPlayer key={attachment.id} attachment={attachment} controller={controller} downloadable={downloadable} />)}
         </div>
       )}
       {files.length > 0 && (
@@ -330,54 +335,8 @@ export function Lightbox({ attachment, controller, onClose }: { attachment: Atta
   );
 }
 
-/**
- * A video's bytes as an object URL, through the same authenticated `fetchBlob` as the photos, shared by its tile and
- * the viewer (videoSource.ts). `enabled` false: nothing is fetched.
- */
-export function useVideoSource(controller: AppController, attachment: AttachmentOut, enabled = true, stream?: () => Promise<string>) {
-  const api = controller.api;
-  const [attempt, setAttempt] = useState(0);
-  const key = `${attachment.id}/${attempt}`;
-  const [state, setState] = useState({ key, api, url: null as string | null, failed: false });
-  const streamRef = useRef(stream);
-  streamRef.current = stream;
-  useEffect(() => {
-    if (!enabled) return;
-    if (!api) {
-      setState({ key, api, url: null, failed: true });
-      return;
-    }
-    setState({ key, api, url: null, failed: false });
-    let cancelled = false;
-    // M161: a drive video plays from a download ticket's URL on the Web (Range: it starts at once and seeks), not as a
-    // whole blob first.
-    const streaming = streamRef.current;
-    if (streaming) {
-      streaming().then(
-        (url) => { if (!cancelled) setState({ key, api, url, failed: false }); },
-        () => { if (!cancelled) setState({ key, api, url: null, failed: true }); },
-      );
-      return () => {
-        cancelled = true;
-      };
-    }
-    const handle = acquireVideo(api, attachment.id);
-    handle.promise.then(
-      (url) => { if (!cancelled) setState({ key, api, url, failed: false }); },
-      () => { if (!cancelled) setState({ key, api, url: null, failed: true }); },
-    );
-    return () => {
-      cancelled = true;
-      handle.release();
-    };
-  }, [attachment.id, api, enabled, key]);
-  const current = enabled && state.key === key && state.api === api;
-  return {
-    url: current ? state.url : null,
-    failed: current && state.failed,
-    retry: () => setAttempt((value) => value + 1),
-  };
-}
+/** A video's bytes as an object URL, shared by its tile and the viewer (useMediaSource.ts). */
+export const useVideoSource = useMediaSource;
 
 /** The video's shape: what its own file said when it loaded (remembered per attachment), else the server's, if any. */
 export function useVideoShape(attachment: AttachmentOut) {
@@ -555,7 +514,10 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
             playback.current.at = e.currentTarget.currentTime;
             checkPicture(e.currentTarget);
           }}
-          onPlay={() => { playback.current.playing = true; }}
+          onPlay={(e) => {
+            claimPlayback(e.currentTarget); // §13: a sound playing in a message stops
+            playback.current.playing = true;
+          }}
           onPause={() => { playback.current.playing = false; }}
           onPlaying={() => {
             playback.current.renewals = 0;
@@ -583,6 +545,21 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
           {t("attach.loadingVideoSize", { size: formatSize(attachment.size_bytes) })}
         </div>
       )}
+    </ViewerShell>
+  );
+}
+
+/**
+ * A sound in the viewer (2026-10-28, docs/PREVIEWS.md §13): a drive file's preview, or one waiting in the composer. The
+ * same player as a message's row, larger, on the dark card; it starts at once (it was opened with a click) and Space
+ * plays / pauses wherever the focus is but on a button.
+ */
+export function AudioViewer({ attachment, controller, onClose, stream }: { attachment: AttachmentOut; controller: AppController; onClose: () => void; stream?: () => Promise<string> }) {
+  return (
+    <ViewerShell attachment={attachment} description={t("attach.audioPreview")} controller={controller} onClose={onClose}>
+      <div data-viewer-content="" className="m-auto max-w-full px-4">
+        <AudioPlayer attachment={attachment} controller={controller} tone="dark" autoPlay stream={stream} downloadable={false} spaceAnywhere />
+      </div>
     </ViewerShell>
   );
 }
@@ -616,16 +593,17 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
   const kind = mediaKind(item);
   const image = kind === "photo";
   const video = kind === "video";
+  const audio = kind === "audio";
   const { url } = useAttachmentImage(controller, item, "thumbnail", image || (video && hasPoster(item)));
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
       <button
         type="button"
-        title={`${item.filename} (${formatSize(item.size_bytes)})${image ? ` — ${t("attach.clickToZoom")}` : video ? ` — ${t("attach.clickToPlay")}` : ""}`}
-        aria-label={image ? t("attach.previewName", { name: item.filename }) : video ? t("attach.play", { name: item.filename }) : t("attach.downloadName", { name: item.filename })}
+        title={`${item.filename} (${formatSize(item.size_bytes)})${image ? ` — ${t("attach.clickToZoom")}` : video || audio ? ` — ${t("attach.clickToPlay")}` : ""}`}
+        aria-label={image ? t("attach.previewName", { name: item.filename }) : video || audio ? t("attach.play", { name: item.filename }) : t("attach.downloadName", { name: item.filename })}
         className="flex h-16 w-16 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-lg border border-line bg-panel text-muted hover:border-accent/50"
-        onClick={() => (image || video ? setOpen(true) : void controller.downloadAttachment(item))}
+        onClick={() => (image || video || audio ? setOpen(true) : void controller.downloadAttachment(item))}
       >
         {image && url ? (
           <img src={url} alt="" className="h-full w-full object-cover" />
@@ -638,7 +616,7 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
           <Loader2 size={16} className="animate-spin" />
         ) : (
           <>
-            {video ? <Film size={18} /> : <FileText size={18} />}
+            {video ? <Film size={18} /> : audio ? <Music size={18} /> : <FileText size={18} />}
             <FileName name={item.filename} stacked className="w-full px-1 text-center text-[9px] leading-tight" />
           </>
         )}
@@ -654,6 +632,7 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
       </button>
       {open && (video
         ? <VideoViewer attachment={item} controller={controller} onClose={() => setOpen(false)} />
+        : audio ? <AudioViewer attachment={item} controller={controller} onClose={() => setOpen(false)} />
         : <Lightbox attachment={item} controller={controller} onClose={() => setOpen(false)} />)}
     </div>
   );

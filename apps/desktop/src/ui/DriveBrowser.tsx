@@ -16,7 +16,7 @@
  *   who may (§3.2).
  * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
  */
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -60,13 +60,13 @@ function newOpId(): string {
 }
 
 const ICONS: Readonly<Record<DriveIconKind, typeof File>> = {
-  folder: Folder, image: FileImage, video: FileVideo, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
+  folder: Folder, image: FileImage, video: FileVideo, audio: FileAudio, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
 };
 
 /**
  * §27: one colour per kind of file, the same in the list, the grid, the details, the trash and the search (as Box,
  * Dropbox and Nextcloud do): folders in the app's warm brown, PDF red, Word blue, Excel green, PowerPoint orange,
- * photos violet, videos rose, archives umber, the rest grey.
+ * photos violet, videos rose, sounds teal, archives umber, the rest grey.
  */
 export const ICON_COLOURS: Readonly<Record<DriveIconKind, string>> = {
   folder: "text-[#b7791f] fill-[#b7791f]/20",
@@ -76,6 +76,7 @@ export const ICON_COLOURS: Readonly<Record<DriveIconKind, string>> = {
   slides: "text-[#d9731a]",
   image: "text-[#8b5cf6]",
   video: "text-[#d6457a]",
+  audio: "text-[#0f8f8f]",
   archive: "text-[#8a6d3b]",
   text: "text-muted",
   file: "text-muted",
