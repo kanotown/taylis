@@ -173,9 +173,11 @@ object MainTabs {
     /**
      * A search result lands on its tab. On the tab the search is on, the results stay behind the conversation (M16b:
      * back and 「検索結果に戻る」 return to them); on another tab, the search's tab keeps its results for when it comes back.
+     * A reply's thread (2026-10-27) always opens over the results on the search's tab, so back returns to them
+     * ([MainNav.openFromSearch]; `besideChannel`: three panes).
      */
-    fun landFromSearch(state: TabStacks, tab: MainTab, channelId: String, parentId: String?): TabStacks =
-        if (tab == state.selected) update(state) { MainNav.openFromSearch(it, channelId, parentId) }
+    fun landFromSearch(state: TabStacks, tab: MainTab, channelId: String, parentId: String?, besideChannel: Boolean = false): TabStacks =
+        if (tab == state.selected || (parentId != null && MainNav.search(stack(state)) != null)) update(state) { MainNav.openFromSearch(it, channelId, parentId, besideChannel) }
         else land(update(state, MainNav::returnToSearch), tab, channelId, parentId)
 
     /** M58: a canvas from the search's results, landing as a message result does ([landFromSearch]). */

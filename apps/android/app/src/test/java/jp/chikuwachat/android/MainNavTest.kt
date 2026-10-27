@@ -149,11 +149,21 @@ class MainNavTest {
         val fromList = MainNav.openThreadConversation(MainNav.openFromThreadList(list, "c1", "p1"))
         assertEquals(list + channel(), fromList)
         assertEquals(list, MainNav.back(fromList))
-        // From a search result: back to the results, as from the thread.
+        // From a search result (2026-10-27): the conversation over the thread; back to the thread, then the results.
         val results = searched()
-        val fromSearch = MainNav.openThreadConversation(MainNav.openFromSearch(results, "c1", "p1"))
-        assertEquals(MainNav.back(MainNav.openFromSearch(results, "c1", "p1")), MainNav.back(fromSearch))
-        assertEquals(channel(), MainNav.top(fromSearch))
+        val searchedThread = MainNav.openFromSearch(results, "c1", "p1")
+        val fromSearch = MainNav.openThreadConversation(searchedThread)
+        assertEquals(searchedThread + channel(), fromSearch)
+        assertEquals(channel(), MainNav.conversation(fromSearch))
+        assertNull(MainNav.thread(fromSearch))
+        assertTrue(MainNav.backToSearch(fromSearch))
+        assertEquals(searchedThread, MainNav.back(fromSearch))
+        assertEquals(results, MainNav.back(MainNav.back(fromSearch)))
+        assertEquals(results, MainNav.returnToSearch(fromSearch))
+        // Three panes (the conversation under the thread): the thread leaves, back to the results.
+        val beside = MainNav.openThreadConversation(MainNav.openFromSearch(results, "c1", "p1", besideChannel = true))
+        assertEquals(results + channel(), beside)
+        assertEquals(results, MainNav.back(beside))
         // A thread with no conversation under it (a restored stack): its conversation takes its place.
         assertEquals(root + channel(), MainNav.openThreadConversation(root + Route.Thread("c1", "p1")))
         // No thread on top: nothing changes.
@@ -278,9 +288,35 @@ class MainNavTest {
     fun aReplyResultOpensItsThreadAndGoesBackToTheResults() {
         val results = searched()
         val stack = MainNav.openFromSearch(results, "c1", "p1")
+        // 2026-10-27: the thread alone over the results (no conversation under it to go back to).
+        assertEquals(results + Route.Thread("c1", "p1", ThreadFrom.SEARCH), stack)
+        assertTrue(MainNav.threadAlone(stack))
         assertEquals("p1", MainNav.thread(stack)?.parentId)
+        // The thread's conversation is the open one all the same (the controller opens it).
+        assertEquals(channel(), MainNav.conversation(stack))
         assertTrue(MainNav.backToSearch(stack))
         assertEquals(results, MainNav.back(stack))
+        // Three panes: the conversation under it, back still to the results.
+        val beside = MainNav.openFromSearch(results, "c1", "p1", besideChannel = true)
+        assertEquals(results + channel() + Route.Thread("c1", "p1", ThreadFrom.SEARCH), beside)
+        assertFalse(MainNav.threadAlone(beside))
+        assertEquals(results, MainNav.back(beside))
+        // A search opened over the thread keeps its conversation open.
+        assertEquals(channel(), MainNav.conversation(MainNav.openSearch(stack)))
+        // A notification or a permalink still lands as the conversation with its thread on top.
+        assertEquals(root + channel() + Route.Thread("c1", "p1"), MainNav.openConversation(stack, "c1", "p1"))
+    }
+
+    @Test
+    fun aSearchedThreadWhoseRootGoesReturnsToTheResults() {
+        val results = searched()
+        val stack = MainNav.openFromSearch(results, "c1", "p1")
+        assertEquals(results, MainNav.threadGone(stack, "p1"))
+        // Under a newer search: the thread just leaves, the search stays.
+        val over = MainNav.openSearch(stack)
+        assertEquals(root + Route.Search(), MainNav.threadGone(over, "p1"))
+        // The result's conversation gone: the thread and the results go with it.
+        assertEquals(root, MainNav.channelGone(stack, "c1"))
     }
 
     @Test

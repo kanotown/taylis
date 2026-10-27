@@ -405,7 +405,7 @@ fun MainScreen(controller: AppController) {
             val shown = if (message != null) controller.revealMessage(message) else controller.revealMessage(messageId, channelId, parentId)
             if (!shown) return@launch
             // M34 (7): on its tab (a DM on the DM tab, a channel on home); on the search's own tab the results stay behind it.
-            tabs = MainTabs.landFromSearch(tabs, MainTabs.landingTab(store.channel(channelId)), channelId, parentId)
+            tabs = MainTabs.landFromSearch(tabs, MainTabs.landingTab(store.channel(channelId)), channelId, parentId, besideChannel = layout == PaneLayout.THREE_PANE)
         }
     }
     LaunchedEffect(searchParams) { searchParams?.let { searchResults.show(controller, it) } }
@@ -552,12 +552,13 @@ fun MainScreen(controller: AppController) {
     /**
      * The thread header's conversation link (MOBILE_UI.md §6.7): the thread's parent revealed in its conversation's
      * timeline, then the conversation in place of the thread (MainNav.openThreadConversation). `beside`: the thread's
-     * own pane next to the conversation (three panes), which stays open. Nothing moves when the parent cannot be had
-     * (the reveal reports why).
+     * own pane next to the conversation (three panes), which stays open — unless the main pane shows something else (a
+     * search result's thread over the results): the conversation is pushed then. Nothing moves when the parent cannot be
+     * had (the reveal reports why).
      */
     fun openConversationOfThread(channelId: String, parentId: String, beside: Boolean) {
         scope.launch {
-            if (!controller.revealMessage(parentId, channelId, null) || beside) return@launch
+            if (!controller.revealMessage(parentId, channelId, null) || (beside && !MainNav.threadAlone(stack))) return@launch
             if (MainNav.thread(stack)?.parentId != parentId) return@launch // moved on meanwhile
             focusManager.clearFocus()
             stack = MainNav.openThreadConversation(stack)
