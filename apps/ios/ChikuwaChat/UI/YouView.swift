@@ -25,6 +25,10 @@ struct YouView: View {
 
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var mePublic: UserPublic? { me.map { controller.store.users[$0.id] ?? $0.asPublic } }
+    /// 「ダーク · 藍」: the look and the palette of the workspace on screen.
+    private var appearanceValue: String {
+        "\(theme.label) · \(ThemeSettings.shared.choices.resolve(controller.activeServerUrl).label)"
+    }
     private var logoutTitle: String {
         controller.workspaces.count > 1 ? tr("\(controller.workspaceName) からログアウト") : tr("ログアウト")
     }
@@ -48,7 +52,7 @@ struct YouView: View {
                 }
                 Section {
                     NavigationLink(value: YouRoute.notifications) { YouRow(title: tr("通知"), symbol: "bell") }
-                    NavigationLink(value: YouRoute.appearance) { YouRow(title: tr("表示"), symbol: "circle.lefthalf.filled", value: theme.label) }
+                    NavigationLink(value: YouRoute.appearance) { YouRow(title: tr("表示"), symbol: "circle.lefthalf.filled", value: appearanceValue) }
                     NavigationLink(value: YouRoute.profile) { YouRow(title: tr("プロフィールを編集"), symbol: "person.crop.circle") }
                     NavigationLink(value: YouRoute.account) { YouRow(title: tr("アカウント"), symbol: "lock") }
                     NavigationLink(value: YouRoute.workspaces) { YouRow(title: tr("ワークスペース"), symbol: "square.stack", value: controller.workspaceName) }
@@ -458,11 +462,48 @@ struct NotificationSettingsView: View {
 
 // MARK: - 表示
 
+/// The 「テーマの色」 swatches: a circle of each palette's fill with a check on the chosen one, its name under the row.
+struct PaletteSwatches: View {
+    let selected: AppPalette
+    let choose: (AppPalette) -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 0) {
+                ForEach(AppPalette.allCases) { palette in
+                    Button { choose(palette) } label: {
+                        Circle()
+                            .fill(palette.accentSolid)
+                            .frame(width: 34, height: 34)
+                            .overlay {
+                                if palette == selected {
+                                    Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(.white)
+                                }
+                            }
+                            .padding(3)
+                            .overlay(Circle().strokeBorder(palette == selected ? palette.accent : Color.clear, lineWidth: 2))
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(palette.label)
+                    .accessibilityAddTraits(palette == selected ? .isSelected : [])
+                }
+            }
+            Text(selected.label).font(.subheadline).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 /// 端末に合わせる / ライト / ダーク, on this device only; the whole app follows it (RootView). M50: the long-press quick
 /// reactions, for all my devices.
 struct AppearanceView: View {
     @Bindable var controller: AppController
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
+    @Bindable private var themeSettings = ThemeSettings.shared
     @AppStorage(Timeline.groupingKey) private var grouping = false
     @AppStorage(SwipeNav.settingKey) private var swipeNavigation = true
     @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
@@ -527,6 +568,40 @@ struct AppearanceView: View {
         }
     }
 
+    /// 「テーマの色」 (MOBILE_UI.md §27.2): the six palettes as swatches; with two or more workspaces, for this
+    /// workspace only or for every workspace (the desktop's scope; this workspace's own choice wins over the common one).
+    private var paletteSection: some View {
+        let workspace = controller.activeServerUrl
+        let choices = themeSettings.choices
+        let current = choices.resolve(workspace)
+        let scoped = controller.workspaces.count > 1 && workspace != nil
+        return Section {
+            if scoped {
+                Picker("適用先", selection: Binding(get: { choices.scope(workspace) }, set: { scope in
+                    // The colour on screen stays; it becomes this workspace's own, or every workspace's.
+                    themeSettings.choose(current, scope: scope, workspace: workspace)
+                })) {
+                    ForEach(ThemeScope.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            PaletteSwatches(selected: current) { palette in
+                themeSettings.choose(palette, scope: scoped ? choices.scope(workspace) : .all, workspace: workspace)
+            }
+        } header: {
+            Text("テーマの色")
+        } footer: {
+            if scoped {
+                Text(choices.scope(workspace) == .workspace
+                     ? tr("\(controller.workspaceName) だけの色です。ワークスペースを切り替えると、それぞれの色になります。この端末だけの設定です。")
+                     : tr("すべてのワークスペースで同じ色です（それぞれの色は消えます）。この端末だけの設定です。"))
+            } else {
+                Text("リンク・ボタン・選択中のタブなどの色です。この端末だけの設定です。")
+            }
+        }
+    }
+
     @ViewBuilder
     private var themeAndMessages: some View {
         Section {
@@ -535,11 +610,15 @@ struct AppearanceView: View {
             }
             .pickerStyle(.inline)
             .labelsHidden()
+            // MOBILE_UI.md §27.2: OLED black wherever dark is shown (the device's dark under 端末に合わせる too).
+            Toggle("ダークを真っ黒にする", isOn: $themeSettings.black)
+                .disabled(theme == .light)
         } header: {
             Text("テーマ")
         } footer: {
-            Text("この端末だけの設定です。")
+            Text("ダークのとき、シートや iPad の列の背景も黒にします（有機 EL の画面向け）。この端末だけの設定です。")
         }
+        paletteSection
         // M47: this device only, off by default; open conversations and threads follow at once (they read it too).
         Section {
             Toggle("連続した投稿をまとめる", isOn: $grouping)
@@ -852,6 +931,7 @@ struct UsernameEditView: View {
 
 /// Password, two-factor authentication (M12i) and the devices signed in to my account (GET / DELETE /auth/sessions).
 struct AccountView: View {
+    @Environment(\.themeColors) private var themeColors
     @Bindable var controller: AppController
     @State private var totp: TotpStatusOut?
     @State private var totpSheet: TotpSheet?
@@ -954,7 +1034,7 @@ struct AccountView: View {
                         if session.current {
                             Text("この端末").font(.caption2.bold()).foregroundStyle(.white)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Color.accentColor, in: Capsule())
+                                .background(themeColors.solid, in: Capsule())
                         }
                     }
                     Text(SessionList.lastUsed(session.lastUsedAt) + (session.device.appVersion.map { " · \($0)" } ?? ""))

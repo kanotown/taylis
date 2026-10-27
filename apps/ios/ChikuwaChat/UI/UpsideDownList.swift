@@ -111,6 +111,7 @@ enum UpsideDown {
 
 /// 「新着 N 件」 / ↓ at the bottom right of a conversation (a channel, a thread) while it is not at its newest row.
 struct JumpToNewestButton: View {
+    @Environment(\.themeColors) private var themeColors
     let unseen: Int
     /// What VoiceOver says when there is nothing new: 「最新のメッセージへ」, 「最新の返信へ」.
     let latestLabel: LocalizedStringKey
@@ -122,7 +123,7 @@ struct JumpToNewestButton: View {
                 Label("新着 \(unseen) 件", systemImage: "arrow.down")
                     .font(.footnote.bold())
                     .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Color.accentColor, in: Capsule())
+                    .background(themeColors.solid, in: Capsule())
                     .foregroundStyle(.white)
             } else {
                 Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())

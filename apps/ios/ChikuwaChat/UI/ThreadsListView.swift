@@ -102,6 +102,7 @@ struct ThreadsListView: View {
 
 /// A followed thread's card: the card opens the thread; the conversation's name over it is a link to the conversation.
 struct ThreadRowView: View {
+    @Environment(\.themeColors) private var themeColors
     let entry: ThreadEntry
     @Bindable var controller: AppController
     let onOpenThread: () -> Void
@@ -149,7 +150,7 @@ struct ThreadRowView: View {
                             Text(state.mentionCount > 0 ? "@\(state.mentionCount)" : "\(state.unreadCount)")
                                 .font(.caption2).bold().foregroundStyle(.white)
                                 .padding(.horizontal, 7).padding(.vertical, 2)
-                                .background(state.mentionCount > 0 ? Color.red : Color.accentColor, in: Capsule())
+                                .background(state.mentionCount > 0 ? Color.red : themeColors.solid, in: Capsule())
                         }
                     }
                 }

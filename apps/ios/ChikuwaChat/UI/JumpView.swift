@@ -38,6 +38,7 @@ private struct JumpField: View {
 
 /// One conversation in the jump view and the picker: its glyph or picture, its name, what is unread.
 struct ConversationLabel: View {
+    @Environment(\.themeColors) private var themeColors
     @Bindable var controller: AppController
     let channel: ChannelState
     var note: String? = nil
@@ -66,7 +67,7 @@ struct ConversationLabel: View {
             if unread && badge > 0 {
                 Text("\(badge)").font(.caption2.bold()).foregroundStyle(.white)
                     .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(channel.channel.isDm ? Color.accentColor : Color.red, in: Capsule())
+                    .background(channel.channel.isDm ? themeColors.solid : Color.red, in: Capsule())
             } else if unread {
                 Circle().fill(Color.accentColor).frame(width: 8, height: 8)
             }

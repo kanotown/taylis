@@ -204,6 +204,7 @@ struct TaskInlineAdd: View {
 /// server before M81: the three built-in ones), cards go by `column_id`, 「移動」 lists the columns, and those who may post
 /// add, rename, move and delete columns (the switch's long press, or the ⋯ beside it: 「列を編集」).
 struct ChannelTasksPane: View {
+    @Environment(\.themeColors) private var themeColors
     @Bindable var controller: AppController
     let channel: ChannelState
     /// Tests pass their own hub, day and column (a column's id, or a status for its built-in column).
@@ -355,7 +356,7 @@ struct ChannelTasksPane: View {
                                     .lineLimit(1)
                                     .padding(.horizontal, 12).padding(.vertical, 6)
                                     .foregroundStyle(on ? Color.white : Color.primary)
-                                    .background(Capsule().fill(on ? Color.accentColor : Color(.tertiarySystemFill)))
+                                    .background(Capsule().fill(on ? themeColors.solid : Color(.tertiarySystemFill)))
                             }
                             .buttonStyle(.plain)
                             .id(item.id)

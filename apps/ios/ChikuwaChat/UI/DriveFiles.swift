@@ -247,7 +247,7 @@ struct DriveDownloadSheet: View {
             VStack(spacing: 10) {
                 Label("ダウンロードしました", systemImage: "checkmark.circle").foregroundStyle(.secondary)
                 Button { sharing = url } label: { Label("共有・ほかのアプリで開く", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).prominentTint()
                 Button { exporting = url } label: { Label("“ファイル”に保存", systemImage: "folder").frame(maxWidth: .infinity) }
                     .buttonStyle(.bordered)
             }

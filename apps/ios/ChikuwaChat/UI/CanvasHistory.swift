@@ -310,7 +310,7 @@ struct CanvasRevisionDetail: View {
                         Button { confirmRestore = true } label: {
                             Text("このバージョンに戻す")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.borderedProminent).prominentTint()
                         .disabled(busy)
                     }
                 }

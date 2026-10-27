@@ -251,6 +251,7 @@ struct CalendarView: View {
 /// The month's grid (Sunday first): the day numbers (today filled, the chosen day ringed, Sunday red, Saturday blue),
 /// up to three dots per day in the events' colours.
 struct CalendarMonthGrid: View {
+    @Environment(\.themeColors) private var themeColors
     let month: DayKey
     let today: DayKey
     let selected: DayKey
@@ -314,7 +315,7 @@ struct CalendarMonthGrid: View {
                     .foregroundStyle(isToday ? Color.white : (Self.weekdayColor(weekday) ?? .primary))
                     .frame(width: 32, height: 32)
                     .background {
-                        if isToday { Circle().fill(Color.accentColor) }
+                        if isToday { Circle().fill(themeColors.solid) }
                         else if isSelected { Circle().fill(Color.accentColor.opacity(0.18)) }
                     }
                 HStack(spacing: 3) {
@@ -462,7 +463,7 @@ struct ChannelEventsPane: View {
                     Button { form = .new(EventDraft.new(on: now, channelId: channel.id)) } label: {
                         Label("予定を追加", systemImage: "plus").font(.subheadline)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).prominentTint()
                     .controlSize(.small)
                     .disabled(calendarHub == nil)
                 }

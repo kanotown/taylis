@@ -358,7 +358,7 @@ struct PoolSection: View {
                         Text("予約する")
                     }
                 }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).prominentTint()
                     .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
                 if pool.takesWalkins && mine.walkin == nil {
                     Button("今すぐ（順番待ち）") { run { _ = await controller.reservePool(pool.id) } }
@@ -444,7 +444,7 @@ struct PoolSection: View {
                         }
                         Spacer()
                         Button(ReservationRules.todoButton(todo)) { press(todo) }
-                            .buttonStyle(todo.upcoming ? AnyPrimitiveButtonStyle(.bordered) : AnyPrimitiveButtonStyle(.borderedProminent))
+                            .buttonStyle(todo.upcoming ? AnyPrimitiveButtonStyle(.bordered) : AnyPrimitiveButtonStyle(.borderedProminent)).prominentTint(!todo.upcoming)
                             .disabled(busy || tooEarly(todo, now: now))
                     }
                 }

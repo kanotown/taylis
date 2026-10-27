@@ -22,6 +22,7 @@ struct ScheduleFormInitial: Identifiable, Equatable {
 /// candidates listed — each one's time can change, it can be removed, and another time on the same day added — and
 /// whether it is anonymous. Sent as a scheduling poll with the device's zone (the server writes the labels in it).
 struct ScheduleFormView: View {
+    @Environment(\.themeColors) private var themeColors
     let controller: AppController
     let channelId: String
     let parentId: String?
@@ -182,7 +183,7 @@ struct ScheduleFormView: View {
                 .frame(maxWidth: .infinity, minHeight: 36)
                 .background {
                     if chosen {
-                        RoundedRectangle(cornerRadius: 8).fill(Color.accentColor)
+                        RoundedRectangle(cornerRadius: 8).fill(themeColors.solid)
                     } else if day == today {
                         RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor.opacity(0.6))
                     }

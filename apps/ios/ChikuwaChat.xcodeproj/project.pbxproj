@@ -224,6 +224,7 @@
 		898C1A5E7E2277BAB3861CAE /* Sso.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB3F2CADCA41FD225E3FA9DF /* Sso.swift */; };
 		8998B1050EA11E66D3CA4370 /* ShareDestinations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F19E68FDBB339A0ED60097D /* ShareDestinations.swift */; };
 		89A3E0C3F3E2FFBFC78A8EB9 /* AiSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F9B88F9FF89A05C04EF723 /* AiSummaryView.swift */; };
+		8BEA0C053DBFC09FF6597579 /* AppPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318BEB3F1E94DBD1EAFD1D1F /* AppPalette.swift */; };
 		8BF7B083F5758F11D1414F33 /* InviteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB071937EF97C9E53923BC8 /* InviteTests.swift */; };
 		8E5768DD60AD781C559EC640 /* CanvasesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE37DCC9FD7E1E12869EB81 /* CanvasesView.swift */; };
 		8F6A00043552A87FD49FF943 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 5130A567D8F23B2153964538 /* Localizable.xcstrings */; };
@@ -351,6 +352,7 @@
 		DCDCDE31A7DA2F0A1B74ED1D /* AppController+Canvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DC4D0797808C23098E30BA /* AppController+Canvas.swift */; };
 		DD186BA276E115EA76964F24 /* PinsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CFB01E67A972B78B96D8C2 /* PinsView.swift */; };
 		DD2E12C6904EF861482B5EFA /* YouRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731D97E0E5B5A587620ABE48 /* YouRules.swift */; };
+		DD634D804CE51651E8FDFD7A /* ThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CD6D0F201E2ACB4C9B4EBBA /* ThemeTests.swift */; };
 		DF4BC814FC9C67FF3E465453 /* AiAskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9F203BADAD59864076EC05 /* AiAskTests.swift */; };
 		DF6D34DAED2202CC4CB807EB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 14DF989D71BA1C2A2618805E /* PrivacyInfo.xcprivacy */; };
 		DFB917EDBAFE20528E406E4C /* LinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41D8FE044BFBF564E1DC7816 /* LinksTests.swift */; };
@@ -473,6 +475,7 @@
 		09FC6CCD57BE54040646DCCD /* ActionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionModels.swift; sourceTree = "<group>"; };
 		0B404F9D56E0D4FC24A30F35 /* Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Schedule.swift; sourceTree = "<group>"; };
 		0C635C97F1BF9BA36B0501A6 /* MembershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipTests.swift; sourceTree = "<group>"; };
+		0CD6D0F201E2ACB4C9B4EBBA /* ThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeTests.swift; sourceTree = "<group>"; };
 		0FB071937EF97C9E53923BC8 /* InviteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteTests.swift; sourceTree = "<group>"; };
 		10336CDC74BBB94F8C40B3D1 /* Multipart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Multipart.swift; sourceTree = "<group>"; };
 		11ADABD71F51A91011248A1E /* PollCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollCardView.swift; sourceTree = "<group>"; };
@@ -530,6 +533,7 @@
 		2FA9C58FEEE9E437563EC2D6 /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
 		2FF918363BC7233499EC2F85 /* ScheduleFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleFormView.swift; sourceTree = "<group>"; };
 		3029D52918C274E739B70198 /* SchedulePollTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulePollTests.swift; sourceTree = "<group>"; };
+		318BEB3F1E94DBD1EAFD1D1F /* AppPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPalette.swift; sourceTree = "<group>"; };
 		318FCBC3EB1E0373B006DD50 /* TestNotification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestNotification.swift; sourceTree = "<group>"; };
 		32056695AD99E0D5FFD62069 /* LendingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LendingModels.swift; sourceTree = "<group>"; };
 		3275E1B7AB1291309430892A /* WorkflowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowViews.swift; sourceTree = "<group>"; };
@@ -1106,6 +1110,7 @@
 				F8340FEBA780A3A7BF118790 /* TaskTests.swift */,
 				B5F2726C9A1A5967B40BDC4A /* TemplatesTests.swift */,
 				00940C6C370264D5309F37EB /* TestNotificationTests.swift */,
+				0CD6D0F201E2ACB4C9B4EBBA /* ThemeTests.swift */,
 				095DC9C14EA053C04A5D3DEA /* ThreadsSnapshotTests.swift */,
 				1427088F8204B7D1A390857F /* TimelineTests.swift */,
 				E43503F626BEC5744F1A2151 /* TimesFeedSnapshotTests.swift */,
@@ -1138,6 +1143,7 @@
 				B8DAAC489596E1988D437875 /* ActivityFeedView.swift */,
 				077BAA18AE1DE4842DBDBF82 /* AiAskView.swift */,
 				D6F9B88F9FF89A05C04EF723 /* AiSummaryView.swift */,
+				318BEB3F1E94DBD1EAFD1D1F /* AppPalette.swift */,
 				B0331E3481EE3CCEC391E1E4 /* AttachmentsView.swift */,
 				C3FF385E9962814E3BED2224 /* Attendance.swift */,
 				AE7DC8ED26CFBC15CEBF01A1 /* AttendanceIcons.swift */,
@@ -1697,6 +1703,7 @@
 				09042AACA7B7FC70CC71C09F /* TaskTests.swift in Sources */,
 				18705BA325204C3824490358 /* TemplatesTests.swift in Sources */,
 				6F2736A0301E1565E1DE2156 /* TestNotificationTests.swift in Sources */,
+				DD634D804CE51651E8FDFD7A /* ThemeTests.swift in Sources */,
 				0BF3079882ED5F8F73F73D6D /* ThreadsSnapshotTests.swift in Sources */,
 				AB626CA2B33DEA99788CE811 /* TimelineTests.swift in Sources */,
 				B6F9EEFB67EC3A8B6AB41383 /* TimesFeedSnapshotTests.swift in Sources */,
@@ -1802,6 +1809,7 @@
 				4A6F0D7B6F124BAE39D7AA84 /* AppController.swift in Sources */,
 				2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */,
 				00AF166F35538CA81ABDE4FF /* AppLanguage.swift in Sources */,
+				8BEA0C053DBFC09FF6597579 /* AppPalette.swift in Sources */,
 				9E7035C4099857904103250B /* AttachmentsView.swift in Sources */,
 				EA8E6A502895697E7B1D8B54 /* Attendance.swift in Sources */,
 				87D5C0005E42931798E9AA34 /* AttendanceIcons.swift in Sources */,

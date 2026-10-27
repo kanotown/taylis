@@ -81,7 +81,7 @@ struct ChannelBrowserView: View {
                         .buttonStyle(.bordered).controlSize(.small).disabled(busy == channel.id)
                 } else {
                     Button("参加") { Task { await join(channel) } }
-                        .buttonStyle(.borderedProminent).controlSize(.small).disabled(busy == channel.id)
+                        .buttonStyle(.borderedProminent).prominentTint().controlSize(.small).disabled(busy == channel.id)
                 }
             }
         }

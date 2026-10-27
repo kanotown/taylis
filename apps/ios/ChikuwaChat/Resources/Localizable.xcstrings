@@ -236,6 +236,22 @@
         }
       }
     },
+    "%@ だけの色です。ワークスペースを切り替えると、それぞれの色になります。この端末だけの設定です。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only for %@. Switching workspaces switches to each one's colour. This device only."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅用于 %@。切换工作区时会换成各自的颜色。仅限此设备。"
+          }
+        }
+      }
+    },
     "%@ の %@" : {
       "localizations" : {
         "en" : {
@@ -430,6 +446,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请打开 Taylis 并登录。"
+          }
+        }
+      }
+    },
+    "Taylis（栗）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taylis (chestnut)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taylis（栗色）"
           }
         }
       }
@@ -670,6 +702,22 @@
         }
       }
     },
+    "このワークスペースだけ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This workspace only"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅此工作区"
+          }
+        }
+      }
+    },
     "この値は自動で決まります" : {
       "localizations" : {
         "en" : {
@@ -810,6 +858,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你已借用此设备"
+          }
+        }
+      }
+    },
+    "すべてのワークスペース" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All workspaces"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有工作区"
+          }
+        }
+      }
+    },
+    "すべてのワークスペースで同じ色です（それぞれの色は消えます）。この端末だけの設定です。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The same colour in every workspace (their own colours are removed). This device only."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有工作区使用相同的颜色（各自的颜色会被清除）。仅限此设备。"
           }
         }
       }
@@ -1118,6 +1198,38 @@
         }
       }
     },
+    "ダークのとき、シートや iPad の列の背景も黒にします（有機 EL の画面向け）。この端末だけの設定です。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In dark mode, sheets and the iPad's columns get a black background too (for OLED screens). This device only."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深色模式下，表单和 iPad 的栏也使用黑色背景（适合 OLED 屏幕）。仅限此设备。"
+          }
+        }
+      }
+    },
+    "ダークを真っ黒にする" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pure black dark mode"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深色模式使用纯黑"
+          }
+        }
+      }
+    },
     "チェックボックス" : {
       "localizations" : {
         "en" : {
@@ -1210,6 +1322,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开模板"
+          }
+        }
+      }
+    },
+    "テーマの色" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Theme colour"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主题颜色"
           }
         }
       }
@@ -1498,6 +1626,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关联"
+          }
+        }
+      }
+    },
+    "リンク・ボタン・選択中のタブなどの色です。この端末だけの設定です。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The colour of links, buttons, the selected tab and so on. This device only."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "链接、按钮、选中的标签等的颜色。仅限此设备。"
           }
         }
       }
@@ -3614,6 +3758,22 @@
         }
       }
     },
+    "紅" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crimson"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "绯红"
+          }
+        }
+      }
+    },
     "組み込み" : {
       "localizations" : {
         "en" : {
@@ -3850,6 +4010,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "我（新建行的人）"
+          }
+        }
+      }
+    },
+    "藍" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Indigo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "靛蓝"
           }
         }
       }
@@ -4410,6 +4586,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你将以运营身份加入"
+          }
+        }
+      }
+    },
+    "適用先" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply to"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用于"
           }
         }
       }

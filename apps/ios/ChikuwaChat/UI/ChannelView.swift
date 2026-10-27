@@ -632,7 +632,7 @@ struct ChannelView: View {
                                 } catch { controller.error = controller.describe(error) }
                             }
                         }
-                        .buttonStyle(.borderedProminent).padding()
+                        .buttonStyle(.borderedProminent).prominentTint().padding()
                     } else if channel.channel.archived {
                         Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
                     } else if !channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin") {
@@ -1549,6 +1549,7 @@ final class IsoDates: @unchecked Sendable {
 }
 
 struct ComposerView: View {
+    @Environment(\.themeColors) private var themeColors
     let channelId: String
     var parentId: String? = nil
     /// `AppController.composerFocus` for this input: the conversation's id, or a thread's (`ConversationCarrier.focusKey`).
@@ -1887,7 +1888,7 @@ struct ComposerView: View {
 
     private func sendButton(size: CGFloat) -> some View {
         Button(action: send) {
-            Image(systemName: "arrow.up.circle.fill").font(.system(size: size)).foregroundStyle(Color.accentColor)
+            Image(systemName: "arrow.up.circle.fill").font(.system(size: size)).symbolRenderingMode(.palette).foregroundStyle(.white, themeColors.solid)
         }
         // A hardware keyboard (iPad): ⌘Return sends, Return makes a new line (the desktop's default; a plain Return also
         // confirms a Japanese conversion). Only the composer being typed in, with a thread's composer beside it.

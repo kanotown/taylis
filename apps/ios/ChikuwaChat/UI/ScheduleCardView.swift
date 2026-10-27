@@ -36,6 +36,7 @@ struct ScheduleCountLine: View {
 /// Once decided the card shows the decided candidate large, with 「予定を開く」 (the event the decision made) and
 /// 「決定を取り消す」.
 struct ScheduleCardView: View {
+    @Environment(\.themeColors) private var themeColors
     let poll: PollOut
     let message: MessageState
     @Bindable var controller: AppController
@@ -212,8 +213,8 @@ struct ScheduleCardView: View {
                 .font(.body.weight(.semibold))
                 .foregroundStyle(on ? Color.white : answer.tone)
                 .frame(width: 44, height: 32)
-                .background(on ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(on ? Color.accentColor : Color.secondary.opacity(0.35)))
+                .background(on ? themeColors.solid : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(on ? themeColors.solid : Color.secondary.opacity(0.35)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -236,7 +237,7 @@ struct ScheduleCardView: View {
                 }
                 .accessibilityLabel("ひとこと")
             if commentChanged && !disabled {
-                Button("保存", action: saveComment).buttonStyle(.borderedProminent).controlSize(.small)
+                Button("保存", action: saveComment).buttonStyle(.borderedProminent).prominentTint().controlSize(.small)
             }
         }
     }

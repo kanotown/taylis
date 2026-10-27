@@ -127,6 +127,7 @@ enum DMList {
 
 /// The DM tab: my conversations with people, newest first, a name filter and 「新しいメッセージ」.
 struct DMListView: View {
+    @Environment(\.themeColors) private var themeColors
     @Bindable var controller: AppController
     let onOpen: (String) -> Void
     let onNew: () -> Void
@@ -265,7 +266,7 @@ struct DMListView: View {
                     if unread && badge > 0 {
                         Text("\(badge)").font(.caption2).bold().foregroundStyle(.white)
                             .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(Color.accentColor, in: Capsule())
+                            .background(themeColors.solid, in: Capsule())
                     }
                 }
             }
