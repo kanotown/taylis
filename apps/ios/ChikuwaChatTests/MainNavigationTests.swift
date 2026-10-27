@@ -143,19 +143,19 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertNil(split.openThread)
     }
 
-    /// A search result in a thread (2026-10-27): its conversation and the thread pushed in one change, the thread in front
-    /// (Back: the conversation, then the results); a top-level message, its conversation alone.
-    func testASearchResultInAThreadPushesTheThreadWithItsConversation() {
-        let (reply, thread) = SearchRoute.screens(messageId: "m2", channelId: "general", parentId: "p1")
-        XCTAssertEqual(reply, SearchRoute(messageId: "m2", channelId: "general"))
-        XCTAssertEqual(thread, SearchThreadRoute(channelId: "general", parentId: "p1"))
-        let (top, none) = SearchRoute.screens(messageId: "m1", channelId: "general", parentId: nil)
-        XCTAssertEqual(top, SearchRoute(messageId: "m1", channelId: "general"))
-        XCTAssertNil(none)
+    /// A search result in a thread (2026-10-27): the thread pushed alone over the results (Back: the results); its
+    /// header's conversation link pushes the conversation over it, at the parent (Back: the thread). A top-level
+    /// message: its conversation.
+    func testASearchResultInAThreadPushesTheThreadAlone() {
+        let thread = SearchThreadRoute(channelId: "general", parentId: "p1")
+        XCTAssertEqual(SearchRoute.screen(messageId: "m2", channelId: "general", parentId: "p1"), .thread(thread))
+        XCTAssertEqual(thread.conversation, SearchRoute(messageId: "p1", channelId: "general"))
+        XCTAssertEqual(SearchRoute.screen(messageId: "m1", channelId: "general", parentId: nil),
+                       .conversation(SearchRoute(messageId: "m1", channelId: "general")))
     }
 
-    /// The search screen's open conversation: the result's while its conversation or thread shows, whichever of the two
-    /// a Back makes appear or disappear first; the one behind the search once both have gone.
+    /// The search screen's open conversation: the result's while its thread or its conversation shows, whichever of the
+    /// two a push or a Back makes appear or disappear first; the one behind the search once all have gone.
     @MainActor
     func testTheSearchScreensOpenConversationFollowsItsScreens() async {
         let server = FakeServer()
@@ -166,21 +166,33 @@ final class MainNavigationTests: XCTestCase {
                                 store: Store(), getAccessToken: { "t" }, options: options)
         engine.currentChannelId = "behind"
         let shown = SearchShownConversations()
-        await shown.appeared("general", engine: engine) // the thread, pushed with its conversation: only it appears
-        XCTAssertEqual(engine.currentChannelId, "general")
-        // Back to the conversation: it appears before the thread has gone…
-        await shown.appeared("general", engine: engine)
-        shown.disappeared("general", engine: engine)
+        await shown.appeared("general", engine: engine) // the thread, alone over the results
         XCTAssertEqual(engine.currentChannelId, "general")
         shown.disappeared("general", engine: engine) // Back to the results
         XCTAssertEqual(engine.currentChannelId, "behind")
         XCTAssertEqual(shown.shown, [])
 
-        // …or after.
+        // The thread's conversation link: the conversation appears before the thread has gone…
+        await shown.appeared("general", engine: engine)
+        await shown.appeared("general", engine: engine)
+        shown.disappeared("general", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "general")
+        // …Back to the thread: it appears after the conversation has gone…
+        shown.disappeared("general", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "behind") // a moment with neither on screen
+        await shown.appeared("general", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "general")
+        shown.disappeared("general", engine: engine) // Back to the results
+        XCTAssertEqual(engine.currentChannelId, "behind")
+        XCTAssertEqual(shown.shown, [])
+
+        // …or the other way round: the thread goes before the conversation appears, and back again.
         await shown.appeared("random", engine: engine)
-        XCTAssertEqual(engine.currentChannelId, "random")
         shown.disappeared("random", engine: engine)
         await shown.appeared("random", engine: engine)
+        XCTAssertEqual(engine.currentChannelId, "random")
+        await shown.appeared("random", engine: engine)
+        shown.disappeared("random", engine: engine)
         XCTAssertEqual(engine.currentChannelId, "random")
         shown.disappeared("random", engine: engine)
         XCTAssertEqual(engine.currentChannelId, "behind")

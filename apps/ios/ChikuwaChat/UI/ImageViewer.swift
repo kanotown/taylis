@@ -24,6 +24,20 @@ enum ImageGallery {
     }
 }
 
+/// A single tap on the photo hides the viewer's bars (the header and the status bar), so only the photo shows on black;
+/// another brings them back (2026-10-27, as in Photos). With VoiceOver on they always show: its users reach 閉じる and
+/// 共有 through them, and a tap there is a different gesture anyway.
+enum ViewerChrome {
+    /// Whether the bars are hidden after a single tap.
+    static func afterTap(hidden: Bool, voiceOver: Bool) -> Bool { voiceOver ? false : !hidden }
+
+    /// Whether they are hidden as VoiceOver turns on or off (on: shown again).
+    static func whenVoiceOverChanges(hidden: Bool, voiceOver: Bool) -> Bool { voiceOver ? false : hidden }
+
+    /// The bars' fade.
+    static let fade = 0.2
+}
+
 /// Swipe to close, like Photos and Slack: which drags may close the viewer and when a release does.
 enum ViewerDismiss {
     enum Axis: Equatable { case vertical, horizontal }
@@ -76,7 +90,8 @@ enum ViewerDismiss {
 }
 
 /// Full-screen photo viewer like Slack's and Photos': the message's photos side by side (swipe between them), pinch /
-/// double-tap zoom, share, close, and swipe the photo away to close (testers, 2026-09-29: only 閉じる closed it).
+/// double-tap zoom, share, close, and swipe the photo away to close (testers, 2026-09-29: only 閉じる closed it). A single
+/// tap hides the bars and shows them again (`ViewerChrome`).
 struct ImageViewer: View {
     let attachments: [AttachmentOut]
     let start: Int
@@ -88,6 +103,8 @@ struct ImageViewer: View {
     @State private var files: [String: URL] = [:]
     /// 0…1 while a photo is dragged away: the header goes first, the background with the distance.
     @State private var dragged: CGFloat = 0
+    /// The header and the status bar hidden by a tap on the photo (`ViewerChrome`).
+    @State private var chromeHidden = false
     /// M166: where a photo's original comes from (a drive file's ticket, DriveFiles.viewFile); nil: the attachment's.
     private let load: ((AttachmentOut) async -> URL?)?
 
@@ -118,9 +135,24 @@ struct ImageViewer: View {
                        onDrag: { progress in
                            if progress == 0 { withAnimation(.easeOut(duration: 0.2)) { dragged = 0 } } else { dragged = progress }
                        },
+                       onTap: {
+                           withAnimation(.easeInOut(duration: ViewerChrome.fade)) {
+                               chromeHidden = ViewerChrome.afterTap(hidden: chromeHidden, voiceOver: UIAccessibility.isVoiceOverRunning)
+                           }
+                       },
                        onClose: close)
                 .ignoresSafeArea()
-            header.opacity(1 - min(1, dragged * 4))
+            header
+                .opacity(chromeHidden ? 0 : 1 - min(1, dragged * 4))
+                .allowsHitTesting(!chromeHidden)
+                .accessibilityHidden(chromeHidden)
+        }
+        .statusBarHidden(chromeHidden)
+        .persistentSystemOverlays(chromeHidden ? .hidden : .automatic)
+        .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
+            withAnimation(.easeInOut(duration: ViewerChrome.fade)) {
+                chromeHidden = ViewerChrome.whenVoiceOverChanges(hidden: chromeHidden, voiceOver: UIAccessibility.isVoiceOverRunning)
+            }
         }
         // The conversation shows through as the photo is dragged away, as in Photos (the cover is otherwise opaque).
         .presentationBackground(.clear)
@@ -176,6 +208,7 @@ struct ImagePager: UIViewControllerRepresentable {
     let onPage: (Int) -> Void
     let onFile: (String, URL) -> Void
     let onDrag: (CGFloat) -> Void
+    var onTap: () -> Void = {}
     let onClose: () -> Void
 
     func makeUIViewController(context: Context) -> ImagePagerController {
@@ -190,6 +223,7 @@ struct ImagePager: UIViewControllerRepresentable {
         pager.onPage = onPage
         pager.onFile = onFile
         pager.onDrag = onDrag
+        pager.onTap = onTap
         pager.onClose = onClose
     }
 }
@@ -208,6 +242,8 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
     var onPage: (Int) -> Void = { _ in }
     var onFile: (String, URL) -> Void = { _, _ in }
     var onDrag: (CGFloat) -> Void = { _ in }
+    /// A single tap on a photo (once a double tap is out of the question): the bars hide or show.
+    var onTap: () -> Void = {}
     var onClose: () -> Void = {}
 
     let pager = PagerScrollView()
@@ -250,6 +286,10 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
             let page = ImagePageView()
             page.onRetry = { [weak self] in self?.fetch(i) }
             page.onZoomChange = { [weak self] in self?.zoomChanged(i) }
+            page.onSingleTap = { [weak self] in
+                guard let self, !closing else { return }
+                onTap()
+            }
             pager.addSubview(page)
             return page
         }
@@ -497,6 +537,10 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
     private let failure = UIStackView()
     var onRetry: () -> Void = {}
     var onZoomChange: () -> Void = {}
+    /// A single tap, recognised once the double tap has failed (so double-tap zoom keeps working).
+    var onSingleTap: () -> Void = {}
+    let doubleTap = UITapGestureRecognizer()
+    let singleTap = UITapGestureRecognizer()
     private var laidOutSize = CGSize.zero
 
     var state: State = .loading { didSet { apply() } }
@@ -518,9 +562,12 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
         imageView.accessibilityTraits = .image
         scrollView.addSubview(imageView)
         addSubview(scrollView)
-        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(toggleZoom(_:)))
+        doubleTap.addTarget(self, action: #selector(toggleZoom(_:)))
         doubleTap.numberOfTapsRequired = 2
         scrollView.addGestureRecognizer(doubleTap)
+        singleTap.addTarget(self, action: #selector(singleTapped))
+        singleTap.require(toFail: doubleTap)
+        scrollView.addGestureRecognizer(singleTap)
 
         spinner.color = .white
         spinner.hidesWhenStopped = true
@@ -606,6 +653,8 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
         let y = max(0, (bounds.height - content.height) / 2)
         scrollView.contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
     }
+
+    @objc private func singleTapped() { onSingleTap() }
 
     @objc private func toggleZoom(_ gesture: UITapGestureRecognizer) {
         guard hasImage else { return }

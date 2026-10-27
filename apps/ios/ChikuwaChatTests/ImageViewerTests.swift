@@ -88,6 +88,17 @@ final class ViewerDismissTests: XCTestCase {
         XCTAssertFalse(ViewerDismiss.shouldClose(offset: 0, velocity: 2000, extent: height))
     }
 
+    /// A tap hides the bars and another shows them (2026-10-27); with VoiceOver they stay, and turning it on shows them.
+    func testATapTogglesTheBarsExceptWithVoiceOver() {
+        XCTAssertTrue(ViewerChrome.afterTap(hidden: false, voiceOver: false))
+        XCTAssertFalse(ViewerChrome.afterTap(hidden: true, voiceOver: false))
+        XCTAssertFalse(ViewerChrome.afterTap(hidden: false, voiceOver: true))
+        XCTAssertFalse(ViewerChrome.afterTap(hidden: true, voiceOver: true))
+        XCTAssertFalse(ViewerChrome.whenVoiceOverChanges(hidden: true, voiceOver: true))
+        XCTAssertTrue(ViewerChrome.whenVoiceOverChanges(hidden: true, voiceOver: false))
+        XCTAssertFalse(ViewerChrome.whenVoiceOverChanges(hidden: false, voiceOver: false))
+    }
+
     func testProgressFadesTheBackgroundByHalfTheScreen() {
         XCTAssertEqual(ViewerDismiss.progress(offset: 0, extent: 800), 0)
         XCTAssertEqual(ViewerDismiss.progress(offset: -200, extent: 800), 0.5, accuracy: 0.001)
@@ -129,6 +140,21 @@ final class ImagePagerControllerTests: XCTestCase {
         for _ in 0..<20 where !requested.contains("p2") { try await Task.sleep(nanoseconds: 20_000_000) }
         XCTAssertTrue(requested.contains("p2"))
         XCTAssertFalse(requested.contains("p3"))
+    }
+
+    /// Each photo's single tap reaches the viewer (its bars); a double tap stays the zoom's: both sit on the zoom view.
+    func testASingleTapOnAPhotoReachesTheViewer() {
+        let pager = makePager(count: 2, start: 0) { _ in }
+        var taps = 0
+        pager.onTap = { taps += 1 }
+        let page = pager.pages[1]
+        XCTAssertEqual(page.singleTap.numberOfTapsRequired, 1)
+        XCTAssertEqual(page.doubleTap.numberOfTapsRequired, 2)
+        XCTAssertTrue(page.scrollView.gestureRecognizers?.contains(page.singleTap) == true)
+        XCTAssertTrue(page.scrollView.gestureRecognizers?.contains(page.doubleTap) == true)
+        page.onSingleTap()
+        pager.pages[0].onSingleTap()
+        XCTAssertEqual(taps, 2)
     }
 
     func testCloseDragsFollowThePageAndZoom() {
