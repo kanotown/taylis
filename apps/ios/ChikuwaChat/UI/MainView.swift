@@ -21,6 +21,7 @@ struct MainView: View {
     /// The window turned compact with the thread pane open: the pane closes before the layout changes (applyLayout).
     @State private var paneLeaving = false
     @State private var splitStackWrites = SplitStackWrites()
+    @State private var reselect = ReselectSnapshot()
     /// PRESENCE.md §11.7: the quick status menu from my picture at the home's top left (either layout; `myStatusSheet`
     /// remembers where it sends me until it is gone).
     @State private var myStatusShown = false
@@ -161,7 +162,10 @@ struct MainView: View {
             if case .thread(_, let parentId)? = nav.front { thread = parentId }
             controller.layoutCarry.layoutChanging(channelId: nav.frontChannelId, parentId: thread)
         }
+        let fromSearchTab = nav.layout == .tabs && nav.tab == .search
         nav.setLayout(layout, isDm: isDm)
+        // The split has no 検索 tab: its search is the sheet (a new search; the tab's results are not carried).
+        if fromSearchTab, nav.layout == .split, sheet == nil { sheet = .search }
     }
 
     /// The window's horizontal size class as UIKit has it now: ahead of the environment's while the size class changes
@@ -215,6 +219,7 @@ struct MainView: View {
                 }
             }
         }
+        // The split's 移動・検索 (the phone's is the 検索 tab, `openJump`).
         .fullScreenCover(isPresented: $jumpShown) {
             JumpView(controller: controller) { id in
                 jumpShown = false
@@ -367,13 +372,19 @@ struct MainView: View {
         }
     }
 
+    /// 「移動・検索」 (the home's entry, ⌘K): on the phone the 検索 tab, emptied and its field focused (MOBILE_UI.md §6.2,
+    /// 2026-10-27); in the split the full-screen cover as before.
+    private func openJump() {
+        if nav.layout == .tabs { nav.openSearch() } else { jumpShown = true }
+    }
+
     /// The hardware keyboard's shortcuts (KeyCommand), only with nothing presented over the screen.
     private func keyCommand(_ command: KeyCommand) {
         guard sheet == nil, !jumpShown, !nav.youSheet, !myStatusShown else { return }
         switch command {
-        case .jump: jumpShown = true
+        case .jump: openJump()
         case .compose: sheet = .compose
-        case .search: sheet = .search
+        case .search: if nav.layout == .tabs { nav.openSearch() } else { sheet = .search }
         case .back: nav.back()
         case .closeThread: if nav.layout == .split { nav.openThread = nil }
         }
@@ -383,9 +394,10 @@ struct MainView: View {
 
     private var tabView: some View {
         TabView(selection: Binding(get: { nav.tab }, set: { selected in
-            // Tapping the open tab again: back to its first screen.
-            if selected == nav.tab {
-                nav.paths[selected] = []
+            // Tapping the open tab again (where SwiftUI still reports it): back to its first screen. The 検索 tab's is
+            // `TabReselectProbe`'s alone, which knows where the tab was as the tap began.
+            if selected == nav.tab, selected != .search {
+                _ = nav.reselect(selected)
                 if selected == .you { youPath = [] }
             }
             nav.tab = selected
@@ -402,12 +414,28 @@ struct MainView: View {
                 .tabItem { Label("アクティビティ", systemImage: "bell") }
                 .badge(activityBadge.count)
                 .tag(MainTab.activity)
+            // 2026-10-27 (MOBILE_UI.md §6.2): the message search as a tab, on a stack of its own. Not `Tab(role:
+            // .search)`: iOS 26 draws that one apart at the bar's end, and the order is ホーム・DM・アクティビティ・検索・自分.
+            SearchTabView(controller: controller, path: $nav.searchPath, command: nav.searchCommand)
+                .tabItem { Label("検索", systemImage: "magnifyingglass") }
+                .tag(MainTab.search)
             YouView(controller: controller, path: $youPath, onOpenAttendance: openAttendance)
                 .tabItem { Label("自分", systemImage: "person.crop.circle") }
                 .tag(MainTab.you)
         }
         // M39: the activity badge is red only with a mention among its items.
         .background(TabBadgeTint(index: 2, count: activityBadge.count, mention: activityBadge.mention))
+        // The selected tab tapped again: back to its first screen; the 検索 tab already there focuses its field.
+        .background(TabReselectProbe(onTouch: { reselect.searchAtRoot = nav.searchPath.isEmpty }, onReselect: { index in
+            guard MainTab.order.indices.contains(index) else { return }
+            let tab = MainTab.order[index]
+            if tab == .search && !reselect.searchAtRoot {
+                nav.searchPath = [] // UIKit pops it too; never a focus with this tap
+            } else {
+                _ = nav.reselect(tab)
+            }
+            if tab == .you { youPath = [] }
+        }))
         .overlay { forwardSwipeOverlay }
     }
 
@@ -473,7 +501,7 @@ struct MainView: View {
 
     /// The home's list: the home tab's first screen, or the split's sidebar.
     private func homeList(sidebar: Bool) -> some View {
-        ChannelListView(controller: controller, selection: $homeSelection, onJump: { jumpShown = true }, onAllDms: {
+        ChannelListView(controller: controller, selection: $homeSelection, onJump: openJump, onAllDms: {
             if sidebar {
                 nav.select(.list(MainNavigation.dmsId))
             } else {
@@ -482,7 +510,8 @@ struct MainView: View {
             }
         }, current: sidebar ? sidebarCurrent : nil,
            activity: sidebar ? .init(count: activityBadge.count, mention: activityBadge.mention, selected: nav.sidebarSelection == .list(MainNavigation.activityId),
-                                     open: { nav.select(.list(MainNavigation.activityId)) }) : nil)
+                                     open: { nav.select(.list(MainNavigation.activityId)) }) : nil,
+           onSearch: sidebar ? { sheet = .search } : nil)
         .overlay(alignment: .bottomTrailing) { composeButton }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { homeWidth = $0 }
         .navigationTitle(controller.workspaceName)
@@ -787,16 +816,20 @@ struct MainView: View {
         }
     }
 
-    /// A screen of a tab's stack (or the detail column's): a list, or a conversation (or its preview) without the tab bar.
-    @ViewBuilder
+    /// A screen of a tab's stack (or the detail column's): a list, or a conversation (or its preview), a thread or a page
+    /// without the tab bar (`MainRoute.hidesTabBar`).
     private func screen(_ route: MainRoute, on tab: MainTab) -> some View {
+        screenContent(route, on: tab).modifier(HidesTabBar(when: route.hidesTabBar))
+    }
+
+    @ViewBuilder
+    private func screenContent(_ route: MainRoute, on tab: MainTab) -> some View {
         switch route {
         case .list(let id): list(id, on: tab)
         case .page(let pageId):
             // M122: a wiki page; its links, breadcrumbs and child pages go on this stack.
             WikiPageScreen(controller: controller, pageId: pageId, onOpenPage: { nav.openPage($0, on: tab) })
                 .id(pageId)
-                .modifier(HidesTabBar())
         case .drive(let folderId):
             // M166: a drive's folder; its folders (and the steps of its path) go on this stack.
             DriveFolderView(controller: controller, folderId: folderId, onOpenFolder: { nav.openDriveFolder($0, on: tab) })
@@ -811,7 +844,6 @@ struct MainView: View {
                 ThreadView(controller: controller, channelId: channelId, parentId: parentId, onOpenConversation: {
                     openThreadConversation(channelId, parentId: parentId, on: tab)
                 })
-                .modifier(HidesTabBar())
             } else {
                 ContentUnavailableView("会話が見つかりません", systemImage: "bubble.left.and.bubble.right")
             }
@@ -834,7 +866,6 @@ struct MainView: View {
                             .id(channel.id)
                     }
                 }
-                .modifier(HidesTabBar())
             } else {
                 ContentUnavailableView("会話が見つかりません", systemImage: "bubble.left.and.bubble.right")
             }
@@ -910,6 +941,12 @@ struct MainView: View {
             EmptyView()
         }
     }
+}
+
+/// Where the 検索 tab was as a tap on the tab bar began (TabReselectProbe): UIKit pops the stack before the tap is
+/// reported, and a tap that popped must not also focus the field.
+private final class ReselectSnapshot {
+    var searchAtRoot = true
 }
 
 /// The path the split's detail NavigationStack last set itself (a Back, its long-press menu, a NavigationLink).

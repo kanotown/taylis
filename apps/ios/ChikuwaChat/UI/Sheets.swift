@@ -6,20 +6,31 @@ struct NewDmView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selected = Set<String>()
     @State private var error: String?
+    /// The search field (2026-10-27): people by display name or username, the chosen ones kept in sight.
+    @State private var query = ""
 
-    /// People by name, then the AI bots (no other bot: apps/shared/jump-match.json `pick`).
+    /// People by name, then the AI bots (no other bot: apps/shared/jump-match.json `pick`), filtered by `query`.
     private var users: [UserPublic] {
-        let all = Array(controller.store.users.values), meId = controller.store.me?.id
-        let ids = JumpMatch.destinationPeople("", users: all, meId: meId).filter { $0 != meId }
-            + JumpMatch.bots("", users: all, aiBotIds: controller.aiHub?.botUserIds ?? [])
-        return ids.compactMap { controller.store.users[$0] }
+        let store = controller.store
+        let all = Array(store.users.values), meId = store.me?.id
+        let people = JumpMatch.destinationPeople("", users: all, meId: meId).filter { $0 != meId }
+        let bots = JumpMatch.bots("", users: all, aiBotIds: controller.aiHub?.botUserIds ?? [])
+        let ids = JumpMatch.pickable(query, ids: people, users: store.users, selected: selected)
+            + JumpMatch.pickable(query, ids: bots, users: store.users, selected: selected)
+        return ids.compactMap { store.users[$0] }
+    }
+
+    /// My DM with myself shows without a query or when my name matches it.
+    private var notesShown: Bool {
+        guard let me = controller.store.me else { return false }
+        return JumpMatch.normalize(query).isEmpty || JumpMatch.score(query, names: [me.displayName, me.username]) != nil
     }
 
     var body: some View {
         NavigationStack {
             List(selection: $selected) {
                 // A DM with only myself: notes to self (as in Slack).
-                if let me = controller.store.me?.id {
+                if notesShown, let me = controller.store.me?.id {
                     Section {
                         Button { open([me]) } label: {
                             Label {
@@ -38,9 +49,11 @@ struct NewDmView: View {
                             Text("@\(user.username)").foregroundStyle(.secondary).font(.footnote)
                         }
                     }
+                    if users.isEmpty && !notesShown { Text("見つかりません").foregroundStyle(.secondary) }
                 }
             }
             .environment(\.editMode, .constant(.active))
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "名前で絞り込む")
             .navigationTitle("ダイレクトメッセージ")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
@@ -135,11 +148,19 @@ struct AddMemberView: View {
     @State private var adding = false
     @State private var selected = Set<String>()
     @State private var error: String?
+    /// The search field (2026-10-27): as the new DM's, the chosen ones kept in sight.
+    @State private var query = ""
 
     private var candidates: [UserPublic] {
         controller.store.users.values
             .filter { $0.id != controller.store.me?.id && $0.deactivatedAt == nil && !(loader.members?.contains($0.id) ?? true) }
             .sorted { $0.displayName < $1.displayName }
+    }
+
+    /// The candidates the field leaves (JumpMatch.pickable).
+    private var shown: [UserPublic] {
+        let users = controller.store.users
+        return JumpMatch.pickable(query, ids: candidates.map(\.id), users: users, selected: selected).compactMap { users[$0] }
     }
 
     var body: some View {
@@ -158,8 +179,17 @@ struct AddMemberView: View {
                 } else if candidates.isEmpty {
                     Text("追加できるユーザーはいません").foregroundStyle(.secondary)
                 } else {
-                    List(candidates, selection: $selected) { user in Text(user.displayName) }
-                        .environment(\.editMode, .constant(.active))
+                    List(selection: $selected) {
+                        ForEach(shown) { user in
+                            HStack {
+                                Text(user.displayName)
+                                Text("@\(user.username)").foregroundStyle(.secondary).font(.footnote)
+                            }
+                        }
+                        if shown.isEmpty { Text("見つかりません").foregroundStyle(.secondary) }
+                    }
+                    .environment(\.editMode, .constant(.active))
+                    .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "名前で絞り込む")
                 }
             }
             .navigationTitle("メンバーを追加")

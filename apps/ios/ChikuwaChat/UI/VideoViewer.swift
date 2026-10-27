@@ -170,7 +170,7 @@ struct VideoViewer: View {
         .background(Color.black.opacity(1 - dragged).ignoresSafeArea())
         // The conversation shows through as the video is dragged away (the cover is otherwise opaque).
         .presentationBackground(.clear)
-        .preferredColorScheme(.dark)
+        .modifier(DarkPresentation())
     }
 
     private var header: some View {

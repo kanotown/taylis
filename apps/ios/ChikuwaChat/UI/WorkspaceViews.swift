@@ -152,7 +152,7 @@ struct WorkspaceListView: View {
                     } label: {
                         WorkspaceRow(workspace: workspace, active: active)
                     }
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.primary)  // the name in the text colour, not the accent (§27.2)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(workspace.isSignedIn ? "サインアウト" : "一覧から外す", role: .destructive) { leave(workspace) }
                     }
@@ -243,14 +243,17 @@ struct WorkspaceTitle: View {
                 HStack(spacing: 7) {
                     WorkspaceTile(workspace: workspace, size: 24, dot: controller.otherWorkspacesUnread)
                     Text(workspace.name).font(.headline).lineLimit(1)
-                    Image(systemName: "chevron.down").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.down").font(.caption.weight(.semibold)).foregroundStyle(Color.secondary)
                 }
-                .foregroundStyle(.primary)
+                // The text colour, not the theme's accent (MOBILE_UI.md §27.2, 2026-10-27): in a bar the hierarchical
+                // `.primary` is the bar's tint, so the name came out in the accent colour.
+                .foregroundStyle(Color.primary)
             }
+            .tint(Color.primary)
             .accessibilityLabel("ワークスペース：\(workspace.name)")
             .accessibilityHint(controller.otherWorkspacesUnread ? "ほかのワークスペースに未読があります" : "ワークスペースを切り替えます")
         } else {
-            Text(controller.workspaceName).font(.headline).lineLimit(1)
+            Text(controller.workspaceName).font(.headline).lineLimit(1).foregroundStyle(Color.primary)
         }
     }
 }

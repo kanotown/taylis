@@ -96,7 +96,10 @@ struct ThreadsListView: View {
         .task(id: controller.engine?.status) { await controller.engine?.loadThreads(filter: store.threadsFilter) }
         .refreshable { await controller.engine?.loadThreads(filter: store.threadsFilter) }
         // M29: pushed, like a thread opened from its channel.
-        .navigationDestination(item: $target) { target in ThreadView(controller: controller, channelId: target.channelId, parentId: target.id) }
+        // The thread hides the tab bar, as from a conversation (MOBILE_UI.md §5, 2026-10-27).
+        .navigationDestination(item: $target) { target in
+            ThreadView(controller: controller, channelId: target.channelId, parentId: target.id).modifier(HidesTabBar())
+        }
     }
 }
 

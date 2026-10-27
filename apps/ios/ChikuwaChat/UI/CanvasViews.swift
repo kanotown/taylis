@@ -979,7 +979,7 @@ struct CanvasOpenView: View {
         }
         .navigationDestination(item: $thread) { target in
             if case .open(let channelId) = state {
-                ThreadView(controller: controller, channelId: channelId, parentId: target.id)
+                ThreadView(controller: controller, channelId: channelId, parentId: target.id).modifier(HidesTabBar())
             }
         }
         .task {

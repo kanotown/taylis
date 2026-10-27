@@ -83,6 +83,10 @@ struct MainNavigation: Equatable {
     var pendingThread: ThreadRef?
     /// The thread open in the front conversation, as the conversation reports it (carried across a layout change).
     var openThread: ThreadRef?
+    /// The 検索 tab (MOBILE_UI.md §6.2): its own stack (a conversation from its list, a result's conversation, a reply's
+    /// thread alone, the conversation over it), and what it was last asked (a fresh start, its field focused).
+    var searchPath: [SearchStackRoute] = []
+    var searchCommand = SearchCommand()
 
     /// The DM tab's list and the activity, as the split's detail (the sidebar's 「すべての DM」 and 「アクティビティ」).
     static let dmsId = "split.dms"
@@ -98,10 +102,45 @@ struct MainNavigation: Equatable {
 
     /// The conversation on screen (M34 (8): only it reads and is "open"), or the one of the thread in front.
     var frontChannelId: String? {
+        // The 検索 tab: its result's conversation or thread on top.
+        if layout == .tabs && tab == .search { return searchPath.last?.channelId }
         switch front {
-        case .channel(let id)?, .thread(let id, _)?: id
-        default: nil
+        case .channel(let id)?, .thread(let id, _)?: return id
+        default: return nil
         }
+    }
+
+    /// What tapping the selected tab again did (`reselect`).
+    enum Reselect: Equatable {
+        /// Back to the tab's first screen.
+        case popped
+        /// Already there: the 検索 tab's field takes the keyboard (`searchCommand`).
+        case focusedSearch
+        /// Already there (another tab): nothing to do.
+        case none
+    }
+
+    /// The selected tab tapped again: back to its first screen; on the 検索 tab's first screen, its field focused.
+    mutating func reselect(_ tab: MainTab) -> Reselect {
+        if tab == .search {
+            if !searchPath.isEmpty {
+                searchPath = []
+                return .popped
+            }
+            searchCommand = SearchCommand(serial: searchCommand.serial + 1, fresh: false)
+            return .focusedSearch
+        }
+        guard !(paths[tab] ?? []).isEmpty else { return .none }
+        paths[tab] = []
+        return .popped
+    }
+
+    /// The home's 「移動・検索」, ⌘K and ⌘⇧F on the phone: the 検索 tab in front, what it had open closed, an empty field
+    /// focused (SearchTabView).
+    mutating func openSearch() {
+        tab = .search
+        searchPath = []
+        searchCommand = SearchCommand(serial: searchCommand.serial + 1, fresh: true)
     }
 
     /// What the sidebar shows as selected.
@@ -249,6 +288,8 @@ struct MainNavigation: Equatable {
     mutating func back() {
         if layout == .split {
             if split.count > 1 { split.removeLast() }
+        } else if tab == .search {
+            if !searchPath.isEmpty { searchPath.removeLast() }
         } else if !(paths[tab] ?? []).isEmpty {
             paths[tab]?.removeLast()
         }
@@ -293,6 +334,10 @@ struct MainNavigation: Equatable {
             case .home: split = stack
             case .dms: split = stack.isEmpty ? [.list(Self.dmsId)] : stack
             case .activity: split = [.list(Self.activityId)] + stack
+            case .search:
+                // The split has no 検索 tab: the search is its sheet (MainView opens it), over an empty detail column.
+                split = []
+                searchPath = []
             case .you:
                 split = []
                 youSheet = true

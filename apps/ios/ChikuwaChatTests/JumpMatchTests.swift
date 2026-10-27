@@ -124,6 +124,27 @@ final class JumpMatchTests: XCTestCase {
         XCTAssertEqual(JumpMatch.destinationPeople("b", users: users, meId: "me"), ["b"])
     }
 
+    /// 2026-10-27: the people pickers (a new DM, members to add) filter by name with the 「人」 rule, and the people chosen
+    /// already stay in the list while the field is filtering.
+    func testPeoplePickersFilterAndKeepTheChosenInSight() {
+        let list = [user("sato", "佐藤"), user("suzuki", "スズキ"), user("tanaka", "田中"), user("kanako", "かなこ")]
+        let users = Dictionary(uniqueKeysWithValues: list.map { ($0.id, $0) })
+        let ids = list.map(\.id)
+        XCTAssertEqual(JumpMatch.pickable("", ids: ids, users: users, selected: []), ids)
+        XCTAssertEqual(JumpMatch.pickable("  ", ids: ids, users: users, selected: ["tanaka"]), ids)
+        // Kana and width folded (katakana as hiragana, half-width as full), the username too.
+        XCTAssertEqual(JumpMatch.pickable("すず", ids: ids, users: users, selected: []), ["suzuki"])
+        XCTAssertEqual(JumpMatch.pickable("ｽｽﾞ", ids: ids, users: users, selected: []), ["suzuki"])
+        XCTAssertEqual(JumpMatch.pickable("SAT", ids: ids, users: users, selected: []), ["sato"])
+        XCTAssertEqual(JumpMatch.pickable("カナ", ids: ids, users: users, selected: []), ["kanako"])
+        // The chosen who do not match first, in the list's order; a chosen one who matches stays in its place, once.
+        XCTAssertEqual(JumpMatch.pickable("すず", ids: ids, users: users, selected: ["tanaka", "sato"]), ["sato", "tanaka", "suzuki"])
+        XCTAssertEqual(JumpMatch.pickable("すず", ids: ids, users: users, selected: ["suzuki"]), ["suzuki"])
+        XCTAssertEqual(JumpMatch.pickable("zzz", ids: ids, users: users, selected: ["kanako"]), ["kanako"])
+        // Only the list's own people (a member already in the channel is not offered again).
+        XCTAssertEqual(JumpMatch.pickable("すず", ids: ["sato"], users: users, selected: []), [])
+    }
+
     func testRecentConversationsNewestFirstTenAtMost() {
         let defaults = UserDefaults(suiteName: "JumpMatchTests")!
         defaults.removePersistentDomain(forName: "JumpMatchTests")

@@ -38,6 +38,37 @@ enum ViewerChrome {
     static let fade = 0.2
 }
 
+/// The photo and video viewers are dark whatever the app's look, and only they are (2026-10-27): with
+/// `.preferredColorScheme(.dark)` the preference went up to the window, and with the look following the device (RootView's
+/// nil) the conversation underneath stayed dark after the viewer closed. Here the presented controller alone takes the
+/// dark style (its status bar too); SwiftUI's environment says dark from the first frame.
+struct DarkPresentation: ViewModifier {
+    func body(content: Content) -> some View {
+        content.environment(\.colorScheme, .dark).background(DarkPresentationProbe())
+    }
+}
+
+private struct DarkPresentationProbe: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Probe { Probe() }
+    func updateUIViewController(_ controller: Probe, context: Context) {}
+
+    final class Probe: UIViewController {
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            // The presentation this page is in (a full-screen cover), not the window or the screens it covers.
+            guard let presented = Self.presentation(of: self) else { return }
+            presented.traitOverrides.userInterfaceStyle = .dark
+        }
+
+        /// The presented controller `controller` is part of (the top of its parents), nil when it is not presented.
+        static func presentation(of controller: UIViewController) -> UIViewController? {
+            var current = controller
+            while let parent = current.parent { current = parent }
+            return current.presentingViewController == nil ? nil : current
+        }
+    }
+}
+
 /// Swipe to close, like Photos and Slack: which drags may close the viewer and when a release does.
 enum ViewerDismiss {
     enum Axis: Equatable { case vertical, horizontal }
@@ -156,7 +187,7 @@ struct ImageViewer: View {
         }
         // The conversation shows through as the photo is dragged away, as in Photos (the cover is otherwise opaque).
         .presentationBackground(.clear)
-        .preferredColorScheme(.dark)
+        .modifier(DarkPresentation())
     }
 
     private var header: some View {

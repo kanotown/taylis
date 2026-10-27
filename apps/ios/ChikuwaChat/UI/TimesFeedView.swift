@@ -87,7 +87,9 @@ struct TimesFeedView: View {
         } message: {
             Text("フィードに出ている times（ミュートしていないもの）の未読がなくなります。")
         }
-        .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: target.channelId, parentId: target.parentId) }
+        .navigationDestination(item: $thread) { target in
+            ThreadView(controller: controller, channelId: target.channelId, parentId: target.parentId).modifier(HidesTabBar())
+        }
         .messageSheets(controller, sheet: $messageSheet, openThread: { message in openThread(channelId: message.channelId, id: message.id, parentId: message.parentId) })
         .task {
             // §5: the first page is read when the feed opens (not again when a thread over it closes).

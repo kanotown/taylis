@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// M34 (MOBILE_UI.md §5): the phone's four tabs, each with its own stack of screens.
+/// M34 (MOBILE_UI.md §5): the phone's tabs, each with its own stack of screens. 「検索」 (2026-10-27, §6.2) is the
+/// message search (SearchView) on a stack of its own (`MainNavigation.searchPath`).
 enum MainTab: Hashable {
-    case home, dms, activity, you
+    case home, dms, activity, search, you
+
+    /// The bar's order (its item indices).
+    static let order: [MainTab] = [.home, .dms, .activity, .search, .you]
 }
 
 /// A screen on a tab's stack: a conversation (a channel or a DM, or a public channel's preview), or one of the lists
@@ -18,6 +22,15 @@ enum MainRoute: Hashable {
     case drive(String)
     /// M171 (docs/LENDING.md §12.3): a screen of 「備品」 over its list (an item, a loan, the overdue or active loans).
     case lending(LendingScreen)
+
+    /// The tab bar shows on the lists and leaves inside a conversation (or its preview), a thread and a wiki page, from
+    /// every entry (MOBILE_UI.md §5; 2026-10-27: a thread from the home's 「スレッド」 kept it).
+    var hidesTabBar: Bool {
+        switch self {
+        case .channel, .thread, .page: true
+        case .list, .drive, .lending: false
+        }
+    }
 }
 
 /// The tab badges (the same rules on the three clients, IMPLEMENTATION_PLAN.md M34 (6)). Pure over the store's
@@ -318,12 +331,93 @@ struct ActivityView: View {
     }
 }
 
+/// The selected tab tapped again (2026-10-27): SwiftUI's TabView does not set its selection to the same value again
+/// (iOS 18 and later), and UIKit's own pop to the first screen says nothing either. A tap recognizer on the tab bar
+/// (alongside the bar's own handling) notes the selected index as the touch begins (`onTouch`) and reports it when it
+/// is still selected after the tap (`onReselect`). A tap on the bar outside its items reports it as well: harmless.
+struct TabReselectProbe: UIViewRepresentable {
+    let onTouch: () -> Void
+    let onReselect: (Int) -> Void
+
+    func makeUIView(context: Context) -> Probe { Probe() }
+
+    func updateUIView(_ view: Probe, context: Context) {
+        view.onTouch = onTouch
+        view.onReselect = onReselect
+        DispatchQueue.main.async { view.attach() }
+    }
+
+    static func dismantleUIView(_ view: Probe, coordinator: ()) { view.detach() }
+
+    final class Probe: UIView, UIGestureRecognizerDelegate {
+        var onTouch: () -> Void = {}
+        var onReselect: (Int) -> Void = { _ in }
+        private var tap: UITapGestureRecognizer?
+        private weak var tabs: UITabBarController?
+        private var before: Int?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+        func attach() {
+            guard tap == nil, let tabs = Self.tabBarController(from: window?.rootViewController) else { return }
+            self.tabs = tabs
+            let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+            tap.cancelsTouchesInView = false
+            tap.delaysTouchesEnded = false
+            tap.delegate = self
+            tabs.tabBar.addGestureRecognizer(tap)
+            self.tap = tap
+        }
+
+        func detach() {
+            if let tap { tap.view?.removeGestureRecognizer(tap) }
+            tap = nil
+        }
+
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            before = tabs?.selectedIndex
+            onTouch()
+            return true
+        }
+
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, let before else { return }
+            // After the bar has handled the tap (a new selection, or none).
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.tabs?.selectedIndex == before else { return }
+                self.onReselect(before)
+            }
+        }
+
+        private static func tabBarController(from controller: UIViewController?) -> UITabBarController? {
+            guard let controller else { return nil }
+            if let tabs = controller as? UITabBarController { return tabs }
+            for child in controller.children {
+                if let found = tabBarController(from: child) { return found }
+            }
+            return nil
+        }
+    }
+}
+
 /// Hides the tab bar while a page pushed on a tab's stack shows (iOS 18's `setTabBarHidden(_:animated:)`): it leaves
 /// with the screen underneath on the push and comes back with the pop. SwiftUI's `.toolbar(.hidden, for: .tabBar)` dropped it at once when the push began
 /// and showed it only after the pop had ended (testers, 2026-09-29); iOS 17 keeps that.
+/// `when` false leaves the bar as it is (`MainRoute.hidesTabBar`); outside a tab bar (a sheet, the iPad's split) it
+/// does nothing.
 struct HidesTabBar: ViewModifier {
+    var when = true
+
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
+        if !when {
+            content
+        } else if #available(iOS 18.0, *) {
             content.background(TabBarProbe())
         } else {
             content.toolbar(.hidden, for: .tabBar)
