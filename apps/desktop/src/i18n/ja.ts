@@ -2163,6 +2163,7 @@ export const ja = {
   "searchBar.words": "検索語",
   "searchBar.clear": "入力を消す",
   "searchBar.removeHistory": "履歴から消す",
+  "searchBar.clearHistory": "履歴を消去",
   "searchBar.hint": "入力して Enter で検索します",
   "searchBar.select": "選択",
   "searchBar.search": "検索",

@@ -56,7 +56,7 @@ import { WorkspaceMenu } from "./WorkspaceRail";
 import { AttendancePill } from "./AttendancePill";
 import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
 import { customTitleBar, isWeb, overlayTitleBar, TITLE_ROW_HEIGHT, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../platform/env";
-import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
+import { clearRecent, EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
 import { ChannelDrive, DriveView } from "./DriveView";
 import { showInDrive } from "./DriveSearch";
@@ -2275,6 +2275,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
               }}
               onOpenMessage={openLiveResult}
               onRemoveRecentSearch={(params) => setRecent(removeRecent(recentStorageKey, params))}
+              onClearRecentSearches={() => {
+                clearRecent(recentStorageKey);
+                setRecent([]);
+              }}
               onClose={() => setHomeOverlay(null)}
             />
           )}

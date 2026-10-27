@@ -8,7 +8,7 @@ import { isImeKeyEvent } from "./ime";
 import { LiveMessageRow, LiveStatus, useLiveSearch } from "./LiveSearch";
 import { channelTitle } from "./MainScreen";
 import { cn, Kbd, modKey } from "./primitives";
-import { dateLabel, EMPTY_SEARCH, HAS_LABELS, removeRecent, type SearchParams, type Suggestion, suggestions } from "./search";
+import { clearRecent, dateLabel, EMPTY_SEARCH, HAS_LABELS, removeRecent, type SearchParams, type Suggestion, suggestions } from "./search";
 import { t } from "../i18n";
 import { tRich } from "../i18n/rich";
 
@@ -19,7 +19,9 @@ type Row = Suggestion | { kind: "message"; hit: SearchHit };
  * M16b: the search field in the top bar. Opening it shows recent searches and quick filters. Typing offers people
  * (→ 送信者) and conversations (→ チャンネル), the few best messages as you type (live results, LiveSearch.tsx), and last
  * 「「…」のすべての結果を見る」. Nothing is highlighted until ↑ / ↓: Enter then runs the highlighted row, and with none
- * it opens all the results. The Enter that confirms an IME conversion does nothing (ime.ts).
+ * it opens all the results. The Enter that confirms an IME conversion does nothing (ime.ts). A recent search goes
+ * with its × (on hover, focus or while highlighted) or Delete on the highlighted row (Backspace too while the field is
+ * empty); 「履歴を消去」 by the 「最近の検索」 heading clears them all (the empty box only).
  */
 export function SearchBar({ controller, current, open, onOpenChange, onSearch, onOpenMessage, recent, onRecentChange, recentKey, placeholder }: {
   controller: AppController;
@@ -69,6 +71,21 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, o
     if (active >= 0) list.current?.querySelector(`#search-suggestion-${active}`)?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
 
+  /** Forgets one recent search; the highlight moves to the row that takes its place. */
+  const forget = (params: SearchParams, index: number) => {
+    onRecentChange(removeRecent(recentKey, params));
+    if (index === active) {
+      const next = rows[index + 1]?.kind === "recent" ? keys[index + 1] : rows[index - 1]?.kind === "recent" ? keys[index - 1] : null;
+      setActiveKey(next ?? null);
+    }
+  };
+  const clearAll = () => {
+    clearRecent(recentKey);
+    onRecentChange([]);
+    setActiveKey(null);
+    input.current?.focus();
+  };
+
   const choose = (row: Row) => {
     onOpenChange(false);
     switch (row.kind) {
@@ -99,6 +116,10 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, o
       if (rows.length === 0) return;
       const next = active < 0 ? (event.key === "ArrowDown" ? 0 : rows.length - 1) : (active + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length;
       setActiveKey(keys[next] ?? null);
+    } else if ((event.key === "Delete" || (event.key === "Backspace" && !text)) && rows[active]?.kind === "recent") {
+      event.preventDefault();
+      const row = rows[active];
+      if (row.kind === "recent") forget(row.params, active);
     } else if (event.key === "Enter") {
       event.preventDefault();
       const row = rows[active] ?? (text.trim() ? ({ kind: "search", q: text.trim() } as const) : null);
@@ -176,6 +197,11 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, o
                       <div className="flex items-center px-2.5 pb-1 pt-2 text-[11px] font-semibold text-muted">
                         {heading}
                         {row.kind === "message" && live.status === "loading" && <span className="ml-auto font-normal">{t("searchBar.searching")}</span>}
+                        {row.kind === "recent" && !text.trim() && (
+                          <button type="button" className="ml-auto rounded px-1 font-normal text-muted hover:text-ink" onMouseDown={(e) => e.preventDefault()} onClick={clearAll}>
+                            {t("searchBar.clearHistory")}
+                          </button>
+                        )}
                       </div>
                     )}
                     <div
@@ -201,10 +227,10 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, o
                         <button
                           type="button"
                           aria-label={t("searchBar.removeHistory")}
-                          className="ml-auto rounded p-0.5 text-muted opacity-0 hover:text-ink group-hover:opacity-100"
+                          className={cn("ml-auto rounded p-0.5 text-muted opacity-0 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100", index === active && "opacity-100")}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onRecentChange(removeRecent(recentKey, row.params));
+                            forget(row.params, index);
                           }}
                         >
                           <X size={13} />
@@ -221,6 +247,7 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, o
             <div className="flex items-center gap-3 border-t border-line bg-panel px-3 py-1.5 text-[11px] text-muted max-md:hidden">
               <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("searchBar.select")}</span>
               <span><Kbd>Enter</Kbd> {active < 0 && text.trim() ? t("searchBar.allResults") : t("dialogs.open")}</span>
+              {rows[active]?.kind === "recent" && <span><Kbd>Delete</Kbd> {t("searchBar.removeHistory")}</span>}
               <span><Kbd>Esc</Kbd> {t("common.close")}</span>
             </div>
           </div>

@@ -30,9 +30,10 @@ type Row =
  * M37, 「移動・検索」 (MOBILE_UI.md §6.2), over the whole phone screen. Empty: the recent conversations of this device and
  * the recent searches (M16b). Typing: the conversations (at most 20) and the people (at most 10) by the shared
  * jump-match rule, the few best messages as you type (live results, LiveSearch.tsx), and last 「"語" をメッセージ検索」
- * (the search results screen). Esc or ← closes it. The Enter confirming an IME conversion does nothing (ime.ts).
+ * (the search results screen). A recent search goes with its ×, or Delete on the highlighted row (Backspace too while the
+ * field is empty); 「履歴を消去」 by its heading clears them all. Esc or ← closes it. The Enter confirming an IME conversion does nothing (ime.ts).
  */
-export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpenPerson, onSearch, onOpenMessage, onRemoveRecentSearch, onClose }: {
+export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpenPerson, onSearch, onOpenMessage, onRemoveRecentSearch, onClearRecentSearches, onClose }: {
   controller: AppController;
   /** Recent conversation ids, newest first (home.ts). */
   recentIds: readonly string[];
@@ -44,6 +45,8 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   /** A live result: the message in its conversation (`other`: its channel when I am not a member; `q`: the words). */
   onOpenMessage?: (message: MessageOut, other: ChannelOut | undefined, q: string) => void;
   onRemoveRecentSearch: (params: SearchParams) => void;
+  /** 「履歴を消去」 by the 「最近の検索」 heading. */
+  onClearRecentSearches: () => void;
   onClose: () => void;
 }) {
   const store = controller.store;
@@ -102,6 +105,10 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
       event.preventDefault();
       setActive((Math.max(0, current) + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length);
       setMoved(true);
+    } else if ((event.key === "Delete" || (event.key === "Backspace" && !text)) && moved && rows[current]?.kind === "recent-search") {
+      event.preventDefault();
+      const row = rows[current];
+      if (row.kind === "recent-search") onRemoveRecentSearch(row.params);
     } else if (event.key === "Enter") {
       event.preventDefault();
       const row = rows[current];
@@ -165,7 +172,16 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
                   <div className="px-2"><LiveStatus live={live} /></div>
                 </>
               )}
-              {head && <div className="px-4 pb-1 pt-3 text-[12px] font-semibold text-muted">{head}</div>}
+              {head && (
+                <div className="flex items-center px-4 pb-1 pt-3 text-[12px] font-semibold text-muted">
+                  {head}
+                  {row.kind === "recent-search" && (
+                    <button type="button" className="-my-1 ml-auto rounded px-1 py-1 font-normal hover:text-ink" onClick={() => { onClearRecentSearches(); input.current?.focus(); }}>
+                      {t("searchBar.clearHistory")}
+                    </button>
+                  )}
+                </div>
+              )}
               <div className={cn("group flex items-center", index === current && "bg-accent-soft/70")} onMouseEnter={() => { setActive(index); setMoved(true); }}>
                 <button type="button" data-jump-row={row.kind} onClick={() => choose(row)} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-4 py-1.5 text-left text-[15px]">
                   {row.kind === "message" ? (
