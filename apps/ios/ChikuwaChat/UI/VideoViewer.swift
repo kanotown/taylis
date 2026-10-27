@@ -155,14 +155,17 @@ struct VideoViewer: View {
     @State private var dragged: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            header.opacity(1 - min(1, dragged * 4))
-            VideoPlayerPage(url: url, poster: poster, reduceMotion: reduceMotion,
+        // The player takes the whole screen so the video is centred on it, not on what the status bar, the header and
+        // the home indicator leave (user report 2026-10-27, MOBILE_UI.md §22.7: a landscape video held upright had a
+        // taller black bar above it). The header lies over it; the player keeps its own controls below the header.
+        ZStack(alignment: .top) {
+            VideoPlayerPage(url: url, poster: poster, reduceMotion: reduceMotion, controlsTop: Self.headerHeight,
                             onDrag: { progress in
                                 if progress == 0 { withAnimation(.easeOut(duration: 0.2)) { dragged = 0 } } else { dragged = progress }
                             },
                             onClose: close)
-                .ignoresSafeArea(edges: .bottom)
+                .ignoresSafeArea()
+            header.opacity(1 - min(1, dragged * 4))
         }
         .background(Color.black.opacity(1 - dragged).ignoresSafeArea())
         // The conversation shows through as the video is dragged away (the cover is otherwise opaque).
@@ -190,8 +193,10 @@ struct VideoViewer: View {
             .accessibilityElement(children: .combine)
         }
         .padding(.horizontal, 16)
-        .frame(height: 44)
+        .frame(height: Self.headerHeight)
     }
+
+    static let headerHeight: CGFloat = 44
 
     /// After a swipe the video has already left: the cover goes without sliding down again.
     private func close() {
@@ -205,11 +210,14 @@ struct VideoPlayerPage: UIViewControllerRepresentable {
     let url: URL
     var poster: UIImage? = nil
     let reduceMotion: Bool
+    /// How far below the top of the safe area the player's own controls start (the header lies over the player).
+    var controlsTop: CGFloat = 0
     var onDrag: (CGFloat) -> Void = { _ in }
     var onClose: () -> Void = {}
 
     func makeUIViewController(context: Context) -> VideoPlayerPageController {
         let page = VideoPlayerPageController(url: url, poster: poster)
+        page.playerController.additionalSafeAreaInsets.top = controlsTop
         page.reduceMotion = reduceMotion
         page.onDrag = onDrag
         page.onClose = onClose
