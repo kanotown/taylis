@@ -60,13 +60,13 @@ func localized(_ resource: LocalizedStringResource) -> String {
 }
 
 extension Color {
-    /// The default 「テーマの色」 Taylis（栗）, as the app's AccentColor: #8f5530, #dba67c in dark mode
+    /// The default 「テーマの色」 Taylis（栗）, as the app's AccentColor: #7a4526, #e6b48a in dark mode
     /// (apps/shared/palettes.json; the extension does not follow a palette chosen in the app).
     static let taylisAccent = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0xdb / 255, green: 0xa6 / 255, blue: 0x7c / 255, alpha: 1)
-            : UIColor(red: 0x8f / 255, green: 0x55 / 255, blue: 0x30 / 255, alpha: 1)
+            ? UIColor(red: 0xe6 / 255, green: 0xb4 / 255, blue: 0x8a / 255, alpha: 1)
+            : UIColor(red: 0x7a / 255, green: 0x45 / 255, blue: 0x26 / 255, alpha: 1)
     })
-    /// The fill under white text (the prominent buttons): #8f5530 in both modes.
-    static let taylisSolid = Color(red: 0x8f / 255, green: 0x55 / 255, blue: 0x30 / 255)
+    /// The fill under white text (the prominent buttons): #7a4526 in both modes.
+    static let taylisSolid = Color(red: 0x7a / 255, green: 0x45 / 255, blue: 0x26 / 255)
 }

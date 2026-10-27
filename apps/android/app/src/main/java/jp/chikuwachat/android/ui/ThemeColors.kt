@@ -43,7 +43,7 @@ data class PaletteTones(val accent: Long, val accentSolid: Long, val accentSoft:
 
 object PaletteColors {
     val light: Map<ThemePalette, PaletteTones> = mapOf(
-        ThemePalette.TAYLIS to PaletteTones(0xFF8F5530, 0xFF8F5530, 0xFFF6ECE3),
+        ThemePalette.TAYLIS to PaletteTones(0xFF7A4526, 0xFF7A4526, 0xFFF6ECE3),
         ThemePalette.INDIGO to PaletteTones(0xFF5050C8, 0xFF5050C8, 0xFFECEBFF),
         ThemePalette.GREEN to PaletteTones(0xFF2E7550, 0xFF2E7550, 0xFFE4F2EA),
         ThemePalette.PURPLE to PaletteTones(0xFF7C3FB0, 0xFF7C3FB0, 0xFFF3EAFB),
@@ -52,7 +52,7 @@ object PaletteColors {
     )
 
     val dark: Map<ThemePalette, PaletteTones> = mapOf(
-        ThemePalette.TAYLIS to PaletteTones(0xFFDBA67C, 0xFF8F5530, 0xFF3A2A1F),
+        ThemePalette.TAYLIS to PaletteTones(0xFFE6B48A, 0xFF7A4526, 0xFF3A2A1F),
         ThemePalette.INDIGO to PaletteTones(0xFF9A9AF5, 0xFF5050C8, 0xFF2A2A4A),
         ThemePalette.GREEN to PaletteTones(0xFF6FCF98, 0xFF2E7550, 0xFF1D3A2B),
         ThemePalette.PURPLE to PaletteTones(0xFFC39AF0, 0xFF7C3FB0, 0xFF35224A),

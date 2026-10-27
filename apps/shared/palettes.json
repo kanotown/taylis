@@ -13,15 +13,15 @@
       "light": {
         "sidebar": "#3b2b21",
         "sidebar-fg": "#efe7df",
-        "accent": "#8f5530",
-        "accent-solid": "#8f5530",
+        "accent": "#7a4526",
+        "accent-solid": "#7a4526",
         "accent-soft": "#f6ece3"
       },
       "dark": {
         "sidebar": "#1d1611",
         "sidebar-fg": "#e1d7ce",
-        "accent": "#dba67c",
-        "accent-solid": "#8f5530",
+        "accent": "#e6b48a",
+        "accent-solid": "#7a4526",
         "accent-soft": "#3a2a1f"
       }
     },

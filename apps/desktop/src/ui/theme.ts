@@ -58,7 +58,7 @@ const PALETTE_KEY = "chikuwa.prefs.palette";
 export const DEFAULT_PALETTE: Palette = "taylis";
 
 export const PALETTES: Array<{ value: Palette; label: string; swatch: { sidebar: string; accent: string } }> = [
-  { value: "taylis", get label() { return t("theme.palette.taylis"); }, swatch: { sidebar: "#3b2b21", accent: "#8f5530" } },
+  { value: "taylis", get label() { return t("theme.palette.taylis"); }, swatch: { sidebar: "#3b2b21", accent: "#7a4526" } },
   { value: "indigo", get label() { return t("theme.palette.indigo"); }, swatch: { sidebar: "#2a2340", accent: "#5050c8" } },
   { value: "green", get label() { return t("theme.palette.green"); }, swatch: { sidebar: "#1e3a2f", accent: "#2e7550" } },
   { value: "purple", get label() { return t("theme.palette.purple"); }, swatch: { sidebar: "#3a2150", accent: "#7c3fb0" } },
