@@ -1207,6 +1207,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "dialogs.addMembers": "添加成员",
   "dialogs.membersLoadFailed": "无法加载成员列表",
   "dialogs.noOneToAdd": "没有可添加的用户",
+  "dialogs.searchPeople": "按名称或用户名搜索",
+  "dialogs.noPeopleMatch": "没有匹配的用户",
   "dialogs.channelNameHint": "建议使用小写字母、数字和连字符",
   "dialogs.public": "公开",
   "dialogs.publicNote": "任何人都可以加入",

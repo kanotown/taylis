@@ -288,6 +288,7 @@ export function Modal({
   hideClose = false,
   focusDialog = false,
   growsDown = false,
+  onEscapeKeyDown,
 }: {
   onClose: () => void;
   title: string;
@@ -301,12 +302,16 @@ export function Modal({
   /** Anchor the top edge instead of centring, for a dialog whose content arrives after it opens (a list read from the
    *  server): centred, it jumped up by half the new height when the list came in. */
   growsDown?: boolean;
+  /** Esc, before the dialog closes (Radix listens on the document, ahead of the focused field): `preventDefault()`
+   *  keeps it open (e.g. a search field that clears its query first). */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }) {
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" />
         <Dialog.Content
+          onEscapeKeyDown={onEscapeKeyDown}
           onOpenAutoFocus={focusDialog ? (event) => { event.preventDefault(); (event.currentTarget as HTMLElement | null)?.focus(); } : undefined}
           className={cn(
             "rx-dialog fixed left-1/2 z-50 max-h-[85dvh] w-[460px] max-w-[92vw] -translate-x-1/2 overflow-y-auto rounded-2xl border border-line bg-canvas p-5 text-ink shadow-2xl focus:outline-none max-md:p-4",
