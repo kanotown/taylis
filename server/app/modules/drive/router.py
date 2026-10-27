@@ -197,7 +197,7 @@ async def _content(
         "Content-Disposition": attachments.disposition(
             names.download_name(item.name), inline=shown_inline
         ),
-        "Content-Type": attachment.content_type,
+        "Content-Type": attachments.served_type(attachment.content_type),
         "Content-Length": str(attachment.size_bytes),
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "sandbox",

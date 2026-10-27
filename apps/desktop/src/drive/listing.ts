@@ -4,6 +4,7 @@
  */
 import type { AttachmentOut, DriveCrumb, DriveItemOut, DriveLocationOut } from "../api/types";
 import { type MessageKey, t } from "../i18n";
+import { isAudioType, mediaKind } from "../ui/attachmentLayout";
 import { dateLabel, dayKey, timeLabel } from "../ui/format";
 
 export type DriveSort = "name" | "modified" | "size";
@@ -50,7 +51,7 @@ export function itemTime(item: Pick<DriveItemOut, "content_modified_at" | "updat
   return item.content_modified_at ?? item.updated_at;
 }
 
-export type DriveIconKind = "folder" | "image" | "video" | "pdf" | "document" | "sheet" | "slides" | "archive" | "text" | "file";
+export type DriveIconKind = "folder" | "image" | "video" | "audio" | "pdf" | "document" | "sheet" | "slides" | "archive" | "text" | "file";
 
 const OFFICE: Readonly<Record<string, DriveIconKind>> = {
   doc: "document", docx: "document", odt: "document", rtf: "document",
@@ -70,11 +71,12 @@ export function iconKind(item: Pick<DriveItemOut, "kind" | "name" | "content_typ
   const type = (item.content_type ?? "").toLowerCase();
   if (type.startsWith("image/")) return "image";
   if (type.startsWith("video/")) return "video";
+  if (isAudioType(type)) return "audio";
   if (isPdf(item)) return "pdf";
   return OFFICE[extensionOf(item.name)] ?? "file";
 }
 
-export type ViewerKind = "image" | "video" | "document";
+export type ViewerKind = "image" | "video" | "audio" | "document";
 
 const OFFICE_EXTENSIONS = new Set(["doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"]);
 const OFFICE_TYPE = /^application\/(msword|rtf|vnd\.ms-(excel|powerpoint)|vnd\.openxmlformats-officedocument\.|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation)$)/;
@@ -99,13 +101,15 @@ export function isOffice(item: Pick<DriveItemOut, "kind" | "name" | "content_typ
 
 /**
  * Which of the app's viewers opens a file (§17.2, §27): photos with a thumbnail (the server could read them), videos,
- * every PDF (its own bytes while its preview is not made), and Office files (the viewer waits for, or asks for, the
+ * sounds (2026-10-28, PREVIEWS.md §13: `audio/*`, and a video the server found no picture in), every PDF (its own bytes while its preview is not made), and Office files (the viewer waits for, or asks for, the
  * preview). Anything else has no viewer: opening it shows its details, and only 「ダウンロード」 downloads it.
  */
 export function viewerKind(item: Viewable): ViewerKind | null {
   if (item.kind !== "file" || !item.file) return null;
   const type = (item.content_type ?? "").toLowerCase();
-  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("video/") || isAudioType(type)) {
+    return mediaKind({ content_type: type, has_thumbnail: false, width: item.file.width, duration_ms: item.file.duration_ms, has_poster: item.file.has_poster }) === "audio" ? "audio" : "video";
+  }
   if (type.startsWith("image/") && item.file.has_thumbnail) return "image";
   const status = item.file.preview?.status;
   if (status === "ready" || status === "pending" || isPdf(item) || isOffice(item)) return "document";

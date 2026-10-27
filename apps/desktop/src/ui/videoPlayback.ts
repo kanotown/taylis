@@ -22,7 +22,7 @@ export function playbackProblem(code: number | undefined, played: boolean): Play
  * Whether the server says the clip has a picture: it measured one (`width`), made a poster from it, or could not look
  * (nothing recorded: an older upload, so assume a picture). A file it read with no picture (audio only) plays as sound.
  */
-export function expectsPicture(attachment: Pick<AttachmentOut, "width" | "duration_ms"> & Partial<Pick<AttachmentOut, "has_poster">>): boolean {
+export function expectsPicture(attachment: Partial<Pick<AttachmentOut, "width" | "duration_ms" | "has_poster">>): boolean {
   if ((attachment.width ?? 0) > 0 || attachment.has_poster === true) return true;
   return attachment.width == null && attachment.duration_ms == null;
 }

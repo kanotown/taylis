@@ -26,6 +26,7 @@ export interface VideoHandle {
   release: () => void;
 }
 
+/** Audio (2026-10-28, docs/PREVIEWS.md §13) is fetched the same way (useMediaSource): `<audio>` cannot send the bearer token either. */
 export function acquireVideo(api: BlobSource, attachmentId: string): VideoHandle {
   let entry = entries.get(attachmentId);
   if (entry && entry.api !== api) {

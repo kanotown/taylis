@@ -1,5 +1,12 @@
 import type { AttachmentOut } from "../api/types";
 import { t } from "../i18n";
+import { expectsPicture } from "./videoPlayback";
+
+export function formatSize(bytes: number): string {
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
 
 /**
  * How a message shows its attachments (M38). The layout decisions live here, apart from the React tree, so they can
@@ -7,21 +14,33 @@ import { t } from "../i18n";
  *
  * - photo: the server made a thumbnail (images).
  * - video: `video/*`, shown as a tile in its own shape and played in the in-app viewer (it used to download).
+ * - audio: `audio/*` (not MIDI, which no web engine plays), or a video the server read and found no picture in (an
+ *   audio-only mp4 / webm): a compact player row in the message (2026-10-28, docs/PREVIEWS.md §13; it used to download).
  * - file: everything else, a download row.
  */
-export type MediaKind = "photo" | "video" | "file";
+export type MediaKind = "photo" | "video" | "audio" | "file";
 
-export function mediaKind(attachment: Pick<AttachmentOut, "content_type" | "has_thumbnail">): MediaKind {
-  if (attachment.content_type.toLowerCase().startsWith("video/")) return "video";
+type KindFields = Pick<AttachmentOut, "content_type" | "has_thumbnail"> & Partial<Pick<AttachmentOut, "width" | "duration_ms" | "has_poster">>;
+
+/** An `audio/*` type a browser's `<audio>` may play (MIDI is a score, not sound: it stays a file). */
+export function isAudioType(contentType: string | null | undefined): boolean {
+  const type = (contentType ?? "").toLowerCase();
+  return type.startsWith("audio/") && !type.includes("midi");
+}
+
+export function mediaKind(attachment: KindFields): MediaKind {
+  const type = attachment.content_type.toLowerCase();
+  if (type.startsWith("video/")) return expectsPicture(attachment) ? "video" : "audio";
+  if (isAudioType(type)) return "audio";
   if (attachment.has_thumbnail) return "photo";
   return "file";
 }
 
-export function groupAttachments<T extends Pick<AttachmentOut, "content_type" | "has_thumbnail">>(attachments: T[]) {
-  const groups = { photos: [] as T[], videos: [] as T[], files: [] as T[] };
+export function groupAttachments<T extends KindFields>(attachments: T[]) {
+  const groups = { photos: [] as T[], videos: [] as T[], audios: [] as T[], files: [] as T[] };
   for (const attachment of attachments) {
     const kind = mediaKind(attachment);
-    (kind === "photo" ? groups.photos : kind === "video" ? groups.videos : groups.files).push(attachment);
+    (kind === "photo" ? groups.photos : kind === "video" ? groups.videos : kind === "audio" ? groups.audios : groups.files).push(attachment);
   }
   return groups;
 }
