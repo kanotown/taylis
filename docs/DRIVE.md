@@ -1213,6 +1213,7 @@ Desktop / Web の画面と、それに要るサーバの小さな追加。
 - **ビューア**：画像（サムネイルのあるもの）・動画・プレビューのある PDF / Office は今のビューア（`Lightbox`・`VideoViewer`・`PdfViewer`）に
   `AttachmentOut` の形で渡す。ビューアのダウンロードはドライブの経路になる（`driveFileOf`）。← → で同じフォルダの写真と動画を順に。
   Web の動画はチケットの URL を `src` にして Range で流す（全体を Blob にしない）。
+  チケットが切れた後（一時停止して 5 分を過ぎてからの再生・シーク）は新しいチケットを取ってその位置から続ける（2026-10-27、PREVIEWS.md §12）。
 - **アップロード**（`drive/uploads.ts`・`platform/driveFiles.ts`・`ui/DriveUploadPanel.tsx`）：§6 のとおり 1 ファイルの部品 3 本・同時に 3 ファイル。
   フォルダは相対パスを `relative_dir` に、空のフォルダは `POST /drive/folders {path}`。一覧へのドロップ・フォルダの行へのドロップ・
   「アップロード」の選択（Web は `<input>` と `webkitdirectory`、アプリは dialog プラグイン）。右下の欄（ダウンロードのトーストはその上に積む）に

@@ -1960,7 +1960,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "attach.play": "Play {name}",
   "attach.loadingVideo": "Loading video",
   "attach.videoPreview": "Video preview",
-  "attach.unplayable": "This video can't be played in the app",
+  "attach.unplayable": "This video can't be played on this device. Download it and open it instead.",
   "attach.videoFailed": "Couldn't load the video",
   "attach.loadingVideoSize": "Loading video… ({size})",
   "attach.uploading": "Uploading",

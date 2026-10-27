@@ -8,6 +8,7 @@ import { documentPreviewState, fitBox, formatDuration, groupAttachments, hasPost
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
+import { type PlaybackProblem, playbackProblem, showsNoPicture, STREAM_RENEWALS_MAX, STREAM_STALL_MS, STREAM_TICKET_STALE_MS } from "./videoPlayback";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
@@ -443,6 +444,7 @@ function VideoTile({ attachment, controller, downloadable = true }: { attachment
             tabIndex={-1}
             aria-hidden
             onLoadedMetadata={(e) => rememberVideoSize(attachment.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
+            onLoadedData={(e) => { if (showsNoPicture(e.currentTarget, attachment)) setBroken(true); }}
             onError={() => setBroken(true)}
             className="pointer-events-none block h-full w-full object-cover"
           />
@@ -469,16 +471,67 @@ function VideoTile({ attachment, controller, downloadable = true }: { attachment
   );
 }
 
-/** The video player (M38): the clip with the platform's controls, in the same viewer as photos, download kept. */
+/**
+ * The video player (M38): the clip with the platform's controls, in the same viewer as photos, download kept.
+ * 2026-10-27 (docs/PREVIEWS.md §12): a clip this engine cannot decode says so with the download instead of a silent
+ * black box (an error, or Chromium playing the sound of a video track it dropped), and a streamed drive video whose
+ * ticket lapsed (paused, then played or sought minutes later) gets a new ticket and goes on where it was.
+ */
 export function VideoViewer({ attachment, controller, onClose, stream }: { attachment: AttachmentOut; controller: AppController; onClose: () => void; /** M161: a URL to play from instead of the whole file as a blob. */ stream?: () => Promise<string> }) {
   const { url, failed, retry } = useVideoSource(controller, attachment, true, stream);
-  const [unplayable, setUnplayable] = useState(false);
+  const [problem, setProblem] = useState<PlaybackProblem | null>(null);
   const shape = useVideoShape(attachment);
   // M79: the server's poster while the clip downloads and until it plays.
   const poster = useAttachmentImage(controller, attachment, "thumbnail", hasPoster(attachment)).url;
+  const playback = useRef({ played: false, urlAt: 0, renewals: 0, at: 0, playing: true, resume: null as { at: number; playing: boolean } | null });
+  const stall = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearStall = useCallback(() => {
+    if (stall.current) clearTimeout(stall.current);
+    stall.current = null;
+  }, []);
+  useEffect(() => {
+    if (!url) return;
+    playback.current.played = false;
+    playback.current.urlAt = Date.now();
+  }, [url]);
+  useEffect(() => clearStall, [clearStall]);
+  const again = (automatic: boolean) => {
+    clearStall();
+    const state = playback.current;
+    if (automatic) state.renewals += 1;
+    else state.renewals = 0;
+    state.resume = { at: state.at, playing: automatic ? state.playing : true };
+    setProblem(null);
+    retry();
+  };
+  const onError = (video: HTMLVideoElement) => {
+    const state = playback.current;
+    const kind = playbackProblem(video.error?.code, state.played);
+    if (kind === "network" && stream && state.renewals < STREAM_RENEWALS_MAX) {
+      again(true);
+      return;
+    }
+    clearStall();
+    setProblem(kind);
+  };
+  const onWaiting = () => {
+    if (!stream || stall.current) return;
+    stall.current = setTimeout(() => {
+      stall.current = null;
+      const state = playback.current;
+      if (Date.now() - state.urlAt >= STREAM_TICKET_STALE_MS && state.renewals < STREAM_RENEWALS_MAX) again(true);
+    }, STREAM_STALL_MS);
+  };
+  const checkPicture = (video: HTMLVideoElement) => {
+    if (showsNoPicture(video, attachment)) {
+      clearStall();
+      setProblem("unsupported");
+    }
+  };
+  const shown: PlaybackProblem | null = problem ?? (failed ? "network" : null);
   return (
     <ViewerShell attachment={attachment} description={t("attach.videoPreview")} shape={shape} controller={controller} onClose={onClose}>
-      {url && !unplayable ? (
+      {url && !problem ? (
         <video
           data-video-player=""
           src={url}
@@ -487,15 +540,39 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
           autoPlay
           playsInline
           data-viewer-content=""
-          onLoadedMetadata={(e) => rememberVideoSize(attachment.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
-          onError={() => setUnplayable(true)}
+          onLoadedMetadata={(e) => {
+            const video = e.currentTarget;
+            rememberVideoSize(attachment.id, video.videoWidth, video.videoHeight);
+            const state = playback.current;
+            state.played = true;
+            const resume = state.resume;
+            state.resume = null;
+            if (resume && resume.at > 0) video.currentTime = resume.at;
+            if (resume && !resume.playing) video.pause();
+          }}
+          onLoadedData={(e) => checkPicture(e.currentTarget)}
+          onTimeUpdate={(e) => {
+            playback.current.at = e.currentTarget.currentTime;
+            checkPicture(e.currentTarget);
+          }}
+          onPlay={() => { playback.current.playing = true; }}
+          onPause={() => { playback.current.playing = false; }}
+          onPlaying={() => {
+            playback.current.renewals = 0;
+            clearStall();
+          }}
+          onWaiting={onWaiting}
+          onStalled={onWaiting}
+          onProgress={clearStall}
+          onCanPlay={clearStall}
+          onError={(e) => onError(e.currentTarget)}
           className="m-auto min-h-0 min-w-0 max-h-full max-w-full rounded-md bg-black object-contain shadow-2xl"
         />
-      ) : unplayable || failed ? (
-        <div className="m-auto flex flex-col items-center gap-3 text-center text-white">
-          <p role="status">{unplayable ? t("attach.unplayable") : t("attach.videoFailed")}</p>
+      ) : shown ? (
+        <div data-video-problem={shown} className="m-auto flex max-w-md flex-col items-center gap-3 px-4 text-center text-white">
+          <p role="status">{shown === "unsupported" ? t("attach.unplayable") : t("attach.videoFailed")}</p>
           <div className="flex flex-wrap justify-center gap-2">
-            {!unplayable && <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={retry}>{t("common.retry")}</button>}
+            {shown === "network" && <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => again(false)}>{t("common.retry")}</button>}
             <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>{t("attach.download")}</button>
           </div>
         </div>
