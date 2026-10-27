@@ -234,7 +234,7 @@ describe("phone 「移動・検索」", () => {
     const onOpen = vi.fn();
     const onSearch = vi.fn();
     const onOpenMessage = vi.fn();
-    render(<JumpView controller={w.controller} recentIds={[]} recentSearches={[]} onOpen={onOpen} onOpenPerson={() => {}} onSearch={onSearch} onOpenMessage={onOpenMessage} onRemoveRecentSearch={() => {}} onClose={() => {}} />);
+    render(<JumpView controller={w.controller} recentIds={[]} recentSearches={[]} onOpen={onOpen} onOpenPerson={() => {}} onSearch={onSearch} onOpenMessage={onOpenMessage} onRemoveRecentSearch={() => {}} onClearRecentSearches={() => {}} onClose={() => {}} />);
     const box = screen.getByRole("textbox", { name: "移動・検索" }) as HTMLInputElement;
     compose(box, "設計");
     fireEvent.compositionEnd(box, { data: "設計" });

@@ -558,6 +558,12 @@ struct SearchView: View {
                 .tint(.secondary)
                 .accessibilityLabel("履歴から消す")
             }
+            .swipeActions(edge: .trailing) {
+                Button("削除", role: .destructive) { recent = RecentSearches.remove(params, key: recentKey) }
+            }
+            .contextMenu {
+                Button("履歴から消す", systemImage: "trash", role: .destructive) { recent = RecentSearches.remove(params, key: recentKey) }
+            }
         } else {
             Button { choose(row) } label: {
                 SearchSuggestionLabel(row: row, controller: controller)

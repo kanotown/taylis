@@ -2164,6 +2164,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "searchBar.words": "Search words",
   "searchBar.clear": "Clear",
   "searchBar.removeHistory": "Remove from history",
+  "searchBar.clearHistory": "Clear history",
   "searchBar.hint": "Type and press Enter to search",
   "searchBar.select": "Select",
   "searchBar.search": "Search",

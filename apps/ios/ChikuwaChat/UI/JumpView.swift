@@ -185,22 +185,50 @@ struct JumpView: View {
         }
         if !recentSearches.isEmpty {
             Section {
+                // 2026-10-28 (利用者の要望): one goes with its ×, a swipe or the long-press menu; 「履歴を消去」 by the
+                // heading clears them all (the same as the results screen's suggestions, SearchView).
                 ForEach(recentSearches, id: \.self) { params in
-                    Button { search(params) } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "clock").foregroundStyle(.secondary).frame(width: 24)
-                            Text(describe(params)).lineLimit(1)
-                            Spacer(minLength: 0)
+                    HStack(spacing: 4) {
+                        Button { search(params) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "clock").foregroundStyle(.secondary).frame(width: 24)
+                                Text(describe(params)).lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("最近の検索：\(describe(params))")
+                        Button { removeRecentSearch(params) } label: {
+                            Image(systemName: "xmark").font(.footnote).foregroundStyle(.secondary)
+                                .frame(width: 36, height: Self.rowHeight)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("履歴から消す")
                     }
-                    .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
                     .listRowInsets(ChannelListView.rowInsets)
-                    .accessibilityLabel("最近の検索：\(describe(params))")
+                    .swipeActions(edge: .trailing) {
+                        Button("削除", role: .destructive) { removeRecentSearch(params) }
+                    }
+                    .contextMenu {
+                        Button("履歴から消す", systemImage: "trash", role: .destructive) { removeRecentSearch(params) }
+                    }
                 }
-            } header: { header(tr("最近の検索")) }
+            } header: {
+                HStack {
+                    header(tr("最近の検索"))
+                    Spacer(minLength: 8)
+                    Button("履歴を消去") {
+                        RecentSearches.clear(key: controller.recentSearchKey)
+                        recentSearches = []
+                    }
+                    .font(.subheadline)
+                    .buttonStyle(.borderless)
+                }
+            }
         }
         if conversations.isEmpty && recentSearches.isEmpty {
             Text("会話や人の名前を入力すると移動できます。メッセージの検索もここから始められます。")
@@ -275,6 +303,10 @@ struct JumpView: View {
     private func describe(_ params: SearchParams) -> String {
         SearchLogic.describe(params, userName: { store.users[$0]?.displayName },
                              channelTitle: { id in store.channel(id).map { channelTitle($0, store: store) } })
+    }
+
+    private func removeRecentSearch(_ params: SearchParams) {
+        recentSearches = RecentSearches.remove(params, key: controller.recentSearchKey)
     }
 
     private func open(_ id: String) {

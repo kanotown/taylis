@@ -163,6 +163,23 @@ final class SearchLogicTests: XCTestCase {
         XCTAssertEqual(RecentSearches.read(key: key, defaults: defaults), [])
     }
 
+    /// 2026-10-28: the 検索 tab's rows (×, swipe, long press) and 「履歴を消去」 — one search goes, the rest keep their
+    /// order, and clearing touches only this account.
+    func testRecentSearchesRemoveOneOrClearAllOfOneAccount() {
+        let defaults = defaults()
+        let alice = RecentSearches.key(account: "http://s|alice")
+        let bob = RecentSearches.key(account: "http://s|bob")
+        for q in ["予算", "設計", "議事録"] { RecentSearches.push(SearchParams(q: q), key: alice, defaults: defaults) }
+        RecentSearches.push(SearchParams(q: "bob"), key: bob, defaults: defaults)
+        let left = RecentSearches.remove(SearchParams(q: "設計", sort: .newest), key: alice, defaults: defaults)
+        XCTAssertEqual(left.map(\.q), ["議事録", "予算"])
+        XCTAssertEqual(RecentSearches.read(key: alice, defaults: defaults), left)
+        XCTAssertEqual(RecentSearches.remove(SearchParams(q: "無い"), key: alice, defaults: defaults), left)
+        RecentSearches.clear(key: alice, defaults: defaults)
+        XCTAssertEqual(RecentSearches.read(key: alice, defaults: defaults), [])
+        XCTAssertEqual(RecentSearches.read(key: bob, defaults: defaults).map(\.q), ["bob"])
+    }
+
     func testRecentSearchesKeepTheirFiltersAndSurviveDamage() {
         let defaults = defaults()
         let key = RecentSearches.key(account: "a")

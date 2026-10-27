@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageOut, SearchOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { LiveMessageRow } from "../src/ui/LiveSearch";
+import { JumpView } from "../src/ui/JumpView";
 import { SearchBar } from "../src/ui/SearchBar";
 import { SearchView, type SearchSnapshot } from "../src/ui/SearchView";
-import { EMPTY_SEARCH, type SearchParams } from "../src/ui/search";
+import { EMPTY_SEARCH, pushRecent, readRecent, type SearchParams } from "../src/ui/search";
 import { FakeServer } from "./fakeServer";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -73,6 +75,68 @@ describe("search box", () => {
     expect(onSearch).toHaveBeenCalledWith(recent[0]);
     fireEvent.click(screen.getByText("スレッド内のメッセージ"));
     expect(onSearch).toHaveBeenCalledWith({ ...EMPTY_SEARCH, isThread: true, sort: "newest" });
+  });
+});
+
+describe("recent searches can be removed", () => {
+  function Box({ controller, onSearch }: { controller: AppController; onSearch: (p: SearchParams) => void }) {
+    const [recent, setRecent] = useState(() => readRecent("k"));
+    return <SearchBar controller={controller} current={null} open onOpenChange={() => {}} onSearch={onSearch} recent={recent} onRecentChange={setRecent} recentKey="k" placeholder="" />;
+  }
+  const words = () => screen.queryAllByRole("option").map((o) => o.textContent ?? "").filter((t) => ["議事録", "設計", "予算"].includes(t));
+
+  it("one with its ×, one with Delete on the highlighted row, all with 「履歴を消去」", () => {
+    const w = world();
+    const onSearch = vi.fn();
+    for (const q of ["予算", "設計", "議事録"]) pushRecent("k", { ...EMPTY_SEARCH, q });
+    render(<Box controller={w.controller} onSearch={onSearch} />);
+    const box = screen.getByLabelText("検索語");
+    expect(words()).toEqual(["議事録", "設計", "予算"]);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "履歴から消す" })[1]!);
+    expect(words()).toEqual(["議事録", "予算"]);
+    expect(readRecent("k").map((p) => p.q)).toEqual(["議事録", "予算"]);
+    expect(onSearch).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(box, { key: "Backspace" }); // nothing highlighted: nothing goes
+    expect(words()).toHaveLength(2);
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Delete" });
+    expect(readRecent("k").map((p) => p.q)).toEqual(["予算"]);
+    // The highlight moves to the next recent search: Enter runs it.
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onSearch).toHaveBeenCalledWith({ ...EMPTY_SEARCH, q: "予算" });
+
+    pushRecent("k", { ...EMPTY_SEARCH, q: "設計" });
+    cleanup();
+    render(<Box controller={w.controller} onSearch={onSearch} />);
+    fireEvent.change(screen.getByLabelText("検索語"), { target: { value: "設" } });
+    expect(screen.queryByRole("button", { name: "履歴を消去" })).toBeNull(); // only on the empty box
+    fireEvent.change(screen.getByLabelText("検索語"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "履歴を消去" }));
+    expect(words()).toEqual([]);
+    expect(readRecent("k")).toEqual([]);
+    expect(screen.queryByText("最近の検索")).toBeNull();
+  });
+
+  it("on the phone's 「移動・検索」 too", () => {
+    const w = world();
+    const recent: SearchParams[] = [{ ...EMPTY_SEARCH, q: "議事録" }, { ...EMPTY_SEARCH, q: "設計" }];
+    const onRemove = vi.fn();
+    const onClear = vi.fn();
+    const onSearch = vi.fn();
+    render(<JumpView controller={w.controller} recentIds={[]} recentSearches={recent} onOpen={() => {}} onOpenPerson={() => {}} onSearch={onSearch} onRemoveRecentSearch={onRemove} onClearRecentSearches={onClear} onClose={() => {}} />);
+    const box = screen.getByRole("textbox", { name: "移動・検索" });
+    fireEvent.keyDown(box, { key: "Backspace" }); // the first row is Enter's, not picked by ↑ / ↓: kept
+    expect(onRemove).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Delete" });
+    expect(onRemove).toHaveBeenCalledWith(recent[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: "履歴から消す" })[0]!);
+    expect(onRemove).toHaveBeenLastCalledWith(recent[0]);
+    fireEvent.click(screen.getByRole("button", { name: "履歴を消去" }));
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onSearch).not.toHaveBeenCalled();
   });
 });
 

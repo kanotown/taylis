@@ -2164,6 +2164,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "searchBar.words": "搜索词",
   "searchBar.clear": "清除输入",
   "searchBar.removeHistory": "从历史中删除",
+  "searchBar.clearHistory": "清除历史",
   "searchBar.hint": "输入后按 Enter 搜索",
   "searchBar.select": "选择",
   "searchBar.search": "搜索",
