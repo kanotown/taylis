@@ -7,25 +7,36 @@ struct SearchRoute: Hashable {
     let messageId: String
     let channelId: String
 
-    /// The screens a result pushes at once (MOBILE_UI.md §6.2): its conversation, and for a reply its thread over it, so
-    /// the thread slides in alone and Back goes to the conversation, then to the results (as a reply's notification
-    /// lands, MainNavigation.land). The conversation used to open the thread itself once it had appeared: it slid in
-    /// first and the thread came over it a moment later (2026-10-27, 「スレッドが直接開いてほしい」).
-    static func screens(messageId: String, channelId: String, parentId: String?) -> (SearchRoute, SearchThreadRoute?) {
-        (SearchRoute(messageId: messageId, channelId: channelId), parentId.map { SearchThreadRoute(channelId: channelId, parentId: $0) })
+    /// The screen a result pushes (MOBILE_UI.md §6.2): its conversation, or for a reply its thread alone, so Back from the
+    /// thread returns to the results (2026-10-27, 「検索から開いたスレッドの戻るで検索結果に戻ってほしい」). The thread
+    /// used to be pushed over its conversation (Back: the conversation, then the results); before that the conversation
+    /// opened the thread itself once it had appeared (「スレッドが直接開いてほしい」).
+    static func screen(messageId: String, channelId: String, parentId: String?) -> SearchResultScreen {
+        if let parentId { return .thread(SearchThreadRoute(channelId: channelId, parentId: parentId)) }
+        return .conversation(SearchRoute(messageId: messageId, channelId: channelId))
     }
 }
 
-/// A reply's thread, pushed over its conversation inside the search screen (`SearchRoute.screens`).
+/// What a search result pushes on the search screen's stack (`SearchRoute.screen`).
+enum SearchResultScreen: Equatable {
+    case conversation(SearchRoute)
+    case thread(SearchThreadRoute)
+}
+
+/// A reply's thread, pushed alone over the results (`SearchRoute.screen`).
 struct SearchThreadRoute: Hashable {
     let channelId: String
     let parentId: String
+
+    /// The header's conversation link (§6.7): the conversation pushed over the thread at its parent, so Back returns to
+    /// the thread, then to the results.
+    var conversation: SearchRoute { SearchRoute(messageId: parentId, channelId: channelId) }
 }
 
-/// The conversations the search screen shows (a result's, a reply's thread over it): the engine's open conversation is
-/// the one on screen while any shows, and the one behind the search again once none does (notifications, §7). Kept for
-/// the whole screen rather than per view: a thread popped back to its conversation may disappear after that
-/// conversation has appeared again.
+/// The conversations the search screen shows (a result's, a reply's thread, the thread's conversation pushed over it):
+/// the engine's open conversation is the one on screen while any shows, and the one behind the search again once none
+/// does (notifications, §7). Kept for the whole screen rather than per view: on a push or a Back the screen going may
+/// disappear before or after the one coming has appeared.
 @MainActor
 final class SearchShownConversations {
     private(set) var shown: [String] = []
@@ -329,11 +340,12 @@ struct SearchView: View {
                 }
                 .navigationDestination(for: SearchThreadRoute.self) { route in
                     SearchThreadView(controller: controller, route: route, shown: shown, onOpenConversation: {
-                        // The header's conversation link (§6.7): back to the conversation under it, at the parent.
+                        // The header's conversation link (§6.7): the conversation over the thread, at the parent (Back:
+                        // the thread). The thread was pushed alone, so there is no conversation under it to go back to.
                         Task {
-                            if await controller.revealMessage(id: route.parentId, channelId: route.channelId, parentId: nil), !path.isEmpty {
-                                path.removeLast()
-                            }
+                            guard await controller.revealMessage(id: route.parentId, channelId: route.channelId, parentId: nil) else { return }
+                            revealed.insert(route.parentId)
+                            path.append(route.conversation)
                         }
                     })
                 }
@@ -590,11 +602,10 @@ struct SearchView: View {
         Task {
             guard await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) else { return }
             revealed.insert(messageId)
-            let (conversation, thread) = SearchRoute.screens(messageId: messageId, channelId: channelId, parentId: parentId)
-            var next = path  // one change: both screens pushed together, the top one sliding in
-            next.append(conversation)
-            if let thread { next.append(thread) }
-            path = next
+            switch SearchRoute.screen(messageId: messageId, channelId: channelId, parentId: parentId) {
+            case .conversation(let route): path.append(route)
+            case .thread(let route): path.append(route)
+            }
         }
     }
 }
@@ -1062,8 +1073,8 @@ struct SearchResultRow: View {
     }
 }
 
-/// A result's conversation inside the search screen, focused on the message. A reply's thread is pushed over it at
-/// once (`SearchRoute.screens`); a thread opened from here goes over it as in any conversation.
+/// A result's conversation inside the search screen, focused on the message (or a searched thread's conversation, at
+/// its parent). A thread opened from here goes over it as in any conversation.
 struct SearchConversationView: View {
     @Bindable var controller: AppController
     let route: SearchRoute
@@ -1087,8 +1098,8 @@ struct SearchConversationView: View {
     }
 }
 
-/// A reply's thread over its conversation inside the search screen (`SearchRoute.screens`): Back shows the
-/// conversation, then the results.
+/// A reply's thread alone over the results (`SearchRoute.screen`): Back shows the results; its header's conversation
+/// link pushes the conversation over it (`SearchThreadRoute.conversation`).
 struct SearchThreadView: View {
     @Bindable var controller: AppController
     let route: SearchThreadRoute
