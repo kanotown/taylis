@@ -121,6 +121,18 @@ object Jump {
     private fun rankPeople(query: String, users: Collection<UserPublic>): List<UserPublic> =
         rank(query, users.filter { it.deactivatedAt == null && it.role != "bot" })
 
+    /**
+     * 2026-10-27 (MOBILE_UI.md §6.1): a picker of people (the new-DM dialog, 「メンバーを追加」) filtered by its search
+     * field. Empty: `candidates` as given. Typed: the ones already ticked first (in the given order, so a tick never
+     * vanishes while filtering), then the others that match by display name or username (jump-match.json's rule: NFKC,
+     * kana and case folded, prefix first).
+     */
+    fun pickPeople(query: String, candidates: List<UserPublic>, selected: Set<String>): List<UserPublic> {
+        if (query.isBlank()) return candidates
+        val ticked = candidates.filter { it.id in selected }
+        return ticked + rank(query, candidates.filter { it.id !in selected })
+    }
+
     /** The new-message picker's rows: my channels, then public channels I can join, then people, then AI bots. */
     data class Destinations(
         val channels: List<ChannelState>,

@@ -42,8 +42,12 @@ object AdaptiveLayout {
     /** The list pane's width (dp): narrower in a small two-pane window, so the conversation keeps its room. */
     fun listWidth(widthDp: Float): Float = if (widthDp < 1000f) 300f else 340f
 
-    /** Whether the tab's root shows in a list pane: wide, on every tab but 自分 (its list and screens are one page). */
-    fun listPane(layout: PaneLayout, tab: MainTab): Boolean = layout != PaneLayout.PHONE && tab != MainTab.YOU
+    /**
+     * Whether the tab's root shows in a list pane: wide, on every tab but 自分 (its list and screens are one page) and
+     * 「検索」 (2026-10-27: its search, then what a result opens over it, one page as on the phone; three panes still put
+     * a result's thread beside its conversation).
+     */
+    fun listPane(layout: PaneLayout, tab: MainTab): Boolean = layout != PaneLayout.PHONE && tab != MainTab.YOU && tab != MainTab.SEARCH
 
     /** The thread in its own pane: three panes, the thread on top of its conversation. */
     fun threadPane(stack: List<Route>, layout: PaneLayout): Route.Thread? =

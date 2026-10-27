@@ -256,12 +256,29 @@ fun MainScreen(controller: AppController) {
         tabs = MainTabs.landFromHome(tabs, MainTabs.landingTab(store.channel(channelId)), channelId)
     }
 
+    /** 2026-10-27: a conversation or person picked on the jump screen: over the 「検索」 tab's search (MainTabs.landFromJump). */
+    fun openJumpPick(channelId: String) {
+        focusManager.clearFocus()
+        controller.messageFocus = null
+        controller.composerFocus = null
+        tabs = MainTabs.landFromJump(tabs, MainTabs.landingTab(store.channel(channelId)), channelId)
+    }
+
+    /** 2026-10-27: a one-shot request for the 「検索」 tab's field to take the cursor (a re-tap of the tab, 「移動・検索」). */
+    var focusSearchField by remember { mutableStateOf(false) }
+
     /**
      * A tap on the bottom bar (MOBILE_UI.md §5): another tab comes back as it was left; the selected one pops to its
      * root, or at its root scrolls its list to the top.
      */
     fun selectMainTab(tab: MainTab) {
         val tap = MainTabs.tap(tabs, tab)
+        if (tap.focusSearch) {
+            tabs = tap.state
+            searchText = MainNav.search(stack)?.params?.q ?: searchText
+            focusSearchField = true
+            return
+        }
         if (tap.scrollToTop) {
             scope.launch {
                 when (tab) {
@@ -273,6 +290,7 @@ fun MainScreen(controller: AppController) {
                         else -> mentionsListState
                     }.animateScrollToItem(0)
                     MainTab.YOU -> youScrollState.animateScrollTo(0)
+                    MainTab.SEARCH -> Unit // its re-tap puts the cursor in the field (above)
                 }
             }
             return
@@ -367,15 +385,27 @@ fun MainScreen(controller: AppController) {
         stack = MainNav.openSearch(stack)
         searchText = ""
     }
-    /** M37: the home's 「移動・検索」. */
+    /**
+     * M37: the home's 「移動・検索」. 2026-10-27: the 「検索」 tab, empty, its field taking the cursor (one search screen,
+     * one stack: what was open on that tab closes, as a fresh search).
+     */
     fun openJump() {
-        stack = MainNav.openJump(stack)
+        focusManager.clearFocus()
+        if (tabs.selected != MainTab.SEARCH) controller.messageFocus = null
+        tabs = MainTabs.openSearchTab(tabs)
         searchText = ""
+        focusSearchField = true
     }
     val jumping = (top as? Route.Search)?.jump == true
     /** Back from the suggestions: to the results on screen, or out of search when there are none. */
     fun collapseSearch() {
         val params = searchParams
+        // The 「検索」 tab's empty search is the tab's root: back there leaves the tab (MainTabs.back), as on the others.
+        if (MainTabs.searchTabRoot(stack)) {
+            tabs = MainTabs.back(tabs)
+            searchText = MainNav.search(stack)?.params?.q ?: ""
+            return
+        }
         stack = MainNav.collapseSearch(stack)
         searchText = params?.q ?: ""
     }
@@ -583,10 +613,8 @@ fun MainScreen(controller: AppController) {
         if (!controller.pendingJump) return@LaunchedEffect
         controller.pendingJump = false
         focusManager.clearFocus()
-        if (!(tabs.selected == MainTab.HOME && jumping)) {
-            tabs = MainTabs.update(tabs.copy(selected = MainTab.HOME), MainNav::openJump)
-            searchText = ""
-        }
+        // 2026-10-27: the 「検索」 tab, as the home's 「移動・検索」 opens it (already there and empty: only the cursor).
+        if (tabs.selected == MainTab.SEARCH && MainTabs.searchTabRoot(stack)) focusSearchField = true else openJump()
     }
     LaunchedEffect(controller.pendingReveal) {
         val message = controller.pendingReveal ?: return@LaunchedEffect
@@ -754,13 +782,19 @@ fun MainScreen(controller: AppController) {
                     recentSearches = emptyList()
                 },
                 onSearch = ::runSearch,
-                onBack = ::goBack,
+                // 2026-10-27: the 「検索」 tab's empty search is a tab root: no ← (the tab bar under it is the way out),
+                // and the cursor goes in only on a re-tap of the tab or 「移動・検索」, not each time the tab shows.
+                onBack = if (MainTabs.searchTabRoot(view)) null else ::goBack,
+                autoFocus = !(view.size == 2 && MainNav.tabSearch(view, 1)),
+                focusNow = focusSearchField,
+                onFocused = { focusSearchField = false },
+                tabBarShown = layout == PaneLayout.PHONE && MainTabs.barShown(view),
                 placeholder = if (jumping) stringResource(R.string.common_jump_or_search) else stringResource(R.string.main_screen_search, controller.workspaceName),
                 jump = if (!jumping) null else JumpTargets(
                     recent = RecentConversations.shown(recentConversations) { store.channel(it) },
-                    onOpenConversation = { openPicked(it) },
+                    onOpenConversation = { openJumpPick(it) },
                     // Made when there is none; a failure is the app's error (openDmWith sets it).
-                    onOpenPerson = { userId -> scope.launch { controller.openDmWith(userId)?.let { openPicked(it) } } },
+                    onOpenPerson = { userId -> scope.launch { controller.openDmWith(userId)?.let { openJumpPick(it) } } },
                     aiBotIds = controller.aiBotIds,
                 ),
             )

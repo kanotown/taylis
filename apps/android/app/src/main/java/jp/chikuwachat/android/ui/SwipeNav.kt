@@ -124,7 +124,7 @@ object SwipeNav {
         Route.You, is Route.Settings -> "you"
         is Route.Channel -> "channel:${top.id}"
         is Route.Thread -> "thread:${top.channelId}:${top.parentId}"
-        is Route.Search -> "search"
+        is Route.Search, Route.SearchHome -> "search"
         is Route.Pane -> "pane:${top::class.simpleName}"
     }
 

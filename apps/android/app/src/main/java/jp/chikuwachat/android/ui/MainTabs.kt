@@ -14,11 +14,12 @@ import kotlinx.serialization.Serializable
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 
-/** M34 (MOBILE_UI.md §5): the phone's bottom tabs, in the bar's order. */
+/** M34 (MOBILE_UI.md §5): the phone's bottom tabs, in the bar's order (2026-10-27: 「検索」 before 自分). */
 enum class MainTab(private val labelRes: Int) {
     HOME(R.string.main_tabs_home),
     DM(R.string.main_tabs_dm),
     ACTIVITY(R.string.common_activity),
+    SEARCH(R.string.common_search),
     YOU(R.string.common_you);
 
     val label: String get() = L10n.str(labelRes)
@@ -46,10 +47,15 @@ object MainTabs {
         MainTab.HOME -> Route.ChannelList
         MainTab.DM -> Route.DmList
         MainTab.ACTIVITY -> Route.Activity()
+        MainTab.SEARCH -> Route.SearchHome
         MainTab.YOU -> Route.You
     }
 
-    private fun rootStack(tab: MainTab): List<Route> = listOf(root(tab))
+    /** The 「検索」 tab's own screen: the jump screen (MOBILE_UI.md §6.2), empty. */
+    val SEARCH_SCREEN: Route.Search = Route.Search(jump = true)
+
+    /** A tab's stack at its root: its root screen; the 「検索」 tab's root with its own search over it. */
+    private fun rootStack(tab: MainTab): List<Route> = if (tab == MainTab.SEARCH) listOf(Route.SearchHome, SEARCH_SCREEN) else listOf(root(tab))
 
     /** The tab a root screen belongs to (a stack saved for one tab never shows on another). */
     private fun tabOf(root: Route.Root): MainTab = when (root) {
@@ -57,15 +63,24 @@ object MainTabs {
         Route.DmList -> MainTab.DM
         is Route.Activity -> MainTab.ACTIVITY
         Route.You -> MainTab.YOU
+        Route.SearchHome -> MainTab.SEARCH
     }
 
     // --- what is on screen ---
 
     /** `tab`'s stack as it was left (its root when never opened). */
-    fun stack(state: TabStacks, tab: MainTab = state.selected): List<Route> =
-        state.stacks[tab]?.takeIf { MainNav.valid(it) && tabOf(MainNav.rootOf(it)) == tab } ?: rootStack(tab)
+    fun stack(state: TabStacks, tab: MainTab = state.selected): List<Route> {
+        val saved = state.stacks[tab]?.takeIf { MainNav.valid(it) && tabOf(MainNav.rootOf(it)) == tab } ?: return rootStack(tab)
+        // The 「検索」 tab's search is never closed (back from its results, a conversation gone): an empty one comes back.
+        return if (tab == MainTab.SEARCH && !MainNav.tabSearch(saved, 1)) rootStack(tab) + saved.drop(1) else saved
+    }
 
-    fun atRoot(state: TabStacks, tab: MainTab = state.selected): Boolean = stack(state, tab).size == 1
+    /** At the tab's root: its root screen alone; on 「検索」 its search (with or without results), nothing over it. */
+    fun atRoot(state: TabStacks, tab: MainTab = state.selected): Boolean = stack(state, tab).size == rootStack(tab).size
+
+    /** The 「検索」 tab's empty search, nothing over it: its bar has no ← (the tab bar is the way out). */
+    fun searchTabRoot(stack: List<Route>): Boolean =
+        stack.size == 2 && MainNav.tabSearch(stack, 1) && (stack[1] as Route.Search).params == null
 
     /** The conversation the engine keeps open: the selected tab's (kept while a search or a thread shows over it). */
     fun openConversation(state: TabStacks): Route.Channel? = MainNav.conversation(stack(state))
@@ -86,7 +101,8 @@ object MainTabs {
      */
     fun barShown(stack: List<Route>): Boolean = when (val top = MainNav.top(stack)) {
         is Route.Root, is Route.Pane -> true
-        is Route.Search -> !top.expanded
+        // 2026-10-27: the 「検索」 tab's own search is a tab root: the bar stays (the keyboard covers it while typing).
+        is Route.Search -> !top.expanded || (stack.size == 2 && MainNav.tabSearch(stack, 1))
         // M40: a settings screen is a page of its own (its fields take the keyboard); the wide list shows the bar itself.
         is Route.Channel, is Route.Thread, is Route.Settings -> false
     }
@@ -98,28 +114,46 @@ object MainTabs {
 
     fun withStack(state: TabStacks, tab: MainTab, stack: List<Route>): TabStacks = state.copy(stacks = state.stacks + (tab to stack))
 
-    /** What a tap on the bar does: the new state, and whether the tab's list scrolls to its top. */
-    data class Tap(val state: TabStacks, val scrollToTop: Boolean)
+    /**
+     * What a tap on the bar does: the new state, whether the tab's list scrolls to its top, and (「検索」) whether its
+     * search field takes the cursor.
+     */
+    data class Tap(val state: TabStacks, val scrollToTop: Boolean, val focusSearch: Boolean = false)
 
     /**
      * A tap on the bar (MOBILE_UI.md §5): another tab comes back as it was left; the selected one pops to its root, or,
-     * at its root already, scrolls its list to the top.
+     * at its root already, scrolls its list to the top. 「検索」 (2026-10-27) pops to its search (its results kept), and
+     * there puts the cursor in the field (the suggestions open over any results).
      */
     fun tap(state: TabStacks, tab: MainTab): Tap = when {
         tab != state.selected -> Tap(state.copy(selected = tab), scrollToTop = false)
+        tab == MainTab.SEARCH && atRoot(state) -> Tap(update(state, MainNav::expandSearch), scrollToTop = false, focusSearch = true)
         atRoot(state) -> Tap(state, scrollToTop = true)
-        else -> Tap(withStack(state, tab, listOf(MainNav.rootOf(stack(state)))), scrollToTop = false)
+        else -> Tap(withStack(state, tab, stack(state).take(rootStack(tab).size)), scrollToTop = false)
     }
+
+    /**
+     * 2026-10-27: the home's 「移動・検索」 and Ctrl+K: the 「検索」 tab, emptied to its root (what was open on it closes);
+     * the caller puts the cursor in its field.
+     */
+    fun openSearchTab(state: TabStacks): TabStacks = withStack(state, MainTab.SEARCH, rootStack(MainTab.SEARCH)).copy(selected = MainTab.SEARCH)
+
+    /** The selected tab's stack after back, when it changes ([MainNav.back]; the 「検索」 tab's search never closes). */
+    private fun popped(state: TabStacks): TabStacks? {
+        val stack = stack(state)
+        if (!MainNav.canGoBack(stack)) return null
+        val next = update(state, MainNav::back)
+        return next.takeIf { stack(it) != stack }
+    }
+
+    /** Whether back has something to pop on the selected tab (the bar's ←). */
+    fun canPop(state: TabStacks): Boolean = popped(state) != null
 
     /** Whether the system's back stays in the app: something to pop, or a tab other than home to leave. */
-    fun canGoBack(state: TabStacks): Boolean = MainNav.canGoBack(stack(state)) || state.selected != MainTab.HOME
+    fun canGoBack(state: TabStacks): Boolean = canPop(state) || state.selected != MainTab.HOME
 
     /** Back: the selected tab's stack pops ([MainNav.back]); at another tab's root, to the home tab. */
-    fun back(state: TabStacks): TabStacks = when {
-        MainNav.canGoBack(stack(state)) -> update(state, MainNav::back)
-        state.selected != MainTab.HOME -> state.copy(selected = MainTab.HOME)
-        else -> state
-    }
+    fun back(state: TabStacks): TabStacks = popped(state) ?: if (state.selected != MainTab.HOME) state.copy(selected = MainTab.HOME) else state
 
     /** A notification, permalink or search result: a DM on the DM tab, a channel (and its thread) on the home tab. */
     fun landingTab(channel: ChannelState?): MainTab = if (channel?.channel?.isDm == true) MainTab.DM else MainTab.HOME
@@ -177,12 +211,12 @@ object MainTabs {
      * ([MainNav.openFromSearch]; `besideChannel`: three panes).
      */
     fun landFromSearch(state: TabStacks, tab: MainTab, channelId: String, parentId: String?, besideChannel: Boolean = false): TabStacks =
-        if (tab == state.selected || (parentId != null && MainNav.search(stack(state)) != null)) update(state) { MainNav.openFromSearch(it, channelId, parentId, besideChannel) }
+        if (tab == state.selected || state.selected == MainTab.SEARCH || (parentId != null && MainNav.search(stack(state)) != null)) update(state) { MainNav.openFromSearch(it, channelId, parentId, besideChannel) }
         else land(update(state, MainNav::returnToSearch), tab, channelId, parentId)
 
     /** M58: a canvas from the search's results, landing as a message result does ([landFromSearch]). */
     fun landCanvasFromSearch(state: TabStacks, tab: MainTab, channelId: String, canvasId: String): TabStacks =
-        if (tab == state.selected) update(state) { MainNav.openCanvasFromSearch(it, channelId, canvasId) }
+        if (tab == state.selected || state.selected == MainTab.SEARCH) update(state) { MainNav.openCanvasFromSearch(it, channelId, canvasId) }
         else landCanvas(update(state, MainNav::returnToSearch), tab, channelId, canvasId)
 
     /**
@@ -192,6 +226,13 @@ object MainTabs {
      */
     fun landFromHome(state: TabStacks, tab: MainTab, channelId: String): TabStacks =
         land(withStack(state, MainTab.HOME, rootStack(MainTab.HOME)), tab, channelId)
+
+    /**
+     * 2026-10-27: a conversation or person picked on the jump screen. On the 「検索」 tab it opens over the search (back
+     * returns to it, as typed); a jump screen left over another tab (an older build's) lands as [landFromHome].
+     */
+    fun landFromJump(state: TabStacks, tab: MainTab, channelId: String): TabStacks =
+        if (state.selected == MainTab.SEARCH) update(state) { MainNav.openConversation(it, channelId) } else landFromHome(state, tab, channelId)
 
     /**
      * M40: a 自分 screen opened from elsewhere (my profile card's 「ステータスを設定」): the 自分 tab shows it over its

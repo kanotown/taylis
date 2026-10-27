@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -413,10 +415,18 @@ fun SearchTopBar(
     onRemoveRecent: (SearchParams) -> Unit,
     onClearRecent: () -> Unit,
     onSearch: (SearchParams) -> Unit,
-    onBack: () -> Unit,
+    /** The field's ←; null (the 「検索」 tab's root): a plain search glyph in its place. */
+    onBack: (() -> Unit)?,
     placeholder: String,
     /** M37: the home's 「移動・検索」 (MOBILE_UI.md §6.2): conversations and people to go to instead of search suggestions. */
     jump: JumpTargets? = null,
+    /** Whether opening the suggestions puts the cursor in the field (the 「検索」 tab's root: no, only on [focusNow]). */
+    autoFocus: Boolean = true,
+    /** A one-shot request for the cursor (a re-tap of the 「検索」 tab); [onFocused] when it was taken. */
+    focusNow: Boolean = false,
+    onFocused: () -> Unit = {},
+    /** The bottom tabs show over the suggestions' last rows (the 「検索」 tab): the list scrolls clear of them. */
+    tabBarShown: Boolean = false,
 ) {
     val store = controller.store
     val rows = remember(text, recent, version, jump != null) {
@@ -426,7 +436,13 @@ fun SearchTopBar(
     }
     // Opening the suggestions puts the cursor in the box (the bar only follows focus by itself).
     val focus = remember { FocusRequester() }
-    LaunchedEffect(expanded) { if (expanded) runCatching { focus.requestFocus() } }
+    LaunchedEffect(expanded) { if (expanded && autoFocus) runCatching { focus.requestFocus() } }
+    LaunchedEffect(expanded, focusNow) {
+        if (expanded && focusNow) {
+            runCatching { focus.requestFocus() }
+            onFocused()
+        }
+    }
     Box(Modifier.fillMaxWidth().semantics { isTraversalGroup = true }) {
         SearchBar(
             inputField = {
@@ -443,7 +459,10 @@ fun SearchTopBar(
                     expanded = expanded,
                     onExpandedChange = onExpandedChange,
                     placeholder = { Text(placeholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back)) } },
+                    leadingIcon = {
+                        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back)) }
+                        else Icon(Icons.Default.Search, contentDescription = null)
+                    },
                     trailingIcon = {
                         if (text.isNotEmpty()) IconButton(onClick = { onTextChange(""); onExpandedChange(true) }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_clear)) }
                     },
@@ -453,7 +472,7 @@ fun SearchTopBar(
             onExpandedChange = onExpandedChange,
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            if (jump != null) JumpList(store, version, text, rows, jump, onSearch = onSearch, onRemoveRecent = onRemoveRecent, onClearRecent = onClearRecent)
+            if (jump != null) JumpList(store, version, text, rows, jump, onSearch = onSearch, onRemoveRecent = onRemoveRecent, onClearRecent = onClearRecent, tabBarShown = tabBarShown)
             else SuggestionList(store, rows, text, onPick = onSearch, onRemoveRecent = onRemoveRecent, onClearRecent = onClearRecent)
         }
     }
@@ -473,6 +492,7 @@ class JumpTargets(
  * M37 (MOBILE_UI.md §6.2): empty, 「最近の会話」 then the recent searches and quick filters (`rows`); typing, 「会話」 (at
  * most 20), 「人」 and the AI bots' 「ボット」 (at most 10 each) by jump-match.json's rule, then 「"語" をメッセージ検索」 (the results screen).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColumnScope.JumpList(
     store: Store,
@@ -483,6 +503,7 @@ private fun ColumnScope.JumpList(
     onSearch: (SearchParams) -> Unit,
     onRemoveRecent: (SearchParams) -> Unit,
     onClearRecent: () -> Unit,
+    tabBarShown: Boolean = false,
 ) {
     val query = text.trim()
     val meId = store.me?.id
@@ -497,7 +518,9 @@ private fun ColumnScope.JumpList(
     val people = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.people(query, store.users.values) }
     val bots = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.bots(query, store.users.values, jump.aiBotIds, Jump.MAX_PEOPLE) }
     // The last row (「"語" をメッセージ検索」) scrolls clear of the gesture bar.
-    LazyColumn(Modifier.fillMaxWidth().weight(1f).imePadding(), contentPadding = WindowInsets.navigationBars.asPaddingValues()) {
+    // The 「検索」 tab: its bar (80 dp over the gesture bar) covers the bottom while the keyboard is down.
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + if (tabBarShown && !WindowInsets.isImeVisible) 80.dp else 0.dp
+    LazyColumn(Modifier.fillMaxWidth().weight(1f).imePadding(), contentPadding = PaddingValues(bottom = bottom)) {
         if (query.isEmpty()) {
             if (jump.recent.isNotEmpty()) {
                 item(key = "h:recent-conversations") { SuggestionHeader(stringResource(R.string.search_pane_recent_conversations)) }

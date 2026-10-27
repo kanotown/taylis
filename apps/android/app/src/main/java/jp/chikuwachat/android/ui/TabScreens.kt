@@ -68,6 +68,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Search
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.DmCloses
@@ -100,7 +101,7 @@ fun MainTabBar(store: Store, version: Int, selected: MainTab, onTab: (MainTab) -
 }
 
 /**
- * T1 (MOBILE_UI.md §12): the same four tabs with the same badges as a navigation rail, on a wide window. ✏️ 新しいメッセージ
+ * T1 (MOBILE_UI.md §12): the same tabs with the same badges as a navigation rail, on a wide window. ✏️ 新しいメッセージ
  * heads it (the phone's button floats over the home list).
  */
 @Composable
@@ -169,6 +170,7 @@ private fun tabIcons(tab: MainTab): Pair<ImageVector, ImageVector> = when (tab) 
     MainTab.HOME -> Icons.Filled.Home to Icons.Outlined.Home
     MainTab.DM -> Icons.Filled.ChatBubble to Icons.Outlined.ChatBubbleOutline
     MainTab.ACTIVITY -> Icons.Filled.Notifications to Icons.Outlined.Notifications
+    MainTab.SEARCH -> Icons.Filled.Search to Icons.Outlined.Search
     MainTab.YOU -> Icons.Filled.AccountCircle to Icons.Outlined.AccountCircle
 }
 
