@@ -99,7 +99,8 @@ async def test_export_columns_formulas_loans_and_who_may(
     assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
     assert (
-        response.headers["content-disposition"] == 'attachment; filename="equipment-20261026.csv"'
+        response.headers["content-disposition"]
+        == f'attachment; filename="equipment-{datetime.now(UTC):%Y%m%d}.csv"'
     )
     rows = _rows(response)
     assert rows[0] == HEADER.split(",")
