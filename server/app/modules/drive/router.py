@@ -181,7 +181,7 @@ async def _content(
     inline: bool,
     *,
     cache: str = "private, max-age=3600",
-) -> StreamingResponse:
+) -> Response:
     """A file's bytes under its current name (§7.1): Range (one range, 206), If-Range on the
     version's ETag; always an attachment except an image with ?inline=1."""
     if item.kind != "file":
@@ -213,10 +213,18 @@ async def _content(
         headers,
         range_header=request.headers.get("range"),
         if_range=request.headers.get("if-range"),
+        head=request.method == "HEAD",
     )
 
 
-@router.get("/drive/items/{item_id}/content")
+@router.get(
+    "/drive/items/{item_id}/content",
+    operation_id="download_api_v1_drive_items__item_id__content_get",
+)
+@router.head(
+    "/drive/items/{item_id}/content",
+    operation_id="download_api_v1_drive_items__item_id__content_head",
+)
 async def download(
     item_id: UUID,
     request: Request,
@@ -224,7 +232,7 @@ async def download(
     db: Db,
     version_id: UUID | None = Query(default=None),
     inline: bool = Query(default=False),
-) -> StreamingResponse:
+) -> Response:
     """The file under its current name (§7.1), with the bearer token (the desktop app)."""
     item, _ = await service.readable_item(db, user, item_id)
     return await _content(request, db, item, version_id, inline)
@@ -254,13 +262,20 @@ async def download_ticket(
     )
 
 
-@router.get("/drive/download/{token}")
+@router.get(
+    "/drive/download/{token}",
+    operation_id="download_by_ticket_api_v1_drive_download__token__get",
+)
+@router.head(
+    "/drive/download/{token}",
+    operation_id="download_by_ticket_api_v1_drive_download__token__head",
+)
 async def download_by_ticket(
     token: str,
     request: Request,
     db: Db,
     inline: bool = Query(default=False),
-) -> StreamingResponse:
+) -> Response:
     """The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and
     for a person who can no longer read the file."""
     runtime: DriveRuntime = request.app.state.drive

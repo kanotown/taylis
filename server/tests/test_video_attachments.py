@@ -102,3 +102,57 @@ async def test_100_mib_video_over_real_http_and_one_byte_over_limit(
             )
         assert refused.status_code == 413
         assert refused.json()["error"]["code"] == "attachment_too_large"
+
+
+@pytest.mark.parametrize(("extension", "mime"), [("mp4", "video/mp4"), ("mov", "video/quicktime")])
+async def test_video_content_answers_ranges_and_head_for_players(
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    extension: str,
+    mime: str,
+) -> None:
+    """2026-10-27 (docs/PREVIEWS.md §12): what a <video> (Safari / WKWebView above all) asks of
+    a clip: a 2-byte probe, the end of a file whose moov is at the end, and HEAD."""
+    as_user(await make_user(db, "range-viewer"))
+    content = (VIDEOS / f"sample.{extension}").read_bytes()
+    size = len(content)
+    meta = (
+        await client.post(
+            "/api/v1/attachments", files={"file": (f"sample.{extension}", content, mime)}
+        )
+    ).json()
+    url = f"/api/v1/attachments/{meta['id']}/content"
+
+    probe = await client.get(url, headers={"Range": "bytes=0-1"})
+    assert probe.status_code == 206 and probe.content == content[:2]
+    assert probe.headers["content-range"] == f"bytes 0-1/{size}"
+    assert probe.headers["content-length"] == "2"
+    assert probe.headers["content-type"] == mime
+    assert probe.headers["accept-ranges"] == "bytes"
+    tail = await client.get(url, headers={"Range": "bytes=-100"})
+    assert tail.status_code == 206 and tail.content == content[-100:]
+    assert tail.headers["content-range"] == f"bytes {size - 100}-{size - 1}/{size}"
+    rest = await client.get(url, headers={"Range": f"bytes={size - 10}-"})
+    assert rest.status_code == 206 and rest.content == content[-10:]
+    past = await client.get(url, headers={"Range": f"bytes={size}-"})
+    assert past.status_code == 416 and past.headers["content-range"] == f"bytes */{size}"
+    # If-Range on another ETag: the whole file.
+    stale = await client.get(url, headers={"Range": "bytes=0-1", "If-Range": '"other"'})
+    assert stale.status_code == 200 and stale.content == content
+
+    head = await client.head(url)
+    assert head.status_code == 200 and head.content == b""
+    assert head.headers["content-length"] == str(size)
+    assert head.headers["content-type"] == mime
+    assert head.headers["accept-ranges"] == "bytes"
+    assert head.headers["etag"] == f'"{meta["id"]}"'
+    head_part = await client.head(url, headers={"Range": "bytes=10-19"})
+    assert head_part.status_code == 206 and head_part.content == b""
+    assert head_part.headers["content-length"] == "10"
+    assert head_part.headers["content-range"] == f"bytes 10-19/{size}"
+    # Someone who cannot read it: refused for HEAD as for GET.
+    as_user(await make_user(db, "stranger"))
+    refused = await client.get(url)
+    assert refused.status_code in (403, 404)
+    assert (await client.head(url)).status_code == refused.status_code

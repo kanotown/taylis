@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, File, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.core.db import Db
 from app.core.errors import not_found, rate_limited
@@ -46,15 +46,24 @@ async def get_attachment(attachment_id: UUID, user: CurrentUser, db: Db) -> Atta
     return to_attachment_out(await service.get_for_access(db, user, attachment_id))
 
 
-@router.get("/attachments/{attachment_id}/content")
+# GET and HEAD as two routes with their own operation ids (as the share links' content).
+@router.get(
+    "/attachments/{attachment_id}/content",
+    operation_id="download_api_v1_attachments__attachment_id__content_get",
+)
+@router.head(
+    "/attachments/{attachment_id}/content",
+    operation_id="download_api_v1_attachments__attachment_id__content_head",
+)
 async def download(
     attachment_id: UUID,
     request: Request,
     user: CurrentUser,
     db: Db,
     inline: bool = Query(default=False),
-) -> StreamingResponse:
-    """The file (M160: one byte range with Range, 206; a resumed download, a video's seek)."""
+) -> Response:
+    """The file (M160: one byte range with Range, 206; a resumed download, a video's seek). HEAD:
+    the same headers without the bytes (2026-10-27, docs/PREVIEWS.md §12)."""
     attachment = await service.get_for_access(db, user, attachment_id)
     return service.ranged_response(
         request.app.state.blobs,
@@ -63,6 +72,7 @@ async def download(
         service.content_headers(attachment, inline=inline),
         range_header=request.headers.get("range"),
         if_range=request.headers.get("if-range"),
+        head=request.method == "HEAD",
     )
 
 

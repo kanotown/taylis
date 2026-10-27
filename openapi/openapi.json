@@ -30845,8 +30845,63 @@
     },
     "/api/v1/attachments/{attachment_id}/content": {
       "get": {
-        "description": "The file (M160: one byte range with Range, 206; a resumed download, a video's seek).",
+        "description": "The file (M160: one byte range with Range, 206; a resumed download, a video's seek). HEAD:\nthe same headers without the bytes (2026-10-27, docs/PREVIEWS.md §12).",
         "operationId": "download_api_v1_attachments__attachment_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "head": {
+        "description": "The file (M160: one byte range with Range, 206; a resumed download, a video's seek). HEAD:\nthe same headers without the bytes (2026-10-27, docs/PREVIEWS.md §12).",
+        "operationId": "download_api_v1_attachments__attachment_id__content_head",
         "parameters": [
           {
             "in": "path",
@@ -36326,6 +36381,55 @@
         "tags": [
           "drive"
         ]
+      },
+      "head": {
+        "description": "The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and\nfor a person who can no longer read the file.",
+        "operationId": "download_by_ticket_api_v1_drive_download__token__head",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download By Ticket",
+        "tags": [
+          "drive"
+        ]
       }
     },
     "/api/v1/drive/folders": {
@@ -36826,6 +36930,78 @@
       "get": {
         "description": "The file under its current name (§7.1), with the bearer token (the desktop app).",
         "operationId": "download_api_v1_drive_items__item_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download",
+        "tags": [
+          "drive"
+        ]
+      },
+      "head": {
+        "description": "The file under its current name (§7.1), with the bearer token (the desktop app).",
+        "operationId": "download_api_v1_drive_items__item_id__content_head",
         "parameters": [
           {
             "in": "path",

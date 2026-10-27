@@ -1959,7 +1959,7 @@ export const ja = {
   "attach.play": "{name} を再生",
   "attach.loadingVideo": "動画を読み込み中",
   "attach.videoPreview": "動画のプレビュー",
-  "attach.unplayable": "この動画はアプリ内で再生できません",
+  "attach.unplayable": "この動画はこの端末では再生できません。ダウンロードして開いてください",
   "attach.videoFailed": "動画を読み込めませんでした",
   "attach.loadingVideoSize": "動画を読み込み中…（{size}）",
   "attach.uploading": "アップロード中",

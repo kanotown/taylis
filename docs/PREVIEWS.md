@@ -288,3 +288,39 @@ docker compose ... exec app python -m app.cli generate-previews --retry-failed
 PDF.js（`pdfjs-dist` の legacy ビルド、M108 で入れたもの）を使い続ける。新しい依存はない。開いたときだけ読み込み、
 本体のバンドルには入らない：`pdfLoader` のチャンク 487 KB（gzip 148 KB）とワーカー 1.3 MB（どちらもビルドの値、
 2026-10-12）。Chromium / WebView2 の内蔵ビューアは WKWebView（macOS）に無く、窓によって見た目も操作も変わるので使わない（§5）。
+
+## 12. 動画が再生できないとき（Desktop / Web、2026-10-27）
+
+報告：デスクトップのアプリで mp4 の添付が「ときどき」再生できない。`ffmpeg` で作った短い動画を、Playwright の WebKit
+（macOS の WKWebView と同じエンジン）と Chrome（WebView2 と同じ Chromium）で、アプリと同じ Blob の URL と Web のドライブと同じ
+Range の URL で再生して調べた。分かったことと直したこと：
+
+- **メッセージの動画の流し方**：デスクトップと Web は `/attachments/{id}/content` を Bearer つきで全部取って Blob の URL にする
+  （`videoSource.ts`）。`<video>` は Authorization を送れないため。ファイルは手元にあるので moov が末尾のファイル（faststart でない）も、
+  シークも問題ない（WebKit・Chrome とも、H.264 の faststart / 末尾 moov、HEVC `hvc1`、.mov を再生できた）。Content-Type はアップロードの
+  中身から決めたもの（`video/mp4`・`video/quicktime`）で、Blob の型もそれになる。
+- **原因 1：この端末で復号できない動画**（再現した）。WebKit は HEVC のタグが `hev1`（`ffmpeg -c:v libx265` の既定。Apple の機器は
+  `hvc1` で書く）・Matroska などで `error`（MediaError 4）になる。前の文言は「アプリ内で再生できません」だけだった。Chromium は
+  復号できない映像トラックを黙って捨てて**音だけ再生する**（`error` が出ず、`videoWidth` が 0、フレーム数 0）。Chrome で MPEG-4 Part 2
+  の mp4 で再現した。Windows の WebView2 で HEVC の復号器が無い PC の iPhone の動画（HEVC）は同じ経路で黒い箱になる（Windows では
+  未確認、仕組みからの推定）。
+  → 直した：ビューアは `loadeddata` と `timeupdate` で「サーバが映像ありと言う（`width` かポスターがある、または調べていない）のに
+  大きさが 0×0、または 1.5 秒再生してフレームが 0」を見て、「この動画はこの端末では再生できません。ダウンロードして開いてください」と
+  ダウンロードを出す（`ui/videoPlayback.ts`）。音だけのファイル（サーバが調べて映像が無かった）はそのまま再生する。会話のタイルも同じ判定で
+  ポスターに戻す。MediaError は 3・4 を「再生できない」（再試行なし）、1・2 と、一度読めた後のエラーを「読み込めない」（再試行あり）に分けた。
+- **原因 2：Web のドライブの動画のチケットの期限**（再現した）。Web のドライブの動画はダウンロードのチケットの URL を `src` にして Range で
+  流す（DRIVE.md §7.3）。チケットは 5 分使われないと消える（サーバの再起動でも消える）。一時停止して 5 分以上たってから再生・シークすると
+  次の Range が 404 になり、Chrome は MediaError 2（始めからなら 4）で止まり「再生できません」と出ていた。WebKit はエラーも出さず
+  `stalled` のまま止まる。→ 直した：一度読めた後のエラーなら新しいチケットを取り、その位置から（止めていたなら止めたまま）続ける。
+  チケットを取ってから 4 分を過ぎて 8 秒データが来ないとき（WebKit の場合）も同じ。続けて 2 回までで、その後は「読み込めません」と再試行。
+  デスクトップのドライブとメッセージの動画は Blob なのでチケットに関わらない。
+- **サーバの Range**：`/attachments/{id}/content`・`/drive/items/{id}/content`・`/drive/download/{token}` は M160 から 1 つの範囲の
+  Range（206・`Content-Range`・その範囲の `Content-Length`・`Accept-Ranges: bytes`・`If-Range`・範囲外は 416）に答える。チケットは
+  何度でも使える（1 回きりではない）。`Content-Disposition: attachment`・`Content-Security-Policy: sandbox`・`no-store` は `<video>` の
+  再生を妨げない（WebKit・Chrome で確かめた）。足したもの：同じ 3 つに **HEAD**（GET と同じ状態とヘッダ、本文なし、ストアを読まない）。
+  前は 405 だった。ブラウザの `<video>` は HEAD を使わないので再生の原因ではないが、外部のプレーヤーやダウンロードのツールのため。
+- **プロキシ**：`infra/Caddyfile` の `encode zstd gzip` は既定の型の一覧（text/*・JSON など）だけを圧縮し、`video/*` を圧縮しない。
+  `infra/nginx-site.conf.example` は `proxy_buffering off`・gzip なし・Range をそのまま通すので、変える必要はない。
+- **残るもの**：メッセージの動画は全部を取ってから再生するので、大きい動画（上限 100 MB）は読み込みの表示の間待つ。途中で接続が切れると
+  「読み込めません」と再試行になる。デスクトップのドライブの大きな動画も Blob で全部読む。アプリでも Range で流すには添付のチケット
+  （`<video>` が Bearer を送れないため）と Tauri の CSP の `media-src` に API の配信元を足すことが要る（今回はしていない）。

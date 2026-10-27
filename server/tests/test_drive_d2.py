@@ -100,6 +100,13 @@ async def test_a_ticket_downloads_without_the_token_while_access_lasts(
     assert whole.headers["accept-ranges"] == "bytes"
     part = await client.get(ticket["url"], headers={"Range": "bytes=100-199"})
     assert part.status_code == 206 and part.content == data[100:200]
+    # HEAD (2026-10-27): the headers of the GET, no bytes; a player's seeks reuse the ticket.
+    head = await client.head(ticket["url"], headers={"Range": "bytes=100-199"})
+    assert head.status_code == 206 and head.content == b""
+    assert head.headers["content-length"] == "100"
+    assert head.headers["content-range"] == f"bytes 100-199/{len(data)}"
+    again = await client.get(ticket["url"], headers={"Range": f"bytes={len(data) - 5}-"})
+    assert again.status_code == 206 and again.content == data[-5:]
     assert (await client.get(f"{API}/drive/download/{'x' * 43}")).status_code == 404
     assert redact_path(ticket["url"]) == "/api/v1/drive/download/***"
 

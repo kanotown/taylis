@@ -1960,7 +1960,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "attach.play": "播放 {name}",
   "attach.loadingVideo": "正在加载视频",
   "attach.videoPreview": "视频预览",
-  "attach.unplayable": "此视频无法在应用内播放",
+  "attach.unplayable": "此视频无法在此设备上播放。请下载后打开",
   "attach.videoFailed": "无法加载视频",
   "attach.loadingVideoSize": "正在加载视频…（{size}）",
   "attach.uploading": "正在上传",

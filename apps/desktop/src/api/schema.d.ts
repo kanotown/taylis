@@ -1475,14 +1475,20 @@ export interface paths {
         };
         /**
          * Download
-         * @description The file (M160: one byte range with Range, 206; a resumed download, a video's seek).
+         * @description The file (M160: one byte range with Range, 206; a resumed download, a video's seek). HEAD:
+         *     the same headers without the bytes (2026-10-27, docs/PREVIEWS.md §12).
          */
         get: operations["download_api_v1_attachments__attachment_id__content_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * Download
+         * @description The file (M160: one byte range with Range, 206; a resumed download, a video's seek). HEAD:
+         *     the same headers without the bytes (2026-10-27, docs/PREVIEWS.md §12).
+         */
+        head: operations["download_api_v1_attachments__attachment_id__content_head"];
         patch?: never;
         trace?: never;
     };
@@ -3064,7 +3070,12 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * Download By Ticket
+         * @description The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and
+         *     for a person who can no longer read the file.
+         */
+        head: operations["download_by_ticket_api_v1_drive_download__token__head"];
         patch?: never;
         trace?: never;
     };
@@ -3216,7 +3227,11 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * Download
+         * @description The file under its current name (§7.1), with the bearer token (the desktop app).
+         */
+        head: operations["download_api_v1_drive_items__item_id__content_head"];
         patch?: never;
         trace?: never;
     };
@@ -19866,6 +19881,39 @@ export interface operations {
             };
         };
     };
+    download_api_v1_attachments__attachment_id__content_head: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preview_pdf_api_v1_attachments__attachment_id__preview_pdf_get: {
         parameters: {
             query?: never;
@@ -23157,6 +23205,39 @@ export interface operations {
             };
         };
     };
+    download_by_ticket_api_v1_drive_download__token__head: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_folder_api_v1_drive_folders_post: {
         parameters: {
             query?: never;
@@ -23461,6 +23542,40 @@ export interface operations {
         };
     };
     download_api_v1_drive_items__item_id__content_get: {
+        parameters: {
+            query?: {
+                version_id?: string | null;
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_api_v1_drive_items__item_id__content_head: {
         parameters: {
             query?: {
                 version_id?: string | null;

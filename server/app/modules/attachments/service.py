@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 import filetype
 from fastapi import UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -665,18 +665,26 @@ def ranged_response(
     *,
     range_header: str | None,
     if_range: str | None,
-) -> StreamingResponse:
-    """The whole object (200) or the one range asked for (206 with Content-Range)."""
+    head: bool = False,
+) -> Response:
+    """The whole object (200) or the one range asked for (206 with Content-Range). `head` (a HEAD
+    request, 2026-10-27): the same status and headers (Content-Length of what a GET would send)
+    without a body, and without reading the store."""
     span = requested_range(range_header, if_range, headers.get("ETag", ""), size)
+    status = 200
+    if span is not None:
+        first, last = span
+        status = 206
+        headers = {
+            **headers,
+            "Content-Length": str(last - first + 1),
+            "Content-Range": f"bytes {first}-{last}/{size}",
+        }
+    if head:
+        return Response(status_code=status, headers=headers)
     if span is None:
         return StreamingResponse(blobs.stream(key), headers=headers)
-    first, last = span
-    partial = {
-        **headers,
-        "Content-Length": str(last - first + 1),
-        "Content-Range": f"bytes {first}-{last}/{size}",
-    }
-    return StreamingResponse(blobs.stream(key, first, last), status_code=206, headers=partial)
+    return StreamingResponse(blobs.stream(key, span[0], span[1]), status_code=206, headers=headers)
 
 
 def preview_pdf_headers(attachment: Attachment) -> dict[str, str]:
