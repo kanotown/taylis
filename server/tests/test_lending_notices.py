@@ -73,7 +73,12 @@ async def _lab(
 ) -> tuple[LoanLab, Clock]:
     clock = freeze(monkeypatch)
     monkeypatch.setattr(planner_module, "utcnow", clock)
-    return await make_lab(db, client, as_user), clock
+    lab = await make_lab(db, client, as_user)
+    # The accounts were made in real time; their activity read position goes before the frozen days,
+    # or a notice of a frozen day earlier than today would count as read.
+    await db.execute(update(User).values(activity_read_at=jst(10, 1, 0)))
+    await db.commit()
+    return lab, clock
 
 
 # --- the borrower's reminders -------------------------------------------------------------------
