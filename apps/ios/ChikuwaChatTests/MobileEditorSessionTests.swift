@@ -86,6 +86,18 @@ final class MobileEditorSessionTests: XCTestCase {
         for _ in 0..<20 { await Task.yield() }
     }
 
+    /// Until the session asked the editor for its body (`commit` / `detach` started with `async let` run as a child task:
+    /// a few yields are not always enough for it to get there under a full run's load, and an answer sent before the
+    /// question finds no one waiting).
+    @MainActor
+    private func asked(_ h: Harness, id: Int = 1) async {
+        let deadline = Date().addingTimeInterval(5)
+        while !h.transport.sent.contains(.requestBody(id: id)), Date() < deadline {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
     // MARK: into the editor
 
     @MainActor
@@ -221,7 +233,7 @@ final class MobileEditorSessionTests: XCTestCase {
         let h = await harness()
         let typed = Self.body + "\n最後の言葉\n"
         async let line = h.session.commit(timeout: 1)
-        await settle()
+        await asked(h)
         XCTAssertEqual(h.transport.sent.last, .requestBody(id: 1))
         h.transport.web(.bodyRequested(body: typed, dirty: true, caretLine: 7))
         let got = await line
@@ -247,7 +259,7 @@ final class MobileEditorSessionTests: XCTestCase {
         let h = await harness()
         let typed = Self.body + "\n閉じる前\n"
         async let done: Void = h.session.detach()
-        await settle()
+        await asked(h)
         h.transport.web(.bodyRequested(body: typed, dirty: true, caretLine: 1))
         await done
         XCTAssertEqual(h.head.body, typed, "saved without waiting for the pause")
@@ -418,7 +430,7 @@ final class MobileEditorSessionTests: XCTestCase {
         for quiet in [false, true] {
             let (h, _) = try await mergeLands(quiet: quiet)
             async let done: Void = h.session.detach()
-            await settle()
+            await asked(h)
             XCTAssertEqual(h.transport.sent.last, .requestBody(id: 1))
             h.transport.web(.bodyRequested(body: "AA\nb\nc", dirty: true, caretLine: 0, baseGen: 1, id: 1))
             await done
@@ -484,7 +496,7 @@ final class MobileEditorSessionTests: XCTestCase {
     func testARequestWaitingWhenThePageEndsGivesUpAndKeepsTheText() async throws {
         let h = await harness()
         async let line = h.session.commit(timeout: 5)
-        await settle()
+        await asked(h)
         XCTAssertEqual(h.transport.sent.last, .requestBody(id: 1))
         h.transport.lose()
         _ = await line
@@ -498,7 +510,7 @@ final class MobileEditorSessionTests: XCTestCase {
     func testAnAnswerWithoutABodyIsNeverSavedAndTheBodyGoesInAgain() async throws {
         let h = await harness()
         async let line = h.session.commit(timeout: 5)
-        await settle()
+        await asked(h)
         h.transport.web(.bodyUnavailable(id: 1))
         _ = await line
         XCTAssertEqual(h.saver.text, Self.body)
@@ -511,7 +523,7 @@ final class MobileEditorSessionTests: XCTestCase {
     func testAnAnswerToAnotherRequestIsIgnored() async throws {
         let h = await harness()
         async let line = h.session.commit(timeout: 5)
-        await settle()
+        await asked(h)
         h.transport.web(.bodyRequested(body: "", dirty: true, caretLine: 9, baseGen: 1, id: 99))
         await settle()
         XCTAssertEqual(h.saver.text, Self.body)
