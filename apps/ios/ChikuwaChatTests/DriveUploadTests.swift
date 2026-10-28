@@ -272,6 +272,10 @@ final class DriveUploadProcessorTests: XCTestCase {
     private var account: String!
     private var server: FakeDriveUploadServer!
     private var previousActivities: BackgroundActivityProvider!
+    /// The processors a test made, kept for the whole test: the transport holds its processor weakly (as the real one
+    /// does; the app keeps `DriveUploadProcessor.shared`), so one dropped once `run` returns would miss the part ends
+    /// still on their way (answered on another queue; late under a full run's load).
+    private var processors: [DriveUploadProcessor] = []
 
     override func setUp() {
         previousActivities = FileLock.activities
@@ -286,6 +290,7 @@ final class DriveUploadProcessorTests: XCTestCase {
 
     override func tearDown() {
         StubProtocol.handler = nil
+        processors = []
         Keychain.delete(account: account)
         try? FileManager.default.removeItem(at: root)
         FileLock.activities = previousActivities
@@ -298,12 +303,14 @@ final class DriveUploadProcessorTests: XCTestCase {
         configuration.protocolClasses = [StubProtocol.self]
         let session = URLSession(configuration: configuration)
         let account = account!
-        return DriveUploadProcessor(store: store, transport: transport, pause: { _ in }) { batch in
+        let processor = DriveUploadProcessor(store: store, transport: transport, pause: { _ in }) { batch in
             let api = ShareApi(baseUrl: URL(string: batch.serverUrl)!, account: account, language: "ja", session: session)
             api.lockProvider = { nil }
             api.refreshRetryDelays = []
             return api
         }
+        processors.append(processor)
+        return processor
     }
 
     /// A batch of files (name → bytes) cut at the server's part size (4 bytes here).
