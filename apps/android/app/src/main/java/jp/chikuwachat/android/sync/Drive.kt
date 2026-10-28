@@ -175,8 +175,9 @@ object DriveNames {
 
     /** The small picture a row or a card shows (null: an icon): a photo's thumbnail, a video's poster, a document's first page. */
     fun thumbnailPath(item: DriveItemOut): String? {
+        // AL4 (docs/ALBUMS.md §12): an album's row and card show its cover.
+        if (item.isFolder) return item.album?.cover?.attachmentId?.let { "/api/v1/attachments/$it/thumbnail" }
         val file = item.file ?: return null
-        if (item.isFolder) return null
         return when {
             file.hasThumbnail || file.hasPoster -> "/api/v1/attachments/${file.attachmentId}/thumbnail"
             file.preview?.isReady == true -> "/api/v1/attachments/${file.attachmentId}/preview/thumbnail"
@@ -195,7 +196,7 @@ object DriveNames {
         )
     }
 
-    enum class Icon { FOLDER, CHANNEL_POSTS, IMAGE, VIDEO, PDF, DOCUMENT, SHEET, SLIDES, ARCHIVE, TEXT, FILE }
+    enum class Icon { FOLDER, ALBUM, CHANNEL_POSTS, IMAGE, VIDEO, PDF, DOCUMENT, SHEET, SLIDES, ARCHIVE, TEXT, FILE }
 
     private val OFFICE = mapOf(
         "doc" to Icon.DOCUMENT, "docx" to Icon.DOCUMENT, "odt" to Icon.DOCUMENT, "rtf" to Icon.DOCUMENT,
@@ -207,7 +208,7 @@ object DriveNames {
 
     fun icon(item: DriveItemOut): Icon {
         if (item.isChannelPosts) return Icon.CHANNEL_POSTS // CF1 §3.3: its own icon (a folder of posts)
-        if (item.isFolder) return Icon.FOLDER
+        if (item.isFolder) return if (item.album != null) Icon.ALBUM else Icon.FOLDER // AL4: an album's own icon
         val type = item.contentType.orEmpty().lowercase()
         return when {
             type.startsWith("image/") -> Icon.IMAGE
@@ -448,6 +449,14 @@ class DriveHub(
     /** Changes when the folder should be read again (an event named it, or the connection came back). */
     fun folderEpoch(folderId: String): Int = reconnects + (folderTicks[folderId] ?: 0)
 
+    private var anyTicks = 0
+
+    /**
+     * AL4 (docs/ALBUMS.md §18.4): changes when any folder changed (or the connection came back) — the albums list spans
+     * every location, so any `drive.changed` may add, retitle or drop one of its rows.
+     */
+    fun anyEpoch(): Int = reconnects + anyTicks
+
     fun folderName(id: String): String? = names[id]
 
     fun noteFolder(id: String, name: String) {
@@ -508,6 +517,7 @@ class DriveHub(
             delay(debounceMs)
             pending.forEach { folderTicks[it] = (folderTicks[it] ?: 0) + 1 }
             pending.clear()
+            anyTicks += 1
             links.entries.removeAll { (_, value) -> value.first !is DriveLinkState.Ok } // what was not there may be now
             changed()
         }

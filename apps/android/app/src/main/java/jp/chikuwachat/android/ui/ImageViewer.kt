@@ -29,6 +29,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.sync.AlbumRules
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -90,14 +97,18 @@ internal fun imagePanLimit(imageWidth: Int, imageHeight: Int, viewWidth: Int, vi
  * can be unit tested.
  */
 internal object ImageDismiss {
-    enum class Gesture { PULL, TRANSFORM }
+    enum class Gesture { PULL, TRANSFORM, PAGE }
 
     /**
      * A one-finger drag mostly downwards on a photo that is not zoomed pulls it; anything else (sideways, upwards, a
-     * pinch, or any drag while zoomed, which pans) stays with the zoom and pan, for the whole gesture.
+     * pinch, or any drag while zoomed, which pans) stays with the zoom and pan, for the whole gesture. AL4: among
+     * several photos ([paging]) a one-finger sideways drag at the fit size turns the page instead.
      */
-    fun decide(dx: Float, dy: Float, scale: Float, pointers: Int): Gesture =
-        if (pointers == 1 && scale <= 1.001f && dy > 0f && dy > abs(dx)) Gesture.PULL else Gesture.TRANSFORM
+    fun decide(dx: Float, dy: Float, scale: Float, pointers: Int, paging: Boolean = false): Gesture = when {
+        pointers == 1 && scale <= 1.001f && dy > 0f && dy > abs(dx) -> Gesture.PULL
+        paging && pointers == 1 && scale <= 1.001f && abs(dx) >= abs(dy) -> Gesture.PAGE
+        else -> Gesture.TRANSFORM
+    }
 }
 
 /**
@@ -116,9 +127,95 @@ internal object ImageChrome {
 }
 
 /**
+ * One page of the photo viewer. [display]: read the display-size image first (AL1, docs/ALBUMS.md §6: 2048 px; the
+ * server answers the original raster image when it has none) and the original only on 「元の画像を開く」 or a zoom past
+ * it; false: the original at once. [subtitle]: the line under the name (撮影日時 · 位置情報あり). A [video] page shows
+ * its poster and a play button ([onPlayVideo]).
+ */
+data class ViewerPhoto(
+    val attachment: AttachmentOut,
+    val display: Boolean = false,
+    val subtitle: String? = null,
+    val video: Boolean = false,
+    val key: String = attachment.id,
+)
+
+/** The bytes of display images read ahead of the viewer and the slideshow (the next two, §6.1), about 24 MB at most. */
+internal object DisplayBytes {
+    private const val MAX = 24L * 1024 * 1024
+    private var total = 0L
+    private val held = object : LinkedHashMap<String, ByteArray>(16, 0.75f, true) {}
+
+    fun peek(path: String): ByteArray? = synchronized(held) { held[path] }
+
+    private fun keep(path: String, bytes: ByteArray) = synchronized(held) {
+        held.put(path, bytes)?.let { total -= it.size }
+        total += bytes.size
+        val each = held.entries.iterator()
+        while (total > MAX && each.hasNext()) {
+            val eldest = each.next()
+            if (eldest.key == path) continue
+            total -= eldest.value.size
+            each.remove()
+        }
+    }
+
+    /** The bytes (from memory when read lately); a display image is kept, an original never (it can be tens of MB). */
+    suspend fun load(controller: AppController, path: String, keepIt: Boolean = true): ByteArray {
+        peek(path)?.let { return it }
+        return controller.fetchBytes(path).also { if (keepIt && it.size < 8 * 1024 * 1024) keep(path, it) }
+    }
+
+    /** Reads ahead, quietly (a failure is read again when the page is shown). */
+    suspend fun prefetch(controller: AppController, path: String) {
+        if (peek(path) != null) return
+        try {
+            load(controller, path)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // shown later from the page itself
+        }
+    }
+}
+
+/** A photo's bytes as a bitmap bounded in size ([imageSampleSize]), its EXIF orientation applied; null: not an image. */
+internal fun decodePhoto(bytes: ByteArray): ImageBitmap? =
+    if (Build.VERSION.SDK_INT >= 28) {
+        // ImageDecoder also applies EXIF orientation to phone photos (and reads HEIF).
+        runCatching {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
+                decoder.setTargetSampleSize(imageSampleSize(info.size.width, info.size.height))
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }.asImageBitmap()
+        }.getOrNull()
+    } else {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val options = BitmapFactory.Options().apply { inSampleSize = imageSampleSize(bounds.outWidth, bounds.outHeight) }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { bitmap ->
+            val orientation = runCatching {
+                android.media.ExifInterface(bytes.inputStream()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+            }.getOrDefault(1)
+            val matrix = android.graphics.Matrix().apply {
+                when (orientation) {
+                    2 -> setScale(-1f, 1f)
+                    3 -> setRotate(180f)
+                    4 -> setScale(1f, -1f)
+                    5 -> { setRotate(90f); postScale(-1f, 1f) }
+                    6 -> setRotate(90f)
+                    7 -> { setRotate(-90f); postScale(-1f, 1f) }
+                    8 -> setRotate(-90f)
+                }
+            }
+            android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).asImageBitmap()
+        }
+    }
+
+/**
  * Authenticated, in-app still-image preview; another app remains available from the toolbar. Pulled down (the photo
  * when not zoomed, or the header) it follows the finger and closes past a distance or on a flick, else springs back
- * ([PullToClose]); ✕, back and TalkBack's dismiss close it too.
+ * ([PullToClose]); ✕, back and TalkBack's dismiss close it too. A photo with a display image (AL1) shows that first.
  */
 @Composable
 fun ImageViewer(
@@ -126,51 +223,38 @@ fun ImageViewer(
     /** M166 (docs/DRIVE.md §26): a drive file goes to another app the drive's way (streamed to disk); null: the attachment's. */
     onOpenElsewhere: (() -> Unit)? = null,
 ) {
-    var image by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
-    var error by remember(attachment.id) { mutableStateOf<String?>(null) }
-    var attempt by remember(attachment.id) { mutableIntStateOf(0) }
-    LaunchedEffect(attachment.id, attempt) {
-        image = null
-        error = null
-        try {
-            val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/content")
-            image = withContext(Dispatchers.Default) {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    // ImageDecoder also applies EXIF orientation to phone photos.
-                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
-                        decoder.setTargetSampleSize(imageSampleSize(info.size.width, info.size.height))
-                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    }.asImageBitmap()
-                } else {
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                    val options = BitmapFactory.Options().apply { inSampleSize = imageSampleSize(bounds.outWidth, bounds.outHeight) }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { bitmap ->
-                        val orientation = runCatching {
-                            android.media.ExifInterface(bytes.inputStream()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
-                        }.getOrDefault(1)
-                        val matrix = android.graphics.Matrix().apply {
-                            when (orientation) {
-                                2 -> setScale(-1f, 1f)
-                                3 -> setRotate(180f)
-                                4 -> setScale(1f, -1f)
-                                5 -> { setRotate(90f); postScale(-1f, 1f) }
-                                6 -> setRotate(90f)
-                                7 -> { setRotate(-90f); postScale(-1f, 1f) }
-                                8 -> setRotate(-90f)
-                            }
-                        }
-                        android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).asImageBitmap()
-                    }
-                }
-            }
-            if (image == null) error = L10n.str(R.string.image_viewer_couldnt_show_this_image)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            error = controller.describe(e)
-        }
+    val photos = remember(attachment) { listOf(ViewerPhoto(attachment, display = attachment.hasDisplay)) }
+    PhotoViewer(photos, 0, controller, onDismiss, onOpenElsewhere = onOpenElsewhere?.let { open -> { _: Int -> open() } })
+}
+
+/**
+ * AL4 (docs/ALBUMS.md §12, MOBILE_UI.md §22.8): the photo viewer over several photos — swiped left and right (a pager),
+ * each page zoomed, pulled down to close and tapped to hide the bars as one photo was (§22.4, §22.5). The display images
+ * of the two photos either side are read ahead. [onPage] tells the page shown (an album reads its next page near the
+ * end); [menu] adds the ⋯'s items for the photo at an index (「写真に保存」, 「表紙にする」).
+ */
+@Composable
+fun PhotoViewer(
+    photos: List<ViewerPhoto>, initial: Int, controller: AppController, onDismiss: () -> Unit,
+    onOpenElsewhere: ((Int) -> Unit)? = null,
+    onPage: (Int) -> Unit = {},
+    onPlayVideo: (Int) -> Unit = {},
+    menu: (@Composable ColumnScope.(index: Int, close: () -> Unit) -> Unit)? = null,
+) {
+    if (photos.isEmpty()) { LaunchedEffect(Unit) { onDismiss() }; return }
+    val pager = rememberPagerState(initialPage = initial.coerceIn(0, photos.lastIndex)) { photos.size }
+    val current = pager.currentPage.coerceIn(0, photos.lastIndex)
+    val photo = photos[current]
+    LaunchedEffect(current) { onPage(current) }
+    // §6.1: the display images of the next two and the one before read ahead (in that order).
+    LaunchedEffect(current, photos.size) {
+        listOf(current + 1, current + 2, current - 1, current - 2).filter { it in photos.indices }.map { photos[it] }
+            .filter { it.display && !it.video }
+            .forEach { DisplayBytes.prefetch(controller, AlbumRules.displayPath(it.attachment.id)) }
     }
+    // 「元の画像を開く」, or a zoom past the display image: that page reads its original.
+    val originals = remember { mutableStateMapOf<String, Boolean>() }
+    val loaded = remember { mutableStateMapOf<String, Boolean>() }
     // Edge to edge (the system's bars drawn over the photo, hidden with the viewer's bar): the photo keeps its size
     // and place when the bars go or come back.
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -193,8 +277,8 @@ fun ImageViewer(
             accessibility?.addTouchExplorationStateChangeListener(listener)
             onDispose { accessibility?.removeTouchExplorationStateChangeListener(listener) }
         }
-        var chromeWanted by rememberSaveable(attachment.id) { mutableStateOf(true) }
-        val chrome = ImageChrome.shown(chromeWanted, touchExploration, loaded = image != null)
+        var chromeWanted by rememberSaveable { mutableStateOf(true) }
+        val chrome = ImageChrome.shown(chromeWanted, touchExploration, loaded = photo.video || loaded[photo.key] == true)
         val surface = MaterialTheme.colorScheme.surface
         val lightBars = surface.luminance() > 0.5f
         val bars = remember(window, view) { window?.let { WindowCompat.getInsetsController(it, view) } }
@@ -217,20 +301,24 @@ fun ImageViewer(
         val fade = tween<Float>(ImageChrome.FADE_MS)
         val background by animateColorAsState(if (chrome) surface else Color.Black, tween(ImageChrome.FADE_MS), label = "viewer background")
         val closeLabel = stringResource(R.string.image_viewer_close_image)
+        val toggle = { chromeWanted = ImageChrome.toggled(chromeWanted, touchExploration) }
         Box(
             Modifier.fillMaxSize().onSizeChanged { pull.extent = it.height.toFloat() }
                 .graphicsLayer { translationY = pull.offset }
                 .background(background)
                 .semantics { dismiss(closeLabel) { onDismiss(); true } },
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                val bitmap = image
-                if (bitmap != null) ZoomableImage(bitmap, attachment.filename, pull, onTap = { chromeWanted = ImageChrome.toggled(chromeWanted, touchExploration) })
-                else if (error != null) Column(Modifier.safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(R.string.image_viewer_couldnt_load_the_image), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(error!!, Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface)
-                    Button(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
-                } else CircularProgressIndicator()
+            HorizontalPager(
+                state = pager, modifier = Modifier.fillMaxSize(), key = { photos.getOrNull(it)?.key ?: it },
+                userScrollEnabled = photos.size > 1, beyondViewportPageCount = 0,
+            ) { index ->
+                val page = photos.getOrNull(index) ?: return@HorizontalPager
+                if (page.video) VideoPosterPage(page, controller, onPlay = { onPlayVideo(index) })
+                else PhotoPage(
+                    page, controller, pull, paging = photos.size > 1, original = originals[page.key] == true,
+                    onLoaded = { loaded[page.key] = it }, onTap = toggle,
+                    onWantOriginal = { if (page.display) originals[page.key] = true },
+                )
             }
             // The bar over the photo (its top edge under the status bar), fading out with a tap.
             AnimatedVisibility(chrome, Modifier.align(Alignment.TopCenter), enter = fadeIn(fade), exit = fadeOut(fade)) {
@@ -241,8 +329,32 @@ fun ImageViewer(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.image_viewer_close_image)) }
-                        FileNameText(attachment.filename, Modifier.weight(1f))
-                        IconButton(onClick = { onOpenElsewhere?.invoke() ?: controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
+                        Column(Modifier.weight(1f)) {
+                            FileNameText(photo.attachment.filename)
+                            val line = listOfNotNull(
+                                if (photos.size > 1) "${current + 1} / ${photos.size}" else null,
+                                photo.subtitle?.takeIf { it.isNotEmpty() },
+                            ).joinToString(" · ")
+                            if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        IconButton(onClick = { onOpenElsewhere?.invoke(current) ?: controller.openAttachment(photo.attachment) }) {
+                            Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app))
+                        }
+                        val canOriginal = photo.display && !photo.video && originals[photo.key] != true
+                        if (menu != null || canOriginal) {
+                            var open by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.album_viewer_more)) }
+                                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                                    if (canOriginal) DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.album_open_original)) },
+                                        leadingIcon = { Icon(Icons.Outlined.HighQuality, null) },
+                                        onClick = { open = false; originals[photo.key] = true },
+                                    )
+                                    menu?.invoke(this, current) { open = false }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -250,22 +362,86 @@ fun ImageViewer(
     }
 }
 
+/** A video among the photos: its poster and a play button (the player opens over the viewer). */
 @Composable
-private fun ZoomableImage(image: ImageBitmap, filename: String, pull: PullToClose, onTap: () -> Unit) {
+private fun VideoPosterPage(page: ViewerPhoto, controller: AppController, onPlay: () -> Unit) {
+    var poster by remember(page.key) { mutableStateOf<ImageBitmap?>(null) }
+    if (page.attachment.hasPoster) LaunchedEffect(page.key) { poster = fetchThumbnail(controller, page.attachment.id) }
+    Box(Modifier.fillMaxSize().pointerInput(page.key) { detectTapGestures(onTap = { onPlay() }) }, contentAlignment = Alignment.Center) {
+        poster?.let { Image(it, contentDescription = page.attachment.filename, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+        FilledTonalIconButton(onClick = onPlay, modifier = Modifier.size(72.dp)) {
+            Icon(Icons.Outlined.PlayArrow, stringResource(R.string.album_play_video), modifier = Modifier.size(40.dp))
+        }
+    }
+}
+
+/** A photo page: its display image (or original), then the original when asked for, without blanking in between. */
+@Composable
+private fun PhotoPage(
+    page: ViewerPhoto, controller: AppController, pull: PullToClose, paging: Boolean, original: Boolean,
+    onLoaded: (Boolean) -> Unit, onTap: () -> Unit, onWantOriginal: () -> Unit,
+) {
+    var image by remember(page.key) { mutableStateOf<ImageBitmap?>(null) }
+    var error by remember(page.key) { mutableStateOf<String?>(null) }
+    var attempt by remember(page.key) { mutableIntStateOf(0) }
+    LaunchedEffect(page.key, original, attempt) {
+        error = null
+        val id = page.attachment.id
+        try {
+            val bytes = if (page.display && !original) {
+                try {
+                    DisplayBytes.load(controller, AlbumRules.displayPath(id))
+                } catch (e: ApiException) {
+                    if (!AlbumRules.displayMissing(e)) throw e
+                    controller.fetchBytes(AlbumRules.originalPath(id)) // 404 display_not_found: a HEIC, say
+                }
+            } else controller.fetchBytes(AlbumRules.originalPath(id))
+            val decoded = withContext(Dispatchers.Default) { decodePhoto(bytes) }
+            if (decoded != null) image = decoded
+            else if (image == null) error = L10n.str(R.string.image_viewer_couldnt_show_this_image)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (image == null) error = controller.describe(e) // the display image stays when the original fails
+        }
+    }
+    val bitmap = image
+    LaunchedEffect(bitmap != null) { onLoaded(bitmap != null) }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (bitmap != null) ZoomableImage(
+            bitmap, page.key, page.attachment.filename, pull, paging, onTap = onTap,
+            onScale = { scale -> if (!original && AlbumRules.wantsOriginal(scale, bitmap.width, page.attachment.width)) onWantOriginal() },
+        )
+        else if (error != null) Column(Modifier.safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(R.string.image_viewer_couldnt_load_the_image), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(error!!, Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface)
+            Button(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
+        } else CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun ZoomableImage(
+    image: ImageBitmap, pageKey: String, filename: String, pull: PullToClose, paging: Boolean, onTap: () -> Unit, onScale: (Float) -> Unit = {},
+) {
     val touchSlop = LocalViewConfiguration.current.touchSlop
-    var scale by remember(image) { mutableFloatStateOf(1f) }
-    var offset by remember(image) { mutableStateOf(Offset.Zero) }
+    // Kept by the page, not the bitmap: the original replacing the display image keeps the zoom and the place.
+    var scale by remember(pageKey) { mutableFloatStateOf(1f) }
+    var offset by remember(pageKey) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val latestImage by rememberUpdatedState(image)
+    val latestScale by rememberUpdatedState(onScale)
     fun transform(nextScale: Float, nextOffset: Offset) {
         scale = nextScale.coerceIn(1f, 5f)
-        val limit = imagePanLimit(image.width, image.height, viewport.width, viewport.height, scale)
+        val limit = imagePanLimit(latestImage.width, latestImage.height, viewport.width, viewport.height, scale)
         offset = Offset(nextOffset.x.coerceIn(-limit.x, limit.x), nextOffset.y.coerceIn(-limit.y, limit.y))
+        latestScale(scale)
     }
     Box(
         Modifier.fillMaxSize().clipToBounds().onSizeChanged { viewport = it; transform(scale, offset) }
             .onGloballyPositioned { placed[0] = it }
-            .pointerInput(image) {
+            .pointerInput(pageKey, paging) {
                 // detectTransformGestures, plus the pull: past the slop the drag's first direction decides which.
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -301,7 +477,7 @@ private fun ZoomableImage(image: ImageBitmap, filename: String, pull: PullToClos
                                 zoomed *= zoom
                                 val centroidSize = event.calculateCentroidSize(useCurrent = false)
                                 if (moved.getDistance() > touchSlop || abs(1 - zoomed) * centroidSize > touchSlop) {
-                                    gesture = ImageDismiss.decide(moved.x, moved.y, scale, pointers)
+                                    gesture = ImageDismiss.decide(moved.x, moved.y, scale, pointers, paging)
                                 }
                             }
                             ImageDismiss.Gesture.PULL -> {
@@ -317,12 +493,14 @@ private fun ZoomableImage(image: ImageBitmap, filename: String, pull: PullToClos
                                 }
                                 event.changes.forEach { if (it.positionChanged()) it.consume() }
                             }
+                            // AL4: sideways at the fit size — the pager's (left unconsumed, it takes the drag).
+                            ImageDismiss.Gesture.PAGE -> Unit
                         }
                     }
                     if (gesture == ImageDismiss.Gesture.PULL) pull.release(velocity.calculateVelocity().y)
                 }
             }
-            .pointerInput(image) {
+            .pointerInput(pageKey) {
                 // A single tap (the bars, §22.5) waits out the double tap's timeout, so a double tap only zooms.
                 detectTapGestures(onTap = { onTap() }, onDoubleTap = { tap ->
                     if (scale > 1f) transform(1f, Offset.Zero)

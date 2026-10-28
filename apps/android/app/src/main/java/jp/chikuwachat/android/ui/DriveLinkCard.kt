@@ -107,7 +107,10 @@ fun DriveLinkCard(controller: AppController, itemId: String) {
             Icons.Outlined.WarningAmber, stringResource(R.string.drive_card_failed), stringResource(R.string.drive_card_retry),
             Modifier.clickable(onClickLabel = stringResource(R.string.common_retry)) { scope.launch { hub.link(itemId, force = true) } },
         )
-        is DriveLinkState.Ok -> {
+        is DriveLinkState.Ok -> state.detail.item.album?.let { album ->
+            // AL4 (docs/ALBUMS.md §10.4): an album's card — its pictures, title, count and days; a tap opens it.
+            AlbumLinkCard(controller, state.detail, album) { scope.launch { controller.openDriveLink(itemId, force = false) } }
+        } ?: run {
             val item = state.detail.item
             val open = {
                 if (DriveNames.viewer(item) != null) viewing = item

@@ -79,13 +79,17 @@ object DriveUploadCenter {
         _jobs.value = store(context).all()
     }
 
-    /** Where a batch goes, and the account it belongs to (REVIEW-v0.1.62 #1: its user id and sign-in). */
-    data class Target(val serverUrl: String, val userId: String, val session: String?, val locationId: String, val parentId: String, val label: String)
+    /**
+     * Where a batch goes, and the account it belongs to (REVIEW-v0.1.62 #1: its user id and sign-in). [onConflict]:
+     * `fail` asks when a name is taken; an album's uploads keep both (`rename`, docs/ALBUMS.md §9).
+     */
+    data class Target(val serverUrl: String, val userId: String, val session: String?, val locationId: String, val parentId: String, val label: String, val onConflict: String = "fail")
 
     private fun newJob(target: Target, batchId: String, name: String, size: Long, lastModified: Long?, state: String) = DriveUploadJob(
         id = UUID.randomUUID().toString(), serverUrl = target.serverUrl, userId = target.userId, session = target.session,
         batchId = batchId, clientUploadId = UUID.randomUUID().toString(), name = name, size = size, lastModifiedMs = lastModified,
         locationId = target.locationId, parentId = target.parentId, label = target.label, state = state, createdAt = System.currentTimeMillis(),
+        onConflict = target.onConflict,
     )
 
     /**

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
@@ -186,6 +187,8 @@ fun MessageMenu(
      * 「ドライブで表示」, several 「ドライブで表示：名前」.
      */
     showInDrive: List<Pair<String, () -> Unit>> = emptyList(),
+    /** AL4 (docs/ALBUMS.md §9): 「この投稿の写真をアルバムに」, for a message with photos or videos. */
+    onAddToAlbum: (() -> Unit)? = null,
     reacted: Set<String> = emptySet(),
     quick: List<String> = REACTION_PALETTE,
     /** For a custom emoji among `quick` (2026-10-13): drawn as its image from the Store, loaded on demand. */
@@ -251,6 +254,7 @@ fun MessageMenu(
                     Icons.AutoMirrored.Outlined.DriveFileMove, action = open,
                 )
             }
+            if (onAddToAlbum != null) item(stringResource(R.string.album_add_from_post), Icons.Outlined.PhotoLibrary, action = onAddToAlbum)
             if (onBookmark != null) item(if (bookmarked) stringResource(R.string.message_actions_remove_from_saved) else stringResource(R.string.message_actions_save_for_later), if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
             if (onRemind != null) item(stringResource(R.string.message_actions_remind_me), Icons.Outlined.Alarm, action = onRemind)
             if (onMakeTask != null) item(stringResource(R.string.common_make_a_task), Icons.Outlined.AddTask, action = onMakeTask)

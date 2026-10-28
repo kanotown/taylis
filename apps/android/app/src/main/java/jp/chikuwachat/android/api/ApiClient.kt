@@ -74,7 +74,7 @@ class ApiClient(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi,
-    jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi {
+    jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi, jp.chikuwachat.android.sync.AlbumApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -1298,6 +1298,44 @@ class ApiClient(
     /** §22: a folder's ZIP, streamed once from the returned URL. */
     override suspend fun driveZip(itemIds: List<String>): DriveZipOut =
         request("POST", "/api/v1/drive/zip", buildJsonObject { put("item_ids", buildJsonArray { itemIds.forEach { add(JsonPrimitive(it)) } }) })
+
+    // --- photo albums (AL1 / AL4, docs/ALBUMS.md §5, §18.4) -------------------------------------------------
+
+    override suspend fun albums(locationId: String?, cursor: String?, limit: Int): AlbumListOut {
+        val query = "limit=$limit" + (locationId?.let { "&location_id=$it" } ?: "") + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "")
+        return request("GET", "/api/v1/drive/albums?$query")
+    }
+
+    override suspend fun album(folderId: String, sort: String?, order: String?, cursor: String?, limit: Int): AlbumDetailOut {
+        val query = "limit=$limit" + (sort?.let { "&sort=$it" } ?: "") + (order?.let { "&order=$it" } ?: "") +
+            (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "")
+        return request("GET", "/api/v1/drive/albums/$folderId?$query")
+    }
+
+    override suspend fun createAlbum(parentId: String?, locationId: String?, name: String, description: String?, clientOpId: String): AlbumCreatedOut =
+        request("POST", "/api/v1/drive/albums", buildJsonObject {
+            if (parentId != null) put("parent_id", parentId) else put("location_id", locationId)
+            put("name", name)
+            if (!description.isNullOrBlank()) put("description", description)
+            put("client_op_id", clientOpId)
+        })
+
+    override suspend fun putAlbum(folderId: String, fields: Map<String, String?>): AlbumOut =
+        request("PUT", "/api/v1/drive/folders/$folderId/album", buildJsonObject {
+            fields.forEach { (key, value) -> put(key, value?.let { JsonPrimitive(it) } ?: JsonNull) }
+        })
+
+    override suspend fun deleteAlbum(folderId: String) {
+        requestRaw("DELETE", "/api/v1/drive/folders/$folderId/album", null, auth = true, retry401 = true)
+    }
+
+    override suspend fun addToAlbum(folderId: String, attachmentIds: List<String>, itemIds: List<String>, mode: String, clientOpId: String): AlbumAddOut =
+        request("POST", "/api/v1/drive/albums/$folderId/add", buildJsonObject {
+            if (attachmentIds.isNotEmpty()) put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
+            if (itemIds.isNotEmpty()) put("item_ids", buildJsonArray { itemIds.forEach { add(JsonPrimitive(it)) } })
+            put("mode", mode)
+            put("client_op_id", clientOpId)
+        })
 
     // --- drive uploads, folders and previews from the phone (2026-10-24, DRIVE.md §6, §27.3) -------------------
 

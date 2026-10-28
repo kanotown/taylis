@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AL4 (docs/ALBUMS.md §12, §18.4): photo albums on the phone. The desktop's album.* wording where it fits. -->
+<resources>
+    <string name="album_title">アルバム</string>
+    <string name="album_new">新しいアルバム</string>
+    <string name="album_name">アルバムの名前</string>
+    <string name="album_description">説明</string>
+    <string name="album_new_where">この場所の「アルバム」フォルダに作ります</string>
+    <string name="album_make">アルバムにする</string>
+    <string name="album_made">アルバムにしました</string>
+    <string name="album_empty">まだ写真がありません</string>
+    <string name="album_none_yet">追加できるアルバムはまだありません</string>
+    <string name="album_slideshow">スライドショー</string>
+    <string name="album_add_photos">写真を追加</string>
+    <string name="album_menu">アルバムのメニュー</string>
+    <string name="album_settings">アルバムの設定</string>
+    <string name="album_show_files">ファイルの一覧で見る</string>
+    <string name="album_show_album">アルバムで見る</string>
+    <string name="album_download_all">すべてダウンロード（ZIP）</string>
+    <string name="album_more_description">もっと見る</string>
+    <string name="album_others_line">ほかに %1$s</string>
+    <string name="album_day">%1$d 月 %2$d 日（%3$s）</string>
+    <string name="album_day_with_year">%1$d 年 %2$d 月 %3$d 日（%4$s）</string>
+    <string name="album_date_range">%1$s〜%2$s</string>
+    <string name="album_has_location">位置情報あり</string>
+    <string name="album_cover">表紙</string>
+    <string name="album_make_cover">表紙にする</string>
+    <string name="album_cover_set">表紙を変えました</string>
+    <string name="album_cover_reset">表紙を最初の写真に戻す</string>
+    <string name="album_cell_selected">選択中</string>
+    <string name="album_selection_clear">選択をやめる</string>
+    <string name="album_save_to_gallery">写真に保存</string>
+    <string name="album_saving">写真に保存中：%1$d / %2$d</string>
+    <string name="album_save_needs_android10">まとめて写真に保存するには Android 10 以降が必要です（1 枚ずつならダウンロードに保存できます）</string>
+    <string name="album_open_original">元の画像を開く</string>
+    <string name="album_viewer_more">その他の操作</string>
+    <string name="album_play_video">動画を再生</string>
+    <string name="album_slideshow_from_here">ここからスライドショー</string>
+    <string name="album_sort">並べ方</string>
+    <string name="album_sort_taken">撮影日</string>
+    <string name="album_sort_name">名前</string>
+    <string name="album_sort_added">追加した順</string>
+    <string name="album_order_asc">古い順（昇順）</string>
+    <string name="album_order_desc">新しい順（降順）</string>
+    <string name="album_dates">日付（任意）</string>
+    <string name="album_starts_on">始まりの日</string>
+    <string name="album_ends_on">終わりの日</string>
+    <string name="album_dates_clear">日付を消す</string>
+    <string name="album_remove">アルバムをやめる</string>
+    <string name="album_remove_note">ふつうのフォルダに戻します。写真はそのまま残ります。</string>
+    <string name="album_remove_confirm">やめる</string>
+    <string name="album_add_from_post">この投稿の写真をアルバムに</string>
+    <string name="album_card_named">アルバム %1$s</string>
+    <string name="album_slideshow_close">スライドショーを閉じる</string>
+    <string name="album_slideshow_nothing">表示できる写真がありません</string>
+    <string name="album_slideshow_previous">前へ</string>
+    <string name="album_slideshow_next">次へ</string>
+    <string name="album_slideshow_pause">一時停止</string>
+    <string name="album_slideshow_play">再生</string>
+    <string name="album_slideshow_settings">スライドショーの設定</string>
+    <string name="album_slideshow_seconds">%1$d 秒ごと</string>
+    <string name="album_slideshow_random">ランダム</string>
+    <string name="album_slideshow_skip_videos">動画を飛ばす</string>
+    <plurals name="album_photos">
+        <item quantity="other">%1$d 枚</item>
+    </plurals>
+    <plurals name="album_videos">
+        <item quantity="other">動画 %1$d 本</item>
+    </plurals>
+    <plurals name="album_folders">
+        <item quantity="other">フォルダ %1$d 件</item>
+    </plurals>
+    <plurals name="album_other_files">
+        <item quantity="other">ほかのファイル %1$d 件</item>
+    </plurals>
+    <plurals name="album_selected">
+        <item quantity="other">%1$d 件を選択中</item>
+    </plurals>
+    <plurals name="album_saved">
+        <item quantity="other">%1$d 件を写真に保存しました</item>
+    </plurals>
+    <plurals name="album_save_failed">
+        <item quantity="other">%1$d 件は保存できませんでした。</item>
+    </plurals>
+    <plurals name="album_added">
+        <item quantity="other">%1$d 件をアルバムに追加しました。</item>
+    </plurals>
+    <plurals name="album_add_failed">
+        <item quantity="other">%1$d 件は追加できませんでした。</item>
+    </plurals>
+    <plurals name="album_add_title">
+        <item quantity="other">%1$d 件の写真・動画をアルバムに追加</item>
+    </plurals>
+</resources>

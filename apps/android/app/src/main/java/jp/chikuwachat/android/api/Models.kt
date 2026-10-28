@@ -384,6 +384,8 @@ data class AttachmentOut(
      * plain attachment (a DM, the switch off, a server before CF1, rows stored before).
      */
     val drive: AttachmentDriveOut? = null,
+    /** AL1 (docs/ALBUMS.md §6): a display-size image at /attachments/{id}/display (false from an older server). */
+    val hasDisplay: Boolean = false,
 ) {
     /** By the type the server sniffed (M82): a video is never a photo, whatever thumbnail flags it carries. */
     val isVideo: Boolean get() = contentType.startsWith("video/", ignoreCase = true)
