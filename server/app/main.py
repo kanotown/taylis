@@ -64,6 +64,7 @@ from app.modules.drive import media as drive_media
 from app.modules.drive import posted as drive_posted
 from app.modules.drive import public as drive_public
 from app.modules.drive import texts as drive_texts
+from app.modules.drive.album_router import router as drive_album_router
 from app.modules.drive.router import router as drive_router
 from app.modules.drive.share_router import public_router as drive_public_router
 from app.modules.drive.share_router import router as drive_share_router
@@ -671,6 +672,7 @@ def build_api_router() -> APIRouter:
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(drive_router)
+    api.include_router(drive_album_router)
     api.include_router(drive_share_router)
     api.include_router(drive_public_router)
     api.include_router(search_router)

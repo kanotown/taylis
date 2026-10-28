@@ -37,7 +37,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Request, Response
 from fastapi.responses import StreamingResponse
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -49,10 +49,12 @@ from app.core.time import utcnow
 from app.modules.attachments import service as attachments
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.schemas import to_attachment_out
-from app.modules.drive import names, service, shares, tree, zips, zipstream
+from app.modules.attachments.videos import is_video
+from app.modules.drive import album_cards, names, service, shares, tree, zips, zipstream
 from app.modules.drive import repository as repo
 from app.modules.drive.access import item_not_found
 from app.modules.drive.models import (
+    DriveAlbum,
     DriveFileVersion,
     DriveItem,
     DriveShareEvent,
@@ -60,6 +62,7 @@ from app.modules.drive.models import (
 )
 from app.modules.drive.schemas import (
     DriveCrumb,
+    SharedAlbumOut,
     SharedChildrenOut,
     SharedItemOut,
     ShareInfoOut,
@@ -356,9 +359,32 @@ async def _shown(db: AsyncSession, rows: list[DriveItem]) -> list[SharedItemOut]
                 width=shown.width if shown else None,
                 height=shown.height if shown else None,
                 preview=shown.preview if shown else None,
+                has_display=attachment is not None and attachment.display_key is not None,
+                display_width=attachment.display_width if attachment else None,
+                display_height=attachment.display_height if attachment else None,
+                taken_at=attachment.taken_at if attachment else None,
+                has_poster=bool(shown and shown.has_poster),
+                duration_ms=shown.duration_ms if shown else None,
             )
         )
     return out
+
+
+async def _album(db: AsyncSession, folder: DriveItem) -> SharedAlbumOut | None:
+    if folder.kind != "folder":
+        return None
+    row = await db.get(DriveAlbum, folder.id)
+    if row is None:
+        return None
+    return album_cards.shared((await album_cards.outs(db, [row]))[row.folder_id])
+
+
+def originals_disabled() -> AppError:
+    return AppError(
+        403,
+        "share_originals_disabled",
+        "This link shares display-size images only; the original files cannot be downloaded",
+    )
 
 
 async def info(request: Request, db: AsyncSession, token: str) -> ShareInfoOut:
@@ -376,6 +402,8 @@ async def info(request: Request, db: AsyncSession, token: str) -> ShareInfoOut:
         root_id=visit.item.id if is_open else None,
         item=(await _shown(db, [visit.item]))[0] if is_open else None,
         workspace_name=settings.workspace_display_name,
+        originals=link.originals if is_open else None,
+        album=await _album(db, visit.item) if is_open else None,
     )
     if is_open:
         _event(db, request, link, "open", item_id=visit.item.id)
@@ -392,29 +420,27 @@ async def children(
     *,
     cursor: str | None,
     limit: int,
+    sort: str | None = None,
+    order: str | None = None,
 ) -> SharedChildrenOut:
+    """Folders first, then files: by name, or (AL1) in an album's order (`sort` / `order`
+    override; an album folder takes its own when they are left out)."""
     visit = await open_link(request, db, token)
     require_unlocked(request, visit)
     folder = await shared_item(db, visit, folder_id)
     if folder.kind != "folder":
         raise item_not_found()
-    column = service._sort_column("name")
-    stmt = select(DriveItem).where(DriveItem.parent_id == folder.id, DriveItem.trashed_at.is_(None))
-    if cursor is not None:
-        kind, value, last_id = service._decode_cursor(cursor, "name")
-        stmt = stmt.where(
-            or_(
-                DriveItem.kind < kind,
-                and_(
-                    DriveItem.kind == kind,
-                    or_(column > value, and_(column == value, DriveItem.id > last_id)),
-                ),
-            )
-        )
-    stmt = stmt.order_by(DriveItem.kind.desc(), column.asc(), DriveItem.id.asc()).limit(limit + 1)
-    rows = list((await db.execute(stmt)).scalars().all())
-    more = len(rows) > limit
-    rows = rows[:limit]
+    album_row = await db.get(DriveAlbum, folder.id)
+    chosen = sort or (album_row.sort if album_row is not None else "name")
+    direction = order or (album_row.sort_order if album_row is not None and not sort else "asc")
+    rows, next_cursor = await service.children_page(
+        db,
+        folder.id,
+        sort=chosen,  # type: ignore[arg-type]
+        order=direction,  # type: ignore[arg-type]
+        cursor=cursor,
+        limit=limit,
+    )
     chain = await repo.ancestor_ids(db, folder.id)
     below = chain[chain.index(visit.item.id) :]
     crumbs = await repo.items(db, below)
@@ -430,7 +456,8 @@ async def children(
             if i in crumbs
         ],
         items=await _shown(db, rows),
-        next_cursor=service._encode_cursor(rows[-1], "name") if more and rows else None,
+        next_cursor=next_cursor,
+        album=await _album(db, folder),
     )
 
 
@@ -496,6 +523,9 @@ async def content(
     require_unlocked(request, visit)
     item = await shared_item(db, visit, item_id)
     version, attachment = await _current(db, item)
+    if not visit.link.originals and not is_video(attachment.content_type):
+        # AL1 (docs/ALBUMS.md §7): display-size images only (a video plays as it is).
+        raise originals_disabled()
     shown_inline = inline and attachment.content_type in attachments.INLINE_TYPES
     headers = {
         "Content-Disposition": attachments.disposition(
@@ -551,6 +581,28 @@ def _image(blobs: Any, key: str, content_type: str) -> StreamingResponse:
     )
 
 
+async def display(
+    request: Request, db: AsyncSession, token: str, item_id: uuid.UUID
+) -> StreamingResponse:
+    """AL1 (docs/ALBUMS.md §7): an image's display-size WebP (no metadata), not counted. Without
+    one: a GIF as it is (it holds no EXIF), any image as it is when the link hands out
+    originals; else 404 display_not_found."""
+    visit = await open_link(request, db, token)
+    require_unlocked(request, visit)
+    item = await shared_item(db, visit, item_id)
+    _, attachment = await _current(db, item)
+    await db.commit()
+    blobs = request.app.state.blobs
+    if attachment.display_key is not None:
+        return _image(blobs, attachment.display_key, "image/webp")
+    plain = attachment.content_type == "image/gif" or (
+        visit.link.originals and attachment.content_type in attachments.INLINE_TYPES
+    )
+    if not plain:
+        raise AppError(404, "display_not_found", "This file has no display image")
+    return _image(blobs, attachment.storage_key, attachment.content_type)
+
+
 async def media(
     request: Request, db: AsyncSession, token: str, item_id: uuid.UUID, which: str
 ) -> StreamingResponse:
@@ -583,22 +635,70 @@ async def media(
     )
 
 
+def _stem(name: str) -> str:
+    stem = name.rsplit(".", 1)[0] if "." in name.strip(".") else name
+    return stem or "photo"
+
+
+def _display_entries(root: tree.Node, prefix: str, taken: zips._Names) -> list[zipstream.ZipEntry]:
+    """AL1 (docs/ALBUMS.md §7): a ZIP of what the public side shows: each image's display-size
+    WebP (「名前.webp」), videos and GIFs (which hold no EXIF) as they are, nothing else."""
+    item = root.item
+    when = zips._when(item)
+    if item.kind == "folder":
+        name = taken.claim(prefix, item.name, is_file=False)
+        path = f"{prefix}{name}"
+        out = [zipstream.ZipEntry(name=f"{path}/", size=0, modified=when, is_dir=True)]
+        for child in root.children:
+            out += _display_entries(child, f"{path}/", taken)
+        return out
+    attachment = root.attachment
+    if attachment is None or root.version is None:
+        return []
+    if attachment.display_key is not None and attachment.display_bytes is not None:
+        name = taken.claim(prefix, f"{_stem(item.name)}.webp", is_file=True)
+        size, source = attachment.display_bytes, attachment.display_key
+    elif is_video(attachment.content_type) or attachment.content_type == "image/gif":
+        name = taken.claim(prefix, item.name, is_file=True)
+        size, source = root.version.size_bytes, attachment.storage_key
+    else:
+        return []
+    return [
+        zipstream.ZipEntry(
+            name=f"{prefix}{name}", size=size, modified=when, source=source, item_id=item.id
+        )
+    ]
+
+
 async def zip_folder(
-    request: Request, db: AsyncSession, token: str, folder_id: uuid.UUID | None
+    request: Request,
+    db: AsyncSession,
+    token: str,
+    folder_id: uuid.UUID | None,
+    *,
+    size: str = "original",
 ) -> StreamingResponse:
     """The shared folder, or a folder under it, as one ZIP (§7.2's format and limits), counted
-    as one download."""
+    as one download. AL1: `size=display` holds the display-size images instead (the only ZIP of
+    a link that does not hand out originals: 403 share_originals_disabled otherwise)."""
     visit = await open_link(request, db, token)
     require_unlocked(request, visit)
     folder = await shared_item(db, visit, folder_id or visit.item.id)
     if folder.kind != "folder":
         raise item_not_found()
+    display = size == "display"
+    if not display and not visit.link.originals:
+        raise originals_disabled()
     settings: Settings = request.app.state.settings
     try:
         node = await tree.snapshot(db, folder, cap=settings.drive_zip_max_entries)
     except tree.TooLarge:
         raise zips.zip_too_large(settings) from None
-    entries = zips._entries(node, "", zips._Names())
+    entries = (
+        _display_entries(node, "", zips._Names())
+        if display
+        else zips._entries(node, "", zips._Names())
+    )
     if (
         len(entries) > settings.drive_zip_max_entries
         or sum(e.size for e in entries) > settings.drive_zip_max_bytes

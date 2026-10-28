@@ -1,6 +1,6 @@
 # DRIVE（ドライブ：研究室の Nextcloud の置き換え）
 
-2026-10-21 の設計。**段階 D1（M160、サーバの土台）・D2（M161、Desktop / Web の画面）・D3（M162、版・コピー・ZIP・容量）・D4（M163、外部共有リンク）を実装（2026-10-21、§20〜§23）**。**段階 D5（M164、Nextcloud の移行とバックアップ）はコードと手順を実装（2026-10-22、§24）**：本番の Nextcloud からの移行の実行は利用者と行う（未実施）。**段階 D6（M165、会話との連携）・D7（M166、スマホ（読むだけ））を実装（2026-10-22、§25・§26）**。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
+2026-10-21 の設計。写真のアルバム（フォルダ + メタデータ、表示サイズの画像、撮影日の並び）は docs/ALBUMS.md（AL1 のサーバを実装、2026-10-29）。**段階 D1（M160、サーバの土台）・D2（M161、Desktop / Web の画面）・D3（M162、版・コピー・ZIP・容量）・D4（M163、外部共有リンク）を実装（2026-10-21、§20〜§23）**。**段階 D5（M164、Nextcloud の移行とバックアップ）はコードと手順を実装（2026-10-22、§24）**：本番の Nextcloud からの移行の実行は利用者と行う（未実施）。**段階 D6（M165、会話との連携）・D7（M166、スマホ（読むだけ））を実装（2026-10-22、§25・§26）**。マイルストーンは M160〜M166（段階 D1〜D7、§18）。
 
 利用者（研究室の教員）の要望：研究室で自前で動かしている Nextcloud を、Taylis の中の「ドライブ」に置き換えたい。
 
@@ -594,6 +594,12 @@ D1 の実装（§20）：4 の文書のプレビューの予約は、完了の�
 待たずにプレビューの loop が始められる）。media loop のリースは `drive_file_versions.process_next_at`（30 分）と `process_attempts`
 （3 回まで）。プレビューの完了は preview loop が `drive.changed` を出す（`main.py` が注入するフック）。
 
+AL1（2026-10-29、docs/ALBUMS.md §4.2・§18）：2 と 3 の後に、画像と動画の**撮影日時・位置情報の印**を読み、画像（`IMAGE_TYPES`、
+50 Mpx・100 MB の上限は同じ）には**表示サイズ**（長い辺 2048 px の WebP、メタデータなし、`attachments.display_key`）を作る
+（`drive/photos.py`）。投稿のファイル（CHANNEL_FILES.md）も、写真・動画なら送った後にこの loop が読む。AL1 より前のファイルは
+`app.cli drive-photos --limit N`（`--dry-run`・`--rebuild`）で読み、ビューアが表示サイズの無い古い画像を開いたときは
+`GET /attachments/{id}/display` がその版を loop に戻す（デプロイの時に全部を読む仕事は無い）。表示サイズは容量に数えない。
+
 ### 6.5 `BlobStore` に足すもの
 
 ```python
@@ -691,6 +697,11 @@ class BlobStore(Protocol):
   プレビューを待たせない、§2）。
 
 ## 9. 外部共有リンク
+
+AL1（2026-10-29、docs/ALBUMS.md §7・§18）：リンクに `originals`（`drive_share_links.originals`）。アルバムのフォルダのリンクは既定で
+`false`：公開側は表示サイズの画像（`/shares/{token}/items/{id}/display`、数えない）と表示サイズの ZIP（`/shares/{token}/zip?size=display`、
+1 回に数える）だけで、元のファイル（`/content`）と元の ZIP は 403 `share_originals_disabled`（動画は再生とダウンロードのため元のまま）。
+作る時・後から `originals: true` で今までどおりにできる（監査の `drive.link_created`・`drive.link_updated` に載る）。ほかのリンクは既定 `true`。
 
 ### 9.1 脅威と守り
 
@@ -879,7 +890,8 @@ handle @driveparts {
 - ファイル名を PGroonga で探す（`drive_items_name_pgroonga_idx`、今のメッセージ・添付のファイル名と同じトークナイザ）。日本語と
   英語の部分一致。
 - `GET /search/drive?q=`：読める場所（研究室ドライブ（ゲスト以外）・マイドライブ・自分がメンバーのチャンネルのドライブ）に絞り、
-  ゴミ箱を除く。`location_id` で 1 つの場所に、`kind=folder|file` で種類に絞れる。並びはスコア、同じなら更新の新しい順。結果には
+  ゴミ箱を除く。`location_id` で 1 つの場所に、`kind=folder|file` で種類に絞れる（AL1：`kind=album` はアルバムのフォルダを名前と
+  説明（`drive_albums_description_pgroonga_idx`）で探す、docs/ALBUMS.md §14）。並びはスコア、同じなら更新の新しい順。結果には
   パス（場所の名前 › フォルダ › …）を付ける。
 - `search` モジュールに `drive` の読み取り専用の問い合わせを許す（ARCHITECTURE.md §5 の規約 1 の例外に足す。読める場所の集合は
   `drive` の公開関数で得る）。速度制限は今の検索と同じ枠。

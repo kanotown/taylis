@@ -361,6 +361,49 @@ def cmd_channel_files_backfill(args: argparse.Namespace) -> int:
     return asyncio.run(_channel_files_backfill(names, args.since, args.dry_run, args.limit))
 
 
+async def _drive_photos(limit: int, dry_run: bool, rebuild: bool) -> int:
+    """AL1 (docs/ALBUMS.md §14): capture times, location marks and display images of the drive's
+    photos and videos stored before AL1."""
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.drive import photos
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    blobs = build_blobstore(settings)
+    try:
+        result = await photos.backfill(
+            db.session_factory, settings, blobs, limit=limit, dry_run=dry_run, rebuild=rebuild
+        )
+        if dry_run:
+            print(
+                f"{result.pending} photo(s) and video(s) to read, {result.pending_bytes} bytes; "
+                "dry run: nothing was changed"
+            )
+            return 0
+        print(
+            f"read {result.read} file(s): {result.dated} with a capture time, "
+            f"{result.located} with a location, {result.displays} display image(s) made"
+        )
+        if result.skipped_videos:
+            print(f"{result.skipped_videos} video(s) left: ffprobe / ffmpeg not found")
+        for line in result.errors[:20]:
+            print(f"  could not read {line}")
+        if result.remaining:
+            print("more are left: run it again")
+        return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_drive_photos(args: argparse.Namespace) -> int:
+    """AL1: bounded and resumable (each file commits on its own); run it again for the rest."""
+    if args.limit < 1:
+        raise SystemExit("error: --limit must be at least 1")
+    return asyncio.run(_drive_photos(args.limit, args.dry_run, args.rebuild))
+
+
 def cmd_probe_videos(args: argparse.Namespace) -> int:
     """M79: size, length and poster of the videos stored before M79 (resumable)."""
     if args.limit < 1:
@@ -1508,6 +1551,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     probe.add_argument("--limit", type=int, default=1000, help="at most this many a run")
     probe.set_defaults(func=cmd_probe_videos)
+
+    drive_photos = sub.add_parser(
+        "drive-photos",
+        help="read the capture time and make the display image of drive photos (docs/ALBUMS.md)",
+    )
+    drive_photos.add_argument("--limit", type=int, default=500, help="at most this many a run")
+    drive_photos.add_argument(
+        "--dry-run", action="store_true", help="only count the files left to read"
+    )
+    drive_photos.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="also the images without a display image (after a restore that lost them)",
+    )
+    drive_photos.set_defaults(func=cmd_drive_photos)
 
     gen_previews = sub.add_parser(
         "generate-previews",

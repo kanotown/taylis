@@ -32,6 +32,7 @@ from app.core.ids import uuid7
 from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.modules.attachments.models import Attachment
+from app.modules.attachments.photo_kinds import photo_kind
 from app.modules.attachments.schemas import AttachmentDriveOut
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
@@ -183,8 +184,10 @@ def file_name(raw: str) -> str:
 
 
 async def _file(
-    db: AsyncSession, plan: Plan, sender: User, rows: list[Attachment]
+    db: AsyncSession, plan: Plan, sender: User, rows: list[Attachment], *, media: bool = True
 ) -> dict[uuid.UUID, AttachmentDriveOut]:
+    """`media`: a posted photo or video goes to the drive's media loop for its capture time and
+    display size (AL1, docs/ALBUMS.md §4.2); the backfill leaves that to `app.cli drive-photos`."""
     changed: list[uuid.UUID] = []
     made = 0
     posts = plan.posts
@@ -227,9 +230,12 @@ async def _file(
         db.add(item)
         await db.flush()
         # The upload already read it (SHA-256, thumbnail, poster): the media loop has nothing to
-        # do, unless an old upload has no SHA-256. The text loop (§29) reads it as any current
-        # version.
-        processed = attachment.sha256 is not None
+        # do, unless an old upload has no SHA-256, or (AL1) it is a photo or a video, whose
+        # capture time and display size the loop reads. The text loop (§29) reads it as any
+        # current version.
+        processed = attachment.sha256 is not None and not (
+            media and photo_kind(attachment.content_type)
+        )
         db.add(
             DriveFileVersion(
                 id=version_id,
@@ -574,7 +580,7 @@ async def _file_one(db: AsyncSession, attachment_id: uuid.UUID) -> bool:
     sender = await db.get(User, row.uploader_id)
     if message is None or message.deleted_at is not None or sender is None:
         return False
-    await _file(db, plan, sender, [row])
+    await _file(db, plan, sender, [row], media=False)
     return True
 
 

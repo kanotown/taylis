@@ -2,7 +2,7 @@
 side (making, listing, changing and revoking links; the switches) and the public side
 (/shares/{token}/…, no sign-in)."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -169,9 +169,14 @@ async def share_children(
     db: Db,
     cursor: str | None = Query(default=None, max_length=2000),
     limit: int = Query(default=100, ge=1, le=200),
+    sort: Literal["name", "taken", "added"] | None = Query(default=None),
+    order: Literal["asc", "desc"] | None = Query(default=None),
 ) -> SharedChildrenOut:
-    """A folder under the link (folders first, by name): names, sizes, times, previews only."""
-    return await public.children(request, db, token, folder_id, cursor=cursor, limit=limit)
+    """A folder under the link (folders first, by name; AL1: an album in its own order unless
+    `sort` / `order` are given): names, sizes, times, previews only."""
+    return await public.children(
+        request, db, token, folder_id, cursor=cursor, limit=limit, sort=sort, order=order
+    )
 
 
 # GET and HEAD as two routes with their own operation ids: one api_route for both took its id from
@@ -196,6 +201,12 @@ async def share_thumbnail(token: str, item_id: UUID, request: Request, db: Db) -
     return await public.media(request, db, token, item_id, "thumbnail")
 
 
+@public_router.get("/shares/{token}/items/{item_id}/display")
+async def share_display(token: str, item_id: UUID, request: Request, db: Db) -> StreamingResponse:
+    """AL1 (docs/ALBUMS.md §7): an image's display-size WebP (no metadata), not counted."""
+    return await public.display(request, db, token, item_id)
+
+
 @public_router.get("/shares/{token}/items/{item_id}/preview/thumbnail")
 async def share_preview_thumbnail(
     token: str, item_id: UUID, request: Request, db: Db
@@ -212,7 +223,13 @@ async def share_preview_pdf(
 
 @public_router.get("/shares/{token}/zip")
 async def share_zip(
-    token: str, request: Request, db: Db, folder_id: UUID | None = Query(default=None)
+    token: str,
+    request: Request,
+    db: Db,
+    folder_id: UUID | None = Query(default=None),
+    size: Literal["original", "display"] = Query(default="original"),
 ) -> StreamingResponse:
-    """The shared folder (or a folder under it) as one ZIP: one download."""
-    return await public.zip_folder(request, db, token, folder_id)
+    """The shared folder (or a folder under it) as one ZIP: one download. AL1: `size=display`
+    holds the display-size images (and videos as they are); a link that does not hand out
+    originals answers 403 share_originals_disabled without it."""
+    return await public.zip_folder(request, db, token, folder_id, size=size)

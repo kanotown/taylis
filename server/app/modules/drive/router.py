@@ -115,7 +115,7 @@ async def list_children(
     folder_id: UUID,
     user: CurrentUser,
     db: Db,
-    sort: Literal["name", "modified", "size"] = Query(default="name"),
+    sort: Literal["name", "modified", "size", "taken"] = Query(default="name"),
     order: Literal["asc", "desc"] = Query(default="asc"),
     cursor: str | None = Query(default=None, max_length=2000),
     limit: int = Query(default=100, ge=1, le=200),

@@ -280,6 +280,7 @@ async def _write_tree(
             row.current_version_id = version_id
             row.size_bytes = clone.attachment.size_bytes
             row.content_type = clone.attachment.content_type
+            row.taken_at = clone.attachment.taken_at
         db.add(row)
         await db.flush()
         if clone is not None:

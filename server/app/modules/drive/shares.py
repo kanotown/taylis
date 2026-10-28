@@ -36,7 +36,13 @@ from app.modules.drive import access as acl
 from app.modules.drive import events
 from app.modules.drive import repository as repo
 from app.modules.drive.access import Access
-from app.modules.drive.models import DriveItem, DriveLocation, DriveShareEvent, DriveShareLink
+from app.modules.drive.models import (
+    DriveAlbum,
+    DriveItem,
+    DriveLocation,
+    DriveShareEvent,
+    DriveShareLink,
+)
 from app.modules.drive.schemas import (
     DriveItemLinksOut,
     DriveLinkPolicyOut,
@@ -279,6 +285,7 @@ async def links_out(
                 note=row.note,
                 last_used_at=row.last_used_at,
                 state=resolved.state,
+                originals=row.originals,
                 can_edit=own and row.revoked_at is None,
                 can_revoke=row.revoked_at is None
                 and (own or manage[row.location_id] or has_capability(actor, "drive.admin")),
@@ -393,6 +400,12 @@ async def create_link(
     _check_expiry(found, expires_at, now)
     if found.password_required and not data.password:
         raise _password_required()
+    originals = data.originals
+    if originals is None:
+        # AL1 (docs/ALBUMS.md §7): an album's link hands out display-size images only, unless
+        # asked (its photos may carry where they were taken).
+        is_album = item.kind == "folder" and await db.get(DriveAlbum, item.id) is not None
+        originals = not is_album
     token = secrets.token_urlsafe(TOKEN_BYTES)
     link = DriveShareLink(
         item_id=item.id,
@@ -403,6 +416,7 @@ async def create_link(
         expires_at=expires_at,
         max_downloads=data.max_downloads,
         note=(data.note or "").strip() or None,
+        originals=originals,
     )
     db.add(link)
     await db.flush()
@@ -420,6 +434,7 @@ async def create_link(
             "has_password": link.password_hash is not None,
             "max_downloads": link.max_downloads,
             "note": link.note,
+            "originals": link.originals,
         },
     )
     await events.emit_changed(db, location.id, [item.parent_id, item.id])
@@ -450,6 +465,7 @@ def _summary(link: DriveShareLink) -> dict[str, Any]:
         "has_password": link.password_hash is not None,
         "max_downloads": link.max_downloads,
         "note": link.note,
+        "originals": link.originals,
     }
 
 
@@ -476,6 +492,8 @@ async def update_link(
         link.max_downloads = data.max_downloads
     if "note" in sent:
         link.note = (data.note or "").strip() or None
+    if "originals" in sent and data.originals is not None:
+        link.originals = data.originals
     after = _summary(link)
     if before != after or "password" in sent:
         link.updated_at = utcnow()

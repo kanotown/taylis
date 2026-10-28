@@ -280,6 +280,7 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    | `push-test --user <name>` | プッシュ疎通 |
    | `verify-attachments` | 添付のバイト列欠損を報告 |
    | `probe-videos [--limit 1000]` | M79 より前 (または ffmpeg の無いサーバ) の動画の縦横・長さ・ポスターを埋める。1 本ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more videos are left」と出たらもう一度流す。メッセージに付いた動画はそのメッセージを差分で端末に届け直す |
+   | `drive-photos [--limit 500] [--dry-run] [--rebuild]` | AL1 (docs/ALBUMS.md §14・§18) より前のドライブの写真・動画の撮影日時・位置情報の印と、画像の表示サイズ (2048 px の WebP) を作る。今のバージョンだけ、1 件ずつ確定するので何度流してもよい。まず `--dry-run` で数を見て、夜に `--limit 500` ずつ。「more are left」と出たらもう一度流す。`--rebuild` は復元で表示サイズを失った画像も作り直す |
    | `generate-previews [--limit 200] [--retry-failed]` | M108 より前 (またはプレビューが切れていた間) の PDF と Office の文書のプレビューを作る (docs/PREVIEWS.md §6)。1 件ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more files are left」と出たらもう一度流す。`--retry-failed` は失敗したものもやり直す。一時的に失敗したものはサーバが後で再試行する。メッセージに付いたファイルはそのメッセージを差分で端末に届け直す |
    | `generate-previews --drive [--limit 500] [--chat-wait-seconds 600]` | ドライブのファイル (今の版) のうち、プレビューの無い PDF と Office (Nextcloud から移したもの) のプレビューを作る (M164)。各ファイルの前に、チャットの添付がプレビューを待っていれば先に通す |
    | `import-nextcloud …` | Nextcloud のファイルをドライブへ移す (M164、下の「Nextcloud からの移行」)。`--list-shares`・`--dry-run`・`--limit-bytes` |

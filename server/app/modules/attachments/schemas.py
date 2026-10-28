@@ -63,6 +63,10 @@ class AttachmentOut(BaseModel):
     # DM's, a canvas's, a channel's whose files stay out of the drive). Older clients ignore it
     # and show the attachment as before.
     drive: AttachmentDriveOut | None = None
+    # AL1 (docs/ALBUMS.md §6): a display-size copy (long edge ≤ 2048 px, WebP, no metadata) at
+    # GET /attachments/{id}/display, for the full-screen viewer. Only drive images get one (a
+    # posted photo too, CHANNEL_FILES.md); without it /display answers the original image.
+    has_display: bool = False
 
 
 class FileItem(BaseModel):
@@ -130,6 +134,7 @@ def to_attachment_out(
         created_at=attachment.created_at,
         preview=_preview_out(attachment),
         drive=drive,
+        has_display=attachment.display_key is not None,
     )
 
 

@@ -128,6 +128,11 @@ def thumbnail_key(attachment_id: uuid.UUID) -> str:
     return f"attachments/{attachment_id}.thumb.jpg"
 
 
+def display_key(attachment_id: uuid.UUID) -> str:
+    """AL1 (docs/ALBUMS.md §6): a drive image's display-size copy (WebP, no metadata)."""
+    return f"attachments/{attachment_id}.display.webp"
+
+
 async def upload(
     db: AsyncSession, actor: User, file: UploadFile, settings: Settings, blobs: BlobStore
 ) -> AttachmentOut:
@@ -806,6 +811,7 @@ async def gc(
             # the file was; the row stays without its bytes and derived objects.
             attachment.status = "purged"
             attachment.thumbnail_key = None
+            attachment.display_key = None
             attachment.preview_status = "none"
             attachment.preview_pdf_key = None
             attachment.preview_thumb_key = None
@@ -830,8 +836,14 @@ async def _delete_blobs(blobs: BlobStore, attachment: Attachment) -> None:
 
 
 def _derived_keys(attachment: Attachment) -> list[str]:
-    """The thumbnail or poster, and (M108) the preview's PDF and thumbnail."""
-    keys = (attachment.thumbnail_key, attachment.preview_pdf_key, attachment.preview_thumb_key)
+    """The thumbnail or poster, (M108) the preview's PDF and thumbnail, and (AL1) the display-size
+    image."""
+    keys = (
+        attachment.thumbnail_key,
+        attachment.preview_pdf_key,
+        attachment.preview_thumb_key,
+        attachment.display_key,
+    )
     return [key for key in keys if key]
 
 

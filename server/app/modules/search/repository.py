@@ -28,7 +28,7 @@ from sqlalchemy.orm import aliased
 from app.core.doctext import blocks as doc_blocks
 from app.modules.attachments.models import Attachment
 from app.modules.canvases.models import Canvas
-from app.modules.drive.models import DriveFileVersion, DriveItem, DriveText
+from app.modules.drive.models import DriveAlbum, DriveFileVersion, DriveItem, DriveText
 from app.modules.messages.models import Message, Reaction
 from app.modules.users.models import User
 from app.modules.wiki.access import readable_ids
@@ -570,6 +570,8 @@ def drive_search_statement(
         .cte("drive_hits")
         .prefix_with("MATERIALIZED")
     )
+    if kind == "album":
+        return _album_search(matched, needle, location_ids, limit=limit, offset=offset)
     if not content:
         stmt = (
             select(DriveItem, matched.c.score)
@@ -654,6 +656,47 @@ def drive_search_statement(
     )
 
 
+def _album_search(
+    matched: Any, needle: str, location_ids: Sequence[uuid.UUID], *, limit: int, offset: int
+) -> Select[Any]:
+    """AL1 (docs/ALBUMS.md §14): albums whose folder name or description matches
+    (drive_albums_description_pgroonga_idx), the best first."""
+    described = (
+        select(
+            DriveAlbum.folder_id.label("id"),
+            func.pgroonga_score(
+                literal_column("drive_albums.tableoid"), literal_column("drive_albums.ctid")
+            ).label("score"),
+        )
+        .where(DriveAlbum.description.op("&@~")(needle))
+        .cte("album_hits")
+        .prefix_with("MATERIALIZED")
+    )
+    hits = union_all(
+        select(matched.c.id.label("id"), matched.c.score.label("score")),
+        select(described.c.id.label("id"), described.c.score.label("score")),
+    ).subquery("album_any_hits")
+    grouped = (
+        select(hits.c.id.label("id"), func.sum(hits.c.score).label("score"))
+        .group_by(hits.c.id)
+        .subquery("album_grouped")
+    )
+    return (
+        select(DriveItem, grouped.c.score)
+        .join(grouped, grouped.c.id == DriveItem.id)
+        .join(DriveAlbum, DriveAlbum.folder_id == DriveItem.id)
+        .where(
+            DriveItem.location_id.in_(list(location_ids)),
+            DriveItem.trashed_at.is_(None),
+            DriveItem.parent_id.is_not(None),
+            DriveItem.kind == "folder",
+        )
+        .order_by(grouped.c.score.desc(), DriveItem.updated_at.desc(), DriveItem.id)
+        .limit(limit)
+        .offset(offset)
+    )
+
+
 @dataclass(frozen=True)
 class DriveHit:
     item: DriveItem
@@ -678,7 +721,7 @@ async def search_drive(
         query, location_ids, kind=kind, limit=limit, offset=offset, content=content, origin=origin
     )
     rows = (await db.execute(stmt)).all()
-    if not content:
+    if not content or kind == "album":
         return [DriveHit(row[0], True, False) for row in rows]
     return [DriveHit(row[0], bool(row[1]), bool(row[2])) for row in rows]
 
