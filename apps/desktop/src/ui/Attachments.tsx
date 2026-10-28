@@ -1,4 +1,4 @@
-import { Download, ExternalLink, FileText, Film, FolderInput, HardDriveDownload, Loader2, Music, Play, X } from "lucide-react";
+import { Download, ExternalLink, FileText, Film, FolderInput, HardDriveDownload, Images, Loader2, Music, Play, X } from "lucide-react";
 import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -21,6 +21,7 @@ import { postedItemId, postedView } from "../drive/channelFiles";
 import { MovedPostedFile, PostedFileLine, RemovedPostedFile } from "./ChannelFiles";
 // Loaded when asked for: the viewers are in the share page's bundle too (share.html), which has no drive dialogs.
 const SaveToDriveDialog = lazy(() => import("./DriveConversation").then((module) => ({ default: module.SaveToDriveDialog })));
+const AddToAlbumDialog = lazy(() => import("./AlbumDialogs").then((module) => ({ default: module.AddToAlbumDialog })));
 
 export { formatSize };
 
@@ -312,6 +313,8 @@ export function ViewerFileButtons({ attachment, controller, onClose }: { attachm
   // becomes 「ほかの場所に保存」.
   const postedItem = driveFileOf(attachment) ? null : postedItemId(attachment);
   const saveLabel = postedItem ? t("channelFiles.saveElsewhere") : t("driveSave.title");
+  const [album, setAlbum] = useState(false);
+  const albumable = savable && /^(image|video)\//i.test(attachment.content_type ?? "");
   return (
     <>
       {postedItem && (
@@ -337,6 +340,17 @@ export function ViewerFileButtons({ attachment, controller, onClose }: { attachm
       {saving && (
         <Suspense fallback={null}>
           <SaveToDriveDialog controller={controller} attachments={[attachment]} channel={null} onClose={() => setSaving(false)} />
+        </Suspense>
+      )}
+      {albumable && (
+        // AL2 (docs/ALBUMS.md §9): 「アルバムに追加」 from the photo viewer too.
+        <button type="button" data-viewer-add-to-album="" className={VIEWER_BUTTON} title={t("albums.add.toAlbum")} aria-label={t("albums.add.toAlbum")} onClick={() => setAlbum(true)}>
+          <Images size={18} />
+        </button>
+      )}
+      {album && (
+        <Suspense fallback={null}>
+          <AddToAlbumDialog controller={controller} attachments={[attachment]} channel={null} postedAt={attachment.created_at} onClose={() => setAlbum(false)} />
         </Suspense>
       )}
       {isTauri() && (

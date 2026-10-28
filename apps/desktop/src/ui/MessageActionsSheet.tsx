@@ -53,7 +53,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onSaveToDrive, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit, thread = false }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onSaveToDrive, onAddToAlbum, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit, thread = false }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -63,6 +63,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   onShare: () => void;
   /** M165: 「ドライブに保存」 (offered only when given). */
   onSaveToDrive?: () => void;
+  /** AL2: 「アルバムに追加」 (offered only when given). */
+  onAddToAlbum?: () => void;
   /** M104 「報告する」: the report dialog. */
   onReport?: () => void;
   /** M27 「リアクションした人」: offered while the message has reactions (a phone has no hover names). */
@@ -106,7 +108,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   // The same list as the hover bar and its 「その他」 menu (messageActions.ts), in the phone apps' order.
   const actions = messageActions({
     message, mine, isAdmin, saved, thread: !!onOpenThread, editable: canEdit ?? mine, showReactions: !!onShowReactions,
-    canMakeTask: !!onMakeTask, canRequestReview: !!onRequestReview, unreadOffered, canSaveToDrive: !!onSaveToDrive,
+    canMakeTask: !!onMakeTask, canRequestReview: !!onRequestReview, unreadOffered, canSaveToDrive: !!onSaveToDrive, canAddToAlbum: !!onAddToAlbum,
   });
   const run: Record<MessageActionKey, () => void> = {
     reactions: then(() => onShowReactions?.()),
@@ -122,6 +124,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
     share: then(onShare),
     showInDrive: then(() => { const posted = firstPostedItem(message.attachments); if (posted?.drive?.item_id) void controller.openDriveLink(posted.drive.item_id); }),
     saveToDrive: then(() => onSaveToDrive?.()),
+    addToAlbum: then(() => onAddToAlbum?.()),
     pin: then(() => void controller.togglePin(message)),
     report: then(() => onReport?.()),
     delete: () => { if (settled()) setView("delete"); },

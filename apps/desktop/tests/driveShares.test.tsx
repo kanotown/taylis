@@ -29,7 +29,7 @@ function link(overrides: Partial<DriveShareLinkOut> = {}): DriveShareLinkOut {
   return {
     id: "l1", item_id: "item", item_name: "共同研究", item_kind: "folder", location_id: "loc", location_kind: "workspace", location_name: "研究室ドライブ",
     created_by: "me", created_by_name: "加納", created_at: "2026-10-01T00:00:00Z", expires_at: "2026-10-08T00:00:00Z", has_password: false,
-    max_downloads: 20, download_count: 3, note: "〇〇大の先生", last_used_at: null, state: "active", can_edit: true, can_revoke: true,
+    max_downloads: 20, download_count: 3, note: "〇〇大の先生", last_used_at: null, state: "active", can_edit: true, can_revoke: true, originals: true,
     ...overrides,
   };
 }
@@ -233,7 +233,7 @@ describe("管理 → ドライブ: external links", () => {
 // --- the public page --------------------------------------------------------------------------------------------------
 
 function shared(id: string, kind: "file" | "folder", name: string, extra: Partial<SharedItemOut> = {}): SharedItemOut {
-  return { id, kind, name, size_bytes: kind === "file" ? 1024 : null, content_type: kind === "file" ? "application/pdf" : null, modified_at: "2026-10-01T00:00:00Z", has_thumbnail: false, width: null, height: null, preview: null, ...extra };
+  return { id, kind, name, size_bytes: kind === "file" ? 1024 : null, content_type: kind === "file" ? "application/pdf" : null, modified_at: "2026-10-01T00:00:00Z", has_thumbnail: false, has_display: false, has_poster: false, width: null, height: null, preview: null, ...extra };
 }
 
 function info(extra: Partial<ShareInfoOut>): ShareInfoOut {

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { describeError } from "../api/errors";
 import type { DriveItemLinksOut, DriveItemOut, DriveShareEventOut, DriveShareLinkCreatedOut, DriveShareLinkOut } from "../api/types";
+import { originalsDefault } from "../drive/albums";
 import { blockedReason, choiceKey, choiceLabel, defaultChoice, downloadsLabel, type ExpiryChoice, expiresAt, expiryChoices, formProblem, localDay, maxDate, shareUrl, stateLabel } from "../drive/shares";
 import type { AppController } from "../state/app";
 import { sinceLabel } from "./format";
@@ -92,6 +93,8 @@ export function ShareLinksDialog({ controller, item, onClose, onChanged }: {
               onChanged();
               void load();
             }}
+            originalsToggle={item.kind === "folder" && !!item.album}
+            onUpdated={() => void load()}
           />
         </>
       ) : null}
@@ -116,6 +119,9 @@ function NewLinkForm({ controller, item, policy, onCreated }: {
   const [showPassword, setShowPassword] = useState(false);
   const [limit, setLimit] = useState("");
   const [note, setNote] = useState("");
+  // AL2 (docs/ALBUMS.md §7): an album's link hands out the display sizes only unless this is ticked.
+  const album = item.kind === "folder" && !!item.album;
+  const [originals, setOriginals] = useState(() => originalsDefault(item));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -136,6 +142,7 @@ function NewLinkForm({ controller, item, policy, onCreated }: {
         ...(usePassword || policy.password_required ? { password } : {}),
         ...(limit.trim() ? { max_downloads: Number(limit.trim()) } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
+        ...(album ? { originals } : {}),
       });
       onCreated(made);
     } catch (failure) {
@@ -180,6 +187,15 @@ function NewLinkForm({ controller, item, policy, onCreated }: {
           <Button type="button" size="sm" variant="ghost" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? t("drive.share.hidePassword") : t("drive.share.showPassword")}</Button>
         </div>
       )}
+      {album && (
+        <label data-share-originals="" className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={originals} onChange={(event) => setOriginals(event.target.checked)} />
+          <span>
+            {t("albums.share.originals")}
+            <span className="block text-xs text-muted">{originals ? t("albums.share.originalsOn") : t("albums.share.originalsOff")}</span>
+          </span>
+        </label>
+      )}
       <Field label={t("drive.share.note")}>
         <Input maxLength={80} aria-label={t("drive.share.note")} placeholder={t("drive.share.notePlaceholder")} value={note} onChange={(event) => setNote(event.target.value)} />
       </Field>
@@ -212,7 +228,7 @@ function CreatedLink({ controller, created, onAnother }: { controller: AppContro
   );
 }
 
-export function LinkList({ controller, links, title, showItem = false, onRevoked, revoke }: {
+export function LinkList({ controller, links, title, showItem = false, onRevoked, revoke, originalsToggle = false, onUpdated }: {
   controller: AppController;
   links: DriveShareLinkOut[];
   title: string;
@@ -221,10 +237,27 @@ export function LinkList({ controller, links, title, showItem = false, onRevoked
   onRevoked: (link: DriveShareLinkOut) => void;
   /** How to revoke (the administrators' route); the creator's / manager's by default. */
   revoke?: (link: DriveShareLinkOut) => Promise<void>;
+  /** AL2: an album's links offer 「元の写真を許す」 / 「表示サイズだけにする」 (who may edit the link). */
+  originalsToggle?: boolean;
+  onUpdated?: () => void;
 }) {
   const [confirm, setConfirm] = useState<DriveShareLinkOut | null>(null);
   const [events, setEvents] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toggleOriginals = async (link: DriveShareLinkOut) => {
+    const api = controller.api;
+    if (!api) return;
+    setBusy(true);
+    try {
+      const changed = await api.updateDriveLink(link.id, { originals: link.originals === false });
+      controller.setNotice(changed.originals ? t("albums.share.originalsAllowed") : t("albums.share.displayOnlyNow"));
+      onUpdated?.();
+    } catch (failure) {
+      controller.setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  };
   const me = controller.store.me?.id;
   const doRevoke = async (link: DriveShareLinkOut) => {
     const api = controller.api;
@@ -257,6 +290,7 @@ export function LinkList({ controller, links, title, showItem = false, onRevoked
                     <strong className="truncate font-semibold">{showItem ? link.item_name : link.note || t("drive.share.untitled")}</strong>
                     {link.state !== "active" && <Badge tone={link.state === "paused" ? "neutral" : "danger"}>{stateLabel(link.state)}</Badge>}
                     {link.has_password && <KeyRound size={12} className="text-muted" aria-label={t("drive.share.hasPassword")} />}
+                    {link.originals === false && <span data-share-display-only="" className="rounded-full bg-panel-2 px-1.5 text-[11px] text-muted">{t("albums.share.displayOnly")}</span>}
                   </div>
                   <div className="mt-0.5 text-[11.5px] text-muted">
                     {[
@@ -272,6 +306,12 @@ export function LinkList({ controller, links, title, showItem = false, onRevoked
                 </div>
                 {(link.created_by === me || controller.can("drive.admin")) && (
                   <Button size="sm" variant="ghost" aria-expanded={events === link.id} onClick={() => setEvents((open) => (open === link.id ? null : link.id))}><History size={13} /> {t("drive.share.events")}</Button>
+                )}
+                {originalsToggle && link.can_edit && link.state !== "revoked" && (
+                  // AL2 (docs/ALBUMS.md §7): PATCH /drive/links/{id} {originals}.
+                  <Button size="sm" variant="ghost" data-share-toggle-originals="" disabled={busy} onClick={() => void toggleOriginals(link)}>
+                    {link.originals === false ? t("albums.share.allowOriginals") : t("albums.share.onlyDisplay")}
+                  </Button>
                 )}
                 {link.can_revoke && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setConfirm(link)}>{t("drive.share.revoke")}</Button>}
               </div>

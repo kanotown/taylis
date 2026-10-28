@@ -388,7 +388,15 @@ export function SaveToDriveDialog({ controller, attachments, channel, onClose }:
  * The drive's 「会話に送る」 (§17.2): a conversation picked, the item's link put at the end of its draft and the
  * conversation opened, so the draft's warning (who cannot read it) and 「コピーとして送る」 are there before it is sent.
  */
-export function SendToConversationDialog({ controller, item, onClose }: { controller: AppController; item: DriveItemOut; onClose: () => void }) {
+export function SendToConversationDialog({ controller, item, onClose, compose, title, description }: {
+  controller: AppController;
+  item: DriveItemOut;
+  onClose: () => void;
+  /** AL2 「チャンネルに知らせる」: the draft made from the one held and the link (the link alone at the end by default). */
+  compose?: (current: string, url: string) => string;
+  title?: string;
+  description?: string;
+}) {
   const store = controller.store;
   const me = store.me?.id;
   const label = (channel: ChannelState): string =>
@@ -404,12 +412,12 @@ export function SendToConversationDialog({ controller, item, onClose }: { contro
     if (!base) return;
     const draft = store.draft(channel.id, null).text;
     const url = driveLink(base, item.id);
-    store.setDraft(channel.id, null, { text: draft.trim() ? `${draft.replace(/\s+$/, "")}\n${url} ` : `${url} ` });
+    store.setDraft(channel.id, null, { text: compose ? compose(draft, url) : draft.trim() ? `${draft.replace(/\s+$/, "")}\n${url} ` : `${url} ` });
     controller.requestOpenChannel(channel.id);
     onClose();
   };
   return (
-    <Modal onClose={onClose} title={t("driveLink.sendTitle", { name: item.name })} description={t("driveLink.sendDescription")} className="w-[440px]">
+    <Modal onClose={onClose} title={title ?? t("driveLink.sendTitle", { name: item.name })} description={description ?? t("driveLink.sendDescription")} className="w-[440px]">
       <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("driveLink.sendFilter")} aria-label={t("driveLink.sendFilter")} className="mt-4" />
       <ul className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-line p-1" aria-label={t("driveLink.sendTargets")}>
         {shown.map((channel) => (

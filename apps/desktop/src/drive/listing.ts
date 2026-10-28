@@ -189,6 +189,8 @@ export function asAttachment(item: DriveItemOut): AttachmentOut | null {
     height: file.height,
     has_thumbnail: file.has_thumbnail,
     has_poster: file.has_poster,
+    // AL1 (docs/ALBUMS.md §6.1): the display size for the full-screen viewers.
+    has_display: file.has_display ?? false,
     duration_ms: file.duration_ms,
     preview: file.preview ?? null,
   };

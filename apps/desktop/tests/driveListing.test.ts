@@ -15,7 +15,7 @@ function item(id: string, extra: Partial<DriveItemOut> = {}): DriveItemOut {
   return {
     id, location_id: "loc", parent_id: "root", kind: "file", name: `${id}.txt`, size_bytes: 10, content_type: "text/plain",
     content_modified_at: null, created_by: null, created_at: "2026-10-01T00:00:00Z", updated_by: null, updated_at: "2026-10-02T00:00:00Z",
-    version_count: 1, file: { attachment_id: `a-${id}`, version_id: `v-${id}`, width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, preview: null },
+    version_count: 1, file: { attachment_id: `a-${id}`, version_id: `v-${id}`, width: null, height: null, has_thumbnail: false, has_poster: false, has_display: false, has_location: false, duration_ms: null, preview: null },
     link_count: 0, posted: false, ...extra,
   };
 }

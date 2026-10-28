@@ -681,6 +681,17 @@ export type DriveShareSettingsPatch = components["schemas"]["DriveShareSettingsP
 export type SharedItemOut = components["schemas"]["SharedItemOut"];
 export type ShareInfoOut = components["schemas"]["ShareInfoOut"];
 export type SharedChildrenOut = components["schemas"]["SharedChildrenOut"];
+// AL1 / AL2 (docs/ALBUMS.md §5, §18.4): photo albums.
+export type AlbumOut = components["schemas"]["AlbumOut"];
+export type AlbumCreate = components["schemas"]["AlbumCreate"];
+export type AlbumCreatedOut = components["schemas"]["AlbumCreatedOut"];
+export type AlbumDetailOut = components["schemas"]["AlbumDetailOut"];
+export type AlbumListOut = components["schemas"]["AlbumListOut"];
+export type AlbumListEntryOut = components["schemas"]["AlbumListEntryOut"];
+export type AlbumPut = components["schemas"]["AlbumPut"];
+export type AlbumAddIn = components["schemas"]["AlbumAddIn"];
+export type AlbumAddOut = components["schemas"]["AlbumAddOut"];
+export type SharedAlbumOut = components["schemas"]["SharedAlbumOut"];
 /** M165 (docs/DRIVE.md §13): the drive and the conversations. */
 export type DriveReachOut = components["schemas"]["DriveReachOut"];
 export type DriveSaveAttachmentIn = components["schemas"]["DriveSaveAttachmentIn"];

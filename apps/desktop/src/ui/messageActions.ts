@@ -1,4 +1,4 @@
-import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, FolderInput, Forward, HardDriveDownload, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
+import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, FolderInput, Forward, HardDriveDownload, Images, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
 
 import type { MessageState } from "../sync/types";
 import { firstPostedItem } from "../drive/channelFiles";
@@ -9,7 +9,7 @@ import { t } from "../i18n";
  * (MessageActionsSheet.tsx), so both offer the same things under the same conditions. Each surface runs them itself.
  */
 export type MessageActionKey =
-  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "showInDrive" | "saveToDrive" | "pin" | "report" | "delete";
+  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "showInDrive" | "saveToDrive" | "addToAlbum" | "pin" | "report" | "delete";
 
 export interface MessageActionContext {
   message: MessageState;
@@ -28,6 +28,8 @@ export interface MessageActionContext {
   unreadOffered: boolean;
   /** M165 (docs/DRIVE.md §13.2): 「ドライブに保存」, while the message has stored attachments (not offered when left out). */
   canSaveToDrive?: boolean;
+  /** AL2 (docs/ALBUMS.md §9): 「アルバムに追加」, while the message has stored photos or videos (not offered when left out). */
+  canAddToAlbum?: boolean;
 }
 
 export interface MessageAction {
@@ -57,6 +59,7 @@ export function messageActions(ctx: MessageActionContext): MessageAction[] {
     { key: "share", label: t("actions.share"), icon: Forward },
     posted && { key: "showInDrive", label: t("channelFiles.showInDrive"), icon: FolderInput },
     !!ctx.canSaveToDrive && { key: "saveToDrive", label: posted ? t("channelFiles.saveElsewhere") : t("driveSave.title"), icon: HardDriveDownload },
+    !!ctx.canAddToAlbum && { key: "addToAlbum", label: t("albums.add.toAlbum"), icon: Images },
     { key: "pin", label: message.pinned_at ? t("actions.unpin") : t("actions.pin"), icon: message.pinned_at ? PinOff : Pin },
     // M104 (docs/MODERATION.md §3): someone else's message, once it is stored.
     !ctx.mine && !message.pending && !message.deleted && message.seq !== null && { key: "report", label: t("report.send"), icon: Flag },
@@ -70,7 +73,7 @@ export const HOVER_BAR_ACTIONS: readonly MessageActionKey[] = ["thread", "save",
 
 /** The hover bar's 「その他」 menu, in groups (a separator between them); 「削除」 last. */
 export const HOVER_MENU_GROUPS: readonly (readonly MessageActionKey[])[] = [
-  ["copyLink", "share", "showInDrive", "saveToDrive", "remind"],
+  ["copyLink", "share", "showInDrive", "saveToDrive", "addToAlbum", "remind"],
   ["task", "review"],
   ["reactions", "pin", "unread"],
   ["report", "delete"],

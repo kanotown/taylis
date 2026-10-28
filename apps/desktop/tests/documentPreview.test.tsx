@@ -20,6 +20,7 @@ const base: AttachmentOut = {
   size_bytes: 2048,
   has_thumbnail: false,
   has_poster: false,
+  has_display: false,
   duration_ms: null,
   status: "attached",
   created_at: "",
