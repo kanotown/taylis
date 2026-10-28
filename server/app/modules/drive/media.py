@@ -22,8 +22,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.attachments import heif, videos
 from app.modules.attachments import service as attachments
-from app.modules.attachments import videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
@@ -111,8 +111,11 @@ async def _read(
 ]:
     """Streams the object once: its SHA-256, and (an image or a video within the limits) a
     temporary copy for the thumbnail or the probe and the photo's information, removed
-    afterwards. The photo result is None when nothing was tried (a video without ffmpeg)."""
+    afterwards. The photo result is None when nothing was tried (a video or a HEIC without
+    ffmpeg). A HEIC's thumbnail comes with its photo result (AL5, heif.py)."""
     image = content_type in IMAGE_TYPES and size <= settings.drive_image_thumb_max_bytes
+    heic = heif.is_heif(content_type) and videos.tools(settings) is not None
+    heic_read = heic and size <= settings.drive_image_thumb_max_bytes
     video = (
         videos.is_video(content_type)
         and size <= settings.drive_video_probe_max_bytes
@@ -122,7 +125,7 @@ async def _read(
     with tempfile.NamedTemporaryFile(prefix="taylis-drive-") as copy:
         async for chunk in blobs.stream(key):
             digest.update(chunk)
-            if image or video:
+            if image or video or heic_read:
                 await run_in_threadpool(copy.write, chunk)
         await run_in_threadpool(copy.flush)
         thumb: tuple[bytes, int, int] | None = None
@@ -131,6 +134,8 @@ async def _read(
         if image:
             thumb = await _thumbnail(copy, settings)
             photo = await photos.read_image(copy, settings)
+        elif heic_read:
+            photo = await photos.read_heif(copy.name, settings)
         elif video:
             try:
                 info = await videos.probe_video(copy.name, settings)
@@ -138,7 +143,7 @@ async def _read(
                 log.warning("probing a drive video failed", exc_info=True)
             if info is not None:
                 photo = photos.from_video(info)
-        elif content_type in IMAGE_TYPES:
+        elif content_type in IMAGE_TYPES or heic:
             # Larger than DRIVE_IMAGE_THUMB_MAX_BYTES: read, nothing made.
             photo = photos.PhotoResult(taken=None, has_location=False)
     return digest.digest(), thumb, info, photo

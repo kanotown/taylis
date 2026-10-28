@@ -387,7 +387,7 @@ async def _drive_photos(limit: int, dry_run: bool, rebuild: bool) -> int:
             f"{result.located} with a location, {result.displays} display image(s) made"
         )
         if result.skipped_videos:
-            print(f"{result.skipped_videos} video(s) left: ffprobe / ffmpeg not found")
+            print(f"{result.skipped_videos} video(s) / HEIC left: ffprobe / ffmpeg not found")
         for line in result.errors[:20]:
             print(f"  could not read {line}")
         if result.remaining:

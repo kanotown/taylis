@@ -32276,7 +32276,7 @@
     },
     "/api/v1/attachments/{attachment_id}/display": {
       "get": {
-        "description": "AL1 (docs/ALBUMS.md §6): the display-size image (long edge at most 2048 px, WebP, no\nmetadata) for the full-screen viewer. Without one yet, the original image (PNG, JPEG, GIF,\nWebP only; a drive image not read yet is queued to get one); 404 display_not_found for\nanything else. Read as the attachment itself (`get_for_access`).",
+        "description": "AL1 (docs/ALBUMS.md §6): the display-size image (long edge at most 2048 px, WebP, no\nmetadata) for the full-screen viewer. Without one yet, the original image (PNG, JPEG, GIF,\nWebP only; a drive image not read yet is queued to get one); 404 display_not_found for\nanything else (a drive HEIC not read yet is queued all the same, AL5). Read as the\nattachment itself (`get_for_access`).",
         "operationId": "display_api_v1_attachments__attachment_id__display_get",
         "parameters": [
           {

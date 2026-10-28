@@ -124,6 +124,14 @@ def read_image_meta(image: Image.Image, zone: tzinfo, *, now: datetime) -> Photo
         exif = image.getexif()
     except Exception:
         return PhotoMeta(taken=None, has_location=False)
+    return read_exif_meta(exif, zone, now=now)
+
+
+def read_exif_meta(exif: Image.Exif | None, zone: tzinfo, *, now: datetime) -> PhotoMeta:
+    """The capture time and the location mark of an EXIF block (an image's, or a HEIF's Exif
+    item: heif.py)."""
+    if exif is None:
+        return PhotoMeta(taken=None, has_location=False)
     sub = _exif_ifd(exif, ExifTags.IFD.Exif)
     gps = _exif_ifd(exif, ExifTags.IFD.GPSInfo)
     candidates = (

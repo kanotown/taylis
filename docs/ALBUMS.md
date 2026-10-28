@@ -1,6 +1,7 @@
 # ALBUMS（写真のアルバム）
 
-2026-10-28 の設計。**AL1（M180、サーバ）を実装（2026-10-29、移行 0127、§18）**。§17 の質問はすべて推めのとおりに決まった
+2026-10-28 の設計。**AL1（M180、サーバ）を実装（2026-10-29、移行 0127、§18）**。**AL5（M184、HEIC）を実装（2026-10-29、§22）**：
+app のイメージを Debian trixie（ffmpeg 7.1）に上げ、HEIC にもサムネイル・表示サイズ・撮影日時が付く。§17 の質問はすべて推めのとおりに決まった
 （2026-10-28、§18.1）。次は AL2〜AL4（Desktop / Web・iOS・Android、§18.4 に端末が使うもの）。マイルストーンは AL1〜AL5（§15、M180〜M184）。
 
 **AL2（M181、Desktop / Web と公開ページ）を実装（2026-10-29、§19）**。
@@ -28,9 +29,10 @@ MOBILE_UI.md §25（スマホのドライブ）。
 - **写真の情報**：撮影日時（EXIF の `DateTimeOriginal`、動画は `creation_time`）を読んで並べる。向き（EXIF の Orientation）は今の
   サムネイルと同じく当てる。**位置情報（GPS）は研究室の中では元の写真に残し**、「位置情報あり」と出す。**学外への共有リンクでは、
   既定で元の写真を渡さず表示サイズ（位置情報なし）だけ**にする（§7）。
-- **HEIC**：iOS は今までどおり送る前に JPEG にする（DRIVE.md §30.2）。Desktop / Web から来た HEIC はサーバでサムネイル・表示サイズを
-  作れない（Pillow が読めない）。AL1 で確かめた結果、**app のイメージの ffmpeg（Debian bookworm の 5.1）も HEIC を読めない**ので、
-  v1 はアイコンのまま（§6.3、§18.3）。
+- **HEIC**：iOS は今までどおり送る前に JPEG にする（DRIVE.md §30.2）。Desktop / Web から来た HEIC は、Pillow が読めないので
+  app のイメージの ffmpeg で読む。AL1 では Debian bookworm の ffmpeg 5.1 が読めずアイコンのままだった（§18.3）。**AL5 で app の
+  イメージを Debian trixie（ffmpeg 7.1）に上げ、HEIC にもサムネイル・表示サイズ・撮影日時・位置情報の印が付く**（§6.3、§22。
+  新しい Python の依存なし）。
 - **動画**もアルバムに入れられる（ポスターと長さ、ビューアで再生、スライドショーでは音を消して最後まで流す）。
 - **チャンネルへ**：アルバムの `/d/<フォルダの id>` のリンクは、写真 4 枚の並び・題名・枚数・日付のカードになる（DRIVE.md §25 の
   カードの形を広げる）。「チャンネルに知らせる」で入力欄にリンクを入れる。自動では投稿しない。
@@ -233,6 +235,11 @@ AlbumOut = {
   無い。HEIF の静止画は ffmpeg 7 系で入った。手元の Mac の ffmpeg 9.0 は同じファイルを読めた）。**v1 の HEIC はアイコンのまま**（撮影日時も読まない。
   並びはファイルの時刻）。サーバは何も変えていない（新しい依存なし）。AL5 で `pillow-heif` を足すか、Desktop / Web で送る前に
   JPEG にするかを決める（§18.3）。
+- **AL5 の結果（2026-10-29、§22）**：利用者は §18.3 の 2 を選んだ。app のイメージを Debian trixie（`ffmpeg 7.1.5`）に上げ、
+  iPhone 形のグリッドの HEIC（4032 × 3024、48 枚のタイル、irot）・10 bit（Main 10、Display P3）・タイルの無い HEIC・macOS の壁紙
+  （6016 × 6016）を、正しい向きのサムネイルと表示サイズにできた。ffmpeg 7.1 のコマンドはタイルを自分ではつながず、irot / imir も
+  当てないので、サーバがファイルの箱を読んで `xstack`・`crop`・`transpose` を組み立てる（`attachments/heif.py`）。撮影日時と位置情報の
+  印は HEIC の中の EXIF の項目から読む。
 - 元のファイル（HEIC）はそのまま残し、ダウンロードも HEIC（変えない）。
 
 ## 7. 位置情報と外部共有リンク
@@ -368,7 +375,7 @@ AlbumOut = {
 | **AL2** Desktop / Web | M181 | 場所の列の「アルバム」、アルバムの画面（格子・日付の見出し・選ぶ・表紙・設定）、ビューアの表示サイズと元の画像、スライドショー、「写真を追加」・「ドライブから追加」・「アルバムに追加」（メッセージ）・「この投稿の写真でアルバムを作る」、アルバムのカード、「チャンネルに知らせる」、共有リンクの `originals` の印、公開ページ（`share.html`）のアルバムの形 | vitest（格子の仮想化・日付の見出し・選ぶ・カード・読めないカード・スライドショーの順番と動画）と tsc。使い捨ての compose で 500 枚のアルバムを Chrome で開き、スクロールで読まれるのが見えた枡だけであること、ログインしないブラウザで公開リンクのアルバムを見て、元の写真が落とせないこと |
 | **AL3** iOS | M182 | アルバムの一覧・格子・ビューア（表示サイズ）・スライドショー・写真アプリに保存・まとめて上げる・「アルバムに追加」（メッセージ）・アルバムのカード | xcodebuild・XCTest、シミュレータで 300 枚のアップロード（途中でアプリを終わらせて続き）と格子・ビューア・保存 |
 | **AL4** Android | M183 | 同上（ビューアの左右の移動を含む） | `compileDebugKotlin`・`testDebugUnitTest`・`lintDebug`、ChikuwaChat_Pixel_9 で同じ通し（ヒープが増えないこと） |
-| **AL5** HEIC（必要なら） | M184 | §6.3 の結果で：ffmpeg で読めなかった場合に `pillow-heif` を足すか、Desktop / Web で送る前に変換するか（§17 Q4 の答え） | 実物の HEIC（iPhone・グリッド・10 bit）でサムネイルと表示サイズ |
+| **AL5** HEIC | M184 | §6.3 の結果で：ffmpeg で読めなかった場合に `pillow-heif` を足すか、Desktop / Web で送る前に変換するか（§17 Q4 の答え）。**2026-10-29：app のイメージを Debian trixie（ffmpeg 7.1）に上げて実装（§22）** | 実物の HEIC（iPhone・グリッド・10 bit）でサムネイルと表示サイズ |
 
 - AL1 は CHANNEL_FILES.md の CF1 の後が望ましい（「この投稿の写真をアルバムに」が移すだけで済む）。CF1 の前に作るなら `add` は
   投稿の写真をいつも写す（後で CF1 が入れば自然に移す方へ変わる）。
@@ -470,6 +477,8 @@ AlbumOut = {
 1. `pillow-heif`（libheif を含む wheel）を足す。サーバのサムネイル・表示サイズ・EXIF がそのまま効く。
 2. app のイメージを新しい ffmpeg（7 系以上）のある Debian trixie に上げ、`heif` を許可の一覧に足す（グリッドの HEIC を実物で確かめてから）。
 3. Desktop / Web で送る前に JPEG にする（iOS と同じ。ただしブラウザが HEIC を描けるとは限らない）。
+
+**2026-10-29：利用者は 2 を選んだ（AL5、§22）。**
 
 ### 18.4 AL2〜AL4 の端末が使うもの
 
@@ -649,3 +658,78 @@ AlbumOut = {
   Android 8〜9、TalkBack。
 - 気づいたこと（サーバ）：パンくずの「アルバム」フォルダの名前はサーバが日本語で付けるので、英語・中国語の画面でも「アルバム」と出る
   （「投稿のファイル」のように端末の言語で出すなら `system_role` 相当の印が要る）。
+
+## 22. 段階 AL5 の実装（M184、HEIC、2026-10-29）
+
+利用者は §18.3 の 2（app のイメージを Debian trixie に上げる）を選んだ（2026-10-29）。`pillow-heif` は足していない（新しい
+Python の依存なし）。
+
+### 22.1 イメージ
+
+- `server/Dockerfile` の土台を `ghcr.io/astral-sh/uv:python3.13-bookworm-slim` から **`ghcr.io/astral-sh/uv:python3.13-trixie-slim`** に
+  （Python は同じ 3.13、Debian 12 → 13）。apt で入れるのは今までどおり `ffmpeg` だけで、trixie でも同じ名前（`7.1.5-0+deb13u1`）。
+  Python の依存は wheel のまま（`uv sync --frozen` が通る）。
+- 大きさ：展開後 1.39 GB → 1.40 GB、取得する量（content size）343 MB → 348 MB（arm64 で測った値）。
+- converter（Gotenberg）・web（Caddy）・db・objectstore のイメージは土台が別なので変えていない。
+
+### 22.2 ffmpeg 7.1 で読む（`attachments/heif.py`）
+
+確かめたこと（`docker run … ffprobe -show_stream_groups` と `ffmpeg … -map 0:g:0`）：ffmpeg 7.1 の mov の demuxer は HEIF の
+グリッドを「Tile Grid」のストリームグループ（タイル 1 枚が 1 本のストリーム、オフセットと出力の縦横つき）として読むが、
+**コマンドはタイルをつながない**（既定では 512 × 512 の 1 枚目だけが出る。つなぐのは新しい ffmpeg）。irot / imir（HEIF の向き）も
+当てない。そこで：
+
+1. **箱を読む**（Python、画素は展開しない）：`meta` の主の項目（`pitm`）の型（`hvc1` か `grid`。AVIF などは対象外）、縦横（`ispe`）、
+   irot / imir（ファイルに並ぶ順）、ICC（`colr` の `prof`）、EXIF の項目（`iinf` の `Exif`、`iloc` で場所。主の項目を `cdsc` で指すもの
+   を先に）。読むのはファイルの先頭 4 MB まで、EXIF と ICC はそれぞれ 1 MB まで。縦 × 横が 50 Mpx（`images.MAX_PIXELS`）を超えれば
+   展開せず、撮影日時と位置情報の印だけ読む。
+2. **向き**：HEIF では EXIF の Orientation は参考の値で、向きは irot / imir が決める（libheif・Apple と同じ）。irot は反時計回り、
+   imir の axis 0 は上下、1 は左右を入れ替える（`sips` と ffmpeg 9 の結果に合わせた）。ファイルに並ぶ順に `transpose`・`hflip`・
+   `vflip` を当て、`-noautorotate` で ffmpeg 自身には回させない（新しい ffmpeg が irot を読むようになっても二重に回らない）。
+3. **タイル**：`ffprobe -show_stream_groups` のタイルのストリームとオフセットを `xstack` でつなぎ、出力の縦横に `crop`。タイルの無い
+   HEIC は既定（default）のストリーム 1 本。タイルは 1024 枚まで。
+4. **出力**：長い辺 2048 px 以下に縮めた RGB の PNG（上限 64 MB）を Pillow が開き、ICC を付けて、ほかの写真と同じ
+   `make_display`（WebP、メタデータなし）と `thumbnail_jpeg`（512 px の JPEG）。記録する `width` / `height` は元の大きさを立てた値。
+5. **閉じ込め**：動画と同じ `videos.run_bounded`（引数の配列・`PATH` と `LC_ALL` だけの環境・`VIDEO_PROBE_TIMEOUT_SECONDS`・
+   `VIDEO_PROBE_MAX_CONCURRENT` の枠を共有）、入力は `-protocol_whitelist file` と `-format_whitelist mov,mp4,m4a,3gp,3g2,mj2`。
+   ffmpeg が無い・`VIDEO_PROBE_ENABLED=false` なら何もしない。
+
+### 22.3 どこで作るか
+
+- **投稿の添付**（`POST /attachments`）：アップロードの応答の前にサムネイルと縦横（動画のポスターと同じ場所、SECURITY.md §4）。
+  読めない HEIC・50 Mpx を超える HEIC はふつうのファイルのまま（画像のように 422 にしない：AL5 の前から受け付けていたもの）。
+- **ドライブ**（media loop、投稿のファイルも）：サムネイル・表示サイズ・撮影日時・位置情報の印を 1 回の展開で。
+  ffmpeg の無いサーバでは動画と同じく読まずに残す（`photo_probed_at` は NULL のまま）。
+- **今ある HEIC**（AL5 の前にドライブに入ったもの）：`app.cli drive-photos --limit 500` が読む（HEIC はまだ一度も写真として
+  読まれていないので `photo_probed_at IS NULL`。サムネイルもここで作る）。ビューアが `/attachments/{id}/display` を開けば、その版を
+  media loop に戻す（HEIC は元のファイルをブラウザが描けないので、その回は 404 `display_not_found`）。
+- `content_type` は今までどおり先頭バイトの判定（`filetype`）：ブランドが `heic`（`mif1` / `msf1` で互換に `heic` を含むものも）は
+  `image/heic`。`heix`（Core Image の 10 bit の書き出しなど）は判定できず `application/octet-stream` のまま（ファイルとして扱う。
+  iPhone のカメラの写真は `heic`）。
+- 写真の一覧（`photo_kinds.PHOTO_TYPES`）には HEIC / HEIF が入るが、`images.IMAGE_TYPES`（プロフィール画像・絵文字・取り込み）は
+  変えていない。`INLINE_TYPES` も変えない（HEIC の元のファイルは `inline` で返さない）。
+
+### 22.4 端末への注意（AL2〜AL4）
+
+- HEIC の添付・ドライブのファイルにも `has_thumbnail`・`width` / `height`・`has_display` が付く。今の Desktop / Web の写真の
+  ビューア（`Lightbox`）は元のファイル（`content`）を読むので、Chromium / WebView2（Windows・Linux・Chrome）では HEIC の全画面が
+  「画像を読み込めませんでした」になる（macOS の WebKit は描ける）。**AL2 のビューアは `has_display` なら `/display` を使う**
+  （§18.4）。iOS・Android は OS が HEIC を描ける。
+
+### 22.5 確かめたこと
+
+- 実物：macOS の `sips -s format heic` で 4032 × 3024 の JPEG（EXIF の Orientation 6・`DateTimeOriginal`・GPS）から作った
+  iPhone 形の HEIC（512 px のタイル 48 枚、irot 270）、Core Image で書いた 10 bit（Main 10、Display P3 の ICC）と 8 bit の
+  Display P3、タイルの無い 400 × 300、macOS の壁紙（`Sonoma.heic` ほか、6016 × 6016）。trixie のイメージの中で
+  `heif.read` を流し、どれも正しい向きのサムネイルと表示サイズ（1536 × 2048 など）になった。12 Mpx で 0.4〜0.7 秒（arm64、
+  2 スレッド）。bookworm のイメージ（ffmpeg 5.1）では読めず、何も作らない（ファイルのまま）ことも確かめた。
+- `tests/test_heif.py`（19 件）：箱（グリッド・回転・EXIF の日時と GPS、回転と鏡の順、切れた・ほかの形式のファイル、大きすぎる箱）、
+  `ffprobe` の結果の読み方、ffmpeg のコマンド（`xstack`・`crop`・順・`-noautorotate`・whitelist）、ffmpeg の無いとき、50 Mpx を
+  超えるとき（展開しない、日時は読む）。ffmpeg が HEIF のグリッドを読めるとき（7.1 以上。CI の runner の古い ffmpeg や無いときは
+  skip）：グリッドと鏡の付いた HEIC の向き（四隅の色）、切れた HEIC、投稿のサムネイル、ドライブのサムネイル・表示サイズ・撮影日時・
+  位置情報の印、古い HEIC の `drive-photos` と遅延の経路、ffmpeg の無いサーバでは残す。テストの HEIC（`tests/fixtures/heic/`、
+  2 KB と 0.7 KB）は `sips` で作った。
+- `uv run pytest -q -n 4`（全体、Mac の ffmpeg 9）、trixie のイメージの中で全体（ffmpeg 7.1、HEIC のテストも skip なし）、
+  bookworm のイメージの中で `test_heif.py`（6 件 skip）。`ruff check`・`ruff format --check`・`mypy`。OpenAPI と
+  `apps/desktop/src/api/schema.d.ts` を再生成（`/display` の説明だけ）。
+

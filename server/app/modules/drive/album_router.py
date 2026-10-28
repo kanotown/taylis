@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.core.db import Db
 from app.core.errors import AppError
 from app.modules.attachments import service as attachments
+from app.modules.attachments.heif import is_heif
 from app.modules.auth.deps import CurrentUser
 from app.modules.drive import albums, photos
 from app.modules.drive.schemas import (
@@ -124,7 +125,8 @@ async def display(
     """AL1 (docs/ALBUMS.md §6): the display-size image (long edge at most 2048 px, WebP, no
     metadata) for the full-screen viewer. Without one yet, the original image (PNG, JPEG, GIF,
     WebP only; a drive image not read yet is queued to get one); 404 display_not_found for
-    anything else. Read as the attachment itself (`get_for_access`)."""
+    anything else (a drive HEIC not read yet is queued all the same, AL5). Read as the
+    attachment itself (`get_for_access`)."""
     attachment = await attachments.get_for_access(db, user, attachment_id)
     blobs = request.app.state.blobs
     if attachment.display_key is not None:
@@ -139,6 +141,11 @@ async def display(
             },
         )
     if attachment.content_type not in attachments.INLINE_TYPES:
+        # AL5: a drive HEIC stored before its display image could be made is queued too (its
+        # original is no image a browser shows).
+        if is_heif(attachment.content_type) and await photos.requeue_in_tx(db, attachment):
+            await db.commit()
+            request.app.state.drive.media_wake.set()
         raise AppError(404, "display_not_found", "This file has no display image")
     queued = await photos.requeue_in_tx(db, attachment)
     key, content_type = attachment.storage_key, attachment.content_type
