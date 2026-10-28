@@ -377,8 +377,11 @@ Range の URL で再生して調べた。分かったことと直したこと：
 表示サイズ（`has_display`、`/attachments/{id}/display` の WebP）を作るようになった（ALBUMS.md §19。app のイメージを Debian
 trixie の ffmpeg 7.1 に上げた）。会話とドライブの格子・一覧では JPEG と同じく写真として出る。
 
-- 元のファイルは HEIC のまま。Desktop / Web の写真のビューア（`Lightbox`）は元のファイル（`content`）を読むので、HEIC を
-  描けない Chromium / WebView2（Windows・Linux・Chrome）では全画面が「画像を読み込めませんでした」になる（ダウンロードは
-  できる。macOS の WebKit は描ける）。AL2 でビューアが `has_display` のとき `/display` を読むようにする（ALBUMS.md §18.4・§19.4）。
+- 元のファイルは HEIC のまま。~~Desktop / Web の写真のビューア（`Lightbox`）は元のファイル（`content`）を読むので、HEIC を
+  描けない Chromium / WebView2（Windows・Linux・Chrome）では全画面が「画像を読み込めませんでした」になる~~
+  → 2026-10-29（ALBUMS.md §23.2）：`Lightbox` は `has_display`（と HEIC）なら `/display` → 元のファイル → HEIC はサムネイルの順に
+  読む（取得の失敗か描けなかった時に次へ）。表示サイズの時は上の行に「元の画像を開く」（HEIC には出さない）。ダウンロードと
+  「開く」は元のファイル。
+- `heix`（10 bit）などのブランドの HEIF も `image/heic` / `image/heif` と判定する（ALBUMS.md §23.3）。
 - 文書のプレビュー（§2 の表）の対象は変わらない。
 

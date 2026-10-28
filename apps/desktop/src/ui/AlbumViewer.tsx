@@ -33,21 +33,22 @@ import { t } from "../i18n";
 function usePicture(cache: BlobCache, item: DriveItemOut, original: boolean): { url: string | null; failed: boolean } {
   const sources = viewerSources(item);
   const [state, setState] = useState<{ key: string; url: string | null; failed: boolean }>({ key: "", url: null, failed: false });
-  const key = sources ? `${original ? sources.original : sources.display}` : "";
+  const wantsOriginal = original && !!sources?.original;
+  const key = sources ? `${wantsOriginal ? sources.original : sources.display}` : "";
   useEffect(() => {
     if (!sources) return;
     let cancelled = false;
     setState({ key, url: null, failed: false });
-    const fallback = `/api/v1/attachments/${item.file!.attachment_id}/content`;
-    const first = original ? sources.original : sources.display;
+    const fallback = sources.fallback;
+    const first = wantsOriginal && sources.original ? sources.original : sources.display;
     cache.get(first).then(
       (url) => { if (!cancelled) setState({ key, url, failed: false }); },
       () => {
-        if (cancelled || original) {
+        if (cancelled || wantsOriginal) {
           if (!cancelled) setState({ key, url: null, failed: true });
           return;
         }
-        // An older server has no /display: the original.
+        // An older server has no /display: the original (a HEIC's thumbnail, §23).
         cache.get(fallback).then(
           (url) => { if (!cancelled) setState({ key, url, failed: false }); },
           () => { if (!cancelled) setState({ key, url: null, failed: true }); },
@@ -59,7 +60,7 @@ function usePicture(cache: BlobCache, item: DriveItemOut, original: boolean): { 
     };
     // `sources` follows `key` and the item.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cache, key, original]);
+  }, [cache, key, wantsOriginal]);
   return state.key === key ? { url: state.url, failed: state.failed } : { url: null, failed: false };
 }
 
@@ -185,7 +186,7 @@ export function AlbumViewer({ controller, items, startId, path, canWrite, coverI
               {hasLocation(item) && <span data-album-location="" className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-white/10 px-1.5 py-px text-[11px]"><MapPin size={11} /> {t("albums.viewer.hasLocation")}</span>}
             </div>
           </div>
-          {viewerSources(item) && (
+          {viewerSources(item)?.original && (
             <button type="button" data-album-original="" aria-pressed={original} className={cn(VIEWER_BUTTON, original && "bg-white/15")} title={t("albums.viewer.original")} aria-label={t("albums.viewer.original")} onClick={() => setOriginal((value) => !value)}>
               <ImageIcon size={18} />
             </button>

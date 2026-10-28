@@ -33,10 +33,11 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import Settings
-from app.modules.attachments import heif, photos, videos
+from app.modules.attachments import heif, photos, sniff, videos
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.photo_kinds import is_image, photo_kind
 from app.modules.drive import photos as drive_photos
+from app.modules.drive import uploads
 from app.modules.drive.models import DriveFileVersion, DriveItem
 from app.modules.users.models import User
 from tests.drive_helpers import act_as, drive_settings, workspace_root
@@ -218,6 +219,94 @@ def test_heic_counts_as_a_photo() -> None:
     for kind in ("image/heic", "image/heif", "IMAGE/HEIC"):
         assert heif.is_heif(kind) and is_image(kind) and photo_kind(kind)
     assert not heif.is_heif("image/jpeg")
+
+
+# --- the type of the bytes (§23) -----------------------------------------------------------------
+
+
+def branded(data: bytes, major: bytes, compatible: list[bytes] | None = None) -> bytes:
+    """`data` (a HEIC from sips: a 36-byte ftyp first) with another ftyp of the same length."""
+    size = int.from_bytes(data[:4], "big")
+    assert data[4:8] == b"ftyp" and size == 36
+    brands = compatible if compatible is not None else [b"mif1", b"MiPr", b"miaf", b"MiHB", major]
+    assert len(brands) == 5
+    return data[:8] + major + data[12:16] + b"".join(brands) + data[size:]
+
+
+@pytest.mark.parametrize("major", [b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx"])
+def test_hevc_brands_are_heic(major: bytes) -> None:
+    for data in (SINGLE, GRID):
+        changed = branded(data, major)
+        assert sniff.content_type(changed[:8192]) == "image/heic"
+        assert uploads.sniffed_type(changed) == "image/heic"
+        assert parsed(changed) is not None  # the box reader does not look at the brand
+
+
+def test_generic_heif_brands() -> None:
+    plain = [b"mif1", b"MiPr", b"miaf", b"MiHB", b"miaf"]
+    # A generic mif1 / msf1 with an HEVC brand among the compatible ones.
+    assert sniff.content_type(branded(SINGLE, b"mif1", [*plain[:4], b"heix"])) == "image/heic"
+    assert sniff.content_type(branded(SINGLE, b"msf1", [*plain[:4], b"hevc"])) == "image/heic"
+    # No HEVC brand: the primary item in the meta box decides.
+    assert sniff.content_type(branded(SINGLE, b"mif1", plain)) == "image/heif"
+    assert sniff.content_type(branded(GRID, b"mif1", plain)) == "image/heif"
+    av1 = branded(SINGLE, b"mif1", plain).replace(b"hvc1", b"av01")
+    assert heif.sniff(av1) is None
+    # An AVIF is not ours (filetype's).
+    assert heif.sniff(branded(SINGLE, b"mif1", [*plain[:4], b"avif"])) is None
+    assert heif.sniff(branded(SINGLE, b"avif", plain)) is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"",
+        b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2",  # an MP4
+        b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42hevc",  # an HEVC video
+        b"\x00\x00\x00\x14ftypheic",  # an ftyp longer than the bytes
+        b"\x00\x00\x00\x11ftypheic\x00\x00\x00\x00\x00",  # not a whole number of brands
+        b"\x00\x00\x10\x00ftypheic" + b"\x00" * 5000,  # an absurd ftyp
+        b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,
+    ],
+)
+def test_other_files_are_not_heif(data: bytes) -> None:
+    assert heif.sniff(data) is None
+
+
+def test_the_sniffer_still_knows_everything_else() -> None:
+    mp4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2" + b"\x00" * 16
+    assert sniff.content_type(mp4) == "video/mp4"
+    assert sniff.content_type(b"%PDF-1.7\n" + b"\x00" * 16) == "application/pdf"
+    assert sniff.content_type(b"hello") == "application/octet-stream"
+    assert sniff.content_type(b"") == "application/octet-stream"
+
+
+async def test_posted_heix_is_a_heic(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    drive_settings(app, video_probe_enabled=False)  # a copy: never the shared settings
+    as_user(await make_user(db, "aiko"))
+    uploaded = await client.post(
+        f"{API}/attachments",
+        files={"file": ("IMG_0002.HEIC", branded(GRID, b"heix"), "application/octet-stream")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["content_type"] == "image/heic"
+
+
+@needs_heif_ffmpeg
+async def test_posted_heix_gets_its_thumbnail(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    as_user(await make_user(db, "aiko"))
+    uploaded = await client.post(
+        f"{API}/attachments",
+        files={"file": ("IMG_0002.HEIC", branded(GRID, b"heix"), "application/octet-stream")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    out = uploaded.json()
+    assert out["content_type"] == "image/heic" and out["has_thumbnail"] is True
+    assert (out["width"], out["height"]) == (768, 1024)
 
 
 async def test_without_ffmpeg_nothing_is_tried(tmp_path: Path) -> None:

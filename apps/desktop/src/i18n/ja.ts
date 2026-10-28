@@ -4032,6 +4032,7 @@ export const ja = {
   "channelFiles.admin.chatNote": "チャンネルのドライブに入った投稿のファイルは、ドライブの側で数えます。",
   "channelFiles.search.includePosts": "投稿のファイルを含む",
   // AL2 (docs/ALBUMS.md): photo albums.
+  "albums.folder": "アルバム",
   "albums.title": "アルバム",
   "albums.new": "新しいアルバム",
   "albums.newDescription": "行事などの写真を 1 か所に集めます。アルバムはドライブのフォルダで、見られる人は場所で決まります。",

@@ -380,7 +380,7 @@ DriveLocationOut = {
 
 | メソッド | パス | 中身 |
 | --- | --- | --- |
-| GET | `/drive/folders/{id}/children?sort=name\|modified\|size&order=asc\|desc&cursor=&limit=` | `{folder: ItemOut, path: [Crumb], items: [ItemOut], next_cursor}`。フォルダが先。`path` は根から（場所の名前を含む）。`Crumb` は `{id, name, system_role}`（`system_role` は CF1 の「投稿のファイル」で `channel_posts`、ほかは null） |
+| GET | `/drive/folders/{id}/children?sort=name\|modified\|size&order=asc\|desc&cursor=&limit=` | `{folder: ItemOut, path: [Crumb], items: [ItemOut], next_cursor}`。フォルダが先。`path` は根から（場所の名前を含む）。`Crumb` は `{id, name, system_role}`（`system_role` は CF1 の「投稿のファイル」で `channel_posts`、ALBUMS.md §23 の「アルバム」フォルダで `albums`、ほかは null） |
 | GET | `/drive/items/{id}` | `ItemOut` と `path`（パーマリンクのカード・検索の結果から開くため） |
 | POST | `/drive/folders` | `{parent_id, name, client_op_id}` または `{parent_id, path: "a/b/c", client_op_id}`（途中も作る、mkdir -p）→ 201 `ItemOut`。同じ `client_op_id` の再送は 200 で同じ行。同じ名前のフォルダがあれば `path` の形はそれを使い、`name` の形は 409 `drive_name_taken`（`details.existing_id`） |
 | PATCH | `/drive/items/{id}` | `{name}` → `ItemOut`。409 `drive_name_taken` |
@@ -831,7 +831,8 @@ handle @driveparts {
 - CF1（CHANNEL_FILES.md §6.4・§6.5・§7.5）：投稿のファイルを含む部分木のゴミ箱・戻す・場所をまたぐ移動・完全削除は、メッセージの
   `drive_state` を変えて `message.updated` を出す（ゴミ箱は監査 `drive.trash`）。完全削除した投稿のファイルはメッセージの墓石として
   行が残る（GC が `purged` に）。「投稿のファイル」（`system_role = 'channel_posts'`）は名前の変更・移動・ゴミ箱ができない
-  （409 `drive_folder_system`）。
+  （409 `drive_folder_system`）。「アルバム」フォルダ（`system_role = 'albums'`、ALBUMS.md §23）はふつうのフォルダと同じに
+  できるが、ゴミ箱に入れるかほかの場所に移すと役が外れる。
 - 研究室ドライブのゴミ箱は全員に見える（誰が何を消したか分かる）。チャンネルのドライブはメンバーに、マイドライブは本人に。
 
 ### 10.2 版

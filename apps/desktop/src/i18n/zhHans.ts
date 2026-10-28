@@ -4032,6 +4032,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "channelFiles.admin.chatNote": "已放入频道云盘的帖子文件计入云盘。",
   "channelFiles.search.includePosts": "包含帖子中的文件",
   // AL2 (docs/ALBUMS.md): photo albums.
+  "albums.folder": "相册",
   "albums.title": "相册",
   "albums.new": "新建相册",
   "albums.newDescription": "把活动等的照片集中到一处。相册就是云盘中的文件夹，谁能看到取决于它所在的位置。",

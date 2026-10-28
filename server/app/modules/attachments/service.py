@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 from typing import IO
 from urllib.parse import quote
 
-import filetype
 from fastapi import UploadFile
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +20,7 @@ from app.core.errors import AppError, bad_request, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
-from app.modules.attachments import heif, videos
+from app.modules.attachments import heif, sniff, videos
 from app.modules.attachments import repository as repo
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
@@ -163,8 +162,7 @@ async def upload(
             spool.write(chunk)
         if size == 0:
             raise bad_request("attachment_empty", "The file is empty")
-        kind = filetype.guess(head)
-        content_type = kind.mime if kind is not None else "application/octet-stream"
+        content_type = sniff.content_type(head)
 
         # UUIDv7 like every other id (DATA_MODEL.md): generated here because the storage key
         # needs it.

@@ -149,3 +149,31 @@ export function documentThumbBox(attachment: Partial<Pick<AttachmentOut, "previe
 export function pageCountLabel(pages: number | null | undefined): string {
   return pages && pages > 0 ? t("attach.pages", { count: pages }) : "";
 }
+
+/** The kinds of picture `/api/v1/attachments/{id}/…` serves. */
+export type PictureKind = "display" | "content" | "thumbnail";
+
+const HEIF_TYPES = new Set(["image/heic", "image/heif"]);
+
+export function isHeif(contentType: string | null | undefined): boolean {
+  return HEIF_TYPES.has((contentType ?? "").toLowerCase());
+}
+
+/**
+ * What the full-screen photo viewer (Lightbox) loads, in order: the next one when a fetch fails (an older server, a
+ * 404 display_not_found) or the engine cannot draw it (a HEIC original in Chromium / WebView2; macOS WebKit draws it).
+ * The display size (2048 px WebP, docs/ALBUMS.md §6) when the server has one — a HEIC is asked for it even without
+ * `has_display` (a drive HEIC not read yet is queued by asking, AL5) — then the original, and for a HEIC its thumbnail
+ * last (a posted HEIC outside the drive has no display size: ALBUMS.md §23). A GIF is always its original (it may
+ * move; the display size is a still). Download and 「開く」 always give the original.
+ */
+export function viewerPictures(attachment: Pick<AttachmentOut, "content_type" | "has_thumbnail"> & { has_display?: boolean }): PictureKind[] {
+  const type = (attachment.content_type ?? "").toLowerCase();
+  if (type === "image/gif") return ["content"];
+  const heif = isHeif(type);
+  const out: PictureKind[] = [];
+  if (attachment.has_display || heif) out.push("display");
+  out.push("content");
+  if (heif && attachment.has_thumbnail) out.push("thumbnail");
+  return out;
+}

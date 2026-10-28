@@ -606,6 +606,85 @@ async def test_album_made_in_the_locations_albums_folder_and_idempotent(
     assert both.status_code == 422
 
 
+async def test_albums_folder_has_its_role_and_is_an_ordinary_folder(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """§23: the 「アルバム」 folder is marked 'albums' (item, crumbs) but renamed, moved and trashed
+    like any folder; trashed or moved to another location it is a plain folder again."""
+    drive_settings(app)
+    as_user(await make_user(db, "aiko"))
+    root = await workspace_root(client)
+    workspace = (await client.get(f"{API}/drive/locations")).json()["locations"][0]
+    first = (await make_album(client, location_id=workspace["id"], name="合宿")).json()
+    albums_id = first["folder"]["parent_id"]
+    albums = await item(client, albums_id)
+    assert albums["name"] == "アルバム" and albums["system_role"] == "albums"
+    got = await client.get(f"{API}/drive/items/{first['folder']['id']}")
+    assert [c.get("system_role") for c in got.json()["path"]] == [None, "albums"]
+    listed = await client.get(f"{API}/drive/folders/{root}/children")
+    row = next(i for i in listed.json()["items"] if i["id"] == albums_id)
+    assert row["system_role"] == "albums"
+    # Not an album itself; albums can be made in it by parent_id too.
+    refused = await client.put(f"{API}/drive/folders/{albums_id}/album", json={})
+    assert refused.status_code == 422 and code(refused) == "drive_album_invalid"
+    assert (await make_album(client, parent_id=albums_id, name="学会")).status_code == 201
+    # Renamed and moved inside the location: still the folder new albums go into.
+    renamed = await client.patch(f"{API}/drive/items/{albums_id}", json={"name": "写真"})
+    assert renamed.status_code == 200 and renamed.json()["system_role"] == "albums"
+    shelf = await folder(client, root, "共有")
+    moved = await client.post(
+        f"{API}/drive/items/move", json={"item_ids": [albums_id], "target_folder_id": shelf}
+    )
+    assert moved.json()["results"][0]["ok"] is True
+    again = (await make_album(client, location_id=workspace["id"], name="卒業式")).json()
+    assert again["folder"]["parent_id"] == albums_id
+    # Trashed: a plain folder; the next album makes a new 「アルバム」 with the role.
+    trashed = await client.post(f"{API}/drive/items/trash", json={"item_ids": [shelf]})
+    assert trashed.json()["results"][0]["ok"] is True
+    assert (await fresh(app, DriveItem, uuid.UUID(albums_id))).system_role is None
+    third = (await make_album(client, location_id=workspace["id"], name="花見")).json()
+    new_albums = await item(client, third["folder"]["parent_id"])
+    assert new_albums["id"] != albums_id and new_albums["system_role"] == "albums"
+    assert new_albums["parent_id"] == root and new_albums["name"] == "アルバム"
+    restored = await client.post(f"{API}/drive/items/{shelf}/restore", json={})
+    assert restored.status_code == 200, restored.text
+    assert (await item(client, albums_id))["system_role"] is None
+    # Moved to another location: a plain folder there.
+    mine = await location(client, "me")
+    across = await client.post(
+        f"{API}/drive/items/move",
+        json={"item_ids": [new_albums["id"]], "target_folder_id": mine["root_id"]},
+    )
+    assert across.json()["results"][0]["ok"] is True, across.text
+    gone = await item(client, new_albums["id"])
+    assert gone["location_id"] == mine["id"] and gone["system_role"] is None
+    # My drive's own 「アルバム」: the moved folder lies right under its top, so it is adopted.
+    adopted = (await make_album(client, location_id=mine["id"], name="旅行")).json()
+    assert adopted["folder"]["parent_id"] == new_albums["id"]
+    assert (await item(client, new_albums["id"]))["system_role"] == "albums"
+
+
+async def test_albums_folder_adopts_one_a_person_made(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    drive_settings(app)
+    as_user(await make_user(db, "aiko"))
+    root = await workspace_root(client)
+    workspace = (await client.get(f"{API}/drive/locations")).json()["locations"][0]
+    mine = await folder(client, root, "アルバム")
+    assert (await item(client, mine))["system_role"] is None
+    before = len(await changed_events(db))
+    count = (await fresh(app, DriveLocation, uuid.UUID(workspace["id"]))).item_count
+    made = (await make_album(client, location_id=workspace["id"], name="合宿")).json()
+    assert made["folder"]["parent_id"] == mine
+    assert (await item(client, mine))["system_role"] == "albums"
+    events = (await changed_events(db))[before:]
+    assert any(root in e["folder_ids"] for e in events)
+    # One new folder (the album), not two.
+    after = (await fresh(app, DriveLocation, uuid.UUID(workspace["id"]))).item_count
+    assert after == count + 1
+
+
 async def test_folder_made_an_album_changed_and_unmade(
     app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:

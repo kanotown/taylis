@@ -31,7 +31,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-import filetype
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -42,6 +41,7 @@ from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments import service as attachments
+from app.modules.attachments import sniff
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import queue_on_upload
@@ -646,8 +646,7 @@ async def _sniff(blobs: BlobStore, key: str, size: int) -> str:
     head = b""
     async for chunk in blobs.stream(key, 0, min(size, SNIFF_BYTES) - 1):
         head += chunk
-    kind = filetype.guess(head[:SNIFF_BYTES])
-    return kind.mime if kind is not None else "application/octet-stream"
+    return sniff.content_type(head[:SNIFF_BYTES])
 
 
 async def finalize(
@@ -1049,8 +1048,7 @@ async def store_stream(
 
 def sniffed_type(head: bytes) -> str:
     """The content type of a file from its first bytes (the uploads' `_sniff`)."""
-    kind = filetype.guess(head[:SNIFF_BYTES]) if head else None
-    return kind.mime if kind is not None else "application/octet-stream"
+    return sniff.content_type(head[:SNIFF_BYTES])
 
 
 async def abort(db: AsyncSession, actor: User, blobs: BlobStore, upload_id: uuid.UUID) -> None:

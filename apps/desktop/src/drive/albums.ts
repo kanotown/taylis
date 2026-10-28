@@ -209,16 +209,26 @@ export function hasPicture(item: Pick<DriveItemOut, "content_type" | "file">): b
 export interface ViewerSources {
   /** The display size (2048 px WebP); the server answers the original raster image while it has none. */
   display: string;
-  /** The original (「元の画像」, a zoom past the display size). */
-  original: string;
+  /**
+   * What is read when the display size cannot be (an older server, 404 display_not_found): the original, or for a HEIC
+   * its thumbnail (Chromium / WebView2 cannot draw a HEIC original; §23).
+   */
+  fallback: string;
+  /** The original (「元の画像」, a zoom past the display size); null for a HEIC (download gives it). */
+  original: string | null;
 }
+
+const HEIF = new Set(["image/heic", "image/heif"]);
 
 /** Where the viewer reads a photo (§18.4); null for a video or a photo that cannot be drawn. */
 export function viewerSources(item: DriveItemOut): ViewerSources | null {
   if (item.kind !== "file" || !item.file || isVideo(item) || !hasPicture(item)) return null;
+  const heif = HEIF.has((item.content_type ?? "").toLowerCase());
+  const attachment = `/api/v1/attachments/${item.file.attachment_id}`;
   return {
-    display: `/api/v1/attachments/${item.file.attachment_id}/display`,
-    original: `/api/v1/drive/items/${item.id}/content?inline=1`,
+    display: `${attachment}/display`,
+    fallback: heif && item.file.has_thumbnail ? `${attachment}/thumbnail` : `${attachment}/content`,
+    original: heif ? null : `/api/v1/drive/items/${item.id}/content?inline=1`,
   };
 }
 
