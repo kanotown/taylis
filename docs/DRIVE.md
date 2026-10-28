@@ -380,7 +380,7 @@ DriveLocationOut = {
 
 | メソッド | パス | 中身 |
 | --- | --- | --- |
-| GET | `/drive/folders/{id}/children?sort=name\|modified\|size&order=asc\|desc&cursor=&limit=` | `{folder: ItemOut, path: [Crumb], items: [ItemOut], next_cursor}`。フォルダが先。`path` は根から（場所の名前を含む） |
+| GET | `/drive/folders/{id}/children?sort=name\|modified\|size&order=asc\|desc&cursor=&limit=` | `{folder: ItemOut, path: [Crumb], items: [ItemOut], next_cursor}`。フォルダが先。`path` は根から（場所の名前を含む）。`Crumb` は `{id, name, system_role}`（`system_role` は CF1 の「投稿のファイル」で `channel_posts`、ほかは null） |
 | GET | `/drive/items/{id}` | `ItemOut` と `path`（パーマリンクのカード・検索の結果から開くため） |
 | POST | `/drive/folders` | `{parent_id, name, client_op_id}` または `{parent_id, path: "a/b/c", client_op_id}`（途中も作る、mkdir -p）→ 201 `ItemOut`。同じ `client_op_id` の再送は 200 で同じ行。同じ名前のフォルダがあれば `path` の形はそれを使い、`name` の形は 409 `drive_name_taken`（`details.existing_id`） |
 | PATCH | `/drive/items/{id}` | `{name}` → `ItemOut`。409 `drive_name_taken` |
@@ -388,7 +388,7 @@ DriveLocationOut = {
 | POST | `/drive/items/copy` | `{item_ids, target_folder_id, on_conflict, client_op_id}` → 202 `{job_id}` か 200 `{results}`（§10.3）。**D3**：いつも 200 `{results: [{id, ok, error?, new_id}]}`、上限を超えれば 413（§22.2） |
 | POST | `/drive/items/trash` | `{item_ids}` → `{results}`。部分木ごと |
 | GET | `/drive/locations/{id}/trash?cursor=` | ゴミ箱のまとまりの根の一覧（入れた人・時刻・中の件数と大きさ） |
-| POST | `/drive/items/{id}/restore` | `{on_conflict: "rename" \| "fail"}` → `ItemOut`。元の親がゴミ箱か無ければ場所の根に戻す |
+| POST | `/drive/items/{id}/restore` | `{on_conflict: "rename" \| "fail"}` → `ItemOut`。元の親がゴミ箱か無ければ場所の根に戻す。まとまりの中の項目ならそのまとまりごと（§10.1） |
 | DELETE | `/drive/items/{id}` | 完全削除（ゴミ箱の中のものだけ、409 `drive_not_in_trash`）。§3.2 の人だけ |
 | GET | `/drive/items/{id}/versions` | `{versions: [VersionOut]}`（新しい順） |
 | POST | `/drive/items/{id}/versions/{version_id}/restore` | その版を新しい今の版として写す（§10.2）→ `ItemOut` |
@@ -810,6 +810,11 @@ handle @driveparts {
   リンク・ZIP から消える。容量は数えたまま（完全に消すまで領域は使う）。
 - 戻すのはまとまりごと（根の id で）。元の親が生きていればそこに、親がゴミ箱か無ければ場所の根に。同じ名前があれば `rename`
   （「名前 (復元)」ではなく「名前 (1)」の規則）。ゴミ箱の中で、まとまりの一部だけを戻すことはできない（ドキュメントと同じ）。
+  まとまりの中の項目（頭でないもの）の id で戻すと、**その項目のまとまりごと**戻す（2026-10-28。前は 409 `drive_not_in_trash`）。
+  月のフォルダごとゴミ箱にある投稿のファイルを、メッセージの「戻す」から戻せるように（CHANNEL_FILES.md §19.4）。まとまりは
+  分けない（ゴミ箱の画面でフォルダを戻すのと同じ結果で、ほかの人に思わぬことは起きない）。名前の重なり（`on_conflict`）は頭の
+  名前で決まり、応答は頼まれた項目。監査 `drive.restore`（`asked_item_id`）。ゴミ箱に無い項目は今までどおり 409
+  `drive_not_in_trash`。完全削除は今までどおり頭だけ（まとまりの一部の id では 409）。
 - 30 日（`DRIVE_TRASH_DAYS`）で周期ジョブが完全削除する：版の添付を `deleted`、リンクを消し、行を消し、`used_bytes` を引き、
   監査 `drive.purge`（actor なし、場所・名前・件数・大きさ）。手での完全削除も同じ処理（監査 `drive.delete`）。
 - CF1（CHANNEL_FILES.md §6.4・§6.5・§7.5）：投稿のファイルを含む部分木のゴミ箱・戻す・場所をまたぐ移動・完全削除は、メッセージの

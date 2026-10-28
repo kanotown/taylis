@@ -110,6 +110,9 @@ class DriveItemOut(BaseModel):
 class DriveCrumb(BaseModel):
     id: UUID
     name: str
+    # As DriveItemOut.system_role: 'channel_posts' for 「投稿のファイル」 (clients name it in their
+    # language in the breadcrumbs too), else null. Older servers leave it out.
+    system_role: Literal["channel_posts"] | None = None
 
 
 class DriveItemDetailOut(BaseModel):

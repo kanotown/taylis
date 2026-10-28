@@ -420,7 +420,15 @@ async def children(
     crumbs = await repo.items(db, below)
     return SharedChildrenOut(
         folder=(await _shown(db, [folder]))[0],
-        path=[DriveCrumb(id=i, name=crumbs[i].name) for i in below if i in crumbs],
+        path=[
+            DriveCrumb(
+                id=i,
+                name=crumbs[i].name,
+                system_role=crumbs[i].system_role,  # type: ignore[arg-type]
+            )
+            for i in below
+            if i in crumbs
+        ],
         items=await _shown(db, rows),
         next_cursor=service._encode_cursor(rows[-1], "name") if more and rows else None,
     )
