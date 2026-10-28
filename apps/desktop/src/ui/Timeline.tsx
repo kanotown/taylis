@@ -55,6 +55,7 @@ import { ReactionsDialog } from "./WhoDialogs";
 import { isSystemMessage, systemMessageText } from "./systemMessage";
 import { TaskDialog } from "./TaskDialog";
 import { MessageTaskChips } from "./MessageTaskChips";
+import { TopicText } from "./TopicText";
 import { canShareConversationTask, messageReviewInit, messageTaskInit } from "./tasks";
 
 
@@ -706,7 +707,8 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
           </>
         )}
       </p>
-      {(channel.purpose || channel.topic) && <p className="mt-1 text-sm text-ink">{channel.purpose || channel.topic}</p>}
+      {/* 2026-10-28: a topic's links work here too (TopicText); the purpose stays text. */}
+      {channel.purpose ? <p className="mt-1 text-sm text-ink">{channel.purpose}</p> : channel.topic ? <p className="mt-1 text-sm text-ink"><TopicText controller={controller} topic={channel.topic} /></p> : null}
     </div>
   );
 }

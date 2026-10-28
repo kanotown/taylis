@@ -1,9 +1,11 @@
-import { Archive, ArchiveRestore, ArrowLeft, AtSign, Hash, Link2, Lock, LogOut, Megaphone, Pencil, UserPlus, Zap } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, AtSign, CalendarDays, Hash, Link2, Lock, LogOut, Megaphone, Pencil, UserPlus, Zap } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, NotificationLevel } from "../sync/types";
 import { AiChannelNotice } from "./ai";
+import { channelCalendarLabel } from "./CalendarView";
+import { TopicText } from "./TopicText";
 import { canEditLinks } from "./ChannelLinks";
 import { canMakePublic, notificationChoices, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
@@ -27,9 +29,12 @@ const ROW = "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left tex
  * the channel's settings, which the wide layout keeps in separate dialogs and the ⋯ menu. The conversation stays
  * mounted under it; 「戻る」 (← or the browser's back) returns to it.
  */
-export function ChannelDetails({ controller, channel, onClose, onDialog, membersVersion }: {
+export function ChannelDetails({ controller, channel, onClose, onDialog, membersVersion, upcoming = 0, onCalendar }: {
   controller: AppController;
   channel: ChannelState;
+  /** 2026-10-28 (CALENDAR.md §7): the channel's events today and tomorrow, and 「このチャンネルの予定」 (the workspace calendar on it). */
+  upcoming?: number;
+  onCalendar?: () => void;
   onClose: () => void;
   onDialog: (dialog: DetailsDialog) => void;
   /** Bumped when a dialog opened from here may have changed the members (added someone). */
@@ -63,6 +68,7 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
             placeholder={t("dialogs.topicPlaceholder")}
             editable={canEdit}
             onSave={(text) => controller.updateTopic(channel.id, text)}
+            render={(text) => <TopicText controller={controller} topic={text} />}
           />
         )}
         {isChannel && (
@@ -148,6 +154,7 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
         {isChannel && channel.isMember && (
           <section className="space-y-0.5">
             <h3 className={cn(HEADING, "mb-1")}>{t("settings.title")}</h3>
+            {onCalendar && <Action icon={<CalendarDays size={16} />} onClick={onCalendar}>{channelCalendarLabel(upcoming)}</Action>}
             {canEditLinks(channel, controller) && <Action icon={<Link2 size={16} />} onClick={() => onDialog("link")}>{t("channel.addLink")}</Action>}
             {canManage && !channel.archived && (
               <Action icon={<Megaphone size={16} />} onClick={() => void controller.setPostingPolicy(channel.id, channel.posting_policy === "owners" ? "everyone" : "owners")}>
@@ -177,12 +184,14 @@ function Action({ icon, danger = false, onClick, children }: { icon: ReactNode; 
 }
 
 /** A one-line text of the channel (topic, purpose), edited in place. */
-function TextSetting({ label, value, placeholder, editable, onSave }: {
+function TextSetting({ label, value, placeholder, editable, onSave, render }: {
   label: string;
   value: string | null | undefined;
   placeholder: string;
   editable: boolean;
   onSave: (text: string) => Promise<boolean>;
+  /** How the value reads (the topic's links, 2026-10-28); it is edited as plain text. */
+  render?: (text: string) => ReactNode;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -205,7 +214,7 @@ function TextSetting({ label, value, placeholder, editable, onSave }: {
         )}
       </div>
       {draft === null ? (
-        value ? <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{value}</p> : <p className="mt-1 text-sm text-muted">{t("settings.notifications.notSet")}</p>
+        value ? <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{render ? render(value) : value}</p> : <p className="mt-1 text-sm text-muted">{t("settings.notifications.notSet")}</p>
       ) : (
         <form className="mt-2" onSubmit={(e) => void save(e)}>
           <Input aria-label={label} value={draft} maxLength={250} autoFocus placeholder={placeholder} onChange={(e) => setDraft(e.target.value)} />

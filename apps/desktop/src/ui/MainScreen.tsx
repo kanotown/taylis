@@ -29,8 +29,10 @@ import { reservationTodoCount } from "./reservationPools";
 import { RecurringPostsDialog } from "./RecurringPosts";
 import { ChannelWorkflowsDialog } from "./WorkflowViews";
 import { CanvasPane } from "./CanvasPane";
-import { type ConversationTab, ConversationTabs, eventsTabLabel } from "./ConversationTabs";
-import { CalendarView, ChannelEvents, useCalendarHub } from "./CalendarView";
+import { type ConversationTab, ConversationTabs } from "./ConversationTabs";
+import { CalendarView, channelCalendarLabel, useCalendarHub } from "./CalendarView";
+import { TabStrip } from "./TabStrip";
+import { TopicText, topicHasLink } from "./TopicText";
 import { ChannelTasks } from "./TaskBoard";
 import { MyTasksView } from "./MyTasksView";
 import { DeadlineChip, DeadlinesView, newDeadlineInit } from "./DeadlinesView";
@@ -109,7 +111,8 @@ import { canManageChannelByRight } from "./roles";
 // "drive" (M161): 「ドライブ」, the locations and their folders (docs/DRIVE.md §17).
 const CENTRE_VIEWS = ["channel", "threads", "saved", "activity", "drafts", "files", "reminders", "search", "canvases", "calendar", "tasks", "deadlines", "times", "reservations", "lending", "docs", "attendance", "actions", "drive"] as const;
 type CentreView = (typeof CENTRE_VIEWS)[number];
-const CONVERSATION_TABS: readonly ConversationTab[] = ["messages", "canvas", "events", "tasks", "drive", "pins", "files"];
+// 2026-10-28: no 「予定」 tab any more (one calendar per workspace, CALENDAR.md §7); a saved tab on it opens 「メッセージ」.
+const CONVERSATION_TABS: readonly ConversationTab[] = ["messages", "canvas", "tasks", "drive", "pins", "files"];
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -905,6 +908,22 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setView((v) => (v === next && toggle && !compactRef.current ? "channel" : next));
   };
 
+  /**
+   * 2026-10-28 (CALENDAR.md §7): the workspace calendar showing one channel (its ⋯ 「このチャンネルの予定」, which took the
+   * place of the channel's 「予定」 tab): filtered to it, and 「予定を追加」 starts in its calendar. `n` remounts the view
+   * for each request; the rail's 「カレンダー」 opens it unfiltered.
+   */
+  const [calendarRequest, setCalendarRequest] = useState<{ channelId: string; n: number } | null>(null);
+  const openChannelCalendar = (channelId: string) => {
+    setDetailsOpen(false);
+    setCalendarRequest((previous) => ({ channelId, n: (previous?.n ?? 0) + 1 }));
+    openView("calendar", false);
+  };
+  const openCalendar = () => {
+    setCalendarRequest(null);
+    openView("calendar");
+  };
+
   const openThreads = () => {
     controller.clearMessageFocus();
     controller.setEditing(null);
@@ -1516,7 +1535,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const isChannel = current?.type === "public" || current?.type === "private";
   // M141 「会話を閉じる」: DMs and group DMs of mine, on a server that has closes (bootstrap's closed_dms).
   const closable = !!current && isDmChannel(current) && current.isMember && store.closedDms !== null;
-  // M51: the channel's events today and tomorrow, for the 「予定」 tab's count (read when it opens, kept by the hub).
+  // M51: the channel's events today and tomorrow (read when it opens, kept by the hub): since 2026-10-28 the count is on
+  // ⋯ 「このチャンネルの予定」 (and the phone's details page), the channel's 「予定」 tab having gone.
   const calendar = useCalendarHub(controller);
   const upcomingChannelId = current && current.isMember && isChannel && view === "channel" ? current.id : null;
   useEffect(() => {
@@ -1575,7 +1595,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       canvasesActive={view === "canvases"}
       onDocs={engine?.wiki?.available ? () => openView("docs") : undefined}
       docsActive={view === "docs"}
-      onCalendar={() => openView("calendar")}
+      onCalendar={openCalendar}
       calendarActive={view === "calendar"}
       onTasks={() => openView("tasks")}
       tasksActive={view === "tasks"}
@@ -1614,6 +1634,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {(current.type === "public" || current.type === "private") && current.isMember && canEditBoard(current, controller.isAdmin) && !!controller.engine?.tasks?.available && (
         <MenuItem onSelect={() => setDeadlineInit(newDeadlineInit(controller, current.id))}>{t("channel.addDeadline")}</MenuItem>
       )}
+      {(current.type === "public" || current.type === "private") && current.isMember && (
+        <MenuItem onSelect={() => openChannelCalendar(current.id)}>{channelCalendarLabel(upcomingCount)}</MenuItem>
+      )}
       {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>{t("channel.addLink")}</MenuItem>}
       {canManage && !current.archived && (
         <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
@@ -1646,13 +1669,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const headerTabs: ReadonlyArray<readonly [ConversationTab, string]> = [
     ["messages", t("main.tab.messages")],
     ["canvas", t("main.tab.canvas")],
-    ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", t("main.tab.tasks")] as const, ["drive", t("nav.drive")] as const] : []),
+    ...(isChannel ? [["tasks", t("main.tab.tasks")] as const, ["drive", t("nav.drive")] as const] : []),
   ];
   // Too narrow a header moves pins, files, members and the shortcuts button into ⋯ (headerFit).
   const tightHeader = !compact && fit === "tight";
   const shownTab: ConversationTab = tabbed
-    ? (tab === "events" || tab === "tasks" || tab === "drive") && !isChannel ? "messages" : tab
-    : canvasTab && (tab === "canvas" || ((tab === "events" || tab === "tasks" || tab === "drive") && isChannel)) ? tab : "messages";
+    ? (tab === "tasks" || tab === "drive") && !isChannel ? "messages" : tab
+    : canvasTab && (tab === "canvas" || ((tab === "tasks" || tab === "drive") && isChannel)) ? tab : "messages";
   // Nothing of the conversation counts as seen while another tab or a page covers it (SYNC_PROTOCOL.md §10.1 2.).
   const conversationOnScreen = shownTab === "messages" && (!compact || (!showDetails && !sidePane));
   const openDetails = () => {
@@ -1739,7 +1762,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       ) : view === "drive" ? (
         <DriveView controller={controller} compact={compact} place={drivePlace} onPlace={setDrivePlace} />
       ) : view === "calendar" ? (
-        <CalendarView controller={controller} />
+        <CalendarView key={calendarRequest ? `channel:${calendarRequest.n}` : "all"} controller={controller} initialFilter={calendarRequest?.channelId} />
       ) : view === "tasks" ? (
         <MyTasksView controller={controller} onOpenBoard={openTasksTab} />
       ) : view === "deadlines" ? (
@@ -1786,8 +1809,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
             <BackToList.Provider value={tabbed && tab !== "messages" ? () => setTab("messages") : back}>
               <BackButton />
             </BackToList.Provider>
-            {/* The left part gives way to the buttons (shrink-0): the topic first, then mostly the tabs (they scroll
-                sideways) and a little the title (an ellipsis), so nothing slides under the buttons when the thread pane
+            {/* The left part gives way to the buttons (shrink-0): the topic first, then the tabs (TabStrip folds the
+                last ones into 「その他」, 2026-10-28; it counts the topic as needing nothing and a title as needing up to
+                200 px) and then the title (an ellipsis), so nothing slides under the buttons when the thread pane
                 narrows the column (2026-10-02). Narrower still, the tabs and some buttons fold (headerFit). */}
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               {tabbed ? (
@@ -1803,7 +1827,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   <span className="shrink-0 text-muted">
                     {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
                   </span>
-                  <strong className="min-w-0 truncate text-[15px]" title={channelTitle(current, controller)}>{channelTitle(current, controller).replace(/^#/, "")}</strong>
+                  <strong className="min-w-0 truncate text-[15px]" data-natural-max="200" title={channelTitle(current, controller)}>{channelTitle(current, controller).replace(/^#/, "")}</strong>
                 </>
               )}
               {current.archived && <Badge>{t("channel.archived")}</Badge>}
@@ -1830,20 +1854,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </Menu>
               )}
               {canvasTab && !compact && fit === "full" && (
-                <div role="tablist" aria-label={t("main.view")} className="ml-1 flex min-w-[6rem] shrink-[4] overflow-x-auto overflow-y-hidden rounded-lg bg-panel-2 p-0.5 text-xs font-medium [scrollbar-width:none]">
-                  {headerTabs.map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="tab"
-                      aria-selected={shownTab === value}
-                      onClick={() => setTab(value)}
-                      className={cn("shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", shownTab === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                // 2026-10-28: the tabs that do not fit go into 「その他 ▾」 (TabStrip), the shown one always stays.
+                <TabStrip tabs={headerTabs} value={shownTab} onChange={setTab} label={t("main.view")} className="ml-1" />
               )}
               {/* M85: the channel's next open deadline (opens it). */}
               {isChannel && current.isMember && !previewing && <DeadlineChip controller={controller} channel={current} onOpen={setTaskDialog} />}
@@ -1853,10 +1865,24 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </span>
               )}
               {/* A tight header leaves the topic to ⋯ 「トピックを編集」 (the name comes first). */}
-              {isChannel && current.isMember && !current.archived && !tightHeader && (
+              {/* 2026-10-28: a topic with links shows them (TopicText); a click beside them still edits it. */}
+              {isChannel && current.isMember && !current.archived && !tightHeader && current.topic && topicHasLink(current.topic) && (
+                <div
+                  data-topic=""
+                  className="min-w-0 shrink-[10000] cursor-pointer truncate text-sm text-muted max-md:hidden"
+                  title={current.topic}
+                  onClick={(event) => {
+                    if (!(event.target as Element).closest("a")) setDialog("topic");
+                  }}
+                >
+                  <TopicText controller={controller} topic={current.topic} />
+                </div>
+              )}
+              {isChannel && current.isMember && !current.archived && !tightHeader && !(current.topic && topicHasLink(current.topic)) && (
                 <button
                   type="button"
-                  className={cn("min-w-0 shrink-[100] truncate text-sm hover:underline max-md:hidden", current.topic ? "text-muted" : "text-muted/70")}
+                  data-topic=""
+                  className={cn("min-w-0 shrink-[10000] truncate text-sm hover:underline max-md:hidden", current.topic ? "text-muted" : "text-muted/70")}
                   onClick={() => setDialog("topic")}
                   title={t("channel.editTopic")}
                 >
@@ -1997,7 +2023,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
             </div>
           </header>
           {tabbed ? (
-            <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} upcoming={upcomingCount} />
+            <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} />
           ) : (
             <ChannelLinksBar controller={controller} channel={current} onAdd={addLink} onEdit={editLink} />
           )}
@@ -2035,11 +2061,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   onSelect={(id) => setCanvasChoice((choice) => ({ ...choice, [current.id]: id }))}
                   onOpenThread={openCanvasThread}
                 />
-              </div>
-            )}
-            {shownTab === "events" && (
-              <div role="tabpanel" aria-label={t("main.tab.events")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
-                <ChannelEvents controller={controller} channel={current} />
               </div>
             )}
             {shownTab === "tasks" && (
@@ -2101,6 +2122,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
             controller={controller}
             channel={current}
             membersVersion={membersVersion}
+            upcoming={upcomingCount}
+            onCalendar={() => {
+              setDialog(null);
+              openChannelCalendar(current.id);
+            }}
             onClose={() => setDialog(null)}
             onDialog={(next) => {
               if (next === "link") setEditingLink(null);
@@ -2200,7 +2226,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onFiles={() => openFiles(null)}
           onCanvases={() => openView("canvases")}
           onDocs={engine?.wiki?.available ? () => openView("docs") : undefined}
-          onCalendar={() => openView("calendar")}
+          onCalendar={openCalendar}
           onTasks={() => openView("tasks")}
           onDeadlines={() => openView("deadlines")}
           onReservations={store.reservationPools ? () => openView("reservations") : undefined}
@@ -2251,6 +2277,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   controller={controller}
                   channel={current}
                   membersVersion={membersVersion}
+                  upcoming={upcomingCount}
+                  onCalendar={() => openChannelCalendar(current.id)}
                   onClose={() => setDetailsOpen(false)}
                   onDialog={(next) => {
                     if (next === "link") setEditingLink(null);

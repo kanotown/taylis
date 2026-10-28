@@ -1,8 +1,9 @@
 /**
  * M51 (CALENDAR.md §7): 「カレンダー」 — my own events and those of my channels, as a month (titles in the days, 「+N」
  * past three), a week (all-day row over a time grid) or a list (day by day from today). 「すべて / 自分 / #channel」
- * filters; each channel has its fixed colour. Weeks start on Sunday. A channel's 「予定」 tab (ChannelEvents) lists
- * its events ahead with 「予定を追加」. M55 (TASKS.md §6): the tasks due in the range, as all-day rows 「☐ 題名」 (done:
+ * filters; each channel has its fixed colour. Weeks start on Sunday. 2026-10-28: one calendar per workspace: a channel's
+ * ⋯ 「このチャンネルの予定」 opens this view on that channel (`initialFilter`; 「予定を追加」 then starts in its calendar), in place
+ * of the channel's own 「予定」 tab. M55 (TASKS.md §6): the tasks due in the range, as all-day rows 「☐ 題名」 (done:
  * 「☑」, struck through); a click opens the task. M68 (CALENDAR.md §10.7): a recurring event's rows carry 🔁 and its rule in
  * words; 「購読」 opens the private iCal feed URLs (CalendarFeedsDialog).
  */
@@ -95,12 +96,21 @@ function windowNote(win: CalendarWindow | undefined): string | null {
   return null;
 }
 
-export function CalendarView({ controller }: { controller: AppController }) {
+/** 2026-10-28: ⋯ 「このチャンネルの予定」, with today's and tomorrow's count when there are some (the old tab's 「予定 2」). */
+export function channelCalendarLabel(upcoming: number): string {
+  return upcoming > 0 ? t("channel.calendarMenuSoon", { count: upcoming }) : t("channel.calendarMenu");
+}
+
+export function CalendarView({ controller, initialFilter }: {
+  controller: AppController;
+  /** 2026-10-28: a channel's id to show only it (⋯ 「このチャンネルの予定」); the view is remounted for each request. */
+  initialFilter?: string;
+}) {
   const hub = useCalendarHub(controller);
   const now = useToday();
   const [mode, setModeState] = useState<CalendarMode>(readCalendarMode);
   const [anchor, setAnchor] = useState<DayKey>(now);
-  const [filter, setFilter] = useState<CalendarFilter>("all");
+  const [filter, setFilter] = useState<CalendarFilter>(initialFilter ?? "all");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [feeds, setFeeds] = useState(false);
   const { start, end } = rangeFor(mode, anchor);
@@ -555,51 +565,6 @@ export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPla
           </ul>
         </section>
       ))}
-    </div>
-  );
-}
-
-/** A channel's 「予定」 tab: its events for the next 60 days, and 「予定を追加」 for those who may post. */
-export function ChannelEvents({ controller, channel }: { controller: AppController; channel: ChannelState }) {
-  const hub = useCalendarHub(controller);
-  const now = useToday();
-  const [dialog, setDialog] = useState<DialogState>(null);
-  const end = addDays(now, LIST_DAYS);
-  const { from, to } = rangeParams(now, end);
-  const key = `channel:${channel.id}`;
-  useEffect(() => {
-    if (!hub) return;
-    void hub.open(key, from, to, channel.id);
-  }, [hub, key, from, to, channel.id]);
-  useEffect(() => () => hub?.close(key), [hub, key]);
-  const win = hub?.window(key);
-  const canAdd = writableCalendars(controller).some((c) => c.id === channel.id);
-  const note = windowNote(win);
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2">
-        <span className="text-sm font-semibold">{t("main.tab.events")}</span>
-        <span className="text-xs text-muted">{t("calendar.nextDays", { count: LIST_DAYS })}</span>
-        {canAdd && (
-          <Button size="sm" className="ml-auto" onClick={() => setDialog({ event: null, initial: newDraft(now, channel.id) })}>
-            <Plus size={14} /> {t("calendar.addEvent")}
-          </Button>
-        )}
-      </div>
-      {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        <AgendaList
-          events={win?.events ?? []}
-          start={now}
-          end={end}
-          today={now}
-          onOpen={(event) => setDialog({ event })}
-          loading={!win || win.state === "loading"}
-          empty={t("calendar.noUpcoming")}
-          showCalendar={false}
-        />
-      </div>
-      {dialog && <CalendarEventDialog controller={controller} event={dialog.event} initial={dialog.initial} onClose={() => setDialog(null)} />}
     </div>
   );
 }

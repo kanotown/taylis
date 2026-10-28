@@ -7,15 +7,14 @@ import { t, labelled } from "../i18n";
 
 /**
  * M29: what a conversation shows on a phone, switched by the tab row under its header. M43: 「キャンバス」 (CANVAS.md
- * §4.1), which the wide layout has too (in the header). M51: 「予定」, a channel's calendar (CALENDAR.md §7; not in a DM).
- * M55: 「タスク」, a channel's board (TASKS.md §6; not in a DM either).
+ * §4.1), which the wide layout has too (in the header). M55: 「タスク」, a channel's board (TASKS.md §6; not in a DM).
+ * M51's 「予定」 tab went on 2026-10-28 (one calendar per workspace: ⋯ 「このチャンネルの予定」, CALENDAR.md §7).
  */
-export type ConversationTab = "messages" | "canvas" | "events" | "tasks" | "drive" | "pins" | "files";
+export type ConversationTab = "messages" | "canvas" | "tasks" | "drive" | "pins" | "files";
 
 const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
   labelled("messages", "main.tab.messages"),
   labelled("canvas", "main.tab.canvas"),
-  labelled("events", "main.tab.events"),
   labelled("tasks", "main.tab.tasks"),
   // M161 (docs/DRIVE.md §13.3): the channel's drive (not in a DM).
   labelled("drive", "nav.drive"),
@@ -23,21 +22,14 @@ const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
   labelled("files", "nav.files"),
 ];
 
-/** M51: 「予定」 with a subtle count of today's and tomorrow's events, when there are some. */
-export function eventsTabLabel(count: number): string {
-  return count > 0 ? `${t("main.tab.events")} ${count}` : t("main.tab.events");
-}
-
 /**
  * M29: one horizontally scrolling row under a conversation's header on a phone: the tabs, then the conversation's links
  * (the M15f bar, which lives in this row there) and 「＋ リンク」 for those who may edit them.
  */
-export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, onEditLink, upcoming = 0 }: {
+export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, onEditLink }: {
   controller: AppController;
   channel: ChannelState;
   tab: ConversationTab;
-  /** M51: the channel's events today and tomorrow (the 「予定」 tab's count). */
-  upcoming?: number;
   onTab: (tab: ConversationTab) => void;
   onAddLink: () => void;
   onEditLink: (link: ChannelLinkOut) => void;
@@ -47,7 +39,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   return (
     <div ref={row} className="scroll-row flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2">
       <div role="tablist" aria-label={t("main.view")} className="flex shrink-0 items-center">
-        {TABS.filter(([value]) => (value !== "events" && value !== "tasks" && value !== "drive") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
+        {TABS.filter(([value]) => (value !== "tasks" && value !== "drive") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -59,7 +51,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
               tab === value ? "text-ink after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent" : "text-muted hover:text-ink",
             )}
           >
-            {value === "events" ? eventsTabLabel(upcoming) : label}
+            {label}
           </button>
         ))}
       </div>

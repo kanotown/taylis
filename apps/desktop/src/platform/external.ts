@@ -5,7 +5,7 @@ import { isTauri } from "./env";
 /**
  * A click on an external (http/https) link. A browser opens `target="_blank"` links by itself; the
  * Tauri webview ignores them, so there the system browser opens the URL through tauri-plugin-opener
- * (its capability allows http and https only).
+ * (its capability allows http, https and, since 2026-10-28 for a channel topic's links, mailto).
  */
 export function openExternalLink(event: MouseEvent<HTMLElement>, url: string): void {
   if (!isTauri() || event.defaultPrevented) return;

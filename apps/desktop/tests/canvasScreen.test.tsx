@@ -87,7 +87,7 @@ async function openCanvasTab() {
 
 it("wide: 「メッセージ | キャンバス」 in the header; a canvas from a template; the editor saves after the pause", async () => {
   const { server, channelId } = await setup();
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ドライブ"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "タスク", "ドライブ"]);
   await openCanvasTab();
   expect(screen.getByText("この会話にはまだキャンバスがありません")).toBeTruthy();
   expect(document.querySelector(".timeline")?.closest("[inert]")).toBeTruthy(); // the conversation is covered, not read
@@ -145,7 +145,7 @@ it("a narrow header (the thread pane open): the tabs fold into one menu, then pi
   expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy(); // "tabMenu": the buttons stay
   fireEvent.keyDown(fold(), { key: "Enter" });
   await settle();
-  expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent?.replace("✓", ""))).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ドライブ"]);
+  expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent?.replace("✓", ""))).toEqual(["メッセージ", "キャンバス", "タスク", "ドライブ"]);
   expect(screen.getByRole("menuitemradio", { name: /メッセージ/ }).getAttribute("aria-checked")).toBe("true");
   fireEvent.click(screen.getByRole("menuitemradio", { name: "キャンバス" }));
   await settle();
@@ -177,7 +177,7 @@ it("phone: 「キャンバス」 in the conversation's tab row; someone else's s
   const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });
   fireEvent.click(screen.getByTitle("#lab"));
   await settle(20);
-  expect(within(screen.getByRole("tablist", { name: "会話の表示" })).getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク", "ドライブ", "ピン留め", "ファイル"]);
+  expect(within(screen.getByRole("tablist", { name: "会話の表示" })).getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "タスク", "ドライブ", "ピン留め", "ファイル"]);
   await openCanvasTab();
   // A phone opens it to read (the editor is a tap away).
   expect(editor()).toBeNull();
@@ -294,4 +294,33 @@ it("to the trash from ⋯ and back from 「ゴミ箱」", async () => {
   expect(server.canvases.get(canvas.id)!.deleted).toBe(false);
   expect(screen.queryByRole("dialog", { name: "キャンバスのゴミ箱" })).toBeNull();
   expect(editor()!.value).toBe("メモ");
+});
+
+it("2026-10-28: no 「予定」 tab; ⋯ 「このチャンネルの予定」 opens the workspace calendar on the channel", async () => {
+  const { channelId } = await setup();
+  expect(screen.queryByRole("tab", { name: /予定/ })).toBeNull();
+  fireEvent.keyDown(screen.getByRole("button", { name: "チャンネルの操作" }), { key: "Enter" });
+  await settle();
+  fireEvent.click(screen.getByRole("menuitem", { name: "このチャンネルの予定" }));
+  await settle();
+  expect((screen.getByLabelText("絞り込み") as HTMLSelectElement).value).toBe(channelId);
+});
+
+it("2026-10-28: a topic's Markdown links show in the header; a click beside them edits it", async () => {
+  const { store, channelId } = await setup();
+  await act(async () => {
+    store.upsertChannel({ ...store.getChannel(channelId)!, topic: "資料は [共有フォルダ](https://example.org/share) と **金曜** [x](javascript:alert(1))" } as never);
+  });
+  const header = within(document.querySelector("header")!);
+  const link = header.getByRole("link", { name: "共有フォルダ" });
+  expect(link.getAttribute("href")).toBe("https://example.org/share");
+  expect(header.getAllByRole("link")).toHaveLength(1);
+  const topic = document.querySelector("[data-topic]") as HTMLElement;
+  expect(topic.className).toContain("truncate");
+  expect(topic.textContent).toContain("[x](javascript:alert(1))");
+  fireEvent.click(link);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(within(topic).getByText("金曜"));
+  await settle();
+  expect(screen.getByRole("dialog")).toBeTruthy();
 });
