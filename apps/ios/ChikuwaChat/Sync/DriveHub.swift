@@ -28,6 +28,9 @@ final class DriveHub {
     /// Bumped on every bootstrap after the first (a reconnect): open folders read again.
     private(set) var reconnects = 0
     private(set) var links: [String: LinkState] = [:]
+    /// AL3 (docs/ALBUMS.md §12): whether the server has albums (GET /drive/albums answered; false: 404 from a server
+    /// before AL1); nil until asked.
+    var albumsAvailable: Bool?
 
     @ObservationIgnored private let api: DriveApi?
     @ObservationIgnored private var lastSeq: [String: Int] = [:]

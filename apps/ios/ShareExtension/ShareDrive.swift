@@ -28,6 +28,12 @@ struct ShareDriveItem: Decodable, Identifiable, Equatable {
     let id: String
     let kind: String
     let name: String
+    /// AL3 (docs/ALBUMS.md §12): an album folder (its mark in the list); only whether there is one is read.
+    var album: AlbumMark? = nil
+
+    struct AlbumMark: Decodable, Equatable {}
+
+    var symbol: String { album != nil ? "photo.on.rectangle" : "folder" }
 }
 
 struct ShareDriveCrumb: Decodable, Equatable {
@@ -315,7 +321,7 @@ struct ShareDriveFolderView: View {
                     NavigationLink {
                         ShareDriveFolderView(api: api, location: location, folderId: folder.id, selection: $selection, done: done)
                     } label: {
-                        Label(folder.name, systemImage: "folder")
+                        Label(folder.name, systemImage: folder.symbol)
                     }
                 }
                 if cursor != nil {

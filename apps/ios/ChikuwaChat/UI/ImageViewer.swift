@@ -138,12 +138,25 @@ struct ImageViewer: View {
     @State private var chromeHidden = false
     /// M166: where a photo's original comes from (a drive file's ticket, DriveFiles.viewFile); nil: the attachment's.
     private let load: ((AttachmentOut) async -> URL?)?
+    /// AL3 (docs/ALBUMS.md §12): an album's photos — shown at their display size, the original read on 「元の画像」 or
+    /// when zoomed past the display size, a ⋯ menu instead of the share button, and the capture time in the header.
+    private let extras: ImageViewerExtras?
+    /// Bumped by 「元の画像」: the pager swaps the shown photo for its original.
+    @State private var originalRequest = 0
+    /// The pages already showing their original (the menu then leaves 「元の画像」 out).
+    @State private var originals: Set<String> = []
+    @State private var toast: String?
+    @State private var sharing: URL?
+    @State private var detailsOf: AttachmentOut?
+    @State private var busy = false
 
-    init(attachments: [AttachmentOut], start: Int = 0, controller: AppController, load: ((AttachmentOut) async -> URL?)? = nil) {
+    init(attachments: [AttachmentOut], start: Int = 0, controller: AppController, load: ((AttachmentOut) async -> URL?)? = nil,
+         extras: ImageViewerExtras? = nil) {
         let start = min(max(start, 0), max(attachments.count - 1, 0))
         self.attachments = attachments
         self.start = start
         self.load = load
+        self.extras = extras
         _controller = Bindable(controller)
         _index = State(initialValue: start)
     }
@@ -171,14 +184,29 @@ struct ImageViewer: View {
                                chromeHidden = ViewerChrome.afterTap(hidden: chromeHidden, voiceOver: UIAccessibility.isVoiceOverRunning)
                            }
                        },
-                       onClose: close)
+                       onClose: close,
+                       loadOriginal: extras?.original,
+                       originalRequest: originalRequest,
+                       onOriginal: { originals.insert($0) })
                 .ignoresSafeArea()
             header
                 .opacity(chromeHidden ? 0 : 1 - min(1, dragged * 4))
                 .allowsHitTesting(!chromeHidden)
                 .accessibilityHidden(chromeHidden)
+            if let toast {
+                Text(toast).font(.footnote).foregroundStyle(.white).multilineTextAlignment(.center)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color.black.opacity(0.75), in: Capsule())
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 40)
+                    .transition(.opacity)
+            }
         }
         .statusBarHidden(chromeHidden)
+        .sheet(item: $sharing) { url in ShareSheet(items: [url]) }
+        .sheet(item: $detailsOf) { attachment in
+            if let extras { extras.details(attachment) }
+        }
         .persistentSystemOverlays(chromeHidden ? .hidden : .automatic)
         .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
             withAnimation(.easeInOut(duration: ViewerChrome.fade)) {
@@ -194,7 +222,27 @@ struct ImageViewer: View {
         HStack {
             Button("閉じる") { dismiss() }
             Spacer()
-            if let current, let url = files[current.id] {
+            if let extras, let current {
+                if busy { ProgressView().tint(.white) }
+                Menu {
+                    if extras.original != nil, !originals.contains(current.id) {
+                        Button("元の画像を開く", systemImage: "photo") { originalRequest += 1 }
+                    }
+                    Button("写真アプリに保存", systemImage: "square.and.arrow.down") { run { await extras.save(current) } }
+                    Button("共有", systemImage: "square.and.arrow.up") {
+                        run {
+                            guard let url = await extras.share(current) else { return nil }
+                            sharing = url
+                            return nil
+                        }
+                    }
+                    Button("詳細", systemImage: "info.circle") { detailsOf = current }
+                } label: {
+                    Image(systemName: "ellipsis.circle").frame(width: 36, height: 36).contentShape(Rectangle())
+                }
+                .accessibilityLabel(Text("写真の操作"))
+                .disabled(busy)
+            } else if let current, let url = files[current.id] {
                 ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
             }
         }
@@ -209,17 +257,40 @@ struct ImageViewer: View {
     private var title: some View {
         if let current {
             let position = ImageGallery.position(index, of: attachments.count)
+            let caption = extras?.caption(current) ?? formatSize(current.sizeBytes)
+            let located = extras?.hasLocation(current) == true
             VStack(spacing: 0) {
                 Text(current.filename).font(.footnote.weight(.semibold)).fileNameLine(current.filename)
-                Text([formatSize(current.sizeBytes), position].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    // AL3 (§7, §12): 「位置情報あり」 — the original holds where it was taken (a thin outline, no colour bar).
+                    if located {
+                        Label("位置情報あり", systemImage: "location.fill").labelStyle(.titleAndIcon)
+                            .font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
+                    }
+                    Text([caption, position].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 72)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel([current.filename, formatSize(current.sizeBytes),
+            .accessibilityLabel([current.filename, caption, located ? tr("位置情報あり") : nil,
                                  position == nil ? nil : ImageGallery.spokenPosition(index, of: attachments.count)]
                 .compactMap { $0 }.joined(separator: tr("、")))
+        }
+    }
+
+    /// A menu action: the spinner meanwhile, then its message for a moment.
+    private func run(_ action: @escaping () async -> String?) {
+        busy = true
+        Task {
+            let message = await action()
+            busy = false
+            guard let message else { return }
+            withAnimation { toast = message }
+            try? await Task.sleep(for: .seconds(2.5))
+            if toast == message { withAnimation { toast = nil } }
         }
     }
 
@@ -241,6 +312,9 @@ struct ImagePager: UIViewControllerRepresentable {
     let onDrag: (CGFloat) -> Void
     var onTap: () -> Void = {}
     let onClose: () -> Void
+    var loadOriginal: (@MainActor (AttachmentOut) async -> URL?)? = nil
+    var originalRequest = 0
+    var onOriginal: (String) -> Void = { _ in }
 
     func makeUIViewController(context: Context) -> ImagePagerController {
         let pager = ImagePagerController(items: items, start: start, load: load)
@@ -256,6 +330,12 @@ struct ImagePager: UIViewControllerRepresentable {
         pager.onDrag = onDrag
         pager.onTap = onTap
         pager.onClose = onClose
+        pager.loadOriginal = loadOriginal
+        pager.onOriginal = onOriginal
+        if pager.originalRequest != originalRequest {
+            pager.originalRequest = originalRequest
+            pager.showOriginal()
+        }
     }
 }
 
@@ -276,6 +356,12 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
     /// A single tap on a photo (once a double tap is out of the question): the bars hide or show.
     var onTap: () -> Void = {}
     var onClose: () -> Void = {}
+    /// AL3: the pages show a display size; this reads the original (「元の画像」, or a zoom past the display size).
+    var loadOriginal: (@MainActor (AttachmentOut) async -> URL?)?
+    var onOriginal: (String) -> Void = { _ in }
+    var originalRequest = 0
+    private var originalLoads: Set<Int> = []
+    private(set) var upgraded: Set<Int> = []
 
     let pager = PagerScrollView()
     private(set) var pages: [ImagePageView] = []
@@ -422,6 +508,35 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
         guard i == index else { return }
         // Zoomed in, a sideways drag pans the photo instead of turning the page.
         pager.isScrollEnabled = !pages[i].isZoomed
+        // AL3 (ALBUMS.md §10.3, §12): zoomed past the display size's pixels, the original is read.
+        if loadOriginal != nil, pages[i].needsMorePixels(screenScale: view.window?.screen.scale ?? 3) { showOriginal(i) }
+    }
+
+    /// The page's original instead of its display size, in place (the zoom and the position stay).
+    func showOriginal(_ page: Int? = nil) {
+        let i = page ?? index
+        guard let loadOriginal, items.indices.contains(i), !upgraded.contains(i), !originalLoads.contains(i) else { return }
+        originalLoads.insert(i)
+        let item = items[i]
+        Task { [weak self] in
+            let url = await loadOriginal(item)
+            guard let self else { return }
+            originalLoads.remove(i)
+            guard let url, let image = await Self.decodeOff(url) else { return }
+            upgraded.insert(i)
+            files[i] = url
+            onFile(item.id, url)
+            onOriginal(item.id)
+            if abs(i - index) <= 1 { pages[i].upgrade(image) }
+        }
+    }
+
+    /// An original (some 48 MB decoded) is decoded off the main thread.
+    private static func decodeOff(_ url: URL) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
+            return image.preparingForDisplay() ?? image
+        }.value
     }
 
     private func describePages() {
@@ -634,6 +749,24 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
     /// Lets the decoded photo go when the page is two or more away; it is decoded again from the file on the way back.
     func release() {
         if hasImage { state = .loading }
+    }
+
+    /// AL3: whether the zoomed photo shows more screen pixels than it has (a display size zoomed in).
+    func needsMorePixels(screenScale: CGFloat) -> Bool {
+        guard let image = imageView.image, isZoomed, image.size.width > 0, image.size.height > 0, bounds.width > 0 else { return false }
+        let fit = min(bounds.width / image.size.width, bounds.height / image.size.height)
+        let shown = image.size.width * fit * scrollView.zoomScale * screenScale
+        return shown > image.size.width * image.scale * 1.1
+    }
+
+    /// AL3: a sharper copy of the same photo (its original) in place, the zoom kept.
+    func upgrade(_ image: UIImage) {
+        guard let old = imageView.image, old.size.height > 0, image.size.height > 0 else {
+            state = .shown(image)
+            return
+        }
+        let same = abs(old.size.width / old.size.height - image.size.width / image.size.height) < 0.02
+        if same { imageView.image = image } else { state = .shown(image) }
     }
 
     func resetZoom() {

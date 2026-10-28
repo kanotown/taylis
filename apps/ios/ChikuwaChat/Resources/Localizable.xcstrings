@@ -766,6 +766,38 @@
         }
       }
     },
+    "この投稿の写真をアルバムに" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add This Post's Photos to an Album"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将此帖子的照片加入相册"
+          }
+        }
+      }
+    },
+    "この投稿の写真・動画 %lld 件をアルバムに入れます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puts this post's %lld photos and videos into an album."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将此帖子的 %lld 张照片和视频放入相册。"
+          }
+        }
+      }
+    },
     "この月の行はありません" : {
       "localizations" : {
         "en" : {
@@ -1098,6 +1130,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "垃圾信息"
+          }
+        }
+      }
+    },
+    "スライドショー" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slideshow"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "幻灯片"
+          }
+        }
+      }
+    },
+    "スライドショーにする写真がありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No photos for a slideshow"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可用于幻灯片的照片"
+          }
+        }
+      }
+    },
+    "スライドショーの設定" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slideshow settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "幻灯片设置"
+          }
+        }
+      }
+    },
+    "スライドショー（ここから）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slideshow from Here"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从这里开始幻灯片"
           }
         }
       }
@@ -4686,6 +4782,38 @@
         }
       }
     },
+    "（%lld 件は保存できませんでした）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (%lld could not be saved)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（%lld 项无法保存）"
+          }
+        }
+      }
+    },
+    "（%lld 枚は追加できませんでした）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (%lld could not be added)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（%lld 张无法添加）"
+          }
+        }
+      }
+    },
     "（[at] を @ に置き換えてください）" : {
       "localizations" : {
         "en" : {
@@ -5344,6 +5472,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开 #%@ 的任务"
+          }
+        }
+      }
+    },
+    "#%@ のドライブ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@'s drive"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ 的云盘"
           }
         }
       }
@@ -7912,6 +8056,66 @@
         }
       }
     },
+    "%lld 枚" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld photos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 张"
+          }
+        }
+      }
+    },
+    "%lld 枚をアルバム「%@」に追加しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added %1$lld to the album “%2$@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已将 %1$lld 张添加到相册“%2$@”"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld 枚をアルバム「%2$@」に追加しました"
+          }
+        }
+      }
+    },
+    "%lld 枚中 %lld 枚をアップロードしました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uploaded %2$lld of %1$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已上传 %2$lld / %1$lld 张"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld 枚中 %2$lld 枚をアップロードしました"
+          }
+        }
+      }
+    },
     "%lld 票" : {
       "localizations" : {
         "en" : {
@@ -7936,6 +8140,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 票"
+          }
+        }
+      }
+    },
+    "%lld 秒" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld seconds"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 秒"
           }
         }
       }
@@ -8160,6 +8380,28 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
+            "value" : "%1$lld月%2$lld日（%3$@）"
+          }
+        }
+      }
+    },
+    "%lld月%lld日（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@, %1$lld/%2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld月%2$lld日（%3$@）"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
             "value" : "%1$lld月%2$lld日（%3$@）"
           }
         }
@@ -9009,6 +9251,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "。%1$@ 会使用网络搜索，因此根据对话生成的搜索词也会通过 %2$@ 发送到网络搜索"
+          }
+        }
+      }
+    },
+    "「%@ › アルバム」に作ります。見られるのは、その場所を見られる人です。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It goes into “%@ › Albums”. Whoever can see that place can see it."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将创建在“%@ › 相册”中。能查看该位置的人都能看到它。"
           }
         }
       }
@@ -10132,6 +10390,22 @@
         }
       }
     },
+    "「写真を追加」で端末の写真をまとめて上げられます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use “Add Photos” to upload many photos from this device at once."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用“添加照片”可一次上传本设备中的多张照片。"
+          }
+        }
+      }
+    },
     "「提出版」「ゼミ発表前」のように名前を付けたバージョンは、古くなっても整理されずに残ります。" : {
       "localizations" : {
         "en" : {
@@ -10540,6 +10814,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此服务器尚不支持文档。"
+          }
+        }
+      }
+    },
+    "このサーバはアルバムに対応していません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server has no albums"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器不支持相册"
           }
         }
       }
@@ -12200,6 +12490,38 @@
         }
       }
     },
+    "ほかのアルバム" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other Albums"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他相册"
+          }
+        }
+      }
+    },
+    "ほかのファイル %lld 件" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld other files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他文件 %lld 个"
+          }
+        }
+      }
+    },
     "ほかのワークスペース" : {
       "localizations" : {
         "en" : {
@@ -12552,6 +12874,22 @@
         }
       }
     },
+    "もっと見る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多"
+          }
+        }
+      }
+    },
     "よく使う" : {
       "localizations" : {
         "en" : {
@@ -12852,6 +13190,134 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在应用打开时显示（不使用推送）"
+          }
+        }
+      }
+    },
+    "アルバム" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Albums"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相册"
+          }
+        }
+      }
+    },
+    "アルバムで見る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View as Album"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以相册查看"
+          }
+        }
+      }
+    },
+    "アルバムに追加" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add to Album"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加到相册"
+          }
+        }
+      }
+    },
+    "アルバムに追加できませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't add to the album"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法添加到相册"
+          }
+        }
+      }
+    },
+    "アルバムの名前" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Album name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相册名称"
+          }
+        }
+      }
+    },
+    "アルバムの操作" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Album actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相册操作"
+          }
+        }
+      }
+    },
+    "アルバムはまだありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No albums yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有相册"
+          }
+        }
+      }
+    },
+    "アルバムを読み込めませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load the album"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载相册"
           }
         }
       }
@@ -16348,6 +16814,22 @@
         }
       }
     },
+    "ファイルの一覧で見る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View as File List"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以文件列表查看"
+          }
+        }
+      }
+    },
     "ファイルは見つかりませんでした" : {
       "localizations" : {
         "en" : {
@@ -17860,6 +18342,22 @@
         }
       }
     },
+    "ランダム" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shuffle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随机"
+          }
+        }
+      }
+    },
     "リアクション" : {
       "localizations" : {
         "en" : {
@@ -18512,6 +19010,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "、"
+          }
+        }
+      }
+    },
+    "一時停止" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂停"
           }
         }
       }
@@ -20284,6 +20798,38 @@
         }
       }
     },
+    "位置情報" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Location"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置信息"
+          }
+        }
+      }
+    },
+    "位置情報あり" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Has location"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "含位置信息"
+          }
+        }
+      }
+    },
     "位置揃え" : {
       "localizations" : {
         "en" : {
@@ -21186,6 +21732,22 @@
         }
       }
     },
+    "元の写真には撮影場所の情報が含まれています。研究室の中ではそのまま渡ります。学外への共有リンクでは、既定で位置情報を含まない表示用の画像だけが渡ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original photo holds where it was taken. Inside the lab it is shared as it is; a public share link gives only a display copy without the location by default."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始照片包含拍摄地点信息。在研究室内部会原样共享；对外共享链接默认只提供不含位置信息的显示用图片。"
+          }
+        }
+      }
+    },
     "元の文：" : {
       "localizations" : {
         "en" : {
@@ -21730,6 +22292,22 @@
         }
       }
     },
+    "写真の操作" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片操作"
+          }
+        }
+      }
+    },
     "写真の範囲を選ぶ" : {
       "localizations" : {
         "en" : {
@@ -21742,6 +22320,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择照片范围"
+          }
+        }
+      }
+    },
+    "写真はまだありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No photos yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有照片"
           }
         }
       }
@@ -21810,6 +22404,22 @@
         }
       }
     },
+    "写真を追加" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Photos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加照片"
+          }
+        }
+      }
+    },
     "写真を選ぶ" : {
       "localizations" : {
         "en" : {
@@ -21822,6 +22432,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择照片"
+          }
+        }
+      }
+    },
+    "写真アプリに保存" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save to Photos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储到“照片”"
+          }
+        }
+      }
+    },
+    "写真アプリに保存できませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't save to Photos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法存储到“照片”"
+          }
+        }
+      }
+    },
+    "写真アプリへの追加が許可されていません。設定 › Taylis › 写真 で「写真を追加のみ」を許可してください" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taylis may not add to Photos. Allow “Add Photos Only” in Settings › Taylis › Photos."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taylis 无权添加到“照片”。请在“设置 › Taylis › 照片”中允许“仅添加照片”。"
           }
         }
       }
@@ -22530,6 +23188,22 @@
         }
       }
     },
+    "動画 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频 %@"
+          }
+        }
+      }
+    },
     "動画 %@%@ を%@" : {
       "localizations" : {
         "ja" : {
@@ -22548,6 +23222,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视频 %1$@%2$@：%3$@"
+          }
+        }
+      }
+    },
+    "動画 %lld 本" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld videos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频 %lld 个"
           }
         }
       }
@@ -22596,6 +23286,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "发送了视频"
+          }
+        }
+      }
+    },
+    "動画を飛ばす" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip Videos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过视频"
           }
         }
       }
@@ -22976,6 +23682,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "省略了较早的 %lld 条"
+          }
+        }
+      }
+    },
+    "古い順" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oldest First"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从旧到新"
           }
         }
       }
@@ -23776,6 +24498,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建子页面"
+          }
+        }
+      }
+    },
+    "学会・行事の説明（任意）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About the conference or event (optional)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "学会或活动的说明（可选）"
           }
         }
       }
@@ -24928,6 +25666,22 @@
         }
       }
     },
+    "指定しなければ、写真の撮影日の範囲を出します。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Without dates, the range of the photos' capture dates shows."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如不指定，将显示照片拍摄日期的范围。"
+          }
+        }
+      }
+    },
     "指導教員：%@" : {
       "localizations" : {
         "en" : {
@@ -25142,6 +25896,38 @@
         }
       }
     },
+    "撮影日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date Taken"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄日期"
+          }
+        }
+      }
+    },
+    "撮影日時" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taken"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄时间"
+          }
+        }
+      }
+    },
     "操作を表示" : {
       "localizations" : {
         "en" : {
@@ -25250,6 +26036,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "斜体"
+          }
+        }
+      }
+    },
+    "新しいアルバム" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Album"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相册"
           }
         }
       }
@@ -25602,6 +26404,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "日期"
+          }
+        }
+      }
+    },
+    "日付なし" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No date"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无日期"
           }
         }
       }
@@ -29764,6 +30582,22 @@
         }
       }
     },
+    "縦横" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dimensions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尺寸"
+          }
+        }
+      }
+    },
     "繰り返さない" : {
       "localizations" : {
         "en" : {
@@ -31702,6 +32536,70 @@
         }
       }
     },
+    "追加した人" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added by"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加者"
+          }
+        }
+      }
+    },
+    "追加した日時" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加时间"
+          }
+        }
+      }
+    },
+    "追加した順" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date Added"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加顺序"
+          }
+        }
+      }
+    },
+    "追加できるアルバムはまだありません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No albums you can add to yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有可添加的相册"
+          }
+        }
+      }
+    },
     "追加：" : {
       "localizations" : {
         "en" : {
@@ -32706,6 +33604,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请选择"
+          }
+        }
+      }
+    },
+    "選択" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择"
           }
         }
       }
@@ -35161,6 +36075,28 @@
         }
       }
     },
+    "%@年%lld月%lld日（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%4$@, %2$lld/%3$lld/%1$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@年%2$lld月%3$lld日（%4$@）"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@年%2$lld月%3$lld日（%4$@）"
+          }
+        }
+      }
+    },
     "%lld バージョン" : {
       "localizations" : {
         "en" : {
@@ -35509,6 +36445,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文件夹"
+          }
+        }
+      }
+    },
+    "フォルダ %lld 件" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld folders"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹 %lld 个"
           }
         }
       }
@@ -35945,6 +36897,38 @@
         }
       }
     },
+    "順番" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺序"
+          }
+        }
+      }
+    },
+    "順番どおり" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Order"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按顺序"
+          }
+        }
+      }
+    },
     "空きあり（〜%@ まで保証）· 担当者の割り当て待ち" : {
       "localizations" : {
         "en" : {
@@ -36281,6 +37265,22 @@
         }
       }
     },
+    "始まり" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starts"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始"
+          }
+        }
+      }
+    },
     "新しいフォルダ" : {
       "localizations" : {
         "en" : {
@@ -36389,6 +37389,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在上传 %lld 个 · %@ / %@"
+          }
+        }
+      }
+    },
+    "%lld 件を写真アプリに保存しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved %lld to Photos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已将 %lld 项保存到“照片”"
+          }
+        }
+      }
+    },
+    "%lld 件を選択中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld selected"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选择 %lld 项"
           }
         }
       }

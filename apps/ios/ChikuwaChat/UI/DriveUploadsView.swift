@@ -1,3 +1,4 @@
+import ImageIO
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -27,6 +28,9 @@ final class DriveUploadCenter {
     private(set) var inflight: [String: Int64] = [:]
     /// Picks being staged (a large video takes a moment to cut).
     private(set) var preparing = 0
+    /// AL3 (docs/ALBUMS.md §12): photos picked for a folder that are not staged yet (a pick of hundreds goes in groups),
+    /// by the folder: the album's band counts them (「312 枚中 120 枚」).
+    private(set) var picked: [String: Int] = [:]
     /// The uploads sheet is open: the question is asked there (a view under a sheet cannot present).
     var sheetOpen = false
     @ObservationIgnored private let processor: DriveUploadProcessor?
@@ -103,9 +107,26 @@ final class DriveUploadCenter {
         return totals
     }
 
+    /// AL3: `count` photos picked for `parentId` are on their way to being staged (negative: some were).
+    func expect(_ count: Int, parentId: String) {
+        let left = (picked[parentId] ?? 0) + count
+        picked[parentId] = left > 0 ? left : nil
+    }
+
+    /// AL3: an album's band: its files done and all of them (the jobs into the folder, still listed, and the picks not
+    /// staged yet); nil when nothing goes there now.
+    func progress(parentId: String, account: String?) -> (done: Int, total: Int)? {
+        let jobs = batches.filter { $0.account == account && $0.target.parentId == parentId }.flatMap(\.jobs)
+            .filter { $0.state != .skipped && $0.state != .cancelled }
+        let waiting = picked[parentId] ?? 0
+        guard waiting > 0 || jobs.contains(where: { $0.state.isActive || $0.state == .asking }) else { return nil }
+        return (jobs.filter { $0.state == .done }.count, jobs.count + waiting)
+    }
+
     /// Stages the picks (each cut into its parts in the App Group) as one batch into `target`, then starts it. Returns
-    /// a message for what could not be read.
-    func add(_ sources: [DriveUploadSource], to target: DriveUploadTarget, workspace: Workspace) async -> String? {
+    /// a message for what could not be read. `onConflict` (AL3): an album keeps both on a name taken (`rename`, ALBUMS.md
+    /// §9) instead of asking.
+    func add(_ sources: [DriveUploadSource], to target: DriveUploadTarget, workspace: Workspace, onConflict: String = "fail") async -> String? {
         guard let processor, !sources.isEmpty else { return nil }
         preparing += sources.count
         defer { preparing -= sources.count }
@@ -117,7 +138,7 @@ final class DriveUploadCenter {
             for source in sources {
                 let jobId = UUID().uuidString.lowercased()
                 do {
-                    jobs.append(try Self.stage(source, store: store, batchId: batchId, jobId: jobId))
+                    jobs.append(try Self.stage(source, store: store, batchId: batchId, jobId: jobId, onConflict: onConflict))
                 } catch {
                     store.removeParts(batchId, jobId)
                     unreadable += 1
@@ -140,7 +161,8 @@ final class DriveUploadCenter {
         return staged.unreadable > 0 ? tr("読み込めなかったファイルがあります（\(staged.unreadable)件）") : nil
     }
 
-    nonisolated private static func stage(_ source: DriveUploadSource, store: DriveUploadStore, batchId: String, jobId: String) throws -> DriveUploadJob {
+    nonisolated private static func stage(_ source: DriveUploadSource, store: DriveUploadStore, batchId: String, jobId: String,
+                                          onConflict: String) throws -> DriveUploadJob {
         let name: String
         let cut: (size: Int64, parts: Int, sha: [String])
         var modified: Int64?
@@ -163,7 +185,7 @@ final class DriveUploadCenter {
         }
         let type = UTType(filenameExtension: (name as NSString).pathExtension)?.preferredMIMEType
         return DriveUploadJob(id: jobId, clientUploadId: UUID().uuidString.lowercased(), name: name.precomposedStringWithCanonicalMapping,
-                              contentType: type, size: cut.size, modifiedMs: modified, partsTotal: cut.parts, sha: cut.sha)
+                              contentType: type, size: cut.size, modifiedMs: modified, onConflict: onConflict, partsTotal: cut.parts, sha: cut.sha)
     }
 
     func answer(_ question: DriveUploadQuestion, _ choice: DriveConflictChoice, all: Bool) {
@@ -216,6 +238,10 @@ struct DriveUploadActions: ViewModifier {
     let target: DriveUploadTarget?
     @Binding var action: DriveUploadAction?
     let onFolderMade: (DriveItemOut) -> Void
+    /// AL3 (docs/ALBUMS.md §12): an album takes any number of photos at once (nil: no limit) and keeps both on a name
+    /// taken.
+    var maxPhotos: Int? = 50
+    var onConflict = "fail"
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showPhotos = false
     @State private var showCamera = false
@@ -238,11 +264,11 @@ struct DriveUploadActions: ViewModifier {
                     newFolder = true
                 }
             }
-            .photosPicker(isPresented: $showPhotos, selection: $photoItems, maxSelectionCount: 50, matching: .any(of: [.images, .videos]))
+            .photosPicker(isPresented: $showPhotos, selection: $photoItems, maxSelectionCount: maxPhotos, matching: .any(of: [.images, .videos]))
             .onChange(of: photoItems) { _, items in
                 guard !items.isEmpty else { return }
                 photoItems = []
-                Task { await upload(await Self.load(items)) }
+                Task { await uploadPicked(items) }
             }
             .fullScreenCover(isPresented: $showCamera) {
                 CameraPicker { image in
@@ -263,9 +289,33 @@ struct DriveUploadActions: ViewModifier {
             }
     }
 
+    /// AL3: the library's picks in groups of `DriveUploadRules.pickGroup`, each group staged (copied into the App Group)
+    /// and started before the next is read: hundreds of photos never sit in memory, and the first ones go up at once.
+    private func uploadPicked(_ items: [PhotosPickerItem]) async {
+        guard let target else { return }
+        let center = DriveUploadCenter.shared
+        center.expect(items.count, parentId: target.parentId)
+        var unreadable = 0
+        var problem: String?
+        for start in stride(from: 0, to: items.count, by: DriveUploadRules.pickGroup) {
+            let group = Array(items[start..<min(items.count, start + DriveUploadRules.pickGroup)])
+            let loaded = await Self.load(group)
+            unreadable += loaded.unreadable
+            if let workspace = controller.activeWorkspace {
+                problem = await center.add(loaded.sources, to: target, workspace: workspace, onConflict: onConflict) ?? problem
+            }
+            center.expect(-group.count, parentId: target.parentId)
+        }
+        if unreadable > 0 {
+            controller.error = tr("読み込めなかったファイルがあります（\(unreadable)件）")
+        } else if let problem {
+            controller.error = problem
+        }
+    }
+
     private func upload(_ picked: (sources: [DriveUploadSource], unreadable: Int)) async {
         guard let target, let workspace = controller.activeWorkspace else { return }
-        let problem = await DriveUploadCenter.shared.add(picked.sources, to: target, workspace: workspace)
+        let problem = await DriveUploadCenter.shared.add(picked.sources, to: target, workspace: workspace, onConflict: onConflict)
         if picked.unreadable > 0 {
             controller.error = tr("読み込めなかったファイルがあります（\(picked.unreadable)件）")
         } else if let problem {
@@ -273,8 +323,10 @@ struct DriveUploadActions: ViewModifier {
         }
     }
 
-    /// The photo library's picks: videos as their files, photos re-encoded as JPEG when the server would keep no
-    /// thumbnail of them (HEIC, as the composer does), under their own names (IMG_1234.jpg).
+    /// The photo library's picks: videos as their files, photos as files too (AL3: never all in memory) and re-encoded
+    /// as JPEG when the server would keep no thumbnail of them (HEIC, as the composer does) with their metadata kept
+    /// (the capture time orders an album, ALBUMS.md §4.2; the location stays inside the lab, §7), under their own names
+    /// (IMG_1234.jpg).
     static func load(_ items: [PhotosPickerItem]) async -> (sources: [DriveUploadSource], unreadable: Int) {
         var sources: [DriveUploadSource] = []
         var unreadable = 0
@@ -288,6 +340,10 @@ struct DriveUploadActions: ViewModifier {
                 continue
             }
             let picked = try? await item.loadTransferable(type: PickedPhotoFile.self)
+            if let picked, let file = await Task.detached(priority: .userInitiated, operation: { PhotoTranscode.uploadable(picked.url) }).value {
+                sources.append(.temporary(file.url, name: file.name))
+                continue
+            }
             var data = picked.flatMap { try? Data(contentsOf: $0.url) }
             if data == nil { data = (try? await item.loadTransferable(type: Data.self)) ?? nil }
             if let picked { try? FileManager.default.removeItem(at: picked.url.deletingLastPathComponent()) }
@@ -341,6 +397,9 @@ struct PickedPhotoFile: Transferable {
 /// The ＋ menu of a folder I can write to.
 struct DriveUploadMenu: View {
     @Binding var action: DriveUploadAction?
+    /// AL3: an album's ＋ has no 「新しいフォルダ」; a folder's offers 「新しいアルバム」 when `onNewAlbum` is set.
+    var includesFolder = true
+    var onNewAlbum: (() -> Void)? = nil
 
     var body: some View {
         Menu {
@@ -349,8 +408,13 @@ struct DriveUploadMenu: View {
                 Button("写真を撮る", systemImage: "camera") { action = .camera }
             }
             Button("ファイルを選ぶ", systemImage: "doc") { action = .files }
-            Divider()
-            Button("新しいフォルダ", systemImage: "folder.badge.plus") { action = .folder }
+            if includesFolder || onNewAlbum != nil { Divider() }
+            if includesFolder {
+                Button("新しいフォルダ", systemImage: "folder.badge.plus") { action = .folder }
+            }
+            if let onNewAlbum {
+                Button("新しいアルバム", systemImage: "rectangle.stack.badge.plus", action: onNewAlbum)
+            }
         } label: {
             Image(systemName: "plus")
         }
@@ -363,6 +427,8 @@ struct DriveUploadMenu: View {
 struct DriveUploadsBar: View {
     let totals: DriveUploadCenter.Totals
     let preparing: Int
+    /// AL3: in an album, its own files: 「312 枚中 120 枚をアップロードしました」.
+    var album: (done: Int, total: Int)? = nil
     let open: () -> Void
 
     var body: some View {
@@ -395,6 +461,7 @@ struct DriveUploadsBar: View {
     }
 
     private var title: String {
+        if let album { return tr("\(album.total) 枚中 \(album.done) 枚をアップロードしました") }
         if preparing > 0, totals.active == 0 { return tr("アップロードの準備をしています…") }
         if totals.asking > 0 { return tr("確認が必要なアップロードがあります") }
         if totals.active > 0 {
@@ -515,5 +582,36 @@ private struct DriveUploadRowView: View {
         case .skipped, .cancelled: .secondary
         default: .accentColor
         }
+    }
+}
+
+/// AL3 (docs/ALBUMS.md §6.3, §12): a photo picked for the drive, made ready as a file. A JPEG, PNG, GIF or WebP goes as
+/// it is (its EXIF kept, as before); any other image (HEIC) becomes a JPEG beside it through ImageIO with its metadata
+/// copied (the capture time orders an album, the location stays inside the lab, the orientation tag is applied by the
+/// server's thumbnails). Never decoded into a UIImage here: one photo at a time on disk, not in memory.
+enum PhotoTranscode {
+    static let quality = 0.9
+
+    /// The file to stage and its name; nil when it is no image ImageIO can read (the caller falls back to the bytes).
+    static func uploadable(_ url: URL) -> (url: URL, name: String)? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        let head = (try? handle.read(upToCount: 12)) ?? Data()
+        try? handle.close()
+        let base = (url.lastPathComponent as NSString).deletingPathExtension
+        let stem = base.isEmpty ? "photo" : base
+        if let kind = ImageUpload.kind(of: head) { return (url, stem + "." + kind.ext) }
+        let jpeg = url.deletingLastPathComponent().appendingPathComponent(stem + ".jpg")
+        guard jpegCopy(of: url, to: jpeg) else { return nil }
+        try? FileManager.default.removeItem(at: url)
+        return (jpeg, jpeg.lastPathComponent)
+    }
+
+    /// The first image of `source` as a JPEG at `destination`, its properties (EXIF, GPS, TIFF, orientation) kept.
+    static func jpegCopy(of source: URL, to destination: URL) -> Bool {
+        guard let image = CGImageSourceCreateWithURL(source as CFURL, nil), CGImageSourceGetCount(image) > 0,
+              let out = CGImageDestinationCreateWithURL(destination as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return false }
+        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+        CGImageDestinationAddImageFromSource(out, image, 0, options as CFDictionary)
+        return CGImageDestinationFinalize(out)
     }
 }

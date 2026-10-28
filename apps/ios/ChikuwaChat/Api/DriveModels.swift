@@ -33,6 +33,14 @@ struct DriveFileOut: Codable, Equatable {
     var hasPoster = false
     var durationMs: Int? = nil
     var preview: AttachmentPreviewOut? = nil
+    /// AL1 (docs/ALBUMS.md §4.2, §5): when it was taken (EXIF, a video's creation time; nil: not known or not read yet),
+    /// whether the original holds a location (only the mark: the value never leaves the server), and the display size
+    /// (2048 px WebP at /attachments/{id}/display). All nil from a server before AL1.
+    var takenAt: String? = nil
+    var hasLocation: Bool? = nil
+    var hasDisplay: Bool? = nil
+    var displayWidth: Int? = nil
+    var displayHeight: Int? = nil
 }
 
 struct DriveItemOut: Codable, Equatable, Identifiable {
@@ -59,8 +67,12 @@ struct DriveItemOut: Codable, Equatable, Identifiable {
     var posted: Bool? = nil
     /// CF1: those messages that I can read, newest first, at most 5; only in GET /drive/items/{id}.
     var posts: [DrivePostOut]? = nil
+    /// AL1 (docs/ALBUMS.md §5): a folder shown as an album (its description, cover, dates, counts); nil for a plain
+    /// folder, a file, and from a server before AL1.
+    var album: AlbumOut? = nil
 
     var isFolder: Bool { kind == "folder" }
+    var isAlbum: Bool { isFolder && album != nil }
     var isChannelPosts: Bool { systemRole == "channel_posts" }
     var isPosted: Bool { posted ?? false }
     /// What the list shows as its date: the file's own (its upload's lastModified, Nextcloud's mtime), else ours.

@@ -4,6 +4,8 @@ import UIKit
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
     case thread, edit, moreReactions, reactors, share, delete, customReminder, task, review, report
+    /// AL3 (docs/ALBUMS.md §9): 「この投稿の写真をアルバムに」.
+    case addToAlbum
     /// CF3 (docs/CHANNEL_FILES.md §12.1): 「ドライブで表示」 for this drive item.
     case showInDrive(String)
 }
@@ -52,6 +54,8 @@ private struct MessageSheets: ViewModifier {
     @State private var deletingWithFiles: MessageState?
     /// M56: 「タスクにする」's form, once the action sheet is gone.
     @State private var taskForm: TaskFormTarget?
+    /// AL3: the albums to put the message's photos in.
+    @State private var addingToAlbum: MessageState?
 
     private var store: Store { controller.store }
 
@@ -73,6 +77,7 @@ private struct MessageSheets: ViewModifier {
             // CF3 (docs/CHANNEL_FILES.md §7.3): with files in the channel's drive, the confirmation says what becomes of them.
             if ChannelFiles.asksOnDelete(message.attachments) { deletingWithFiles = message } else { deleting = message }
         case (.showInDrive(let itemId), _)?: controller.showInDrive(itemId)
+        case (.addToAlbum, let message)?: addingToAlbum = message
         case (.task, let message)?:
             // M56 (TASKS.md §6): the message's line as the title, the message as the source, its channel's board (or
             // 「自分のタスク」 for a DM or a board I may not add to).
@@ -131,6 +136,7 @@ private struct MessageSheets: ViewModifier {
                     }
                 }
             }
+            .sheet(item: $addingToAlbum) { message in AlbumPickerSheet(controller: controller, message: message) }
             .fullScreenCover(item: $taskForm) { target in
                 TaskForm(controller: controller, hub: controller.taskHub, target: target)
             }
@@ -446,6 +452,11 @@ struct MessageActionsSheet: View {
                             Divider().padding(.leading, 56)
                         }
                     }
+                }
+                // AL3 (docs/ALBUMS.md §9): the message's photos and videos into an album (where the server has albums).
+                if controller.drive?.available == true, controller.drive?.albumsAvailable != false, !message.deleted,
+                   !AlbumRules.messageMedia(message.attachments).isEmpty {
+                    row(tr("この投稿の写真をアルバムに"), "photo.on.rectangle.angled") { then(.addToAlbum) }
                 }
                 row(tr("別のチャンネルに共有…"), "arrowshape.turn.up.right") { then(.share) }
                 row(message.pinnedAt != nil ? tr("ピン留めを外す") : tr("チャンネルにピン留め"), message.pinnedAt != nil ? "pin.slash" : "pin") {

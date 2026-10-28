@@ -698,6 +698,8 @@ struct AttachmentOut: Codable, Equatable, Identifiable {
     /// CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a public or private channel is also a version of an item in
     /// the channel's drive; nil for a plain attachment (a DM, a server before CF1, a channel that keeps files out).
     var drive: AttachmentDriveOut? = nil
+    /// AL1 (docs/ALBUMS.md §5): the server keeps a display size of this photo (/attachments/{id}/display).
+    var hasDisplay: Bool = false
 
     /// A picture: it has a thumbnail. A video with one (its poster) stays a video (M38).
     var isImage: Bool { hasThumbnail && !isVideo }
@@ -724,6 +726,7 @@ extension AttachmentOut {
         preview = try c.decodeIfPresent(AttachmentPreviewOut.self, forKey: .preview)
         // CF3: a `drive` this build cannot read is taken as none (the plain attachment row), never a failed message.
         drive = try? c.decodeIfPresent(AttachmentDriveOut.self, forKey: .drive)
+        hasDisplay = try c.decodeIfPresent(Bool.self, forKey: .hasDisplay) ?? false
     }
 }
 
