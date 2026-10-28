@@ -10,6 +10,7 @@ import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralR
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveSearchOrigin, DriveImpactOut, DriveMessageFilesOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
+import type { AlbumAddIn, AlbumAddOut, AlbumCreate, AlbumCreatedOut, AlbumDetailOut, AlbumListOut, AlbumOut, AlbumPut } from "./types";
 import type { LendingApproversOut, LendingBorrowIn, LendingCategoryCreate, LendingCategoryOut, LendingCategoryUpdate, LendingImportOut, LendingItemCreate, LendingItemDetailOut, LendingItemHistoryOut, LendingItemOut, LendingItemStatusIn, LendingItemUpdate, LendingLoanOut, LendingLoanScope, LendingPermissionIn, LendingReturnIn, LendingSettingsOut, LendingSettingsUpdate, LendingSummaryOut } from "./types";
 import type { DriveItemLinksOut, DriveShareEventListOut,DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
 
@@ -1917,7 +1918,7 @@ export class ApiClient {
     return this.request("POST", "/api/v1/drive/locations/resolve", body);
   }
 
-  driveChildren(folderId: string, query: { sort?: "name" | "modified" | "size"; order?: "asc" | "desc"; cursor?: string | null; limit?: number } = {}): Promise<DriveChildrenOut> {
+  driveChildren(folderId: string, query: { sort?: "name" | "modified" | "size" | "taken" | "added"; order?: "asc" | "desc"; cursor?: string | null; limit?: number } = {}): Promise<DriveChildrenOut> {
     const params = new URLSearchParams();
     if (query.sort) params.set("sort", query.sort);
     if (query.order) params.set("order", query.order);
@@ -2076,6 +2077,49 @@ export class ApiClient {
     return this.request("PATCH", `/api/v1/admin/drive/locations/${locationId}`, { quota_bytes: quotaBytes });
   }
 
+  // --- photo albums (AL1 / AL2, docs/ALBUMS.md §5, §18.4) -----------------------------------------------------------
+
+  /** The albums of the locations I can read (`location_id`: one of them), newest first. */
+  driveAlbums(query: { location_id?: string | null; cursor?: string | null; limit?: number } = {}): Promise<AlbumListOut> {
+    const params = new URLSearchParams();
+    if (query.location_id) params.set("location_id", query.location_id);
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const tail = params.toString() ? `?${params}` : "";
+    return this.request("GET", `/api/v1/drive/albums${tail}`);
+  }
+
+  /** The album and a page of its photos and videos (its own order unless `sort` / `order`). */
+  driveAlbum(folderId: string, query: { sort?: "taken" | "name" | "added" | null; order?: "asc" | "desc" | null; cursor?: string | null; limit?: number } = {}): Promise<AlbumDetailOut> {
+    const params = new URLSearchParams();
+    if (query.sort) params.set("sort", query.sort);
+    if (query.order) params.set("order", query.order);
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const tail = params.toString() ? `?${params}` : "";
+    return this.request("GET", `/api/v1/drive/albums/${folderId}${tail}`);
+  }
+
+  /** A new folder that is an album: in `parent_id`, or in `location_id`'s 「アルバム」 folder (made when missing). */
+  createDriveAlbum(body: AlbumCreate): Promise<AlbumCreatedOut> {
+    return this.request("POST", "/api/v1/drive/albums", body);
+  }
+
+  /** Makes the folder an album, or changes it (only the fields sent; `cover_item_id: null`: the first photo again). */
+  putDriveAlbum(folderId: string, body: AlbumPut): Promise<AlbumOut> {
+    return this.request("PUT", `/api/v1/drive/folders/${folderId}/album`, body);
+  }
+
+  /** A plain folder again (its photos stay). */
+  deleteDriveAlbum(folderId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/drive/folders/${folderId}/album`);
+  }
+
+  /** Photos into the album: a conversation's attachments or drive items, moved or copied (§9). */
+  addToDriveAlbum(folderId: string, body: AlbumAddIn): Promise<AlbumAddOut> {
+    return this.request("POST", `/api/v1/drive/albums/${folderId}/add`, body);
+  }
+
   // --- the drive and the conversations (M165, docs/DRIVE.md §13) ---------------------------------------------------
 
   /** The file's current version copied into a pending attachment of mine (sent like an upload). */
@@ -2150,7 +2194,7 @@ export class ApiClient {
    * §12: names of files and folders in the drives I can read (`location_id`: one of them). §29 `content`: the text inside
    * the files too (each hit says what matched, with a marked snippet and the PDF page).
    */
-  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | null; cursor?: string | null; limit?: number; content?: boolean; origin?: DriveSearchOrigin }): Promise<DriveSearchOut> {
+  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | "album" | null; cursor?: string | null; limit?: number; content?: boolean; origin?: DriveSearchOrigin }): Promise<DriveSearchOut> {
     const params = new URLSearchParams({ q: query.q });
     if (query.content) params.set("content", "true");
     // CF1 (docs/CHANNEL_FILES.md §12.6): only sent when narrowing (a server before CF1 knows no `origin`).

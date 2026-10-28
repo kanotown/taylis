@@ -15,6 +15,8 @@ export interface DrivePlace {
   locationId: string;
   folderId: string;
   trash: boolean;
+  /** AL2 (docs/ALBUMS.md §10.1): the list of every album (「アルバム」 at the top of the locations column). */
+  albums?: boolean;
 }
 
 export type Place<F = unknown> =
@@ -45,7 +47,7 @@ export function placeKey(place: Place<unknown>): string {
   if (place.kind === "channel") return `channel:${place.channelId}`;
   if (place.view === "search") return `search:${JSON.stringify(place.search)}`;
   if (place.view === "files") return `files:${place.filesChannelId ?? ""}`;
-  if (place.view === "drive" && place.drive) return `drive:${place.drive.locationId}:${place.drive.folderId}${place.drive.trash ? ":trash" : ""}`;
+  if (place.view === "drive" && place.drive) return place.drive.albums ? "drive:albums" : `drive:${place.drive.locationId}:${place.drive.folderId}${place.drive.trash ? ":trash" : ""}`;
   return `view:${place.view}`;
 }
 

@@ -74,7 +74,17 @@ export class ShareApi {
     return `${this.base()}/items/${itemId}/preview/thumbnail`;
   }
 
-  zipUrl(folderId: string | null = null): string {
-    return `${this.base()}/zip${folderId ? `?folder_id=${folderId}` : ""}`;
+  /** AL1 / AL2 (docs/ALBUMS.md §7): an image's display size (2048 px WebP, no metadata), never counted. */
+  displayUrl(itemId: string): string {
+    return `${this.base()}/items/${itemId}/display`;
+  }
+
+  /** The folder as one ZIP; `display`: the display sizes (the only one a link without originals hands out). */
+  zipUrl(folderId: string | null = null, display = false): string {
+    const params = new URLSearchParams();
+    if (folderId) params.set("folder_id", folderId);
+    if (display) params.set("size", "display");
+    const query = params.toString();
+    return `${this.base()}/zip${query ? `?${query}` : ""}`;
   }
 }

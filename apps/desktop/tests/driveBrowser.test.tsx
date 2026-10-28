@@ -128,7 +128,7 @@ const READY = { status: "ready" as const, pages: 1, width: 800, height: 1100 };
 function file(id: string, name: string, contentType: string, preview: NonNullable<DriveItemOut["file"]>["preview"] = null): DriveItemOut {
   return {
     ...row(id, "file", name), content_type: contentType,
-    file: { attachment_id: `a-${id}`, version_id: `v-${id}`, width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, preview },
+    file: { attachment_id: `a-${id}`, version_id: `v-${id}`, width: null, height: null, has_thumbnail: false, has_poster: false, has_display: false, has_location: false, duration_ms: null, preview },
   };
 }
 

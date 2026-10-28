@@ -299,8 +299,10 @@ export class UploadQueue {
   }
 
   /** Files into `target` (a batch: one 「残りすべてに同じ操作」 answers all of it). */
-  add(sources: readonly UploadSource[], target: UploadTarget): UploadJob[] {
+  add(sources: readonly UploadSource[], target: UploadTarget, options: { onConflict?: DriveConflictMode } = {}): UploadJob[] {
     const batchId = this.newId();
+    // AL2 (docs/ALBUMS.md §9): an album's uploads keep both on a taken name (「IMG_1234 (1).jpg」) without asking.
+    const onConflict = options.onConflict ?? "fail";
     const added = sources.map((source) => {
       const job: UploadJob = {
         id: this.newId(),
@@ -313,7 +315,7 @@ export class UploadQueue {
         relativeDir: source.relativeDir,
         target,
         state: "queued",
-        onConflict: "fail",
+        onConflict,
         partSize: 0,
         partsTotal: 0,
         received: [],

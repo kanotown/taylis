@@ -12,13 +12,14 @@ import { ChevronRight, Download, File, FileArchive, FileAudio, FileImage, FileSp
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
-import type { DriveCrumb, ShareInfoOut, SharedItemOut } from "../api/types";
+import type { DriveCrumb, ShareInfoOut, SharedAlbumOut, SharedItemOut } from "../api/types";
 import { type DriveIconKind, formatBytes, iconKind } from "../drive/listing";
 import { t } from "../i18n";
 import { PdfViewer } from "../ui/DocumentPreview";
 import { sinceLabel } from "../ui/format";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "../ui/ViewerHeader";
 import { ShareApi } from "./api";
+import { SaveLink, saveHref, ShareAlbumView } from "./ShareAlbum";
 
 const ICONS: Record<DriveIconKind, typeof File> = {
   folder: Folder, image: FileImage, video: FileVideo, audio: FileAudio, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
@@ -155,6 +156,8 @@ function DownloadLink({ href, label, primary = false }: { href: string; label: s
 function SharedContent({ api, info, item }: { api: ShareApi; info: ShareInfoOut; item: SharedItemOut }) {
   const [viewing, setViewing] = useState<SharedItemOut | null>(null);
   const limited = info.downloads_left !== null && info.downloads_left !== undefined;
+  // AL2 (docs/ALBUMS.md §7): without the originals, photos are saved at their display size and nothing else is offered.
+  const originals = info.originals !== false;
   return (
     <>
       {item.kind === "file" ? (
@@ -167,7 +170,7 @@ function SharedContent({ api, info, item }: { api: ShareApi; info: ShareInfoOut;
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <DownloadLink primary href={api.contentUrl(item.id)} label={t("share.download")} />
+            <SaveLink api={api} item={item} originals={originals} className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white hover:opacity-90"><Download size={15} /> {t("share.download")}</SaveLink>
             {previewKind(item) && (
               <button type="button" className="inline-flex h-9 items-center gap-2 rounded-lg border border-line px-4 text-sm hover:bg-ink/6" onClick={() => setViewing(item)}>
                 <Eye size={15} /> {t("share.preview")}
@@ -179,7 +182,7 @@ function SharedContent({ api, info, item }: { api: ShareApi; info: ShareInfoOut;
       ) : (
         <FolderView api={api} info={info} root={item} onView={setViewing} />
       )}
-      {viewing && <Viewer api={api} item={viewing} limited={limited} onClose={() => setViewing(null)} />}
+      {viewing && <Viewer api={api} item={viewing} limited={limited} originals={originals} onClose={() => setViewing(null)} />}
     </>
   );
 }
@@ -203,6 +206,9 @@ function FolderView({ api, info, root, onView }: { api: ShareApi; info: ShareInf
   const [path, setPath] = useState<DriveCrumb[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // AL2: an album folder is shown as the album (the link's own, or a folder under it).
+  const [album, setAlbum] = useState<SharedAlbumOut | null>(null);
+  const originals = info.originals !== false;
 
   useEffect(() => {
     const follow = () => setFolderId(folderFromHash() ?? root.id);
@@ -215,6 +221,7 @@ function FolderView({ api, info, root, onView }: { api: ShareApi; info: ShareInf
       const page = await api.children(folderId, after);
       setItems((held) => [...(after ? held ?? [] : []), ...page.items]);
       setPath(page.path);
+      if (!after) setAlbum(page.album ?? null);
       setCursor(page.next_cursor ?? null);
       setError(null);
     } catch (failure) {
@@ -232,6 +239,39 @@ function FolderView({ api, info, root, onView }: { api: ShareApi; info: ShareInf
     setFolderId(id);
   };
   const folder = path[path.length - 1];
+  const loadMore = useCallback(() => {
+    if (cursor) void load(cursor);
+  }, [cursor, load]);
+  if (album && items !== null) {
+    const crumbs = path.length > 1 ? path.slice(0, -1) : [];
+    return (
+      <>
+        {crumbs.length > 0 && (
+          <nav aria-label={t("share.breadcrumbs")} className="mb-3 flex flex-wrap items-center gap-0.5 text-[13px] text-muted">
+            {crumbs.map((crumb, index) => (
+              <span key={crumb.id} className="flex items-center gap-0.5">
+                {index > 0 && <ChevronRight size={13} className="shrink-0" />}
+                <button type="button" className="truncate rounded-md px-1 py-0.5 hover:bg-ink/6" onClick={() => go(crumb.id)}>{crumb.name}</button>
+              </span>
+            ))}
+          </nav>
+        )}
+        {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
+        <ShareAlbumView
+          api={api}
+          album={album}
+          title={folder?.name ?? root.name}
+          items={items}
+          originals={originals}
+          zipFolderId={folderId === root.id ? null : folderId}
+          cursor={cursor}
+          onMore={loadMore}
+          onFolder={go}
+        />
+        <div className="mt-3"><Limits info={info} /></div>
+      </>
+    );
+  }
   return (
     <section data-share-folder="" aria-label={folder?.name ?? root.name}>
       <div className="flex flex-wrap items-center gap-3">
@@ -247,7 +287,7 @@ function FolderView({ api, info, root, onView }: { api: ShareApi; info: ShareInf
             </span>
           ))}
         </nav>
-        <DownloadLink primary href={api.zipUrl(folderId === root.id ? null : folderId)} label={t("share.downloadZip")} />
+        <DownloadLink primary href={api.zipUrl(folderId === root.id ? null : folderId, !originals)} label={t("share.downloadZip")} />
       </div>
       <div className="mt-1"><Limits info={info} /></div>
       {error && <p role="alert" className="mt-4 text-sm text-danger">{error}</p>}
@@ -287,9 +327,9 @@ function FolderView({ api, info, root, onView }: { api: ShareApi; info: ShareInf
                           <Eye size={15} />
                         </button>
                       )}
-                      <a href={api.contentUrl(item.id)} download rel="noreferrer" aria-label={t("share.downloadOf", { name: item.name })} title={t("share.download")} className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-ink/6">
+                      <SaveLink api={api} item={item} originals={originals} className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-ink/6">
                         <Download size={15} />
-                      </a>
+                      </SaveLink>
                     </span>
                   )}
                 </td>
@@ -307,28 +347,27 @@ function FolderView({ api, info, root, onView }: { api: ShareApi; info: ShareInf
   );
 }
 
-function Viewer({ api, item, limited, onClose }: { api: ShareApi; item: SharedItemOut; limited: boolean; onClose: () => void }) {
+function Viewer({ api, item, limited, originals, onClose }: { api: ShareApi; item: SharedItemOut; limited: boolean; originals: boolean; onClose: () => void }) {
   const kind = previewKind(item);
   const load = useCallback(() => api.previewPdf(item.id), [api, item.id]);
   const source = useMemo(() => ({ id: item.id, filename: item.name, size_bytes: item.size_bytes ?? 0, preview: item.preview ?? null }), [item]);
+  // AL2: what this link lets be saved (the display size, or nothing, when it keeps the originals back).
+  const save = saveHref(api, item, originals);
   const download = () => {
+    if (!save) return;
     const link = document.createElement("a");
-    link.href = api.contentUrl(item.id);
-    link.download = "";
+    link.href = save.href;
+    link.download = save.name ?? "";
     link.rel = "noreferrer";
     document.body.appendChild(link);
     link.click();
     link.remove();
   };
-  const buttons = (
-    <a href={api.contentUrl(item.id)} download rel="noreferrer" className={VIEWER_BUTTON} title={t("share.download")} aria-label={t("share.download")}>
-      <Download size={18} />
-    </a>
-  );
+  const buttons = <SaveLink api={api} item={item} originals={originals} className={VIEWER_BUTTON}><Download size={18} /></SaveLink>;
   if (kind === "document") return <PdfViewer attachment={source} load={load} buttons={buttons} onDownload={download} onClose={onClose} />;
-  // An image: the full picture when the link has no download limit (viewing it counts as a download), else the
-  // thumbnail (512 px), which never counts.
-  const src = limited ? api.thumbnailUrl(item.id) : api.contentUrl(item.id, true);
+  // An image: the display size when there is one (AL1, never counted); else the full picture when the link has no
+  // download limit (viewing it counts as a download) and hands out originals, else the thumbnail (512 px).
+  const src = item.has_display ? api.displayUrl(item.id) : limited || !originals ? api.thumbnailUrl(item.id) : api.contentUrl(item.id, true);
   return (
     <ViewerFrame
       title={item.name}
@@ -338,7 +377,7 @@ function Viewer({ api, item, limited, onClose }: { api: ShareApi; item: SharedIt
         <>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{item.name}</p>
-            <p className="text-xs text-white/70">{[formatBytes(item.size_bytes), limited ? t("share.thumbnailOnly") : null].filter(Boolean).join(" · ")}</p>
+            <p className="text-xs text-white/70">{[formatBytes(item.size_bytes), !item.has_display && (limited || !originals) ? t("share.thumbnailOnly") : null].filter(Boolean).join(" · ")}</p>
           </div>
           {buttons}
           <ViewerCloseButton />

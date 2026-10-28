@@ -38,7 +38,7 @@ const inTauri = () => Object.assign(window, { __TAURI_INTERNALS__: {} });
 const inBrowser = () => { delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; };
 
 const pdf: AttachmentOut = {
-  id: "a1", filename: "報告書.pdf", content_type: "application/pdf", size_bytes: 3 * 1024 * 1024, has_thumbnail: false, has_poster: false,
+  id: "a1", filename: "報告書.pdf", content_type: "application/pdf", size_bytes: 3 * 1024 * 1024, has_thumbnail: false, has_poster: false, has_display: false,
   duration_ms: null, status: "attached", created_at: "", width: null, height: null,
 };
 

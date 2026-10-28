@@ -31,6 +31,8 @@ import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { SaveToDriveDialog, savableAttachments } from "./DriveConversation";
+import { AddToAlbumDialog } from "./AlbumDialogs";
+import { albumAttachments } from "../drive/albums";
 import { DeleteDriveFilesOption } from "./ChannelFiles";
 import { firstPostedItem } from "../drive/channelFiles";
 import { ReportDialog } from "./ModerationDialogs";
@@ -925,6 +927,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   // M165 (docs/DRIVE.md §13.2): 「ドライブに保存」.
   const [saveToDriveOpen, setSaveToDriveOpen] = useState(false);
   const savable = message.pending || message.failed || message.deleted ? [] : savableAttachments(message.attachments ?? []);
+  // AL2 (docs/ALBUMS.md §9): 「アルバムに追加」 for its photos and videos.
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const albumable = albumAttachments(savable);
   const [reportOpen, setReportOpen] = useState(false); // M104
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [chipPicker, setChipPicker] = useState(false);
@@ -981,7 +986,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const threadId = message.parent_id ?? message.id;
   // The same actions as the long-press sheet (messageActions.ts): the bar shows a few, ⋯ the rest.
   const editable = mine && feedChannel === undefined;
-  const actions = messageActions({ message, mine, isAdmin, saved, thread: !!onOpenThread, editable, showReactions: true, canMakeTask, canRequestReview, unreadOffered, canSaveToDrive: savable.length > 0 });
+  const actions = messageActions({ message, mine, isAdmin, saved, thread: !!onOpenThread, editable, showReactions: true, canMakeTask, canRequestReview, unreadOffered, canSaveToDrive: savable.length > 0, canAddToAlbum: albumable.length > 0 });
   const offered = new Set(actions.map((action) => action.key));
   const afterClose = (work: () => void) => () => { afterMenu.current = work; };
   const menuRun: Record<MessageActionKey, () => void> = {
@@ -998,6 +1003,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
     share: afterClose(() => setShareOpen(true)),
     showInDrive: () => { const posted = firstPostedItem(message.attachments); if (posted?.drive?.item_id) void controller.openDriveLink(posted.drive.item_id); },
     saveToDrive: afterClose(() => setSaveToDriveOpen(true)),
+    addToAlbum: afterClose(() => setAlbumOpen(true)),
     pin: () => void controller.togglePin(message),
     report: afterClose(() => setReportOpen(true)),
     delete: afterClose(() => setConfirmDelete(true)),
@@ -1324,6 +1330,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         </div>
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
+      {albumOpen && <AddToAlbumDialog controller={controller} attachments={albumable} channel={store.getChannel(message.channel_id) ?? null} postedAt={message.created_at} onClose={() => setAlbumOpen(false)} />}
       {saveToDriveOpen && <SaveToDriveDialog controller={controller} attachments={savable} channel={store.getChannel(message.channel_id) ?? null} onClose={() => setSaveToDriveOpen(false)} />}
       {reportOpen && <ReportDialog controller={controller} message={message} onClose={() => setReportOpen(false)} />}
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
@@ -1354,6 +1361,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onOpenThread={onOpenThread}
           onShare={() => setShareOpen(true)}
           onSaveToDrive={savable.length > 0 ? () => setSaveToDriveOpen(true) : undefined}
+          onAddToAlbum={albumable.length > 0 ? () => setAlbumOpen(true) : undefined}
           onReport={() => setReportOpen(true)}
           onShowReactions={() => setReactionsOpen(true)}
           onMakeTask={canMakeTask ? () => setTaskOpen(true) : undefined}

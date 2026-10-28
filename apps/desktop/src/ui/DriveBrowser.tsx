@@ -16,7 +16,7 @@
  *   who may (§3.2).
  * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
  */
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Images, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -28,6 +28,9 @@ import { openPage } from "../drive/snippet";
 import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
 import { canRearrange, isSystemFolder, itemName, localizedPath, rememberSystemFolders } from "../drive/channelFiles";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
+import { canBecomeAlbum, readAlbumAsFiles, writeAlbumAsFiles } from "../drive/albums";
+import { NewAlbumDialog } from "./AlbumDialogs";
+import { AlbumView } from "./AlbumView";
 import { coalesce } from "../sync/drive";
 import { dropEntries, emptyFolders, type PickedTree, pickFilesNative, pickFolderNative, treeFromEntries, treeFromInput } from "../platform/driveFiles";
 import { isFileDrag } from "../platform/fileDrops";
@@ -85,9 +88,11 @@ export const ICON_COLOURS: Readonly<Record<DriveIconKind, string>> = {
   file: "text-muted",
 };
 
-export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind" | "name" | "content_type"> & { system_role?: DriveItemOut["system_role"] }; size?: number }) {
+export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind" | "name" | "content_type"> & { system_role?: DriveItemOut["system_role"]; album?: DriveItemOut["album"] }; size?: number }) {
   // CF2 (docs/CHANNEL_FILES.md §12.2): 「投稿のファイル」 has its own icon (a folder with a speech bubble).
   if (isSystemFolder(item)) return <SystemFolderIcon size={size} className={ICON_COLOURS.folder} />;
+  // AL2 (docs/ALBUMS.md §10.1): an album folder shows photos.
+  if (item.kind === "folder" && item.album) return <Images size={size} data-drive-icon="album" className={cn("shrink-0", ICON_COLOURS.folder)} aria-hidden />;
   const kind = iconKind(item);
   const Icon = ICONS[kind];
   return <Icon size={size} data-drive-icon={kind} className={cn("shrink-0", ICON_COLOURS[kind])} aria-hidden />;
@@ -198,7 +203,13 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<DriveSearchHitOut[] | null>(null);
   const [details, setDetails] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | { kind: "send"; item: DriveItemOut } | null>(null);
+  // AL2 (docs/ALBUMS.md §10.1): an album folder opens as the album unless 「ファイルの一覧で見る」 (this device).
+  const [asFiles, setAsFiles] = useState(readAlbumAsFiles);
+  const showFiles = (value: boolean) => {
+    setAsFiles(value);
+    writeAlbumAsFiles(value);
+  };
+  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "new-album" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | { kind: "send"; item: DriveItemOut } | null>(null);
   const [viewing, setViewing] = useState<DriveItemOut | null>(null);
   // §29: the page a document found by its text opens at (stepping to another file starts at its top).
   const [openAt, setOpenAt] = useState<{ id: string; page: number } | null>(null);
@@ -445,6 +456,19 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     }
   };
 
+  /** AL2: 「アルバムにする」 / 「アルバムをやめる」 on a folder (its files stay as they are). */
+  const setAlbum = async (item: DriveItemOut, on: boolean) => {
+    if (!api) return;
+    try {
+      if (on) await api.putDriveAlbum(item.id, {});
+      else await api.deleteDriveAlbum(item.id);
+      controller.setNotice(on ? t("albums.made", { name: item.name }) : t("albums.removed", { name: item.name }));
+      void load({ keep: true });
+    } catch (error) {
+      controller.setError(error);
+    }
+  };
+
   /** Files (and the empty folders of a folder upload) into `parentId`. */
   const upload = async (tree: PickedTree, parentId: string, label: string) => {
     if (!api || !controller.accountKey) return;
@@ -638,6 +662,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           <>
             <ContextMenu.Separator className="my-1 h-px bg-line" />
             {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "rename", item })}><Pencil size={14} /> {t("drive.rename")}</ContextMenu.Item>}
+            {!many && canBecomeAlbum(item) && <ContextMenu.Item data-drive-make-album="" className={MENU_ITEM} onSelect={() => void setAlbum(item, true)}><Images size={14} /> {t("albums.make")}</ContextMenu.Item>}
+            {!many && item.kind === "folder" && item.album && <ContextMenu.Item data-drive-unmake-album="" className={MENU_ITEM} onSelect={() => void setAlbum(item, false)}><Images size={14} /> {t("albums.unmake")}</ContextMenu.Item>}
             <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "move", items: targets })}><FolderInput size={14} /> {t("drive.move")}</ContextMenu.Item>
             <ContextMenu.Item className={cn(MENU_ITEM, "text-danger")} onSelect={() => void trashItems(targets)}><Trash2 size={14} /> {t("drive.toTrash")}</ContextMenu.Item>
           </>
@@ -748,7 +774,11 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                 </MenuContent>
               </Menu>
               <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "new-folder" })}><FolderPlus size={14} /> {t("drive.newFolder")}</Button>
+              <Button size="sm" variant="secondary" data-drive-new-album="" onClick={() => setDialog({ kind: "new-album" })}><Images size={14} /> {t("albums.new")}</Button>
             </>
+          )}
+          {listing.folder?.album && asFiles && (
+            <Button size="sm" variant="ghost" data-drive-as-album="" onClick={() => showFiles(false)}><Images size={14} /> {t("albums.asAlbum")}</Button>
           )}
           <span className="mx-1 h-5 w-px bg-line" aria-hidden />
           <div role="group" aria-label={t("drive.viewMode")} className="flex rounded-lg border border-line">
@@ -961,6 +991,23 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   // The details pane beside a wide listing; over a narrow one (it would squeeze the names).
   const overlayDetails = width > 0 && width < DETAILS_BESIDE_MIN;
 
+  // AL2 (docs/ALBUMS.md §10.1): an album folder is the album screen (in 「ドライブ」 and in a channel's tab alike).
+  if (mode === "folder" && !hits && !asFiles && listing.folder?.album && listing.folder.id === folderId) {
+    return (
+      <AlbumView
+        key={folderId}
+        controller={controller}
+        location={location}
+        folderId={folderId}
+        onFolder={onFolder}
+        onShowFiles={() => showFiles(true)}
+        onNotAlbum={() => void load({ keep: true })}
+        onLost={onLost}
+        header={header}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-drive-browser={mode}>
       {toolbar}
@@ -1010,6 +1057,16 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         onChange={(event) => { uploadHere(treeFromInput(Array.from(event.target.files ?? []))); event.target.value = ""; }}
       />
       {dialog?.kind === "new-folder" && <NewFolderDialog controller={controller} parentId={folderId} onClose={() => setDialog(null)} onMade={() => void load({ keep: true })} />}
+      {dialog?.kind === "new-album" && (
+        <NewAlbumDialog
+          controller={controller}
+          locations={[location]}
+          location={location}
+          folder={folderId !== location.root_id && listing.folder && !isSystemFolder(listing.folder) ? { id: folderId, name: itemName(listing.folder) } : null}
+          onClose={() => setDialog(null)}
+          onMade={(made) => onFolder(made.folder.id)}
+        />
+      )}
       {dialog?.kind === "rename" && <RenameDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} onDone={(renamed) => {
         setListing((current) => ({ ...current, items: current.items.map((item) => (item.id === renamed.id ? renamed : item)) }));
         void load({ keep: true });

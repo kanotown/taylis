@@ -25,7 +25,7 @@ import { DriveBrowser } from "../src/ui/DriveBrowser";
 import { messageActions } from "../src/ui/messageActions";
 import { MemoryPersistence } from "./fakeServer";
 
-const FILE: AttachmentOut = { id: "a1", filename: "修論_草稿.pdf", content_type: "application/pdf", size_bytes: 2048, has_thumbnail: false, has_poster: false, duration_ms: null, status: "attached", created_at: "2026-10-28T06:00:00Z", width: null, height: null };
+const FILE: AttachmentOut = { id: "a1", filename: "修論_草稿.pdf", content_type: "application/pdf", size_bytes: 2048, has_thumbnail: false, has_poster: false, has_display: false, duration_ms: null, status: "attached", created_at: "2026-10-28T06:00:00Z", width: null, height: null };
 const PHOTO: AttachmentOut = { ...FILE, id: "p1", filename: "実験の写真.png", content_type: "image/png", has_thumbnail: true, width: 10, height: 10 };
 
 function posted(attachment: AttachmentOut, state: "available" | "moved" | "trashed" | "deleted", item = "item-1"): AttachmentOut {
@@ -101,7 +101,7 @@ describe("the rules (drive/channelFiles.ts)", () => {
   });
 
   it("finds a newer version by comparing the version ids", () => {
-    const item = driveItem("item-1", { file: { attachment_id: "x", version_id: "ver-1", width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, preview: null } });
+    const item = driveItem("item-1", { file: { attachment_id: "x", version_id: "ver-1", width: null, height: null, has_thumbnail: false, has_poster: false, has_display: false, has_location: false, duration_ms: null, preview: null } });
     expect(hasNewerVersion(posted(FILE, "available").drive, item)).toBe(false);
     expect(hasNewerVersion(posted(FILE, "available").drive, { ...item, file: { ...item.file!, version_id: "ver-2" } })).toBe(true);
     expect(hasNewerVersion(posted(FILE, "deleted").drive, item)).toBe(false);
@@ -203,7 +203,7 @@ describe("a message's files (§12.1)", () => {
   });
 
   it("the viewer says where the file is, offers 「ドライブで表示」 and a newer version", async () => {
-    const current = driveItem("item-1", { updated_by: "u2", file: { attachment_id: "x2", version_id: "ver-2", width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, preview: null } });
+    const current = driveItem("item-1", { updated_by: "u2", file: { attachment_id: "x2", version_id: "ver-2", width: null, height: null, has_thumbnail: false, has_poster: false, has_display: false, has_location: false, duration_ms: null, preview: null } });
     const controller = controllerWith({ link: { state: "ok", detail: detail(current, [{ id: "root", name: "m2-seminar" }, { id: "posts", name: "投稿のファイル" }, { id: "m", name: "2026-10" }], "channel") } });
     const onClose = vi.fn();
     render(<Lightbox attachment={posted(PHOTO, "available")} controller={controller} onClose={onClose} />);

@@ -8,7 +8,7 @@ import { groupAttachments, isAudioType, mediaKind } from "../src/ui/attachmentLa
 import { iconKind, viewerKind } from "../src/drive/listing";
 import { resetVideoCache } from "../src/ui/videoSource";
 
-const base: AttachmentOut = { id: "s", filename: "interview.wav", content_type: "audio/x-wav", size_bytes: 2_400_000, has_thumbnail: false, has_poster: false, duration_ms: null, status: "attached", created_at: "", width: null, height: null };
+const base: AttachmentOut = { id: "s", filename: "interview.wav", content_type: "audio/x-wav", size_bytes: 2_400_000, has_thumbnail: false, has_poster: false, has_display: false, duration_ms: null, status: "attached", created_at: "", width: null, height: null };
 const second: AttachmentOut = { ...base, id: "t", filename: "memo.mp3", content_type: "audio/mpeg" };
 
 /** jsdom has no media playback: play / pause flip `paused` and fire the events a browser fires. */

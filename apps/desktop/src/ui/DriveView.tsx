@@ -7,7 +7,7 @@
  * §27 (2026-10-22): the open location, folder and trash are the screen's (MainScreen's) state when it passes `place` /
  * `onPlace`: each change is a place of the back / forward history (← →, ⌘[ ⌘], the mouse's and the browser's buttons).
  */
-import { ArrowLeft, Hash, HardDrive, Link2, Loader2, Lock, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, User } from "lucide-react";
+import { ArrowLeft, Hash, HardDrive, Images, Link2, Loader2, Lock, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, User } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
@@ -16,6 +16,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { formatBytes, locationName, orderLocations } from "../drive/listing";
 import { coalesce } from "../sync/drive";
+import { AlbumsHome } from "./AlbumsHome";
 import { DriveBrowser, type DriveMode } from "./DriveBrowser";
 import { onDriveTarget, takeDriveTarget } from "./DriveSearch";
 import { MyLinksDialog } from "./DriveShareDialog";
@@ -81,7 +82,7 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
   const setCurrent = useCallback((next: DrivePlace) => (onPlace ? onPlace(next) : setOwn(next)), [onPlace]);
   const mode: DriveMode = current?.trash ? "trash" : "folder";
   const setMode = (next: DriveMode) => {
-    if (current) setCurrent({ ...current, trash: next === "trash" });
+    if (current) setCurrent({ ...current, trash: next === "trash", albums: false });
   };
   const [listOpen, setListOpen] = useState(compact && !lastPlace && !place);
   // Opened without a place: a search result asked for, else where it was left in this window.
@@ -145,6 +146,14 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
   }, [engine, load]);
 
   const location = locations?.find((loc) => loc.id === current?.locationId) ?? null;
+  // AL2 (docs/ALBUMS.md §10.1): 「アルバム」, every album I can read, is a place of its own.
+  const albumsOpen = !!current?.albums;
+  const openAlbums = () => {
+    const base = location ?? locations?.[0];
+    if (!base) return;
+    setCurrent({ locationId: base.id, folderId: current?.locationId === base.id ? current.folderId : base.root_id, trash: false, albums: true });
+    setListOpen(false);
+  };
   // Nothing chosen, or the chosen one is gone (left the channel): the first location.
   useEffect(() => {
     if (!locations || locations.length === 0) return;
@@ -201,6 +210,20 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
           <div className="flex justify-center py-6 text-muted"><Loader2 size={18} className="animate-spin" /></div>
         ) : (
           <ul className="space-y-0.5">
+            {locations.length > 0 && (
+              <li className="pb-1">
+                <button
+                  type="button"
+                  data-drive-albums=""
+                  aria-current={albumsOpen ? "true" : undefined}
+                  onClick={openAlbums}
+                  className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm", albumsOpen ? "bg-accent-soft text-ink" : "hover:bg-ink/6")}
+                >
+                  <Images size={15} className={cn("shrink-0", albumsOpen ? "text-accent" : "text-muted")} />
+                  <span className="truncate font-medium">{t("albums.title")}</span>
+                </button>
+              </li>
+            )}
             {locations.map((loc, index) => {
               const firstChannel = loc.kind === "channel" && locations[index - 1]?.kind !== "channel";
               return (
@@ -224,11 +247,11 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
                   <button
                     type="button"
                     data-drive-location={loc.kind}
-                    aria-current={loc.id === location?.id ? "true" : undefined}
+                    aria-current={!albumsOpen && loc.id === location?.id ? "true" : undefined}
                     onClick={() => choose(loc, true)}
-                    className={cn("flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm", loc.id === location?.id ? "bg-accent-soft text-ink" : "hover:bg-ink/6")}
+                    className={cn("flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm", !albumsOpen && loc.id === location?.id ? "bg-accent-soft text-ink" : "hover:bg-ink/6")}
                   >
-                    <span className={cn("mt-0.5", loc.id === location?.id ? "text-accent" : "text-muted")}><LocationIcon location={loc} /></span>
+                    <span className={cn("mt-0.5", !albumsOpen && loc.id === location?.id ? "text-accent" : "text-muted")}><LocationIcon location={loc} /></span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1">
                         <span className="truncate font-medium">{locationName(loc)}</span>
@@ -273,7 +296,23 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
     </aside>
   );
 
-  const browser = location && current ? (
+  const toggle = compact ? (
+    <Button size="sm" variant="ghost" aria-label={t("drive.locations")} onClick={() => setListOpen(true)}><ArrowLeft size={15} /></Button>
+  ) : (
+    <IconButton
+      label={columnHidden ? t("drive.showLocations") : t("drive.hideLocations")}
+      data-drive-locations-toggle=""
+      aria-expanded={!columnHidden}
+      aria-controls="drive-locations"
+      onClick={() => hideColumn(!columnHidden)}
+      className="-ml-1 shrink-0"
+    >
+      {columnHidden ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+    </IconButton>
+  );
+  const browser = albumsOpen && locations ? (
+    <AlbumsHome controller={controller} locations={locations} header={toggle} onOpen={(target) => setCurrent({ ...target, trash: false })} />
+  ) : location && current ? (
     <DriveBrowser
       key={location.id}
       controller={controller}
@@ -283,20 +322,7 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
       mode={mode}
       onMode={setMode}
       onLost={() => void load()}
-      header={compact ? (
-        <Button size="sm" variant="ghost" aria-label={t("drive.locations")} onClick={() => setListOpen(true)}><ArrowLeft size={15} /></Button>
-      ) : (
-        <IconButton
-          label={columnHidden ? t("drive.showLocations") : t("drive.hideLocations")}
-          data-drive-locations-toggle=""
-          aria-expanded={!columnHidden}
-          aria-controls="drive-locations"
-          onClick={() => hideColumn(!columnHidden)}
-          className="-ml-1 shrink-0"
-        >
-          {columnHidden ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-        </IconButton>
-      )}
+      header={toggle}
       locations={locations ? { list: locations, onChoose: (loc) => choose(loc) } : undefined}
     />
   ) : (
@@ -305,7 +331,7 @@ export function DriveView({ controller, compact = false, place, onPlace }: {
     </div>
   );
 
-  if (compact) return <div className="flex min-h-0 flex-1 flex-col" data-drive-view="compact">{listOpen || !location ? column : browser}</div>;
+  if (compact) return <div className="flex min-h-0 flex-1 flex-col" data-drive-view="compact">{listOpen || (!location && !albumsOpen) ? column : browser}</div>;
   return (
     <div className="flex min-h-0 flex-1" data-drive-view="wide">
       {!columnHidden && column}

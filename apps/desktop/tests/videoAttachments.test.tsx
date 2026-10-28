@@ -8,7 +8,7 @@ import { expectsPicture, playbackProblem, showsNoPicture, STREAM_STALL_MS, STREA
 import { fitBox, formatDuration, groupAttachments, loadsInlineVideo, mediaKind, photoLayout, VIDEO_INLINE_MAX_BYTES, VIDEO_TILE_MAX } from "../src/ui/attachmentLayout";
 import { acquireVideo, resetVideoCache, VIDEO_RELEASE_DELAY_MS } from "../src/ui/videoSource";
 
-const base: AttachmentOut = { id: "a", filename: "photo.png", content_type: "image/png", size_bytes: 100, has_thumbnail: true, has_poster: false, duration_ms: null, status: "attached", created_at: "", width: 10, height: 10 };
+const base: AttachmentOut = { id: "a", filename: "photo.png", content_type: "image/png", size_bytes: 100, has_thumbnail: true, has_poster: false, has_display: false, duration_ms: null, status: "attached", created_at: "", width: 10, height: 10 };
 const video: AttachmentOut = { ...base, id: "v", filename: "clip.mp4", content_type: "video/mp4", size_bytes: 2_000_000, has_thumbnail: false, width: null, height: null };
 const file: AttachmentOut = { ...base, id: "f", filename: "notes.pdf", content_type: "application/pdf", has_thumbnail: false, width: null, height: null };
 

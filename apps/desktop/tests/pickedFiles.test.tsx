@@ -41,7 +41,7 @@ function pick(input: HTMLInputElement, files: File[]): void {
   fireEvent.change(input, { target: { files } });
 }
 
-const meta = (id: string): AttachmentOut => ({ id, filename: `${id}.mp4`, content_type: "video/mp4", size_bytes: 4, width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, status: "pending", created_at: "2026-10-04T00:00:00Z" });
+const meta = (id: string): AttachmentOut => ({ id, filename: `${id}.mp4`, content_type: "video/mp4", size_bytes: 4, width: null, height: null, has_thumbnail: false, has_poster: false, has_display: false, duration_ms: null, status: "pending", created_at: "2026-10-04T00:00:00Z" });
 
 function composer() {
   const server = new FakeServer();
