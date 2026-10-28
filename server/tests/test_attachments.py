@@ -77,6 +77,9 @@ async def test_bind_download_delete_and_gc(
     carol = await make_user(db, "carol")
     as_user(alice)
     channel = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    # Plain attachments (CF1's filing into the channel's drive: test_channel_files.py).
+    off = await client.patch(f"/api/v1/channels/{channel['id']}", json={"files_to_drive": False})
+    assert off.status_code == 200 and off.json()["files_to_drive_effective"] is False
     as_user(bob)
     await client.post(f"/api/v1/channels/{channel['id']}/join")
 

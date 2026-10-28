@@ -20,7 +20,7 @@ function row(id: string, kind: "file" | "folder", name: string): DriveItemOut {
   return {
     id, location_id: "loc", parent_id: "root", kind, name, size_bytes: kind === "file" ? 2048 : null, content_type: kind === "file" ? "text/plain" : null,
     content_modified_at: null, created_by: "u1", created_at: "2026-10-01T00:00:00Z", updated_by: "u1", updated_at: "2026-10-01T09:30:00Z",
-    version_count: kind === "file" ? 1 : 0, file: null, link_count: 0,
+    version_count: kind === "file" ? 1 : 0, file: null, link_count: 0, posted: false,
   };
 }
 

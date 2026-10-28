@@ -11,7 +11,7 @@ function item(id: string, kind: "file" | "folder", parent = "root"): DriveItemOu
   return {
     id, location_id: "loc", parent_id: parent, kind, name: id, size_bytes: kind === "file" ? 1 : null, content_type: null,
     content_modified_at: null, created_by: null, created_at: "2026-10-01T00:00:00Z", updated_by: null, updated_at: "2026-10-01T00:00:00Z",
-    version_count: kind === "file" ? 1 : 0, file: null, link_count: 0,
+    version_count: kind === "file" ? 1 : 0, file: null, link_count: 0, posted: false,
   };
 }
 

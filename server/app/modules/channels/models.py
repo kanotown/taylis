@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -47,6 +48,9 @@ class Channel(Base):
     )
     # M24: whose times this is (one per person); quiet unread for the others (SYNC_PROTOCOL §10.5).
     times_owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    # CF1 (docs/CHANNEL_FILES.md §9): the owner's override of the workspace's
+    # channel_files_to_drive (NULL: follow the workspace).
+    files_to_drive: Mapped[bool | None] = mapped_column(Boolean)
 
     __table_args__ = (
         CheckConstraint(

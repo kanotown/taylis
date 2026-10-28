@@ -28,6 +28,7 @@ from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thum
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import possible_preview_keys, queue_on_upload
 from app.modules.attachments.schemas import (
+    AttachmentDriveOut,
     AttachmentOut,
     FileItem,
     FileListOut,
@@ -66,6 +67,18 @@ _drive_readable: DriveReadable | None = None
 def set_drive_access_check(check: DriveReadable | None) -> None:
     global _drive_readable
     _drive_readable = check
+
+
+# CF1 (docs/CHANNEL_FILES.md §5.2): whether someone reads a posted file through its message (the
+# message is alive and readable, the item is in that channel's drive and not in the trash):
+# drive.channel_files.posted_readable, handed over by main.py. Unset: only the drive's rule.
+PostedReadable = Callable[[AsyncSession, User, Attachment], Awaitable[bool]]
+_posted_readable: PostedReadable | None = None
+
+
+def set_posted_access_check(check: PostedReadable | None) -> None:
+    global _posted_readable
+    _posted_readable = check
 
 
 # M167 (docs/LENDING.md §4.3): whether someone can see an equipment item's photo
@@ -486,21 +499,61 @@ async def get_many(db: AsyncSession, attachment_ids: list[uuid.UUID]) -> list[At
 
 
 async def mark_deleted_in_tx(db: AsyncSession, message_id: uuid.UUID) -> None:
-    """The message was deleted: its attachments vanish at once; GC removes the bytes later."""
+    """The message was deleted: its attachments vanish at once; GC removes the bytes later.
+
+    CF1 (docs/CHANNEL_FILES.md §7.3): a posted file that is still a drive version is only taken
+    off the message (message_id, channel_id and drive_state NULL): it stays in the drive as an
+    ordinary version (or was put in the trash just before, by the delete's drive_files rule). A
+    tombstone goes like any deleted attachment. The rows are locked (after the channel, like a
+    send): a drive move or trash in flight is waited for."""
     now = utcnow()
-    for attachment in await repo.for_message(db, message_id):
+    for attachment in await repo.for_message(db, message_id, for_update=True):
+        if attachment.drive_state is not None and attachment.drive_state != "deleted":
+            attachment.message_id = None
+            attachment.channel_id = None
+            attachment.drive_state = None
+            continue
+        attachment.drive_state = None
         attachment.status = "deleted"
-        attachment.deleted_at = now
+        attachment.deleted_at = attachment.deleted_at or now
     await db.flush()
+
+
+async def drive_outs(
+    db: AsyncSession, rows: list[Attachment]
+) -> dict[uuid.UUID, AttachmentDriveOut]:
+    """CF1: `AttachmentOut.drive` of the posted files among `rows`."""
+    posted = [a for a in rows if a.drive_state is not None]
+    versions = await repo.drive_versions(db, [a.id for a in posted if a.drive_item_id])
+    out: dict[uuid.UUID, AttachmentDriveOut] = {}
+    for attachment in posted:
+        version = versions.get(attachment.id)
+        deleted = attachment.drive_state == "deleted"
+        out[attachment.id] = AttachmentDriveOut(
+            item_id=None if deleted else attachment.drive_item_id,
+            version_id=version[0] if version and not deleted else None,
+            version_number=version[1] if version and not deleted else None,
+            state=attachment.drive_state,  # type: ignore[arg-type]
+        )
+    return out
+
+
+async def attachments_out(db: AsyncSession, rows: list[Attachment]) -> list[AttachmentOut]:
+    drive = await drive_outs(db, rows)
+    return [to_attachment_out(a, drive.get(a.id)) for a in rows]
 
 
 async def for_messages(
     db: AsyncSession, message_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[AttachmentOut]]:
+    rows = await repo.for_messages(db, message_ids)
+    drive = await drive_outs(db, rows)
     grouped: dict[uuid.UUID, list[AttachmentOut]] = {}
-    for attachment in await repo.for_messages(db, message_ids):
+    for attachment in rows:
         if attachment.message_id is not None:
-            grouped.setdefault(attachment.message_id, []).append(to_attachment_out(attachment))
+            grouped.setdefault(attachment.message_id, []).append(
+                to_attachment_out(attachment, drive.get(attachment.id))
+            )
     return grouped
 
 
@@ -535,9 +588,10 @@ async def list_files(
         before=_parse_cursor(cursor),
         limit=limit,
     )
+    drive = await drive_outs(db, [row for row, _ in rows])
     items = [
         FileItem(
-            attachment=to_attachment_out(row),
+            attachment=to_attachment_out(row, drive.get(row.id)),
             message_id=row.message_id,
             channel_id=row.channel_id,
             parent_id=parent_id,
@@ -567,6 +621,20 @@ async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID
         if attachment.uploader_id != actor.id:
             raise forbidden("not_uploader", "Only the uploader can access a pending attachment")
         return attachment
+    if attachment.drive_state is not None:
+        # CF1 (docs/CHANNEL_FILES.md §5): a posted file. Whoever can read the drive item now,
+        # or whoever reads its (live) message while the item is in that channel's drive and not
+        # in the trash (the channel's 403 as for any attachment); recomputed here every time
+        # (drive_state is for display only). Moved, trashed or a tombstone: 404 for the others.
+        if attachment.drive_item_id is None or attachment.status != "attached":
+            raise not_found("attachment_not_found", "Attachment not found")
+        if _drive_readable is not None and await _drive_readable(
+            db, actor, attachment.drive_item_id
+        ):
+            return attachment
+        if _posted_readable is not None and await _posted_readable(db, actor, attachment):
+            return attachment
+        raise not_found("attachment_not_found", "Attachment not found")
     if attachment.drive_item_id is not None:
         # M160 (docs/DRIVE.md §4.1): a drive file's version, an old one too: whoever can read the
         # item (not in the trash); for anyone else it does not exist.
@@ -731,9 +799,19 @@ async def gc(
         await _delete_blobs(blobs, attachment)
         await db.delete(attachment)
         removed += 1
-    for attachment in await repo.deleted(db, 500):
+    for attachment, tombstone in await repo.deleted(db, 500):
         await _delete_blobs(blobs, attachment)
-        await db.delete(attachment)
+        if tombstone:
+            # CF1 (docs/CHANNEL_FILES.md §7.5): the message still shows 「削除されたファイル」 where
+            # the file was; the row stays without its bytes and derived objects.
+            attachment.status = "purged"
+            attachment.thumbnail_key = None
+            attachment.preview_status = "none"
+            attachment.preview_pdf_key = None
+            attachment.preview_thumb_key = None
+            attachment.preview_next_at = None
+        else:
+            await db.delete(attachment)
         purged += 1
     await db.commit()
     return removed, purged

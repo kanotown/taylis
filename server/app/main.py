@@ -57,9 +57,11 @@ from app.modules.dm_closes.router import router as dm_closes_router
 from app.modules.dm_pins.router import router as dm_pins_router
 from app.modules.drafts.router import router as drafts_router
 from app.modules.drive import access as drive_access
+from app.modules.drive import channel_files as drive_channel_files
 from app.modules.drive import events as drive_events
 from app.modules.drive import housekeeping as drive_housekeeping
 from app.modules.drive import media as drive_media
+from app.modules.drive import posted as drive_posted
 from app.modules.drive import public as drive_public
 from app.modules.drive import texts as drive_texts
 from app.modules.drive.router import router as drive_router
@@ -721,6 +723,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M167 (docs/LENDING.md §4.3): an equipment item's photo is read like the ledger.
     attachments_service.set_lending_access_check(lending_access.can_read_photo)
     previews.set_drive_change_hook(drive_events.media_changed_in_tx)
+    # CF1 (docs/CHANNEL_FILES.md §5.2, §6): a posted file is also read through its message, and a
+    # drive change that hides or shows it announces the message (the drive does not depend on
+    # the messages); the month folders follow CHANNEL_FILES_TZ.
+    attachments_service.set_posted_access_check(drive_posted.posted_readable)
+    drive_posted.set_announcer(messages_service.announce_change_by_id_in_tx)
+    drive_channel_files.set_timezone(settings.channel_files_tz)
     # M65: an AI bot without allow_private stays out of private channels and DMs; channels does
     # not depend on ai, so its router gets the check here.
     app.state.ai_private_guard = ai_service.check_private_allowed

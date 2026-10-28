@@ -265,7 +265,13 @@ async def test_save_attachment_respects_the_quota(
     _, attachment_id = await post_with_file(client, lab["id"], "a.txt", b"more than ten bytes")
     full = await save(client, attachment_id, await workspace_root(client))
     assert full.status_code == 409 and full.json()["error"]["code"] == "drive_quota_exceeded"
-    rows = await db.execute(select(Attachment).where(Attachment.drive_item_id.is_not(None)))
+    # No copy was made (the posted file itself is in the channel's drive, CF1: over the quota
+    # too, since posting is never refused).
+    rows = await db.execute(
+        select(Attachment).where(
+            Attachment.drive_item_id.is_not(None), Attachment.drive_state.is_(None)
+        )
+    )
     assert rows.scalars().all() == []
 
 

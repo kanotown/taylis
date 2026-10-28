@@ -684,6 +684,7 @@ async def search_drive(
     cursor: str | None,
     limit: int,
     content: bool = False,
+    origin: repo.DriveOrigin = "all",
     timeout_ms: int | None = None,
     gate: asyncio.Semaphore | None = None,
 ) -> DriveSearchOut:
@@ -709,6 +710,7 @@ async def search_drive(
             limit=limit + 1,
             offset=offset,
             content=content,
+            origin=origin,
         )
         more = len(rows) > limit
         rows = rows[:limit]

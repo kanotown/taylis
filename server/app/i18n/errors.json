@@ -1751,6 +1751,16 @@
    "en": "The drive is full. Delete files for good, or ask an admin.",
    "zh-Hans": "云盘空间已满。请永久删除不需要的文件，或联系管理员。"
   },
+  "drive_folder_system": {
+   "ja": "このフォルダはサーバが管理しているため、名前の変更・移動・ゴミ箱への移動はできません",
+   "en": "This folder is kept by the server. It can't be renamed, moved or put in the trash.",
+   "zh-Hans": "此文件夹由服务器管理，无法重命名、移动或移到回收站。"
+  },
+  "drive_version_posted": {
+   "ja": "このバージョンはメッセージに添付されているため削除できません。先にメッセージを削除してください",
+   "en": "A message shows this version, so it can't be deleted. Delete the message first.",
+   "zh-Hans": "此版本附在消息中，无法删除。请先删除该消息。"
+  },
   "drive_version_current": {
    "ja": "現在のバージョンです。古いバージョンだけを戻したり削除したりできます",
    "en": "This is the current version. Only older versions can be restored or deleted.",

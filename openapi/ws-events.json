@@ -1918,6 +1918,30 @@
                 ],
                 "title": "Dm User Ids"
               },
+              "files_to_drive": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Files To Drive"
+              },
+              "files_to_drive_effective": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Files To Drive Effective"
+              },
               "id": {
                 "format": "uuid",
                 "title": "Id",
@@ -2458,6 +2482,30 @@
                   }
                 ],
                 "title": "Dm User Ids"
+              },
+              "files_to_drive": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Files To Drive"
+              },
+              "files_to_drive_effective": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Files To Drive Effective"
               },
               "id": {
                 "format": "uuid",
@@ -3608,6 +3656,64 @@
             "title": "AckOut",
             "type": "object"
           },
+          "AttachmentDriveOut": {
+            "description": "CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version\n`version_number` of the item `item_id` in the channel's drive. The message keeps showing this\nversion (a newer one in the drive does not change it). `state`, the same for every viewer:\n'available' (in the channel's drive), 'moved' (in another location: only who can read it\nthere can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it\ncan be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the\nversion are null and the bytes are gone).",
+            "properties": {
+              "item_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Item Id"
+              },
+              "state": {
+                "enum": [
+                  "available",
+                  "moved",
+                  "trashed",
+                  "deleted"
+                ],
+                "title": "State",
+                "type": "string"
+              },
+              "version_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Id"
+              },
+              "version_number": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Number"
+              }
+            },
+            "required": [
+              "item_id",
+              "version_id",
+              "version_number",
+              "state"
+            ],
+            "title": "AttachmentDriveOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -3618,6 +3724,17 @@
                 "format": "date-time",
                 "title": "Created At",
                 "type": "string"
+              },
+              "drive": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentDriveOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "duration_ms": {
                 "anyOf": [
@@ -4783,6 +4900,64 @@
             "title": "AckOut",
             "type": "object"
           },
+          "AttachmentDriveOut": {
+            "description": "CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version\n`version_number` of the item `item_id` in the channel's drive. The message keeps showing this\nversion (a newer one in the drive does not change it). `state`, the same for every viewer:\n'available' (in the channel's drive), 'moved' (in another location: only who can read it\nthere can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it\ncan be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the\nversion are null and the bytes are gone).",
+            "properties": {
+              "item_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Item Id"
+              },
+              "state": {
+                "enum": [
+                  "available",
+                  "moved",
+                  "trashed",
+                  "deleted"
+                ],
+                "title": "State",
+                "type": "string"
+              },
+              "version_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Id"
+              },
+              "version_number": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Number"
+              }
+            },
+            "required": [
+              "item_id",
+              "version_id",
+              "version_number",
+              "state"
+            ],
+            "title": "AttachmentDriveOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -4793,6 +4968,17 @@
                 "format": "date-time",
                 "title": "Created At",
                 "type": "string"
+              },
+              "drive": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentDriveOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "duration_ms": {
                 "anyOf": [
@@ -5959,6 +6145,64 @@
             "title": "AckOut",
             "type": "object"
           },
+          "AttachmentDriveOut": {
+            "description": "CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version\n`version_number` of the item `item_id` in the channel's drive. The message keeps showing this\nversion (a newer one in the drive does not change it). `state`, the same for every viewer:\n'available' (in the channel's drive), 'moved' (in another location: only who can read it\nthere can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it\ncan be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the\nversion are null and the bytes are gone).",
+            "properties": {
+              "item_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Item Id"
+              },
+              "state": {
+                "enum": [
+                  "available",
+                  "moved",
+                  "trashed",
+                  "deleted"
+                ],
+                "title": "State",
+                "type": "string"
+              },
+              "version_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Id"
+              },
+              "version_number": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Number"
+              }
+            },
+            "required": [
+              "item_id",
+              "version_id",
+              "version_number",
+              "state"
+            ],
+            "title": "AttachmentDriveOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -5969,6 +6213,17 @@
                 "format": "date-time",
                 "title": "Created At",
                 "type": "string"
+              },
+              "drive": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentDriveOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "duration_ms": {
                 "anyOf": [
@@ -7567,6 +7822,64 @@
       "consumes_seq": false,
       "data": {
         "$defs": {
+          "AttachmentDriveOut": {
+            "description": "CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version\n`version_number` of the item `item_id` in the channel's drive. The message keeps showing this\nversion (a newer one in the drive does not change it). `state`, the same for every viewer:\n'available' (in the channel's drive), 'moved' (in another location: only who can read it\nthere can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it\ncan be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the\nversion are null and the bytes are gone).",
+            "properties": {
+              "item_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Item Id"
+              },
+              "state": {
+                "enum": [
+                  "available",
+                  "moved",
+                  "trashed",
+                  "deleted"
+                ],
+                "title": "State",
+                "type": "string"
+              },
+              "version_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Id"
+              },
+              "version_number": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Version Number"
+              }
+            },
+            "required": [
+              "item_id",
+              "version_id",
+              "version_number",
+              "state"
+            ],
+            "title": "AttachmentDriveOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -7577,6 +7890,17 @@
                 "format": "date-time",
                 "title": "Created At",
                 "type": "string"
+              },
+              "drive": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentDriveOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "duration_ms": {
                 "anyOf": [
@@ -9841,6 +10165,11 @@
               "calls_enabled": {
                 "default": false,
                 "title": "Calls Enabled",
+                "type": "boolean"
+              },
+              "channel_files_to_drive": {
+                "default": true,
+                "title": "Channel Files To Drive",
                 "type": "boolean"
               },
               "icon_version": {

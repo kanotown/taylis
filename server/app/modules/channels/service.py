@@ -81,6 +81,7 @@ def to_channel_out(
         dm_user_ids=dm_user_ids,
         posting_policy=channel.posting_policy,  # type: ignore[arg-type]
         times_owner_id=channel.times_owner_id,
+        files_to_drive=channel.files_to_drive,
         member_count=member_count
         if member_count is not None
         else (len(dm_user_ids) if dm_user_ids else None),
@@ -489,7 +490,19 @@ async def _out_with_count(
 ) -> ChannelOut:
     """A single non-DM channel with its current member count (M11h)."""
     counts = await repo.member_counts_for_channels(db, [channel.id])
-    return to_channel_out(channel, membership, None, counts.get(channel.id, 0))
+    out = to_channel_out(channel, membership, None, counts.get(channel.id, 0))
+    out.files_to_drive_effective = await files_to_drive_effective(db, channel)
+    return out
+
+
+async def files_to_drive_effective(db: AsyncSession, channel: Channel) -> bool:
+    """CF1 (docs/CHANNEL_FILES.md §9): the channel's own choice, else the workspace's (a DM
+    never)."""
+    if channel.is_dm:
+        return False
+    if channel.files_to_drive is not None:
+        return bool(channel.files_to_drive)
+    return (await workspace.settings(db)).channel_files_to_drive
 
 
 async def get_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
@@ -503,7 +516,9 @@ async def get_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> C
     if channel.is_dm:
         dm_ids = (await repo.member_ids_for_channels(db, [channel.id])).get(channel.id)
     counts = await repo.member_counts_for_channels(db, [channel.id])
-    return to_channel_out(channel, membership, dm_ids, counts.get(channel.id, 0))
+    out = to_channel_out(channel, membership, dm_ids, counts.get(channel.id, 0))
+    out.files_to_drive_effective = await files_to_drive_effective(db, channel)
+    return out
 
 
 async def update_channel(
@@ -523,6 +538,8 @@ async def update_channel(
         channel.posting_policy = data.posting_policy
     if "times_owner_id" in data.model_fields_set and data.times_owner_id != channel.times_owner_id:
         await _set_times_owner(db, actor, channel, data.times_owner_id)
+    if "files_to_drive" in data.model_fields_set:
+        channel.files_to_drive = data.files_to_drive  # CF1: later posts only
     converted = data.type is not None and data.type != channel.type
     if converted:
         # Making a private channel public exposes its whole history: administrators only, and (L4,

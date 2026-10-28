@@ -303,6 +303,64 @@ async def _probe_videos(limit: int) -> int:
         await db.dispose()
 
 
+async def _channel_files_backfill(
+    channel_names: list[str] | None, since: str | None, dry_run: bool, limit: int | None
+) -> int:
+    """CF1 (docs/CHANNEL_FILES.md §10): earlier attachments into their channels' drives."""
+    from datetime import UTC, datetime
+
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.drive import channel_files
+
+    settings = get_settings()
+    channel_files.set_timezone(settings.channel_files_tz)
+    start = None
+    if since is not None:
+        try:
+            day = datetime.fromisoformat(since)
+        except ValueError as exc:
+            raise SystemExit(f"error: --since must be a date like 2025-04-01: {since}") from exc
+        start = (day if day.tzinfo else day.replace(tzinfo=channel_files.zone())).astimezone(UTC)
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                result = await channel_files.backfill(
+                    session,
+                    channel_names=channel_names,
+                    since=start,
+                    dry_run=dry_run,
+                    limit=limit,
+                )
+            except ValueError as exc:
+                raise SystemExit(f"error: {exc}") from exc
+        for row in result.channels:
+            quota = f"{row.quota_bytes} bytes" if row.quota_bytes is not None else "none"
+            state = "" if row.enabled else " (off: files of this channel stay out of its drive)"
+            print(
+                f"#{row.name}: {row.files} file(s), {row.bytes} bytes; the drive uses "
+                f"{row.used_bytes} bytes, quota {quota}{state}"
+            )
+            if not dry_run and (row.filed or row.failed):
+                print(f"  filed {row.filed}, failed {row.failed}")
+        if dry_run:
+            print("dry run: nothing was changed")
+        elif result.remaining:
+            print("the limit stopped the run: run it again for the rest")
+        return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_channel_files_backfill(args: argparse.Namespace) -> int:
+    """CF1: opt-in, per channel; nothing is copied (each row becomes its item's version 1)."""
+    if args.limit is not None and args.limit < 1:
+        raise SystemExit("error: --limit must be at least 1")
+    names = None if args.all else args.channel
+    return asyncio.run(_channel_files_backfill(names, args.since, args.dry_run, args.limit))
+
+
 def cmd_probe_videos(args: argparse.Namespace) -> int:
     """M79: size, length and poster of the videos stored before M79 (resumable)."""
     if args.limit < 1:
@@ -1742,6 +1800,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild", action="store_true", help="recompute what differs, then verify"
     )
     drive_usage.set_defaults(func=cmd_drive_usage)
+
+    backfill = sub.add_parser(
+        "channel-files-backfill",
+        help="put earlier attachments of channels into their drives (docs/CHANNEL_FILES.md §10)",
+    )
+    which = backfill.add_mutually_exclusive_group(required=True)
+    which.add_argument(
+        "--channel", action="append", help="a channel's name (repeat for more)", metavar="NAME"
+    )
+    which.add_argument("--all", action="store_true", help="every public and private channel")
+    backfill.add_argument(
+        "--since", help="only files posted on or after this date (workspace zone), 2025-04-01"
+    )
+    backfill.add_argument(
+        "--dry-run", action="store_true", help="count the files and sizes, change nothing"
+    )
+    backfill.add_argument("--limit", type=int, help="at most this many files a run")
+    backfill.set_defaults(func=cmd_channel_files_backfill)
 
     drive_index = sub.add_parser(
         "drive-index",

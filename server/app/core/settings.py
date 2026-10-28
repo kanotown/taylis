@@ -338,6 +338,9 @@ class Settings(BaseSettings):
     drive_share_password_attempts_per_link: int = 10
     drive_share_password_rate_limit_per_ip: int = 20
     drive_link_create_rate_limit_per_user: int = 30
+    # CF1 (docs/CHANNEL_FILES.md §3.3): the zone (an IANA name) of the month folders
+    # 「投稿のファイル > 2026-10」 that files posted in a channel go to.
+    channel_files_tz: str = "Asia/Tokyo"
     # Outbox relay (ARCHITECTURE.md §6)
     outbox_poll_interval_seconds: float = 1.0
     outbox_batch_size: int = 100

@@ -17,7 +17,7 @@ function file(id: string, name: string): DriveItemOut {
   return {
     id, location_id: "loc", parent_id: "root", kind: "file", name, size_bytes: 40_000, content_type: "application/pdf",
     content_modified_at: null, created_by: "u1", created_at: "2026-10-01T00:00:00Z", updated_by: "u1", updated_at: "2026-10-01T09:30:00Z",
-    version_count: 1, file: null, link_count: 0,
+    version_count: 1, file: null, link_count: 0, posted: false,
   };
 }
 

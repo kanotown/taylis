@@ -37,7 +37,8 @@ _SPLIT = text(
                WHERE i.trashed_at IS NULL AND v.id = i.current_version_id), 0),
            coalesce(sum(v.size_bytes) FILTER (
                WHERE i.trashed_at IS NULL AND v.id <> i.current_version_id), 0),
-           coalesce(sum(v.size_bytes) FILTER (WHERE i.trashed_at IS NOT NULL), 0)
+           coalesce(sum(v.size_bytes) FILTER (WHERE i.trashed_at IS NOT NULL), 0),
+           coalesce(sum(v.size_bytes) FILTER (WHERE v.source = 'message'), 0)
     FROM drive_file_versions v JOIN drive_items i ON i.id = v.item_id
     GROUP BY i.location_id
     """
@@ -90,7 +91,7 @@ async def _names(
 def _location_out(
     location: DriveLocation,
     settings: Settings,
-    split: tuple[int, int, int],
+    split: tuple[int, int, int, int],
     channels: dict[uuid.UUID, Channel],
     users: dict[uuid.UUID, User],
 ) -> DriveLocationUsageOut:
@@ -119,6 +120,7 @@ def _location_out(
         current_bytes=split[0],
         old_versions_bytes=split[1],
         trash_bytes=split[2],
+        posted_bytes=split[3],
     )
 
 
@@ -133,10 +135,13 @@ async def usage(db: AsyncSession, settings: Settings) -> DriveUsageOut:
             )
         ).scalars()
     )
-    splits = {r[0]: (int(r[1]), int(r[2]), int(r[3])) for r in (await db.execute(_SPLIT)).all()}
+    splits = {
+        r[0]: (int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in (await db.execute(_SPLIT)).all()
+    }
     channels, users = await _names(db, rows)
     locations = [
-        _location_out(row, settings, splits.get(row.id, (0, 0, 0)), channels, users) for row in rows
+        _location_out(row, settings, splits.get(row.id, (0, 0, 0, 0)), channels, users)
+        for row in rows
     ]
     people_rows = (
         await db.execute(
@@ -154,7 +159,9 @@ async def usage(db: AsyncSession, settings: Settings) -> DriveUsageOut:
     chat = (
         await db.execute(
             select(func.count(), func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
-                Attachment.drive_item_id.is_(None), Attachment.status != "deleted"
+                # CF1: a posted file in a drive is counted there; a tombstone has no bytes.
+                Attachment.drive_item_id.is_(None),
+                Attachment.status.not_in(("deleted", "purged")),
             )
         )
     ).one()
@@ -206,9 +213,11 @@ async def set_quota(
     )
     await events.emit_location_updated(db, location.id)
     await db.commit()
-    split = {r[0]: (int(r[1]), int(r[2]), int(r[3])) for r in (await db.execute(_SPLIT)).all()}
+    split = {
+        r[0]: (int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in (await db.execute(_SPLIT)).all()
+    }
     channels, users = await _names(db, [location])
-    return _location_out(location, settings, split.get(location.id, (0, 0, 0)), channels, users)
+    return _location_out(location, settings, split.get(location.id, (0, 0, 0, 0)), channels, users)
 
 
 # --- app.cli drive-usage -------------------------------------------------------------------------

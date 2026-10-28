@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -55,7 +56,16 @@ class Attachment(Base):
             name="attachments_lending_item_id_fkey",
         )
     )
+    # pending | scheduled | attached | deleted (gone at once; the GC removes the bytes, then the
+    # row) | purged (CF1: a posted file's tombstone, below).
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    # CF1 (docs/CHANNEL_FILES.md §3.2): a file posted in a public or private channel is also
+    # version 1 of an item in the channel's drive (message_id and drive_item_id both set). What
+    # the channel sees of it, the same for every viewer (permissions never read it): 'available'
+    # (in the channel's drive, not in the trash), 'moved' (in another location), 'trashed',
+    # 'deleted' (purged from the drive; the GC keeps the row as a tombstone, status 'purged').
+    # NULL for every other row.
+    drive_state: Mapped[str | None] = mapped_column(String(12))
     filename: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
@@ -95,6 +105,11 @@ class Attachment(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
+        CheckConstraint(
+            "drive_state IS NULL OR (drive_state IN ('available', 'moved', 'trashed', 'deleted') "
+            "AND message_id IS NOT NULL)",
+            name="drive_state_values",
+        ),
         Index("attachments_message_idx", "message_id"),
         Index("attachments_gc_idx", "status", "created_at"),
         Index(
@@ -111,6 +126,11 @@ class Attachment(Base):
             "attachments_drive_item_idx",
             "drive_item_id",
             postgresql_where=text("drive_item_id IS NOT NULL"),
+        ),
+        Index(
+            "attachments_drive_state_idx",
+            "drive_item_id",
+            postgresql_where=text("drive_state IS NOT NULL"),
         ),
         Index(
             "attachments_lending_item_idx",

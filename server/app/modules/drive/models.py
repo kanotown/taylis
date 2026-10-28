@@ -124,6 +124,10 @@ class DriveItem(Base):
     change_seq: Mapped[int] = mapped_column(BigInteger)
     # M160: POST /drive/folders {name, client_op_id} sent again answers the folder it made.
     client_op_id: Mapped[uuid.UUID | None] = mapped_column()
+    # CF1 (docs/CHANNEL_FILES.md §3.3): a folder the server keeps: 'channel_posts'
+    # (「投稿のファイル」 at a channel drive's root). It cannot be renamed, moved or trashed (409
+    # drive_folder_system).
+    system_role: Mapped[str | None] = mapped_column(String(16))
 
     __table_args__ = (
         CheckConstraint("kind IN ('folder', 'file')", name="kind_values"),
@@ -132,6 +136,17 @@ class DriveItem(Base):
         ),
         CheckConstraint("parent_id IS NOT NULL OR kind = 'folder'", name="root_is_folder"),
         CheckConstraint("(trashed_at IS NULL) = (trash_root_id IS NULL)", name="trash_root"),
+        CheckConstraint(
+            "system_role IS NULL OR (system_role = 'channel_posts' AND kind = 'folder')",
+            name="system_role_values",
+        ),
+        Index(
+            "drive_items_system_role_uniq",
+            "location_id",
+            "system_role",
+            unique=True,
+            postgresql_where=text("system_role IS NOT NULL AND trashed_at IS NULL"),
+        ),
         Index(
             "drive_items_name_uniq",
             "parent_id",
@@ -180,6 +195,8 @@ class DriveFileVersion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
+    # upload | restore | attachment (saved from a message, a copy) | copy | import | message (CF1:
+    # the attachment posted in the channel itself, docs/CHANNEL_FILES.md §3.2).
     source: Mapped[str] = mapped_column(String(16), default="upload", server_default="upload")
     # §6.4: when the media loop finished (SHA-256, thumbnail, poster). Its lease and tries:
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

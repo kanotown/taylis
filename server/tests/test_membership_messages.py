@@ -287,6 +287,7 @@ async def test_admin_settings_api_audit_event_and_bootstrap(
         "in_app_calls": {"enabled": False, "video": False, "screen_share": False},
         "calls_enabled": False,
         "meeting_base_url": None,
+        "channel_files_to_drive": True,  # CF1
     }
 
     as_user(admin)
@@ -329,6 +330,7 @@ async def test_admin_settings_api_audit_event_and_bootstrap(
             "in_app_calls": {"enabled": False, "video": False, "screen_share": False},
             "calls_enabled": False,
             "meeting_base_url": None,
+            "channel_files_to_drive": True,
         }
     }
     # Nothing changed: no audit, no event.

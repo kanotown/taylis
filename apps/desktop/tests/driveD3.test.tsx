@@ -21,7 +21,7 @@ function row(id: string, kind: "file" | "folder", name: string, parent = "root")
   return {
     id, location_id: "loc", parent_id: parent, kind, name, size_bytes: kind === "file" ? 2048 : null, content_type: kind === "file" ? "text/plain" : null,
     content_modified_at: null, created_by: "u1", created_at: "2026-10-01T00:00:00Z", updated_by: "u1", updated_at: "2026-10-01T09:30:00Z",
-    version_count: kind === "file" ? 3 : 0, file: null, link_count: 0,
+    version_count: kind === "file" ? 3 : 0, file: null, link_count: 0, posted: false,
   };
 }
 
@@ -144,8 +144,8 @@ describe("AdminDriveTab", () => {
       total_quota_bytes: 150 * 1024 ** 3, user_default_quota_bytes: null, chat_attachments_bytes: 1024 ** 3, chat_attachment_count: 4000,
     },
     locations: [
-      { id: "w", kind: "workspace", channel_id: null, user_id: null, name: "研究室ドライブ", archived: false, used_bytes: 2 * 1024 ** 3, item_count: 1000, quota_bytes: null, effective_quota_bytes: null, updated_at: "2026-10-21T00:00:00Z", current_bytes: 1, old_versions_bytes: 0, trash_bytes: 0 },
-      { id: "c", kind: "channel", channel_id: "ch", user_id: null, name: "m2-seminar", archived: true, used_bytes: 1024 ** 3, item_count: 200, quota_bytes: 2 * 1024 ** 3, effective_quota_bytes: 2 * 1024 ** 3, updated_at: "2026-10-21T00:00:00Z", current_bytes: 1, old_versions_bytes: 0, trash_bytes: 0 },
+      { id: "w", kind: "workspace", channel_id: null, user_id: null, name: "研究室ドライブ", archived: false, used_bytes: 2 * 1024 ** 3, item_count: 1000, quota_bytes: null, effective_quota_bytes: null, updated_at: "2026-10-21T00:00:00Z", current_bytes: 1, old_versions_bytes: 0, trash_bytes: 0, posted_bytes: 0 },
+      { id: "c", kind: "channel", channel_id: "ch", user_id: null, name: "m2-seminar", archived: true, used_bytes: 1024 ** 3, item_count: 200, quota_bytes: 2 * 1024 ** 3, effective_quota_bytes: 2 * 1024 ** 3, updated_at: "2026-10-21T00:00:00Z", current_bytes: 1, old_versions_bytes: 0, trash_bytes: 0, posted_bytes: 0 },
     ],
     people: [{ user_id: "u1", bytes: 3 * 1024 ** 3, versions: 1300 }],
   };

@@ -6,7 +6,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.core.db import Db
 from app.core.errors import not_found, rate_limited
 from app.modules.attachments import service
-from app.modules.attachments.schemas import AttachmentOut, FileListOut, to_attachment_out
+from app.modules.attachments.schemas import AttachmentOut, FileListOut
 from app.modules.auth.deps import CurrentUser
 
 router = APIRouter(tags=["attachments"])
@@ -43,7 +43,8 @@ async def list_files(
 
 @router.get("/attachments/{attachment_id}", response_model=AttachmentOut)
 async def get_attachment(attachment_id: UUID, user: CurrentUser, db: Db) -> AttachmentOut:
-    return to_attachment_out(await service.get_for_access(db, user, attachment_id))
+    row = await service.get_for_access(db, user, attachment_id)
+    return (await service.attachments_out(db, [row]))[0]
 
 
 # GET and HEAD as two routes with their own operation ids (as the share links' content).

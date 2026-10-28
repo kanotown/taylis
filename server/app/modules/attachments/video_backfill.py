@@ -13,7 +13,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -45,8 +45,9 @@ async def _next_batch(db: AsyncSession, after: uuid.UUID | None, size: int) -> l
             Attachment.content_type.like("video/%"),
             Attachment.status != "deleted",
             Attachment.video_probed_at.is_(None),
-            # M160: the drive's media loop probes drive videos (docs/DRIVE.md §6.4).
-            Attachment.drive_item_id.is_(None),
+            # M160: the drive's media loop probes drive videos (docs/DRIVE.md §6.4); CF1: a
+            # posted file (in a message and the drive) is the chat's.
+            or_(Attachment.drive_item_id.is_(None), Attachment.message_id.is_not(None)),
         )
         .order_by(Attachment.id)
         .limit(size)

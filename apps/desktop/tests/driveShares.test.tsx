@@ -22,7 +22,7 @@ const POLICY: DriveLinkPolicyOut = { enabled: true, location_enabled: true, can_
 const ITEM: DriveItemOut = {
   id: "item", location_id: "loc", parent_id: "root", kind: "folder", name: "共同研究", size_bytes: null, content_type: null,
   content_modified_at: null, created_by: "me", created_at: "2026-10-01T00:00:00Z", updated_by: "me", updated_at: "2026-10-01T00:00:00Z",
-  version_count: 0, file: null, link_count: 1,
+  version_count: 0, file: null, link_count: 1, posted: false,
 };
 
 function link(overrides: Partial<DriveShareLinkOut> = {}): DriveShareLinkOut {

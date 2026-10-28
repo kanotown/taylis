@@ -168,6 +168,11 @@ async def search_drive(
         default=False,
         description="Also the text inside the files (PDF, Office, plain text), with a snippet",
     ),
+    origin: Literal["all", "uploads", "posts"] = Query(
+        default="all",
+        description="CF1: posts = only the files posted in a channel (filed from a message), "
+        "uploads = everything else",
+    ),
 ) -> DriveSearchOut:
     """Phase D2 (docs/DRIVE.md §12): files and folders whose name matches (Japanese and English,
     partial words), in the drives I can read (研究室ドライブ but for guests, my My Drive, my
@@ -188,6 +193,7 @@ async def search_drive(
         cursor=cursor,
         limit=limit,
         content=content,
+        origin=origin,
         timeout_ms=settings.search_timeout_ms,
         gate=request.app.state.search_gate,
     )

@@ -54,7 +54,12 @@ async def ensure(db: AsyncSession) -> uuid.UUID:
 
 # --- settings (M88) -----------------------------------------------------------------------------
 
-SETTING_FIELDS = ("show_membership_messages", "preview_before_join", "in_app_calls_enabled")
+SETTING_FIELDS = (
+    "show_membership_messages",
+    "preview_before_join",
+    "in_app_calls_enabled",
+    "channel_files_to_drive",
+)
 
 
 async def _row(db: AsyncSession, *, for_update: bool = False) -> WorkspaceSettings | None:
@@ -89,6 +94,7 @@ async def settings(db: AsyncSession) -> WorkspaceSettingsOut:
         preview_before_join=row.preview_before_join,
         icon_version=icon_version_of(row.icon_key),
         in_app_calls=in_app_calls_of(row),
+        channel_files_to_drive=row.channel_files_to_drive,
     )
 
 
@@ -167,6 +173,7 @@ async def admin_settings(
         icon_version=icon_version_of(row.icon_key),
         in_app_calls=in_app_calls_of(row),
         in_app_calls_enabled=row.in_app_calls_enabled,
+        channel_files_to_drive=row.channel_files_to_drive,
         updated_at=row.updated_at,
         updated_by=row.updated_by,
         default_channel_ids=[c.id for c in usable],
