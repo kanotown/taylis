@@ -8,6 +8,7 @@ import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
+import { ComposerDriveHint } from "./ChannelFiles";
 import { DriveLinkWarning, DrivePickerDialog } from "./DriveConversation";
 import { driveLink } from "./permalink";
 import { withoutDriveLink } from "../drive/conversation";
@@ -831,6 +832,8 @@ export function Composer({
         <DriveLinkWarning controller={controller} channel={channel} text={text} onSendCopy={sendDriveCopy} />
         <div className={cn((pending.length > 0 || uploading > 0) && "px-2 pt-2")}>
           <PendingAttachments items={pending} uploading={uploading} controller={controller} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
+          {/* CF2 (docs/CHANNEL_FILES.md §12.3): where the files go besides the message. */}
+          <ComposerDriveHint controller={controller} channel={channel} shown={pending.length > 0 || uploading > 0} />
         </div>
         <input
           ref={fileInput}

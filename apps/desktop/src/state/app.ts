@@ -22,7 +22,7 @@ import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
-import type { DriveItemDetailOut, DriveReachOut } from "../api/types";
+import type { DriveItemDetailOut, DriveMessageFileOut, DriveReachOut } from "../api/types";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate, PresenceUpdate } from "../api/types";
 import { canOpenDownloaded, openDownloaded, revealDownloaded, saveDownload } from "../platform/download";
 import { browserDownload, downloadRoute, saveStreamToFile, ticketUrl } from "../drive/download";
@@ -870,11 +870,12 @@ export class AppController {
    * `fromThread`: deleted from a thread pane's own rows. When that is the thread's root, the pane closes without
    * 「元のメッセージが削除されたため、スレッドを閉じました」 (THREADS.md §5): I closed it myself.
    */
-  async deleteMessage(messageId: string, options: { fromThread?: boolean } = {}): Promise<void> {
+  async deleteMessage(messageId: string, options: { fromThread?: boolean; driveFiles?: "auto" | "keep" } = {}): Promise<void> {
     if (!this.api) return;
     if (options.fromThread) this.threadDeletes.add(messageId);
     try {
-      this.store.upsertMessage(await this.api.deleteMessage(messageId));
+      // CF2 (docs/CHANNEL_FILES.md §7.3): the confirmation's check box; left out, the server's auto.
+      this.store.upsertMessage(await this.api.deleteMessage(messageId, options.driveFiles));
     } catch (error) {
       this.threadDeletes.delete(messageId);
       this.setError(error);
@@ -882,6 +883,20 @@ export class AppController {
   }
 
   private readonly threadDeletes = new Set<string>();
+
+  /**
+   * CF2 (docs/CHANNEL_FILES.md §7.3): what deleting the message would do to its files in the channel's drive (the
+   * confirmation's check box). Null when it cannot be told (a server before CF1, offline): the confirmation then offers
+   * no check box and the server decides (auto).
+   */
+  async messageDriveFiles(messageId: string): Promise<DriveMessageFileOut[] | null> {
+    if (!this.api) return null;
+    try {
+      return (await this.api.messageDriveFiles(messageId)).files;
+    } catch {
+      return null;
+    }
+  }
 
   /** True (once) when the message was deleted from a thread pane on this screen (deleteMessage's `fromThread`). */
   takeThreadDelete(messageId: string): boolean {
@@ -2851,10 +2866,13 @@ export class AppController {
 
   // --- drive links in conversations (M165, docs/DRIVE.md §13) -------------------------------------------------------
 
-  /** Where 「ドライブ」 should open next (a `/d/<id>` card or link): the main screen takes it once. */
-  openDriveRequest: { locationId: string; folderId: string } | null = null;
+  /**
+   * Where 「ドライブ」 should open next (a `/d/<id>` card or link): the main screen takes it once. CF2: `itemId`, the
+   * file to select there (「ドライブで表示」 of a message's file).
+   */
+  openDriveRequest: { locationId: string; folderId: string; itemId?: string } | null = null;
 
-  requestShowInDrive(target: { locationId: string; folderId: string }): void {
+  requestShowInDrive(target: { locationId: string; folderId: string; itemId?: string }): void {
     this.openDriveRequest = target;
     this.emit();
   }
@@ -2891,8 +2909,38 @@ export class AppController {
       return false;
     }
     const item = link.detail.item;
-    this.requestShowInDrive({ locationId: item.location_id, folderId: item.kind === "folder" ? item.id : (item.parent_id ?? item.id) });
+    this.requestShowInDrive({ locationId: item.location_id, folderId: item.kind === "folder" ? item.id : (item.parent_id ?? item.id), ...(item.kind === "file" ? { itemId: item.id } : {}) });
     return true;
+  }
+
+  /**
+   * CF2 (docs/CHANNEL_FILES.md §6.5, §12.1): 「戻す」 under a message's file in the drive's trash. The message changes by
+   * its message.updated (the file is 「available」 again, or 「moved」 when its folder went elsewhere).
+   */
+  async restorePostedFile(itemId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.restoreDriveItem(itemId, "rename");
+      this.driveLinks.delete(itemId);
+      this.setNotice(t("channelFiles.restored"));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** CF2 (docs/CHANNEL_FILES.md §9, §12.7): the channel's own switch (owners), null to follow the workspace's. */
+  async setChannelFilesToDrive(channelId: string, value: boolean | null): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.updateChannel(channelId, { files_to_drive: value }));
+      this.setNotice(t("channelFiles.settings.saved"));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
   }
 
   private readonly driveReaches = new Map<string, { at: number; pending: Promise<DriveReachOut | null> }>();

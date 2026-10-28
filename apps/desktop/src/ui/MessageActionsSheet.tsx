@@ -5,6 +5,8 @@ import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
+import { DeleteDriveFilesOption } from "./ChannelFiles";
+import { firstPostedItem } from "../drive/channelFiles";
 import { type MessageActionKey, messageActions } from "./messageActions";
 import { cn } from "./primitives";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
@@ -82,6 +84,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   const mine = me?.id === message.sender_id;
   const reacted = new Set((message.reactions ?? []).filter((r) => !!me && r.user_ids.includes(me.id)).map((r) => r.emoji));
   const [view, setView] = useState<"actions" | "emoji" | "remind" | "delete">(initialView);
+  // CF2 (docs/CHANNEL_FILES.md §7.3): the delete's 「ドライブのファイルもゴミ箱に移す」.
+  const [deleteDriveFiles, setDeleteDriveFiles] = useState<"auto" | "keep" | undefined>(undefined);
   // The finger that opened the sheet lifts over it: a tap in the first moments is that finger, not a choice.
   const [openedAt] = useState(() => Date.now());
   const settled = () => Date.now() - openedAt > 350;
@@ -116,6 +120,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
     unread: then(() => controller.engine?.markUnread(message.channel_id, message.seq!)),
     copyLink: then(() => void controller.copyPermalink(message.id)),
     share: then(onShare),
+    showInDrive: then(() => { const posted = firstPostedItem(message.attachments); if (posted?.drive?.item_id) void controller.openDriveLink(posted.drive.item_id); }),
     saveToDrive: then(() => onSaveToDrive?.()),
     pin: then(() => void controller.togglePin(message)),
     report: then(() => onReport?.()),
@@ -188,9 +193,10 @@ export function MessageActionsSheet({ controller, message, initialView = "action
           <div className="space-y-3 px-4 pb-3 pt-1">
             <div className="text-sm font-medium">{t("timeline.deleteTitle")}</div>
             <div className="text-xs text-muted">{t("timeline.deleteNote")}</div>
+            <DeleteDriveFilesOption controller={controller} message={message} onChange={setDeleteDriveFiles} tone="sheet" />
             <div className="flex gap-2">
               <button type="button" className="h-11 flex-1 rounded-xl border border-line text-sm" onClick={() => setView("actions")}>{t("common.cancel")}</button>
-              <button type="button" className="h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white" onClick={then(() => void controller.deleteMessage(message.id, { fromThread: thread }))}>{t("common.deleteConfirm")}</button>
+              <button type="button" className="h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white" onClick={then(() => void controller.deleteMessage(message.id, { fromThread: thread, driveFiles: deleteDriveFiles }))}>{t("common.deleteConfirm")}</button>
             </div>
           </div>
         ) : (

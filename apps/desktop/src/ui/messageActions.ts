@@ -1,6 +1,7 @@
-import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, Forward, HardDriveDownload, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
+import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, FolderInput, Forward, HardDriveDownload, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
 
 import type { MessageState } from "../sync/types";
+import { firstPostedItem } from "../drive/channelFiles";
 import { t } from "../i18n";
 
 /**
@@ -8,7 +9,7 @@ import { t } from "../i18n";
  * (MessageActionsSheet.tsx), so both offer the same things under the same conditions. Each surface runs them itself.
  */
 export type MessageActionKey =
-  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "saveToDrive" | "pin" | "report" | "delete";
+  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "showInDrive" | "saveToDrive" | "pin" | "report" | "delete";
 
 export interface MessageActionContext {
   message: MessageState;
@@ -39,6 +40,9 @@ export interface MessageAction {
 /** Every action the message offers, in the phone sheet's order (iOS MessageActions.swift, Android MessageActions.kt). */
 export function messageActions(ctx: MessageActionContext): MessageAction[] {
   const { message } = ctx;
+  // CF2 (docs/CHANNEL_FILES.md §11.2): a file posted in a channel is in its drive already: 「ドライブで表示」, and the
+  // copy is 「ほかの場所に保存」.
+  const posted = !message.pending && !message.deleted && firstPostedItem(message.attachments) !== null;
   const all: Array<MessageAction | false> = [
     ctx.showReactions && (message.reactions ?? []).length > 0 && { key: "reactions", label: t("actions.reactions"), icon: Users },
     ctx.thread && { key: "thread", label: t("timeline.replyInThread"), icon: MessageSquare },
@@ -51,7 +55,8 @@ export function messageActions(ctx: MessageActionContext): MessageAction[] {
     ctx.unreadOffered && { key: "unread", label: t("actions.markUnread"), icon: Mail },
     { key: "copyLink", label: t("canvas.copyLink"), icon: Link },
     { key: "share", label: t("actions.share"), icon: Forward },
-    !!ctx.canSaveToDrive && { key: "saveToDrive", label: t("driveSave.title"), icon: HardDriveDownload },
+    posted && { key: "showInDrive", label: t("channelFiles.showInDrive"), icon: FolderInput },
+    !!ctx.canSaveToDrive && { key: "saveToDrive", label: posted ? t("channelFiles.saveElsewhere") : t("driveSave.title"), icon: HardDriveDownload },
     { key: "pin", label: message.pinned_at ? t("actions.unpin") : t("actions.pin"), icon: message.pinned_at ? PinOff : Pin },
     // M104 (docs/MODERATION.md §3): someone else's message, once it is stored.
     !ctx.mine && !message.pending && !message.deleted && message.seq !== null && { key: "report", label: t("report.send"), icon: Flag },
@@ -65,7 +70,7 @@ export const HOVER_BAR_ACTIONS: readonly MessageActionKey[] = ["thread", "save",
 
 /** The hover bar's 「その他」 menu, in groups (a separator between them); 「削除」 last. */
 export const HOVER_MENU_GROUPS: readonly (readonly MessageActionKey[])[] = [
-  ["copyLink", "share", "saveToDrive", "remind"],
+  ["copyLink", "share", "showInDrive", "saveToDrive", "remind"],
   ["task", "review"],
   ["reactions", "pin", "unread"],
   ["report", "delete"],

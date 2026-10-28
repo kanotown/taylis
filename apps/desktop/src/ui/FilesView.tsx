@@ -1,4 +1,4 @@
-import { Download, FileText, Files, HardDriveDownload, Search } from "lucide-react";
+import { Download, FileText, Files, FolderInput, HardDriveDownload, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { FileItem, MessageOut } from "../api/types";
@@ -12,6 +12,7 @@ import { Button, cn, IconButton, Input } from "./primitives";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 import { SaveToDriveDialog } from "./DriveConversation";
+import { postedItemId } from "../drive/channelFiles";
 
 /** Attachments in my channels (or one channel), newest first, filtered by file name; pages of 50. */
 function useFileItems(controller: AppController, channelId: string | null, query: string) {
@@ -155,8 +156,14 @@ export function FileRow({ item, controller, onOpen }: { item: FileItem; controll
           </span>
         </span>
       </button>
+      {/* CF2 (docs/CHANNEL_FILES.md §11.1): a posted file is in its channel's drive: 「ドライブで表示」. */}
+      {postedItemId(attachment) && (
+        <IconButton label={t("channelFiles.showInDrive")} data-show-in-drive="" onClick={() => void controller.openDriveLink(postedItemId(attachment)!)}>
+          <FolderInput size={16} />
+        </IconButton>
+      )}
       {/* M165 (docs/DRIVE.md §13.2): 「ドライブに保存」, its conversation's drive first. */}
-      <IconButton label={t("driveSave.title")} onClick={() => setSaving(true)}>
+      <IconButton label={postedItemId(attachment) ? t("channelFiles.saveElsewhere") : t("driveSave.title")} onClick={() => setSaving(true)}>
         <HardDriveDownload size={16} />
       </IconButton>
       <IconButton label={t("attach.download")} onClick={() => void controller.downloadAttachment(attachment)}>

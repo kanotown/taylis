@@ -31,6 +31,8 @@ import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { SaveToDriveDialog, savableAttachments } from "./DriveConversation";
+import { DeleteDriveFilesOption } from "./ChannelFiles";
+import { firstPostedItem } from "../drive/channelFiles";
 import { ReportDialog } from "./ModerationDialogs";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { isImeKey, LazyRichEditor, type RichEditorApi } from "./richEditorApi";
@@ -907,6 +909,8 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
 const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, chosenReactions, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly, feedChannel, feedNew = false, onOpenChannel, onActivate }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // CF2 (docs/CHANNEL_FILES.md §7.3): the confirmation's 「ドライブのファイルもゴミ箱に移す」.
+  const [deleteDriveFiles, setDeleteDriveFiles] = useState<"auto" | "keep" | undefined>(undefined);
   const [remindOpen, setRemindOpen] = useState(false);
   const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
   // M12e: a note on the reminder (the API's `note`, as on Android); sent with a preset or the chosen time.
@@ -992,6 +996,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
     unread: () => engine?.markUnread(message.channel_id, message.seq!),
     copyLink: () => void controller.copyPermalink(message.id),
     share: afterClose(() => setShareOpen(true)),
+    showInDrive: () => { const posted = firstPostedItem(message.attachments); if (posted?.drive?.item_id) void controller.openDriveLink(posted.drive.item_id); },
     saveToDrive: afterClose(() => setSaveToDriveOpen(true)),
     pin: () => void controller.togglePin(message),
     report: afterClose(() => setReportOpen(true)),
@@ -1144,7 +1149,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             {message.body && !pollHidesBody(message) && !callHidesBody(message) && (
               <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} jumbo />
             )}
-            <AttachmentList attachments={message.attachments ?? []} controller={controller} downloadable={!message.pending && !message.failed} />
+            <AttachmentList attachments={message.attachments ?? []} controller={controller} downloadable={!message.pending && !message.failed} channelId={message.channel_id} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} auto={autoLinkPreview(store, message.sender_id)} />}
           </>
         )}
@@ -1305,11 +1310,12 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             <PopoverContent align="end" className="w-64 p-3" aria-label={t("timeline.deleteMessage")}>
               <div className="text-sm font-medium">{t("timeline.deleteTitle")}</div>
               <div className="mt-1 text-xs text-muted">{t("timeline.deleteNote")}</div>
+              {confirmDelete && <DeleteDriveFilesOption controller={controller} message={message} onChange={setDeleteDriveFiles} />}
               <div className="mt-3 flex justify-end gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
                   {t("common.cancel")}
                 </Button>
-                <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id, { fromThread: thread }); }}>
+                <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id, { fromThread: thread, driveFiles: deleteDriveFiles }); }}>
                   {t("common.deleteConfirm")}
                 </Button>
               </div>

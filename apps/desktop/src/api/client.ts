@@ -8,7 +8,7 @@ import type { SendOptions } from "../sync/types";
 import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
-import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
+import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveSearchOrigin, DriveImpactOut, DriveMessageFilesOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
 import type { LendingApproversOut, LendingBorrowIn, LendingCategoryCreate, LendingCategoryOut, LendingCategoryUpdate, LendingImportOut, LendingItemCreate, LendingItemDetailOut, LendingItemHistoryOut, LendingItemOut, LendingItemStatusIn, LendingItemUpdate, LendingLoanOut, LendingLoanScope, LendingPermissionIn, LendingReturnIn, LendingSettingsOut, LendingSettingsUpdate, LendingSummaryOut } from "./types";
 import type { DriveItemLinksOut, DriveShareEventListOut,DriveShareLinkCreate, DriveShareLinkCreatedOut, DriveShareLinkListOut, DriveShareLinkOut, DriveShareLinkPatch, DriveShareSettingsOut, DriveShareSettingsPatch } from "./types";
@@ -1944,6 +1944,14 @@ export class ApiClient {
     return this.request("POST", "/api/v1/drive/items/move", { item_ids: itemIds, target_folder_id: targetFolderId, on_conflict: onConflict });
   }
 
+  /**
+   * CF1 (docs/CHANNEL_FILES.md §6.4): what moving the items into `targetFolderId` (null: putting them in the trash)
+   * would do to the messages their posted files are attached to. Nothing is changed.
+   */
+  driveImpact(itemIds: string[], targetFolderId: string | null): Promise<DriveImpactOut> {
+    return this.request("POST", "/api/v1/drive/items/impact", { item_ids: itemIds, ...(targetFolderId ? { target_folder_id: targetFolderId } : {}) });
+  }
+
   trashDriveItems(itemIds: string[]): Promise<DriveResultsOut> {
     return this.request("POST", "/api/v1/drive/items/trash", { item_ids: itemIds });
   }
@@ -2142,9 +2150,11 @@ export class ApiClient {
    * §12: names of files and folders in the drives I can read (`location_id`: one of them). §29 `content`: the text inside
    * the files too (each hit says what matched, with a marked snippet and the PDF page).
    */
-  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | null; cursor?: string | null; limit?: number; content?: boolean }): Promise<DriveSearchOut> {
+  searchDrive(query: { q: string; location_id?: string | null; kind?: "file" | "folder" | null; cursor?: string | null; limit?: number; content?: boolean; origin?: DriveSearchOrigin }): Promise<DriveSearchOut> {
     const params = new URLSearchParams({ q: query.q });
     if (query.content) params.set("content", "true");
+    // CF1 (docs/CHANNEL_FILES.md §12.6): only sent when narrowing (a server before CF1 knows no `origin`).
+    if (query.origin && query.origin !== "all") params.set("origin", query.origin);
     if (query.location_id) params.set("location_id", query.location_id);
     if (query.kind) params.set("kind", query.kind);
     if (query.cursor) params.set("cursor", query.cursor);
@@ -2214,8 +2224,17 @@ export class ApiClient {
   }
 
   /** Returns the tombstone (deleted = true) so the caller can apply it locally. */
-  deleteMessage(messageId: string): Promise<MessageOut> {
-    return this.request("DELETE", `/api/v1/messages/${messageId}`);
+  /**
+   * CF1 (docs/CHANNEL_FILES.md §7.3): `driveFiles` says what becomes of the message's files in the channel's drive
+   * (auto: the ones I posted and nobody changed go to the drive's trash; keep: all stay). Left out, the server's auto.
+   */
+  deleteMessage(messageId: string, driveFiles?: "auto" | "keep"): Promise<MessageOut> {
+    return this.request("DELETE", `/api/v1/messages/${messageId}${driveFiles ? `?drive_files=${driveFiles}` : ""}`);
+  }
+
+  /** CF1 (docs/CHANNEL_FILES.md §7.3): what deleting the message would do to its files in the drive (the confirmation). */
+  messageDriveFiles(messageId: string): Promise<DriveMessageFilesOut> {
+    return this.request("GET", `/api/v1/messages/${messageId}/drive-files`);
   }
 
   addReaction(messageId: string, emoji: string): Promise<MessageOut> {

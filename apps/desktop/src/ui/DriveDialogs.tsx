@@ -3,12 +3,13 @@
  * locations I can write, deleting for good from the trash, and the name-conflict question of an upload.
  */
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { DriveCrumb, DriveItemOut, DriveLocationOut } from "../api/types";
+import type { DriveCrumb, DriveImpactOut, DriveItemOut, DriveLocationOut } from "../api/types";
 import { ApiError, describeError } from "../api/errors";
 import type { AppController } from "../state/app";
 import { locationName, orderLocations, pathLine } from "../drive/listing";
+import { crumbName, impactLines, itemName, localizedPath, needsImpactWarning } from "../drive/channelFiles";
 import type { ConflictChoice, ConflictQuestion } from "../drive/uploads";
 import { Button, cn, Input, Modal } from "./primitives";
 import { t } from "../i18n";
@@ -196,7 +197,7 @@ export function DialogCrumbs({ path, location, onPick }: { path: readonly DriveC
         <span key={crumb.id} className="flex items-center gap-0.5">
           {index > 0 && <ChevronRight size={12} className="text-muted" />}
           <button type="button" className="rounded px-1 py-0.5 hover:bg-ink/6" onClick={() => onPick(crumb.id)}>
-            {index === 0 && location ? locationName(location) : crumb.name}
+            {index === 0 && location ? locationName(location) : crumbName(crumb, index, location?.kind)}
           </button>
         </span>
       ))}
@@ -214,7 +215,7 @@ export function DialogFolderRow({ folder, disabled = false, onOpen }: { folder: 
       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-ink/6 disabled:opacity-40"
     >
       <Folder size={15} className="shrink-0 text-muted" />
-      <span className="flex-1 truncate">{folder.name}</span>
+      <span className="flex-1 truncate">{itemName(folder)}</span>
       <ChevronRight size={14} className="text-muted" />
     </button>
   );
@@ -296,6 +297,8 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
 
   const copying = mode === "copy";
   const here = !copying && items.every((item) => item.parent_id === folderId);
+  // CF2 (docs/CHANNEL_FILES.md §6.4): a move that hides posted files from messages is confirmed here first.
+  const [warning, setWarning] = useState<{ impact: DriveImpactOut; folderId: string } | null>(null);
   const submit = async () => {
     const api = controller.api;
     if (!api) return;
@@ -303,6 +306,13 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
     setError(null);
     try {
       const ids = items.map((item) => item.id);
+      if (!copying && warning?.folderId !== folderId) {
+        const impact = await api.driveImpact(ids, folderId).catch(() => null);
+        if (needsImpactWarning(impact)) {
+          setWarning({ impact, folderId });
+          return;
+        }
+      }
       const out = copying ? await api.copyDriveItems(ids, folderId, "rename", opId) : await api.moveDriveItems(ids, folderId, "fail");
       const failed = out.results.filter((result) => !result.ok);
       if (failed.length > 0 && failed.length === items.length) {
@@ -318,16 +328,66 @@ export function MoveDialog({ controller, items, startLocation, startFolderId, on
     }
   };
   const title = copying
-    ? items.length === 1 ? t("drive.copyOne", { name: items[0]!.name }) : t("drive.copyMany", { count: items.length })
-    : items.length === 1 ? t("drive.moveOne", { name: items[0]!.name }) : t("drive.moveMany", { count: items.length });
+    ? items.length === 1 ? t("drive.copyOne", { name: itemName(items[0]!) }) : t("drive.copyMany", { count: items.length })
+    : items.length === 1 ? t("drive.moveOne", { name: itemName(items[0]!) }) : t("drive.moveMany", { count: items.length });
+  const warned = warning?.folderId === folderId ? warning.impact : null;
   return (
     <Modal onClose={onClose} title={title} growsDown className="w-[520px]">
       <FolderPicker controller={controller} start={start} disabledIds={moving} onChange={setPlace} />
-      <p className="mt-2 truncate text-xs text-muted">{t(copying ? "drive.copyTo" : "drive.moveTo", { path: pathLine(place.path, locationName(place.location)) })}</p>
+      <p className="mt-2 truncate text-xs text-muted">{t(copying ? "drive.copyTo" : "drive.moveTo", { path: pathLine(localizedPath(place.path, place.location.kind), locationName(place.location)) })}</p>
+      {warned && <ImpactLines controller={controller} impact={warned} mode="move" className="mt-3" />}
       {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
-        <Button onClick={() => void submit()} disabled={busy || here || moving.has(folderId)}>{t(copying ? "drive.copyHere" : "drive.moveHere")}</Button>
+        <Button onClick={() => void submit()} disabled={busy || here || moving.has(folderId)}>{warned ? t("channelFiles.impact.move") : t(copying ? "drive.copyHere" : "drive.moveHere")}</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** CF2 (docs/CHANNEL_FILES.md §6.4, §6.5): what a move or a trash would do to the messages showing posted files. */
+function ImpactLines({ controller, impact, mode, className }: { controller: AppController; impact: DriveImpactOut; mode: "move" | "trash"; className?: string }) {
+  const lines = impactLines(impact, mode, (id) => controller.store.getChannel(id)?.name ?? null);
+  return (
+    <div data-drive-impact={mode} role="note" className={cn("space-y-1 rounded-lg border border-line bg-panel px-3 py-2 text-[13px]", className)}>
+      {lines.map((line, index) => <p key={index}>{line}</p>)}
+    </div>
+  );
+}
+
+export interface ImpactAsk {
+  impact: DriveImpactOut;
+  mode: "move" | "trash";
+  answer: (go: boolean) => void;
+}
+
+/**
+ * CF2: before a trash (or a move by dragging or ⌘V) the server is asked what it would do to the messages showing posted
+ * files (POST /drive/items/impact); only when some message would change is the person asked. A failure to ask (a server
+ * before CF1, offline) does not stop the action: the action itself reports what goes wrong.
+ */
+export function useImpactCheck(controller: AppController): { asking: ImpactAsk | null; confirm: (ids: string[], targetFolderId: string | null) => Promise<boolean> } {
+  const [asking, setAsking] = useState<ImpactAsk | null>(null);
+  const confirm = useCallback(async (ids: string[], targetFolderId: string | null) => {
+    const api = controller.api;
+    if (!api || ids.length === 0) return true;
+    const impact = await api.driveImpact(ids, targetFolderId).catch(() => null);
+    if (!needsImpactWarning(impact)) return true;
+    return new Promise<boolean>((resolve) => {
+      setAsking({ impact, mode: targetFolderId ? "move" : "trash", answer: (go) => { setAsking(null); resolve(go); } });
+    });
+  }, [controller]);
+  return { asking, confirm };
+}
+
+export function ImpactDialog({ controller, asking }: { controller: AppController; asking: ImpactAsk }) {
+  const trash = asking.mode === "trash";
+  return (
+    <Modal onClose={() => asking.answer(false)} title={trash ? t("channelFiles.impact.titleTrash") : t("channelFiles.impact.titleMove")} className="w-[460px]">
+      <ImpactLines controller={controller} impact={asking.impact} mode={asking.mode} />
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="secondary" onClick={() => asking.answer(false)}>{t("common.cancel")}</Button>
+        <Button variant={trash ? "danger" : "primary"} onClick={() => asking.answer(true)}>{trash ? t("drive.toTrash") : t("channelFiles.impact.move")}</Button>
       </div>
     </Modal>
   );

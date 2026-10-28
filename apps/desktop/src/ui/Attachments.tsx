@@ -1,4 +1,4 @@
-import { Download, ExternalLink, FileText, Film, HardDriveDownload, Loader2, Music, Play, X } from "lucide-react";
+import { Download, ExternalLink, FileText, Film, FolderInput, HardDriveDownload, Loader2, Music, Play, X } from "lucide-react";
 import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -17,6 +17,8 @@ import { driveFileOf } from "../drive/listing";
 import { AudioPlayer } from "./AudioPlayer";
 import { claimPlayback } from "./playbackFocus";
 import { useMediaSource } from "./useMediaSource";
+import { postedItemId, postedView } from "../drive/channelFiles";
+import { MovedPostedFile, PostedFileLine, RemovedPostedFile } from "./ChannelFiles";
 // Loaded when asked for: the viewers are in the share page's bundle too (share.html), which has no drive dialogs.
 const SaveToDriveDialog = lazy(() => import("./DriveConversation").then((module) => ({ default: module.SaveToDriveDialog })));
 
@@ -30,13 +32,41 @@ export { formatSize };
  * The column is `items-start`: a tile is only as wide as its picture, so a click beside it does nothing (a stretched
  * button made the whole message width open the photo).
  */
-export function AttachmentList({ attachments, controller, downloadable = true }: {
+export function AttachmentList({ attachments, controller, downloadable = true, channelId = null }: {
   attachments: AttachmentOut[];
   controller: AppController;
   /** False while the message is still being sent or failed to send: no download buttons on its files (2026-10-07). */
   downloadable?: boolean;
+  /** The message's conversation (CF2: who may put a trashed file back). */
+  channelId?: string | null;
 }) {
   if (attachments.length === 0) return null;
+  // CF2 (docs/CHANNEL_FILES.md §12.1): a posted file in the trash or deleted is 「削除されたファイル」, one moved elsewhere is
+  // drawn only for who can read it there; the others as before.
+  const shown = attachments.filter((attachment) => postedView(attachment) === "plain" || postedView(attachment) === "available");
+  const moved = attachments.filter((attachment) => postedView(attachment) === "moved");
+  const gone = attachments.filter((attachment) => postedView(attachment) === "gone");
+  if (moved.length === 0 && gone.length === 0) return <AttachmentGroups attachments={attachments} controller={controller} downloadable={downloadable} />;
+  const channel = channelId ? controller.store.getChannel(channelId) ?? null : null;
+  return (
+    <div data-attachments-posted="" className="flex flex-col items-start gap-2">
+      {shown.length > 0 && <AttachmentGroups attachments={shown} controller={controller} downloadable={downloadable} />}
+      {moved.map((attachment) => (
+        <MovedPostedFile key={attachment.id} attachment={attachment} controller={controller}>
+          <AttachmentGroups attachments={[attachment]} controller={controller} downloadable={downloadable} />
+        </MovedPostedFile>
+      ))}
+      {gone.length > 0 && (
+        <div className="mt-1.5 flex max-w-full flex-wrap gap-2">
+          {gone.map((attachment) => <RemovedPostedFile key={attachment.id} attachment={attachment} controller={controller} channel={channel} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The files drawn as they are: photos, videos, sounds, then documents and other files. */
+function AttachmentGroups({ attachments, controller, downloadable }: { attachments: AttachmentOut[]; controller: AppController; downloadable: boolean }) {
   const { photos, videos, audios, files } = groupAttachments(attachments);
   return (
     <div data-attachments="" className="mt-1.5 flex flex-col items-start gap-2">
@@ -258,8 +288,9 @@ function ViewerShell({ attachment, description, shape, controller, onClose, fill
               {formatSize(attachment.size_bytes)}
               {shape ? ` · ${shape.width}×${shape.height}` : ""}
             </div>
+            <PostedFileLine attachment={attachment} controller={controller} onClose={onClose} />
           </div>
-          <ViewerFileButtons attachment={attachment} controller={controller} />
+          <ViewerFileButtons attachment={attachment} controller={controller} onClose={onClose} />
           <ViewerCloseButton />
         </>
       }
@@ -273,14 +304,33 @@ function ViewerShell({ attachment, description, shape, controller, onClose, fill
  * The viewers' 「ダウンロード」 and, in the desktop app, 「開く」 (saved into Downloads, then opened in the system's app for
  * it; docs/PREVIEWS.md §9). The browser has no way to hand a file to another app, so there it is download only.
  */
-export function ViewerFileButtons({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
+export function ViewerFileButtons({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; /** The viewer closes when 「ドライブで表示」 opens the drive. */ onClose?: () => void }) {
   // M165 (docs/DRIVE.md §13.2): 「ドライブに保存」 for a conversation's file (not a drive file's own, nor one being sent).
   const [saving, setSaving] = useState(false);
   const savable = attachment.status === "attached" && !driveFileOf(attachment);
+  // CF2 (docs/CHANNEL_FILES.md §11.2): a posted file is in its channel's drive already: 「ドライブで表示」, and the copy
+  // becomes 「ほかの場所に保存」.
+  const postedItem = driveFileOf(attachment) ? null : postedItemId(attachment);
+  const saveLabel = postedItem ? t("channelFiles.saveElsewhere") : t("driveSave.title");
   return (
     <>
+      {postedItem && (
+        <button
+          type="button"
+          data-show-in-drive=""
+          className={VIEWER_BUTTON}
+          title={t("channelFiles.showInDrive")}
+          aria-label={t("channelFiles.showInDrive")}
+          onClick={() => {
+            onClose?.();
+            void controller.openDriveLink(postedItem);
+          }}
+        >
+          <FolderInput size={18} />
+        </button>
+      )}
       {savable && (
-        <button type="button" className={VIEWER_BUTTON} title={t("driveSave.title")} aria-label={t("driveSave.title")} onClick={() => setSaving(true)}>
+        <button type="button" className={VIEWER_BUTTON} title={saveLabel} aria-label={saveLabel} onClick={() => setSaving(true)}>
           <HardDriveDownload size={18} />
         </button>
       )}

@@ -10,6 +10,7 @@ import { canEditLinks } from "./ChannelLinks";
 import { canMakePublic, notificationChoices, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
 import { FeedList } from "./ChannelFeeds";
+import { FilesToDriveSetting, offersFilesToDrive } from "./ChannelFiles";
 import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Badge, Button, cn, IconButton, Input } from "./primitives";
@@ -151,6 +152,8 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
             {workflowsOpen && <ChannelWorkflowsDialog controller={controller} channel={channel} manage onClose={() => setWorkflowsOpen(false)} />}
           </section>
         )}
+        {/* CF2 (docs/CHANNEL_FILES.md §12.7): where the channel's posted files go (owners). */}
+        {channel.isMember && offersFilesToDrive(controller, channel, canManage) && <FilesToDriveSetting controller={controller} channel={channel} />}
         {isChannel && channel.isMember && (
           <section className="space-y-0.5">
             <h3 className={cn(HEADING, "mb-1")}>{t("settings.title")}</h3>

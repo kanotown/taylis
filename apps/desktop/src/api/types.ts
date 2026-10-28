@@ -684,6 +684,14 @@ export type SharedChildrenOut = components["schemas"]["SharedChildrenOut"];
 /** M165 (docs/DRIVE.md §13): the drive and the conversations. */
 export type DriveReachOut = components["schemas"]["DriveReachOut"];
 export type DriveSaveAttachmentIn = components["schemas"]["DriveSaveAttachmentIn"];
+/** CF1 (docs/CHANNEL_FILES.md §11.1): a posted file's place in its channel's drive (AttachmentOut.drive). */
+export type AttachmentDriveOut = components["schemas"]["AttachmentDriveOut"];
+export type DrivePostOut = components["schemas"]["DrivePostOut"];
+export type DriveImpactOut = components["schemas"]["DriveImpactOut"];
+export type DriveImpactChannelOut = components["schemas"]["DriveImpactChannelOut"];
+export type DriveMessageFileOut = components["schemas"]["DriveMessageFileOut"];
+export type DriveMessageFilesOut = components["schemas"]["DriveMessageFilesOut"];
+export type DriveSearchOrigin = "all" | "uploads" | "posts";
 /** drive.changed (SYNC_PROTOCOL.md §18): re-read these folders (and the trash) of the location. No names travel. */
 export interface DriveChanged {
   location_id: string;
