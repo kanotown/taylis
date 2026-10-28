@@ -337,7 +337,7 @@ final class TaskRulesTests: XCTestCase {
         XCTAssertFalse(TaskRules.canEditTask(F.task("s", channelId: "news"), channel: store.channel("news"), isAdmin: false))
         // Boards and the 「タスク」 tab: public and private channels only.
         XCTAssertEqual(["lab", "secret", "dm", "group"].map { TaskRules.hasBoard(store.channel($0)!) }, [true, true, false, false])
-        XCTAssertEqual(ChannelTab.tabs(for: store.channel("lab")!), [.messages, .canvas, .events, .tasks, .pins, .files])
+        XCTAssertEqual(ChannelTab.tabs(for: store.channel("lab")!), [.messages, .canvas, .tasks, .pins, .files])
         XCTAssertEqual(ChannelTab.tabs(for: store.channel("dm")!), [.messages, .canvas, .pins, .files])
         XCTAssertEqual(ChannelTab.tasks.title, "タスク")
         // The banner over a board I may not change, or could not read.

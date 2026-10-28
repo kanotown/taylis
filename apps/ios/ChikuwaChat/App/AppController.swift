@@ -60,7 +60,7 @@ final class AppController {
     private(set) var timesFeed = TimesFeedModel()
     /// The conversations' 「ピン留め」 tabs (PinsView), kept live by the same rows as the Times feed.
     var pinLists = PinLists()
-    /// M52: an event to show (a calendar alarm's notification): its channel's 「予定」 tab or the calendar takes it.
+    /// M52: an event to show (a calendar alarm's notification) or a channel to filter to: the calendar takes it.
     var calendarOpen: CalendarOpen?
     /// M56: a task to show, or a board to open (a task's notification, 「自分の担当」's channel): its channel's 「タスク」 tab
     /// or 「自分のタスク」 takes it.
@@ -875,10 +875,14 @@ final class AppController {
             return
         }
         if payload.opensEvent, let eventId = payload.eventId {
-            // M52 (PUSH_NOTIFICATIONS.md §4, kind = calendar): the event, in its channel's 「予定」 tab once the store knows
-            // the channel (as a message's conversation), or in the calendar for my own (no channel).
+            // M52 (PUSH_NOTIFICATIONS.md §4, kind = calendar): the event's form over the workspace calendar on the home
+            // tab, filtered to its channel for a channel's event (2026-10-28: no conversation 「予定」 tab any more).
             calendarOpen = CalendarOpen(eventId: eventId, channelId: payload.channelId)
-            if payload.channelId == nil { PushCenter.shared.pendingCalendar = true }
+            PushCenter.shared.pendingCalendar = true
+            PushCenter.shared.pendingChannelId = nil
+            PushCenter.shared.pendingParentId = nil
+            engine?.reconnectNow()
+            return
         }
         if payload.opensPage, let pageId = payload.pageId {
             // M122 (docs/WIKI.md §9.3, kind = page): the page, on the home tab over 「ドキュメント」.

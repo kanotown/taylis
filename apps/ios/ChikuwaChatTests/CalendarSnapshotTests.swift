@@ -2,8 +2,8 @@ import SwiftUI
 import XCTest
 @testable import ChikuwaChat
 
-/// M52 (CALENDAR.md §7), light and dark: the calendar's list and month, the event form (new, mine, someone else's) and a
-/// channel's 「予定」 tab. Run with TEST_RUNNER_SNAPSHOT_DIR=<dir> to look at them.
+/// M52 (CALENDAR.md §7), light and dark: the calendar's list and month, the event form (new, mine, someone else's) and
+/// the calendar opened on a channel (2026-10-28). Run with TEST_RUNNER_SNAPSHOT_DIR=<dir> to look at them.
 @MainActor
 final class CalendarSnapshotTests: XCTestCase {
     private typealias F = CalendarFixtures
@@ -102,22 +102,27 @@ final class CalendarSnapshotTests: XCTestCase {
         }
     }
 
-    func testChannelTab() throws {
+    /// 2026-10-28 (no 「予定」 tab): 「このチャンネルの予定」 and a channel event's notification open the workspace calendar
+    /// filtered to the channel; the event's form opens over it, read with GET /calendar/events/{id} when the range does
+    /// not hold it.
+    func testChannelCalendar() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let suffix = style == .dark ? "dark" : "light"
             let (controller, api) = world()
-            let channel = try XCTUnwrap(controller.store.channel(labId))
-            let hub = hub(api)
-            let view = NavigationStack {
-                VStack(spacing: 0) {
-                    ChannelTabsRow(controller: controller, channel: channel, tab: .constant(.events), upcoming: 1, onAddLink: {}, onEditLink: { _ in })
-                    ChannelEventsPane(controller: controller, channel: channel, hub: hub, today: today)
-                }
-                .navigationTitle("#lab")
-                .navigationBarTitleDisplayMode(.inline)
-            }
-            _ = try render(view, style: style, name: "calendar-channel-tab-\(suffix).png")
-            XCTAssertEqual(api.eventsCalls.last?.channelId, labId)
+            UserDefaults.standard.set(CalendarView.Mode.list.rawValue, forKey: CalendarView.modeKey)
+            controller.calendarOpen = CalendarOpen(eventId: nil, channelId: labId)
+            _ = try render(NavigationStack { CalendarView(controller: controller, hub: hub(api), today: today) }, style: style,
+                           name: "calendar-channel-filter-\(suffix).png")
+            XCTAssertNil(controller.calendarOpen, "taken by the calendar")
+            XCTAssertTrue(api.eventCalls.isEmpty)
+
+            let (other, otherApi) = world()
+            otherApi.eventAnswers["far"] = F.timed("修論発表会", "2027-02-10T01:00:00Z", "2027-02-10T08:00:00Z", id: "far", channelId: labId, channelName: "lab")
+            other.calendarOpen = CalendarOpen(eventId: "far", channelId: labId)
+            _ = try render(NavigationStack { CalendarView(controller: other, hub: hub(otherApi), today: today) }, style: style,
+                           name: "calendar-channel-event-\(suffix).png")
+            XCTAssertNil(other.calendarOpen)
+            XCTAssertEqual(otherApi.eventCalls, ["far"])
         }
     }
 }

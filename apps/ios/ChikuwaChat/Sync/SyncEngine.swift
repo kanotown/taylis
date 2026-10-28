@@ -1359,7 +1359,7 @@ final class SyncEngine {
         Task { await loadLinks(channelId) }
         Task { await canvases.loadList(channelId) } // M45 (CANVAS.md §4.6)
         if let type = store.channel(channelId)?.channel.type, type == "public" || type == "private" {
-            Task { await calendar.loadUpcoming(channelId) } // M52: the 「予定」 tab's count (DMs have no shared calendar)
+            Task { await calendar.loadUpcoming(channelId) } // M52: 「このチャンネルの予定」's count (DMs have no shared calendar)
         }
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId), channel.isMember else { return }
