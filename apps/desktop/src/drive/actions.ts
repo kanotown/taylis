@@ -49,6 +49,8 @@ const SOURCES: Readonly<Record<string, MessageKey>> = {
   restore: "drive.versions.source.restore",
   attachment: "drive.versions.source.attachment",
   import: "drive.versions.source.import",
+  // CF1 (docs/CHANNEL_FILES.md §3.2): the file of a message posted in the channel.
+  message: "drive.versions.source.message",
 };
 
 /** How a version came to be (アップロード / コピー / 前の版から戻した / …). */

@@ -4,6 +4,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { formatSize, keepOpenForToasts, ViewerFileButtons } from "./Attachments";
+import { PostedFileLine } from "./ChannelFiles";
 import { DOCUMENT_CARD_WIDTH, documentPreviewState, documentThumbBox, pageCountLabel } from "./attachmentLayout";
 import type { PDFDocumentProxy } from "./pdfLoader";
 import { cn, modKey } from "./primitives";
@@ -312,6 +313,7 @@ export function PdfViewer(props: PdfViewerProps) {
           <div className="min-w-0 flex-1 max-sm:basis-full">
             <FileName name={attachment.filename} className="text-sm font-medium" />
             <div className="text-xs text-white/70">{[formatSize(attachment.size_bytes), pageCountLabel(pages)].filter(Boolean).join(" · ")}</div>
+            {"controller" in props && <PostedFileLine attachment={props.attachment} controller={props.controller} onClose={onClose} />}
           </div>
           {doc && doc.numPages > 1 && (
             <div className="flex items-center" role="group" aria-label={t("docPreview.pages")}>
@@ -340,7 +342,7 @@ export function PdfViewer(props: PdfViewerProps) {
             <MoveHorizontal size={18} />
           </button>
           <span className="mx-1 h-5 w-px bg-white/20" aria-hidden />
-          {"controller" in props ? <ViewerFileButtons attachment={props.attachment} controller={props.controller} /> : props.buttons}
+          {"controller" in props ? <ViewerFileButtons attachment={props.attachment} controller={props.controller} onClose={onClose} /> : props.buttons}
           <ViewerCloseButton />
         </>
       }

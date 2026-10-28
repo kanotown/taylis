@@ -47,6 +47,7 @@ const ALLOWED = [
   ["src/ui/workflows.ts", "＜", "escapes '<' in posted answers"],
   ["src/ui/workflows.ts", "はい", "workflow answers are posted as " + SHARED],
   ["src/ui/navItems.ts", "label:", "mirror of apps/shared/nav-items.json (the server's default labels); navLabel() shows the localized one"],
+  ["src/drive/channelFiles.ts", "POSTED_FOLDER_STORED_NAME", "the name the server stores for 「投稿のファイル」 (matched, not shown; CHANNEL_FILES.md §3.3)"],
 ];
 
 function walk(dir, out) {

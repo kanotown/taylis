@@ -12,7 +12,9 @@ import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
 import { PANE_DEFAULT, PANE_MAX, PANE_MIN, readPaneWidth, readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writePaneWidth, writeSidebarWidth } from "./prefs";
-import { Badge, Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
+import { Badge, Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger, Modal, modKey } from "./primitives";
+import { filesToDriveChoices, offersFilesToDrive } from "./ChannelFiles";
+import { choiceValue, filesToDriveChoice, type FilesToDriveChoice } from "../drive/channelFiles";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
@@ -1645,6 +1647,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
       )}
       {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>{t("channel.convertToPrivate")}</MenuItem>}
       {canMakePublic(current, controller.isAdmin) && <MenuItem onSelect={() => setDialog("convert")}>{t("channel.convertToPublic")}</MenuItem>}
+      {/* CF2 (docs/CHANNEL_FILES.md §12.7): where the channel's posted files go (owners). */}
+      {current.isMember && offersFilesToDrive(controller, current, canManage) && (
+        <MenuSub>
+          <MenuSubTrigger data-files-to-drive-menu="">{t("channelFiles.settings.title")}</MenuSubTrigger>
+          <MenuSubContent>
+            <MenuRadioGroup value={filesToDriveChoice(current)} onValueChange={(value) => void controller.setChannelFilesToDrive(current.id, choiceValue(value as FilesToDriveChoice))}>
+              {filesToDriveChoices(controller).map((choice) => <MenuRadioItem key={choice.value} value={choice.value}>{choice.label}</MenuRadioItem>)}
+            </MenuRadioGroup>
+            <p className="max-w-64 px-2.5 py-1 text-xs text-muted">{t("channelFiles.settings.note")}</p>
+          </MenuSubContent>
+        </MenuSub>
+      )}
       <MenuSeparator />
       <MenuItem onSelect={() => setDialog("leave")}>{t("channel.leave")}</MenuItem>
       {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>{t("channel.archive")}</MenuItem>}

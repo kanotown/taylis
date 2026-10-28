@@ -26,12 +26,15 @@ import type { AppController } from "../state/app";
 import { appendPage, breadcrumbs, clickAction, clickSelection, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
 import { openPage } from "../drive/snippet";
 import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
+import { canRearrange, isSystemFolder, itemName, localizedPath, rememberSystemFolders } from "../drive/channelFiles";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
 import { coalesce } from "../sync/drive";
 import { dropEntries, emptyFolders, type PickedTree, pickFilesNative, pickFolderNative, treeFromEntries, treeFromInput } from "../platform/driveFiles";
 import { isFileDrag } from "../platform/fileDrops";
 import { isTauri } from "../platform/env";
-import { DeleteForeverDialog, MoveDialog, NewFolderDialog, RenameDialog } from "./DriveDialogs";
+import { DeleteForeverDialog, ImpactDialog, MoveDialog, NewFolderDialog, RenameDialog, useImpactCheck } from "./DriveDialogs";
+import { PostedMark, PostsSection, SystemFolderIcon } from "./ChannelFiles";
+import { onDriveTarget, takeDriveSelection } from "./DriveSearch";
 import { SendToConversationDialog } from "./DriveConversation";
 import { driveLink } from "./permalink";
 import { DriveSnippet } from "./DriveSnippet";
@@ -82,7 +85,9 @@ export const ICON_COLOURS: Readonly<Record<DriveIconKind, string>> = {
   file: "text-muted",
 };
 
-export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind" | "name" | "content_type">; size?: number }) {
+export function DriveIcon({ item, size = 18 }: { item: Pick<DriveItemOut, "kind" | "name" | "content_type"> & { system_role?: DriveItemOut["system_role"] }; size?: number }) {
+  // CF2 (docs/CHANNEL_FILES.md §12.2): 「投稿のファイル」 has its own icon (a folder with a speech bubble).
+  if (isSystemFolder(item)) return <SystemFolderIcon size={size} className={ICON_COLOURS.folder} />;
   const kind = iconKind(item);
   const Icon = ICONS[kind];
   return <Icon size={size} data-drive-icon={kind} className={cn("shrink-0", ICON_COLOURS[kind])} aria-hidden />;
@@ -230,7 +235,16 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       const held = options.keep ? listing.items.length : 0;
       const out = await api.driveChildren(folderId, { sort: sort.sort, order: sort.order, limit: Math.min(200, Math.max(PAGE, held)) });
       if (run !== generation.current) return;
+      rememberSystemFolders(out.folder ? [out.folder, ...out.items] : out.items);
       setListing({ folder: out.folder, path: out.path, items: out.items, cursor: out.next_cursor, loading: false, error: null, sharedAbove: out.shared_above ?? 0 });
+      // CF2 (docs/CHANNEL_FILES.md §12.1): 「ドライブで表示」 of a message's file selects it in its folder.
+      const asked = takeDriveSelection(folderId);
+      if (asked && out.items.some((item) => item.id === asked)) {
+        setSelected(new Set([asked]));
+        setAnchor(asked);
+        setFocusId(asked);
+        requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-drive-item="${asked}"]`)?.scrollIntoView({ block: "nearest" }));
+      }
     } catch (error) {
       if (run !== generation.current) return;
       if (error instanceof ApiError && error.code === "drive_item_not_found") {
@@ -249,6 +263,15 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     setAnchor(null);
     void load();
   }, [load]);
+  // CF2: 「ドライブで表示」 for a file of the folder already open (no new listing to take it).
+  useEffect(() => onDriveTarget(() => {
+    const asked = takeDriveSelection(folderId);
+    if (!asked) return;
+    setSelected(new Set([asked]));
+    setAnchor(asked);
+    setFocusId(asked);
+    listRef.current?.querySelector<HTMLElement>(`[data-drive-item="${asked}"]`)?.scrollIntoView({ block: "nearest" });
+  }), [folderId]);
 
   const loadMore = useCallback(async () => {
     if (!api || !listing.cursor || listing.loading) return;
@@ -257,6 +280,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     try {
       const out = await api.driveChildren(folderId, { sort: sort.sort, order: sort.order, cursor: listing.cursor, limit: PAGE });
       if (run !== generation.current) return;
+      rememberSystemFolders(out.items);
       setListing((current) => ({ ...current, items: appendPage(current.items, out.items), cursor: out.next_cursor, loading: false }));
     } catch (error) {
       if (run === generation.current) setListing((current) => ({ ...current, loading: false, error: describeError(error) }));
@@ -370,8 +394,13 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     else if (plan?.kind === "zip") void controller.downloadDriveZip(plan.ids);
   };
 
+  // CF2 (docs/CHANNEL_FILES.md §6.4, §6.5): before a trash or a move, the warning when posted files would change.
+  const impact = useImpactCheck(controller);
+
   const trashItems = async (targets: DriveItemOut[]) => {
     if (!api || targets.length === 0) return;
+    if (!canRearrange(targets)) return;
+    if (!(await impact.confirm(targets.map((item) => item.id), null))) return;
     try {
       const out = await api.trashDriveItems(targets.map((item) => item.id));
       const failed = out.results.filter((result) => !result.ok);
@@ -389,7 +418,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   const moveItems = async (targets: DriveItemOut[], targetFolderId: string) => {
     if (!api || targets.length === 0) return;
     const moving = targets.filter((item) => item.id !== targetFolderId && item.parent_id !== targetFolderId);
-    if (moving.length === 0) return;
+    if (moving.length === 0 || !canRearrange(moving)) return;
+    if (!(await impact.confirm(moving.map((item) => item.id), targetFolderId))) return;
     try {
       const out = await api.moveDriveItems(moving.map((item) => item.id), targetFolderId, "fail");
       const failed = out.results.filter((result) => !result.ok);
@@ -432,7 +462,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     uploadQueueFor(controller.accountKey, api).add(tree.files, { parentId, locationId: location.id, label });
   };
 
-  const here = pathLine(listing.path, locationName(location));
+  const here = pathLine(localizedPath(listing.path, location.kind), locationName(location));
   const uploadHere = (tree: PickedTree | null) => {
     if (tree) void upload(tree, folderId, here);
   };
@@ -485,16 +515,16 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     } else if (event.key === " " && current) {
       event.preventDefault();
       if (viewerKind(current)) setViewing(current);
-    } else if (event.key === "F2" && current && canWrite && mode === "folder") {
+    } else if (event.key === "F2" && current && canWrite && mode === "folder" && !isSystemFolder(current)) {
       event.preventDefault();
       setDialog({ kind: "rename", item: current });
-    } else if ((event.key === "Delete" || (event.key === "Backspace" && mod)) && chosen.length > 0 && canWrite && mode === "folder") {
+    } else if ((event.key === "Delete" || (event.key === "Backspace" && mod)) && chosen.length > 0 && canWrite && mode === "folder" && canRearrange(chosen)) {
       event.preventDefault();
       void trashItems(chosen);
     } else if (mod && event.key.toLowerCase() === "a") {
       event.preventDefault();
       setSelected(new Set(order));
-    } else if (mod && event.key.toLowerCase() === "x" && chosen.length > 0 && canWrite) {
+    } else if (mod && event.key.toLowerCase() === "x" && chosen.length > 0 && canWrite && canRearrange(chosen)) {
       event.preventDefault();
       clipboard = { mode: "cut", items: chosen };
       controller.setNotice(t("drive.cut", { count: chosen.length }));
@@ -539,9 +569,9 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   // --- rows: drag to move, drop files into a folder --------------------------------------------------------------------
 
   const rowDrag = (item: DriveItemOut) => ({
-    draggable: canWrite && mode === "folder",
+    draggable: canWrite && mode === "folder" && !isSystemFolder(item),
     onDragStart: (event: DragEvent) => {
-      const moving = selected.has(item.id) ? chosen : [item];
+      const moving = (selected.has(item.id) ? chosen : [item]).filter((entry) => !isSystemFolder(entry));
       event.dataTransfer.setData(ROW_DRAG, JSON.stringify(moving.map((entry) => entry.id)));
       event.dataTransfer.effectAllowed = "move";
     },
@@ -604,7 +634,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           // Copying needs only reading here (the dialog lists the folders I can write in).
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "copy", items: targets })}><Copy size={14} /> {t("drive.copy")}</ContextMenu.Item>
         )}
-        {canWrite && mode === "folder" && (
+        {canWrite && mode === "folder" && canRearrange(targets) && (
           <>
             <ContextMenu.Separator className="my-1 h-px bg-line" />
             {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "rename", item })}><Pencil size={14} /> {t("drive.rename")}</ContextMenu.Item>}
@@ -620,7 +650,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
 
   const users = controller.store.users;
   const who = (id: string | null | undefined) => (id ? users.get(id)?.display_name ?? t("drive.someone") : "");
-  const crumbs = breadcrumbs(listing.path, locationName(location));
+  const crumbs = breadcrumbs(localizedPath(listing.path, location.kind), locationName(location));
   const emptyFolder = !listing.loading && !listing.error && listing.items.length === 0 && !hits;
   const canShareItem = (item: DriveItemOut) => mode === "folder" && !!item.parent_id && (location.can_share || item.link_count > 0);
 
@@ -696,8 +726,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           <Button size="sm" variant="secondary" onClick={() => download(chosen)}><Download size={14} /> {chosen.length > 1 || chosen[0]!.kind === "folder" ? t("drive.downloadZip") : t("drive.download")}</Button>
           {chosen.length === 1 && canShareItem(chosen[0]!) && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "share", item: chosen[0]! })}><Link2 size={14} /> {t("drive.share.open")}</Button>}
           <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "copy", items: chosen })}><Copy size={14} /> {t("drive.copy")}</Button>
-          {canWrite && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "move", items: chosen })}><FolderInput size={14} /> {t("drive.move")}</Button>}
-          {canWrite && <Button size="sm" variant="ghost" className="text-danger" onClick={() => void trashItems(chosen)}><Trash2 size={14} /> {t("drive.toTrash")}</Button>}
+          {canWrite && canRearrange(chosen) && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "move", items: chosen })}><FolderInput size={14} /> {t("drive.move")}</Button>}
+          {canWrite && canRearrange(chosen) && <Button size="sm" variant="ghost" className="text-danger" onClick={() => void trashItems(chosen)}><Trash2 size={14} /> {t("drive.toTrash")}</Button>}
         </div>
       ) : mode === "folder" ? (
         <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-3 pb-2">
@@ -864,10 +894,11 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                       <RowIcon controller={controller} item={item} />
                       <div className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-1.5">
-                          <FileName name={item.name} className="min-w-0 font-medium" />
+                          <FileName name={itemName(item)} className="min-w-0 font-medium" />
                           <SharedMark count={item.link_count} />
+                          {item.posted && <PostedMark />}
                         </span>
-                        {hit && <div className="truncate text-[11.5px] text-muted">{pathLine(hit.path, locationName(location))}</div>}
+                        {hit && <div className="truncate text-[11.5px] text-muted">{pathLine(localizedPath(hit.path, location.kind), locationName(location))}</div>}
                         {hit && <DriveSnippet hit={hit} className="mt-0.5" />}
                       </div>
                     </div>
@@ -908,12 +939,13 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
               <div className="flex min-w-0 items-center gap-2 border-t border-line/70 px-2.5 py-2">
                 <DriveIcon item={item} size={15} />
                 <div className="min-w-0 flex-1">
-                  <FileName name={item.name} className="min-w-0 text-[13px] font-medium" />
+                  <FileName name={itemName(item)} className="min-w-0 text-[13px] font-medium" />
                   <div className="truncate text-[11.5px] text-muted" title={exactTime(itemTime(item))}>
                     {item.kind === "file" ? `${formatBytes(item.size_bytes)} · ${driveTime(itemTime(item), now)}` : driveTime(itemTime(item), now)}
                   </div>
                 </div>
                 <SharedMark count={item.link_count} />
+                {item.posted && <PostedMark />}
               </div>
             </li>
           </ContextMenu.Trigger>
@@ -1022,6 +1054,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         />
       )}
       {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} page={openAt?.id === viewing.id ? openAt.page : null} />}
+      {impact.asking && <ImpactDialog controller={controller} asking={impact.asking} />}
     </div>
   );
 }
@@ -1171,7 +1204,8 @@ function DetailsPane({ controller, item, count, path, onClose, onVersions, onSha
       ) : item ? (
         <div className="space-y-3 overflow-y-auto p-4 text-[13px]">
           <Thumb controller={controller} item={item} iconSize={40} className="h-36 w-full rounded-lg bg-panel" />
-          <FileName name={item.name || path} className="min-w-0 text-sm font-semibold" />
+          <FileName name={(item.name && itemName(item)) || path} className="min-w-0 text-sm font-semibold" />
+          {isSystemFolder(item) && <p data-drive-system-note="" className="text-xs text-muted">{t("channelFiles.folderNote")}</p>}
           <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
             <dt className="text-muted">{t("drive.detail.kind")}</dt>
             <dd className="min-w-0 truncate">{item.kind === "folder" ? t("drive.detail.folder") : item.content_type ?? "—"}</dd>
@@ -1199,6 +1233,7 @@ function DetailsPane({ controller, item, count, path, onClose, onVersions, onSha
             )}
             <dt className="text-muted">{t("drive.detail.where")}</dt>
             <dd className="break-words">{path}</dd>
+            {item.posted && <PostsSection controller={controller} item={item} />}
             {item.parent_id && (canShare || item.link_count > 0) && (
               <>
                 <dt className="text-muted">{t("drive.share.detail")}</dt>

@@ -55,7 +55,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
   /** M121: a hit of the 「ドキュメント」 tab (a server with Docs). */
   onOpenPage?: (page: PageItem) => void;
   /** M161: the 「ドライブ」 tab's folder (or a file's folder) shown in 「ドライブ」. */
-  onShowInDrive?: (target: { locationId: string; folderId: string }) => void;
+  onShowInDrive?: (target: { locationId: string; folderId: string; itemId?: string }) => void;
   onClose: () => void;
   snapshot: { current: SearchSnapshot | null };
 }) {

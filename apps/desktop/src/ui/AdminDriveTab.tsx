@@ -5,7 +5,7 @@
  * The server's own free disk space is not visible to the app: the screen says where to look. M163: the external links'
  * switches and every link (AdminDriveLinks).
  */
-import { HardDrive, Hash, Loader2, User as UserIcon } from "lucide-react";
+import { FolderInput, HardDrive, Hash, Loader2, User as UserIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { describeError } from "../api/errors";
@@ -70,6 +70,53 @@ function QuotaField({ controller, row, onSaved }: { controller: AppController; r
   );
 }
 
+/**
+ * CF2 (docs/CHANNEL_FILES.md §9, §12.7): the workspace's switch 「チャンネルに投稿したファイルをチャンネルのドライブに
+ * 保存する」 (on by default; a channel's owners may decide otherwise). Not shown by a server before CF1 (no such field).
+ */
+function ChannelFilesSwitch({ controller }: { controller: AppController }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const api = controller.api;
+    if (!api) return;
+    let current = true;
+    void Promise.resolve().then(() => api.adminWorkspaceSettings()).then(
+      (settings) => { if (current && typeof settings.channel_files_to_drive === "boolean") setOn(settings.channel_files_to_drive); },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [controller.api]);
+  if (on === null) return null;
+  const save = async (value: boolean) => {
+    const api = controller.api;
+    if (!api) return;
+    setBusy(true);
+    try {
+      const settings = await api.adminUpdateWorkspaceSettings({ channel_files_to_drive: value });
+      setOn(settings.channel_files_to_drive ?? value);
+      controller.store.setWorkspaceSettings({ ...controller.store.workspaceSettings, channel_files_to_drive: settings.channel_files_to_drive ?? value });
+      controller.setNotice(t("channelFiles.admin.saved"));
+    } catch (failure) {
+      controller.setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <label data-admin-channel-files="" className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2">
+      <FolderInput size={15} className="shrink-0 text-muted" aria-hidden />
+      <span className="min-w-0 flex-1 text-sm">
+        {t("channelFiles.admin.title")}
+        <span className="block text-xs text-muted">{t("channelFiles.admin.note")}</span>
+      </span>
+      <input type="checkbox" role="switch" aria-label={t("channelFiles.admin.title")} className="h-4 w-4 accent-[var(--accent)]" disabled={busy} checked={on} onChange={(event) => void save(event.target.checked)} />
+    </label>
+  );
+}
+
 export function AdminDriveTab({ controller }: { controller: AppController }) {
   const [usage, setUsage] = useState<DriveUsageOut | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,8 +161,11 @@ export function AdminDriveTab({ controller }: { controller: AppController }) {
           {t("admin.drive.chat", { size: formatBytes(total.chat_attachments_bytes) || "0 B", count: group3(total.chat_attachment_count) })}
           {total.user_default_quota_bytes !== null && ` ${t("admin.drive.userDefault", { size: formatBytes(total.user_default_quota_bytes) })}`}
         </p>
+        <p className="mt-1 text-xs text-muted">{t("channelFiles.admin.chatNote")}</p>
         <p className="mt-1 text-xs text-muted">{t("admin.drive.disk")}</p>
       </section>
+
+      <ChannelFilesSwitch controller={controller} />
 
       <AdminDriveLinks controller={controller} />
 
@@ -143,6 +193,13 @@ export function AdminDriveTab({ controller }: { controller: AppController }) {
                     <div className="mt-0.5 text-[11px] text-muted">
                       {t("admin.drive.split", { current: formatBytes(row.current_bytes) || "0 B", old: formatBytes(row.old_versions_bytes) || "0 B", trash: formatBytes(row.trash_bytes) || "0 B" })} · {sinceLabel(row.updated_at)}
                     </div>
+                    {/* CF2 (docs/CHANNEL_FILES.md §8): how much of it is posted files (posts are never refused for the quota). */}
+                    {(row.posted_bytes ?? 0) > 0 && (
+                      <div data-admin-drive-posted="" className="mt-0.5 text-[11px] text-muted">
+                        {t("channelFiles.admin.posted", { size: formatBytes(row.posted_bytes) })}
+                        {row.effective_quota_bytes !== null && row.used_bytes > row.effective_quota_bytes && <span className="ml-1.5 font-medium text-danger">{t("channelFiles.admin.over")}</span>}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2 tabular-nums">
                     {formatBytes(row.used_bytes) || "0 B"}
