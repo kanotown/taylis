@@ -63,9 +63,27 @@ data class DriveItemOut(
     val versionCount: Int = 0,
     val file: DriveFileOut? = null,
     val linkCount: Int = 0,
+    /** CF1 (docs/CHANNEL_FILES.md §3.3): `channel_posts` for 「投稿のファイル」 (no rename, move or trash); null otherwise. */
+    val systemRole: String? = null,
+    /** CF1: a version of the file is attached to a message (the row's speech bubble). */
+    val posted: Boolean = false,
+    /** CF1: the messages showing its versions that I can read (at most five); only GET /drive/items/{id} carries them. */
+    val posts: List<DrivePostOut>? = null,
 ) {
     val isFolder: Boolean get() = kind == "folder"
+    val isChannelPosts: Boolean get() = systemRole == "channel_posts"
 }
+
+/** CF1 (docs/CHANNEL_FILES.md §12.2): a message showing a version of the file (the details' 「投稿」 and 「メッセージを表示」). */
+@Serializable
+data class DrivePostOut(
+    val messageId: String,
+    val channelId: String,
+    val parentId: String? = null,
+    val senderId: String? = null,
+    val versionNumber: Int = 1,
+    val postedAt: String = "",
+)
 
 /** One step of an item's path, from the location's root (whose name is the location's). */
 @Serializable

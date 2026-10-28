@@ -1852,11 +1852,45 @@ class AppController(private val app: Application) {
      * `fromThreadRoot`: the root row at the top of the thread showing it (THREADS.md): the thread then closes without
      * 「元のメッセージが削除されたため…」 ([threadRoots]); marked before the call, as its event may come before the answer.
      */
-    suspend fun deleteMessage(messageId: String, fromThreadRoot: Boolean = false): Result<Unit> {
+    suspend fun deleteMessage(messageId: String, fromThreadRoot: Boolean = false, driveFiles: String? = null): Result<Unit> {
         if (fromThreadRoot) threadRoots.deletingFromThread(messageId)
-        return attempt { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }
+        return attempt { store.upsertMessage(api!!.deleteMessage(messageId, driveFiles)); Unit }
             .onFailure { if (fromThreadRoot) threadRoots.deleteFailed(messageId); error = describe(it) }
     }
+
+    /**
+     * CF4 (docs/CHANNEL_FILES.md §7.3): what deleting the message would do to its files in the channel's drive (the
+     * confirmation's checkbox). A failure (offline, an older server) is null: the dialog then asks nothing and the
+     * server's `auto` applies, as on an older app.
+     */
+    suspend fun messageDriveFiles(messageId: String): jp.chikuwachat.android.sync.ChannelFiles.DeletePlan? = try {
+        jp.chikuwachat.android.sync.ChannelFiles.DeletePlan.of(api?.messageDriveFiles(messageId)?.files ?: return null)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("AppController", "could not read the message's drive files", e)
+        null
+    }
+
+    /**
+     * CF4 (§6.5): 「戻す」 under a posted file in the drive's trash. The message changes by its `message.updated`; a file in
+     * the trash with its folder is said so (the folder is what goes back, from the drive's trash).
+     */
+    suspend fun restoreDriveFile(itemId: String): Boolean = attempt {
+        api!!.restoreDriveItem(itemId)
+        drive?.forget(listOf(itemId))
+        notice = L10n.str(R.string.channel_files_restored)
+        true
+    }.getOrElse {
+        error = if (it is ApiException.Api && it.code == "drive_not_in_trash") L10n.str(R.string.channel_files_restore_folder) else describe(it)
+        false
+    }
+
+    /** CF4 (§9, §12.7): the channel's own choice whether posted files go to its drive (owners and admins); null follows the workspace. */
+    suspend fun setChannelFilesToDrive(channelId: String, value: Boolean?): Boolean = attempt {
+        store.upsertChannel(api!!.setChannelFilesToDrive(channelId, value))
+        true
+    }.getOrElse { error = describe(it); false }
 
     /** The thread screen's rules for a deleted root (ThreadRootWatch); ThreadPane reports to it. */
     val threadRoots = jp.chikuwachat.android.ui.ThreadRootWatch()

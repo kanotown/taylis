@@ -166,7 +166,8 @@ class DriveTest {
             itemReads += 1
             return (items[itemId] ?: throw ApiException.Api(404, "drive_item_not_found", "gone"))()
         }
-        override suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int) = DriveSearchOut()
+        override suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int, origin: String) = DriveSearchOut().also { origins += origin }
+        val origins = mutableListOf<String>()
         override suspend fun driveDownloadTicket(itemId: String) = DriveDownloadTicketOut("/api/v1/drive/download/t", 300)
         override suspend fun driveZip(itemIds: List<String>) = DriveZipOut("/api/v1/drive/zip/t")
     }

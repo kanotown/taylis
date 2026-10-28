@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -150,6 +151,12 @@ fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
                 "${if (attachment.isVideo) VideoTiles.label(attachment) else formatSize(attachment.sizeBytes)} · $uploader · $channel · ${Timeline.timeLabel(item.attachedAt)}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
+        }
+        // CF4 (docs/CHANNEL_FILES.md §12.5): a file posted into the channel's drive opens there too (the list has only those still in it).
+        jp.chikuwachat.android.sync.ChannelFiles.driveItem(attachment)?.let { itemId ->
+            IconButton(onClick = { controller.scope.launch { controller.openDriveLink(itemId, force = false) } }) {
+                Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = stringResource(R.string.drive_card_show_in_drive), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Default.Download, contentDescription = stringResource(R.string.files_pane_download)) }
     }

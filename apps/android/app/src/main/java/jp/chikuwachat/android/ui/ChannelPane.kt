@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import jp.chikuwachat.android.sync.EngineStatus
+import jp.chikuwachat.android.sync.ChannelFiles
 import jp.chikuwachat.android.sync.ReadAnchor
 import jp.chikuwachat.android.sync.ReadGate
 import androidx.compose.foundation.interaction.DragInteraction
@@ -342,7 +343,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                                     onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
                                     onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
                                     onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
-                                    onDelete = { scope.launch { controller.deleteMessage(message.id) } },
+                                    onDelete = { driveFiles -> scope.launch { controller.deleteMessage(message.id, driveFiles = driveFiles) } },
                                     onOpenThread = { onOpenThread(message.parentId ?: message.id) },
                                     // Not offered where it would read unread rows this device never loaded (§10.1).
                                     // Through the controller (M28c): offline it says so instead of silently doing nothing.
@@ -559,7 +560,8 @@ fun MessageRow(
     onReact: (String) -> Unit,
     /** Saves an edit; true once the server took it (the editor stays open with the text until then). */
     onEdit: suspend (String) -> Boolean,
-    onDelete: () -> Unit,
+    /** CF4: `driveFiles` is the confirmation's `drive_files` (`auto` / `keep`; null: none asked, the server's `auto`). */
+    onDelete: (driveFiles: String?) -> Unit,
     onOpenThread: (() -> Unit)? = null,
     onMarkUnread: (() -> Unit)? = null,
     readOnly: Boolean = false,
@@ -716,7 +718,7 @@ fun MessageRow(
                 if (message.ackRequested && !message.pending) AckBar(message, store, controller, version, readOnly)  // M15e
                 if (message.collection != null) CollectionChip(message, store, version)  // L6 (M60)
                 if (message.tasks.isNotEmpty()) MessageTaskChips(message, controller, version)  // L9 (M64)
-                AttachmentList(message.attachments, controller)
+                AttachmentList(message.attachments, controller, channelId = message.channelId)
                 // Not for this server's /m/, /p/, /e/ and /c/ links: a message shows in place, a canvas as its card (M58).
                 // M166 (docs/DRIVE.md §26): this server's /d/ links as cards (at most three), never the web page's preview.
                 if (!message.pending && !message.deleted && call == null) DriveLinkCards(controller, message.body)
@@ -773,6 +775,9 @@ fun MessageRow(
             store = store, onNeedEmojiImage = { controller.loadEmojiImage(it) },
             onMoreReactions = { pickingReaction = true },
             onShowReactors = if (message.reactions.isEmpty()) null else ({ showingReactors = true }),
+            // CF4 (docs/CHANNEL_FILES.md §12.1): each posted file still there opens at its folder in 「ドライブ」.
+            // A moved one only when I can read it where it is (its name is not shown otherwise).
+            showInDrive = message.attachments.mapNotNull { a -> ChannelFiles.driveItem(a)?.takeIf { id -> a.drive?.state != "moved" || controller.drive?.peekLink(id) is jp.chikuwachat.android.sync.DriveLinkState.Ok }?.let { id -> a.filename to { controller.scope.launch { controller.openDriveLink(id, force = false) }; Unit } } },
             reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),
         )
     }
@@ -790,6 +795,10 @@ fun MessageRow(
             savingEdit = false
         }
     })
-    if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
+    if (confirmingDelete) ConfirmDeleteDialog(
+        onDismiss = { confirmingDelete = false }, onConfirm = { driveFiles -> confirmingDelete = false; onDelete(driveFiles) },
+        // CF4 (docs/CHANNEL_FILES.md §7.3): a message with files in the channel's drive asks what becomes of them.
+        drivePlan = if (ChannelFiles.hasPostedFiles(message.attachments)) ({ controller.messageDriveFiles(message.id) }) else null,
+    )
 }
 

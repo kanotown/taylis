@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,12 +26,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import jp.chikuwachat.android.sync.ChannelFiles
+import jp.chikuwachat.android.sync.DriveLinkState
+import jp.chikuwachat.android.sync.DriveNames
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,9 +86,19 @@ fun formatSize(bytes: Long): String = when {
  * as square tiles (testers, 2026-09-29: they came one under another), two in a row for two or four, three otherwise.
  */
 @Composable
-fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) {
+fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController, channelId: String? = null) {
     if (attachments.isEmpty()) return
-    val photos = attachments.filter { it.isImage }
+    // CF4 (docs/CHANNEL_FILES.md §12.1): a posted file moved to another location shows as usual only when I can read it
+    // there (GET /drive/items/{id}, the /d/ cards' minute of cache); one in the trash or deleted never shows its name.
+    val hub = controller.drive
+    hub?.version?.collectAsState()?.value
+    fun readable(attachment: AttachmentOut): Boolean = when (ChannelFiles.look(attachment)) {
+        ChannelFiles.Look.PLAIN -> true
+        ChannelFiles.Look.MOVED -> attachment.drive?.itemId?.let { hub?.peekLink(it) } is DriveLinkState.Ok
+        ChannelFiles.Look.DELETED -> false
+    }
+    if (attachments.any { ChannelFiles.look(it) != ChannelFiles.Look.PLAIN }) PostedFilesWatch(controller, attachments, channelId)
+    val photos = attachments.filter { it.isImage && readable(it) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
         if (photos.size > 1) {
             val columns = if (photos.size == 2 || photos.size == 4) 2 else 3
@@ -89,12 +111,108 @@ fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) 
             }
         }
         attachments.forEach { attachment ->
+            val look = ChannelFiles.look(attachment)
             when {
+                look == ChannelFiles.Look.DELETED -> DeletedFileRow(attachment, controller, channelId)
+                look == ChannelFiles.Look.MOVED && !readable(attachment) -> MovedFileRow(attachment, controller)
                 attachment.isImage -> if (photos.size == 1) ThumbnailImage(attachment, controller)
                 attachment.isVideo -> VideoAttachment(attachment, controller)
                 // M108: a PDF / Office file with a preview (being made, or ready).
                 DocumentCards.showsCard(attachment) -> DocumentCard(attachment, controller)
                 else -> FileRow(attachment, controller)
+            }
+            // A moved file I can read: where it is now, under it (「研究室ドライブ › 論文」).
+            if (look == ChannelFiles.Look.MOVED) {
+                (attachment.drive?.itemId?.let { hub?.peekLink(it) } as? DriveLinkState.Ok)?.let { ok ->
+                    Text(
+                        DriveNames.pathLine(ok.detail.path, ok.detail.locationKind, hub?.systemFolders ?: emptySet()),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * CF4: reads what the message's moved files are for me (once each, the hub's minute of cache), and whether I can write
+ * the channel's drive when a file is in its trash (「戻す」, §6.5: the locations, read once when not yet).
+ */
+@Composable
+private fun PostedFilesWatch(controller: AppController, attachments: List<AttachmentOut>, channelId: String?) {
+    val hub = controller.drive ?: return
+    val moved = attachments.filter { ChannelFiles.look(it) == ChannelFiles.Look.MOVED }.mapNotNull { it.drive?.itemId }
+    val epoch = hub.version.collectAsState().value
+    LaunchedEffect(moved, epoch) { moved.forEach { if (hub.peekLink(it) == null) hub.link(it) } }
+    val trashed = attachments.any { it.drive?.state == "trashed" }
+    if (trashed && channelId != null && hub.locations == null) LaunchedEffect(channelId) { hub.reloadLocations() }
+}
+
+/** §12.1: a file in the trash or deleted for good: one quiet line, no name or picture; 「戻す」 for who can write the drive. */
+@Composable
+private fun DeletedFileRow(attachment: AttachmentOut, controller: AppController, channelId: String?) {
+    val hub = controller.drive
+    val canRestore = channelId != null && ChannelFiles.canRestore(attachment, hub?.canWriteChannelDrive(channelId))
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val shape = RoundedCornerShape(8.dp)
+    var busy by remember(attachment.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Row(
+        Modifier.widthIn(max = 420.dp).fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape).padding(start = 10.dp, end = 4.dp)
+            .heightIn(min = 40.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Outlined.Delete, contentDescription = null, tint = muted, modifier = Modifier.size(18.dp))
+        Text(
+            stringResource(R.string.channel_files_deleted) + if (canRestore) " · " + stringResource(R.string.channel_files_in_trash) else "",
+            style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+        if (canRestore) {
+            val itemId = attachment.drive?.itemId
+            TextButton(enabled = !busy && itemId != null, onClick = {
+                itemId ?: return@TextButton
+                busy = true
+                scope.launch { try { controller.restoreDriveFile(itemId) } finally { busy = false } }
+            }) { Text(stringResource(R.string.channel_files_restore)) }
+        }
+    }
+}
+
+/** §12.1: a file moved where I may not read it (or not read yet): 「表示できないファイル」 and why, never its name. */
+@Composable
+private fun MovedFileRow(attachment: AttachmentOut, controller: AppController) {
+    val hub = controller.drive
+    val itemId = attachment.drive?.itemId
+    val state = itemId?.let { hub?.peekLink(it) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val shape = RoundedCornerShape(8.dp)
+    val scope = rememberCoroutineScope()
+    val failed = state == DriveLinkState.Failed
+    Row(
+        Modifier.widthIn(max = 420.dp).fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .then(if (failed && itemId != null) Modifier.clickable(onClickLabel = stringResource(R.string.common_retry)) { scope.launch { hub?.link(itemId, force = true) } } else Modifier)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        when (state) {
+            null -> {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(stringResource(R.string.channel_files_checking), style = MaterialTheme.typography.bodySmall, color = muted)
+            }
+            DriveLinkState.Failed -> {
+                Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = muted, modifier = Modifier.size(18.dp))
+                Column {
+                    Text(stringResource(R.string.drive_card_failed), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.drive_card_retry), style = MaterialTheme.typography.labelSmall, color = muted)
+                }
+            }
+            else -> {
+                Icon(Icons.Outlined.Lock, contentDescription = null, tint = muted, modifier = Modifier.size(18.dp))
+                Column {
+                    Text(stringResource(R.string.drive_card_unavailable), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.channel_files_moved_note), style = MaterialTheme.typography.labelSmall, color = muted)
+                }
             }
         }
     }

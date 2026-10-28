@@ -114,6 +114,7 @@ import jp.chikuwachat.android.api.TemplateOut
 import jp.chikuwachat.android.api.WorkflowOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.SendOptions
+import jp.chikuwachat.android.sync.ChannelFiles
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
@@ -304,6 +305,18 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         PendingAttachments(pendingUploads, controller, uploading) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
+        // CF4 (docs/CHANNEL_FILES.md §12.3): where files sent here go, under the chips (a public or private channel whose
+        // files go to its drive; never a DM).
+        if (pendingUploads.isNotEmpty() || uploading > 0) {
+            val conversation = store.channel(channelId)?.channel
+            if (ChannelFiles.filesGoToDrive(conversation, store.workspaceSettings)) {
+                Text(
+                    stringResource(R.string.channel_files_composer_hint, conversation?.name.orEmpty()),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
+        }
         // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack). The toggles below
         // are saveable (M28c): a rotation reset them.
         var alsoInChannel by rememberSaveable(channelId, parentId) { mutableStateOf(false) }

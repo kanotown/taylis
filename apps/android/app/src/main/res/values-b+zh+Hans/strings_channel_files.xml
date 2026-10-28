@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_files_folder">帖子中的文件</string>
+    <string name="channel_files_deleted">已删除的文件</string>
+    <string name="channel_files_in_trash">在回收站中</string>
+    <string name="channel_files_restore">恢复</string>
+    <string name="channel_files_restored">已从云盘回收站恢复</string>
+    <string name="channel_files_restore_folder">此文件连同其文件夹在回收站中。请从云盘回收站恢复该文件夹。</string>
+    <string name="channel_files_moved_note">此文件已被移到其他位置。</string>
+    <string name="channel_files_checking">正在确认文件…</string>
+    <string name="channel_files_show_in_drive_named">在云盘中显示：%1$s</string>
+    <string name="channel_files_posted_marker">已附在消息中</string>
+    <string name="channel_files_posts">帖子</string>
+    <string name="channel_files_show_message">显示消息</string>
+    <string name="channel_files_post_in_thread">（话题）</string>
+    <string name="channel_files_search_include">包含帖子中的文件</string>
+    <string name="channel_files_composer_hint">文件将保存到 #%1$s 云盘的“帖子中的文件”</string>
+    <string name="channel_files_setting">将发布的文件保存到频道云盘</string>
+    <string name="channel_files_choice_workspace">跟随工作区（%1$s）</string>
+    <string name="channel_files_choice_on">保存</string>
+    <string name="channel_files_choice_off">不保存</string>
+    <string name="channel_files_setting_note">更改只对之后的帖子生效。</string>
+    <string name="channel_files_delete_checking">正在确认云盘中的文件…</string>
+    <string name="channel_files_delete_trash_note">30 天内可从回收站恢复。</string>
+    <string name="channel_files_delete_stay">云盘中的文件会保留。</string>
+    <plurals name="channel_files_delete_trash">
+        <item quantity="other">同时将云盘中的 %1$d 个文件移到回收站</item>
+    </plurals>
+    <plurals name="channel_files_delete_changed">
+        <item quantity="other">%1$d 个文件在发布后被修改过，将保留在云盘中。</item>
+    </plurals>
+</resources>

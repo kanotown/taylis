@@ -429,6 +429,6 @@ private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.s
         onReact = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } },
         onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
         // The root row: its deletion closes this thread without the notice (ThreadRootWatch).
-        onDelete = { controller.scope.launch { controller.deleteMessage(message.id, fromThreadRoot = isRoot) } },
+        onDelete = { driveFiles -> controller.scope.launch { controller.deleteMessage(message.id, fromThreadRoot = isRoot, driveFiles = driveFiles) } },
     )
 }
