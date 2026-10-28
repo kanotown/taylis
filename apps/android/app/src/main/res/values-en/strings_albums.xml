@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AL4 (docs/ALBUMS.md §12, §18.4): photo albums on the phone. -->
+<resources>
+    <string name="album_title">Albums</string>
+    <string name="album_new">New album</string>
+    <string name="album_name">Album name</string>
+    <string name="album_description">Description</string>
+    <string name="album_new_where">It goes into this drive\'s “Albums” folder</string>
+    <string name="album_make">Make it an album</string>
+    <string name="album_made">It is an album now</string>
+    <string name="album_empty">No photos yet</string>
+    <string name="album_none_yet">No albums to add to yet</string>
+    <string name="album_slideshow">Slideshow</string>
+    <string name="album_add_photos">Add photos</string>
+    <string name="album_menu">Album menu</string>
+    <string name="album_settings">Album settings</string>
+    <string name="album_show_files">Show as a file list</string>
+    <string name="album_show_album">Show as an album</string>
+    <string name="album_download_all">Download all (ZIP)</string>
+    <string name="album_more_description">More</string>
+    <string name="album_others_line">Also %1$s</string>
+    <string name="album_day">%3$s, %1$d/%2$d</string>
+    <string name="album_day_with_year">%4$s, %2$d/%3$d/%1$d</string>
+    <string name="album_date_range">%1$s – %2$s</string>
+    <string name="album_has_location">Has location</string>
+    <string name="album_cover">Cover</string>
+    <string name="album_make_cover">Make cover</string>
+    <string name="album_cover_set">Cover changed</string>
+    <string name="album_cover_reset">Use the first photo as the cover</string>
+    <string name="album_cell_selected">selected</string>
+    <string name="album_selection_clear">Clear selection</string>
+    <string name="album_save_to_gallery">Save to Photos</string>
+    <string name="album_saving">Saving to Photos: %1$d / %2$d</string>
+    <string name="album_save_needs_android10">Saving several photos at once needs Android 10 or later (one at a time can go to Downloads)</string>
+    <string name="album_open_original">Open the original</string>
+    <string name="album_viewer_more">More actions</string>
+    <string name="album_play_video">Play video</string>
+    <string name="album_slideshow_from_here">Slideshow from here</string>
+    <string name="album_sort">Order</string>
+    <string name="album_sort_taken">Date taken</string>
+    <string name="album_sort_name">Name</string>
+    <string name="album_sort_added">Date added</string>
+    <string name="album_order_asc">Oldest first</string>
+    <string name="album_order_desc">Newest first</string>
+    <string name="album_dates">Dates (optional)</string>
+    <string name="album_starts_on">First day</string>
+    <string name="album_ends_on">Last day</string>
+    <string name="album_dates_clear">Clear the dates</string>
+    <string name="album_remove">Stop being an album</string>
+    <string name="album_remove_note">It becomes a plain folder again. The photos stay.</string>
+    <string name="album_remove_confirm">Stop</string>
+    <string name="album_add_from_post">Add this post\'s photos to an album</string>
+    <string name="album_card_named">Album %1$s</string>
+    <string name="album_slideshow_close">Close the slideshow</string>
+    <string name="album_slideshow_nothing">No photos to show</string>
+    <string name="album_slideshow_previous">Previous</string>
+    <string name="album_slideshow_next">Next</string>
+    <string name="album_slideshow_pause">Pause</string>
+    <string name="album_slideshow_play">Play</string>
+    <string name="album_slideshow_settings">Slideshow settings</string>
+    <string name="album_slideshow_seconds">Every %1$d s</string>
+    <string name="album_slideshow_random">Shuffle</string>
+    <string name="album_slideshow_skip_videos">Skip videos</string>
+    <plurals name="album_photos">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="other">%1$d photos</item>
+    </plurals>
+    <plurals name="album_videos">
+        <item quantity="one">%1$d video</item>
+        <item quantity="other">%1$d videos</item>
+    </plurals>
+    <plurals name="album_folders">
+        <item quantity="one">%1$d folder</item>
+        <item quantity="other">%1$d folders</item>
+    </plurals>
+    <plurals name="album_other_files">
+        <item quantity="one">%1$d other file</item>
+        <item quantity="other">%1$d other files</item>
+    </plurals>
+    <plurals name="album_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="album_saved">
+        <item quantity="one">Saved %1$d item to Photos</item>
+        <item quantity="other">Saved %1$d items to Photos</item>
+    </plurals>
+    <plurals name="album_save_failed">
+        <item quantity="one">%1$d could not be saved.</item>
+        <item quantity="other">%1$d could not be saved.</item>
+    </plurals>
+    <plurals name="album_added">
+        <item quantity="one">Added %1$d item to the album.</item>
+        <item quantity="other">Added %1$d items to the album.</item>
+    </plurals>
+    <plurals name="album_add_failed">
+        <item quantity="one">%1$d could not be added.</item>
+        <item quantity="other">%1$d could not be added.</item>
+    </plurals>
+    <plurals name="album_add_title">
+        <item quantity="one">Add %1$d photo or video to an album</item>
+        <item quantity="other">Add %1$d photos and videos to an album</item>
+    </plurals>
+</resources>

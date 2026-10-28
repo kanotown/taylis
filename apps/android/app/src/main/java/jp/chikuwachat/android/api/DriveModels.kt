@@ -43,6 +43,14 @@ data class DriveFileOut(
     val hasPoster: Boolean = false,
     val durationMs: Long? = null,
     val preview: AttachmentPreviewOut? = null,
+    /** AL1 (docs/ALBUMS.md §4.2): when the photo or video was taken (EXIF, the video's creation time); null: unknown. */
+    val takenAt: String? = null,
+    /** AL1 §7: the original file carries a GPS position (the viewer's 「位置情報あり」; the value itself is never sent). */
+    val hasLocation: Boolean = false,
+    /** AL1 §6: a display-size image (long edge 2048 px, WebP, no metadata) at /attachments/{attachment_id}/display. */
+    val hasDisplay: Boolean = false,
+    val displayWidth: Int? = null,
+    val displayHeight: Int? = null,
 )
 
 @Serializable
@@ -69,6 +77,8 @@ data class DriveItemOut(
     val posted: Boolean = false,
     /** CF1: the messages showing its versions that I can read (at most five); only GET /drive/items/{id} carries them. */
     val posts: List<DrivePostOut>? = null,
+    /** AL1 (docs/ALBUMS.md §5): a folder that is an album carries it (the album screen, the /d/ card); null otherwise. */
+    val album: AlbumOut? = null,
 ) {
     val isFolder: Boolean get() = kind == "folder"
     val isChannelPosts: Boolean get() = systemRole == "channel_posts"
@@ -182,3 +192,81 @@ data class DriveUploadPartOut(val partNumber: Int, val sizeBytes: Long = 0)
 /** POST /drive/items/{id}/preview (§27.3): pending / ready / failed, or null when this file gets no preview. */
 @Serializable
 data class DrivePreviewOut(val preview: AttachmentPreviewOut? = null)
+
+/*
+ * AL1 / AL4 (docs/ALBUMS.md §5, §18.4): photo albums are drive folders with a little metadata. openapi.json's AlbumOut /
+ * AlbumCoverOut / AlbumListEntryOut / AlbumListOut / AlbumDetailOut / AlbumCreatedOut / AlbumAddResult / AlbumAddOut.
+ */
+
+@Serializable
+data class AlbumCoverOut(val itemId: String, val attachmentId: String)
+
+@Serializable
+data class AlbumOut(
+    val folderId: String,
+    val description: String = "",
+    /** The cover in use (the chosen one, else the first photo or video in the album's order); null when it is empty. */
+    val cover: AlbumCoverOut? = null,
+    /** The chosen cover (null: the first). */
+    val coverItemId: String? = null,
+    /** taken | name | added. */
+    val sort: String = "taken",
+    val sortOrder: String = "asc",
+    /** The event's days (`yyyy-mm-dd`), when set; else the photos' range ([takenFrom]–[takenTo]) is shown. */
+    val startsOn: String? = null,
+    val endsOn: String? = null,
+    val takenFrom: String? = null,
+    val takenTo: String? = null,
+    val photoCount: Int = 0,
+    val videoCount: Int = 0,
+    val sizeBytes: Long = 0,
+    /** At most four attachments for the card's 2 × 2 and the list's covers. */
+    val previewAttachmentIds: List<String> = emptyList(),
+    val createdBy: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
+@Serializable
+data class AlbumListEntryOut(
+    val folder: DriveItemOut,
+    val album: AlbumOut,
+    /** The location's name, then the folders down to the album's parent. */
+    val path: List<DriveCrumb> = emptyList(),
+    val locationKind: String = "workspace",
+)
+
+@Serializable
+data class AlbumListOut(val items: List<AlbumListEntryOut> = emptyList(), val nextCursor: String? = null)
+
+/** GET /drive/albums/{folder_id}: the album and a page of its photos and videos in the album's order. */
+@Serializable
+data class AlbumDetailOut(
+    val folder: DriveItemOut,
+    val album: AlbumOut,
+    val path: List<DriveCrumb> = emptyList(),
+    val locationKind: String = "workspace",
+    val canWrite: Boolean = false,
+    val items: List<DriveItemOut> = emptyList(),
+    val nextCursor: String? = null,
+    /** Subfolders and other files (PDF…) directly in it: listed by GET /drive/folders/{id}/children. */
+    val folderCount: Int = 0,
+    val otherCount: Int = 0,
+    val sharedAbove: Int = 0,
+)
+
+@Serializable
+data class AlbumCreatedOut(val folder: DriveItemOut, val album: AlbumOut)
+
+@Serializable
+data class AlbumAddResult(
+    val sourceId: String,
+    val ok: Boolean,
+    val error: String? = null,
+    val itemId: String? = null,
+    /** moved | copied. */
+    val action: String? = null,
+)
+
+@Serializable
+data class AlbumAddOut(val results: List<AlbumAddResult> = emptyList())

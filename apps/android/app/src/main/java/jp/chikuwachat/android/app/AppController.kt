@@ -2864,6 +2864,55 @@ class AppController(private val app: Application) {
     val driveApi: jp.chikuwachat.android.sync.DriveApi? get() = api
     /** 2026-10-24 (DRIVE.md §6, §27.3): folders, uploads and previews asked for from the phone. */
     val driveWriteApi: jp.chikuwachat.android.sync.DriveWriteApi? get() = api
+    /** AL4 (docs/ALBUMS.md §18.4): the album endpoints. */
+    val albumApi: jp.chikuwachat.android.sync.AlbumApi? get() = api
+
+    /** AL4: 「写真に保存」 under way: how many of how many are done (the album screen's line); null when none. */
+    var gallerySave by mutableStateOf<Pair<Int, Int>?>(null)
+        private set
+
+    /**
+     * AL4 (docs/ALBUMS.md §12): photos and videos into the phone's gallery, one after another, each original streamed
+     * from the drive (never whole in memory). Android 10+ needs no permission (MediaStore); Android 8–9 saves one file
+     * to Downloads through the system's dialog instead (several: refused with a note).
+     */
+    fun saveToGallery(items: List<jp.chikuwachat.android.api.DriveItemOut>) {
+        val api = api ?: return
+        if (items.isEmpty() || gallerySave != null) return
+        if (Build.VERSION.SDK_INT < 29) {
+            if (items.size == 1) downloadDrive(items[0], DriveAction.SAVE) else error = L10n.str(R.string.album_save_needs_android10)
+            return
+        }
+        val context = app as Context
+        gallerySave = 0 to items.size
+        scope.launch {
+            var saved = 0
+            var failed = 0
+            try {
+                for (item in items) {
+                    try {
+                        val mime = item.contentType ?: "image/jpeg"
+                        api.streamGet("/api/v1/drive/items/${item.id}/content", auth = true) { input, _ ->
+                            if (Build.VERSION.SDK_INT >= 29) jp.chikuwachat.android.platform.DriveFiles.streamToGallery(
+                                context, item.name, mime, jp.chikuwachat.android.sync.AlbumRules.galleryFolder(mime), input, item.sizeBytes,
+                            )
+                        }
+                        saved += 1
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("Albums", "could not save ${item.id} to the gallery", e)
+                        failed += 1
+                    }
+                    gallerySave = (saved + failed) to items.size
+                }
+            } finally {
+                gallerySave = null
+            }
+            val text = L10n.plural(R.plurals.album_saved, saved, saved)
+            if (failed == 0) notice = text else error = text + " " + L10n.plural(R.plurals.album_save_failed, failed, failed)
+        }
+    }
 
     /**
      * §27.3: a drive file's own bytes (`/drive/items/{id}/content` with the token) streamed into [target] (a PDF the

@@ -89,10 +89,16 @@ internal fun myDriveUploads(controller: AppController): List<DriveUploadJob> {
 
 /** The ＋ of a writable folder: files from the photo picker, the camera or the system's picker, or a new folder. */
 @Composable
-internal fun DriveUploadButton(controller: AppController, locationId: String, folderId: String, label: String, onFolderMade: (DriveItemOut) -> Unit) {
+internal fun DriveUploadButton(
+    controller: AppController, locationId: String, folderId: String, label: String,
+    /** AL4 (docs/ALBUMS.md §17 Q2): 「新しいアルバム」 goes into the location's 「アルバム」 folder at its top, else here. */
+    rootId: String? = null, onAlbumMade: ((DriveItemOut) -> Unit)? = null,
+    onFolderMade: (DriveItemOut) -> Unit,
+) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     var naming by rememberSaveable { mutableStateOf(false) }
+    var album by rememberSaveable { mutableStateOf(false) }
     fun target(): DriveUploadCenter.Target? {
         val server = controller.activeKey ?: return null
         val (userId, session) = controller.shareAccount(server) ?: return null
@@ -118,7 +124,15 @@ internal fun DriveUploadButton(controller: AppController, locationId: String, fo
             HorizontalDivider()
             DropdownMenuItem(text = { Text(stringResource(R.string.drive_new_folder)) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) },
                 onClick = { menu = false; naming = true })
+            if (onAlbumMade != null && controller.albumApi != null) DropdownMenuItem(
+                text = { Text(stringResource(R.string.album_new)) }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) },
+                onClick = { menu = false; album = true },
+            )
         }
+    }
+    if (album && onAlbumMade != null) {
+        val (parent, location) = jp.chikuwachat.android.sync.AlbumRules.createTarget(folderId, rootId, locationId)
+        NewAlbumDialog(controller, parent, location, onDismiss = { album = false }, onMade = { made -> album = false; onAlbumMade(made.folder) })
     }
     if (naming) NewFolderDialog(controller, folderId, onDismiss = { naming = false }, onMade = { naming = false; onFolderMade(it) })
 }

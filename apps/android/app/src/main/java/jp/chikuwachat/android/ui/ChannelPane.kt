@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.ChannelFiles
+import jp.chikuwachat.android.sync.AlbumRules
 import jp.chikuwachat.android.sync.ReadAnchor
 import jp.chikuwachat.android.sync.ReadGate
 import androidx.compose.foundation.interaction.DragInteraction
@@ -588,6 +589,7 @@ fun MessageRow(
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
     var showingReactors by remember { mutableStateOf(false) }
+    var addingToAlbum by remember { mutableStateOf(false) } // AL4: 「アルバムに追加」
     // The edit and share dialogs (with their text) survive a rotation (M28c); the rows are keyed, so the state is theirs.
     var editing by rememberSaveable { mutableStateOf(false) }
     var savingEdit by remember { mutableStateOf(false) }
@@ -778,9 +780,11 @@ fun MessageRow(
             // CF4 (docs/CHANNEL_FILES.md §12.1): each posted file still there opens at its folder in 「ドライブ」.
             // A moved one only when I can read it where it is (its name is not shown otherwise).
             showInDrive = message.attachments.mapNotNull { a -> ChannelFiles.driveItem(a)?.takeIf { id -> a.drive?.state != "moved" || controller.drive?.peekLink(id) is jp.chikuwachat.android.sync.DriveLinkState.Ok }?.let { id -> a.filename to { controller.scope.launch { controller.openDriveLink(id, force = false) }; Unit } } },
+            onAddToAlbum = if (controller.albumApi != null && controller.drive?.available == true && AlbumRules.postMedia(message.attachments).isNotEmpty()) ({ addingToAlbum = true }) else null,
             reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),
         )
     }
+    if (addingToAlbum) AddToAlbumSheet(controller, message, onDismiss = { addingToAlbum = false })
     if (showingReactors) ReactorsDialog(message, store, version, onNeedEmojiImage = { controller.loadEmojiImage(it) }, onDismiss = { showingReactors = false })
     if (sharing) ShareDialog(controller, message, version, onDismiss = { sharing = false })
     if (reporting) ReportMessageDialog(controller, message, onDismiss = { reporting = false })

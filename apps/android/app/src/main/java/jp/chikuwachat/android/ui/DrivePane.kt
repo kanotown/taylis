@@ -50,6 +50,7 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Slideshow
@@ -170,7 +171,9 @@ fun DrivePane(
     val folderId = route.folderId
     if (locationId == null || folderId == null) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) { DriveLocations(controller) { location -> onOpenFolder(location.id, location.rootId, null) } }
+            Box(Modifier.weight(1f)) {
+                DriveLocations(controller, onOpenAlbum = { onOpenFolder(it.folder.locationId, it.folder.id, null) }) { location -> onOpenFolder(location.id, location.rootId, null) }
+            }
             DriveUploadsBar(controller)
         }
     } else {
@@ -208,7 +211,7 @@ fun ChannelDriveTab(controller: AppController, channel: ChannelState, onOpenFold
 }
 
 @Composable
-private fun DriveLocations(controller: AppController, onOpen: (DriveLocationOut) -> Unit) {
+private fun DriveLocations(controller: AppController, onOpenAlbum: (jp.chikuwachat.android.api.AlbumListEntryOut) -> Unit, onOpen: (DriveLocationOut) -> Unit) {
     val hub = controller.drive ?: return
     hub.version.collectAsState().value
     val scope = rememberCoroutineScope()
@@ -227,6 +230,8 @@ private fun DriveLocations(controller: AppController, onOpen: (DriveLocationOut)
                 locations == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
                 locations.isEmpty() -> item { DriveMessage(stringResource(R.string.drive_no_locations)) }
                 else -> {
+                    // AL4 (docs/ALBUMS.md §12): the albums' covers above the locations (none: nothing shows).
+                    item(key = "albums") { AlbumsRow(controller, onOpenAlbum) }
                     val (own, channels) = locations.partition { it.kind != "channel" }
                     items(own, key = { it.id }) { LocationRow(it) { onOpen(it) } }
                     if (channels.isNotEmpty()) {
@@ -274,6 +279,7 @@ private fun DriveBadge(icon: ImageVector, size: Dp = 40.dp) {
 
 internal fun driveIcon(item: DriveItemOut): ImageVector = when (DriveNames.icon(item)) {
     DriveNames.Icon.FOLDER -> Icons.Outlined.Folder
+    DriveNames.Icon.ALBUM -> Icons.Outlined.PhotoLibrary // AL4 (docs/ALBUMS.md §12): a folder that is an album
     DriveNames.Icon.CHANNEL_POSTS -> Icons.Outlined.Forum // CF1 §3.3: 「投稿のファイル」 (speech bubbles: the posts)
     DriveNames.Icon.IMAGE -> Icons.Outlined.Image
     DriveNames.Icon.VIDEO -> Icons.Outlined.Movie
@@ -373,6 +379,22 @@ private fun DriveFolder(
     }
     val kind = location?.kind
     val crumbs = DriveNames.crumbs(state.path, kind, hub.systemFolders)
+    // AL4 (docs/ALBUMS.md §10.1, §12): a folder that is an album opens as the album (「ファイルの一覧で見る」 switches).
+    var listMode by rememberSaveable(folderId) { mutableStateOf(false) }
+    if (state.folder?.album != null && !listMode && controller.albumApi != null) {
+        Column(Modifier.fillMaxSize()) {
+            if (crumbs.size > 1 || !inTab) DriveCrumbs(crumbs, onCrumb = { onCrumb(locationId, it) })
+            Box(Modifier.weight(1f)) {
+                AlbumScreen(
+                    controller, locationId, folderId, onShowFiles = { listMode = true },
+                    onNotAlbum = { scope.launch { loader.reload() } },
+                    onGone = { hub.reloadLocations(); onGone(locationId, location?.rootId) },
+                )
+            }
+            DriveUploadsBar(controller)
+        }
+        return
+    }
     fun open(item: DriveItemOut) {
         if (item.isFolder) onOpenFolder(item.locationId.ifEmpty { locationId }, item.id, null)
         else if (DriveNames.viewer(item) != null) viewing = item
@@ -387,8 +409,15 @@ private fun DriveFolder(
             onSort = { sort -> val (s, o) = DriveListing.choose(state, sort); scope.launch { loader.reload(s, o); listState.scrollToItem(0) } },
             extra = {
                 // DRIVE.md §6: uploads and 「新しいフォルダ」 only where the location can be written (read only: none).
-                if (location?.canWrite == true) DriveUploadButton(controller, locationId, folderId, DriveNames.pathLine(state.path, kind, hub.systemFolders)) {
+                if (location?.canWrite == true) DriveUploadButton(
+                    controller, locationId, folderId, DriveNames.pathLine(state.path, kind, hub.systemFolders),
+                    rootId = location.rootId, onAlbumMade = { onOpenFolder(it.locationId.ifEmpty { locationId }, it.id, null) },
+                ) {
                     scope.launch { loader.reload() }
+                }
+                // AL4: back to the album from its file list.
+                if (state.folder?.album != null && listMode) IconButton(onClick = { listMode = false }) {
+                    Icon(Icons.Outlined.PhotoLibrary, stringResource(R.string.album_show_album))
                 }
             },
         )
@@ -454,6 +483,11 @@ private fun DriveFolder(
     }
     details?.let { item ->
         DriveDetailsSheet(controller, item, kind = kind, onDismiss = { details = null }, onPreview = { details = null; viewing = item },
+            // AL4 (docs/ALBUMS.md §0): any folder can become an album, but not a location's top or 「投稿のファイル」.
+            onMakeAlbum = if (location?.canWrite == true && item.isFolder && item.album == null && !item.isChannelPosts && item.parentId != null && controller.albumApi != null) ({
+                details = null
+                scope.launch { if (makeAlbum(controller, item)) onOpenFolder(item.locationId.ifEmpty { locationId }, item.id, null) }
+            }) else null,
             onOpenFolder = { details = null; onOpenFolder(item.locationId.ifEmpty { locationId }, item.id, null) })
     }
     viewing?.let { item -> DriveViewer(controller, item, onDismiss = { viewing = null }) }
@@ -512,7 +546,7 @@ private fun DriveToolbar(
 @Composable
 private fun DriveRow(controller: AppController, item: DriveItemOut, subtitle: String?, onClick: () -> Unit, onDetails: () -> Unit) {
     val time = Timeline.fullLabel(DriveNames.itemTime(item))
-    val line = subtitle ?: if (item.isFolder) time else listOf(time, DriveNames.bytes(item.sizeBytes)).filter { it.isNotEmpty() }.joinToString(" · ")
+    val line = subtitle ?: if (item.isFolder) item.album?.let { jp.chikuwachat.android.sync.AlbumRules.cardLine(it) } ?: time else listOf(time, DriveNames.bytes(item.sizeBytes)).filter { it.isNotEmpty() }.joinToString(" · ")
     Row(
         Modifier.fillMaxWidth().heightIn(min = 60.dp).combinedClickableCompat(onClick = onClick, onLongClick = onDetails).padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -580,6 +614,7 @@ private fun DriveMessage(text: String, retry: (() -> Unit)? = null) {
 @Composable
 private fun DriveDetailsSheet(
     controller: AppController, item: DriveItemOut, kind: String?, onDismiss: () -> Unit, onPreview: () -> Unit, onOpenFolder: () -> Unit,
+    onMakeAlbum: (() -> Unit)? = null,
 ) {
     val users = controller.store.users
     var path by remember(item.id) { mutableStateOf<String?>(null) }
@@ -644,7 +679,8 @@ private fun DriveDetailsSheet(
                 }
             }
             if (item.isFolder) {
-                Action(Icons.Outlined.Folder, stringResource(R.string.drive_open), onOpenFolder)
+                Action(if (item.album != null) Icons.Outlined.PhotoLibrary else Icons.Outlined.Folder, stringResource(R.string.drive_open), onOpenFolder)
+                if (onMakeAlbum != null) Action(Icons.Outlined.PhotoLibrary, stringResource(R.string.album_make), onMakeAlbum)
                 Action(Icons.Outlined.Share, stringResource(R.string.drive_share_zip)) { onDismiss(); controller.downloadDrive(item, AppController.DriveAction.SHARE) }
                 Action(Icons.Outlined.Download, stringResource(R.string.drive_save_zip)) { onDismiss(); controller.downloadDrive(item, AppController.DriveAction.SAVE) }
             } else {

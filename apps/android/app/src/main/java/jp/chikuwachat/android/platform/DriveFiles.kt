@@ -91,6 +91,33 @@ object DriveFiles {
         }
     }
 
+    /**
+     * AL4 (docs/ALBUMS.md §12): 「写真に保存」 — Android 10+: a new row in the gallery (photos in Pictures/Taylis, videos in
+     * Movies/Taylis, no permission), streamed (the original, never whole in memory) and pending until complete.
+     */
+    @androidx.annotation.RequiresApi(29)
+    fun streamToGallery(context: Context, name: String, mime: String, folder: String, input: InputStream, expected: Long?): Uri {
+        val resolver = context.contentResolver
+        val collection = if (mime.startsWith("video/")) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, values) ?: throw IOException("the gallery refused the file")
+        try {
+            val copied = (resolver.openOutputStream(uri) ?: throw IOException("cannot write $uri")).use { copy(input, it, { false }, {}) }
+            if (expected != null && expected >= 0 && copied != expected) throw IOException("short download: $copied of $expected")
+            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            return uri
+        } catch (e: Exception) {
+            runCatching { resolver.delete(uri, null, null) }
+            throw e
+        }
+    }
+
     /** Copies a cached file to a place picked with the system's dialog (Android 8–9's 「ダウンロードに保存」). */
     fun copyTo(context: Context, file: File, uri: Uri) {
         val output = context.contentResolver.openOutputStream(uri) ?: throw IOException("cannot write $uri")
