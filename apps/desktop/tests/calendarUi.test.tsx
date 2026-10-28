@@ -10,7 +10,7 @@ import type { AppController } from "../src/state/app";
 import type { CalendarHub } from "../src/sync/calendar";
 import { Store } from "../src/sync/store";
 import { CalendarEventDialog, writableCalendars } from "../src/ui/CalendarEventDialog";
-import { AgendaList, filterEvents, MonthGrid } from "../src/ui/CalendarView";
+import { AgendaList, CalendarView, filterEvents, MonthGrid } from "../src/ui/CalendarView";
 import { newDraft } from "../src/ui/calendarDates";
 import { allDay, timed } from "./calendarFixtures";
 
@@ -193,5 +193,40 @@ describe("the event dialog", () => {
     render(<CalendarEventDialog controller={controller} event={event} onClose={() => {}} />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "保存" })); });
     expect(screen.getByRole("alert").textContent).toBe("この予定を変更できるのは作成者・チャンネルのオーナー・管理者だけです");
+  });
+});
+
+describe("the workspace calendar opened on a channel (2026-10-28, its 「予定」 tab having gone)", () => {
+  it("shows only that channel's events, with their channel, and a new event starts in its calendar, announced", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+    localStorage.setItem("chikuwa.prefs.calendarMode", "list");
+    try {
+      const { controller } = setup();
+      const events = [
+        timed("ゼミ", "2026-10-01T05:00:00Z", "2026-10-01T06:00:00Z", { channel_id: "c-lab", channel_name: "lab" }),
+        timed("歯医者", "2026-10-01T07:00:00Z", "2026-10-01T08:00:00Z"),
+        timed("お知らせ", "2026-10-02T07:00:00Z", "2026-10-02T08:00:00Z", { channel_id: "c-news", channel_name: "news" }),
+      ];
+      Object.assign(controller.engine!.calendar as object, {
+        open: vi.fn(async () => {}),
+        close: vi.fn(),
+        window: () => ({ from: "", to: "", channelId: null, state: "ready", events }),
+        subscribe: () => () => {},
+        version: 1,
+      });
+      render(<CalendarView controller={controller} initialFilter="c-lab" />);
+      expect((screen.getByLabelText("絞り込み") as HTMLSelectElement).value).toBe("c-lab");
+      expect(screen.getByText("ゼミ")).toBeTruthy();
+      expect(within(document.querySelector("[data-agenda-day]") as HTMLElement).getByText("#lab")).toBeTruthy(); // its channel
+      expect(screen.queryByText("歯医者")).toBeNull();
+      expect(screen.queryByText("お知らせ")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "予定を追加" }));
+      expect((screen.getByLabelText("カレンダー") as HTMLSelectElement).value).toBe("c-lab");
+      expect((screen.getByRole("checkbox", { name: "チャンネルに知らせる" }) as HTMLInputElement).checked).toBe(true);
+    } finally {
+      localStorage.removeItem("chikuwa.prefs.calendarMode");
+      vi.useRealTimers();
+    }
   });
 });
