@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -701,8 +702,9 @@ fun MainScreen(controller: AppController) {
         focusManager.clearFocus()
         tabs = MainTabs.landReservations(tabs)
     }
-    // M52: a tapped calendar alarm: its channel's 「予定」 tab (once the store knows the channel), or the calendar for my own
-    // calendar's event, then the event's form over it (read from the server: it may be outside every range on screen).
+    // M52: a tapped calendar alarm: the calendar, filtered to the event's channel (2026-10-28: once the store knows the
+    // channel; one calendar per workspace, no 「予定」 tab), then the event's form over it (read from the server: it may be
+    // outside every range on screen).
     LaunchedEffect(controller.pendingEvent, version) {
         val target = controller.pendingEvent ?: return@LaunchedEffect
         val channelId = target.channelId
@@ -710,7 +712,8 @@ fun MainScreen(controller: AppController) {
         controller.pendingEvent = null
         controller.messageFocus = null
         focusManager.clearFocus()
-        tabs = if (channelId != null) MainTabs.landEvents(tabs, channelId) else MainTabs.landCalendar(tabs)
+        if (channelId != null) controller.calendarFilterPreset = channelId
+        tabs = MainTabs.landCalendar(tabs)
         val hub = controller.calendar ?: return@LaunchedEffect
         scope.launch {
             runCatching {
@@ -722,8 +725,8 @@ fun MainScreen(controller: AppController) {
                 .onFailure { controller.report(it) }
         }
     }
-    // M52: 「予定 N」 on the open channel's tab (today and tomorrow, CALENDAR.md §7); read when it opens and when the
-    // connection comes back (the hub reads the counts it holds again after reconnecting, and when one of its events changes).
+    // M52: the open channel's events today and tomorrow (CALENDAR.md §7), since 2026-10-28 the ⋮'s
+    // 「このチャンネルの予定（今日・明日 N 件）」; read when it opens and when the connection comes back (the hub reads the counts it holds again after reconnecting, and when one of its events changes).
     val calendarHub = controller.calendar
     val calendarChanges = calendarVersion(calendarHub)
     val upcomingChannel = selection?.takeIf { id -> store.channel(id)?.let { it.isMember && CalendarChannels.hasCalendar(it.channel) } == true }
@@ -851,7 +854,16 @@ fun MainScreen(controller: AppController) {
                         selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), stringResource(R.string.main_screen_preview_not_joined))
                         // M29: the title opens the details page.
                         selectedChannel != null -> Column(Modifier.clickable(onClickLabel = stringResource(R.string.main_screen_channel_details)) { openDetails() }) {
-                            TwoLineTitle(
+                            val topic = selectedChannel.channel.topic?.takeIf { isChannel && it.isNotBlank() }
+                            if (topic != null) {
+                                // 2026-10-28: the topic's markup read as text (a link as its label). The whole title is one
+                                // tap target (the details), so its links take a tap on the details page (ChannelDetailsHeader).
+                                Text(channelTitle(selectedChannel, store), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                TopicLine(
+                                    controller, topic, links = false, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                                )
+                            } else TwoLineTitle(
                                 channelTitle(selectedChannel, store),
                                 selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) stringResource(R.string.main_screen_set_a_topic) else dmPresenceSubtitle(selectedChannel, store),
                                 emoji = controller to version, // a custom status emoji in a DM's subtitle as its image
@@ -915,6 +927,8 @@ fun MainScreen(controller: AppController) {
                         // M69: 「カレンダーを購読 (iCal)」 on the calendar's own page.
                         calendar = pane == Route.Calendar && !searching && controller.calendar?.available == true,
                         closeDm = DmCloses.canClose(store, selectedChannel),
+                        // 2026-10-28: 「このチャンネルの予定」 where the channel has a shared calendar.
+                        channelEvents = controller.calendar?.available == true && selectedChannel?.channel?.let(CalendarChannels::hasCalendar) == true,
                     )
                     val barButtons = top != Route.You && top !is Route.Settings
                     // THREADS.md §5: follow / unfollow the open thread.
@@ -1050,6 +1064,19 @@ fun MainScreen(controller: AppController) {
                                     text = { Text(stringResource(R.string.common_subscribe_to_the_calendar_ical)) }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
                                     onClick = { menuOpen = false; controller.openCalendarFeeds() },
                                 )
+                                // 2026-10-28 (CALENDAR.md §7): the workspace calendar on this channel (its 「＋」 adds there when I may).
+                                BarMenuItem.CHANNEL_EVENTS -> selectedChannel?.let { open ->
+                                    DropdownMenuItem(
+                                        text = { Text(ConversationNav.channelEventsLabel(if (open.id == upcomingChannel) upcomingEvents else 0)) },
+                                        leadingIcon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
+                                        onClick = {
+                                            menuOpen = false
+                                            focusManager.clearFocus()
+                                            controller.calendarFilterPreset = open.id
+                                            tabs = MainTabs.landCalendar(tabs)
+                                        },
+                                    )
+                                }
                                 BarMenuItem.CLOSE_DM -> selectedChannel?.let { open ->
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.dm_close)) }, leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
@@ -1078,7 +1105,7 @@ fun MainScreen(controller: AppController) {
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
                 // M86 (DEADLINES.md §8 2.): the channel's next deadline, a line of its own over the tabs.
                 DeadlineChipRow(controller, selectedChannel)
-                ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab, upcoming = upcomingEvents)
+                ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab)
             }
             if (banner) ConnectionBanner(status)
             val shownSearch = searchParams
@@ -1188,8 +1215,6 @@ fun MainScreen(controller: AppController) {
                                     openThread(parentId)
                                 })
                             }
-                            // M52 (CALENDAR.md §7): the channel's shared calendar, the next 60 days.
-                            conversationTab == ConversationTab.EVENTS -> CoveringPage { ChannelEventsPane(controller, selectedChannel, version) }
                             // M56 (TASKS.md §6): the channel's board, a column at a time.
                             conversationTab == ConversationTab.TASKS -> CoveringPage { ChannelTasksPane(controller, selectedChannel, version) }
                             // M166 (DRIVE.md §13.3): the channel's drive, read only; a folder opens over the conversation.

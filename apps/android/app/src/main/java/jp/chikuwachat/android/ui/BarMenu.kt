@@ -11,6 +11,11 @@ enum class BarMenuItem {
     CALENDAR_FEEDS,
     /** M141 (SYNC_PROTOCOL.md §7.9): 「会話を閉じる」 in a DM or group DM, while the server closes them. */
     CLOSE_DM,
+    /**
+     * 2026-10-28 (CALENDAR.md §7): 「このチャンネルの予定」 (with 「（今日・明日 N 件）」) in a channel with a shared calendar: the
+     * workspace calendar filtered to the channel, in place of M52's 「予定」 tab.
+     */
+    CHANNEL_EVENTS,
 }
 
 /**
@@ -27,17 +32,19 @@ object BarMenu {
      * or its details page). `channel`: it is a channel, not a DM. `activityFeed`: the activity tab's feed is on screen.
      * `timesFeed` (L8): the Times feed is; `myTimes`: 「自分の times」 is offered there (I have one, or may make one).
      * `thread` (M66): a joined conversation's thread is on screen; `summaries`: the server takes summaries (GET /ai/status).
-     * `calendar` (M69): the calendar is on screen (and the server has one).
+     * `calendar` (M69): the calendar is on screen (and the server has one). `channelEvents` (2026-10-28): the conversation
+     * is a channel with a shared calendar (CALENDAR.md §9 5.: not a DM) and the server has the calendar.
      */
     fun items(
         conversation: Boolean, channel: Boolean, archived: Boolean, activityFeed: Boolean, timesFeed: Boolean = false, myTimes: Boolean = false,
-        thread: Boolean = false, summaries: Boolean = false, calendar: Boolean = false, closeDm: Boolean = false,
+        thread: Boolean = false, summaries: Boolean = false, calendar: Boolean = false, closeDm: Boolean = false, channelEvents: Boolean = false,
     ): List<BarMenuItem> = when {
         calendar -> listOf(BarMenuItem.CALENDAR_FEEDS)
         conversation -> buildList {
             add(BarMenuItem.FAVORITE)
             add(BarMenuItem.NOTIFICATIONS)
             add(BarMenuItem.DETAILS)
+            if (channel && channelEvents) add(BarMenuItem.CHANNEL_EVENTS)
             if (summaries) add(BarMenuItem.SUMMARIZE)
             if (channel && !archived) add(BarMenuItem.ADD_MEMBER)
             if (!channel && closeDm) add(BarMenuItem.CLOSE_DM)

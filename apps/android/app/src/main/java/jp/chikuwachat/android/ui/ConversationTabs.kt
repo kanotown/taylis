@@ -44,8 +44,7 @@ enum class ConversationTab(private val labelRes: Int) {
     MESSAGES(R.string.common_message),
     /** M46 (CANVAS.md §4.1): the conversation's canvas (its tab canvas, else the newest), and the others from its list. */
     CANVAS(R.string.common_canvas),
-    /** M52 (CALENDAR.md §7): the channel's shared calendar (public and private channels only, never a DM). */
-    EVENTS(R.string.common_event),
+    // M52's 「予定」 tab left on 2026-10-28 (one calendar per workspace): ⋮ 「このチャンネルの予定」 opens the calendar on the channel.
     /** M56 (TASKS.md §6): the channel's board (public and private channels only, never a DM). */
     TASKS(R.string.common_tasks),
     /** M166 (docs/DRIVE.md §13.3, §26): the channel's drive, read only (public and private channels, never a DM). */
@@ -74,13 +73,9 @@ object ConversationNav {
      */
     fun conversationOnScreen(tab: ConversationTab, detailsOpen: Boolean): Boolean = tab == ConversationTab.MESSAGES && !detailsOpen
 
-    /**
-     * M52: the tabs of a conversation: 「予定」 only where there is a shared calendar (CALENDAR.md §9 5.: not in a DM); M56:
-     * 「タスク」 only where there is a board (TASKS.md §2: the same channels).
-     */
+    /** The tabs of a conversation: M56's 「タスク」 only where there is a board (TASKS.md §2: not in a DM). */
     fun tabs(channel: ChannelState, drive: Boolean = false): List<ConversationTab> = ConversationTab.entries.filter {
         when (it) {
-            ConversationTab.EVENTS -> CalendarChannels.hasCalendar(channel.channel)
             ConversationTab.TASKS -> TaskRules.hasBoard(channel.channel)
             // M166: 「ドライブ」 where a channel has one (§3.1: not a DM), while the server has the drive.
             ConversationTab.DRIVE -> drive && !channel.channel.isDm
@@ -88,9 +83,12 @@ object ConversationNav {
         }
     }
 
-    /** A tab's name; 「予定 2」 with events today or tomorrow (CALENDAR.md §7). */
-    fun label(tab: ConversationTab, upcoming: Int): String =
-        if (tab == ConversationTab.EVENTS && upcoming > 0) "${tab.label} $upcoming" else tab.label
+    /**
+     * 2026-10-28 (CALENDAR.md §7): the ⋮'s 「このチャンネルの予定」, 「このチャンネルの予定（今日・明日 2 件）」 with events today
+     * or tomorrow (the count the removed 「予定」 tab had).
+     */
+    fun channelEventsLabel(upcoming: Int): String =
+        if (upcoming > 0) L10n.str(R.string.conversation_channel_events_count, upcoming) else L10n.str(R.string.conversation_channel_events)
 }
 
 /**
@@ -101,8 +99,6 @@ object ConversationNav {
 @Composable
 fun ConversationTabRow(
     controller: AppController, channel: ChannelState, version: Int, tab: ConversationTab, onTab: (ConversationTab) -> Unit,
-    /** M52: the channel's events today and tomorrow (「予定 N」). */
-    upcoming: Int = 0,
 ) {
     val links = remember(version, channel.id) { controller.store.linksOf(channel.id) }
     val editable = ChannelLinks.canEdit(channel, controller.store.me?.role)
@@ -116,7 +112,7 @@ fun ConversationTabRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         items(ConversationNav.tabs(channel, drive = drive), key = { "tab:" + it.name }) { entry ->
-            ConversationTabItem(ConversationNav.label(entry, upcoming), selected = entry == tab) { onTab(entry) }
+            ConversationTabItem(entry.label, selected = entry == tab) { onTab(entry) }
         }
         if (links.isNotEmpty() || editable) {
             item(key = "divider") { VerticalDivider(Modifier.padding(horizontal = 6.dp).height(20.dp)) }

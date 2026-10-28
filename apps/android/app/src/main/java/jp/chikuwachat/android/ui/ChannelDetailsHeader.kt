@@ -165,8 +165,9 @@ fun ChannelDetailsHeader(
             EmojiLineText(sub, controller, version, MaterialTheme.typography.bodyMedium, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.padding(top = 2.dp))
         }
         channel.channel.topic?.takeIf { isChannel && it.isNotBlank() }?.let { topic ->
-            Text(
-                topic, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,
+            // 2026-10-28: its links take a tap here (TopicText.kt); the conversation's app bar shows them as text.
+            TopicLine(
+                controller, topic, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 3,
                 modifier = Modifier.padding(top = 6.dp, start = 16.dp, end = 16.dp),
             )
         }

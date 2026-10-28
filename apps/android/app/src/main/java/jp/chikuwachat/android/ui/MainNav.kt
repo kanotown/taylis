@@ -334,11 +334,10 @@ object MainNav {
         return base(stack) + search.copy(expanded = false) + Route.Channel(channelId, tab = ConversationTab.CANVAS, canvasId = canvasId)
     }
 
-    /** M52: a channel calendar's alarm tapped: the channel opens on its 「予定」 tab, as [openConversation] does. */
-    fun openEvents(stack: List<Route>, channelId: String): List<Route> =
-        base(stack) + Route.Channel(channelId, tab = ConversationTab.EVENTS)
-
-    /** M52: the calendar over the home's list (the tile, or an alarm of my own calendar); one already open stays as it is. */
+    /**
+     * M52: the calendar over the home's list (the tile, an alarm, a conversation's 「このチャンネルの予定」); one already open
+     * stays as it is.
+     */
     fun openCalendar(stack: List<Route>): List<Route> =
         if (top(stack) == Route.Calendar) stack else stack.filter { it is Route.Root } + Route.Calendar
 
