@@ -42,6 +42,9 @@ struct DriveLinkCard: View {
     private var face: some View {
         HStack(spacing: 10) {
             switch state {
+            case .item(let detail)? where detail.item.isFolder && detail.item.album != nil:
+                // AL3 (docs/ALBUMS.md §10.4): an album's card.
+                AlbumCardFace(controller: controller, detail: detail, album: detail.item.album!)
             case .item(let detail)?:
                 DriveThumbnail(controller: controller, item: detail.item, side: 44)
                 VStack(alignment: .leading, spacing: 2) {

@@ -114,6 +114,15 @@ struct DriveLocationsView: View {
     let onOpenFolder: (String) -> Void
     @State private var query = ""
     @State private var opening = false
+    /// AL3 (docs/ALBUMS.md §12): the albums of every drive, in a row at the top.
+    @State private var albums: AlbumListModel
+    @State private var newAlbum = false
+
+    init(controller: AppController, onOpenFolder: @escaping (String) -> Void) {
+        _controller = Bindable(controller)
+        self.onOpenFolder = onOpenFolder
+        _albums = State(initialValue: AlbumListModel(api: controller.api))
+    }
 
     private var hub: DriveHub? { controller.drive }
 
@@ -129,6 +138,17 @@ struct DriveLocationsView: View {
         .navigationTitle("ドライブ")
         .navigationBarTitleDisplayMode(.inline)
         .task { if hub?.locations == nil { await hub?.loadLocations() } }
+        .task {
+            if albums.entries == nil { await albums.load() }
+            if let available = albums.available { hub?.albumsAvailable = available }
+        }
+        .onChange(of: hub?.reconnects ?? 0) { _, _ in Task { await albums.load() } }
+        .sheet(isPresented: $newAlbum) {
+            AlbumCreateSheet(controller: controller, locations: hub?.writableLocations ?? [], locationId: nil) { made in
+                Task { await albums.load() }
+                onOpenFolder(made.folder.id)
+            }
+        }
     }
 
     private var list: some View {
@@ -136,6 +156,15 @@ struct DriveLocationsView: View {
         let shared = locations.filter { $0.kind != "channel" }
         let channels = locations.filter { $0.kind == "channel" }
         return List {
+            if albums.available != false {
+                Section {
+                    AlbumsStrip(controller: controller, model: albums, onOpenFolder: onOpenFolder,
+                                onNew: hub?.writableLocations.isEmpty == false ? { newAlbum = true } : nil)
+                        .listRowInsets(EdgeInsets())
+                } header: {
+                    Text("アルバム")
+                }
+            }
             Section {
                 ForEach(shared.filter { $0.kind == "workspace" }) { row($0) }
                 if let mine = shared.first(where: { $0.kind == "user" }) {
@@ -168,7 +197,10 @@ struct DriveLocationsView: View {
                                        description: Text("チャンネルのドライブは、そのチャンネルの「ドライブ」タブから開けます。"))
             }
         }
-        .refreshable { await hub?.loadLocations() }
+        .refreshable {
+            await hub?.loadLocations()
+            await albums.load()
+        }
     }
 
     private func row(_ location: DriveLocationOut) -> some View {
@@ -235,6 +267,10 @@ struct DriveFolderView: View {
     @State private var uploadAction: DriveUploadAction?
     @State private var showUploads = false
     @State private var onTop = false
+    /// AL3 (docs/ALBUMS.md §10.1): an album folder opens as the album; 「ファイルの一覧で見る」 keeps it a list on this
+    /// device.
+    @State private var listView: Bool
+    @State private var newAlbum = false
     @AppStorage(DriveSortSetting.sortKey) private var sortRaw = DriveSort.name.rawValue
     @AppStorage(DriveSortSetting.descendingKey) private var descending = false
 
@@ -248,6 +284,7 @@ struct DriveFolderView: View {
             folderId: folderId, api: controller.api,
             sort: DriveSort(rawValue: defaults.string(forKey: DriveSortSetting.sortKey) ?? "") ?? .name,
             descending: defaults.bool(forKey: DriveSortSetting.descendingKey)))
+        _listView = State(initialValue: AlbumListPreference.showsList(folderId))
     }
 
     private var hub: DriveHub? { controller.drive }
@@ -271,12 +308,32 @@ struct DriveFolderView: View {
     @ViewBuilder
     private var actions: some View {
         HStack(spacing: 14) {
-            if uploadTarget != nil { DriveUploadMenu(action: $uploadAction) }
+            if model.folder?.isAlbum == true {
+                Button { setListView(false) } label: { Image(systemName: "square.grid.3x3") }
+                    .accessibilityLabel(Text("アルバムで見る"))
+            }
+            if uploadTarget != nil {
+                DriveUploadMenu(action: $uploadAction, onNewAlbum: controller.drive?.albumsAvailable == false ? nil : { newAlbum = true })
+            }
             sortMenu
         }
     }
 
     var body: some View {
+        if model.folder?.isAlbum == true, !listView {
+            AlbumScreen(controller: controller, folderId: folderId, embedded: embedded, onOpenFolder: onOpenFolder,
+                        onShowList: { setListView(true) }, onNotAlbum: { Task { await model.load() } })
+        } else {
+            folderBody
+        }
+    }
+
+    private func setListView(_ list: Bool) {
+        AlbumListPreference.set(folderId, list: list)
+        listView = list
+    }
+
+    private var folderBody: some View {
         content
             .modifier(DriveFolderChrome(embedded: embedded, title: title, query: $query, sortMenu: AnyView(actions)))
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -307,6 +364,11 @@ struct DriveFolderView: View {
                 DriveItemDetailsSheet(controller: controller, item: item, path: model.path, kind: kind, siblings: model.items ?? [])
             }
             .sheet(item: $download) { DriveDownloadSheet(request: $0, controller: controller) }
+            .sheet(isPresented: $newAlbum) {
+                AlbumCreateSheet(controller: controller, locations: hub?.writableLocations ?? [], locationId: model.folder?.locationId) { made in
+                    onOpenFolder(made.folder.id)
+                }
+            }
     }
 
     @ViewBuilder

@@ -45,19 +45,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Used to save photos and videos from messages to your photo library."
+            "value" : "Used to save photos and videos from messages and albums to your photo library."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "メッセージの写真や動画を写真ライブラリに保存するために使います"
+            "value" : "メッセージやアルバムの写真・動画を写真ライブラリに保存するために使います"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用于将消息中的照片和视频保存到照片图库。"
+            "value" : "用于将消息和相册中的照片和视频保存到照片图库。"
           }
         }
       }

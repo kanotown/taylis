@@ -45,6 +45,10 @@ enum DriveUploadRules {
         }
     }
 
+    /// AL3 (docs/ALBUMS.md §12): a pick of hundreds of photos is read and staged this many at a time, each group a batch
+    /// of its own that starts at once.
+    static let pickGroup = 20
+
     /// A name for a file this device made (camera, a photo without one): 「IMG_20261024_150312.jpg」.
     static func photoName(_ date: Date = Date(), ext: String = "jpg") -> String {
         let formatter = DateFormatter()
