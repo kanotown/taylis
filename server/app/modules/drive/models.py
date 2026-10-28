@@ -35,6 +35,9 @@ from app.core.time import utcnow
 LOCATION_KINDS = ("workspace", "channel", "user")
 UPLOAD_STATUSES = ("active", "completing", "completed", "aborted", "expired")
 CONFLICT_MODES = ("version", "rename", "fail")
+# AL follow-up (docs/ALBUMS.md §23): drive_items.system_role of the 「アルバム」 folder (the other
+# role, 'channel_posts', is drive.posted.SYSTEM_ROLE).
+ALBUMS_ROLE = "albums"
 
 
 class DriveLocation(Base):
@@ -127,7 +130,10 @@ class DriveItem(Base):
     client_op_id: Mapped[uuid.UUID | None] = mapped_column()
     # CF1 (docs/CHANNEL_FILES.md §3.3): a folder the server keeps: 'channel_posts'
     # (「投稿のファイル」 at a channel drive's root). It cannot be renamed, moved or trashed (409
-    # drive_folder_system).
+    # drive_folder_system). AL follow-up (docs/ALBUMS.md §23): 'albums', the folder
+    # 「アルバム」 that POST /drive/albums {location_id} makes albums in, one per location. It is an
+    # ordinary folder (renamed, moved, trashed like any); trashed or moved to another location it
+    # loses the role.
     system_role: Mapped[str | None] = mapped_column(String(16))
     # AL1 (docs/ALBUMS.md §4.1): the current version's capture time (attachments.taken_at), for
     # an album's order; written with every new current version and by the media loop.
@@ -141,7 +147,8 @@ class DriveItem(Base):
         CheckConstraint("parent_id IS NOT NULL OR kind = 'folder'", name="root_is_folder"),
         CheckConstraint("(trashed_at IS NULL) = (trash_root_id IS NULL)", name="trash_root"),
         CheckConstraint(
-            "system_role IS NULL OR (system_role = 'channel_posts' AND kind = 'folder')",
+            "system_role IS NULL OR "
+            "(system_role IN ('channel_posts', 'albums') AND kind = 'folder')",
             name="system_role_values",
         ),
         Index(

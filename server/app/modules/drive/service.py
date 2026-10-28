@@ -33,6 +33,7 @@ from app.modules.drive import album_cards, events, names, posted, shares
 from app.modules.drive import repository as repo
 from app.modules.drive.access import Access, item_not_found
 from app.modules.drive.models import (
+    ALBUMS_ROLE,
     DriveFileVersion,
     DriveItem,
     DriveLocation,
@@ -704,7 +705,7 @@ async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) ->
     rights.require_write()
     if item.parent_id is None:
         raise root_immutable()
-    if item.system_role is not None:
+    if item.system_role == posted.SYSTEM_ROLE:
         raise posted.folder_system()
     name = names.normalize(raw)
     locked = await repo.lock_items(db, [item.parent_id, item.id])
@@ -860,7 +861,7 @@ async def _move_one(
     (await acl.access(db, actor, source)).require_write()
     if item.parent_id is None:
         raise root_immutable()
-    if item.system_role is not None:
+    if item.system_role == posted.SYSTEM_ROLE:
         raise posted.folder_system()
     if item.id in target_chain:
         raise conflict("drive_cycle", "A folder cannot go inside itself")
@@ -896,6 +897,19 @@ async def _move_one(
     return across
 
 
+async def release_albums_role_in_tx(db: AsyncSession, ids: list[uuid.UUID]) -> None:
+    """The 「アルバム」 folder among `ids` (going to the trash, or to another location) becomes a
+    plain folder (docs/ALBUMS.md §23): a location keeps one live, and the next POST /drive/albums
+    {location_id} finds or makes another. Restoring it or moving it back gives no role again (the
+    next album adopts it by name when it is back right under the top)."""
+    await db.execute(
+        update(DriveItem)
+        .where(DriveItem.id.in_(ids), DriveItem.system_role == ALBUMS_ROLE)
+        .values(system_role=None)
+        .execution_options(synchronize_session="fetch")
+    )
+
+
 async def move_across_in_tx(
     db: AsyncSession,
     settings: Settings,
@@ -916,6 +930,7 @@ async def move_across_in_tx(
         await check_quota_in_tx(
             db, settings, rows[target_id], size, with_reservations=False, workspace=False
         )
+    await release_albums_role_in_tx(db, ids)
     await db.execute(
         update(DriveItem)
         .where(DriveItem.id.in_(ids))
@@ -938,6 +953,7 @@ async def _trash_group_in_tx(
     """The item and what is under it outside the trash, as one group (its root the item);
     returns the subtree's ids."""
     ids = [i for i, _ in await repo.subtree(db, item.id)]
+    await release_albums_role_in_tx(db, ids)
     await db.execute(
         update(DriveItem)
         .where(DriveItem.id.in_(ids), DriveItem.trashed_at.is_(None))
@@ -1011,7 +1027,7 @@ async def trash(db: AsyncSession, actor: User, item_ids: list[uuid.UUID]) -> Dri
                     raise item_not_found()
                 if item.parent_id is None:
                     raise root_immutable()
-                if item.system_role is not None:
+                if item.system_role == posted.SYSTEM_ROLE:
                     raise posted.folder_system()
                 ids = await _trash_group_in_tx(db, item, actor.id, now)
                 groups[item.id] = (item, set(ids))

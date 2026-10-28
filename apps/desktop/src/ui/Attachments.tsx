@@ -1,10 +1,10 @@
-import { Download, ExternalLink, FileText, Film, FolderInput, HardDriveDownload, Images, Loader2, Music, Play, X } from "lucide-react";
-import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Download, ExternalLink, FileText, Film, FolderInput, HardDriveDownload, Image as ImageIcon, Images, Loader2, Music, Play, X } from "lucide-react";
+import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { DocumentCard } from "./DocumentPreview";
-import { documentPreviewState, fitBox, formatDuration, formatSize, groupAttachments, hasPoster, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
+import { documentPreviewState, fitBox, formatDuration, formatSize, groupAttachments, hasPoster, isHeif, loadsInlineVideo, mediaKind, photoBox, photoLayout, type PictureKind, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER, viewerPictures } from "./attachmentLayout";
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
@@ -157,6 +157,57 @@ export function useAttachmentImage(controller: AppController, attachment: Attach
 }
 
 /**
+ * The photo viewer's picture (§23, docs/ALBUMS.md): the first of `pictures` that comes and is drawn — a failed fetch
+ * (404 display_not_found, an older server) or an engine that cannot draw it (`onError`: a HEIC original in Chromium /
+ * WebView2) moves to the next. `retry` starts again from the first.
+ */
+export function useViewerPicture(controller: AppController, attachment: AttachmentOut, pictures: readonly PictureKind[]) {
+  const api = controller.api;
+  const [attempt, setAttempt] = useState(0);
+  const [at, setAt] = useState(0);
+  const order = pictures.join(",");
+  const key = `${attachment.id}/${order}/${attempt}`;
+  // A new photo, list or attempt starts at the first picture.
+  const [seen, setSeen] = useState(key);
+  if (seen !== key) {
+    setSeen(key);
+    setAt(0);
+  }
+  const index = seen === key ? at : 0;
+  const kind = pictures[index] ?? null;
+  const [state, setState] = useState({ key: "", url: null as string | null });
+  const stepKey = `${key}/${index}`;
+  useEffect(() => {
+    if (!kind) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setState({ key: stepKey, url: null });
+    void (async () => {
+      try {
+        if (!api) throw new Error("No session");
+        const blob = await api.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`);
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setState({ key: stepKey, url: objectUrl });
+      } catch {
+        if (!cancelled) setAt((value) => (value === index ? value + 1 : value));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [api, attachment.id, kind, index, stepKey]);
+  return {
+    url: state.key === stepKey ? state.url : null,
+    kind,
+    failed: kind === null,
+    retry: () => setAttempt((value) => value + 1),
+    onError: () => setAt((value) => (value === index ? value + 1 : value)),
+  };
+}
+
+/**
  * `square`: a tile of the photo row (`photo-tile`: filled, cropped to a square); otherwise the image's own shape up to
  * a cap, and the button is only as large as the image.
  */
@@ -265,7 +316,7 @@ function DownloadOverlay({ attachment, controller, shown }: { attachment: Attach
  * The viewer shared by photos and videos (ViewerFrame): name, size and shape in the header with download and close,
  * the photo or clip centred below; a click on the dark space around it closes, Esc too.
  */
-function ViewerShell({ attachment, description, shape, controller, onClose, fill = true, children }: {
+function ViewerShell({ attachment, description, shape, controller, onClose, fill = true, actions = null, children }: {
   attachment: AttachmentOut;
   description: string;
   shape?: { width: number; height: number } | null;
@@ -273,6 +324,8 @@ function ViewerShell({ attachment, description, shape, controller, onClose, fill
   onClose: () => void;
   /** The content shrinks to fit the view (false: the photo at its own size, scrolled). */
   fill?: boolean;
+  /** More buttons before download and close (the photo viewer's 「元の画像を開く」). */
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -291,6 +344,7 @@ function ViewerShell({ attachment, description, shape, controller, onClose, fill
             </div>
             <PostedFileLine attachment={attachment} controller={controller} onClose={onClose} />
           </div>
+          {actions}
           <ViewerFileButtons attachment={attachment} controller={controller} onClose={onClose} />
           <ViewerCloseButton />
         </>
@@ -373,17 +427,38 @@ export function keepOpenForToasts(event: { target: EventTarget | null; preventDe
 
 /** Slack-style photo preview: the full image on a dark backdrop, with download and close. */
 export function Lightbox({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
-  const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "content");
+  // §23 (docs/ALBUMS.md): the display size first when there is one (a HEIC original is no picture Chromium draws),
+  // then the original, then a HEIC's thumbnail; 「元の画像を開く」 switches to the original.
+  const [original, setOriginal] = useState(false);
+  const pictures = useMemo(() => {
+    const all = viewerPictures(attachment);
+    return original ? all.filter((kind) => kind !== "display") : all;
+  }, [attachment, original]);
+  const { url, kind, failed, retry, onError } = useViewerPicture(controller, attachment, pictures);
   const [fit, setFit] = useState(true);
   const shape = attachment.width && attachment.height ? { width: attachment.width, height: attachment.height } : null;
+  const offersOriginal = !original && kind === "display" && !isHeif(attachment.content_type);
   return (
-    <ViewerShell attachment={attachment} description={t("attach.photoPreview")} shape={shape} controller={controller} onClose={onClose} fill={fit}>
+    <ViewerShell
+      attachment={attachment}
+      description={t("attach.photoPreview")}
+      shape={shape}
+      controller={controller}
+      onClose={onClose}
+      fill={fit}
+      actions={offersOriginal ? (
+        <button type="button" data-viewer-original="" className={VIEWER_BUTTON} title={t("attach.openOriginal")} aria-label={t("attach.openOriginal")} onClick={() => setOriginal(true)}>
+          <ImageIcon size={18} />
+        </button>
+      ) : null}
+    >
       {url ? (
         <img
           src={url}
           alt={attachment.filename}
           onError={onError}
           data-viewer-content=""
+          data-viewer-picture={kind ?? undefined}
           onClick={() => setFit((v) => !v)}
           className={cn("m-auto block select-none rounded-md shadow-2xl", fit ? "min-h-0 min-w-0 max-h-full max-w-full cursor-zoom-in object-contain" : "max-w-none cursor-zoom-out")}
         />

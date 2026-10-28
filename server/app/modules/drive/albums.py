@@ -34,10 +34,19 @@ from app.core.time import utcnow
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.drive import access as acl
-from app.modules.drive import album_cards, conversation, copying, events, names, service, shares
+from app.modules.drive import (
+    album_cards,
+    conversation,
+    copying,
+    events,
+    names,
+    posted,
+    service,
+    shares,
+)
 from app.modules.drive import repository as repo
 from app.modules.drive.access import item_not_found
-from app.modules.drive.models import DriveAlbum, DriveItem
+from app.modules.drive.models import ALBUMS_ROLE, DriveAlbum, DriveItem
 from app.modules.drive.photos import zone
 from app.modules.drive.schemas import (
     MAX_ALBUM_DESCRIPTION,
@@ -57,7 +66,8 @@ from app.modules.drive.schemas import (
 from app.modules.users.models import User
 
 # The folder 「新しいアルバム」 makes albums in when started from a location (§17 Q2): an ordinary
-# folder, named in Japanese like 「投稿のファイル」.
+# folder, stored in Japanese like 「投稿のファイル」 and marked system_role 'albums' (§23) so
+# clients name it in their language while it keeps this name.
 ALBUMS_FOLDER = "アルバム"
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
@@ -107,6 +117,57 @@ async def _writable_folder(
     return locked, rights
 
 
+async def _albums_folder_in_tx(
+    db: AsyncSession, actor: User, root: DriveItem
+) -> tuple[DriveItem, list[uuid.UUID], list[uuid.UUID]]:
+    """The location's 「アルバム」 folder below its locked root, locked: (it, the folders that got
+    a new child, the folders whose child changed role).
+
+    The folder with system_role 'albums' wherever it is now in the location (renamed or moved
+    inside it, §23); else a live folder named 「アルバム」 right under the top (made by a person, by
+    AL1 before the role, or restored from the trash) gets the role; else a new one is made. A file
+    of that name is 409 drive_name_taken, as before."""
+    stmt = select(DriveItem.id).where(
+        DriveItem.location_id == root.location_id,
+        DriveItem.system_role == ALBUMS_ROLE,
+        DriveItem.trashed_at.is_(None),
+    )
+    found_id = (await db.execute(stmt)).scalar_one_or_none()
+    if found_id is not None:
+        found = (await repo.lock_items(db, [found_id])).get(found_id)
+        # The root is locked, so no other album made it meanwhile; a rename, move or trash may
+        # have run between the lookup and the lock.
+        if (
+            found is not None
+            and found.trashed_at is None
+            and found.location_id == root.location_id
+            and found.system_role == ALBUMS_ROLE
+        ):
+            return found, [], []
+    existing = await repo.child_by_key(db, root.id, names.key(ALBUMS_FOLDER))
+    if existing is not None:
+        if existing.kind != "folder":
+            raise service.name_taken(existing)
+        found = (await repo.lock_items(db, [existing.id])).get(existing.id)
+        if (
+            found is None
+            or found.parent_id != root.id
+            or found.trashed_at is not None
+            or found.location_id != root.location_id
+        ):
+            raise item_not_found()
+        if found.system_role is not None:
+            raise album_invalid("Albums cannot be made in a folder kept by the server")
+        found.system_role = ALBUMS_ROLE
+        found.change_seq = await events.next_seq(db)
+        await db.flush()
+        return found, [], [root.id]
+    folder = await service.new_folder_in_tx(db, actor, root, ALBUMS_FOLDER)
+    folder.system_role = ALBUMS_ROLE
+    await db.flush()
+    return folder, [root.id], []
+
+
 # --- making, changing, unmaking ------------------------------------------------------------------
 
 
@@ -133,17 +194,18 @@ async def create(db: AsyncSession, actor: User, data: AlbumCreate) -> tuple[Albu
                 folder=await service.item_out(db, found), album=await out(db, album)
             ), False
     made: list[uuid.UUID] = []
+    adopted: list[uuid.UUID] = []
     if data.location_id is not None:
         location, rights = await service.require_location(db, actor, data.location_id)
         rights.require_write()
         root = (await repo.lock_items(db, [location.root_id])).get(location.root_id)
         if root is None:
             raise item_not_found()
-        parent, made = await service.ensure_path_in_tx(db, actor, root, [ALBUMS_FOLDER])
+        parent, made, adopted = await _albums_folder_in_tx(db, actor, root)
     else:
         assert data.parent_id is not None
         parent, _ = await service._writable_folder(db, actor, data.parent_id)
-    if parent.system_role is not None:
+    if parent.system_role == posted.SYSTEM_ROLE:
         raise album_invalid("Albums cannot be made in a folder kept by the server")
     existing = await repo.child_by_key(db, parent.id, names.key(name))
     if existing is not None:
@@ -169,7 +231,7 @@ async def create(db: AsyncSession, actor: User, data: AlbumCreate) -> tuple[Albu
     location_row = await service.lock_location(db, parent.location_id)
     location_row.item_count += 1 + len(made)
     location_row.updated_at = now
-    await events.emit_changed(db, parent.location_id, [parent.id, *made])
+    await events.emit_changed(db, parent.location_id, [parent.id, *made, *adopted])
     await db.commit()
     return AlbumCreatedOut(
         folder=await service.item_out(db, folder), album=await out(db, album)

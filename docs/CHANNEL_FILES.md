@@ -120,6 +120,7 @@ CREATE INDEX attachments_drive_state_idx ON attachments (drive_item_id) WHERE dr
 
 -- drive_items：特別なフォルダの印
 ALTER TABLE drive_items ADD COLUMN system_role varchar(16);   -- NULL | 'channel_posts'（「投稿のファイル」）
+                                                              -- | 'albums'（移行 0128、ALBUMS.md §23。守らない）
 CREATE UNIQUE INDEX drive_items_system_role_uniq ON drive_items (location_id, system_role)
   WHERE system_role IS NOT NULL AND trashed_at IS NULL;
 
@@ -633,6 +634,9 @@ message.created（attachments に drive が入った形）
   `PATCH /admin/workspace-settings {channel_files_to_drive}`、使用量の `posted_bytes`。
 - **検索**：ドライブのタブに `origin`（「投稿のファイルを含む」= `all`、外す = `uploads`）。
 - **古い形**：iOS・Android の出荷版のデコーダの試験に `drive` 付きの実物の JSON を足す（§16）。
+
+> 2026-10-29（ALBUMS.md §23）：`system_role` に `albums`（「アルバム」フォルダ）を足した。こちらは守らない（名前の変更・移動・
+> ゴミ箱ができる）ので、端末は「`system_role` があれば守る」ではなく「`channel_posts` なら守る」で見る。
 
 ### 19.4 CF4 から頼まれたサーバの後追い（2026-10-28）
 

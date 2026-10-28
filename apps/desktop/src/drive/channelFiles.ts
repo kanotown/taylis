@@ -60,20 +60,33 @@ export function canRestorePosted(channel: Pick<ChannelState, "isMember" | "archi
 
 // --- the server's folder 「投稿のファイル」 -----------------------------------------------------------------------
 
+/** 「投稿のファイル」 only: the 「アルバム」 folder (`albums`, docs/ALBUMS.md §23) is an ordinary folder with a localized name. */
 export function isSystemFolder(item: Pick<DriveItemOut, "system_role"> | null | undefined): boolean {
-  return !!item?.system_role;
+  return item?.system_role === "channel_posts";
+}
+
+/** The name the server stores the 「アルバム」 folder under (POST /drive/albums {location_id}). */
+export const ALBUMS_FOLDER_STORED_NAME = "アルバム";
+
+/**
+ * The 「アルバム」 folder in the UI language (docs/ALBUMS.md §23) while it keeps the name the server gave it; renamed by
+ * someone, it is shown as they named it (the role stays: new albums still go there).
+ */
+function albumsFolderName(item: { name: string; system_role?: DriveItemOut["system_role"] }): string | null {
+  return item.system_role === "albums" && item.name === ALBUMS_FOLDER_STORED_NAME ? t("albums.folder") : null;
 }
 
 /** The folders the server keeps (seen in a listing): their crumbs, which carry no role, are named in the UI language. */
 const systemFolders = new Set<string>();
 
 export function rememberSystemFolders(items: readonly Pick<DriveItemOut, "id" | "system_role">[]): void {
-  for (const item of items) if (item.system_role) systemFolders.add(item.id);
+  for (const item of items) if (item.system_role === "channel_posts") systemFolders.add(item.id);
 }
 
 /** An item's name as the screens show it: 「投稿のファイル」 in the UI language, any other item by its own name. */
 export function itemName(item: Pick<DriveItemOut, "name" | "system_role">): string {
-  return item.system_role === "channel_posts" ? t("channelFiles.folder") : item.name;
+  if (item.system_role === "channel_posts") return t("channelFiles.folder");
+  return albumsFolderName(item) ?? item.name;
 }
 
 /**
@@ -83,6 +96,8 @@ export function itemName(item: Pick<DriveItemOut, "name" | "system_role">): stri
  */
 export function crumbName(crumb: DriveCrumb, index: number, locationKind: DriveLocationOut["kind"] | null | undefined): string {
   if (crumb.system_role === "channel_posts") return t("channelFiles.folder");
+  const albums = albumsFolderName(crumb);
+  if (albums) return albums;
   if (crumb.system_role === undefined && systemFolders.has(crumb.id)) return t("channelFiles.folder");
   if (crumb.system_role === undefined && index === 1 && locationKind === "channel" && crumb.name === POSTED_FOLDER_STORED_NAME) return t("channelFiles.folder");
   return crumb.name;

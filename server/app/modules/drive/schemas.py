@@ -144,8 +144,11 @@ class DriveItemOut(BaseModel):
     trashed_at: datetime | None = None
     trashed_by: UUID | None = None
     # CF1 (docs/CHANNEL_FILES.md §3.3): 'channel_posts' for 「投稿のファイル」 (clients name it in
-    # their language and offer no rename, move or trash: 409 drive_folder_system), else null.
-    system_role: Literal["channel_posts"] | None = None
+    # their language and offer no rename, move or trash: 409 drive_folder_system); 'albums' for
+    # the location's 「アルバム」 folder that POST /drive/albums {location_id} makes albums in
+    # (docs/ALBUMS.md §23: clients name it in their language while its name is still 「アルバム」;
+    # an ordinary folder otherwise, renamed, moved and trashed like any); else null.
+    system_role: Literal["channel_posts", "albums"] | None = None
     # CF1: a version of this file is attached to a message that is not deleted (the list's small
     # speech-bubble mark).
     posted: bool = False
@@ -160,9 +163,10 @@ class DriveItemOut(BaseModel):
 class DriveCrumb(BaseModel):
     id: UUID
     name: str
-    # As DriveItemOut.system_role: 'channel_posts' for 「投稿のファイル」 (clients name it in their
-    # language in the breadcrumbs too), else null. Older servers leave it out.
-    system_role: Literal["channel_posts"] | None = None
+    # As DriveItemOut.system_role: 'channel_posts' for 「投稿のファイル」, 'albums' for the
+    # 「アルバム」 folder (clients name them in their language in the breadcrumbs too), else null.
+    # Older servers leave it out.
+    system_role: Literal["channel_posts", "albums"] | None = None
 
 
 class DriveItemDetailOut(BaseModel):

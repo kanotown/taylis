@@ -55,7 +55,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-import filetype
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,7 +62,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
 from app.modules.attachments import service as attachments
-from app.modules.attachments import videos
+from app.modules.attachments import sniff, videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
@@ -1527,8 +1526,7 @@ class SlackImport(core.ImportJob):
             return None, f"添付の上限 ({self.settings.attachment_max_bytes} バイト) を超える"
         with path.open("rb") as fh:
             head = fh.read(attachments.SNIFF_BYTES)
-        kind = filetype.guess(head)
-        content_type = kind.mime if kind is not None else "application/octet-stream"
+        content_type = sniff.content_type(head)
         attachment_id = uuid.uuid5(NAMESPACE, f"file:{post_id}:{f['id']}")
         attachment = Attachment(
             id=attachment_id,

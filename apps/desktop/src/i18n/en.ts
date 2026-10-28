@@ -4032,6 +4032,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "channelFiles.admin.chatNote": "Posted files that are in a channel's drive are counted in the drive.",
   "channelFiles.search.includePosts": "Include posted files",
   // AL2 (docs/ALBUMS.md): photo albums.
+  "albums.folder": "Albums",
   "albums.title": "Albums",
   "albums.new": "New album",
   "albums.newDescription": "Gather the photos of an event in one place. An album is a drive folder: who can see it depends on where it is.",

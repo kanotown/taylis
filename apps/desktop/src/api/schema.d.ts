@@ -10925,7 +10925,7 @@ export interface components {
             /** Name */
             name: string;
             /** System Role */
-            system_role?: "channel_posts" | null;
+            system_role?: ("channel_posts" | "albums") | null;
         };
         /**
          * DriveDownloadTicketOut
@@ -11089,7 +11089,7 @@ export interface components {
             /** Size Bytes */
             size_bytes: number | null;
             /** System Role */
-            system_role?: "channel_posts" | null;
+            system_role?: ("channel_posts" | "albums") | null;
             /** Trashed At */
             trashed_at?: string | null;
             /** Trashed By */

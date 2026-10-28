@@ -4,7 +4,8 @@
 app のイメージを Debian trixie（ffmpeg 7.1）に上げ、HEIC にもサムネイル・表示サイズ・撮影日時が付く。§17 の質問はすべて推めのとおりに決まった
 （2026-10-28、§18.1）。次は AL2〜AL4（Desktop / Web・iOS・Android、§18.4 に端末が使うもの）。マイルストーンは AL1〜AL5（§15、M180〜M184）。
 
-**AL2（M181、Desktop / Web と公開ページ）を実装（2026-10-29、§19）**。
+**AL2（M181、Desktop / Web と公開ページ）を実装（2026-10-29、§19）**。**AL の手直し（2026-10-29、移行 0128、§23）**：「アルバム」フォルダに
+`system_role = 'albums'`（端末の言語の名前）、Desktop / Web のビューアは表示サイズを読む、`heix` などの HEIF のブランドも HEIC に。
 
 利用者（研究室の教員）の要望（2026-10-28）：学会・合宿・研究室の行事などの写真を 1 つのアルバムに集めて、みんなで眺めたい。
 
@@ -484,6 +485,13 @@ AlbumOut = {
 
 - **一覧**：`GET /drive/albums?location_id=&cursor=&limit=`（`items[].folder`・`album`・`path`・`location_kind`、新しい順）。場所の列の
   「アルバム」とスマホの横に流れるカード。
+- **`path` の長さ**（2026-10-29 に書き足した。API は変えない）：`GET /drive/albums` の `items[].path` と `GET /drive/albums/{folder_id}` の
+  `path` は `GET /drive/items/{id}` と同じく**根から親まで**（アルバムのフォルダ自身を含まない。名前は `folder.name`）。
+  `GET /drive/folders/{id}/children` の `path` は**そのフォルダ自身まで**含む。アルバムの画面のパンくずは `path` + アルバムの名前、
+  アップロードの先と「ここ」の表示はアルバムのフォルダ自身（Desktop の `AlbumView` は `path` の後に `folder.name` を足し、
+  `parentId` はアルバムの id）。
+- **「アルバム」フォルダ**（§23）：`DriveItemOut.system_role`・`DriveCrumb.system_role` が `albums`。名前がまだ「アルバム」なら
+  端末の言語の名前（Albums / 相册）、変えられていれば保存された名前。名前の変更・移動・ゴミ箱はふつうのフォルダと同じに出す。
 - **アルバムの画面**：`GET /drive/albums/{folder_id}`（並びは `album.sort`・`sort_order`、`sort=taken|name|added`・`order` で切り替え、
   `next_cursor` で続き）。子のフォルダとほかのファイルは `folder_count`・`other_count` が 0 でなければ `GET /drive/folders/{id}/children`
   で（`sort=name`）。日付の見出しは `file.taken_at`（null ならファイルの時刻 `content_modified_at`、それも無ければ `created_at`。
@@ -501,6 +509,8 @@ AlbumOut = {
 - **写真を足す**：アップロードは今のドライブのアップロード（`on_conflict: "rename"` を既定に）。会話・ドライブからは
   `POST /drive/albums/{folder_id}/add {attachment_ids | item_ids, mode, client_op_id}`（結果ごとに `action: moved | copied`。
   `mode: move` を選ぶときは先に `POST /drive/items/impact`）。「この投稿の写真でアルバムを作る」は `POST /drive/albums` → `add`。
+  `attachment_ids` は**投稿した添付（`status = attached`）だけ**：送る前の添付（`pending`）や、ドライブの版そのもの（投稿の
+  ファイルでない `drive_item_id` 付きの行。`item_ids` で足す）は、その結果が `ok: false`・`error: attachment_not_found`。
 - **共有リンク**：作るダイアログの「元の写真のダウンロードを許す」= `POST /drive/items/{id}/links {originals: true}`（省けばアルバムは
   false）、`PATCH /drive/links/{id} {originals}`、一覧の `DriveShareLinkOut.originals`。
 - **公開ページ**（AL2 の `share.html`）：`GET /shares/{token}` の `album`・`originals`、子の一覧（アルバムの並び）、
@@ -799,8 +809,8 @@ Python の依存なし）。
   読まれていないので `photo_probed_at IS NULL`。サムネイルもここで作る）。ビューアが `/attachments/{id}/display` を開けば、その版を
   media loop に戻す（HEIC は元のファイルをブラウザが描けないので、その回は 404 `display_not_found`）。
 - `content_type` は今までどおり先頭バイトの判定（`filetype`）：ブランドが `heic`（`mif1` / `msf1` で互換に `heic` を含むものも）は
-  `image/heic`。`heix`（Core Image の 10 bit の書き出しなど）は判定できず `application/octet-stream` のまま（ファイルとして扱う。
-  iPhone のカメラの写真は `heic`）。
+  `image/heic`。~~`heix`（Core Image の 10 bit の書き出しなど）は判定できず `application/octet-stream` のまま~~ → §23.3 で
+  `heix` ほかの HEIF のブランドも判定するようにした。
 - 写真の一覧（`photo_kinds.PHOTO_TYPES`）には HEIC / HEIF が入るが、`images.IMAGE_TYPES`（プロフィール画像・絵文字・取り込み）は
   変えていない。`INLINE_TYPES` も変えない（HEIC の元のファイルは `inline` で返さない）。
 
@@ -828,3 +838,99 @@ Python の依存なし）。
   bookworm のイメージの中で `test_heif.py`（6 件 skip）。`ruff check`・`ruff format --check`・`mypy`。OpenAPI と
   `apps/desktop/src/api/schema.d.ts` を再生成（`/display` の説明だけ）。
 
+## 23. AL の手直し（2026-10-29、サーバと Desktop / Web、移行 0128）
+
+AL1〜AL5 の後の手直し 4 つ。スマホ（iOS・Android）は変えていない（§23.5 に要るもの）。
+
+### 23.1 「アルバム」フォルダの名前を端末の言語に
+
+`POST /drive/albums {location_id}` が作る・使う「アルバム」フォルダは日本語の名前で保存されるので、英語・中国語の画面でも
+「アルバム」と出ていた。「投稿のファイル」（CHANNEL_FILES.md §3.3・§19）と同じ仕組みで印を付ける。
+
+- **移行 0128**：`drive_items.system_role` の CHECK を `NULL | 'channel_posts' | 'albums'`（フォルダだけ）に。部分一意索引
+  `drive_items_system_role_uniq`（場所 × 役、ゴミ箱の外）はそのまま：場所ごとに生きた「アルバム」フォルダは 1 つ。
+- **API**：`DriveItemOut.system_role` と `DriveCrumb.system_role`（パンくず、公開リンクの `path` も）が `"channel_posts" | "albums" | null`。
+- **決めたこと：守らない**。「投稿のファイル」と違い、名前の変更・移動・ゴミ箱はふつうのフォルダと同じにできる（409
+  `drive_folder_system` は `channel_posts` だけ）。人が整理のために動かしたいフォルダで、サーバが中身を入れ続けるものでもない。
+  - **名前を変えたら**：役は残る（新しいアルバムはまだそこに入る）。端末は**保存された名前がまだ「アルバム」のときだけ**自分の
+    言語の名前（アルバム / Albums / 相册）にし、変えられていればその名前を出す（人が付けた名前を言語で書き換えない）。
+  - **場所の中で移したら**：役は残る（`POST /drive/albums {location_id}` は今の場所のどこにあってもそのフォルダを使う）。
+  - **ゴミ箱に入れたら**（上のフォルダごとでも）、**ほかの場所に移したら**：役を外す（`service.release_albums_role_in_tx`）。
+    一意索引とぶつからないように：戻した時・移した先にはもう別の「アルバム」フォルダがあるかもしれない。次の
+    `POST /drive/albums {location_id}` が新しく作るか、根の直下に「アルバム」という名前のフォルダがあればそれに役を付ける
+    （戻したフォルダが根の直下に戻ればそれ。移した先の根の直下に置けばそこのもの）。
+  - アルバムのフォルダにはできない（`PUT /drive/folders/{id}/album` は 422 `drive_album_invalid`、今までどおり）。中に
+    `parent_id` でアルバムを作るのはできる（前は `system_role` のあるフォルダの中を断っていたのを `channel_posts` だけに）。
+- **探し方**（`albums._albums_folder_in_tx`、根の行を持ったまま）：(1) その場所の `system_role = 'albums'` の生きたフォルダ、
+  (2) 無ければ根の直下の「アルバム」という名前のフォルダに役を付ける（`drive.changed` は根）、(3) 無ければ作る（役付き）。
+  同じ名前のファイルがあれば今までどおり 409 `drive_name_taken`。
+- **今あるフォルダ**（移行 0128 の backfill）：AL1 はどのフォルダを作ったかを記録していない（監査もしない）。ただし AL1 は
+  「根の直下の『アルバム』という名前のフォルダ」を探して使っていた（人が作ったものも使った）ので、**根の直下の生きた
+  「アルバム」フォルダ**はどれも「アルバム」フォルダとして扱われていたもの。それに `albums` を付ける（名前は親ごとに一意なので
+  場所ごとに高々 1 つ）。`change_seq` を進める。downgrade は役を外して CHECK を戻す。
+- **古い端末**：iOS・Android の出荷版は `system_role` を文字列で読み `channel_posts` と比べるだけなので、`albums` はふつうの
+  フォルダ（「アルバム」のまま）。前の Desktop / Web は `system_role` があれば「投稿のファイル」のように名前の変更・移動・ゴミ箱を
+  隠すが、Web は配備で、デスクトップは更新で直る。
+- **Desktop / Web**：`drive/channelFiles.ts` の `itemName`・`crumbName`（→ `localizedPath`）が `albums` で名前が「アルバム」なら
+  `albums.folder`（アルバム / Albums / 相册）。`isSystemFolder`・`canRearrange`・`rememberSystemFolders` は `channel_posts` だけ
+  （「アルバム」フォルダは名前の変更・移動・ゴミ箱を出し、アイコンはふつうのフォルダ）。名前の変更のダイアログの初めの値は
+  保存された名前。公開リンクのページ（`share/`）は名前を訳さない（今までどおり保存された名前）。
+- 試験：`test_albums.py`（役・パンくず・一覧、アルバムにできない・中に作れる、名前の変更と場所の中の移動で役が残り新しいアルバムが
+  そこに入る、ゴミ箱で外れて次のアルバムが新しいフォルダを作る、戻しても役は無い、ほかの場所へ移すと外れ、そこの根の直下なら
+  次のアルバムが役を付ける、人が作った「アルバム」に役を付けて項目の数は 1 つだけ増える）。移行は私用の DB で
+  0127 → 0128（根の直下の「アルバム」だけに付き、ほかのフォルダの下の「アルバム」には付かない）→ 0127 → 0128 を確かめた。
+
+### 23.2 Desktop / Web のビューアは表示サイズを読む
+
+AL5 の後、HEIC の投稿とドライブのファイルは写真の格子に出るが、全画面の `Lightbox`（メッセージの写真・ドライブのビューア・
+キャンバスの画像・入力欄の送る前の写真）は元のファイルを読み、Chromium / WebView2 では HEIC を描けなかった（§22.4）。
+
+- **読む順**（`ui/attachmentLayout.ts` の `viewerPictures`、`Lightbox` の `useViewerPicture`）：`has_display` なら
+  `/attachments/{id}/display` → 元のファイル（`/content`）。HEIC / HEIF は `has_display` が無くても `/display` を先に頼む（ドライブの
+  まだ読んでいない HEIC はこれで media loop に戻る。会話だけの HEIC は 404 `display_not_found`）→ 元のファイル → `has_thumbnail`
+  ならサムネイル（512 px）。次へ進むのは取得の失敗（404・古いサーバ）か、ブラウザが描けなかった時（`<img>` の `onError`：
+  Chromium の HEIC）。全部だめなら「画像を読み込めませんでした」と「再試行」（初めから）。GIF はいつも元のファイル（動くかも
+  しれない。表示サイズは動かない 1 枚）。
+- **「元の画像を開く」**：表示サイズを出している時、ビューアの上の行のボタン（`attach.openOriginal`）で元のファイルに切り替える
+  （HEIC には出さない：描けないことが多い）。ダウンロードと「開く」（デスクトップ）は今までどおり元のファイル。
+- **アルバムのビューア**（`AlbumViewer`、`drive/albums.ts` の `viewerSources`）：`/display` が読めない時の代わり（`fallback`）は
+  元のファイル、HEIC はサムネイル。HEIC には「元の画像」を出さない（`original: null`）。
+- **メッセージの格子と入力欄**は前から `/thumbnail`（HEIC も `has_thumbnail` で写真のタイル）。入力欄の送る前の HEIC は、アップロードの
+  応答の前にサムネイルができるのでタイルに出て、押すと上の順（会話の HEIC は表示サイズが無いので、Chromium ではサムネイル）。
+- 試験：`tests/albumsFollowups.test.tsx`（読む順、HEIC の表示サイズ、元のファイル → 描けなければサムネイル、全部失敗して再試行、
+  JPEG の「元の画像を開く」、表示サイズの無い写真、アルバムのビューアの `viewerSources`）、`tests/albums.test.ts`。
+
+### 23.3 HEIF のほかのブランド
+
+`filetype` はブランドが `heic`（と `mif1` / `msf1` で互換に `heic`）のものしか HEIC と言わず、`heix`（10 bit、Core Image の書き出し）
+などは `application/octet-stream`（サムネイルなし）だった。
+
+- `attachments/heif.py` の `sniff`（先頭の `ftyp` の箱だけを読む。長さは 16〜1024 バイトで 4 の倍数、先頭のバイト列に収まること）：
+  主のブランドが HEVC のブランド（ISO/IEC 23008-12 付属 B：`heic`・`heix`・`heim`・`heis`、画像の列の `hevc`・`hevx`・`hevm`・`hevs`）
+  なら `image/heic`。主のブランドが汎用（`mif1`・`mif2`・`msf1`）で、互換に AVIF（`avif`・`avis`・`avio`）が無く、互換に HEVC の
+  ブランドがあれば `image/heic`、無ければ先頭のバイト列の `meta` の箱を今の箱の読み手（`heif.parse`）で読み、主の項目が `hvc1` か
+  `grid` なら `image/heif`。それ以外は `None`（`filetype` に任せる。MP4 の動画は主のブランドが `isom` / `mp42` などなので変わらない）。
+- `attachments/sniff.py` の `content_type(head)`：`heif.sniff` → `filetype`。投稿の添付（`POST /attachments`）、ドライブのアップロード
+  （`_sniff`・`sniffed_type`）、取り込み（Mattermost・Slack・Notion・Nextcloud）が使う。プロフィール画像・絵文字・ワークスペースの画像は
+  今までどおり `filetype` だけ（HEIC を受け付けない）。
+- 箱の読み手はブランドを見ないので、`heix` などもサムネイル・表示サイズ・撮影日時が付く（ffmpeg が読めれば）。`image/heif` は前から
+  `HEIF_TYPES` に入っている。
+- 今あるファイルの `content_type` は直さない（`heix` の古いファイルは `application/octet-stream` のまま。上げ直せば HEIC）。
+- 試験：`test_heif.py`（テストの HEIC の `ftyp` を書き換えて：6 つの HEVC のブランド × 2 つのファイルで `sniff` と `sniffed_type`、
+  汎用のブランド（互換の HEVC・`meta` の主の項目・`av01` にした項目・AVIF）、ほかのファイル（MP4・HEVC の MP4・切れた `ftyp`・
+  4 の倍数でない・大きすぎる・PNG）、`filetype` の判定が変わらないこと、`heix` の投稿が `image/heic`、ffmpeg があればサムネイル）。
+
+### 23.4 そのほか
+
+- `server/.dockerignore`：`**/__pycache__/` と `**/*.pyc`（前は上の階だけで、`app/` の下の `__pycache__` がイメージに入っていた）。
+- OpenAPI と `apps/desktop/src/api/schema.d.ts` を再生成（`system_role` の値）。
+
+### 23.5 スマホ（iOS・Android）に要るもの
+
+- **`system_role = "albums"`**：ドライブの一覧・詳細・パンくず（`DriveCrumb.system_role`）で、名前が「アルバム」のままなら端末の
+  言語の名前（アルバム / Albums / 相册）。名前が変えられていればその名前。**守らない**：名前の変更・移動・ゴミ箱のメニューは
+  ふつうのフォルダと同じに出す（`isChannelPosts` の判定は `channel_posts` のままでよい。`systemRole != nil` で守っている所があれば
+  `channel_posts` だけに）。「アルバムにする」は出さない（サーバは 422）。アイコンはふつうのフォルダでよい。
+- 出荷版はそのままでも壊れない（`albums` はふつうのフォルダとして「アルバム」と出る）。デコーダの試験に `system_role: "albums"` の
+  実物の JSON を足すとよい。
+- ビューアはもう `has_display` なら `/display`（AL3・AL4）。会話だけの HEIC は表示サイズが無いが、iOS・Android は元のファイルを描ける。

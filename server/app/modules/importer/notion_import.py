@@ -55,7 +55,7 @@ from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments import service as attachments
-from app.modules.attachments import videos
+from app.modules.attachments import sniff, videos
 from app.modules.attachments.blobstore import BlobStore, MemoryBlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
@@ -783,8 +783,7 @@ class NotionImport:
     def _sniff_type(self, path: str) -> str:
         with self.tree.files.open_file(path) as fh:
             head = fh.read(attachments.SNIFF_BYTES)
-        kind = filetype.guess(head)
-        return kind.mime if kind is not None else "application/octet-stream"
+        return sniff.content_type(head)
 
     def _data_file(self, plan: Plan, url: str, link: Link) -> FilePlan | None:
         m = _DATA_URI.match(url)
@@ -1391,8 +1390,7 @@ class NotionImport:
     async def _attach(self, plan: Plan, fp: FilePlan, path: Path, size: int) -> None:
         with path.open("rb") as fh:
             head = fh.read(attachments.SNIFF_BYTES)
-        kind = filetype.guess(head)
-        content_type = kind.mime if kind is not None else "application/octet-stream"
+        content_type = sniff.content_type(head)
         now = utcnow()
         attachment = Attachment(
             id=fp.target,

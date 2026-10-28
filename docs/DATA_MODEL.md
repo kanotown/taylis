@@ -2277,7 +2277,8 @@ CREATE INDEX drive_texts_body_pgroonga_idx ON drive_texts USING pgroonga (body);
 - 投稿が指すバージョンは整理（DRIVE.md §10.2）で消さず「新しい 10 版」にも数えない。手での削除は 409 `drive_version_posted`。
 - `drive_items.system_role varchar(16)`（CHECK：NULL か、フォルダの `'channel_posts'`。部分一意索引 `drive_items_system_role_uniq ON
   (location_id, system_role) WHERE system_role IS NOT NULL AND trashed_at IS NULL`）：「投稿のファイル」。名前の変更・移動・ゴミ箱は 409
-  `drive_folder_system`。年月のフォルダ（`CHANNEL_FILES_TZ` のゾーン）はふつうのフォルダ。
+  `drive_folder_system`。年月のフォルダ（`CHANNEL_FILES_TZ` のゾーン）はふつうのフォルダ。移行 0128（ALBUMS.md §23）で CHECK に
+  `'albums'`（「アルバム」フォルダ。守らない。ゴミ箱かほかの場所への移動で NULL に）。
 - `drive_file_versions.source` に `'message'`（CHECK は無い）。
 - 切り替え：`workspace_settings.channel_files_to_drive boolean NOT NULL DEFAULT true` と `channels.files_to_drive boolean`（NULL = 従う）。
   変えて効くのはそれからの投稿だけ。前の添付は `app.cli channel-files-backfill`（写さずに行を足す、`message.updated` は出さない）。

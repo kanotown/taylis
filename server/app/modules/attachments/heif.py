@@ -69,6 +69,37 @@ def is_heif(content_type: str | None) -> bool:
     return (content_type or "").lower() in HEIF_TYPES
 
 
+# The `ftyp` brands of ISO/IEC 23008-12 Annex B that say HEVC: a still (heic 8 bit, heix 10 bit and
+# more, as Core Image writes), its multi-layer and scalable forms (heim, heis), and the image
+# sequences (hevc, hevx, hevm, hevs), which a phone writes with a still too.
+HEVC_BRANDS = frozenset({b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"hevm", b"hevs"})
+# Generic HEIF (any codec): an HEVC one only when its primary item is (an AVIF has its own brand).
+GENERIC_BRANDS = frozenset({b"mif1", b"mif2", b"msf1"})
+AVIF_BRANDS = frozenset({b"avif", b"avis", b"avio"})
+MAX_FTYP_BYTES = 1024
+
+
+def sniff(head: bytes) -> str | None:
+    """image/heic or image/heif for a HEIF file `filetype` misses or calls something else (AL
+    follow-up, docs/ALBUMS.md §23): the brands of its leading `ftyp` box (the major one, or a
+    generic major one with an HEVC brand among the compatible ones), else a generic HEIF whose
+    `meta` box in `head` names an HEVC primary item. None for anything else (filetype decides)."""
+    if len(head) < 16 or head[4:8] != b"ftyp":
+        return None
+    size = struct.unpack_from(">I", head, 0)[0]
+    if size < 16 or size > min(len(head), MAX_FTYP_BYTES) or size % 4:
+        return None
+    major = head[8:12]
+    compatible = {head[at : at + 4] for at in range(16, size, 4)}
+    if major in HEVC_BRANDS:
+        return "image/heic"
+    if major not in GENERIC_BRANDS or compatible & AVIF_BRANDS:
+        return None
+    if compatible & HEVC_BRANDS:
+        return "image/heic"
+    return "image/heif" if parse(io.BytesIO(head)) is not None else None
+
+
 @dataclass(frozen=True)
 class HeifInfo:
     """The primary image as stored (`width` x `height`, before the rotation)."""

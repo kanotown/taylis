@@ -32,13 +32,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import filetype
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
 from app.modules.attachments import service as attachments
+from app.modules.attachments import sniff
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, make_thumbnail
 from app.modules.attachments.models import Attachment
@@ -315,8 +315,7 @@ class MattermostImport(core.ImportJob):
         data = path.read_bytes() if not self.dry_run else None
         with path.open("rb") as fh:
             head = fh.read(8192)
-        kind = filetype.guess(head)
-        content_type = kind.mime if kind is not None else "application/octet-stream"
+        content_type = sniff.content_type(head)
         size = len(data) if data is not None else path.stat().st_size
         attachment = Attachment(
             id=attachment_id,

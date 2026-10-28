@@ -102,7 +102,7 @@ describe("the grid", () => {
 
 describe("the viewer", () => {
   it("reads the display size, the original on request, and nothing for a HEIC without a picture", () => {
-    expect(viewerSources(photo("a"))).toEqual({ display: "/api/v1/attachments/a-a/display", original: "/api/v1/drive/items/a/content?inline=1" });
+    expect(viewerSources(photo("a"))).toEqual({ display: "/api/v1/attachments/a-a/display", fallback: "/api/v1/attachments/a-a/content", original: "/api/v1/drive/items/a/content?inline=1" });
     const heic = photo("h", { type: "image/heic", display: false, thumb: false });
     expect(hasPicture(heic)).toBe(false);
     expect(viewerSources(heic)).toBeNull();

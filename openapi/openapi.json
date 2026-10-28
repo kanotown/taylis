@@ -9848,7 +9848,10 @@
           "system_role": {
             "anyOf": [
               {
-                "const": "channel_posts",
+                "enum": [
+                  "channel_posts",
+                  "albums"
+                ],
                 "type": "string"
               },
               {
@@ -10327,7 +10330,10 @@
           "system_role": {
             "anyOf": [
               {
-                "const": "channel_posts",
+                "enum": [
+                  "channel_posts",
+                  "albums"
+                ],
                 "type": "string"
               },
               {
