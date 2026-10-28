@@ -264,7 +264,8 @@ describe("the delete's check box (§7.3)", () => {
     render(<DeleteDriveFilesOption controller={controller} message={{ id: "m1", attachments: [posted(FILE, "available")] }} onChange={onChange} />);
     expect(await screen.findByText("添付したファイルはチャンネルのドライブに残ります。")).toBeTruthy();
     expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(onChange).toHaveBeenLastCalledWith("keep");
+    // The text and the choice come from the same answer but land in separate renders: wait for the call.
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith("keep"));
   });
 });
 
