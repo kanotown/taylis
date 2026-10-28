@@ -6,12 +6,13 @@ A file's bytes and their derived objects (thumbnail, poster, document preview) l
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -128,6 +129,9 @@ class DriveItem(Base):
     # (「投稿のファイル」 at a channel drive's root). It cannot be renamed, moved or trashed (409
     # drive_folder_system).
     system_role: Mapped[str | None] = mapped_column(String(16))
+    # AL1 (docs/ALBUMS.md §4.1): the current version's capture time (attachments.taken_at), for
+    # an album's order; written with every new current version and by the media loop.
+    taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("kind IN ('folder', 'file')", name="kind_values"),
@@ -171,6 +175,13 @@ class DriveItem(Base):
         Index("drive_items_change_idx", "location_id", "change_seq"),
         Index("drive_items_trash_root_idx", "trash_root_id"),
         Index("drive_items_parent_idx", "parent_id"),
+        Index(
+            "drive_items_taken_idx",
+            "parent_id",
+            "taken_at",
+            "id",
+            postgresql_where=text("trashed_at IS NULL AND kind = 'file'"),
+        ),
         Index(
             "drive_items_client_op_uniq",
             "created_by",
@@ -348,6 +359,10 @@ class DriveShareLink(Base):
     max_downloads: Mapped[int | None] = mapped_column(Integer)
     download_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     note: Mapped[str | None] = mapped_column(String(80))
+    # AL1 (docs/ALBUMS.md §7): whether the public side hands out the original files. False: the
+    # display-size images only (no metadata), a display-size ZIP, videos as they are. Links to an
+    # album folder are made with false unless asked.
+    originals: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -402,4 +417,46 @@ class DriveShareEvent(Base):
         ),
         Index("drive_share_events_link_idx", "link_id", "created_at"),
         Index("drive_share_events_created_idx", "created_at"),
+    )
+
+
+ALBUM_SORTS = ("taken", "name", "added")
+
+
+class DriveAlbum(Base):
+    """AL1 (docs/ALBUMS.md §4.1): a folder shown as a photo album. The title is the folder's name;
+    who sees and changes it is the folder's location's rule. Goes with the folder (trash, moves;
+    CASCADE when purged)."""
+
+    __tablename__ = "drive_albums"
+
+    folder_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # A photo or a video directly in the folder; NULL (or one no longer there): the first in the
+    # album's order.
+    cover_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="SET NULL")
+    )
+    sort: Mapped[str] = mapped_column(String(8), default="taken", server_default="taken")
+    sort_order: Mapped[str] = mapped_column(String(4), default="asc", server_default="asc")
+    starts_on: Mapped[date | None] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("sort IN ('taken', 'name', 'added')", name="sort_values"),
+        CheckConstraint("sort_order IN ('asc', 'desc')", name="sort_order_values"),
+        CheckConstraint(
+            "ends_on IS NULL OR starts_on IS NULL OR ends_on >= starts_on", name="dates_order"
+        ),
+        Index("drive_albums_cover_idx", "cover_item_id"),
     )

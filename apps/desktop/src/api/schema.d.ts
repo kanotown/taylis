@@ -1492,6 +1492,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attachments/{attachment_id}/display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Display
+         * @description AL1 (docs/ALBUMS.md §6): the display-size image (long edge at most 2048 px, WebP, no
+         *     metadata) for the full-screen viewer. Without one yet, the original image (PNG, JPEG, GIF,
+         *     WebP only; a drive image not read yet is queued to get one); 404 display_not_found for
+         *     anything else. Read as the attachment itself (`get_for_access`).
+         */
+        get: operations["display_api_v1_attachments__attachment_id__display_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}/preview/pdf": {
         parameters: {
             query?: never;
@@ -3053,6 +3076,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Albums
+         * @description The albums of the locations I can read (`location_id`: one of them), newest first: by
+         *     their first day, else the day they were made. Never in the trash.
+         */
+        get: operations["list_albums_api_v1_drive_albums_get"];
+        put?: never;
+        /**
+         * Create Album
+         * @description A new folder that is an album, in `parent_id` or in the 「アルバム」 folder of
+         *     `location_id` (made when missing). 409 drive_name_taken, 422 drive_album_invalid (a
+         *     description over 2,000 characters, dates the wrong way round), 403 drive_read_only.
+         */
+        post: operations["create_album_api_v1_drive_albums_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/albums/{folder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Album Detail
+         * @description The album and a page of its photos and videos (the album's order unless `sort` / `order`
+         *     are given). 404 drive_album_not_found for a folder that is not an album, drive_item_not_found
+         *     for one I cannot read.
+         */
+        get: operations["album_detail_api_v1_drive_albums__folder_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/albums/{folder_id}/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add To Album
+         * @description Photos into the album (docs/ALBUMS.md §9): one result per source. A file posted in the
+         *     album's own channel drive is moved (its message does not change); one posted elsewhere and
+         *     an ordinary attachment are copied; drive items are moved within the location, copied from
+         *     another (`mode` overrides). The same `client_op_id` again makes no second copy.
+         */
+        post: operations["add_to_album_api_v1_drive_albums__folder_id__add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/download/{token}": {
         parameters: {
             query?: never;
@@ -3091,6 +3186,32 @@ export interface paths {
         /** Create Folder */
         post: operations["create_folder_api_v1_drive_folders_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drive/folders/{folder_id}/album": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Album
+         * @description Makes a folder an album or changes it (whoever can write in the location). 422
+         *     drive_album_invalid: the location's top folder, 「投稿のファイル」, a cover that is not a photo
+         *     or video directly in it, a description over 2,000 characters, dates the wrong way round.
+         */
+        put: operations["put_album_api_v1_drive_folders__folder_id__album_put"];
+        post?: never;
+        /**
+         * Delete Album
+         * @description A plain folder again; its files stay.
+         */
+        delete: operations["delete_album_api_v1_drive_folders__folder_id__album_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5582,7 +5703,8 @@ export interface paths {
         };
         /**
          * Share Children
-         * @description A folder under the link (folders first, by name): names, sizes, times, previews only.
+         * @description A folder under the link (folders first, by name; AL1: an album in its own order unless
+         *     `sort` / `order` are given): names, sizes, times, previews only.
          */
         get: operations["share_children_api_v1_shares__token__folders__folder_id__children_get"];
         put?: never;
@@ -5614,6 +5736,26 @@ export interface paths {
          * @description A file's bytes (Range; counted against the link's limit).
          */
         head: operations["share_content_api_v1_shares__token__items__item_id__content_head"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{token}/items/{item_id}/display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Share Display
+         * @description AL1 (docs/ALBUMS.md §7): an image's display-size WebP (no metadata), not counted.
+         */
+        get: operations["share_display_api_v1_shares__token__items__item_id__display_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -5698,7 +5840,9 @@ export interface paths {
         };
         /**
          * Share Zip
-         * @description The shared folder (or a folder under it) as one ZIP: one download.
+         * @description The shared folder (or a folder under it) as one ZIP: one download. AL1: `size=display`
+         *     holds the display-size images (and videos as they are); a link that does not hand out
+         *     originals answers 403 share_originals_disabled without it.
          */
         get: operations["share_zip_api_v1_shares__token__zip_get"];
         put?: never;
@@ -8505,6 +8649,225 @@ export interface components {
             /** Total Runs */
             total_runs: number;
         };
+        /**
+         * AlbumAddIn
+         * @description POST /drive/albums/{folder_id}/add (docs/ALBUMS.md §9): files into the album.
+         *     `attachment_ids`: a conversation's attachments (a posted file in the album's own channel
+         *     drive is moved with mode auto, anything else copied); `item_ids`: drive items (moved within
+         *     the same location, copied from another, with mode auto). A name already in the album keeps
+         *     both (「名前 (1)」).
+         */
+        AlbumAddIn: {
+            /** Attachment Ids */
+            attachment_ids?: string[];
+            /** Client Op Id */
+            client_op_id?: string | null;
+            /** Item Ids */
+            item_ids?: string[];
+            /**
+             * Mode
+             * @default auto
+             * @enum {string}
+             */
+            mode: "auto" | "move" | "copy";
+        };
+        /** AlbumAddOut */
+        AlbumAddOut: {
+            /** Results */
+            results: components["schemas"]["AlbumAddResult"][];
+        };
+        /** AlbumAddResult */
+        AlbumAddResult: {
+            /** Action */
+            action?: ("moved" | "copied") | null;
+            /** Error */
+            error?: string | null;
+            /** Item Id */
+            item_id?: string | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /** AlbumCoverOut */
+        AlbumCoverOut: {
+            /**
+             * Attachment Id
+             * Format: uuid
+             */
+            attachment_id: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+        };
+        /**
+         * AlbumCreate
+         * @description POST /drive/albums: a new folder that is an album, in one transaction. `parent_id`: the
+         *     folder to make it in; or `location_id`: in that location's 「アルバム」 folder (made when
+         *     missing; docs/ALBUMS.md §17 Q2). The same `client_op_id` again answers the same album.
+         */
+        AlbumCreate: {
+            /** Client Op Id */
+            client_op_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /** Location Id */
+            location_id?: string | null;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Sort */
+            sort?: ("taken" | "name" | "added") | null;
+            /** Sort Order */
+            sort_order?: ("asc" | "desc") | null;
+            /** Starts On */
+            starts_on?: string | null;
+        };
+        /** AlbumCreatedOut */
+        AlbumCreatedOut: {
+            album: components["schemas"]["AlbumOut"];
+            folder: components["schemas"]["DriveItemOut"];
+        };
+        /**
+         * AlbumDetailOut
+         * @description GET /drive/albums/{folder_id}: the album and a page of its photos and videos in the
+         *     album's order (`sort` / `order` override it for this read). Subfolders and other files are
+         *     counted here and listed by GET /drive/folders/{id}/children.
+         */
+        AlbumDetailOut: {
+            album: components["schemas"]["AlbumOut"];
+            /** Can Write */
+            can_write: boolean;
+            folder: components["schemas"]["DriveItemOut"];
+            /** Folder Count */
+            folder_count: number;
+            /** Items */
+            items: components["schemas"]["DriveItemOut"][];
+            /**
+             * Location Kind
+             * @enum {string}
+             */
+            location_kind: "workspace" | "channel" | "user";
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Other Count */
+            other_count: number;
+            /** Path */
+            path: components["schemas"]["DriveCrumb"][];
+            /**
+             * Shared Above
+             * @default 0
+             */
+            shared_above: number;
+        };
+        /** AlbumListEntryOut */
+        AlbumListEntryOut: {
+            album: components["schemas"]["AlbumOut"];
+            folder: components["schemas"]["DriveItemOut"];
+            /**
+             * Location Kind
+             * @enum {string}
+             */
+            location_kind: "workspace" | "channel" | "user";
+            /** Path */
+            path: components["schemas"]["DriveCrumb"][];
+        };
+        /**
+         * AlbumListOut
+         * @description GET /drive/albums: the albums in the locations I can read, newest first (by
+         *     starts_on, else the day the album was made).
+         */
+        AlbumListOut: {
+            /** Items */
+            items: components["schemas"]["AlbumListEntryOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * AlbumOut
+         * @description AL1 (docs/ALBUMS.md §5): a folder shown as an album. Its title is the folder's name; the
+         *     photos are the images and videos directly in it. `taken_from` / `taken_to`: the range of
+         *     their capture times (else their own times); `preview_attachment_ids`: up to four of them with
+         *     a thumbnail (the cover first) for a card; `cover`: the chosen cover while it is still in the
+         *     folder, else the first in the album's order (null for an empty album).
+         */
+        AlbumOut: {
+            cover: components["schemas"]["AlbumCoverOut"] | null;
+            /** Cover Item Id */
+            cover_item_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Description */
+            description: string;
+            /** Ends On */
+            ends_on: string | null;
+            /**
+             * Folder Id
+             * Format: uuid
+             */
+            folder_id: string;
+            /** Photo Count */
+            photo_count: number;
+            /** Preview Attachment Ids */
+            preview_attachment_ids: string[];
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "taken" | "name" | "added";
+            /**
+             * Sort Order
+             * @enum {string}
+             */
+            sort_order: "asc" | "desc";
+            /** Starts On */
+            starts_on: string | null;
+            /** Taken From */
+            taken_from: string | null;
+            /** Taken To */
+            taken_to: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Video Count */
+            video_count: number;
+        };
+        /**
+         * AlbumPut
+         * @description PUT /drive/folders/{id}/album: makes the folder an album or changes it; only the fields
+         *     sent change (`cover_item_id: null`: the first photo again; `starts_on: null`: no date).
+         */
+        AlbumPut: {
+            /** Cover Item Id */
+            cover_item_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /** Sort */
+            sort?: ("taken" | "name" | "added") | null;
+            /** Sort Order */
+            sort_order?: ("asc" | "desc") | null;
+            /** Starts On */
+            starts_on?: string | null;
+        };
         /** AnalyticsMemberOut */
         AnalyticsMemberOut: {
             /**
@@ -8622,6 +8985,11 @@ export interface components {
             duration_ms: number | null;
             /** Filename */
             filename: string;
+            /**
+             * Has Display
+             * @default false
+             */
+            has_display: boolean;
             /** Has Poster */
             has_poster: boolean;
             /** Has Thumbnail */
@@ -10580,8 +10948,22 @@ export interface components {
              * Format: uuid
              */
             attachment_id: string;
+            /** Display Height */
+            display_height?: number | null;
+            /** Display Width */
+            display_width?: number | null;
             /** Duration Ms */
             duration_ms: number | null;
+            /**
+             * Has Display
+             * @default false
+             */
+            has_display: boolean;
+            /**
+             * Has Location
+             * @default false
+             */
+            has_location: boolean;
             /** Has Poster */
             has_poster: boolean;
             /** Has Thumbnail */
@@ -10589,6 +10971,8 @@ export interface components {
             /** Height */
             height: number | null;
             preview: components["schemas"]["AttachmentPreviewOut"] | null;
+            /** Taken At */
+            taken_at?: string | null;
             /**
              * Version Id
              * Format: uuid
@@ -10660,6 +11044,7 @@ export interface components {
         };
         /** DriveItemOut */
         DriveItemOut: {
+            album?: components["schemas"]["AlbumOut"] | null;
             /** Content Modified At */
             content_modified_at: string | null;
             /** Content Type */
@@ -11098,6 +11483,8 @@ export interface components {
             max_downloads?: number | null;
             /** Note */
             note?: string | null;
+            /** Originals */
+            originals?: boolean | null;
             /** Password */
             password?: string | null;
         };
@@ -11194,6 +11581,11 @@ export interface components {
             /** Note */
             note: string | null;
             /**
+             * Originals
+             * @default true
+             */
+            originals: boolean;
+            /**
              * State
              * @enum {string}
              */
@@ -11211,6 +11603,8 @@ export interface components {
             max_downloads?: number | null;
             /** Note */
             note?: string | null;
+            /** Originals */
+            originals?: boolean | null;
             /** Password */
             password?: string | null;
         };
@@ -15725,6 +16119,7 @@ export interface components {
          *     workspace's name) is told: `kind`, `item` and `root_id` are null.
          */
         ShareInfoOut: {
+            album?: components["schemas"]["SharedAlbumOut"] | null;
             /** Downloads Left */
             downloads_left: number | null;
             /** Expires At */
@@ -15732,6 +16127,8 @@ export interface components {
             item: components["schemas"]["SharedItemOut"] | null;
             /** Kind */
             kind: ("folder" | "file") | null;
+            /** Originals */
+            originals?: boolean | null;
             /** Password Required */
             password_required: boolean;
             /** Root Id */
@@ -15752,8 +16149,41 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * SharedAlbumOut
+         * @description AL1: an album as the public side shows it (no people, no attachment ids).
+         */
+        SharedAlbumOut: {
+            /** Cover Item Id */
+            cover_item_id: string | null;
+            /** Description */
+            description: string;
+            /** Ends On */
+            ends_on: string | null;
+            /** Photo Count */
+            photo_count: number;
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "taken" | "name" | "added";
+            /**
+             * Sort Order
+             * @enum {string}
+             */
+            sort_order: "asc" | "desc";
+            /** Starts On */
+            starts_on: string | null;
+            /** Taken From */
+            taken_from: string | null;
+            /** Taken To */
+            taken_to: string | null;
+            /** Video Count */
+            video_count: number;
+        };
         /** SharedChildrenOut */
         SharedChildrenOut: {
+            album?: components["schemas"]["SharedAlbumOut"] | null;
             folder: components["schemas"]["SharedItemOut"];
             /** Items */
             items: components["schemas"]["SharedItemOut"][];
@@ -15769,6 +16199,22 @@ export interface components {
         SharedItemOut: {
             /** Content Type */
             content_type: string | null;
+            /** Display Height */
+            display_height?: number | null;
+            /** Display Width */
+            display_width?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /**
+             * Has Display
+             * @default false
+             */
+            has_display: boolean;
+            /**
+             * Has Poster
+             * @default false
+             */
+            has_poster: boolean;
             /**
              * Has Thumbnail
              * @default false
@@ -15796,6 +16242,8 @@ export interface components {
             preview?: components["schemas"]["AttachmentPreviewOut"] | null;
             /** Size Bytes */
             size_bytes: number | null;
+            /** Taken At */
+            taken_at?: string | null;
             /** Width */
             width?: number | null;
         };
@@ -20125,6 +20573,37 @@ export interface operations {
             };
         };
     };
+    display_api_v1_attachments__attachment_id__display_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preview_pdf_api_v1_attachments__attachment_id__preview_pdf_get: {
         parameters: {
             query?: never;
@@ -23383,6 +23862,152 @@ export interface operations {
             };
         };
     };
+    list_albums_api_v1_drive_albums_get: {
+        parameters: {
+            query?: {
+                location_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_album_api_v1_drive_albums_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumCreate"];
+            };
+        };
+        responses: {
+            /** @description This client_op_id's album */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumCreatedOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_detail_api_v1_drive_albums__folder_id__get: {
+        parameters: {
+            query?: {
+                sort?: ("taken" | "name" | "added") | null;
+                order?: ("asc" | "desc") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_to_album_api_v1_drive_albums__folder_id__add_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumAddIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumAddOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_by_ticket_api_v1_drive_download__token__get: {
         parameters: {
             query?: {
@@ -23491,10 +24116,74 @@ export interface operations {
             };
         };
     };
+    put_album_api_v1_drive_folders__folder_id__album_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_album_api_v1_drive_folders__folder_id__album_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_children_api_v1_drive_folders__folder_id__children_get: {
         parameters: {
             query?: {
-                sort?: "name" | "modified" | "size";
+                sort?: "name" | "modified" | "size" | "taken";
                 order?: "asc" | "desc";
                 cursor?: string | null;
                 limit?: number;
@@ -28019,7 +28708,8 @@ export interface operations {
             query?: {
                 q?: string;
                 location_id?: string | null;
-                kind?: ("folder" | "file") | null;
+                /** @description AL1: album = folders that are albums, by name or description */
+                kind?: ("folder" | "file" | "album") | null;
                 cursor?: string | null;
                 limit?: number;
                 /** @description Also the text inside the files (PDF, Office, plain text), with a snippet */
@@ -28216,6 +28906,8 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                sort?: ("taken" | "name" | "added") | null;
+                order?: ("asc" | "desc") | null;
             };
             header?: never;
             path: {
@@ -28285,6 +28977,38 @@ export interface operations {
             query?: {
                 inline?: boolean;
             };
+            header?: never;
+            path: {
+                token: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_display_api_v1_shares__token__items__item_id__display_get: {
+        parameters: {
+            query?: never;
             header?: never;
             path: {
                 token: string;
@@ -28447,6 +29171,7 @@ export interface operations {
         parameters: {
             query?: {
                 folder_id?: string | null;
+                size?: "original" | "display";
             };
             header?: never;
             path: {

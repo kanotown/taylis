@@ -216,6 +216,7 @@ async def _place(
         current_version_id=version_id,
         size_bytes=size,
         content_type=clone.attachment.content_type,
+        taken_at=clone.attachment.taken_at,
         created_by=actor_id,
         created_at=now,
         updated_by=actor_id,

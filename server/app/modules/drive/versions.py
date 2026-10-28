@@ -88,6 +88,11 @@ async def clone_object(
         height=source.height,
         duration_ms=source.duration_ms,
         video_probed_at=source.video_probed_at,
+        # AL1 (docs/ALBUMS.md §4.2): what was read from the photo comes along with its bytes.
+        taken_at=source.taken_at,
+        taken_at_local=source.taken_at_local,
+        has_location=source.has_location,
+        photo_probed_at=source.photo_probed_at,
         created_at=now,
         attached_at=now,
     )
@@ -99,6 +104,13 @@ async def clone_object(
             copy.thumbnail_key = attachments.thumbnail_key(new_id)
             await blobs.copy(source.thumbnail_key, copy.thumbnail_key)
             keys.append(copy.thumbnail_key)
+        if source.display_key:
+            copy.display_key = attachments.display_key(new_id)
+            await blobs.copy(source.display_key, copy.display_key)
+            keys.append(copy.display_key)
+            copy.display_width = source.display_width
+            copy.display_height = source.display_height
+            copy.display_bytes = source.display_bytes
         if source.preview_status == "ready" and source.preview_thumb_key:
             copy.preview_thumb_key = thumb_key(new_id, 0)
             await blobs.copy(source.preview_thumb_key, copy.preview_thumb_key)
@@ -286,6 +298,7 @@ async def _place_restored(
     await db.flush()
     now = utcnow()
     item.current_version_id = version.id
+    item.taken_at = attachment.taken_at
     # §29: the replaced version's text is no longer searched (the loop reads the restored one).
     await texts.forget_replaced_in_tx(db, item.id, version.id)
     item.size_bytes = attachment.size_bytes

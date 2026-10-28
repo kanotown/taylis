@@ -3526,6 +3526,671 @@
         "title": "AiUsageOut",
         "type": "object"
       },
+      "AlbumAddIn": {
+        "additionalProperties": false,
+        "description": "POST /drive/albums/{folder_id}/add (docs/ALBUMS.md §9): files into the album.\n`attachment_ids`: a conversation's attachments (a posted file in the album's own channel\ndrive is moved with mode auto, anything else copied); `item_ids`: drive items (moved within\nthe same location, copied from another, with mode auto). A name already in the album keeps\nboth (「名前 (1)」).",
+        "properties": {
+          "attachment_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Attachment Ids",
+            "type": "array"
+          },
+          "client_op_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Op Id"
+          },
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "move",
+              "copy"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "AlbumAddIn",
+        "type": "object"
+      },
+      "AlbumAddOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AlbumAddResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "AlbumAddOut",
+        "type": "object"
+      },
+      "AlbumAddResult": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "moved",
+                  "copied"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "ok"
+        ],
+        "title": "AlbumAddResult",
+        "type": "object"
+      },
+      "AlbumCoverOut": {
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "attachment_id"
+        ],
+        "title": "AlbumCoverOut",
+        "type": "object"
+      },
+      "AlbumCreate": {
+        "additionalProperties": false,
+        "description": "POST /drive/albums: a new folder that is an album, in one transaction. `parent_id`: the\nfolder to make it in; or `location_id`: in that location's 「アルバム」 folder (made when\nmissing; docs/ALBUMS.md §17 Q2). The same `client_op_id` again answers the same album.",
+        "properties": {
+          "client_op_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Op Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "name": {
+            "maxLength": 1000,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "taken",
+                  "name",
+                  "added"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AlbumCreate",
+        "type": "object"
+      },
+      "AlbumCreatedOut": {
+        "properties": {
+          "album": {
+            "$ref": "#/components/schemas/AlbumOut"
+          },
+          "folder": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          }
+        },
+        "required": [
+          "folder",
+          "album"
+        ],
+        "title": "AlbumCreatedOut",
+        "type": "object"
+      },
+      "AlbumDetailOut": {
+        "description": "GET /drive/albums/{folder_id}: the album and a page of its photos and videos in the\nalbum's order (`sort` / `order` override it for this read). Subfolders and other files are\ncounted here and listed by GET /drive/folders/{id}/children.",
+        "properties": {
+          "album": {
+            "$ref": "#/components/schemas/AlbumOut"
+          },
+          "can_write": {
+            "title": "Can Write",
+            "type": "boolean"
+          },
+          "folder": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          },
+          "folder_count": {
+            "title": "Folder Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DriveItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "location_kind": {
+            "enum": [
+              "workspace",
+              "channel",
+              "user"
+            ],
+            "title": "Location Kind",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "other_count": {
+            "title": "Other Count",
+            "type": "integer"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCrumb"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "shared_above": {
+            "default": 0,
+            "title": "Shared Above",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "folder",
+          "album",
+          "path",
+          "location_kind",
+          "can_write",
+          "items",
+          "next_cursor",
+          "folder_count",
+          "other_count"
+        ],
+        "title": "AlbumDetailOut",
+        "type": "object"
+      },
+      "AlbumListEntryOut": {
+        "properties": {
+          "album": {
+            "$ref": "#/components/schemas/AlbumOut"
+          },
+          "folder": {
+            "$ref": "#/components/schemas/DriveItemOut"
+          },
+          "location_kind": {
+            "enum": [
+              "workspace",
+              "channel",
+              "user"
+            ],
+            "title": "Location Kind",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DriveCrumb"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder",
+          "album",
+          "path",
+          "location_kind"
+        ],
+        "title": "AlbumListEntryOut",
+        "type": "object"
+      },
+      "AlbumListOut": {
+        "description": "GET /drive/albums: the albums in the locations I can read, newest first (by\nstarts_on, else the day the album was made).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlbumListEntryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AlbumListOut",
+        "type": "object"
+      },
+      "AlbumOut": {
+        "description": "AL1 (docs/ALBUMS.md §5): a folder shown as an album. Its title is the folder's name; the\nphotos are the images and videos directly in it. `taken_from` / `taken_to`: the range of\ntheir capture times (else their own times); `preview_attachment_ids`: up to four of them with\na thumbnail (the cover first) for a card; `cover`: the chosen cover while it is still in the\nfolder, else the first in the album's order (null for an empty album).",
+        "properties": {
+          "cover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlbumCoverOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "folder_id": {
+            "format": "uuid",
+            "title": "Folder Id",
+            "type": "string"
+          },
+          "photo_count": {
+            "title": "Photo Count",
+            "type": "integer"
+          },
+          "preview_attachment_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Preview Attachment Ids",
+            "type": "array"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "sort": {
+            "enum": [
+              "taken",
+              "name",
+              "added"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Sort Order",
+            "type": "string"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "taken_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken From"
+          },
+          "taken_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken To"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "video_count": {
+            "title": "Video Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "folder_id",
+          "description",
+          "cover",
+          "cover_item_id",
+          "sort",
+          "sort_order",
+          "starts_on",
+          "ends_on",
+          "taken_from",
+          "taken_to",
+          "photo_count",
+          "video_count",
+          "size_bytes",
+          "preview_attachment_ids",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AlbumOut",
+        "type": "object"
+      },
+      "AlbumPut": {
+        "additionalProperties": false,
+        "description": "PUT /drive/folders/{id}/album: makes the folder an album or changes it; only the fields\nsent change (`cover_item_id: null`: the first photo again; `starts_on: null`: no date).",
+        "properties": {
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "taken",
+                  "name",
+                  "added"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          }
+        },
+        "title": "AlbumPut",
+        "type": "object"
+      },
       "AnalyticsMemberOut": {
         "properties": {
           "created_at": {
@@ -3828,6 +4493,11 @@
           "filename": {
             "title": "Filename",
             "type": "string"
+          },
+          "has_display": {
+            "default": false,
+            "title": "Has Display",
+            "type": "boolean"
           },
           "has_poster": {
             "title": "Has Poster",
@@ -9222,6 +9892,28 @@
             "title": "Attachment Id",
             "type": "string"
           },
+          "display_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Height"
+          },
+          "display_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Width"
+          },
           "duration_ms": {
             "anyOf": [
               {
@@ -9232,6 +9924,16 @@
               }
             ],
             "title": "Duration Ms"
+          },
+          "has_display": {
+            "default": false,
+            "title": "Has Display",
+            "type": "boolean"
+          },
+          "has_location": {
+            "default": false,
+            "title": "Has Location",
+            "type": "boolean"
           },
           "has_poster": {
             "title": "Has Poster",
@@ -9261,6 +9963,18 @@
                 "type": "null"
               }
             ]
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
           },
           "version_id": {
             "format": "uuid",
@@ -9482,6 +10196,16 @@
       },
       "DriveItemOut": {
         "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlbumOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "content_modified_at": {
             "anyOf": [
               {
@@ -10651,6 +11375,17 @@
             ],
             "title": "Note"
           },
+          "originals": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originals"
+          },
           "password": {
             "anyOf": [
               {
@@ -10839,6 +11574,11 @@
             ],
             "title": "Note"
           },
+          "originals": {
+            "default": true,
+            "title": "Originals",
+            "type": "boolean"
+          },
           "state": {
             "enum": [
               "active",
@@ -10913,6 +11653,17 @@
               }
             ],
             "title": "Note"
+          },
+          "originals": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originals"
           },
           "password": {
             "anyOf": [
@@ -22312,6 +23063,16 @@
       "ShareInfoOut": {
         "description": "GET /shares/{token}. Before a password link is unlocked only `password_required` (and the\nworkspace's name) is told: `kind`, `item` and `root_id` are null.",
         "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedAlbumOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "downloads_left": {
             "anyOf": [
               {
@@ -22359,6 +23120,17 @@
               }
             ],
             "title": "Kind"
+          },
+          "originals": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originals"
           },
           "password_required": {
             "title": "Password Required",
@@ -22420,8 +23192,126 @@
         "title": "ShareUnlockIn",
         "type": "object"
       },
+      "SharedAlbumOut": {
+        "description": "AL1: an album as the public side shows it (no people, no attachment ids).",
+        "properties": {
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "photo_count": {
+            "title": "Photo Count",
+            "type": "integer"
+          },
+          "sort": {
+            "enum": [
+              "taken",
+              "name",
+              "added"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Sort Order",
+            "type": "string"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "taken_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken From"
+          },
+          "taken_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken To"
+          },
+          "video_count": {
+            "title": "Video Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "description",
+          "cover_item_id",
+          "sort",
+          "sort_order",
+          "starts_on",
+          "ends_on",
+          "taken_from",
+          "taken_to",
+          "photo_count",
+          "video_count"
+        ],
+        "title": "SharedAlbumOut",
+        "type": "object"
+      },
       "SharedChildrenOut": {
         "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedAlbumOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "folder": {
             "$ref": "#/components/schemas/SharedItemOut"
           },
@@ -22473,6 +23363,49 @@
               }
             ],
             "title": "Content Type"
+          },
+          "display_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Height"
+          },
+          "display_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Width"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "has_display": {
+            "default": false,
+            "title": "Has Display",
+            "type": "boolean"
+          },
+          "has_poster": {
+            "default": false,
+            "title": "Has Poster",
+            "type": "boolean"
           },
           "has_thumbnail": {
             "default": false,
@@ -22532,6 +23465,18 @@
               }
             ],
             "title": "Size Bytes"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
           },
           "width": {
             "anyOf": [
@@ -31329,6 +32274,53 @@
         ]
       }
     },
+    "/api/v1/attachments/{attachment_id}/display": {
+      "get": {
+        "description": "AL1 (docs/ALBUMS.md §6): the display-size image (long edge at most 2048 px, WebP, no\nmetadata) for the full-screen viewer. Without one yet, the original image (PNG, JPEG, GIF,\nWebP only; a drive image not read yet is queued to get one); 404 display_not_found for\nanything else. Read as the attachment itself (`get_for_access`).",
+        "operationId": "display_api_v1_attachments__attachment_id__display_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Display",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/attachments/{attachment_id}/preview/pdf": {
       "get": {
         "description": "M108: every page of a document's preview as a PDF (the converter's, or a PDF upload\nitself). Inline, and sandboxed by CSP (SECURITY.md §4 「文書のプレビュー」).",
@@ -36706,6 +37698,324 @@
         ]
       }
     },
+    "/api/v1/drive/albums": {
+      "get": {
+        "description": "The albums of the locations I can read (`location_id`: one of them), newest first: by\ntheir first day, else the day they were made. Never in the trash.",
+        "operationId": "list_albums_api_v1_drive_albums_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "location_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Albums",
+        "tags": [
+          "drive"
+        ]
+      },
+      "post": {
+        "description": "A new folder that is an album, in `parent_id` or in the 「アルバム」 folder of\n`location_id` (made when missing). 409 drive_name_taken, 422 drive_album_invalid (a\ndescription over 2,000 characters, dates the wrong way round), 403 drive_read_only.",
+        "operationId": "create_album_api_v1_drive_albums_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumCreatedOut"
+                }
+              }
+            },
+            "description": "This client_op_id's album"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumCreatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Album",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/albums/{folder_id}": {
+      "get": {
+        "description": "The album and a page of its photos and videos (the album's order unless `sort` / `order`\nare given). 404 drive_album_not_found for a folder that is not an album, drive_item_not_found\nfor one I cannot read.",
+        "operationId": "album_detail_api_v1_drive_albums__folder_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "taken",
+                    "name",
+                    "added"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Album Detail",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/albums/{folder_id}/add": {
+      "post": {
+        "description": "Photos into the album (docs/ALBUMS.md §9): one result per source. A file posted in the\nalbum's own channel drive is moved (its message does not change); one posted elsewhere and\nan ordinary attachment are copied; drive items are moved within the location, copied from\nanother (`mode` overrides). The same `client_op_id` again makes no second copy.",
+        "operationId": "add_to_album_api_v1_drive_albums__folder_id__add_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumAddIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumAddOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add To Album",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/download/{token}": {
       "get": {
         "description": "The file of a download ticket (no bearer token): 404 for an unknown or expired ticket and\nfor a person who can no longer read the file.",
@@ -36862,6 +38172,105 @@
         ]
       }
     },
+    "/api/v1/drive/folders/{folder_id}/album": {
+      "delete": {
+        "description": "A plain folder again; its files stay.",
+        "operationId": "delete_album_api_v1_drive_folders__folder_id__album_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Album",
+        "tags": [
+          "drive"
+        ]
+      },
+      "put": {
+        "description": "Makes a folder an album or changes it (whoever can write in the location). 422\ndrive_album_invalid: the location's top folder, 「投稿のファイル」, a cover that is not a photo\nor video directly in it, a description over 2,000 characters, dates the wrong way round.",
+        "operationId": "put_album_api_v1_drive_folders__folder_id__album_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Album",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/folders/{folder_id}/children": {
       "get": {
         "operationId": "list_children_api_v1_drive_folders__folder_id__children_get",
@@ -36885,7 +38294,8 @@
               "enum": [
                 "name",
                 "modified",
-                "size"
+                "size",
+                "taken"
               ],
               "title": "Sort",
               "type": "string"
@@ -44365,6 +45775,7 @@
             }
           },
           {
+            "description": "AL1: album = folders that are albums, by name or description",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -44373,7 +45784,8 @@
                 {
                   "enum": [
                     "folder",
-                    "file"
+                    "file",
+                    "album"
                   ],
                   "type": "string"
                 },
@@ -44381,6 +45793,7 @@
                   "type": "null"
                 }
               ],
+              "description": "AL1: album = folders that are albums, by name or description",
               "title": "Kind"
             }
           },
@@ -44977,7 +46390,7 @@
     },
     "/api/v1/shares/{token}/folders/{folder_id}/children": {
       "get": {
-        "description": "A folder under the link (folders first, by name): names, sizes, times, previews only.",
+        "description": "A folder under the link (folders first, by name; AL1: an album in its own order unless\n`sort` / `order` are given): names, sizes, times, previews only.",
         "operationId": "share_children_api_v1_shares__token__folders__folder_id__children_get",
         "parameters": [
           {
@@ -45026,6 +46439,47 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "taken",
+                    "name",
+                    "added"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order"
             }
           }
         ],
@@ -45172,6 +46626,57 @@
           }
         },
         "summary": "Share Content",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/v1/shares/{token}/items/{item_id}/display": {
+      "get": {
+        "description": "AL1 (docs/ALBUMS.md §7): an image's display-size WebP (no metadata), not counted.",
+        "operationId": "share_display_api_v1_shares__token__items__item_id__display_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Display",
         "tags": [
           "shares"
         ]
@@ -45375,7 +46880,7 @@
     },
     "/api/v1/shares/{token}/zip": {
       "get": {
-        "description": "The shared folder (or a folder under it) as one ZIP: one download.",
+        "description": "The shared folder (or a folder under it) as one ZIP: one download. AL1: `size=display`\nholds the display-size images (and videos as they are); a link that does not hand out\noriginals answers 403 share_originals_disabled without it.",
         "operationId": "share_zip_api_v1_shares__token__zip_get",
         "parameters": [
           {
@@ -45402,6 +46907,20 @@
                 }
               ],
               "title": "Folder Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": "original",
+              "enum": [
+                "original",
+                "display"
+              ],
+              "title": "Size",
+              "type": "string"
             }
           }
         ],

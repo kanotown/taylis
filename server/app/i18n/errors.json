@@ -1870,6 +1870,26 @@
    "ja": "要求した範囲がファイルの外です。ダウンロードをやり直してください",
    "en": "The requested range is outside the file. Start the download again.",
    "zh-Hans": "请求的范围超出了文件。请重新开始下载。"
+  },
+  "drive_album_invalid": {
+   "ja": "アルバムにできないか、アルバムの設定が正しくありません（説明は 2,000 文字まで、表紙はアルバムの中の写真か動画、終わりの日は始まりの日より後）",
+   "en": "This can't be an album, or the album's settings aren't valid (a description of up to 2,000 characters, a cover from the album's own photos or videos, an end date after the start date).",
+   "zh-Hans": "无法设为相册，或相册的设置无效（说明最多 2,000 个字，封面须为相册中的照片或视频，结束日期须晚于开始日期）。"
+  },
+  "drive_album_not_found": {
+   "ja": "アルバムが見つかりません。ふつうのフォルダに戻されたか、フォルダが移動・削除された可能性があります",
+   "en": "Album not found. It may have been turned back into a folder, or the folder was moved or deleted.",
+   "zh-Hans": "找不到相册。可能已改回普通文件夹，或文件夹已被移动或删除。"
+  },
+  "share_originals_disabled": {
+   "ja": "このリンクでは元の画像はダウンロードできません（表示用の画像だけです）",
+   "en": "This link doesn't allow downloading the original files (display-size images only).",
+   "zh-Hans": "此链接不允许下载原始文件（仅提供显示尺寸的图片）。"
+  },
+  "display_not_found": {
+   "ja": "このファイルには表示用の画像がありません",
+   "en": "This file has no display image.",
+   "zh-Hans": "此文件没有显示用的图片。"
   }
  },
  "status": {

@@ -1,6 +1,6 @@
 """The drive's API shapes (docs/DRIVE.md §5)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -60,6 +60,16 @@ class DriveFileOut(BaseModel):
     has_poster: bool
     duration_ms: int | None
     preview: AttachmentPreviewOut | None
+    # AL1 (docs/ALBUMS.md §4, §6): the capture time read from the photo or video (EXIF
+    # DateTimeOriginal with its offset, a video's creation time; null when it says none or it was
+    # not read yet), whether the original holds a location (「位置情報あり」), and the display-size
+    # image (GET /attachments/{attachment_id}/display, long edge at most 2048 px, WebP, no
+    # metadata).
+    taken_at: datetime | None = None
+    has_location: bool = False
+    has_display: bool = False
+    display_width: int | None = None
+    display_height: int | None = None
 
 
 class DrivePostOut(BaseModel):
@@ -73,6 +83,43 @@ class DrivePostOut(BaseModel):
     sender_id: UUID
     version_number: int
     posted_at: datetime
+
+
+AlbumSort = Literal["taken", "name", "added"]
+SortOrder = Literal["asc", "desc"]
+MAX_ALBUM_DESCRIPTION = 2000
+
+
+class AlbumCoverOut(BaseModel):
+    item_id: UUID
+    attachment_id: UUID
+
+
+class AlbumOut(BaseModel):
+    """AL1 (docs/ALBUMS.md §5): a folder shown as an album. Its title is the folder's name; the
+    photos are the images and videos directly in it. `taken_from` / `taken_to`: the range of
+    their capture times (else their own times); `preview_attachment_ids`: up to four of them with
+    a thumbnail (the cover first) for a card; `cover`: the chosen cover while it is still in the
+    folder, else the first in the album's order (null for an empty album)."""
+
+    folder_id: UUID
+    description: str
+    cover: AlbumCoverOut | None
+    cover_item_id: UUID | None
+    sort: AlbumSort
+    sort_order: SortOrder
+    starts_on: date | None
+    ends_on: date | None
+    taken_from: datetime | None
+    taken_to: datetime | None
+    photo_count: int
+    video_count: int
+    # The photos' and videos' bytes (their current versions).
+    size_bytes: int
+    preview_attachment_ids: list[UUID]
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class DriveItemOut(BaseModel):
@@ -105,6 +152,9 @@ class DriveItemOut(BaseModel):
     # CF1: those messages that the caller can read, newest first, at most 5. Only in
     # GET /drive/items/{id} (null in lists, search hits and other answers).
     posts: list[DrivePostOut] | None = None
+    # AL1 (docs/ALBUMS.md §5): a folder that is an album (its card: four thumbnails, title,
+    # count, dates); null for other folders and files. Older clients show a plain folder.
+    album: AlbumOut | None = None
 
 
 class DriveCrumb(BaseModel):
@@ -147,6 +197,120 @@ class DriveFolderCreate(BaseModel):
         if (self.name is None) == (self.path is None):
             raise ValueError("give either name or path")
         return self
+
+
+class AlbumCreate(BaseModel):
+    """POST /drive/albums: a new folder that is an album, in one transaction. `parent_id`: the
+    folder to make it in; or `location_id`: in that location's 「アルバム」 folder (made when
+    missing; docs/ALBUMS.md §17 Q2). The same `client_op_id` again answers the same album."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parent_id: UUID | None = None
+    location_id: UUID | None = None
+    name: str = Field(max_length=1000)
+    description: str | None = Field(default=None, max_length=MAX_ALBUM_DESCRIPTION * 2)
+    starts_on: date | None = None
+    ends_on: date | None = None
+    sort: AlbumSort | None = None
+    sort_order: SortOrder | None = None
+    client_op_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _where(self) -> "AlbumCreate":
+        if (self.parent_id is None) == (self.location_id is None):
+            raise ValueError("give either parent_id or location_id")
+        return self
+
+
+class AlbumPut(BaseModel):
+    """PUT /drive/folders/{id}/album: makes the folder an album or changes it; only the fields
+    sent change (`cover_item_id: null`: the first photo again; `starts_on: null`: no date)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = Field(default=None, max_length=MAX_ALBUM_DESCRIPTION * 2)
+    cover_item_id: UUID | None = None
+    sort: AlbumSort | None = None
+    sort_order: SortOrder | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+
+
+class AlbumCreatedOut(BaseModel):
+    folder: DriveItemOut
+    album: AlbumOut
+
+
+class AlbumListEntryOut(BaseModel):
+    folder: DriveItemOut
+    album: AlbumOut
+    # The location's name, then the folders down to the album's parent.
+    path: list["DriveCrumb"]
+    location_kind: LocationKind
+
+
+class AlbumListOut(BaseModel):
+    """GET /drive/albums: the albums in the locations I can read, newest first (by
+    starts_on, else the day the album was made)."""
+
+    items: list[AlbumListEntryOut]
+    next_cursor: str | None
+
+
+class AlbumDetailOut(BaseModel):
+    """GET /drive/albums/{folder_id}: the album and a page of its photos and videos in the
+    album's order (`sort` / `order` override it for this read). Subfolders and other files are
+    counted here and listed by GET /drive/folders/{id}/children."""
+
+    folder: DriveItemOut
+    album: AlbumOut
+    path: list["DriveCrumb"]
+    location_kind: LocationKind
+    can_write: bool
+    items: list[DriveItemOut]
+    next_cursor: str | None
+    folder_count: int
+    other_count: int
+    # Working external links on the album or above it (as DriveChildrenOut.shared_above).
+    shared_above: int = 0
+
+
+AddMode = Literal["auto", "move", "copy"]
+
+
+class AlbumAddIn(BaseModel):
+    """POST /drive/albums/{folder_id}/add (docs/ALBUMS.md §9): files into the album.
+    `attachment_ids`: a conversation's attachments (a posted file in the album's own channel
+    drive is moved with mode auto, anything else copied); `item_ids`: drive items (moved within
+    the same location, copied from another, with mode auto). A name already in the album keeps
+    both (「名前 (1)」)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    item_ids: list[UUID] = Field(default_factory=list, max_length=MAX_BATCH)
+    mode: AddMode = "auto"
+    client_op_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _some(self) -> "AlbumAddIn":
+        if not self.attachment_ids and not self.item_ids:
+            raise ValueError("give attachment_ids or item_ids")
+        return self
+
+
+class AlbumAddResult(BaseModel):
+    source_id: UUID
+    ok: bool
+    error: str | None = None
+    # The item in the album (the moved one, or the copy).
+    item_id: UUID | None = None
+    action: Literal["moved", "copied"] | None = None
+
+
+class AlbumAddOut(BaseModel):
+    results: list[AlbumAddResult]
 
 
 class DriveItemRename(BaseModel):
@@ -534,6 +698,9 @@ class DriveShareLinkOut(BaseModel):
     note: str | None
     last_used_at: datetime | None
     state: ShareLinkState
+    # AL1 (docs/ALBUMS.md §7): whether the public side hands out the original files. False: the
+    # display-size images only (no metadata), a display-size ZIP, videos as they are.
+    originals: bool = True
     # Whether the reader may change it (its creator) and revoke it (its creator, the location's
     # managers, the administrators).
     can_edit: bool = False
@@ -550,6 +717,8 @@ class DriveShareLinkCreate(BaseModel):
     password: str | None = Field(default=None, min_length=4, max_length=128)
     max_downloads: int | None = Field(default=None, ge=1, le=100_000)
     note: str | None = Field(default=None, max_length=80)
+    # AL1: left out, false for an album folder and true for anything else.
+    originals: bool | None = None
 
 
 class DriveShareLinkPatch(BaseModel):
@@ -562,6 +731,7 @@ class DriveShareLinkPatch(BaseModel):
     password: str | None = Field(default=None, min_length=4, max_length=128)
     max_downloads: int | None = Field(default=None, ge=1, le=100_000)
     note: str | None = Field(default=None, max_length=80)
+    originals: bool | None = None
 
 
 class DriveShareLinkCreatedOut(BaseModel):
@@ -657,6 +827,30 @@ class SharedItemOut(BaseModel):
     width: int | None = None
     height: int | None = None
     preview: AttachmentPreviewOut | None = None
+    # AL1: a display-size image (at /shares/{token}/items/{id}/display), the capture time, a
+    # video's poster (at the thumbnail path) and length. Never whether the original holds a
+    # location.
+    has_display: bool = False
+    display_width: int | None = None
+    display_height: int | None = None
+    taken_at: datetime | None = None
+    has_poster: bool = False
+    duration_ms: int | None = None
+
+
+class SharedAlbumOut(BaseModel):
+    """AL1: an album as the public side shows it (no people, no attachment ids)."""
+
+    description: str
+    cover_item_id: UUID | None
+    sort: AlbumSort
+    sort_order: SortOrder
+    starts_on: date | None
+    ends_on: date | None
+    taken_from: datetime | None
+    taken_to: datetime | None
+    photo_count: int
+    video_count: int
 
 
 class ShareInfoOut(BaseModel):
@@ -673,6 +867,12 @@ class ShareInfoOut(BaseModel):
     root_id: UUID | None
     item: SharedItemOut | None
     workspace_name: str
+    # AL1 (docs/ALBUMS.md §7): false: the original files are not handed out (403
+    # share_originals_disabled for the content of anything but a video and for the ZIP without
+    # size=display). Told once unlocked (null before).
+    originals: bool | None = None
+    # The shared folder is an album (once unlocked).
+    album: SharedAlbumOut | None = None
 
 
 class SharedChildrenOut(BaseModel):
@@ -681,6 +881,8 @@ class SharedChildrenOut(BaseModel):
     path: list[DriveCrumb]
     items: list[SharedItemOut]
     next_cursor: str | None
+    # AL1: the folder is an album (its order is the album's unless `sort` was given).
+    album: SharedAlbumOut | None = None
 
 
 class ShareUnlockIn(BaseModel):

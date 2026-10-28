@@ -2112,6 +2112,14 @@ CREATE TABLE attachments (
   preview_generation integer NOT NULL DEFAULT 0,    -- 0086: claim 番号 n (claim のたびに +1。結果を書けるのは n の試行だけ、生成物のキーにも n。レビュー v0.1.37 #4・#9)
   preview_next_at timestamptz,                      -- M108: 次に取ってよい時刻 (再試行の待ち、処理中のリース)
   preview_error  text,                              -- M108: 最後の失敗の理由 (300 文字まで)
+  display_key    text,                              -- AL1 (0127): 'attachments/{id}.display.webp' (ドライブの画像の表示サイズ。長い辺 2048 px、メタデータなし。下の「アルバム」)
+  display_width  integer,                           -- AL1: 表示サイズの縦横 (向きを当てた後)
+  display_height integer,
+  display_bytes  integer,                           -- AL1: 表示サイズのバイト数 (公開側の表示サイズの ZIP の長さを先に決めるため)
+  taken_at       timestamptz,                       -- AL1: 撮影日時 (EXIF の DateTimeOriginal + OffsetTimeOriginal、動画の creationdate / creation_time)。並びと表示だけ
+  taken_at_local boolean,                           -- AL1: true = ゾーンが無くワークスペースのゾーン (CHANNEL_FILES_TZ) で読んだ
+  has_location   boolean,                           -- AL1: 元のファイルに位置情報 (GPS の緯度経度、動画の location の tag) がある。値は持たない
+  photo_probed_at timestamptz,                      -- AL1: 写真・動画として読んだ時刻 (結果によらず)。NULL = まだ (app.cli drive-photos)
   created_at     timestamptz NOT NULL DEFAULT now(),
   attached_at    timestamptz,
   deleted_at     timestamptz
@@ -2273,6 +2281,43 @@ CREATE INDEX drive_texts_body_pgroonga_idx ON drive_texts USING pgroonga (body);
 - `drive_file_versions.source` に `'message'`（CHECK は無い）。
 - 切り替え：`workspace_settings.channel_files_to_drive boolean NOT NULL DEFAULT true` と `channels.files_to_drive boolean`（NULL = 従う）。
   変えて効くのはそれからの投稿だけ。前の添付は `app.cli channel-files-backfill`（写さずに行を足す、`message.updated` は出さない）。
+
+### アルバム（AL1、M180、docs/ALBUMS.md §4、移行 0127）
+
+アルバムは**ドライブのフォルダ + 少しのメタデータ**。題名はフォルダの名前、写真はそのフォルダの直下の画像（`image/*`）と動画（`video/*`）。
+見える人・書ける人はフォルダの場所の規則のまま（DRIVE.md §3.2）。
+
+```sql
+CREATE TABLE drive_albums (
+  folder_id      uuid PRIMARY KEY REFERENCES drive_items(id) ON DELETE CASCADE,   -- フォルダだけ (根と「投稿のファイル」は 422 drive_album_invalid)
+  description    text NOT NULL DEFAULT '',          -- NFC、2,000 文字まで
+  cover_item_id  uuid REFERENCES drive_items(id) ON DELETE SET NULL,  -- 表紙。直下の写真・動画でなくなれば並びの最初を使う
+  sort           varchar(8) NOT NULL DEFAULT 'taken',                 -- 'taken' | 'name' | 'added'
+  sort_order     varchar(4) NOT NULL DEFAULT 'asc',                   -- 'asc' | 'desc'
+  starts_on      date,                               -- 任意：行事の日付
+  ends_on        date,                               -- CHECK: ends_on >= starts_on
+  created_by     uuid REFERENCES users(id),
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_by     uuid REFERENCES users(id),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX drive_albums_description_pgroonga_idx ON drive_albums USING pgroonga (description);
+CREATE INDEX drive_albums_cover_idx ON drive_albums (cover_item_id);
+
+ALTER TABLE drive_items ADD COLUMN taken_at timestamptz;   -- 今のバージョンの attachments.taken_at の写し
+CREATE INDEX drive_items_taken_idx ON drive_items (parent_id, taken_at, id) WHERE trashed_at IS NULL AND kind = 'file';
+ALTER TABLE drive_share_links ADD COLUMN originals boolean NOT NULL DEFAULT true;  -- false = 公開側は表示サイズだけ
+```
+
+- 撮影日の並びは `COALESCE(taken_at, content_modified_at, created_at)`、同じ値は id で。カーソルはその値と id。
+- `drive_items.taken_at` は新しい版（アップロード・取り込み）で NULL にし、media loop が写真を読んだ後に別の短いトランザクションで
+  書く（添付の行の後に項目の行を待たないため）。コピー・版を戻す・会話の添付の保存は元の値を写す（`clone_object` が表示サイズの
+  オブジェクトと写真の情報も写す）。
+- 枚数・撮影日の範囲・表紙・カードの 4 枚は読むときに直下から求める（`drive/album_cards.py`）。
+- `attachments.display_*`・`taken_*`・`has_location`・`photo_probed_at` を持つのはドライブのバージョン（投稿のファイルを含む）だけ。
+  表示サイズは派生物（サムネイルと同じ）：GC が消し、`verify-attachments` が確かめ、容量に数えない。
+- フォルダをゴミ箱に入れても行は残り（一覧から消える）、戻せば戻る、別の場所へ移せばついていく、完全削除で CASCADE。フォルダの
+  コピーはふつうのフォルダになる（アルバムの行は写さない）。
 
 ### outbox_events
 

@@ -29,7 +29,7 @@ from app.modules.attachments.schemas import preview_out, to_attachment_out
 from app.modules.audit import service as audit
 from app.modules.channels import service as channels
 from app.modules.drive import access as acl
-from app.modules.drive import events, names, posted, shares
+from app.modules.drive import album_cards, events, names, posted, shares
 from app.modules.drive import repository as repo
 from app.modules.drive.access import Access, item_not_found
 from app.modules.drive.models import (
@@ -243,6 +243,7 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
     counts = await repo.version_counts(db, [r.id for r in rows if r.kind == "file"])
     links = await shares.link_counts(db, [r.id for r in rows])
     in_posts = await posted.posted_items(db, [r.id for r in rows if r.kind == "file"])
+    albums = await album_cards.for_folders(db, rows)
     out: list[DriveItemOut] = []
     for row in rows:
         file: DriveFileOut | None = None
@@ -259,6 +260,11 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
                 has_poster=shown.has_poster,
                 duration_ms=shown.duration_ms,
                 preview=shown.preview,
+                taken_at=attachment.taken_at,
+                has_location=bool(attachment.has_location),
+                has_display=attachment.display_key is not None,
+                display_width=attachment.display_width,
+                display_height=attachment.display_height,
             )
         out.append(
             DriveItemOut(
@@ -281,6 +287,7 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
                 trashed_by=row.trashed_by,
                 system_role=row.system_role,  # type: ignore[arg-type]
                 posted=row.id in in_posts,
+                album=albums.get(row.id),
             )
         )
     return out
@@ -396,7 +403,7 @@ async def search_hits(db: AsyncSession, rows: list[DriveItem]) -> list[DriveSear
     return out
 
 
-Sort = Literal["name", "modified", "size"]
+Sort = Literal["name", "modified", "size", "taken", "added"]
 Order = Literal["asc", "desc"]
 
 
@@ -405,6 +412,11 @@ def _sort_column(sort: Sort) -> Any:
         return func.coalesce(DriveItem.content_modified_at, DriveItem.updated_at)
     if sort == "size":
         return func.coalesce(DriveItem.size_bytes, 0)
+    if sort == "taken":
+        # AL1 (docs/ALBUMS.md §4.1): 「撮影日」.
+        return album_cards.taken_column()
+    if sort == "added":
+        return DriveItem.created_at
     return DriveItem.name_sort
 
 
@@ -413,6 +425,10 @@ def _cursor_value(row: DriveItem, sort: Sort) -> Any:
         return (row.content_modified_at or row.updated_at).isoformat()
     if sort == "size":
         return row.size_bytes or 0
+    if sort == "taken":
+        return (row.taken_at or row.content_modified_at or row.created_at).isoformat()
+    if sort == "added":
+        return row.created_at.isoformat()
     return row.name_sort.hex()
 
 
@@ -427,7 +443,7 @@ def _decode_cursor(cursor: str, sort: Sort) -> tuple[str, Any, uuid.UUID]:
         kind, value, raw_id = json.loads(base64.urlsafe_b64decode(padded))
         if kind not in ("folder", "file"):
             raise ValueError(kind)
-        if sort == "modified":
+        if sort in ("modified", "taken", "added"):
             value = datetime.fromisoformat(value)
         elif sort == "size":
             value = int(value)
@@ -448,13 +464,41 @@ async def list_children(
     cursor: str | None,
     limit: int,
 ) -> DriveChildrenOut:
-    """Folders first, then files, by name (the sidebar's Japanese order), modified or size."""
+    """Folders first, then files, by name (the sidebar's Japanese order), modified, size or (AL1)
+    capture time."""
     folder, rights = await readable_item(db, actor, folder_id)
     if folder.kind != "folder":
         raise item_not_found()
+    rows, next_cursor = await children_page(
+        db, folder.id, sort=sort, order=order, cursor=cursor, limit=limit
+    )
+    chain = await repo.ancestor_ids(db, folder.id)
+    return DriveChildrenOut(
+        folder=await item_out(db, folder),
+        path=await crumbs(db, chain, rights.location),
+        items=await items_out(db, rows),
+        next_cursor=next_cursor,
+        shared_above=await shares.shared_above(db, chain),
+    )
+
+
+async def children_page(
+    db: AsyncSession,
+    folder_id: uuid.UUID,
+    *,
+    sort: Sort,
+    order: Order,
+    cursor: str | None,
+    limit: int,
+    where: Any = None,
+) -> tuple[list[DriveItem], str | None]:
+    """A page of a folder's live children, folders first, and the next page's cursor. `where`:
+    a further condition (AL1: an album's photos only)."""
     column = _sort_column(sort)
     ascending = order == "asc"
-    stmt = select(DriveItem).where(DriveItem.parent_id == folder.id, DriveItem.trashed_at.is_(None))
+    stmt = select(DriveItem).where(DriveItem.parent_id == folder_id, DriveItem.trashed_at.is_(None))
+    if where is not None:
+        stmt = stmt.where(where)
     if cursor is not None:
         kind, value, last_id = _decode_cursor(cursor, sort)
         later = (column > value) if ascending else (column < value)
@@ -473,14 +517,7 @@ async def list_children(
     rows = list((await db.execute(stmt)).scalars().all())
     more = len(rows) > limit
     rows = rows[:limit]
-    chain = await repo.ancestor_ids(db, folder.id)
-    return DriveChildrenOut(
-        folder=await item_out(db, folder),
-        path=await crumbs(db, chain, rights.location),
-        items=await items_out(db, rows),
-        next_cursor=_encode_cursor(rows[-1], sort) if more and rows else None,
-        shared_above=await shares.shared_above(db, chain),
-    )
+    return rows, (_encode_cursor(rows[-1], sort) if more and rows else None)
 
 
 # --- items: tree changes -----------------------------------------------------------------------

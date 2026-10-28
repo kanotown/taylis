@@ -1323,7 +1323,9 @@ base・送られた本文・head を 3-way マージする。
 - **イベント**：`drive.changed {location_id, folder_ids, seq}`（audience `drive`：研究室ドライブはゲストと bot 以外の人、チャンネルの
   ドライブは今のメンバー、マイドライブは本人。送る時点で解決するので、読めなくなった人には届かない）。`folder_ids` は中身が変わった
   フォルダ（作成・名前・移動の元と先・ゴミ箱・戻す・新しい版・サムネイル・ポスター・プレビューの完了）。完全削除は `folder_ids` が空
-  （ゴミ箱を読み直す）。`seq` は `drive_change_seq` の値で、古い `seq` の重複・入れ違いは捨ててよい。
+  （ゴミ箱を読み直す）。AL1（docs/ALBUMS.md §5）：アルバムには新しいイベントが無い。アルバムにする・変える・やめるは `folder_ids` に
+  そのフォルダとその親（親を開いていればカードを、アルバムを開いていれば中身を読み直す）、写真の撮影日時・表示サイズができたときは
+  写真のフォルダ（= アルバム）。外部共有リンクの `originals` の変更（`PATCH /drive/links/{id}`）は今の PATCH と同じくイベントを出さない（リンクの画面は開くたびに読む）。`seq` は `drive_change_seq` の値で、古い `seq` の重複・入れ違いは捨ててよい。
 - `drive.upload.updated {upload}` は上げた本人に：`completing` からの完了（`status: completed`、`item_id`）、完了できなかった（`active` に
   戻り `error` にコード）、期限切れ（`expired`）。別の端末で始めたアップロードの欄もこれで更新できる。
 - `drive.location.updated {location_id}`（M162）は場所の設定（容量の上限）が変わったとき、その場所を読める人に。中身は id だけ

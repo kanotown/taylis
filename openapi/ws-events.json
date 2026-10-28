@@ -3751,6 +3751,11 @@
                 "title": "Filename",
                 "type": "string"
               },
+              "has_display": {
+                "default": false,
+                "title": "Has Display",
+                "type": "boolean"
+              },
               "has_poster": {
                 "title": "Has Poster",
                 "type": "boolean"
@@ -4994,6 +4999,11 @@
               "filename": {
                 "title": "Filename",
                 "type": "string"
+              },
+              "has_display": {
+                "default": false,
+                "title": "Has Display",
+                "type": "boolean"
               },
               "has_poster": {
                 "title": "Has Poster",
@@ -6239,6 +6249,11 @@
               "filename": {
                 "title": "Filename",
                 "type": "string"
+              },
+              "has_display": {
+                "default": false,
+                "title": "Has Display",
+                "type": "boolean"
               },
               "has_poster": {
                 "title": "Has Poster",
@@ -7916,6 +7931,11 @@
               "filename": {
                 "title": "Filename",
                 "type": "string"
+              },
+              "has_display": {
+                "default": false,
+                "title": "Has Display",
+                "type": "boolean"
               },
               "has_poster": {
                 "title": "Has Poster",

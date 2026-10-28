@@ -16,12 +16,15 @@ import os
 import shutil
 import weakref
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
+from app.core.time import utcnow
 from app.modules.attachments.images import make_thumbnail
+from app.modules.attachments.photos import parse_video_meta
 
 log = logging.getLogger("app.attachments.videos")
 
@@ -52,12 +55,15 @@ def is_video(content_type: str) -> bool:
 
 @dataclass(frozen=True)
 class VideoInfo:
-    """Upright display size (rotation and pixel aspect applied), length, poster JPEG bytes."""
+    """Upright display size (rotation and pixel aspect applied), length, poster JPEG bytes; AL1
+    (docs/ALBUMS.md §4.2): the capture time and whether the file holds a location."""
 
     width: int | None
     height: int | None
     duration_ms: int | None
     poster: bytes | None
+    taken_at: datetime | None = None
+    has_location: bool = False
 
 
 def _number(value: Any) -> float | None:
@@ -217,10 +223,10 @@ async def run_bounded(
     return bytes(out)
 
 
-async def _probe(
-    ffprobe: str, path: str, seconds: float
-) -> tuple[int | None, int | None, int | None]:
-    out = await run_bounded(
+async def _probe(ffprobe: str, path: str, seconds: float) -> bytes | None:
+    """ffprobe's JSON: the first video stream's shape, rotation, length and creation time, the
+    container's length and tags (creation time, location: AL1)."""
+    return await run_bounded(
         [
             ffprobe,
             "-v",
@@ -230,7 +236,9 @@ async def _probe(
             "v:0",
             "-show_entries",
             "stream=width,height,sample_aspect_ratio,duration:stream_side_data=rotation"
-            ":stream_tags=rotate:format=duration",
+            ":stream_tags=rotate,creation_time:format=duration"
+            ":format_tags=creation_time,location,location-eng,com.apple.quicktime.creationdate"
+            ",com.apple.quicktime.location.ISO6709",
             "-of",
             "json",
             f"file:{path}",
@@ -238,7 +246,6 @@ async def _probe(
         seconds,
         MAX_PROBE_OUTPUT,
     )
-    return parse_probe(out) if out is not None else (None, None, None)
 
 
 async def _frame(ffmpeg: str, path: str, at: float, max_px: int, seconds: float) -> bytes | None:
@@ -292,7 +299,9 @@ async def probe_video(path: str, settings: Settings) -> VideoInfo | None:
     timeout = settings.video_probe_timeout_seconds
     max_px = settings.attachment_thumbnail_px
     async with _semaphore(settings.video_probe_max_concurrent):
-        width, height, duration_ms = await _probe(ffprobe, path, timeout)
+        raw = await _probe(ffprobe, path, timeout)
+        width, height, duration_ms = parse_probe(raw) if raw is not None else (None, None, None)
+        meta = parse_video_meta(raw, now=utcnow())
         poster: bytes | None = None
         if width is not None:
             start = POSTER_AT_SECONDS
@@ -306,4 +315,11 @@ async def probe_video(path: str, settings: Settings) -> VideoInfo | None:
                     poster, _, _ = await run_in_threadpool(make_thumbnail, frame, max_px)
                 except Exception as exc:  # not the PNG we asked for: no poster
                     log.info("poster frame unreadable: %s", exc)
-    return VideoInfo(width=width, height=height, duration_ms=duration_ms, poster=poster)
+    return VideoInfo(
+        width=width,
+        height=height,
+        duration_ms=duration_ms,
+        poster=poster,
+        taken_at=meta.taken.at if meta.taken else None,
+        has_location=meta.has_location,
+    )

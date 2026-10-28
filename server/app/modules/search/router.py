@@ -161,7 +161,10 @@ async def search_drive(
     db: Db,
     q: str = Query(default="", max_length=MAX_QUERY_LENGTH),
     location_id: UUID | None = None,
-    kind: Literal["folder", "file"] | None = None,
+    kind: Literal["folder", "file", "album"] | None = Query(
+        default=None,
+        description="AL1: album = folders that are albums, by name or description",
+    ),
     cursor: str | None = Query(default=None, max_length=20),
     limit: int = Query(default=50, ge=1, le=100),
     content: bool = Query(

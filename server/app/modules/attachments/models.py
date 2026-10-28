@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -98,6 +99,22 @@ class Attachment(Base):
     # When the loop may take it (again): after a failed try, or once a claimed try's lease runs out.
     preview_next_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     preview_error: Mapped[str | None] = mapped_column(Text)
+    # AL1 (docs/ALBUMS.md §4.1, §6): a drive image's display-size copy (the long edge at most
+    # 2048 px, WebP, no metadata) for the full-screen viewer and the public side; not counted by
+    # any quota (a derived object, as the thumbnail).
+    display_key: Mapped[str | None] = mapped_column(Text)
+    display_width: Mapped[int | None] = mapped_column(Integer)
+    display_height: Mapped[int | None] = mapped_column(Integer)
+    display_bytes: Mapped[int | None] = mapped_column(Integer)
+    # AL1: what the server read from a drive photo or video: its capture time (EXIF
+    # DateTimeOriginal with its offset, a video's creation_time; for ordering and display only,
+    # never trusted for anything else), whether the zone was unknown (read in the workspace's),
+    # and whether the original holds a location (the value is never kept). photo_probed_at: when
+    # it was read (whatever was found); NULL: not yet (`app.cli drive-photos`).
+    taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    taken_at_local: Mapped[bool | None] = mapped_column(Boolean)
+    has_location: Mapped[bool | None] = mapped_column(Boolean)
+    photo_probed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

@@ -914,6 +914,8 @@ async def add_version_in_tx(
     item.size_bytes = size
     item.content_type = content_type
     item.content_modified_at = content_modified_at
+    # AL1: the new version's capture time is read by the media loop.
+    item.taken_at = None
     item.updated_by = user_id
     item.updated_at = now
     item.change_seq = await events.next_seq(db)

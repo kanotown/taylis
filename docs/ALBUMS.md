@@ -1,7 +1,7 @@
 # ALBUMS（写真のアルバム）
 
-2026-10-28 の設計（**未実装**）。マイルストーンは AL1〜AL5（§15。M 番号は仮に M180〜M184、移行は CHANNEL_FILES.md の後の番号から。
-並行する作業と重なれば振り直す）。
+2026-10-28 の設計。**AL1（M180、サーバ）を実装（2026-10-29、移行 0127、§18）**。§17 の質問はすべて推めのとおりに決まった
+（2026-10-28、§18.1）。次は AL2〜AL4（Desktop / Web・iOS・Android、§18.4 に端末が使うもの）。マイルストーンは AL1〜AL5（§15、M180〜M184）。
 
 利用者（研究室の教員）の要望（2026-10-28）：学会・合宿・研究室の行事などの写真を 1 つのアルバムに集めて、みんなで眺めたい。
 
@@ -27,8 +27,8 @@ MOBILE_UI.md §25（スマホのドライブ）。
   サムネイルと同じく当てる。**位置情報（GPS）は研究室の中では元の写真に残し**、「位置情報あり」と出す。**学外への共有リンクでは、
   既定で元の写真を渡さず表示サイズ（位置情報なし）だけ**にする（§7）。
 - **HEIC**：iOS は今までどおり送る前に JPEG にする（DRIVE.md §30.2）。Desktop / Web から来た HEIC はサーバでサムネイル・表示サイズを
-  作れない（Pillow が読めない）。AL1 で今の ffmpeg が読めるかを確かめ、読めればそれで作る（新しい依存なし）。読めなければアイコンの
-  まま（§6.3、§17 Q4）。
+  作れない（Pillow が読めない）。AL1 で確かめた結果、**app のイメージの ffmpeg（Debian bookworm の 5.1）も HEIC を読めない**ので、
+  v1 はアイコンのまま（§6.3、§18.3）。
 - **動画**もアルバムに入れられる（ポスターと長さ、ビューアで再生、スライドショーでは音を消して最後まで流す）。
 - **チャンネルへ**：アルバムの `/d/<フォルダの id>` のリンクは、写真 4 枚の並び・題名・枚数・日付のカードになる（DRIVE.md §25 の
   カードの形を広げる）。「チャンネルに知らせる」で入力欄にリンクを入れる。自動では投稿しない。
@@ -113,6 +113,7 @@ ALTER TABLE attachments
   ADD COLUMN display_key     text,          -- 'attachments/{id}.display.webp'（長い辺 2048 px、メタデータなし）
   ADD COLUMN display_width   integer,
   ADD COLUMN display_height  integer,
+  ADD COLUMN display_bytes   integer,       -- AL1 で足した：表示サイズの ZIP の長さを先に決めるため（§18.2）
   ADD COLUMN taken_at        timestamptz,   -- EXIF の DateTimeOriginal（+ OffsetTimeOriginal）、動画の creation_time
   ADD COLUMN taken_at_local  boolean,       -- true = ゾーンが分からずワークスペースのゾーンで読んだ
   ADD COLUMN has_location    boolean,       -- 元のファイルに GPS がある（表示だけ。値は持たない）
@@ -143,9 +144,10 @@ ALTER TABLE drive_share_links ADD COLUMN originals boolean NOT NULL DEFAULT true
   1. EXIF を読む（Pillow の `getexif()`。ヘッダだけで、画素は展開しない）：`DateTimeOriginal`（無ければ `DateTimeDigitized`・
      `DateTime`）、`OffsetTimeOriginal`（あればそのゾーン、無ければワークスペースのゾーンで読み `taken_at_local = true`）、GPS の
      IFD が空でないか（`has_location`）。1970 年より前・今 + 1 日より後は捨てる（DRIVE.md §6.2 の更新日時と同じ守り）。
-  2. 表示サイズ：長い辺が 2048 px を超える画像（と 2048 px 以下でも 1.5 MB を超えるもの）は、`ImageOps.exif_transpose` の後に 2048 px へ
-     縮めた WebP（品質 80、メタデータなし。今の `make_thumbnail` と同じ守り：50 Mpx の上限、新しい画像に描き直す）。小さなものは
-     作らず、表示サイズの経路は元の画像を返す（ラスター画像だけ、今の `?inline=1` と同じ型）。
+  2. 表示サイズ：`ImageOps.exif_transpose` の後に長い辺を 2048 px まで縮めた WebP（品質 80、メタデータなし。今の `make_thumbnail` と
+     同じ守り：50 Mpx の上限、新しい画像に描き直す）。**AL1 では小さな画像にも作る**（§18.2：公開側で元のバイト列を渡さずに済み、
+     表示サイズの ZIP の長さも先に決まる）。動く画像（GIF・WebP のアニメーション）には作らない。表示サイズの無い画像では、
+     `/attachments/{id}/display` は元の画像を返す（ラスター画像だけ、今の `?inline=1` と同じ型）。
   3. 動画：今の ffprobe の結果から `creation_time`（QuickTime の `com.apple.quicktime.creationdate` があればそれ）を `taken_at` に。
      位置（`location` の tag）があれば `has_location`。
 - 読むのは**ドライブのバージョン**（投稿のファイルを含む、CHANNEL_FILES.md）。チャットの添付（DM など）は読まない（アルバムに入らない）。
@@ -159,15 +161,16 @@ ALTER TABLE drive_share_links ADD COLUMN originals boolean NOT NULL DEFAULT true
 
 | メソッド | パス | 中身 |
 | --- | --- | --- |
-| POST | `/drive/albums` | `{parent_id, name, description?, starts_on?, ends_on?, client_op_id}` → 201 `{folder: DriveItemOut, album: AlbumOut}`。フォルダとアルバムを 1 トランザクションで（`POST /drive/folders` と同じ冪等） |
+| POST | `/drive/albums` | `{parent_id \| location_id, name, description?, starts_on?, ends_on?, sort?, sort_order?, client_op_id}` → 201 `{folder: DriveItemOut, album: AlbumOut}`（同じ `client_op_id` は 200）。フォルダとアルバムを 1 トランザクションで（`POST /drive/folders` と同じ冪等）。`location_id` ならその場所の根の「アルバム」フォルダ（無ければ作る）の下に（§17 Q2、§18.2） |
+| GET | `/drive/albums/{folder_id}?sort=&order=&cursor=&limit=` | AL1 で足した：アルバムと、その写真・動画の 1 ページ（アルバムの並び、`sort`・`order` で上書き）：`{folder, album, path, location_kind, can_write, items, next_cursor, folder_count, other_count, shared_above}`。アルバムでないフォルダは 404 `drive_album_not_found` |
 | PUT | `/drive/folders/{id}/album` | `{description?, cover_item_id?, sort?, sort_order?, starts_on?, ends_on?}` → `AlbumOut`（ふつうのフォルダをアルバムにする・変える。書ける人） |
 | DELETE | `/drive/folders/{id}/album` | 204。ふつうのフォルダに戻す（中身はそのまま） |
 | GET | `/drive/albums?location_id=&cursor=&limit=` | 読める場所のアルバムの一覧（新しい日付の順）：`{items: [{folder, album, path, location_kind}], next_cursor}` |
-| GET | `/drive/folders/{id}/children?sort=taken&order=asc` | 今の一覧に `sort=taken` を足す。各ファイルの `file` に `taken_at`・`has_location`・`has_display`・`display_width`/`height` |
-| GET | `/attachments/{id}/display` | 表示サイズの画像（`image/webp`、`inline`、`nosniff`、`Cache-Control: private, max-age=86400`）。無ければ元のラスター画像（`?inline=1` と同じ型だけ）、ほかは 404。権限は `get_for_access` |
-| POST | `/drive/albums/{folder_id}/add` | `{attachment_ids?: [..≤100], item_ids?: [..≤500], mode: "auto" \| "move" \| "copy", client_op_id}` → `{results: [{source_id, ok, error?, item_id}]}`（§9） |
+| GET | `/drive/folders/{id}/children?sort=taken&order=asc` | 今の一覧に `sort=taken`（と `added`）を足す。各ファイルの `file` に `taken_at`・`has_location`・`has_display`・`display_width`/`height` |
+| GET | `/attachments/{id}/display` | 表示サイズの画像（`image/webp`、`inline`、`nosniff`、`Cache-Control: private, max-age=86400`）。無ければ元のラスター画像（`?inline=1` と同じ型だけ。まだ読んでいないドライブの画像はその版を media loop に戻す）、ほかは 404 `display_not_found`。権限は `get_for_access`。`AttachmentOut.has_display` も足した |
+| POST | `/drive/albums/{folder_id}/add` | `{attachment_ids?: [..≤100], item_ids?: [..≤500], mode: "auto" \| "move" \| "copy", client_op_id}` → `{results: [{source_id, ok, error?, item_id, action: "moved" \| "copied"}]}`（§9） |
 | GET | `/search/drive?kind=album` | 名前（フォルダ）と説明でアルバムを探す |
-| GET | `/shares/{token}` | 根がアルバムなら `album: AlbumOut` と `originals`（§7） |
+| GET | `/shares/{token}` | 根がアルバムなら `album: SharedAlbumOut`（人と添付の id を持たない形）と `originals`（§7）。`/shares/{token}/folders/{id}/children` もアルバムなら `album` と、`sort`・`order` を省けばアルバムの並び。`SharedItemOut` に `has_display`・`display_width`/`height`・`taken_at`・`has_poster`・`duration_ms`（位置情報の印は出さない） |
 | GET | `/shares/{token}/items/{id}/display` | 公開側の表示サイズ（`no-store`、ほかのヘッダは DRIVE.md §9 の公開側と同じ。回数に数えない） |
 | GET | `/shares/{token}/zip?folder_id=&size=display` | 表示サイズの ZIP（`originals = false` のリンクではこれだけ） |
 | POST / PATCH | `/drive/items/{id}/links` / `/drive/links/{id}` | `originals`（既定：アルバムのフォルダなら false、ほかは true） |
@@ -188,8 +191,10 @@ AlbumOut = {
 - `DriveItemOut` のフォルダに `album: AlbumOut | null` を足す（`GET /drive/items/{id}` と一覧の子のフォルダ）。古い端末はふつうの
   フォルダとして出す。
 - 同期：新しいイベントは無い。アルバムの変更は `drive.changed`（`folder_ids` にそのフォルダとその親）で読み直す。
-- エラー：422 `drive_album_invalid`（フォルダでない・根・説明が長すぎる・表紙がそのフォルダの直下の写真でない）、
-  403 `share_originals_disabled`（元の写真を渡さないリンクで元のファイル・元の ZIP を頼んだ）。
+- エラー：422 `drive_album_invalid`（フォルダでない・根・「投稿のファイル」・説明が長すぎる・表紙がそのフォルダの直下の写真でない・
+  終わりの日が始まりの日より前）、403 `share_originals_disabled`（元の写真を渡さないリンクで元のファイル・元の ZIP を頼んだ）。
+  AL1 で足した：404 `drive_album_not_found`（アルバムでないフォルダの `GET /drive/albums/{id}`・`add`）、404 `display_not_found`
+  （表示サイズも元のラスター画像も無いファイルの `display`）。
 
 ## 6. 画像の大きさと形式
 
@@ -221,6 +226,11 @@ AlbumOut = {
 - AL1 の最初に、app のイメージの ffmpeg（動画のポスターと同じ閉じ込め、SECURITY.md §4「動画」）で HEIC の静止画を 1 枚の PNG に
   できるかを実物（iPhone の HEIC・グリッドの HEIC・10 bit）で確かめる。できればサムネイルと表示サイズをそれで作る（形式の許可の
   一覧に `heif` を足すだけ。新しい依存なし）。できなければ v1 はアイコンで出し、`pillow-heif`（libheif）を足すかは §17 Q4。
+- **AL1 の結果（2026-10-29）**：app のイメージ（`server/Dockerfile`、Debian bookworm の `ffmpeg 5.1.9`）は macOS の `sips` で作った
+  HEIC（4032 × 3024、グリッド）を `moov atom not found` で読めない（ffmpeg 5.1 の mov の demuxer には HEIF の静止画の項目の扱いが
+  無い。HEIF の静止画は ffmpeg 7 系で入った。手元の Mac の ffmpeg 9.0 は同じファイルを読めた）。**v1 の HEIC はアイコンのまま**（撮影日時も読まない。
+  並びはファイルの時刻）。サーバは何も変えていない（新しい依存なし）。AL5 で `pillow-heif` を足すか、Desktop / Web で送る前に
+  JPEG にするかを決める（§18.3）。
 - 元のファイル（HEIC）はそのまま残し、ダウンロードも HEIC（変えない）。
 
 ## 7. 位置情報と外部共有リンク
@@ -229,9 +239,11 @@ AlbumOut = {
   サムネイルと表示サイズはメタデータを持たない（描き直した新しい画像）。
 - **外部共有リンク**（DRIVE.md §9）：`originals` を足す。
   - アルバムのフォルダに作るリンクは**既定で `originals = false`**：公開側の格子・ビューア・スライドショーは表示サイズで、
-    「この写真を保存」は表示サイズの WebP（名前は元の名前 + `.webp`）、「すべて保存」は表示サイズの ZIP。元のファイル（`/content`）と
-    元の ZIP は 403 `share_originals_disabled`。表示サイズの無い小さな画像は**元のファイルを再エンコードした JPEG**（メタデータなし）で
-    渡す（元のバイト列を渡さない）。
+    「この写真を保存」は表示サイズの WebP（名前は元の名前の拡張子を `.webp` に）、「すべて保存」は表示サイズの ZIP。元のファイル
+    （`/content`、PDF などほかのファイルも）と元の ZIP は 403 `share_originals_disabled`。AL1 では小さな画像にも表示サイズを作るので
+    （§6.1）、再エンコードの経路は要らなかった。表示サイズの無いもの：動く GIF はそのまま（GIF は EXIF を持てない）、ほかの画像
+    （HEIC・まだ読んでいない古い画像）は公開側では出さない（`display` は 404、ZIP に入らない）。文書のプレビュー（1 ページ目・PDF）は
+    今までどおり見られる。
   - リンクの作成のダイアログに「元の写真のダウンロードを許す（撮影場所などの情報が含まれることがあります）」の印。オンにすれば
     今までどおり元のファイルと元の ZIP。
   - アルバムでないフォルダ・ファイルのリンクは今までどおり（既定 `originals = true`）。
@@ -371,6 +383,8 @@ AlbumOut = {
 
 ## 17. 利用者に確かめること
 
+2026-10-28：すべて推めのとおり（§18.1）。
+
 | # | 質問 | 推め（決まらなければこれで作る） |
 | --- | --- | --- |
 | Q1 | アルバムはドライブのフォルダでよいか（見える人は場所で決まる。1 枚を 2 つのアルバムに入れるには写す） | よい（§2） |
@@ -385,3 +399,118 @@ AlbumOut = {
 | Q10 | 表示サイズをドライブのすべての画像（アルバムでないものも）に作るか | 作る（全画面のビューアがどこでも軽くなる。領域は元の数 %、容量に数えない） |
 | Q11 | 並べ方の既定と、手での並べ替え | 撮影日の古い順。手での並べ替えは要望が出たら |
 | Q12 | 会話の写真を別の場所のアルバムへ足すとき、移すか写すか | 同じチャンネルのドライブのアルバムなら移す、別の場所なら写す（移すとゲストなどがメッセージで見られなくなるため） |
+
+## 18. 段階 AL1 の実装（M180、サーバ、2026-10-29）
+
+### 18.1 利用者が決めたこと（2026-10-28、§17 の推めをすべて採用）
+
+| # | 決まったこと |
+| --- | --- |
+| Q1 | アルバム = ドライブのフォルダ。1 枚を 2 つのアルバムに入れるには写す |
+| Q2 | 「新しいアルバム」は今の場所の「アルバム」フォルダの下（チャンネルから始めればそのチャンネルのドライブ） |
+| Q3 | 学外への共有リンクは表示サイズだけが既定（`originals = false`）、リンクごとに元の写真を許せる。動画は元のまま |
+| Q4 | HEIC はまず今の ffmpeg で試し、だめならアイコン（新しい依存は利用者の同意があれば） |
+| Q5 | 研究室の中では元の写真の位置情報を残し、「位置情報あり」の印を出す |
+| Q6 | スライドショーの動画は音を消して最長 60 秒、「動画を飛ばす」の設定 |
+| Q7 | 写真ごとのコメント・リアクションは v1 では作らない |
+| Q8 | チャンネルへは自動で投稿しない（「チャンネルに知らせる」のボタンだけ） |
+| Q9 | スマホで縮めない |
+| Q10 | 表示サイズはドライブのすべての画像に作る（容量に数えない） |
+| Q11 | 並びは撮影日の古い順。手での並べ替えは要望が出たら |
+| Q12 | 投稿の写真をアルバムへ：同じチャンネルのドライブなら移す、ほかの場所なら写す |
+
+### 18.2 作ったもの・本書と違うところ（本文は直した）
+
+- **移行 0127**：`drive_albums`（§4.1 のとおり、`drive_albums_cover_idx` を足した）、`attachments` の 8 列（§4.1 の 7 列に
+  `display_bytes`。公開側の表示サイズの ZIP は長さを先に決めて流すので（DRIVE.md §7.2）、表示サイズのバイト数を持つ）、
+  `drive_items.taken_at` と `drive_items_taken_idx`、`drive_share_links.originals`。
+- **写真の情報**（`attachments/photos.py`、`drive/photos.py`）：§4.2 のとおり。EXIF の日時は `DateTimeOriginal` → `DateTimeDigitized` →
+  `DateTime`、ゾーンは `OffsetTimeOriginal`（`OffsetTimeDigitized`・`OffsetTime`）、無ければ `CHANNEL_FILES_TZ`（ワークスペースのゾーン）で
+  読み `taken_at_local = true`。1970-01-01 以前（時計の無いカメラの 0 も）と「今 + 1 日」より後は捨てる。位置情報の印は GPS の
+  緯度・経度の tag があるとき（版の番号だけの GPS の IFD は数えない）。動画は ffprobe の `com.apple.quicktime.creationdate`（ゾーン付き）→
+  `creation_time`（`;` で重なった値は最初）、`location`・`com.apple.quicktime.location.ISO6709` の形の tag。壊れた EXIF は「何も無い」。
+- **表示サイズ**：本書 §6.1 は「2048 px 以下で 1.5 MB 以下の画像には作らない」だったが、**読めるすべての静止画に作る**（Q10 とも合う）。
+  小さな画像は元の大きさのまま WebP にする。理由：公開側（`originals = false`）で元のバイト列を渡さず再エンコードもせずに済み、
+  表示サイズの ZIP の長さが先に決まる。増える領域は小さい画像の分だけ。色のプロファイル（ICC）は残す（広色域の写真の色を保つ。
+  個人の情報ではない）。EXIF・XMP は持ち越さない（新しい画像に描き直す）。動く画像には作らない。
+- **media loop**（DRIVE.md §6.4）：画像はサムネイルの後に写真の情報と表示サイズ、動画は ffprobe の結果から。`drive_items.taken_at` は
+  添付の行のトランザクションの後の短いトランザクションで書く（本書 §4.1 は「同じトランザクション」：media loop が添付の行を持ったまま
+  木の操作が持つ項目の行を待つ形を避けた。新しい版は完了の時に NULL にし、間に別の版ができれば書かない）。**投稿の写真・動画も
+  loop が読む**（CF1 は投稿のファイルを「読み済み」で入れていた。写真と動画だけ読み直す。`channel-files-backfill` で入れる前の添付は
+  読み直さず `drive-photos` に任せる）。
+- **今あるファイル**：`app.cli drive-photos --limit 500`（既定 500、`--dry-run` は数とバイト数だけ、`--rebuild` は表示サイズが store に
+  無い画像も読み直す）。今のバージョンだけ、1 件ずつ確定、何度流してもよい。ffmpeg の無いサーバでは動画を残して数を出す。
+  デプロイで全部を読む仕事は無く、ビューアが古い画像の `display` を開いたときはその版を media loop に戻す（遅延の経路）。
+- **API**：§5 に足したもの：`POST /drive/albums` の `location_id`（その場所の「アルバム」フォルダ。Q2 をサーバで持つ）、
+  `GET /drive/albums/{folder_id}`（アルバムの画面の 1 回の読み込み：アルバム・パス・写真のページ・子のフォルダとほかのファイルの数）、
+  `sort=added`、`AlbumOut.cover_item_id`（選んだ表紙。`cover` は実際に使う表紙）、`created_by`、`AttachmentOut.has_display`、
+  公開側の `SharedAlbumOut` と `SharedItemOut` の写真の列。新しいエラー：`drive_album_not_found`・`display_not_found`。
+- **`add`**（§9）：添付ごと・項目ごとに既存の手順（移動は `service.move`、写しは `copying.copy` と `conversation.save_attachment`）。
+  同じ名前は「名前 (1)」で両方残す。投稿のファイルで項目がアルバムと同じ場所なら移す（メッセージは同じ版を指したまま、`drive_state`
+  は `available`、`message.updated` も出ない）。`mode: move` はほかの場所の投稿のファイルも移す（`impact` の確かめは端末が先に）。
+  ふつうの添付（DM など）はいつも写す。ドライブの版そのもの（`drive_item_id` があり `drive_state` が無い添付）は `item_ids` で渡す
+  （`attachment_ids` では `attachment_not_found`）。冪等：写しは `client_op_id` と元の id からの `uuid5`、移動はもう一度でも同じ。
+  アルバムでないフォルダには 404 `drive_album_not_found`。
+- **公開側**（§7）：`originals = false` で `/content` は動画以外 403、`/zip` は `size=display` だけ。表示サイズの ZIP は画像の表示サイズ
+  （「名前.webp」）と動画・動く GIF（元のまま）だけで、ほかのファイルは入らない。`display` は数えない、ZIP は 1 回に数える。
+- **監査**：`drive.link_created`・`drive.link_updated` の詳細に `originals`（元の写真を学外に出すかは記録に残す）。アルバムの作成・変更は
+  ふつうのフォルダの操作と同じく監査しない。
+- **同期**：新しいイベントは無い（SYNC_PROTOCOL.md §18）。
+- **検索**：`GET /search/drive?kind=album`（名前と説明、`content` は見ない）。
+- フォルダのコピーはアルバムの行を写さない（ふつうのフォルダになる）。要れば後で。
+
+### 18.3 HEIC
+
+§6.3 のとおり、app のイメージの ffmpeg 5.1 は HEIC を読めない（2026-10-29、`docker run … chikuwachat-app ffmpeg -i test.heic` →
+`moov atom not found`）。v1 の HEIC（`image/heic`・`image/heif`）は**アイコンのまま**：サムネイル・表示サイズ・撮影日時なし、
+アルバムでは写真として数え（`image/*`）、並びはファイルの時刻。直すには AL5 で次のどれか（利用者に聞く）：
+
+1. `pillow-heif`（libheif を含む wheel）を足す。サーバのサムネイル・表示サイズ・EXIF がそのまま効く。
+2. app のイメージを新しい ffmpeg（7 系以上）のある Debian trixie に上げ、`heif` を許可の一覧に足す（グリッドの HEIC を実物で確かめてから）。
+3. Desktop / Web で送る前に JPEG にする（iOS と同じ。ただしブラウザが HEIC を描けるとは限らない）。
+
+### 18.4 AL2〜AL4 の端末が使うもの
+
+- **一覧**：`GET /drive/albums?location_id=&cursor=&limit=`（`items[].folder`・`album`・`path`・`location_kind`、新しい順）。場所の列の
+  「アルバム」とスマホの横に流れるカード。
+- **アルバムの画面**：`GET /drive/albums/{folder_id}`（並びは `album.sort`・`sort_order`、`sort=taken|name|added`・`order` で切り替え、
+  `next_cursor` で続き）。子のフォルダとほかのファイルは `folder_count`・`other_count` が 0 でなければ `GET /drive/folders/{id}/children`
+  で（`sort=name`）。日付の見出しは `file.taken_at`（null ならファイルの時刻 `content_modified_at`、それも無ければ `created_at`。
+  サーバの並びと同じ）。`can_write` で「写真を追加」・設定を出す。
+- **作る・変える・やめる**：`POST /drive/albums {location_id, name, …, client_op_id}`（「新しいアルバム」：今の場所。チャンネルの画面からは
+  `POST /drive/locations/resolve {kind: channel}` の id）、`{parent_id, …}`（今開いているフォルダ）。`PUT /drive/folders/{id}/album`
+  （説明・表紙 `cover_item_id`（null で最初に戻す）・並び・日付）、`DELETE …/album`。エラーは `drive_album_invalid`・`drive_name_taken`。
+- **格子**：`/attachments/{file.attachment_id}/thumbnail`（512 px、`has_thumbnail`・動画は `has_poster`）、動画の長さ `duration_ms`。
+- **ビューア・スライドショー**：`/attachments/{attachment_id}/display`（`file.has_display`、縦横は `display_width`/`height`。無くても
+  元のラスター画像が返る）。「元の画像」は今の `/drive/items/{id}/content?inline=1`（Web は download-ticket）。詳細に「位置情報あり」
+  （`file.has_location`）と撮影日時。メッセージの写真も `AttachmentOut.has_display` があれば同じ `display`。
+- **カード**（`/d/<フォルダの id>`）：`GET /drive/items/{id}` の `item.album`（`preview_attachment_ids` の最大 4 枚のサムネイル、
+  `photo_count`・`video_count`、日付は `starts_on`〜`ends_on`、無ければ `taken_from`〜`taken_to`）。`album` が null ならふつうのフォルダの
+  カード（古いサーバも）。
+- **写真を足す**：アップロードは今のドライブのアップロード（`on_conflict: "rename"` を既定に）。会話・ドライブからは
+  `POST /drive/albums/{folder_id}/add {attachment_ids | item_ids, mode, client_op_id}`（結果ごとに `action: moved | copied`。
+  `mode: move` を選ぶときは先に `POST /drive/items/impact`）。「この投稿の写真でアルバムを作る」は `POST /drive/albums` → `add`。
+- **共有リンク**：作るダイアログの「元の写真のダウンロードを許す」= `POST /drive/items/{id}/links {originals: true}`（省けばアルバムは
+  false）、`PATCH /drive/links/{id} {originals}`、一覧の `DriveShareLinkOut.originals`。
+- **公開ページ**（AL2 の `share.html`）：`GET /shares/{token}` の `album`・`originals`、子の一覧（アルバムの並び）、
+  `/shares/{token}/items/{id}/display`（表示）、`originals = false` なら保存は `display`（「名前.webp」）と `/zip?size=display`、
+  元のファイルのボタンは出さない（押せば 403 `share_originals_disabled`）。動画は今の `/content`。
+- **同期**：`drive.changed` の `folder_ids` にアルバムのフォルダ（中身）かその親（カード）があれば読み直す。
+- **検索**：`GET /search/drive?q=&kind=album`。
+- エラーの文言は `apps/shared/errors.json`（生成済み）：`drive_album_invalid`・`drive_album_not_found`・`share_originals_disabled`・
+  `display_not_found`。
+
+### 18.5 確かめたこと
+
+- `tests/test_albums.py`（44 件）：EXIF の日時（ゾーンあり・マイナス・`+0900`・なし・ほかのゾーン・壊れたゾーン）、捨てる値（空・0・13 月・
+  1970 年以前・エポック・未来）、`DateTime` への後戻り、GPS の印（版だけの IFD は数えない）、壊れた EXIF、向き 8 通りの縦横、2048 px への
+  縮小とメタデータなし、小さな画像・透明・動く GIF、50 Mpx の上限でも日時は読む、動画の tag、media loop（`taken_at`・印・表示サイズ・
+  ヘッダ・容量に数えない・GC と verify の派生物）、遅延の経路、動画の撮影日時、`drive-photos`（`--dry-run`・上限・続き・`--rebuild`）、
+  作る（「アルバム」フォルダ・冪等・名前の重複・日付・説明の長さ）、変える・表紙・やめる・イベント、3 つの場所 × 読む・書く（ゲスト・
+  メンバーでない人・マイドライブ・アーカイブ）、撮影日の並び（日付なし・逆順・名前・カーソル・`children?sort=taken`）、カード（4 枚・
+  表紙・ゴミ箱）、`add`（同じチャンネルのドライブは移してメッセージは変わらない・冪等・`mode: copy`・ほかの場所は写して冪等・DM は写す・
+  項目の移動・読めないもの・アルバムでないフォルダ）、公開側（既定 false・403・表示・動く GIF・表示サイズの ZIP にメタデータが無い・
+  PATCH と監査・ほかのリンクは true・動画は再生）、ゴミ箱・戻す・移動・完全削除、一覧の並びとカーソル、検索、コピーが写真の情報と
+  表示サイズを写す。
+- `uv run pytest -q -n 4`（全体）、`ruff check`・`ruff format --check`・`mypy`（引数なし）。OpenAPI・`ws-events.json`・
+  `apps/desktop/src/api/schema.d.ts` を再生成。

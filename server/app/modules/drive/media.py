@@ -1,6 +1,8 @@
 """The drive's media loop (docs/DRIVE.md §6.4): after a completion, one version at a time, the
 object's SHA-256 and an image's thumbnail or a video's poster (the existing thumbnail and
-ffprobe / ffmpeg steps, SECURITY.md §4). The completion answers without waiting for it.
+ffprobe / ffmpeg steps, SECURITY.md §4); AL1 (docs/ALBUMS.md §4.2): a photo's or a video's capture
+time and location mark, and an image's display-size copy (photos.py). The completion answers
+without waiting for it.
 
 A claim sets a lease (process_next_at) and counts a try; a try cut off by a restart is taken again
 when the lease runs out, at most MAX_ATTEMPTS times. A failure never fails the upload: the file
@@ -25,7 +27,7 @@ from app.modules.attachments import videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
-from app.modules.drive import events
+from app.modules.drive import events, photos
 from app.modules.drive.models import DriveFileVersion, DriveItem
 
 log = logging.getLogger("app.drive.media")
@@ -86,7 +88,7 @@ async def process_due(
         )
         await db.commit()
         try:
-            digest, thumb, video = await _read(blobs, settings, key, content_type, size)
+            digest, thumb, video, photo = await _read(blobs, settings, key, content_type, size)
         except Exception:
             log.warning("reading drive version %s failed", version_id, exc_info=True)
             async with session_factory() as retry:
@@ -95,15 +97,21 @@ async def process_due(
                     row.process_next_at = utcnow() + RETRY
                 await retry.commit()
             return 1
-        await _done(db, version_id, digest, thumb=thumb, video=video, blobs=blobs)
+        await _done(db, version_id, digest, thumb=thumb, video=video, photo=photo, blobs=blobs)
         return 1
 
 
 async def _read(
     blobs: BlobStore, settings: Settings, key: str, content_type: str, size: int
-) -> tuple[bytes, tuple[bytes, int, int] | None, videos.VideoInfo | None]:
+) -> tuple[
+    bytes,
+    tuple[bytes, int, int] | None,
+    videos.VideoInfo | None,
+    photos.PhotoResult | None,
+]:
     """Streams the object once: its SHA-256, and (an image or a video within the limits) a
-    temporary copy for the thumbnail or the probe, removed afterwards."""
+    temporary copy for the thumbnail or the probe and the photo's information, removed
+    afterwards. The photo result is None when nothing was tried (a video without ffmpeg)."""
     image = content_type in IMAGE_TYPES and size <= settings.drive_image_thumb_max_bytes
     video = (
         videos.is_video(content_type)
@@ -119,14 +127,21 @@ async def _read(
         await run_in_threadpool(copy.flush)
         thumb: tuple[bytes, int, int] | None = None
         info: videos.VideoInfo | None = None
+        photo: photos.PhotoResult | None = None
         if image:
             thumb = await _thumbnail(copy, settings)
+            photo = await photos.read_image(copy, settings)
         elif video:
             try:
                 info = await videos.probe_video(copy.name, settings)
             except Exception:
                 log.warning("probing a drive video failed", exc_info=True)
-    return digest.digest(), thumb, info
+            if info is not None:
+                photo = photos.from_video(info)
+        elif content_type in IMAGE_TYPES:
+            # Larger than DRIVE_IMAGE_THUMB_MAX_BYTES: read, nothing made.
+            photo = photos.PhotoResult(taken=None, has_location=False)
+    return digest.digest(), thumb, info, photo
 
 
 async def _thumbnail(source: IO[bytes], settings: Settings) -> tuple[bytes, int, int] | None:
@@ -147,6 +162,7 @@ async def _done(
     *,
     thumb: tuple[bytes, int, int] | None = None,
     video: videos.VideoInfo | None = None,
+    photo: photos.PhotoResult | None = None,
     blobs: BlobStore | None = None,
 ) -> None:
     version = await db.get(
@@ -174,11 +190,20 @@ async def _done(
             changed = await attachments.apply_video_info(attachment, video, blobs) or changed
         elif videos.is_video(attachment.content_type):
             attachment.video_probed_at = utcnow()
+        if photo is not None and blobs is not None:
+            changed = await photos.apply_in_tx(attachment, photo, blobs) or changed
     version.processed_at = utcnow()
     version.process_next_at = None
     await db.flush()
+    item_id = version.item_id
+    photo_of = attachment.id if photo is not None and attachment is not None else None
     if changed:
-        item = await db.get(DriveItem, version.item_id)
+        item = await db.get(DriveItem, item_id)
         if item is not None and item.current_version_id == version.id:
             await events.emit_changed(db, item.location_id, [item.parent_id])
     await db.commit()
+    if photo_of is not None:
+        # The item's copy of the capture time, on its own (photos.py: never an item after an
+        # attachment in one transaction).
+        await photos.sync_item(db, photo_of, announce=False)
+        await db.commit()
