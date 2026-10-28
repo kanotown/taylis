@@ -301,7 +301,9 @@ async def crumbs(
         if row is None:
             continue
         name = await acl.location_name(db, location) if row.parent_id is None else row.name
-        out.append(DriveCrumb(id=row.id, name=name))
+        out.append(
+            DriveCrumb(id=row.id, name=name, system_role=row.system_role)  # type: ignore[arg-type]
+        )
     return out
 
 
@@ -1047,10 +1049,18 @@ def not_trash_root() -> AppError:
 async def restore(
     db: AsyncSession, actor: User, item_id: uuid.UUID, on_conflict: Literal["rename", "fail"]
 ) -> DriveItemOut:
-    """A group back where it was, or to the root when that folder is in the trash or gone."""
-    item, rights = await readable_item(db, actor, item_id, trashed_ok=True)
+    """A group back where it was, or to the root when that folder is in the trash or gone.
+
+    Asked for an item inside a group (a posted file whose month folder went to the trash, and
+    「戻す」 under its message), the whole group comes back: a group is never split (§10.1), and
+    restoring the folder from the trash view does the same. The answer is the item asked for."""
+    asked, rights = await readable_item(db, actor, item_id, trashed_ok=True)
     rights.require_write()
-    if item.trashed_at is None or item.trash_root_id != item.id:
+    if asked.trashed_at is None or asked.trash_root_id is None:
+        raise not_trash_root()
+    root_id = asked.trash_root_id
+    item = asked if root_id == asked.id else await repo.item(db, root_id)
+    if item is None or item.location_id != asked.location_id:
         raise not_trash_root()
     location = rights.location
     target_id = location.root_id
@@ -1068,6 +1078,10 @@ async def restore(
         target = (await repo.lock_items(db, [location.root_id]))[location.root_id]
     if item.trash_root_id != item.id:
         raise not_trash_root()
+    if asked.id != item.id:
+        await db.refresh(asked)  # restored (and trashed again) meanwhile: no longer in this group
+        if asked.trash_root_id != item.id:
+            raise not_trash_root()
     await require_room(db, target.id)
     name = item.name
     existing = await repo.child_by_key(db, target.id, item.name_key)
@@ -1108,10 +1122,31 @@ async def restore(
         .execution_options(synchronize_session=False)
     )
     # CF1 (docs/CHANNEL_FILES.md §6.5): posted files come back in their messages.
-    await posted.restate_in_tx(db, [item.id, *group])
+    shown = await posted.restate_in_tx(db, [item.id, *group])
+    details: dict[str, Any] = {
+        "location_id": str(item.location_id),
+        "name": item.name,
+        "items": 1 + len(group),
+        "messages": len({m for _, m in shown}),
+    }
+    if asked.id != item.id:
+        details["asked_item_id"] = str(asked.id)
+    if shown or asked.id != item.id:
+        # As drive.trash (via drive): a restore that brings posted files back to their messages,
+        # or a whole group restored through one of its items.
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="drive.restore",
+            target_type="drive_item",
+            target_id=item.id,
+            details=details,
+        )
     await events.emit_changed(db, item.location_id, [target.id])
     await db.commit()
-    return await item_out(db, item)
+    if asked.id != item.id:
+        await db.refresh(asked)
+    return await item_out(db, asked)
 
 
 async def list_trash(

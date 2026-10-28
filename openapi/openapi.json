@@ -9174,6 +9174,18 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "system_role": {
+            "anyOf": [
+              {
+                "const": "channel_posts",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Role"
           }
         },
         "required": [
@@ -37763,6 +37775,7 @@
     },
     "/api/v1/drive/items/{item_id}/restore": {
       "post": {
+        "description": "A group out of the trash (§10.1). For an item inside a group (a posted file whose month\nfolder is in the trash), its whole group comes back; the answer is the item asked for. 409\ndrive_not_in_trash when the item is not in the trash.",
         "operationId": "restore_item_api_v1_drive_items__item_id__restore_post",
         "parameters": [
           {

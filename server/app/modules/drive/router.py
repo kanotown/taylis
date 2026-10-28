@@ -178,6 +178,9 @@ async def trash_items(data: DriveTrashIn, user: CurrentUser, db: Db) -> DriveRes
 async def restore_item(
     item_id: UUID, user: CurrentUser, db: Db, data: DriveRestoreIn | None = None
 ) -> DriveItemOut:
+    """A group out of the trash (§10.1). For an item inside a group (a posted file whose month
+    folder is in the trash), its whole group comes back; the answer is the item asked for. 409
+    drive_not_in_trash when the item is not in the trash."""
     return await service.restore(db, user, item_id, (data or DriveRestoreIn()).on_conflict)
 
 

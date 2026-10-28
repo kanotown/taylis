@@ -16,6 +16,7 @@ from app.core.collation import name_key
 from app.core.time import utcnow
 from app.events.models import OutboxEvent
 from app.modules.attachments.models import Attachment
+from app.modules.audit.models import AuditLog
 from app.modules.drive import events as drive_events
 from app.modules.drive import housekeeping, names
 from app.modules.drive import service as drive
@@ -442,6 +443,57 @@ async def test_moves_cycles_and_across_locations(
     assert back.json()["results"][0]["error"] == "drive_quota_exceeded"
 
 
+async def test_restoring_an_item_inside_a_group_restores_the_whole_group(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """§10.1: a group is never split; restoring a member brings its group back (the answer is
+    the member), with the root's on_conflict; a purge still wants the root."""
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    root = await workspace_root(client)
+    a = await folder(client, root, "A")
+    b = await folder(client, a, "B")
+    f = await upload(client, b, "f.txt", b"f" * 10)
+    g = await upload(client, a, "g.txt", b"g" * 20)
+    await client.post(f"{API}/drive/items/trash", json={"item_ids": [g["id"]]})  # its own group
+    await client.post(f"{API}/drive/items/trash", json={"item_ids": [a]})
+    await folder(client, root, "A")  # a clash for the root
+
+    # The root's name is taken: on_conflict = fail refuses, nothing moves.
+    refused = await client.post(
+        f"{API}/drive/items/{f['id']}/restore", json={"on_conflict": "fail"}
+    )
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "drive_name_taken"
+    # Bob (another member of 研究室ドライブ) restores the file: A comes back renamed, f in B.
+    as_user(bob)
+    restored = await client.post(f"{API}/drive/items/{f['id']}/restore", json={})
+    assert restored.status_code == 200, restored.text
+    body = restored.json()
+    assert body["id"] == f["id"] and body["trashed_at"] is None and body["parent_id"] == b
+    assert await names_in(client, root) == ["A", "A (1)"]
+    assert await names_in(client, a) == ["B"]  # g stays in the trash (its own group)
+    assert await names_in(client, b) == ["f.txt"]
+    trash = (await client.get(f"{API}/drive/locations/{f['location_id']}/trash")).json()
+    assert [e["item"]["name"] for e in trash["entries"]] == ["g.txt"]
+    log = (
+        await db.execute(select(AuditLog).where(AuditLog.action == "drive.restore"))
+    ).scalar_one()
+    assert log.actor_id == bob.id and str(log.target_id) == a
+    assert log.details["asked_item_id"] == f["id"] and log.details["items"] == 3
+    # Not in the trash any more: 409 as before.
+    again = await client.post(f"{API}/drive/items/{f['id']}/restore", json={})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "drive_not_in_trash"
+
+    # A purge of a member is still refused (only a group's root goes for good).
+    admin = await make_user(db, "ada", role="admin")
+    as_user(admin)
+    await client.post(f"{API}/drive/items/trash", json={"item_ids": [a]})
+    part = await client.delete(f"{API}/drive/items/{f['id']}")
+    assert part.status_code == 409 and part.json()["error"]["code"] == "drive_not_in_trash"
+
+
 async def test_trash_groups_restore_and_purge(
     app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:
@@ -467,10 +519,6 @@ async def test_trash_groups_restore_and_purge(
     ]
     assert (await children(client, b)).status_code == 404
     assert (await client.get(f"{API}/drive/items/{f['id']}/content")).status_code == 404
-    # Only a group's root comes back or goes for good.
-    part = await client.post(f"{API}/drive/items/{f['id']}/restore", json={})
-    assert part.status_code == 409 and part.json()["error"]["code"] == "drive_not_in_trash"
-
     # g's folder is in the trash: g goes to the root.
     await client.post(f"{API}/drive/items/{g['id']}/restore", json={})
     assert await names_in(client, root) == ["g.txt"]

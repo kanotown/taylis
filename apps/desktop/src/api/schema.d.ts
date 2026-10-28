@@ -3361,7 +3361,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Restore Item */
+        /**
+         * Restore Item
+         * @description A group out of the trash (§10.1). For an item inside a group (a posted file whose month
+         *     folder is in the trash), its whole group comes back; the answer is the item asked for. 409
+         *     drive_not_in_trash when the item is not in the trash.
+         */
         post: operations["restore_item_api_v1_drive_items__item_id__restore_post"];
         delete?: never;
         options?: never;
@@ -10550,6 +10555,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** System Role */
+            system_role?: "channel_posts" | null;
         };
         /**
          * DriveDownloadTicketOut

@@ -819,6 +819,92 @@ async def test_moves_trash_restore_and_purge_announce_the_message(
     del attachment_id
 
 
+async def test_the_breadcrumbs_mark_the_posts_folder(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    lab = await make_channel(client, "lab", [])
+    message = await post(client, lab["id"], [("a.txt", b"x")])
+    item_id = message["attachments"][0]["drive"]["item_id"]
+    detail = await client.get(f"{API}/drive/items/{item_id}")
+    assert detail.status_code == 200, detail.text
+    path = detail.json()["path"]
+    assert [c["system_role"] for c in path] == [None, "channel_posts", None]
+    month_id = path[-1]["id"]
+    listed = await client.get(f"{API}/drive/folders/{month_id}/children")
+    assert [c["system_role"] for c in listed.json()["path"]] == [None, "channel_posts", None]
+
+
+async def test_restoring_a_posted_file_whose_month_folder_is_in_the_trash(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """「戻す」 under a message whose file went to the trash with its month folder: the folder's
+    group comes back (DRIVE.md §10.1), and every message in it shows its file again."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    lab = await make_channel(client, "lab", [bob])
+    first = await post(client, lab["id"], [("a.pdf", PDF)])
+    second = await post(client, lab["id"], [("b.txt", b"y")])
+    item_id = first["attachments"][0]["drive"]["item_id"]
+    item = await item_row(db, item_id)
+    assert item is not None and item.parent_id is not None
+    month_id = str(item.parent_id)
+    trashed = await client.post(f"{API}/drive/items/trash", json={"item_ids": [month_id]})
+    assert trashed.json()["results"][0]["ok"]
+    for message in (first, second):
+        shown = await message_in(client, lab["id"], message["id"])
+        assert shown["attachments"][0]["drive"]["state"] == "trashed"
+    seqs = {
+        m["id"]: (await message_in(client, lab["id"], m["id"]))["updated_seq"]
+        for m in (first, second)
+    }
+
+    as_user(bob)
+    restored = await client.post(f"{API}/drive/items/{item_id}/restore", json={})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["id"] == item_id and restored.json()["parent_id"] == month_id
+    month = await item_row(db, month_id)
+    assert month is not None and month.trashed_at is None
+    for message in (first, second):
+        shown = await message_in(client, lab["id"], message["id"])
+        assert shown["attachments"][0]["drive"]["state"] == "available"
+        assert shown["updated_seq"] > seqs[message["id"]]
+    events = (
+        (
+            await db.execute(
+                select(OutboxEvent)
+                .where(OutboxEvent.event_type == "message.updated")
+                .order_by(OutboxEvent.id.desc())
+                .limit(2)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert {e.payload["message"]["id"] for e in events} == {first["id"], second["id"]}
+    assert all(e.payload["change"] == "attachments" for e in events)
+    changed = (
+        await db.execute(
+            select(OutboxEvent)
+            .where(OutboxEvent.event_type == "drive.changed")
+            .order_by(OutboxEvent.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    assert changed.id > max(e.id for e in events)
+    assert changed.payload["folder_ids"] == [str(month.parent_id)]  # 「投稿のファイル」
+    log = (
+        await db.execute(select(AuditLog).where(AuditLog.action == "drive.restore"))
+    ).scalar_one()
+    assert log.actor_id == bob.id and str(log.target_id) == month_id
+    assert log.details["asked_item_id"] == item_id and log.details["messages"] == 2
+    # The month folder came back under 「投稿のファイル」 (still there, so no clash).
+    detail = (await client.get(f"{API}/drive/items/{item_id}")).json()
+    assert [c["system_role"] for c in detail["path"]] == [None, "channel_posts", None]
+
+
 async def test_the_gc_keeps_a_tombstone_while_the_message_lives(
     app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:
