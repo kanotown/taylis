@@ -441,6 +441,21 @@ admin だけ。中の名前は作った時点の表示名で、メンバーに�
 - **backfill**: M79 より前の動画は `app.cli probe-videos` が 1 本ずつオブジェクトストアから一時ファイルに落として
   同じ手順で調べる (上限 `--limit` 件、`video_probed_at` で再開でき、何度流しても同じ)。
 
+### HEIC / HEIF の写真 (AL5、docs/ALBUMS.md §19)
+
+Pillow が読めない HEIC (`image/heic`・`image/heif`) は、動画と同じ閉じ込めで ffmpeg が展開する
+(`app/modules/attachments/heif.py`。同じ `run_bounded`・時間切れ・同時実行の枠・`PATH` と `LC_ALL` だけの環境)。
+
+- **入力**：一時ファイルを `file:` で、`-protocol_whitelist file` と `-format_whitelist mov,mp4,m4a,3gp,3g2,mj2` (HEIF を読む
+  mov の demuxer だけ)。
+- **先に Python で箱を読む**：ファイルの先頭 4 MB の `meta` だけを長さを確かめながら読み (箱の長さがファイルを超える・
+  自分のヘッダより短いものは捨てる)、主の項目の縦 × 横が `images.MAX_PIXELS` (50 Mpx) を超えれば ffmpeg を起こさない。
+  EXIF と ICC はそれぞれ 1 MB まで、タイルは 1024 枚まで。
+- **出力**：長い辺 2048 px 以下の RGB の PNG を標準出力に 64 MB まで。Pillow が開き直し (2048 px を超えれば捨てる)、画像と
+  同じ手順でサムネイル (JPEG) と表示サイズ (WebP) を新しい画像に描き直す (EXIF・XMP・GPS を持ち越さない。ICC は残す)。
+- **失敗**：読めない HEIC はふつうのファイルのまま (アップロードは失敗させない。50 Mpx を超えても 422 にしない)。
+  ffmpeg が無い (`VIDEO_PROBE_ENABLED=false`) ときは何もしない。元の HEIC はそのまま残り、`inline` では返さない。
+
 ### 文書のプレビュー (M108)
 
 PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送った文書を LibreOffice と PDFium に通すので閉じ込める。

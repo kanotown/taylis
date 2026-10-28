@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import IO
 from urllib.parse import quote
 
@@ -21,8 +21,8 @@ from app.core.errors import AppError, bad_request, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.attachments import heif, videos
 from app.modules.attachments import repository as repo
-from app.modules.attachments import videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
@@ -195,6 +195,8 @@ async def upload(
                 await blobs.put(thumbnail_key(attachment_id), thumb, "image/jpeg")
                 attachment.width, attachment.height = width, height
                 attachment.thumbnail_key = thumbnail_key(attachment_id)
+        elif heif.is_heif(content_type):
+            await _heif_spooled(attachment, spool, settings, blobs)
         elif is_video(content_type):
             await _probe_spooled_video(attachment, spool, settings, blobs)
         spool.seek(0)
@@ -205,6 +207,32 @@ async def upload(
     await db.commit()
     await db.refresh(attachment)
     return to_attachment_out(attachment)
+
+
+async def _heif_spooled(
+    attachment: Attachment, spool: IO[bytes], settings: Settings, blobs: BlobStore
+) -> None:
+    """AL5 (docs/ALBUMS.md §19): a HEIC's thumbnail and upright size before the upload answers,
+    as an image's, decoded by ffmpeg from a named copy of the spool (heif.py). Never fails the
+    upload: a HEIC ffmpeg cannot read, or one past the pixel limit, stays a plain file (HEICs were
+    accepted as files before AL5, so the limit does not refuse them as it refuses an image)."""
+    if videos.tools(settings) is None:
+        return
+    try:
+        with tempfile.NamedTemporaryFile(prefix="chikuwa-heif-") as named:
+            spool.seek(0)
+            await run_in_threadpool(shutil.copyfileobj, spool, named, READ_CHUNK)
+            await run_in_threadpool(named.flush)
+            found = await heif.read(named.name, settings, UTC, now=utcnow(), display=False)
+    except Exception as exc:
+        log.warning("HEIF thumbnail failed for %s: %s", attachment.id, exc)
+        return
+    if found is None or found.thumbnail is None:
+        return
+    thumb, width, height = found.thumbnail
+    await blobs.put(thumbnail_key(attachment.id), thumb, "image/jpeg")
+    attachment.width, attachment.height = width, height
+    attachment.thumbnail_key = thumbnail_key(attachment.id)
 
 
 async def _probe_spooled_video(

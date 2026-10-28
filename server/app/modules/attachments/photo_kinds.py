@@ -1,12 +1,16 @@
 """Which files the drive reads as photos or videos (AL1, docs/ALBUMS.md §4.2): the images the
-thumbnails are made of (images.IMAGE_TYPES) and every video/*."""
+thumbnails are made of (images.IMAGE_TYPES), HEIC / HEIF (AL5, through ffmpeg: heif.py) and every
+video/*."""
 
+from app.modules.attachments.heif import HEIF_TYPES
 from app.modules.attachments.images import IMAGE_TYPES
 from app.modules.attachments.videos import is_video
 
+PHOTO_TYPES = frozenset(IMAGE_TYPES | HEIF_TYPES)
+
 
 def is_image(content_type: str | None) -> bool:
-    return (content_type or "").lower() in IMAGE_TYPES
+    return (content_type or "").lower() in PHOTO_TYPES
 
 
 def photo_kind(content_type: str | None) -> bool:

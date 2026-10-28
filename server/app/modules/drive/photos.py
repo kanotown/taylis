@@ -29,7 +29,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
 from app.core.time import utcnow
-from app.modules.attachments import photos, videos
+from app.modules.attachments import heif, photos, videos
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge
@@ -46,6 +46,9 @@ class PhotoResult:
     taken: photos.CaptureTime | None
     has_location: bool
     display: photos.DisplayImage | None = None
+    # A HEIC's thumbnail (AL5: made with its display image, from one decode): (JPEG, upright width,
+    # upright height). Another image's thumbnail is made by the media loop or at upload.
+    thumbnail: tuple[bytes, int, int] | None = None
 
 
 def zone(settings: Settings) -> ZoneInfo:
@@ -77,6 +80,23 @@ async def read_image(source: IO[bytes], settings: Settings) -> PhotoResult:
     return PhotoResult(taken=meta.taken, has_location=meta.has_location, display=display)
 
 
+async def read_heif(path: str, settings: Settings) -> PhotoResult | None:
+    """A HEIC / HEIF (AL5): None when ffmpeg is off or missing (left for later, as a video)."""
+    try:
+        found = await heif.read(path, settings, zone(settings), now=utcnow())
+    except Exception:  # a broken or hostile file stays a plain file
+        log.warning("reading a drive HEIF failed", exc_info=True)
+        return PhotoResult(taken=None, has_location=False)
+    if found is None:
+        return None
+    return PhotoResult(
+        taken=found.meta.taken,
+        has_location=found.meta.has_location,
+        display=found.display,
+        thumbnail=found.thumbnail,
+    )
+
+
 def from_video(info: videos.VideoInfo) -> PhotoResult:
     taken = photos.CaptureTime(at=info.taken_at, local=False) if info.taken_at else None
     return PhotoResult(taken=taken, has_location=info.has_location)
@@ -86,6 +106,13 @@ async def apply_in_tx(attachment: Attachment, result: PhotoResult, blobs: BlobSt
     """Records what was read (the display image goes to the store first). True when the file now
     shows something new (a capture time, a location mark, a display image)."""
     changed = False
+    if result.thumbnail is not None:
+        data, width, height = result.thumbnail
+        key = attachments.thumbnail_key(attachment.id)
+        await blobs.put(key, data, "image/jpeg")
+        changed = changed or attachment.thumbnail_key is None
+        attachment.thumbnail_key = key
+        attachment.width, attachment.height = width, height
     if result.display is not None:
         key = attachments.display_key(attachment.id)
         await blobs.put(key, result.display.data, "image/webp")
@@ -164,7 +191,7 @@ class BackfillResult:
     dated: int = 0  # now have a capture time
     located: int = 0  # hold a location
     displays: int = 0  # display images made
-    skipped_videos: int = 0  # videos left for later (no ffmpeg)
+    skipped_videos: int = 0  # videos and HEIC / HEIF left for later (no ffmpeg)
     remaining: bool = False  # the limit stopped the run: run it again
     # --dry-run: how many there are to read.
     pending: int = 0
@@ -173,7 +200,9 @@ class BackfillResult:
 
 
 def _wanted(rebuild: bool, with_videos: bool) -> list[Any]:
-    kinds = [Attachment.content_type.in_(sorted(IMAGE_TYPES))]
+    """`with_videos`: also what needs ffmpeg (videos, HEIC / HEIF)."""
+    images = sorted(IMAGE_TYPES | heif.HEIF_TYPES) if with_videos else sorted(IMAGE_TYPES)
+    kinds = [Attachment.content_type.in_(images)]
     if with_videos:
         kinds.append(Attachment.content_type.like("video/%"))
     todo: Any = Attachment.photo_probed_at.is_(None)
@@ -220,6 +249,14 @@ async def read_stored(
 ) -> PhotoResult | None:
     """The object's photo information, or None when it cannot be read now (a video without
     ffmpeg; the caller leaves it for later). A file beyond the limits reads as nothing found."""
+    if heif.is_heif(content_type):
+        if videos.tools(settings) is None:
+            return None
+        if size > settings.drive_image_thumb_max_bytes:
+            return PhotoResult(taken=None, has_location=False)
+        with tempfile.NamedTemporaryFile(prefix="taylis-photo-") as copy:
+            await _download(blobs, key, copy.name)
+            return await read_heif(copy.name, settings)
     if is_image(content_type):
         if size > settings.drive_image_thumb_max_bytes:
             return PhotoResult(taken=None, has_location=False)
@@ -270,7 +307,10 @@ async def backfill(
                     await db.execute(
                         select(func.count()).where(
                             *_wanted(rebuild, True),
-                            Attachment.content_type.like("video/%"),
+                            or_(
+                                Attachment.content_type.like("video/%"),
+                                Attachment.content_type.in_(sorted(heif.HEIF_TYPES)),
+                            ),
                             Attachment.id.in_(_current_versions()),
                         )
                     )

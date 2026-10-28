@@ -370,3 +370,15 @@ Range の URL で再生して調べた。分かったことと直したこと：
 - **iOS・Android**（今回は変えていない。コードを読んだ結果）：どちらもその場では再生しない。iOS は音声をファイルの行に出し、押すと
   ダウンロードして Quick Look で開く（`AttachmentPreview.allows` にある mp3・wav・aac・m4a・aiff は Quick Look の中で再生、
   ogg・opus・flac は共有シート）。Android はファイルの行で、押すとキャッシュに落として `ACTION_VIEW` で別のアプリに渡す。
+
+## 14. HEIC の写真（AL5、2026-10-29）
+
+文書のプレビューとは別の経路だが、ビューアに関わるので書いておく。サーバは HEIC / HEIF にもサムネイル（`has_thumbnail`）・縦横・
+表示サイズ（`has_display`、`/attachments/{id}/display` の WebP）を作るようになった（ALBUMS.md §19。app のイメージを Debian
+trixie の ffmpeg 7.1 に上げた）。会話とドライブの格子・一覧では JPEG と同じく写真として出る。
+
+- 元のファイルは HEIC のまま。Desktop / Web の写真のビューア（`Lightbox`）は元のファイル（`content`）を読むので、HEIC を
+  描けない Chromium / WebView2（Windows・Linux・Chrome）では全画面が「画像を読み込めませんでした」になる（ダウンロードは
+  できる。macOS の WebKit は描ける）。AL2 でビューアが `has_display` のとき `/display` を読むようにする（ALBUMS.md §18.4・§19.4）。
+- 文書のプレビュー（§2 の表）の対象は変わらない。
+

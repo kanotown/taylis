@@ -123,12 +123,12 @@ _semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaph
 _warned_missing = False
 
 
-def _semaphore(limit: int) -> asyncio.Semaphore:
+def semaphore(limit: int) -> asyncio.Semaphore:
     loop = asyncio.get_running_loop()
-    semaphore = _semaphores.get(loop)
-    if semaphore is None:
-        semaphore = _semaphores[loop] = asyncio.Semaphore(max(1, limit))
-    return semaphore
+    slot = _semaphores.get(loop)
+    if slot is None:
+        slot = _semaphores[loop] = asyncio.Semaphore(max(1, limit))
+    return slot
 
 
 def tools(settings: Settings) -> tuple[str, str] | None:
@@ -298,7 +298,7 @@ async def probe_video(path: str, settings: Settings) -> VideoInfo | None:
     ffprobe, ffmpeg = found
     timeout = settings.video_probe_timeout_seconds
     max_px = settings.attachment_thumbnail_px
-    async with _semaphore(settings.video_probe_max_concurrent):
+    async with semaphore(settings.video_probe_max_concurrent):
         raw = await _probe(ffprobe, path, timeout)
         width, height, duration_ms = parse_probe(raw) if raw is not None else (None, None, None)
         meta = parse_video_meta(raw, now=utcnow())

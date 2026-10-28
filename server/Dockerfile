@@ -1,4 +1,5 @@
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+# Debian 13 (trixie) since AL5 (docs/ALBUMS.md §19): its ffmpeg 7.1 reads HEIC (bookworm's 5.1 cannot).
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -6,7 +7,8 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# M79: ffprobe / ffmpeg read a video's size and poster frame at upload (SECURITY.md §4 「動画」).
+# M79: ffprobe / ffmpeg read a video's size and poster frame at upload (SECURITY.md §4 「動画」);
+# AL5: they also decode HEIC / HEIF photos (app/modules/attachments/heif.py).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*

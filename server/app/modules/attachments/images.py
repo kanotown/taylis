@@ -39,8 +39,13 @@ def make_thumbnail(source: IO[bytes] | bytes, max_px: int) -> tuple[bytes, int, 
         # so the thumbnail and the recorded width / height match what the sender saw.
         upright = ImageOps.exif_transpose(image) or image
         width, height = upright.size
-        upright.thumbnail((max_px, max_px))
-        canvas = upright.convert("RGB")  # drops alpha and, being a fresh image, all metadata
+        return thumbnail_jpeg(upright, max_px), width, height
+
+
+def thumbnail_jpeg(upright: Image.Image, max_px: int) -> bytes:
+    """The thumbnail JPEG of an upright image, which is scaled down in place."""
+    upright.thumbnail((max_px, max_px))
+    canvas = upright.convert("RGB")  # drops alpha and, being a fresh image, all metadata
     out = io.BytesIO()
     canvas.save(out, format="JPEG", quality=80, optimize=True)
-    return out.getvalue(), width, height
+    return out.getvalue()

@@ -495,7 +495,7 @@ async def test_timeout_and_cancel_kill_the_child_and_release_the_slot(
             "video_probe_max_concurrent": 1,
         }
     )
-    slot = videos._semaphore(1)
+    slot = videos.semaphore(1)
     info = await videos.probe_video(str(tmp_path / "clip.mp4"), settings)
     assert info == videos.VideoInfo(None, None, None, None)
     assert _gone(pid_file) and not slot.locked()

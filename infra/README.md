@@ -6,7 +6,7 @@
 | --- | --- |
 | `docker-compose.yml` | `db` (groonga/pgroonga: PostgreSQL 17)、`objectstore` (versitygw)、`app` (uvicorn 単一プロセス)、`caddy` (`proxy` プロファイル) |
 | `docker-compose.prod.yml` | 本番用の上書き (ホストへのポート公開を打ち消す) |
-| `Dockerfile` | server のイメージ (uv ベース) |
+| `Dockerfile` | server のイメージ (`server/Dockerfile`、uv ベース、Debian 13 trixie。2026-10-29 に bookworm から上げた：下の「server のイメージの土台」) |
 | `web.Dockerfile` | Caddy + ブラウザクライアント (apps/desktop を `vite build` して `/srv/web` に置く。M12j) |
 | `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限（パスごと。下の「既存の nginx の後ろで動かす」）、`/s/*`（ドライブの外部共有リンクの公開ページ、M163）は share.html、それ以外は SPA (index.html) |
 | `.env.example` | 必要な環境変数の一覧 (SECRET_KEY、DATABASE_URL、S3_*、PUSH_*)。秘密の実値は置かない |
@@ -280,7 +280,7 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    | `push-test --user <name>` | プッシュ疎通 |
    | `verify-attachments` | 添付のバイト列欠損を報告 |
    | `probe-videos [--limit 1000]` | M79 より前 (または ffmpeg の無いサーバ) の動画の縦横・長さ・ポスターを埋める。1 本ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more videos are left」と出たらもう一度流す。メッセージに付いた動画はそのメッセージを差分で端末に届け直す |
-   | `drive-photos [--limit 500] [--dry-run] [--rebuild]` | AL1 (docs/ALBUMS.md §14・§18) より前のドライブの写真・動画の撮影日時・位置情報の印と、画像の表示サイズ (2048 px の WebP) を作る。今のバージョンだけ、1 件ずつ確定するので何度流してもよい。まず `--dry-run` で数を見て、夜に `--limit 500` ずつ。「more are left」と出たらもう一度流す。`--rebuild` は復元で表示サイズを失った画像も作り直す |
+   | `drive-photos [--limit 500] [--dry-run] [--rebuild]` | AL1 (docs/ALBUMS.md §14・§18) より前のドライブの写真・動画の撮影日時・位置情報の印と、画像の表示サイズ (2048 px の WebP) を作る。今のバージョンだけ、1 件ずつ確定するので何度流してもよい。まず `--dry-run` で数を見て、夜に `--limit 500` ずつ。「more are left」と出たらもう一度流す。`--rebuild` は復元で表示サイズを失った画像も作り直す。AL5 (§19) からは HEIC / HEIF も読み、サムネイルもここで作る (ffmpeg が要る。無ければ「video(s) / HEIC left」) |
    | `generate-previews [--limit 200] [--retry-failed]` | M108 より前 (またはプレビューが切れていた間) の PDF と Office の文書のプレビューを作る (docs/PREVIEWS.md §6)。1 件ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more files are left」と出たらもう一度流す。`--retry-failed` は失敗したものもやり直す。一時的に失敗したものはサーバが後で再試行する。メッセージに付いたファイルはそのメッセージを差分で端末に届け直す |
    | `generate-previews --drive [--limit 500] [--chat-wait-seconds 600]` | ドライブのファイル (今の版) のうち、プレビューの無い PDF と Office (Nextcloud から移したもの) のプレビューを作る (M164)。各ファイルの前に、チャットの添付がプレビューを待っていれば先に通す |
    | `import-nextcloud …` | Nextcloud のファイルをドライブへ移す (M164、下の「Nextcloud からの移行」)。`--list-shares`・`--dry-run`・`--limit-bytes` |
@@ -295,6 +295,20 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
 
 9. **ログ**: JSON 行 (`LOG_JSON=true`) を `docker compose logs app` か journald で集める。トークン・パスワード・
    本文は出さない。`DEBUG=true` は本番では無視される。
+
+## server のイメージの土台 (AL5、2026-10-29)
+
+`server/Dockerfile` の土台は `ghcr.io/astral-sh/uv:python3.13-trixie-slim` (Debian 13)。それまでは `python3.13-bookworm-slim`
+(Debian 12)。理由は ffmpeg：bookworm の 5.1 は HEIC を読めず、trixie の 7.1.5 で Mac・Android から来た HEIC にサムネイルと表示
+サイズが付く (docs/ALBUMS.md §19)。Python は同じ 3.13、apt で入れるのは今までどおり `ffmpeg` だけ。
+
+- **大きさ**：展開後 1.39 GB → 1.40 GB、取得する量 343 MB → 348 MB。ただし土台が変わるので、上げた最初のデプロイでは前の
+  イメージの層を使い回せず、app のイメージを丸ごと (約 350 MB) 取り直す。ディスクは古いイメージを消すまで一時的にその分増える。
+- **サーバの OS は変えなくてよい** (Debian 12 の VPS のままでよい。変わるのはコンテナの中だけ)。DB・objectstore・converter・
+  web のイメージも変わらない。移行 (alembic) は無い。
+- **上げた後**：前からドライブにある HEIC は `drive-photos --dry-run` で数を見て、`drive-photos --limit 500` を夜に流す (HEIC は
+  12 Mpx で 1 枚 0.5 秒ほど、ffmpeg 2 スレッド)。投稿の添付 (DM など、ドライブに無いもの) の古い HEIC は読み直さない。
+- **戻す**：前のリリースのイメージに戻せばよい (データの形は変わらない。trixie で作ったサムネイル・表示サイズはそのまま使える)。
 
 ## 自動デプロイ (GitHub Actions → VPS)
 
