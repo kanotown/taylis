@@ -336,8 +336,23 @@ class ApiClient(
     suspend fun editMessage(messageId: String, body: String): MessageOut =
         request("PATCH", "/api/v1/messages/$messageId", buildJsonObject { put("body", body) })
 
-    /** Returns the tombstone (deleted = true) so the caller can apply it locally. */
-    suspend fun deleteMessage(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId")
+    /**
+     * Returns the tombstone (deleted = true) so the caller can apply it locally. CF1 (docs/CHANNEL_FILES.md §7.3):
+     * `driveFiles` `auto` / `keep` says what becomes of its files in the channel's drive (null: the server's `auto`).
+     */
+    suspend fun deleteMessage(messageId: String, driveFiles: String? = null): MessageOut =
+        request("DELETE", "/api/v1/messages/$messageId" + (driveFiles?.let { "?drive_files=$it" } ?: ""))
+
+    /** CF1 (§7.3): what deleting the message would do to each of its files in the drive (the confirmation's checkbox). */
+    suspend fun messageDriveFiles(messageId: String): DriveMessageFilesOut = request("GET", "/api/v1/messages/$messageId/drive-files")
+
+    /** CF1 (§6.5): a file (a group) back from the drive's trash, under a free name when its own is taken. */
+    suspend fun restoreDriveItem(itemId: String): DriveItemOut =
+        request("POST", "/api/v1/drive/items/$itemId/restore", buildJsonObject { put("on_conflict", "rename") })
+
+    /** CF1 (§9): the channel's own choice (owners and admins); null follows the workspace. */
+    suspend fun setChannelFilesToDrive(channelId: String, value: Boolean?): ChannelOut =
+        request("PATCH", "/api/v1/channels/$channelId", buildJsonObject { put("files_to_drive", value?.let { JsonPrimitive(it) } ?: JsonNull) })
     suspend fun message(messageId: String): MessageOut = request("GET", "/api/v1/messages/$messageId")
 
     suspend fun addReaction(messageId: String, emoji: String): MessageOut =
@@ -1267,9 +1282,11 @@ class ApiClient(
 
     override suspend fun driveItem(itemId: String): DriveItemDetailOut = request("GET", "/api/v1/drive/items/$itemId")
 
-    override suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int): DriveSearchOut {
+    override suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int, origin: String): DriveSearchOut {
         val query = "q=" + Enc.encode(q, "UTF-8") + "&limit=$limit" + (locationId?.let { "&location_id=$it" } ?: "") +
             (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "") +
+            // CF1 (docs/CHANNEL_FILES.md §12.6): 「投稿のファイルを含む」 off is `uploads`; the default `all` is not sent (older servers).
+            (if (origin != "all") "&origin=$origin" else "") +
             "&content=true" // §29: names and the text inside PDF, Office and text files
         return request("GET", "/api/v1/search/drive?$query")
     }

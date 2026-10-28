@@ -37,6 +37,8 @@ import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Download
@@ -61,6 +63,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,6 +114,7 @@ import jp.chikuwachat.android.api.DriveLocationOut
 import jp.chikuwachat.android.api.DriveSearchHitOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.ChannelFiles
 import jp.chikuwachat.android.sync.DriveFolderLoader
 import jp.chikuwachat.android.sync.DriveLinkState
 import jp.chikuwachat.android.sync.DriveListing
@@ -270,6 +274,7 @@ private fun DriveBadge(icon: ImageVector, size: Dp = 40.dp) {
 
 internal fun driveIcon(item: DriveItemOut): ImageVector = when (DriveNames.icon(item)) {
     DriveNames.Icon.FOLDER -> Icons.Outlined.Folder
+    DriveNames.Icon.CHANNEL_POSTS -> Icons.Outlined.Forum // CF1 §3.3: 「投稿のファイル」 (speech bubbles: the posts)
     DriveNames.Icon.IMAGE -> Icons.Outlined.Image
     DriveNames.Icon.VIDEO -> Icons.Outlined.Movie
     DriveNames.Icon.PDF -> Icons.Outlined.PictureAsPdf
@@ -331,6 +336,8 @@ private fun DriveFolder(
     val searcher = remember(locationId) { DriveSearchLoader(api, locationId, ::describeDriveError) }
     val search by searcher.state.collectAsState()
     var query by rememberSaveable(folderId) { mutableStateOf("") }
+    var includePosted by rememberSaveable(locationId) { mutableStateOf(true) }
+    searcher.origin = ChannelFiles.origin(includePosted)
     var details by remember { mutableStateOf<DriveItemOut?>(null) }
     var viewing by remember { mutableStateOf<DriveItemOut?>(null) }
     var refreshing by remember { mutableStateOf(false) }
@@ -340,7 +347,8 @@ private fun DriveFolder(
     // Read on opening, again when drive.changed names this folder (300 ms folded) or the connection comes back (§14).
     val epoch = hub.folderEpoch(folderId)
     LaunchedEffect(folderId, epoch) { loader.reload() }
-    LaunchedEffect(state.folder?.name) { state.folder?.let { hub.noteFolder(it.id, it.name) } }
+    LaunchedEffect(state.folder?.name) { state.folder?.let { hub.noteItems(listOf(it)); hub.noteFolder(it.id, DriveNames.displayName(it)) } }
+    LaunchedEffect(state.items) { hub.noteItems(state.items) } // CF1: 「投稿のファイル」 in the crumbs below it
     // Not there for me any more (404): the location's root, then the list (§14).
     LaunchedEffect(state.gone) {
         if (state.gone) {
@@ -364,7 +372,7 @@ private fun DriveFolder(
             .collect { near -> if (near && query.isBlank()) loader.loadMore() }
     }
     val kind = location?.kind
-    val crumbs = DriveNames.crumbs(state.path, kind)
+    val crumbs = DriveNames.crumbs(state.path, kind, hub.systemFolders)
     fun open(item: DriveItemOut) {
         if (item.isFolder) onOpenFolder(item.locationId.ifEmpty { locationId }, item.id, null)
         else if (DriveNames.viewer(item) != null) viewing = item
@@ -379,7 +387,7 @@ private fun DriveFolder(
             onSort = { sort -> val (s, o) = DriveListing.choose(state, sort); scope.launch { loader.reload(s, o); listState.scrollToItem(0) } },
             extra = {
                 // DRIVE.md §6: uploads and 「新しいフォルダ」 only where the location can be written (read only: none).
-                if (location?.canWrite == true) DriveUploadButton(controller, locationId, folderId, DriveNames.pathLine(state.path, kind)) {
+                if (location?.canWrite == true) DriveUploadButton(controller, locationId, folderId, DriveNames.pathLine(state.path, kind, hub.systemFolders)) {
                     scope.launch { loader.reload() }
                 }
             },
@@ -387,6 +395,20 @@ private fun DriveFolder(
         if (location != null && !location.canWrite) {
             Text(stringResource(R.string.drive_read_only), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+        }
+        // CF1 (CHANNEL_FILES.md §12.6): while searching, 「投稿のファイルを含む」 (on: `origin=all`, off: `uploads`).
+        if (query.isNotBlank()) {
+            FilterChip(
+                selected = includePosted,
+                onClick = {
+                    includePosted = !includePosted
+                    searcher.origin = ChannelFiles.origin(includePosted)
+                    scope.launch { searcher.search(query) }
+                },
+                label = { Text(stringResource(R.string.channel_files_search_include)) },
+                leadingIcon = if (includePosted) ({ Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }) else null,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
         }
         HorizontalDivider()
         PullToRefreshBox(
@@ -402,7 +424,7 @@ private fun DriveFolder(
                         search.hits.isEmpty() && search.query.isNotEmpty() -> item { DriveMessage(L10n.str(R.string.drive_no_results, search.query)) }
                     }
                     items(search.hits, key = { "hit:" + it.item.id }) { hit ->
-                        DriveRow(controller, hit.item, subtitle = DriveNames.pathLine(hit.path, hit.locationKind), onClick = { open(hit.item) }, onDetails = { details = hit.item })
+                        DriveRow(controller, hit.item, subtitle = DriveNames.pathLine(hit.path, hit.locationKind, hub.systemFolders), onClick = { open(hit.item) }, onDetails = { details = hit.item })
                         // §29: the words around a match inside the file, under the name (past the picture).
                         val inside = stringResource(R.string.drive_search_inside)
                         val page = hit.page?.let { stringResource(drivePageLabel(hit), it) }
@@ -497,10 +519,14 @@ private fun DriveRow(controller: AppController, item: DriveItemOut, subtitle: St
     ) {
         DriveThumb(controller, item)
         Column(Modifier.weight(1f)) {
-            FileNameText(item.name)
-            Text(line, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            FileNameText(DriveNames.displayName(item))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // CF1 (CHANNEL_FILES.md §12.2): a small speech bubble on a file attached to a message.
+                if (item.posted) Icon(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.channel_files_posted_marker), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(12.dp))
+                Text(line, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-        IconButton(onClick = onDetails) { Icon(Icons.Outlined.Info, L10n.str(R.string.drive_details_of, item.name), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        IconButton(onClick = onDetails) { Icon(Icons.Outlined.Info, L10n.str(R.string.drive_details_of, DriveNames.displayName(item)), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -557,15 +583,37 @@ private fun DriveDetailsSheet(
 ) {
     val users = controller.store.users
     var path by remember(item.id) { mutableStateOf<String?>(null) }
+    // CF1 (CHANNEL_FILES.md §12.2): the messages showing the file (GET /drive/items/{id} only), 「メッセージを表示」 each.
+    var posts by remember(item.id) { mutableStateOf<List<jp.chikuwachat.android.api.DrivePostOut>>(emptyList()) }
     LaunchedEffect(item.id) {
-        (controller.drive?.link(item.id) as? DriveLinkState.Ok)?.let { path = DriveNames.pathLine(it.detail.path, it.detail.locationKind ?: kind) }
+        (controller.drive?.link(item.id) as? DriveLinkState.Ok)?.let {
+            path = DriveNames.pathLine(it.detail.path, it.detail.locationKind ?: kind, controller.drive?.systemFolders ?: emptySet())
+            posts = it.detail.item.posts.orEmpty()
+        }
     }
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 12.dp)) {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 DriveThumb(controller, item, size = 48.dp)
-                FileNameText(item.name, Modifier.weight(1f))
+                FileNameText(DriveNames.displayName(item), Modifier.weight(1f))
+            }
+            if (posts.isNotEmpty()) {
+                HorizontalDivider()
+                Text(stringResource(R.string.channel_files_posts), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, top = 8.dp))
+                posts.forEach { post ->
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            ChannelFiles.postLine(post, post.senderId?.let { users[it]?.displayName }, controller.store.channel(post.channelId)?.channel?.name, Timeline.fullLabel(post.postedAt)),
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                        TextButton(onClick = {
+                            onDismiss()
+                            controller.scope.launch { controller.openPermalink(post.messageId) }
+                        }) { Text(stringResource(R.string.channel_files_show_message)) }
+                    }
+                }
             }
             HorizontalDivider()
             fun who(id: String?): String = id?.let { users[it]?.displayName } ?: L10n.str(R.string.drive_someone)

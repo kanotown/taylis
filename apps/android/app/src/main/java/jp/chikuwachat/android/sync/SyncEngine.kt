@@ -1290,6 +1290,9 @@ class SyncEngine(
         val message = Codec.snake.decodeFromJsonElement(MessageOut.serializer(), frame.data["message"]?.jsonObject ?: return)
         val thread = (frame.data["parent_thread"] as? JsonObject)?.let { Codec.snake.decodeFromJsonElement(ParentThread.serializer(), it) }
         val isNew = frame.event == "message.created"
+        // CF4 (docs/CHANNEL_FILES.md §12.1): `change = "attachments"` (a posted file moved, trashed, back, deleted): the
+        // new states come with the message (the Store keeps the newer updated_seq); what was read of the items reads again.
+        if (frame.event == "message.updated") ChannelFiles.itemIds(message.attachments).takeIf { it.isNotEmpty() }?.let { drive.forget(it) }
         // §10.6: a deletion takes itself off the counts, before its tombstone replaces the held row (whether it mentioned me
         // is known from that row only) and before the channel's last seq moves past it.
         if (frame.event == "message.deleted") uncountDeleted(channel, seq, message)

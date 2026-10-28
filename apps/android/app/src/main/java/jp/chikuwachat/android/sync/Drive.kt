@@ -29,7 +29,7 @@ interface DriveApi {
     suspend fun resolveDriveLocation(channelId: String?): DriveLocationOut
     suspend fun driveChildren(folderId: String, sort: String, order: String, cursor: String?, limit: Int): DriveChildrenOut
     suspend fun driveItem(itemId: String): DriveItemDetailOut
-    suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int): DriveSearchOut
+    suspend fun searchDrive(q: String, locationId: String?, cursor: String?, limit: Int, origin: String = "all"): DriveSearchOut
     suspend fun driveDownloadTicket(itemId: String): DriveDownloadTicketOut
     suspend fun driveZip(itemIds: List<String>): DriveZipOut
 }
@@ -65,12 +65,31 @@ object DriveNames {
         return locations.sortedWith(compareBy<DriveLocationOut> { rank(it) }.thenComparator { a, b -> collator.compare(a.name, b.name) })
     }
 
-    /** A path's crumbs with the root named by its location's kind (the server's root name is Japanese, or the channel's). */
-    fun crumbs(path: List<DriveCrumb>, kind: String?): List<DriveCrumb> =
-        path.mapIndexed { index, crumb -> if (index == 0) crumb.copy(name = locationName(kind, crumb.name)) else crumb }
+    /**
+     * A path's crumbs with the root named by its location's kind (the server's root name is Japanese, or the channel's),
+     * and 「投稿のファイル」 in the UI language (CHANNEL_FILES.md §3.3): a crumb has no `system_role`, so it is told by an
+     * id seen with one ([systemFolders]), or as the channel drive's top folder of the server's name (unique in its folder,
+     * and it cannot be renamed).
+     */
+    fun crumbs(path: List<DriveCrumb>, kind: String?, systemFolders: Set<String> = emptySet()): List<DriveCrumb> =
+        path.mapIndexed { index, crumb ->
+            when {
+                index == 0 -> crumb.copy(name = locationName(kind, crumb.name))
+                crumb.id in systemFolders || (index == 1 && kind == "channel" && crumb.name == CHANNEL_POSTS_NAME) ->
+                    crumb.copy(name = L10n.str(R.string.channel_files_folder))
+                else -> crumb
+            }
+        }
+
+    /** The name the server stores for 「投稿のファイル」 (§3.3); the apps show their own language's. */
+    const val CHANNEL_POSTS_NAME = "投稿のファイル"
+
+    /** An item's name as shown: 「投稿のファイル」 / Posted files / 帖子中的文件 for the special folder, else its own. */
+    fun displayName(item: DriveItemOut): String = if (item.isChannelPosts) L10n.str(R.string.channel_files_folder) else item.name
 
     /** 「研究室ドライブ › 論文 › 2026年度」. */
-    fun pathLine(path: List<DriveCrumb>, kind: String?): String = crumbs(path, kind).joinToString(" › ") { it.name }
+    fun pathLine(path: List<DriveCrumb>, kind: String?, systemFolders: Set<String> = emptySet()): String =
+        crumbs(path, kind, systemFolders).joinToString(" › ") { it.name }
 
     /** A /d/ card's second line: where the item is, and its size (a folder: 「フォルダ」). */
     fun cardDetails(detail: DriveItemDetailOut): String {
@@ -176,7 +195,7 @@ object DriveNames {
         )
     }
 
-    enum class Icon { FOLDER, IMAGE, VIDEO, PDF, DOCUMENT, SHEET, SLIDES, ARCHIVE, TEXT, FILE }
+    enum class Icon { FOLDER, CHANNEL_POSTS, IMAGE, VIDEO, PDF, DOCUMENT, SHEET, SLIDES, ARCHIVE, TEXT, FILE }
 
     private val OFFICE = mapOf(
         "doc" to Icon.DOCUMENT, "docx" to Icon.DOCUMENT, "odt" to Icon.DOCUMENT, "rtf" to Icon.DOCUMENT,
@@ -187,6 +206,7 @@ object DriveNames {
     )
 
     fun icon(item: DriveItemOut): Icon {
+        if (item.isChannelPosts) return Icon.CHANNEL_POSTS // CF1 §3.3: its own icon (a folder of posts)
         if (item.isFolder) return Icon.FOLDER
         val type = item.contentType.orEmpty().lowercase()
         return when {
@@ -302,6 +322,12 @@ class DriveSearchLoader(private val api: DriveApi, private val locationId: Strin
     val state: StateFlow<DriveSearchState> = _state
     private var generation = 0
 
+    /**
+     * CF1 (docs/CHANNEL_FILES.md §12.6): `all` (「投稿のファイルを含む」, the default) or `uploads` (without the files posted
+     * in channels). The caller searches again after changing it.
+     */
+    var origin: String = "all"
+
     /** A blank query clears the results (the folder shows again). */
     suspend fun search(query: String) {
         val ticket = ++generation
@@ -309,7 +335,7 @@ class DriveSearchLoader(private val api: DriveApi, private val locationId: Strin
         if (q.isEmpty()) { _state.value = DriveSearchState(); return }
         _state.value = DriveSearchState(query = q, loading = true)
         try {
-            val out = api.searchDrive(q, locationId, null, 50)
+            val out = api.searchDrive(q, locationId, null, 50, origin)
             if (ticket == generation) _state.value = DriveSearchState(q, out.items, out.nextCursor)
         } catch (e: CancellationException) {
             throw e
@@ -325,7 +351,7 @@ class DriveSearchLoader(private val api: DriveApi, private val locationId: Strin
         val ticket = generation
         _state.value = now.copy(loading = true)
         try {
-            val out = api.searchDrive(now.query, locationId, cursor, 50)
+            val out = api.searchDrive(now.query, locationId, cursor, 50, origin)
             if (ticket != generation) return
             val seen = now.hits.mapTo(HashSet()) { it.item.id }
             _state.value = now.copy(hits = now.hits + out.items.filter { seen.add(it.item.id) }, nextCursor = out.nextCursor, loading = false)
@@ -426,6 +452,34 @@ class DriveHub(
 
     fun noteFolder(id: String, name: String) {
         if (names[id] != name) { names[id] = name; changed() }
+    }
+
+    private val systemIds = HashSet<String>()
+
+    /** CF1 (CHANNEL_FILES.md §3.3): the 「投稿のファイル」 folders seen, so their crumbs read in the UI language. */
+    val systemFolders: Set<String> get() = systemIds
+
+    fun noteItems(items: List<DriveItemOut>) {
+        items.forEach { if (it.isChannelPosts) systemIds.add(it.id) }
+    }
+
+    /**
+     * CF4 (CHANNEL_FILES.md §12.1): `message.updated` changed a message's files (moved, trashed, back): what was read of
+     * their items is read again, so a 「表示できないファイル」 or a stale path does not stay the minute of the cache.
+     */
+    fun forget(itemIds: Collection<String>) {
+        var dropped = false
+        itemIds.forEach { if (links.remove(it) != null) dropped = true }
+        if (dropped) changed()
+    }
+
+    /**
+     * Whether I can write the channel's drive (CHANNEL_FILES.md §6.5: 「戻す」 on a file in the trash); null while the
+     * locations are not read (a channel drive never opened is not listed until made: then false).
+     */
+    fun canWriteChannelDrive(channelId: String): Boolean? {
+        val held = locations ?: return null
+        return held.firstOrNull { it.kind == "channel" && it.channelId == channelId }?.canWrite ?: false
     }
 
     /** The connection is (back) up: the locations again, and every open folder reads again (§14). */

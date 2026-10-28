@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.AddTask
 import androidx.compose.material.icons.outlined.RateReview
@@ -180,6 +181,11 @@ fun MessageMenu(
     onCopyText: (() -> Unit)? = null,
     /** M27: 「リアクションした人」, offered when the message has reactions. */
     onShowReactors: (() -> Unit)? = null,
+    /**
+     * CF4 (docs/CHANNEL_FILES.md §12.1): 「ドライブで表示」 for each of its files in a drive (name, open); one file reads
+     * 「ドライブで表示」, several 「ドライブで表示：名前」.
+     */
+    showInDrive: List<Pair<String, () -> Unit>> = emptyList(),
     reacted: Set<String> = emptySet(),
     quick: List<String> = REACTION_PALETTE,
     /** For a custom emoji among `quick` (2026-10-13): drawn as its image from the Store, loaded on demand. */
@@ -239,6 +245,12 @@ fun MessageMenu(
             if (onReply != null) item(stringResource(R.string.message_actions_reply_in_thread), Icons.Outlined.ChatBubbleOutline, action = onReply)
             if (canEdit) item(stringResource(R.string.common_edit), Icons.Outlined.Edit, action = onEdit)
             if (onCopyText != null) item(stringResource(R.string.message_actions_copy_text), Icons.Outlined.ContentCopy, action = onCopyText)
+            showInDrive.forEach { (name, open) ->
+                item(
+                    if (showInDrive.size == 1) stringResource(R.string.drive_card_show_in_drive) else stringResource(R.string.channel_files_show_in_drive_named, name),
+                    Icons.AutoMirrored.Outlined.DriveFileMove, action = open,
+                )
+            }
             if (onBookmark != null) item(if (bookmarked) stringResource(R.string.message_actions_remove_from_saved) else stringResource(R.string.message_actions_save_for_later), if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
             if (onRemind != null) item(stringResource(R.string.message_actions_remind_me), Icons.Outlined.Alarm, action = onRemind)
             if (onMakeTask != null) item(stringResource(R.string.common_make_a_task), Icons.Outlined.AddTask, action = onMakeTask)
@@ -401,13 +413,54 @@ fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () ->
     )
 }
 
+/**
+ * 「このメッセージを削除しますか？」. CF4 (docs/CHANNEL_FILES.md §7.3): with `drivePlan` (a message with files in the
+ * channel's drive) it first asks the server what deleting would do to them; when some would go to the drive's trash a
+ * checkbox 「ドライブの n 件のファイルもゴミ箱に移す」 (ticked: `auto`, unticked: `keep`), and a line for the ones that
+ * changed since and stay. Unknown (offline, an older server): no checkbox, the server's `auto`.
+ */
 @Composable
-fun ConfirmDeleteDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+fun ConfirmDeleteDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (driveFiles: String?) -> Unit,
+    drivePlan: (suspend () -> jp.chikuwachat.android.sync.ChannelFiles.DeletePlan?)? = null,
+) {
+    var plan by remember { mutableStateOf<jp.chikuwachat.android.sync.ChannelFiles.DeletePlan?>(null) }
+    var checking by remember { mutableStateOf(drivePlan != null) }
+    var ticked by rememberSaveable { mutableStateOf(true) }
+    if (drivePlan != null) LaunchedEffect(Unit) {
+        try { plan = drivePlan() } finally { checking = false }
+    }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.message_actions_delete_message)) },
-        text = { Column { Text(stringResource(R.string.message_actions_deleted_messages_cant_be_restored)) } },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.message_actions_deleted_messages_cant_be_restored))
+                val held = plan
+                when {
+                    checking -> Text(stringResource(R.string.channel_files_delete_checking), style = MaterialTheme.typography.bodySmall, color = muted)
+                    held != null && held.asks -> {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(role = Role.Checkbox) { ticked = !ticked },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.Checkbox(checked = ticked, onCheckedChange = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(L10n.plural(R.plurals.channel_files_delete_trash, held.trash, held.trash), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Text(stringResource(R.string.channel_files_delete_trash_note), style = MaterialTheme.typography.bodySmall, color = muted)
+                        if (held.changed > 0) Text(L10n.plural(R.plurals.channel_files_delete_changed, held.changed, held.changed), style = MaterialTheme.typography.bodySmall, color = muted)
+                    }
+                    held != null && (held.changed > 0 || held.stay > 0) ->
+                        Text(stringResource(R.string.channel_files_delete_stay), style = MaterialTheme.typography.bodySmall, color = muted)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !checking, onClick = { onConfirm(plan?.query(ticked)) }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

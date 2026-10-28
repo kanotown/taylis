@@ -318,6 +318,13 @@ data class ChannelOut(
      * sends it.
      */
     val lastMessage: LastMessageOut? = null,
+    /**
+     * CF1 (docs/CHANNEL_FILES.md §9): the owner's choice whether files posted here go to the channel's drive; null
+     * follows the workspace ([WorkspaceSettingsOut.channelFilesToDrive]). `filesToDriveEffective` only in the answers
+     * about one channel (GET /channels/{id}, PATCH); null elsewhere and from a server before CF1.
+     */
+    val filesToDrive: Boolean? = null,
+    val filesToDriveEffective: Boolean? = null,
 ) {
     val isDm: Boolean get() = type == "dm" || type == "group_dm"
     val isAnnouncement: Boolean get() = postingPolicy == "owners"
@@ -372,6 +379,11 @@ data class AttachmentOut(
     val durationMs: Long? = null,
     /** M108 (docs/PREVIEWS.md): a PDF's or Office file's preview; null without one (or from an older server, or rows stored before). */
     val preview: AttachmentPreviewOut? = null,
+    /**
+     * CF1 / CF4 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is an item of the channel's drive; null for a
+     * plain attachment (a DM, the switch off, a server before CF1, rows stored before).
+     */
+    val drive: AttachmentDriveOut? = null,
 ) {
     /** By the type the server sniffed (M82): a video is never a photo, whatever thumbnail flags it carries. */
     val isVideo: Boolean get() = contentType.startsWith("video/", ignoreCase = true)
@@ -379,6 +391,36 @@ data class AttachmentOut(
     /** Whether `/thumbnail` has a picture for this attachment: an image's thumbnail or a video's poster. */
     val hasPreviewPicture: Boolean get() = isImage || (isVideo && hasPoster)
 }
+
+/**
+ * CF1 (docs/CHANNEL_FILES.md §11.1, §12.1): where a posted file is in the drive, the same for every reader. `state`:
+ * `available` (in the channel's drive), `moved` (another location: only who can read it there sees it), `trashed`
+ * (the drive's trash, 30 days), `deleted` (gone; the ids are null: a tombstone). The version is the one posted.
+ */
+@Serializable
+data class AttachmentDriveOut(
+    val itemId: String? = null,
+    val versionId: String? = null,
+    val versionNumber: Int? = null,
+    val state: String = "available",
+)
+
+/**
+ * CF1 (docs/CHANNEL_FILES.md §7.3): GET /messages/{id}/drive-files, per file posted with the message (still in a drive):
+ * whether deleting it with `drive_files=auto` puts the file in the drive's trash, and why not (`in_trash`, `moved`,
+ * `not_permitted`, `changed`).
+ */
+@Serializable
+data class DriveMessageFileOut(
+    val attachmentId: String,
+    val itemId: String = "",
+    val state: String = "available",
+    val trash: Boolean = false,
+    val reason: String? = null,
+)
+
+@Serializable
+data class DriveMessageFilesOut(val files: List<DriveMessageFileOut> = emptyList())
 
 /**
  * A poll on a message (M14b). M27 (DATA_MODEL.md 「投票」): `anonymous` polls list no voters (`votes` holds an empty list
@@ -664,6 +706,8 @@ data class WorkspaceSettingsOut(
      */
     val callsEnabled: Boolean = false,
     val meetingBaseUrl: String? = null,
+    /** CF1 (docs/CHANNEL_FILES.md §9): files posted in channels go to their drives; false from a server before CF1 (it files none). */
+    val channelFilesToDrive: Boolean = false,
 ) {
     /** M93: the workspace icon's version; null = none (the letter tile). */
     val iconVersion: String? get() = iconVersionOf(iconVersionJson)

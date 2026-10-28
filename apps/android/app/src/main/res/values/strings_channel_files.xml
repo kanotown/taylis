@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CF4 (docs/CHANNEL_FILES.md §12): files posted in a channel live in the channel's drive. -->
+<resources>
+    <string name="channel_files_folder">投稿のファイル</string>
+    <string name="channel_files_deleted">削除されたファイル</string>
+    <string name="channel_files_in_trash">ゴミ箱にあります</string>
+    <string name="channel_files_restore">戻す</string>
+    <string name="channel_files_restored">ドライブのゴミ箱から戻しました</string>
+    <string name="channel_files_restore_folder">このファイルはフォルダごとゴミ箱にあります。ドライブのゴミ箱からフォルダを戻してください。</string>
+    <string name="channel_files_moved_note">このファイルは別の場所へ移されました。</string>
+    <string name="channel_files_checking">ファイルを確認しています…</string>
+    <string name="channel_files_show_in_drive_named">ドライブで表示：%1$s</string>
+    <string name="channel_files_posted_marker">メッセージに付いています</string>
+    <string name="channel_files_posts">投稿</string>
+    <string name="channel_files_show_message">メッセージを表示</string>
+    <string name="channel_files_post_in_thread">（スレッド）</string>
+    <string name="channel_files_search_include">投稿のファイルを含む</string>
+    <string name="channel_files_composer_hint">#%1$s のドライブの「投稿のファイル」に保存されます</string>
+    <string name="channel_files_setting">投稿したファイルをチャンネルのドライブに保存する</string>
+    <string name="channel_files_choice_workspace">ワークスペースに従う（%1$s）</string>
+    <string name="channel_files_choice_on">する</string>
+    <string name="channel_files_choice_off">しない</string>
+    <string name="channel_files_setting_note">変えて効くのはこれからの投稿だけです。</string>
+    <string name="channel_files_delete_checking">ドライブのファイルを確認しています…</string>
+    <string name="channel_files_delete_trash_note">ゴミ箱からは 30 日のあいだ戻せます。</string>
+    <string name="channel_files_delete_stay">ドライブのファイルは残ります。</string>
+    <plurals name="channel_files_delete_trash">
+        <item quantity="other">ドライブの %1$d 件のファイルもゴミ箱に移す</item>
+    </plurals>
+    <plurals name="channel_files_delete_changed">
+        <item quantity="other">%1$d 件は投稿の後に変更されたため、ドライブに残ります。</item>
+    </plurals>
+</resources>

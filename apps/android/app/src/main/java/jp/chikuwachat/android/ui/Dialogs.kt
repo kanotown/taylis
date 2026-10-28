@@ -422,6 +422,9 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                             onCheckedChange = { on -> scope.launch { controller.setPostingPolicy(channel.id, if (on) "owners" else "everyone") } },
                         )
                     }
+                    // CF4 (docs/CHANNEL_FILES.md §9, §12.7): whether files posted here go to the channel's drive — the
+                    // workspace's choice (said in brackets), or this channel's own. Only with a server that files them.
+                    if (controller.drive?.available == true) ChannelFilesChoice(controller, channel.channel)
                 }
                 if (ChannelLinks.canEdit(channel, store.me?.role)) {
                     TextButton(onClick = { addingLink = true }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.common_add_link)) }

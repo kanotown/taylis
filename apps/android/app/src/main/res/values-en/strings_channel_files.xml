@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_files_folder">Posted files</string>
+    <string name="channel_files_deleted">Deleted file</string>
+    <string name="channel_files_in_trash">In the trash</string>
+    <string name="channel_files_restore">Restore</string>
+    <string name="channel_files_restored">Restored from the drive\'s trash</string>
+    <string name="channel_files_restore_folder">This file is in the trash with its folder. Restore the folder from the drive\'s trash.</string>
+    <string name="channel_files_moved_note">This file was moved to another place.</string>
+    <string name="channel_files_checking">Checking the file…</string>
+    <string name="channel_files_show_in_drive_named">Show in Drive: %1$s</string>
+    <string name="channel_files_posted_marker">Attached to a message</string>
+    <string name="channel_files_posts">Posted in</string>
+    <string name="channel_files_show_message">Show message</string>
+    <string name="channel_files_post_in_thread"> (thread)</string>
+    <string name="channel_files_search_include">Include posted files</string>
+    <string name="channel_files_composer_hint">Files are saved to “Posted files” in the #%1$s drive</string>
+    <string name="channel_files_setting">Save posted files to the channel\'s drive</string>
+    <string name="channel_files_choice_workspace">Follow the workspace (%1$s)</string>
+    <string name="channel_files_choice_on">On</string>
+    <string name="channel_files_choice_off">Off</string>
+    <string name="channel_files_setting_note">A change applies to new posts only.</string>
+    <string name="channel_files_delete_checking">Checking the files in the drive…</string>
+    <string name="channel_files_delete_trash_note">They can be restored from the trash for 30 days.</string>
+    <string name="channel_files_delete_stay">The files stay in the drive.</string>
+    <plurals name="channel_files_delete_trash">
+        <item quantity="one">Also move %1$d file in the drive to the trash</item>
+        <item quantity="other">Also move the %1$d files in the drive to the trash</item>
+    </plurals>
+    <plurals name="channel_files_delete_changed">
+        <item quantity="one">%1$d file changed after it was posted and stays in the drive.</item>
+        <item quantity="other">%1$d files changed after they were posted and stay in the drive.</item>
+    </plurals>
+</resources>
