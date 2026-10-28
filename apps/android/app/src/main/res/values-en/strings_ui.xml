@@ -195,15 +195,12 @@
     <string name="calendar_recurrence_weeks">weeks</string>
     <string name="calendar_recurrence_yearly">Yearly</string>
     <string name="calendar_recurrence_years">years</string>
-    <string name="calendar_screen_add_event">" Add event"</string>
     <string name="calendar_screen_couldnt_load_events_they_will_reload">Couldn\'t load events. They will reload when reconnected</string>
     <string name="calendar_screen_events_on_this_day">Events on this day</string>
     <string name="calendar_screen_event_description">%1$s %2$s, %3$s</string>
     <string name="calendar_screen_has_events">, has events</string>
-    <string name="calendar_screen_next_days">Next %1$s days</string>
     <string name="calendar_screen_no_events_in_this_period">No events in this period</string>
     <string name="calendar_screen_no_events_on_this_day">No events on this day</string>
-    <string name="calendar_screen_no_upcoming_events">No upcoming events</string>
     <string name="calendar_screen_previous">Previous</string>
     <string name="calendar_screen_repeats">", repeats: "</string>
     <string name="calendar_screen_this_server_doesnt_support_the_calendar">This server doesn\'t support the calendar</string>
@@ -726,6 +723,8 @@
     <string name="composer_unavailable">" (unavailable)"</string>
     <string name="composer_urgent">Urgent</string>
     <string name="composer_you_can_attach_up_to_files">You can attach up to %1$s files</string>
+    <string name="conversation_channel_events">This channel\'s events</string>
+    <string name="conversation_channel_events_count">This channel\'s events (%1$d today and tomorrow)</string>
     <string name="conversation_tabs_links">" Links"</string>
     <string name="deadline_rules_day_before">Day before</string>
     <string name="deadline_rules_days_before">%1$s days before</string>

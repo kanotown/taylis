@@ -259,6 +259,11 @@ class AppController(private val app: Application) {
         val seriesId: String? = null, val occurrenceStart: String? = null, val day: String? = null,
     )
     var pendingEvent by mutableStateOf<PendingEvent?>(null)
+    /**
+     * 2026-10-28 (CALENDAR.md §7): the filter the calendar takes the next time it shows (a channel's id), set by the
+     * conversation's 「このチャンネルの予定」 and by a channel event's alarm; the calendar clears it once it has taken it.
+     */
+    var calendarFilterPreset by mutableStateOf<String?>(null)
     /** M52: the event form on screen (a row tapped, 「予定を追加」, an alarm); kept here so a rotation keeps it open. */
     var calendarForm by mutableStateOf<jp.chikuwachat.android.ui.CalendarForm?>(null)
     /**
@@ -779,6 +784,7 @@ class AppController(private val app: Application) {
         pendingCanvas = null
         pendingPage = null
         pendingEvent = null
+        calendarFilterPreset = null
         calendarForm = null
         calendarFeeds = null
         pendingTask = null
@@ -1534,8 +1540,8 @@ class AppController(private val app: Application) {
     }
 
     /**
-     * M52: a tapped calendar alarm (CALENDAR.md §6): its workspace comes on screen, then the main screen opens the event, in
-     * its channel's 「予定」 tab (or the calendar for my own calendar's event).
+     * M52: a tapped calendar alarm (CALENDAR.md §6): its workspace comes on screen, then the main screen opens the event's
+     * form over the calendar (filtered to its channel for a channel's event, 2026-10-28).
      */
     fun openEventFromNotification(workspaceKey: String?, channelId: String?, eventId: String) {
         pendingWorkspaceKey = workspaceKey

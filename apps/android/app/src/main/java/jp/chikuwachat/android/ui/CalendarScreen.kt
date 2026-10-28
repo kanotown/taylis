@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,7 +28,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -49,6 +49,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -110,7 +112,8 @@ private const val MODE_KEY = "calendar.mode"
  * M52 (CALENDAR.md §7, phone column): the calendar from the home's tile. 「一覧」: the days with events from today, 60 days
  * at a time; 「月」: the month with a dot per calendar on the days with events, and the chosen day's events under it.
  * Filter すべて / 自分 / each channel (its fixed colour). 「＋」 adds an event on the day shown (in the filtered channel when
- * I may add there).
+ * I may add there). 2026-10-28: [AppController.calendarFilterPreset] (a conversation's 「このチャンネルの予定」, a channel
+ * event's alarm) sets the filter as the calendar shows, or at once when it is already on screen.
  */
 @Composable
 fun CalendarPane(controller: AppController, version: Int) {
@@ -120,7 +123,11 @@ fun CalendarPane(controller: AppController, version: Int) {
     var mode by rememberSaveable { mutableStateOf(CalendarMode.entries.firstOrNull { it.name == controller.prefs.getString(MODE_KEY) } ?: CalendarMode.LIST) }
     var anchorText by rememberSaveable { mutableStateOf(today.toString()) }
     var selectedText by rememberSaveable { mutableStateOf(today.toString()) }
-    var filter by rememberSaveable { mutableStateOf(CalendarDates.FILTER_ALL) }
+    var filter by rememberSaveable { mutableStateOf(controller.calendarFilterPreset ?: CalendarDates.FILTER_ALL) }
+    LaunchedEffect(controller.calendarFilterPreset) {
+        controller.calendarFilterPreset?.let { filter = it }
+        controller.calendarFilterPreset = null
+    }
     val anchor = LocalDate.parse(anchorText)
     val selected = LocalDate.parse(selectedText)
     val (start, end) = CalendarDates.rangeFor(mode, anchor)
@@ -212,7 +219,17 @@ private const val TASK_WINDOW_KEY = "calendar"
 /** すべて / 自分 / each channel I belong to (with its colour). */
 @Composable
 private fun CalendarFilterRow(channels: List<ChannelState>, filter: String, onFilter: (String) -> Unit) {
-    LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val state = rememberLazyListState()
+    // A preset channel (「このチャンネルの予定」, an alarm) may be far along the row: its chip comes into view.
+    LaunchedEffect(filter, channels) {
+        val index = channels.indexOfFirst { it.id == filter }
+        if (index < 0) return@LaunchedEffect
+        snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 } // laid out
+        val chip = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == filter }
+        val fits = chip != null && chip.offset >= 0 && chip.offset + chip.size <= state.layoutInfo.viewportEndOffset
+        if (!fits) state.animateScrollToItem(index + 2)
+    }
+    LazyRow(state = state, contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         item(key = "all") { FilterChip(selected = filter == CalendarDates.FILTER_ALL, onClick = { onFilter(CalendarDates.FILTER_ALL) }, label = { Text(stringResource(R.string.common_all)) }) }
         item(key = "me") {
             FilterChip(
@@ -420,40 +437,5 @@ private fun DayList(
         item(key = "h") { DayHeader(day, today) }
         if (list.isEmpty() && !due) item(key = "empty") { EmptyNote(L10n.str(R.string.calendar_screen_no_events_on_this_day)) }
         dayRows(day, list, tasks, onOpen, onOpenTask, showCalendar = true)
-    }
-}
-
-/**
- * M52: a channel's 「予定」 tab (CALENDAR.md §7): its events for the next 60 days, and 「予定を追加」 for those who may post.
- */
-@Composable
-fun ChannelEventsPane(controller: AppController, channel: ChannelState, version: Int) {
-    val hub = controller.calendar
-    val calendarVersion = calendarVersion(hub)
-    val today = rememberToday()
-    val end = today.plusDays(CalendarDates.LIST_DAYS)
-    val (from, to) = CalendarDates.rangeParams(today, end)
-    val key = "channel:" + channel.id
-    LaunchedEffect(hub, key, from, to) { hub?.open(key, from, to, channel.id) }
-    DisposableEffect(hub, key) { onDispose { hub?.close(key) } }
-    val window = remember(calendarVersion, hub, key) { hub?.window(key) }
-    val canAdd = remember(version, channel.id) { controller.writableCalendars().any { it.id == channel.id } }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.calendar_screen_next_days, CalendarDates.LIST_DAYS), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            if (canAdd && hub?.available == true) {
-                FilledTonalButton(onClick = { controller.calendarForm = CalendarForm(null, CalendarDates.newDraft(today, channel.id)) }) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Text(stringResource(R.string.calendar_screen_add_event))
-                }
-            }
-        }
-        windowNote(window, hub?.available == true)?.let { NoteStrip(it) }
-        HorizontalDivider()
-        AgendaList(
-            window?.events ?: emptyList(), today, end, today, onOpen = { controller.calendarForm = CalendarForm(it, null) },
-            loading = hub?.available == true && (window == null || window.state == CalendarWindowState.LOADING),
-            modifier = Modifier.weight(1f), empty = stringResource(R.string.calendar_screen_no_upcoming_events), showCalendar = false,
-        )
     }
 }

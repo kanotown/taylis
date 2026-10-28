@@ -201,19 +201,16 @@ class MainNavTest {
     }
 
     @Test
-    fun theCalendarStaysBehindAConversationAndAnAlarmLandsOnItsChannelsEventsTab() { // M52
+    fun theCalendarStaysBehindAConversationAndAnAlarmOpensIt() { // M52
         val calendar = MainNav.open(root, Route.Calendar)
         assertEquals(root + Route.Calendar + channel(), MainNav.openConversation(calendar, "c1"))
         assertEquals(root, MainNav.back(calendar))
-        // A channel's alarm: its 「予定」 tab, back to 「メッセージ」 then out (as the other tabs).
-        val events = MainNav.openEvents(root, "c1")
-        assertEquals(root + channel(tab = ConversationTab.EVENTS), events)
-        assertEquals(root + channel(), MainNav.back(events))
-        // My own calendar's alarm: the calendar over the list, whatever was open; one already on screen stays.
+        // An alarm (2026-10-28: a channel's too, no 「予定」 tab) or 「このチャンネルの予定」: the calendar over the list,
+        // whatever was open; one already on screen stays.
         assertEquals(root + Route.Calendar, MainNav.openCalendar(root + Route.Saved + channel()))
         assertEquals(calendar, MainNav.openCalendar(calendar))
         // Saved with the rest of the stack (rotation, workspaces).
-        assertEquals(root + Route.Calendar + channel(tab = ConversationTab.EVENTS), MainNav.decode(MainNav.encode(root + Route.Calendar + channel(tab = ConversationTab.EVENTS))))
+        assertEquals(root + Route.Calendar + channel(tab = ConversationTab.TASKS), MainNav.decode(MainNav.encode(root + Route.Calendar + channel(tab = ConversationTab.TASKS))))
     }
 
     @Test

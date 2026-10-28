@@ -194,15 +194,12 @@
     <string name="calendar_recurrence_weeks">周</string>
     <string name="calendar_recurrence_yearly">每年</string>
     <string name="calendar_recurrence_years">年</string>
-    <string name="calendar_screen_add_event">" 添加日程"</string>
     <string name="calendar_screen_couldnt_load_events_they_will_reload">无法加载日程。重新连接后会重新加载</string>
     <string name="calendar_screen_events_on_this_day">当天的日程</string>
     <string name="calendar_screen_event_description">%1$s %2$s，%3$s</string>
     <string name="calendar_screen_has_events">，有日程</string>
-    <string name="calendar_screen_next_days">接下来 %1$s 天</string>
     <string name="calendar_screen_no_events_in_this_period">此期间没有日程</string>
     <string name="calendar_screen_no_events_on_this_day">当天没有日程</string>
-    <string name="calendar_screen_no_upcoming_events">没有即将到来的日程</string>
     <string name="calendar_screen_previous">上一个</string>
     <string name="calendar_screen_repeats">，重复：</string>
     <string name="calendar_screen_this_server_doesnt_support_the_calendar">此服务器不支持日历</string>
@@ -723,6 +720,8 @@
     <string name="composer_unavailable">" (不可用)"</string>
     <string name="composer_urgent">紧急</string>
     <string name="composer_you_can_attach_up_to_files">最多可添加 %1$s 个附件</string>
+    <string name="conversation_channel_events">此频道的日程</string>
+    <string name="conversation_channel_events_count">此频道的日程（今天和明天 %1$d 项）</string>
     <string name="conversation_tabs_links">" 链接"</string>
     <string name="deadline_rules_day_before">前一天</string>
     <string name="deadline_rules_days_before">提前 %1$s 天</string>

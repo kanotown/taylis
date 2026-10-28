@@ -290,7 +290,11 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                     TextButton(onClick = { editingTopic = false; topic = channel.channel.topic ?: "" }) { Text(L10n.str(R.string.common_cancel)) }
                 }
             } else {
-                EditableRow(L10n.str(R.string.dialogs_topic), channel.channel.topic, editable) { topic = channel.channel.topic ?: ""; editingTopic = true }
+                // 2026-10-28: its links take a tap (TopicText.kt); 「編集」 edits the plain text.
+                EditableRow(
+                    L10n.str(R.string.dialogs_topic), channel.channel.topic, editable,
+                    shown = { value, modifier -> TopicLine(controller, value, modifier, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface) },
+                ) { topic = channel.channel.topic ?: ""; editingTopic = true }
             }
             if (editingPurpose) {
                 SectionLabel(L10n.str(R.string.common_description))
@@ -437,13 +441,20 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
  * indented by its own padding).
  */
 @Composable
-private fun EditableRow(label: String, value: String?, editable: Boolean, onEdit: () -> Unit) {
+private fun EditableRow(
+    label: String, value: String?, editable: Boolean,
+    /** How a set value shows (the topic with its links, 2026-10-28); null: as plain text. */
+    shown: (@Composable (String, Modifier) -> Unit)? = null,
+    onEdit: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                value?.takeIf { it.isNotBlank() } ?: stringResource(R.string.dialogs_not_set),
-                color = if (value.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            val set = value?.takeIf { it.isNotBlank() }
+            if (set != null && shown != null) shown(set, Modifier.padding(top = 2.dp))
+            else Text(
+                set ?: stringResource(R.string.dialogs_not_set),
+                color = if (set == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
