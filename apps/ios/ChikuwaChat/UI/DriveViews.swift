@@ -8,6 +8,8 @@ import SwiftUI
 /// A drive link opened from a message: its sheet (MainView).
 struct DriveLinkTarget: Identifiable, Equatable {
     let id: String
+    /// CF3: 「ドライブで表示」 — a file opens on its folder, not its details.
+    var inFolder = false
 }
 
 /// The listing's order, kept on this device (the desktop keeps its own).
@@ -253,7 +255,7 @@ struct DriveFolderView: View {
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
     private var title: String {
         guard let folder = model.folder else { return tr("ドライブ") }
-        return folder.parentId == nil ? DriveRules.rootName(kind: kind, serverName: folder.name) : folder.name
+        return folder.parentId == nil ? DriveRules.rootName(kind: kind, serverName: folder.name) : ChannelFiles.name(folder)
     }
 
     /// Where an upload from here goes: this folder, when its drive can be written to (read-only drives show no upload).
@@ -522,8 +524,15 @@ struct DriveItemRow: View {
         HStack(spacing: 12) {
             DriveThumbnail(controller: controller, item: item, side: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name).font(.body).foregroundStyle(Color.primary).fileNameLine(item.name)
-                Text(subtitle ?? DriveRules.rowDetail(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(ChannelFiles.name(item)).font(.body).foregroundStyle(Color.primary).fileNameLine(ChannelFiles.name(item))
+                HStack(spacing: 4) {
+                    // CF3 (docs/CHANNEL_FILES.md §12.2): attached to a message.
+                    if item.isPosted {
+                        Image(systemName: "bubble.left").font(.caption2).foregroundStyle(.secondary)
+                            .accessibilityLabel(Text("メッセージに添付"))
+                    }
+                    Text(subtitle ?? DriveRules.rowDetail(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             if busy { ProgressView() }
@@ -565,6 +574,14 @@ struct DriveThumbnail: View {
                 }
             } else {
                 Image(systemName: DriveRules.icon(item)).font(.system(size: side * 0.45)).foregroundStyle(item.isFolder ? Color.accentColor : .secondary)
+                    .overlay(alignment: .bottomTrailing) {
+                        // CF3 (§12.2): 「投稿のファイル」 is a folder with a speech bubble.
+                        if item.isChannelPosts {
+                            Image(systemName: "bubble.left.fill").font(.system(size: side * 0.24)).foregroundStyle(Color.accentColor)
+                                .background(Circle().fill(Color(.secondarySystemBackground)).padding(-1.5))
+                                .offset(x: side * 0.08, y: side * 0.06)
+                        }
+                    }
             }
         }
         .frame(width: side, height: side)
@@ -595,9 +612,17 @@ struct DriveSearchList: View {
     @State private var viewing: DriveViewing?
     @State private var details: DriveSearchHitOut?
     @State private var download: DriveDownloadRequest?
+    /// CF3 (docs/CHANNEL_FILES.md §12.6): 「投稿のファイルを含む」 (origin all; off: uploads), kept on this device.
+    @AppStorage("drive.search.includePosts") private var includePosts = true
+
+    /// A server with channel files (CF1) knows `origin`.
+    private var offersOrigin: Bool { controller.store.workspaceSettings.channelFilesToDrive != nil }
 
     var body: some View {
         List {
+            if offersOrigin {
+                Toggle("投稿のファイルを含む", isOn: $includePosts).font(.subheadline)
+            }
             if let hits {
                 if hits.isEmpty {
                     ContentUnavailableView.search(text: query).listRowSeparator(.hidden)
@@ -625,7 +650,7 @@ struct DriveSearchList: View {
             }
         }
         .listStyle(.plain)
-        .task(id: "\(locationId ?? "")|\(query)") {
+        .task(id: "\(locationId ?? "")|\(query)|\(includePosts)") {
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
             await load(more: false)
@@ -642,7 +667,8 @@ struct DriveSearchList: View {
         guard let api = controller.api else { return }
         let words = query.trimmingCharacters(in: .whitespaces)
         do {
-            let page = try await api.searchDrive(query: words, locationId: locationId, cursor: more ? cursor : nil)
+            let page = try await api.searchDrive(query: words, locationId: locationId, cursor: more ? cursor : nil,
+                                                  origin: offersOrigin && !includePosts ? "uploads" : "all")
             hits = more ? (hits ?? []) + page.items : page.items
             cursor = page.nextCursor
             failure = nil
@@ -748,6 +774,8 @@ struct DriveItemDetailsList: View {
     let onOpen: (() -> Void)?
     let onDownload: (DriveDownloadRequest.Then) -> Void
     let onShowFolder: (() -> Void)?
+    @Environment(\.dismiss) private var dismiss
+    @State private var posts: [DrivePostOut]?
 
     var body: some View {
         let users = controller.store.users
@@ -756,7 +784,7 @@ struct DriveItemDetailsList: View {
                 HStack(spacing: 14) {
                     DriveThumbnail(controller: controller, item: item, side: 64)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name).font(.headline).fileNameLine(item.name)
+                        Text(ChannelFiles.name(item)).font(.headline).fileNameLine(ChannelFiles.name(item))
                         Text(item.isFolder ? tr("フォルダ") : driveSize(item.sizeBytes ?? 0)).font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
@@ -794,6 +822,30 @@ struct DriveItemDetailsList: View {
                 if !path.isEmpty { LabeledContent("場所", value: DriveRules.whereLabel(path, kind: kind)) }
                 if item.file?.preview?.isPending == true { LabeledContent("プレビュー", value: tr("作成中…")) }
             }
+            // CF3 (docs/CHANNEL_FILES.md §12.2): the messages this file is attached to (that I can read), each with
+            // 「メッセージを表示」.
+            if let posts = posts ?? item.posts, !posts.isEmpty {
+                Section("投稿") {
+                    ForEach(posts, id: \.messageId) { post in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ChannelFiles.postLine(post, sender: users[post.senderId]?.displayName ?? tr("だれか"),
+                                                       channel: controller.store.channel(post.channelId)?.channel.name))
+                                .font(.subheadline)
+                            Button("メッセージを表示") {
+                                dismiss()
+                                Task { await controller.openPermalink(post.messageId) }
+                            }
+                            .font(.subheadline)
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            }
+        }
+        .task(id: item.id) {
+            // Only GET /drive/items/{id} says which messages (a list's row does not).
+            guard item.isPosted, item.posts == nil, case .item(let detail)? = await controller.drive?.resolveLink(item.id) else { return }
+            posts = detail.item.posts
         }
     }
 }
@@ -863,6 +915,8 @@ struct DriveChannelPane: View {
 struct DriveLinkSheet: View {
     @Bindable var controller: AppController
     let itemId: String
+    /// CF3: 「ドライブで表示」 from a message: a file's folder at once.
+    var inFolder = false
     @Environment(\.dismiss) private var dismiss
     @State private var state: DriveHub.LinkState?
     @State private var browsing: String?
@@ -910,6 +964,7 @@ struct DriveLinkSheet: View {
         let found = await hub.resolveLink(itemId, force: force)
         state = found
         if case .item(let detail) = found, detail.item.isFolder { browsing = detail.item.id }
+        if case .item(let detail) = found, inFolder, !detail.item.isFolder, let parent = detail.item.parentId { browsing = parent }
     }
 
     private func open(_ item: DriveItemOut) {

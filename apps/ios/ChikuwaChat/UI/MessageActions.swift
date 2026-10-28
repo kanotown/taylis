@@ -4,6 +4,8 @@ import UIKit
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
     case thread, edit, moreReactions, reactors, share, delete, customReminder, task, review, report
+    /// CF3 (docs/CHANNEL_FILES.md §12.1): 「ドライブで表示」 for this drive item.
+    case showInDrive(String)
 }
 
 /// A sheet a message row asks for. The conversation presents it (`messageSheets`), not the row: LazyVStack takes rows
@@ -46,6 +48,8 @@ private struct MessageSheets: ViewModifier {
     /// The action sheet's choice and its message, run once the sheet is gone.
     @State private var next: (MessageFollowUp, MessageState)?
     @State private var deleting: MessageState?
+    /// CF3: a message with files in the channel's drive: its confirmation, a sheet with the drive's switch.
+    @State private var deletingWithFiles: MessageState?
     /// M56: 「タスクにする」's form, once the action sheet is gone.
     @State private var taskForm: TaskFormTarget?
 
@@ -65,7 +69,10 @@ private struct MessageSheets: ViewModifier {
         case (.customReminder, let message)?: sheet = MessageSheet(kind: .reminder, message: message)
         case (.share, let message)?: sheet = MessageSheet(kind: .share, message: message)
         case (.report, let message)?: sheet = MessageSheet(kind: .report, message: message)  // M104
-        case (.delete, let message)?: deleting = message
+        case (.delete, let message)?:
+            // CF3 (docs/CHANNEL_FILES.md §7.3): with files in the channel's drive, the confirmation says what becomes of them.
+            if ChannelFiles.asksOnDelete(message.attachments) { deletingWithFiles = message } else { deleting = message }
+        case (.showInDrive(let itemId), _)?: controller.showInDrive(itemId)
         case (.task, let message)?:
             // M56 (TASKS.md §6): the message's line as the title, the message as the source, its channel's board (or
             // 「自分のタスク」 for a DM or a board I may not add to).
@@ -138,6 +145,85 @@ private struct MessageSheets: ViewModifier {
                     Task { await controller.deleteMessage(message) }
                 }
             } message: { _ in Text("削除したメッセージは元に戻せません。") }
+            .sheet(item: $deletingWithFiles) { message in
+                DeleteMessageWithFilesSheet(controller: controller, message: message) { driveFiles in
+                    if message.id == threadRootId { controller.markThreadRootDeletedHere(message.id) }
+                    withAnimation(.easeOut(duration: 0.25)) { controller.hideMessage(message) }
+                    Task { await controller.deleteMessage(message, driveFiles: driveFiles) }
+                }
+            }
+    }
+}
+
+/// CF3 (docs/CHANNEL_FILES.md §7.3): deleting a message whose files are in the channel's drive. GET
+/// /messages/{id}/drive-files says which the server's default (`auto`) puts in the drive's trash; the switch
+/// 「ドライブの n 件のファイルもゴミ箱に移す」 starts on when there are any, and off keeps them all (`keep`). Files that
+/// changed since they were posted stay whatever it says (a line says so).
+struct DeleteMessageWithFilesSheet: View {
+    @Bindable var controller: AppController
+    let message: MessageState
+    /// The `drive_files` to send (nil: the server's default).
+    let onDelete: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var choice: ChannelFiles.DeleteChoice?
+    @State private var failed = false
+    @State private var trashing = true
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("削除したメッセージは元に戻せません。").foregroundStyle(.secondary)
+                }
+                Section {
+                    if let choice {
+                        if let title = choice.toggleTitle {
+                            Toggle(title, isOn: $trashing)
+                        }
+                        if let note = choice.note {
+                            Text(note).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        if choice.trash > 0 && trashing {
+                            Text("ゴミ箱のファイルは 30 日間は戻せます。").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    } else if failed {
+                        Text("ドライブのファイルを確認できませんでした。").font(.footnote).foregroundStyle(.secondary)
+                        Button("再試行") { Task { await load() } }
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .navigationTitle("メッセージを削除しますか？")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .destructiveAction) {
+                    Button("削除", role: .destructive) {
+                        // Unknown (not read): the server's default, as a client before CF3 deletes.
+                        let driveFiles = choice.map { $0.trash > 0 ? ChannelFiles.DeleteChoice.parameter(trashing: trashing) : "keep" }
+                        dismiss()
+                        onDelete(driveFiles)
+                    }
+                    .foregroundStyle(.red)
+                    .disabled(choice == nil && !failed)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let api = controller.api else { failed = true; return }
+        failed = false
+        do {
+            let found = ChannelFiles.DeleteChoice(try await api.messageDriveFiles(message.id).files)
+            choice = found
+            trashing = found.trash > 0
+        } catch {
+            if !Task.isCancelled { failed = true }
+        }
     }
 }
 
@@ -345,6 +431,22 @@ struct MessageActionsSheet: View {
                 }
                 if canMarkUnread { row(tr("ここから未読にする"), "envelope.badge") { onMarkUnread(); dismiss() } }
                 row(tr("リンクをコピー"), "link") { controller.copyPermalink(message.id); dismiss() }
+                // CF3 (docs/CHANNEL_FILES.md §12.1): a posted file's place in the channel's drive (each file, when several).
+                let driveItems = ChannelFiles.driveItems(message.attachments)
+                if driveItems.count == 1, let only = driveItems.first {
+                    row(tr("ドライブで表示"), "externaldrive") { then(.showInDrive(only.itemId)) }
+                } else if driveItems.count > 1 {
+                    Menu {
+                        ForEach(driveItems, id: \.itemId) { item in
+                            Button(item.name) { then(.showInDrive(item.itemId)) }
+                        }
+                    } label: {
+                        VStack(spacing: 0) {
+                            rowLabel(tr("ドライブで表示"), "externaldrive").foregroundStyle(Color.primary)
+                            Divider().padding(.leading, 56)
+                        }
+                    }
+                }
                 row(tr("別のチャンネルに共有…"), "arrowshape.turn.up.right") { then(.share) }
                 row(message.pinnedAt != nil ? tr("ピン留めを外す") : tr("チャンネルにピン留め"), message.pinnedAt != nil ? "pin.slash" : "pin") {
                     run { await controller.togglePin(message) }

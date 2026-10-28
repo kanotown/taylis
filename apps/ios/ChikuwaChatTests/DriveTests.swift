@@ -45,7 +45,7 @@ final class FakeDriveApi: DriveApi {
         return item
     }
 
-    func searchDrive(query: String, locationId: String?, cursor: String?) async throws -> DriveSearchOut { DriveSearchOut(items: []) }
+    func searchDrive(query: String, locationId: String?, cursor: String?, origin: String) async throws -> DriveSearchOut { DriveSearchOut(items: []) }
     func driveDownloadTicket(_ itemId: String) async throws -> DriveTicketOut { DriveTicketOut(url: "/api/v1/drive/download/t-\(itemId)", expiresIn: 300) }
     func driveZip(_ itemIds: [String]) async throws -> DriveZipOut { DriveZipOut(url: "/api/v1/drive/zip/z", filename: "a.zip") }
     func requestDrivePreview(_ itemId: String) async throws -> AttachmentPreviewOut? {
@@ -545,5 +545,243 @@ final class DriveSnippetTests: XCTestCase {
         XCTAssertNil(hit.match)
         XCTAssertNil(hit.snippetText)
         XCTAssertNil(DriveSnippetLine.text(hit))
+    }
+}
+
+/// CF3 (docs/CHANNEL_FILES.md §11, §12, §19.3): files posted in a channel, in its drive.
+@MainActor
+final class ChannelFilesTests: XCTestCase {
+    /// The server's own JSON (CF1's MessageOut, pydantic's dump): a posted file in the drive, a purged one (a tombstone)
+    /// and a plain attachment.
+    static let message = #"{"id":"00000000-0000-0000-0000-000000000001","channel_id":"00000000-0000-0000-0000-000000000002","sender_id":"00000000-0000-0000-0000-000000000003","parent_id":null,"also_in_channel":false,"seq":7,"updated_seq":9,"client_msg_id":"00000000-0000-0000-0000-000000000004","type":"user","body":"資料です","mentioned_user_ids":[],"mention_all":false,"reactions":[],"attachments":[{"id":"00000000-0000-0000-0000-00000000000a","filename":"修論_v1.pdf","content_type":"application/pdf","size_bytes":1234,"width":null,"height":null,"has_thumbnail":false,"has_poster":false,"duration_ms":null,"status":"attached","created_at":"2026-10-28T06:02:00Z","preview":null,"drive":{"item_id":"00000000-0000-0000-0000-000000000014","version_id":"00000000-0000-0000-0000-00000000001e","version_number":1,"state":"available"}},{"id":"00000000-0000-0000-0000-00000000000b","filename":"修論_v1.pdf","content_type":"application/pdf","size_bytes":1234,"width":null,"height":null,"has_thumbnail":false,"has_poster":false,"duration_ms":null,"status":"attached","created_at":"2026-10-28T06:02:00Z","preview":null,"drive":{"item_id":null,"version_id":null,"version_number":null,"state":"deleted"}},{"id":"00000000-0000-0000-0000-00000000000c","filename":"修論_v1.pdf","content_type":"application/pdf","size_bytes":1234,"width":null,"height":null,"has_thumbnail":false,"has_poster":false,"duration_ms":null,"status":"attached","created_at":"2026-10-28T06:02:00Z","preview":null,"drive":null}],"reply_count":0,"last_reply_at":null,"reply_user_ids":[],"created_at":"2026-10-28T06:02:00Z","edited_at":null,"deleted":false,"pinned_at":null,"pinned_by":null,"poll":null,"priority":null,"ack_requested":false,"acks":[],"collection":null,"tasks":[],"system_event":null,"workflow":null,"call":null}"#
+
+    private func attachment(_ drive: String?) throws -> AttachmentOut {
+        let tail = drive.map { #","drive":"# + $0 } ?? ""
+        let json = #"{"id":"a","filename":"f.pdf","content_type":"application/pdf","size_bytes":1,"width":null,"height":null,"has_thumbnail":false,"status":"attached","created_at":"2026-10-28T00:00:00Z""# + tail + "}"
+        return try JSON.snakeDecoder.decode(AttachmentOut.self, from: Data(json.utf8))
+    }
+
+    func testTheServersMessageWithDriveReads() throws {
+        let message = try JSON.snakeDecoder.decode(MessageOut.self, from: Data(Self.message.utf8))
+        XCTAssertEqual(message.attachments.count, 3)
+        XCTAssertEqual(message.attachments[0].drive,
+                       AttachmentDriveOut(itemId: "00000000-0000-0000-0000-000000000014", versionId: "00000000-0000-0000-0000-00000000001e",
+                                          versionNumber: 1, state: "available"))
+        XCTAssertEqual(message.attachments[1].drive, AttachmentDriveOut(state: "deleted"))
+        XCTAssertNil(message.attachments[2].drive)
+        // Kept on the device as it came (the store's JSON), so an offline start shows the same states.
+        let state = MessageState(message)
+        let stored = try JSON.plainDecoder.decode(MessageState.self, from: JSON.plainEncoder.encode(state))
+        XCTAssertEqual(stored.attachments.map(\.drive), message.attachments.map(\.drive))
+    }
+
+    func testAMessageWithoutDriveReadsAsBefore() throws {
+        // A server before CF1, a DM: no `drive` at all.
+        let older = Self.message.replacingOccurrences(
+            of: #","drive":{"item_id":"00000000-0000-0000-0000-000000000014","version_id":"00000000-0000-0000-0000-00000000001e","version_number":1,"state":"available"}"#, with: "")
+            .replacingOccurrences(of: #","drive":{"item_id":null,"version_id":null,"version_number":null,"state":"deleted"}"#, with: "")
+            .replacingOccurrences(of: #","drive":null"#, with: "")
+        XCTAssertFalse(older.contains("drive"))
+        let message = try JSON.snakeDecoder.decode(MessageOut.self, from: Data(older.utf8))
+        XCTAssertEqual(message.attachments.map(\.drive), [nil, nil, nil])
+        XCTAssertEqual(message.attachments.map { ChannelFiles.look($0) }, [.plain, .plain, .plain])
+        // A `drive` this build cannot read is no drive (the plain row), never a message that fails to read.
+        XCTAssertNil(try attachment(#"{"state":7}"#).drive)
+    }
+
+    func testEachStateShowsItsOwnWay() throws {
+        XCTAssertEqual(ChannelFiles.look(try attachment(nil)), .plain)
+        XCTAssertEqual(ChannelFiles.look(try attachment(#"{"item_id":"i","version_id":"v","version_number":1,"state":"available"}"#)), .plain)
+        XCTAssertEqual(ChannelFiles.look(try attachment(#"{"item_id":"i","version_id":"v","version_number":1,"state":"moved"}"#)), .moved(itemId: "i"))
+        XCTAssertEqual(ChannelFiles.look(try attachment(#"{"item_id":"i","version_id":"v","version_number":1,"state":"trashed"}"#)),
+                       .deleted(restoreId: "i"))
+        XCTAssertEqual(ChannelFiles.look(try attachment(#"{"item_id":null,"version_id":null,"version_number":null,"state":"deleted"}"#)),
+                       .deleted(restoreId: nil))
+        // A state a later server adds: shown as a client before CF3 shows it.
+        XCTAssertEqual(ChannelFiles.look(try attachment(#"{"item_id":"i","state":"archived"}"#)), .plain)
+    }
+
+    func testShowInDriveOffersTheFilesStillThere() throws {
+        let files = [try attachment(#"{"item_id":"i1","state":"available"}"#), try attachment(#"{"item_id":"i2","state":"moved"}"#),
+                     try attachment(#"{"item_id":"i3","state":"trashed"}"#), try attachment(nil)]
+        XCTAssertEqual(ChannelFiles.driveItems(files).map(\.itemId), ["i1", "i2"])
+        XCTAssertTrue(ChannelFiles.asksOnDelete(files))
+        XCTAssertFalse(ChannelFiles.asksOnDelete([try attachment(nil), try attachment(#"{"state":"deleted"}"#)]))
+    }
+
+    func testTheComposerSaysSoWhereFilesGoToTheDrive() {
+        func channel(_ type: String, _ own: Bool?) -> ChannelOut {
+            ChannelOut(id: "c", type: type, name: "m2-seminar", topic: nil, purpose: nil, archived: false, createdBy: nil, lastSeq: 0,
+                       lastMessageAt: nil, createdAt: "", updatedAt: "", membership: nil, dmUserIds: nil, filesToDrive: own)
+        }
+        let on = WorkspaceSettings(channelFilesToDrive: true), off = WorkspaceSettings(channelFilesToDrive: false)
+        XCTAssertTrue(ChannelFiles.savesToDrive(channel("public", nil), settings: on))
+        XCTAssertTrue(ChannelFiles.savesToDrive(channel("private", nil), settings: on))
+        XCTAssertFalse(ChannelFiles.savesToDrive(channel("public", false), settings: on))
+        XCTAssertTrue(ChannelFiles.savesToDrive(channel("public", true), settings: off))
+        XCTAssertFalse(ChannelFiles.savesToDrive(channel("public", nil), settings: off))
+        XCTAssertFalse(ChannelFiles.savesToDrive(channel("dm", nil), settings: on))
+        XCTAssertFalse(ChannelFiles.savesToDrive(channel("group_dm", true), settings: on))
+        // A server before CF1.
+        XCTAssertFalse(ChannelFiles.savesToDrive(channel("public", nil), settings: WorkspaceSettings()))
+        XCTAssertEqual(ChannelFiles.composerHint(channelName: "m2-seminar"), tr("#\("m2-seminar") のドライブの「投稿のファイル」に保存されます"))
+        XCTAssertEqual(FilesToDriveChoice(nil), .workspace)
+        XCTAssertEqual(FilesToDriveChoice(false).value, false)
+        XCTAssertNil(FilesToDriveChoice.workspace.value)
+    }
+
+    func testTheWorkspaceSwitchAndTheChannelsAreRead() throws {
+        let settings = try JSON.snakeDecoder.decode(WorkspaceSettings.self, from: Data(#"{"channel_files_to_drive":false}"#.utf8))
+        XCTAssertEqual(settings.channelFilesToDrive, false)
+        XCTAssertNil(try JSON.snakeDecoder.decode(WorkspaceSettings.self, from: Data("{}".utf8)).channelFilesToDrive)
+        let channel = try JSON.snakeDecoder.decode(ChannelOut.self, from: Data(#"{"id":"c","type":"public","name":"n","topic":null,"purpose":null,"archived":false,"created_by":null,"last_seq":0,"created_at":"x","updated_at":"x","dm_user_ids":null,"files_to_drive":false,"files_to_drive_effective":false}"#.utf8))
+        XCTAssertEqual(channel.filesToDrive, false)
+        XCTAssertEqual(channel.filesToDriveEffective, false)
+    }
+
+    func testTheDeleteConfirmationsSwitch() {
+        func file(_ trash: Bool, _ reason: String?) -> MessageDriveFileOut {
+            MessageDriveFileOut(attachmentId: UUID().uuidString, itemId: "i", state: "available", trash: trash, reason: reason)
+        }
+        let mine = ChannelFiles.DeleteChoice([file(true, nil), file(true, nil), file(false, "changed")])
+        XCTAssertEqual([mine.trash, mine.changed, mine.staying], [2, 1, 1])
+        XCTAssertEqual(mine.toggleTitle, tr("ドライブの \(2) 件のファイルもゴミ箱に移す"))
+        XCTAssertEqual(mine.note, tr("\(1) 件は投稿の後に変更されたため、ドライブに残ります。"))
+        // Someone else's files (a moderator's delete keeps nothing back, but here: not mine): no switch, they stay.
+        let others = ChannelFiles.DeleteChoice([file(false, "not_permitted")])
+        XCTAssertNil(others.toggleTitle)
+        XCTAssertEqual(others.note, tr("添付したファイルはチャンネルのドライブに残ります。"))
+        XCTAssertEqual(ChannelFiles.DeleteChoice.parameter(trashing: true), "auto")
+        XCTAssertEqual(ChannelFiles.DeleteChoice.parameter(trashing: false), "keep")
+    }
+
+    func testThePostsFolderIsNamedInMyLanguage() throws {
+        let json = #"{"id":"00000000-0000-0000-0000-000000000028","location_id":"00000000-0000-0000-0000-000000000029","parent_id":"00000000-0000-0000-0000-00000000002a","kind":"folder","name":"投稿のファイル","size_bytes":null,"content_type":null,"content_modified_at":null,"created_by":"00000000-0000-0000-0000-000000000003","created_at":"2026-10-28T06:02:00Z","updated_by":"00000000-0000-0000-0000-000000000003","updated_at":"2026-10-28T06:02:00Z","version_count":0,"file":null,"link_count":0,"trashed_at":null,"trashed_by":null,"system_role":"channel_posts","posted":false,"posts":[{"message_id":"00000000-0000-0000-0000-000000000001","channel_id":"00000000-0000-0000-0000-000000000002","parent_id":null,"sender_id":"00000000-0000-0000-0000-000000000003","version_number":1,"posted_at":"2026-10-28T06:02:00Z"}]}"#
+        let folder = try JSON.snakeDecoder.decode(DriveItemOut.self, from: Data(json.utf8))
+        XCTAssertTrue(folder.isChannelPosts)
+        XCTAssertFalse(folder.isPosted)
+        XCTAssertEqual(folder.posts?.first?.senderId, "00000000-0000-0000-0000-000000000003")
+        XCTAssertEqual(ChannelFiles.name(folder), tr("投稿のファイル"))
+        // An item from a server before CF1: no role, no mark.
+        let plain = FakeDriveApi().folder("投稿のファイル")
+        XCTAssertFalse(plain.isChannelPosts)
+        XCTAssertFalse(plain.isPosted)
+        // Its step in a path: in a channel's drive, right under the root.
+        let path = [DriveCrumb(id: "r", name: "m2-seminar"), DriveCrumb(id: "p", name: "投稿のファイル"), DriveCrumb(id: "m", name: "2026-10")]
+        XCTAssertEqual(DriveRules.crumbs(path, kind: "channel").map(\.name), ["m2-seminar", tr("投稿のファイル"), "2026-10"])
+        XCTAssertEqual(DriveRules.whereLabel(path, kind: "workspace"), tr("研究室ドライブ") + " › 投稿のファイル › 2026-10")
+        let deeper = [DriveCrumb(id: "r", name: "m2-seminar"), DriveCrumb(id: "x", name: "資料"), DriveCrumb(id: "p", name: "投稿のファイル")]
+        XCTAssertEqual(DriveRules.crumbs(deeper, kind: "channel").map(\.name), ["m2-seminar", "資料", "投稿のファイル"])
+        // §19.4: a server that marks the step says so itself (the server's JSON).
+        let detail = #"{"item":"# + json + #","path":[{"id":"r","name":"m2-seminar","system_role":null},{"id":"p","name":"投稿のファイル","system_role":"channel_posts"},{"id":"q","name":"投稿のファイル","system_role":null}],"location_kind":"channel"}"#
+        let marked = try JSON.snakeDecoder.decode(DriveItemDetailOut.self, from: Data(detail.utf8))
+        XCTAssertEqual(marked.path.map(\.systemRole), [nil, "channel_posts", nil])
+        XCTAssertEqual(DriveRules.crumbs(marked.path, kind: "workspace").map(\.name), [tr("研究室ドライブ"), tr("投稿のファイル"), "投稿のファイル"])
+    }
+
+    func testAPostsLine() {
+        let post = DrivePostOut(messageId: "m", channelId: "c", parentId: "p", senderId: "u", versionNumber: 1, postedAt: "2026-10-28T06:02:00Z")
+        let line = ChannelFiles.postLine(post, sender: "三井", channel: "m2-seminar")
+        XCTAssertTrue(line.hasPrefix("三井 · "))
+        XCTAssertTrue(line.hasSuffix(tr("#\("m2-seminar")（スレッド）")))
+        var top = post
+        top.parentId = nil
+        XCTAssertTrue(ChannelFiles.postLine(top, sender: "三井", channel: "m2-seminar").hasSuffix(" · #m2-seminar"))
+        XCTAssertEqual(ChannelFiles.postLine(top, sender: "三井", channel: nil).components(separatedBy: " · ").count, 2)
+    }
+
+    func testTheCallsOnTheWire() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let client = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+        client.accessToken = "t"
+        var asked: [String] = []
+        StubProtocol.handler = { request in
+            let body = request.httpBodyStream.map { stream -> String in
+                stream.open()
+                defer { stream.close() }
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    data.append(buffer, count: read)
+                }
+                return String(decoding: data, as: UTF8.self)
+            } ?? request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
+            asked.append("\(request.httpMethod ?? "") \(request.url!.path)?\(request.url!.query ?? "") \(body)")
+            let path = request.url!.path
+            if path.hasSuffix("/drive-files") {
+                return (200, Data(#"{"files":[{"attachment_id":"a","item_id":"i","state":"available","trash":true,"reason":null}]}"#.utf8))
+            }
+            if path.hasPrefix("/api/v1/messages/") { return (200, Data(ChannelFilesTests.message.utf8)) }
+            if path.hasPrefix("/api/v1/channels/") {
+                return (200, Data(#"{"id":"c","type":"public","name":"n","topic":null,"purpose":null,"archived":false,"created_by":null,"last_seq":0,"created_at":"x","updated_at":"x","dm_user_ids":null,"files_to_drive":null,"files_to_drive_effective":true}"#.utf8))
+            }
+            if path.hasSuffix("/restore") {
+                return (200, Data(#"{"id":"i","location_id":"w","parent_id":"r","kind":"file","name":"f.pdf","size_bytes":1,"content_type":"application/pdf","content_modified_at":null,"created_by":null,"created_at":"x","updated_by":null,"updated_at":"x","version_count":1,"file":null,"link_count":0}"#.utf8))
+            }
+            return (200, Data(#"{"items":[],"next_cursor":null}"#.utf8))
+        }
+        let files = try await client.messageDriveFiles("m1")
+        XCTAssertEqual(files.files.first?.trash, true)
+        _ = try await client.deleteMessage(id: "m1", driveFiles: "keep")
+        _ = try await client.deleteMessage(id: "m2")
+        let channel = try await client.setChannelFilesToDrive(id: "c", value: nil)
+        XCTAssertEqual(channel.filesToDriveEffective, true)
+        _ = try await client.restoreDriveItem("i")
+        _ = try await client.searchDrive(query: "q", locationId: nil, cursor: nil, origin: "uploads")
+        _ = try await client.searchDrive(query: "q", locationId: nil, cursor: nil)
+        XCTAssertEqual(asked[0], "GET /api/v1/messages/m1/drive-files? ")
+        XCTAssertEqual(asked[1], "DELETE /api/v1/messages/m1?drive_files=keep ")
+        XCTAssertEqual(asked[2], "DELETE /api/v1/messages/m2? ")
+        XCTAssertEqual(asked[3], #"PATCH /api/v1/channels/c? {"files_to_drive":null}"#)
+        XCTAssertTrue(asked[4].hasPrefix("POST /api/v1/drive/items/i/restore? "))
+        XCTAssertEqual(asked[5], "GET /api/v1/search/drive?q=q&limit=50&origin=uploads&content=true ")
+        XCTAssertEqual(asked[6], "GET /api/v1/search/drive?q=q&limit=50&content=true ")
+    }
+
+    func testOnlyWhoMayWriteTheChannelsDriveRestores() async {
+        let api = FakeDriveApi()
+        api.locations = [DriveLocationOut(id: "l1", kind: "channel", channelId: "c1", rootId: "r1", name: "a", canWrite: true),
+                         DriveLocationOut(id: "l2", kind: "channel", channelId: "c2", rootId: "r2", name: "b", canWrite: false)]
+        let hub = DriveHub(api: api)
+        XCTAssertFalse(hub.canWriteChannelDrive("c1"))  // not read yet
+        await hub.loadLocations()
+        XCTAssertTrue(hub.canWriteChannelDrive("c1"))
+        XCTAssertFalse(hub.canWriteChannelDrive("c2"))
+        XCTAssertFalse(hub.canWriteChannelDrive("dm"))
+    }
+
+    /// The message's rows for a purged and a trashed file (light and dark), with the plain one above: no name, no
+    /// picture, a thin outline (no coloured bar). Run with TEST_RUNNER_SNAPSHOT_DIR=<dir> to look at them.
+    func testTheGoneFilesRows() throws {
+        let controller = AppController()
+        let message = try JSON.snakeDecoder.decode(MessageOut.self, from: Data(Self.message.utf8))
+        var trashed = message.attachments[0]
+        trashed.drive = AttachmentDriveOut(itemId: "i", versionId: "v", versionNumber: 1, state: "trashed")
+        let view = AttachmentsView(attachments: [message.attachments[2], message.attachments[1], trashed], controller: controller, channelId: "c")
+            .padding()
+            .frame(width: 393, alignment: .leading)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let host = UIHostingController(rootView: view)
+            host.overrideUserInterfaceStyle = style
+            host.view.backgroundColor = .systemBackground
+            let size = host.sizeThatFits(in: CGSize(width: 393, height: 1000))
+            host.view.frame = CGRect(origin: .zero, size: size)
+            let window = UIWindow(frame: host.view.frame)
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                _ = host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+            }
+            window.isHidden = true
+            XCTAssertGreaterThan(size.height, 60)
+            if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"], let data = image.pngData() {
+                try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("channel-files-\(style == .dark ? "dark" : "light").png"))
+            }
+        }
     }
 }

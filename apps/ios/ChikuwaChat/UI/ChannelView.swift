@@ -1234,7 +1234,7 @@ struct MessageRow: View {
                         .onTapGesture(perform: tapped)
                 }
                 if !message.attachments.isEmpty {
-                    AttachmentsView(attachments: message.attachments, controller: controller,
+                    AttachmentsView(attachments: message.attachments, controller: controller, channelId: message.channelId,
                                     present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
                 }
                 // M166 (docs/DRIVE.md §26): the cards of its drive links (at most three), where a link's preview goes.
@@ -1563,6 +1563,12 @@ struct ComposerView: View {
     let onSend: (String, [String], SendOptions) -> Void
     private var text: String { controller?.store.draft(channelId, parentId: parentId).text ?? "" }
     private var pending: [AttachmentOut] { controller?.store.draft(channelId, parentId: parentId).attachments ?? [] }
+    /// CF3: 「#ch のドライブの「投稿のファイル」に保存されます」 where posted files go to the channel's drive.
+    private var driveHint: String? {
+        guard let controller, controller.drive?.available == true, let channel = controller.store.channel(channelId)?.channel,
+              ChannelFiles.savesToDrive(channel, settings: controller.store.workspaceSettings) else { return nil }
+        return ChannelFiles.composerHint(channelName: channel.name ?? "")
+    }
     private var uploading: Int { controller?.store.uploading(channelId, parentId: parentId) ?? 0 }
     private var textBinding: Binding<String> { Binding(get: { text }, set: { value in
         controller?.store.setDraft(channelId, parentId: parentId) { $0.text = value }
@@ -1947,6 +1953,13 @@ struct ComposerView: View {
             if let accessory { accessory }
             PendingAttachmentsView(items: pending, uploading: uploading, controller: controller) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
+            }
+            // CF3 (docs/CHANNEL_FILES.md §12.3): where the waiting files will also be (channels whose files go to the drive).
+            if !pending.isEmpty, let hint = driveHint {
+                Label(hint, systemImage: "externaldrive")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12).padding(.top, 4)
             }
             if !emojiCandidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {

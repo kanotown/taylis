@@ -76,6 +76,11 @@ final class DriveHub {
 
     func location(_ id: String) -> DriveLocationOut? { locations?.first { $0.id == id } }
 
+    /// CF3: whether I may write this channel's drive (「戻す」 under a posted file in the trash); false until the list is read.
+    func canWriteChannelDrive(_ channelId: String) -> Bool {
+        locations?.first { $0.kind == "channel" && $0.channelId == channelId }?.canWrite ?? false
+    }
+
     /// マイドライブ or a channel's drive, made on first use; the list learns it.
     func resolve(channelId: String?) async throws -> DriveLocationOut {
         guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }

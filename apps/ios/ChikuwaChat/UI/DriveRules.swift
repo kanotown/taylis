@@ -78,10 +78,13 @@ enum DriveRules {
         }
     }
 
-    /// The path from the root (renamed by kind) down to the folder.
+    /// The path from the root (renamed by kind) down to the folder; CF3: a channel drive's 「投稿のファイル」 in my language.
     static func crumbs(_ path: [DriveCrumb], kind: String?) -> [DriveCrumb] {
         guard let root = path.first else { return path }
-        return [DriveCrumb(id: root.id, name: rootName(kind: kind, serverName: root.name))] + path.dropFirst()
+        let rest = path.dropFirst().enumerated().map { offset, crumb in
+            DriveCrumb(id: crumb.id, name: ChannelFiles.crumbName(crumb, depth: offset + 1, kind: kind), systemRole: crumb.systemRole)
+        }
+        return [DriveCrumb(id: root.id, name: rootName(kind: kind, serverName: root.name))] + rest
     }
 
     /// 「研究室ドライブ › 論文」: where an item is (its card, a search hit).
@@ -224,5 +227,122 @@ enum DriveRules {
     static func usage(_ location: DriveLocationOut) -> String {
         if let quota = location.quotaBytes { return tr("\(driveSize(location.usedBytes))（上限 \(driveSize(quota))）") }
         return tr("\(driveSize(location.usedBytes)) 使用")
+    }
+}
+
+/// CF3 (docs/CHANNEL_FILES.md §9, §12.7): the channel's own switch in its details (owners).
+enum FilesToDriveChoice: Hashable {
+    case workspace, on, off
+
+    init(_ value: Bool?) { self = value.map { $0 ? .on : .off } ?? .workspace }
+
+    /// PATCH's `files_to_drive`.
+    var value: Bool? {
+        switch self {
+        case .workspace: nil
+        case .on: true
+        case .off: false
+        }
+    }
+}
+
+/// CF3 (docs/CHANNEL_FILES.md §12, §19.3): the pure parts of channel files on the phone — how a posted file shows in its
+/// message, the composer's line, the delete confirmation's switch, the special folder's name.
+enum ChannelFiles {
+    /// How an attachment shows in its message.
+    enum Look: Equatable {
+        /// The usual tile (a plain attachment, or a posted file still in its channel's drive).
+        case plain
+        /// In another drive: the usual tile only when I can read it there (GET /drive/items/{id}), else 「表示できないファイル」.
+        case moved(itemId: String)
+        /// 「削除されたファイル」 (no name, no picture); `restoreId` while it is in the trash (「戻す」 for who may write the
+        /// channel's drive).
+        case deleted(restoreId: String?)
+    }
+
+    static func look(_ attachment: AttachmentOut) -> Look {
+        guard let drive = attachment.drive else { return .plain }
+        switch drive.state {
+        case "available": return .plain
+        case "moved": return drive.itemId.map { .moved(itemId: $0) } ?? .deleted(restoreId: nil)
+        case "trashed": return .deleted(restoreId: drive.itemId)
+        case "deleted": return .deleted(restoreId: nil)
+        default: return .plain  // a state a later server adds: the attachment as a client before CF3 shows it
+        }
+    }
+
+    /// The drive item 「ドライブで表示」 opens: a posted file still in its channel's drive, or moved (the sheet then says
+    /// whether I can read it there).
+    static func driveItemId(_ attachment: AttachmentOut) -> String? {
+        guard let drive = attachment.drive, drive.state == "available" || drive.state == "moved" else { return nil }
+        return drive.itemId
+    }
+
+    /// The message's files 「ドライブで表示」 offers, in order.
+    static func driveItems(_ attachments: [AttachmentOut]) -> [(itemId: String, name: String)] {
+        attachments.compactMap { attachment in driveItemId(attachment).map { ($0, attachment.filename) } }
+    }
+
+    /// Whether files posted in this conversation go to its drive (§9): public and private channels, the channel's own
+    /// switch or else the workspace's. A server before CF1 (no workspace setting) has none.
+    static func savesToDrive(_ channel: ChannelOut, settings: WorkspaceSettings) -> Bool {
+        guard channel.type == "public" || channel.type == "private", let workspace = settings.channelFilesToDrive else { return false }
+        return channel.filesToDrive ?? workspace
+    }
+
+    /// The composer's line under the waiting files (§12.3).
+    static func composerHint(channelName: String) -> String { tr("#\(channelName) のドライブの「投稿のファイル」に保存されます") }
+
+    /// The special folder's name in my language (§3.3); other items keep their own.
+    static func name(_ item: DriveItemOut) -> String { item.isChannelPosts ? tr("投稿のファイル") : item.name }
+
+    /// The name the server stores the folder under (§3.3).
+    static let storedName = "投稿のファイル"  // i18n-ignore: the server's stored name, compared, never shown as is
+
+    /// A step of a path: 「投稿のファイル」 in my language when it is that folder — by its `system_role` (§19.4), or from a
+    /// server whose steps carry none, by place and name: the folder is always the root's child in a channel's drive under
+    /// the stored name (it cannot be renamed or moved, and no other folder there can take its name).
+    static func crumbName(_ crumb: DriveCrumb, depth: Int, kind: String?) -> String {
+        if let role = crumb.systemRole { return role == "channel_posts" ? tr("投稿のファイル") : crumb.name }
+        return kind == "channel" && depth == 1 && crumb.name == storedName ? tr("投稿のファイル") : crumb.name
+    }
+
+    /// The delete confirmation (§7.3): how many files the default (`auto`) puts in the drive's trash, and how many stay
+    /// because they changed since they were posted.
+    struct DeleteChoice: Equatable {
+        let trash: Int
+        let changed: Int
+        let staying: Int
+
+        init(_ files: [MessageDriveFileOut]) {
+            trash = files.filter(\.trash).count
+            changed = files.filter { !$0.trash && $0.reason == "changed" }.count
+            staying = files.filter { !$0.trash }.count
+        }
+
+        /// The switch's line; nil when nothing would go to the trash (no switch then).
+        var toggleTitle: String? { trash > 0 ? tr("ドライブの \(trash) 件のファイルもゴミ箱に移す") : nil }
+
+        /// What stays in the drive whatever the switch says.
+        var note: String? {
+            if changed > 0 { return tr("\(changed) 件は投稿の後に変更されたため、ドライブに残ります。") }
+            if trash == 0 && staying > 0 { return tr("添付したファイルはチャンネルのドライブに残ります。") }
+            return nil
+        }
+
+        /// DELETE's `drive_files`: the switch on is the server's default; off keeps them all.
+        static func parameter(trashing: Bool) -> String { trashing ? "auto" : "keep" }
+    }
+
+    /// Whether deleting this message asks about its drive files first: a posted file not purged yet.
+    static func asksOnDelete(_ attachments: [AttachmentOut]) -> Bool {
+        attachments.contains { $0.drive != nil && $0.drive?.state != "deleted" }
+    }
+
+    /// A post in a file's details: 「三井 · 10/28 15:02 · #m2-seminar（スレッド）」.
+    static func postLine(_ post: DrivePostOut, sender: String, channel: String?) -> String {
+        var parts = [sender, Timeline.fullLabel(post.postedAt)]
+        if let channel { parts.append(post.parentId == nil ? "#" + channel : tr("#\(channel)（スレッド）")) }
+        return parts.joined(separator: " · ")
     }
 }

@@ -995,9 +995,10 @@ final class AppController {
         store.upsertMessage(gone, replacingSameVersion: true)
     }
 
-    func deleteMessage(_ message: MessageState) async {
+    /// `driveFiles` (CF3, docs/CHANNEL_FILES.md §7.3): "keep" leaves its files in the channel's drive; nil, the server's auto.
+    func deleteMessage(_ message: MessageState, driveFiles: String? = nil) async {
         guard let api else { return }
-        do { _ = store.upsertMessage(try await api.deleteMessage(id: message.id)) } catch {
+        do { _ = store.upsertMessage(try await api.deleteMessage(id: message.id, driveFiles: driveFiles)) } catch {
             store.upsertMessage(message, replacingSameVersion: true)
             threadRootsDeletedHere.remove(message.id) // refused: the thread stays, and a later deletion is not mine
             self.error = describe(error)
@@ -1629,6 +1630,33 @@ final class AppController {
             store.upsertChannel(try await api.updateChannel(id: channelId, postingPolicy: policy))
             return true
         } catch { self.error = describe(error); return false }
+    }
+
+    /// CF3 (docs/CHANNEL_FILES.md §9, §12.7): whether files posted here go to the channel's drive; nil = as the workspace.
+    func setChannelFilesToDrive(_ channelId: String, value: Bool?) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.setChannelFilesToDrive(id: channelId, value: value))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// CF3 (§6.5): 「戻す」 under a posted file in the trash. The message changes by its event (message.updated).
+    func restorePostedFile(_ itemId: String) async {
+        guard let api else { return }
+        do {
+            _ = try await api.restoreDriveItem(itemId)
+            notice = tr("ファイルを戻しました")
+        } catch let error as ApiError where error.code == "drive_not_in_trash" {
+            // Trashed with its folder, from a server before §19.4 (which restores the whole group now): only the folder can
+            // come back, from the drive's trash on a computer.
+            self.error = tr("このファイルはフォルダごとゴミ箱に移されています。パソコンのドライブのゴミ箱からフォルダを戻してください。")
+        } catch { self.error = describe(error) }
+    }
+
+    /// CF3 (§12.1): 「ドライブで表示」 — the folder the posted file is in (or 「表示できないファイル」).
+    func showInDrive(_ itemId: String) {
+        driveLink = DriveLinkTarget(id: itemId, inFolder: true)
     }
 
     /// M15b: public → private (owner / admin) or private → public (admin only).
