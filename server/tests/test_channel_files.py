@@ -26,6 +26,7 @@ from app.modules.attachments.blobstore import MemoryBlobStore
 from app.modules.attachments.models import Attachment
 from app.modules.audit.models import AuditLog
 from app.modules.drive import channel_files, names, versions
+from app.modules.drive import events as drive_events
 from app.modules.drive.models import DriveFileVersion, DriveItem, DriveLocation
 from app.modules.messages.models import Message
 from app.modules.users.models import User
@@ -324,7 +325,7 @@ async def test_a_send_and_a_trash_of_the_month_folder_at_once_both_finish(
         )
         return done.status_code
 
-    assert await asyncio.gather(send(), trash()) == [201, 200]
+    assert list(await asyncio.gather(send(), trash())) == [201, 200]
     # Whichever went first, the message says what the drive has: the send filed it into the
     # month folder before the trash took it (trashed), or into one made again after (available).
     second = await row(db, attachment_id)
@@ -360,7 +361,7 @@ async def test_a_failure_in_the_drive_never_fails_the_send(
     async def late(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("the outbox is broken")
 
-    monkeypatch.setattr(channel_files.events, "emit_changed", late)
+    monkeypatch.setattr(drive_events, "emit_changed", late)
     reply = await post(client, lab["id"], [("r.txt", b"reply")], parent_id=message["id"])
     assert reply["attachments"][0]["drive"] is None and reply["parent_id"] == message["id"]
     monkeypatch.undo()
